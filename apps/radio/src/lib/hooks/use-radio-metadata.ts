@@ -10,6 +10,37 @@ import type {
 } from "@/lib/metadata/types";
 
 const POLL_INTERVAL_MS = 30_000;
+const ERROR_RETRY_INTERVAL_MS = 60_000;
+const UNSUPPORTED_RETRY_INTERVAL_MS = 60_000;
+const MIN_REFRESH_INTERVAL_MS = 30_000;
+const MAX_REFRESH_INTERVAL_MS = 60 * 60_000;
+
+function refreshAfterMs(
+  response: RadioMetadataResponse | undefined
+): number | null {
+  const delay = response?.ok ? response.refreshAfterMs : undefined;
+  return typeof delay === "number" && Number.isFinite(delay) && delay >= 0
+    ? Math.min(delay, MAX_REFRESH_INTERVAL_MS)
+    : null;
+}
+
+export function radioMetadataRefreshInterval(
+  response: RadioMetadataResponse | undefined,
+  dataUpdatedAt: number,
+  now: number,
+  hasError = false
+): number {
+  if (hasError) {
+    return ERROR_RETRY_INTERVAL_MS;
+  }
+  if (response && !response.ok) {
+    return UNSUPPORTED_RETRY_INTERVAL_MS;
+  }
+  const delay = refreshAfterMs(response);
+  return delay === null
+    ? POLL_INTERVAL_MS
+    : Math.max(MIN_REFRESH_INTERVAL_MS, delay - (now - dataUpdatedAt));
+}
 
 export const radioMetadataKeys = {
   all: ["radio-metadata"] as const,
@@ -124,11 +155,23 @@ export function useRadioMetadata({
       return fetchRadioMetadata(streamUrl, metadataConfig);
     },
     queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
-    refetchInterval: enabled && poll ? POLL_INTERVAL_MS : false,
+    refetchInterval:
+      enabled && poll
+        ? (current) =>
+            radioMetadataRefreshInterval(
+              current.state.data,
+              current.state.dataUpdatedAt,
+              Date.now(),
+              current.state.error !== null
+            )
+        : false,
     refetchOnReconnect: poll,
     refetchOnWindowFocus: poll,
     retry: 1,
-    staleTime: 15_000,
+    staleTime: (current) =>
+      current.state.data && !current.state.data.ok
+        ? UNSUPPORTED_RETRY_INTERVAL_MS
+        : (refreshAfterMs(current.state.data) ?? 15_000),
   });
 
   const wasPolling = useRef(poll);
@@ -136,10 +179,10 @@ export function useRadioMetadata({
     const startedPolling = poll && !wasPolling.current;
     wasPolling.current = poll;
 
-    if (startedPolling && enabled && !query.isFetching) {
+    if (startedPolling && enabled && query.isStale && !query.isFetching) {
       query.refetch();
     }
-  }, [enabled, poll, query.isFetching, query.refetch]);
+  }, [enabled, poll, query.isFetching, query.isStale, query.refetch]);
 
   if (!enabled) {
     return {

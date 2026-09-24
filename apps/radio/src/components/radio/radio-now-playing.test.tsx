@@ -5,6 +5,7 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,7 +16,10 @@ import {
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { Radio } from "@/lib/audio";
-import { radioMetadataKeys } from "@/lib/hooks/use-radio-metadata";
+import {
+  radioMetadataKeys,
+  radioMetadataRefreshInterval,
+} from "@/lib/hooks/use-radio-metadata";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -109,6 +113,56 @@ const radio: Radio = {
   streamUrl: "https://radio.example/live",
 };
 
+test("polls at the server's remaining cache lifetime in the browser's clock", () => {
+  const response = {
+    data: metadata,
+    ok: true,
+    refreshAfterMs: 900_000,
+  } as const;
+  expect(radioMetadataRefreshInterval(response, 1000, 30_000)).toBe(871_000);
+  expect(radioMetadataRefreshInterval(response, 1000, 901_000)).toBe(30_000);
+  expect(
+    radioMetadataRefreshInterval(
+      { data: metadata, ok: true, refreshAfterMs: 0 },
+      1000,
+      1000
+    )
+  ).toBe(30_000);
+  expect(
+    radioMetadataRefreshInterval(
+      {
+        error: {
+          code: "RADIO_METADATA_UNSUPPORTED",
+          message: "No source",
+        },
+        ok: false,
+      },
+      1000,
+      1000
+    )
+  ).toBe(60_000);
+  expect(radioMetadataRefreshInterval(response, 1000, 30_000, true)).toBe(
+    60_000
+  );
+  expect(
+    radioMetadataRefreshInterval({ data: metadata, ok: true }, 1000, 1000)
+  ).toBe(30_000);
+  expect(
+    radioMetadataRefreshInterval(
+      { data: metadata, ok: true, refreshAfterMs: Number.NaN },
+      1000,
+      1000
+    )
+  ).toBe(30_000);
+  expect(
+    radioMetadataRefreshInterval(
+      { data: metadata, ok: true, refreshAfterMs: 10_000_000 },
+      1000,
+      1000
+    )
+  ).toBe(3_600_000);
+});
+
 test("gates preview requests and refreshes metadata when polling starts", async () => {
   const client = new QueryClient();
   const originalFetch = globalThis.fetch;
@@ -137,19 +191,73 @@ test("gates preview requests and refreshes metadata when polling starts", async 
     await waitFor(() => expect(requests).toHaveLength(1));
     await waitFor(() => expect(view.result.current.metadata).toEqual(metadata));
 
-    await client.invalidateQueries({
-      queryKey: radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
-      refetchType: "none",
+    await act(async () => {
+      await client.invalidateQueries({
+        queryKey: radioMetadataKeys.stream(
+          radio.streamUrl,
+          radio.metadataConfig
+        ),
+        refetchType: "none",
+      });
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
     });
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(requests).toHaveLength(1);
 
     view.rerender({ enabled: true, poll: true });
     await waitFor(() => expect(requests).toHaveLength(2));
   } finally {
-    focusManager.setFocused(undefined);
+    act(() => focusManager.setFocused(undefined));
+    globalThis.fetch = originalFetch;
+    client.clear();
+  }
+});
+
+test("keeps a fresh preview through playback and refreshes after its deadline", async () => {
+  const client = new QueryClient();
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  const requests: string[] = [];
+  const servedAt = Date.now();
+  const response = {
+    data: { ...metadata, expiresAt: servedAt + 60_000, sampledAt: servedAt },
+    ok: true,
+    refreshAfterMs: 60_000,
+  };
+  globalThis.fetch = Object.assign(
+    (input: Parameters<typeof fetch>[0]) => {
+      requests.push(String(input));
+      return Promise.resolve(Response.json(response));
+    },
+    { preconnect: originalFetch.preconnect }
+  );
+
+  try {
+    const view = renderHook(({ poll }) => useRadioMetadata({ poll, radio }), {
+      initialProps: { poll: false },
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await waitFor(() => expect(view.result.current.metadata).toBeTruthy());
+    view.rerender({ poll: true });
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    expect(requests).toHaveLength(1);
+
+    Date.now = () => servedAt + 60_001;
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(requests).toHaveLength(2));
+  } finally {
+    Date.now = originalNow;
+    act(() => focusManager.setFocused(undefined));
     globalThis.fetch = originalFetch;
     client.clear();
   }

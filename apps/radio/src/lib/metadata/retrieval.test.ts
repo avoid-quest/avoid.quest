@@ -242,6 +242,7 @@ describe("radio metadata retrieval", () => {
     expect(response).toMatchObject({
       data: {
         artist: "LYL Radio",
+        expiresAt: Date.parse("2026-09-03T16:46:00.000Z"),
         source: "icy",
         title: "Live",
       },

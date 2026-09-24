@@ -9,7 +9,7 @@ import {
   cacheMetadata,
   getOrSetCachedRadioMetadata,
   getRadioMetadataCacheKey,
-  type MetadataKv,
+  type MetadataCache,
   RADIO_METADATA_FAILURE_TTL_MS,
   RADIO_METADATA_SUCCESS_TTL_MS,
   RADIO_METADATA_UNSUPPORTED_TTL_MS,
@@ -37,7 +37,7 @@ type RadioMetadataWorkflowContext = {
 };
 
 type RadioMetadataWorkflowDependencies = {
-  kv?: MetadataKv;
+  cache?: MetadataCache;
   captureError?: typeof captureError;
   fetchImpl?: FetchLike;
   now?: () => number;
@@ -57,9 +57,16 @@ function jsonResponse(
   response: RadioMetadataResponse,
   origin: string,
   requestId: string,
-  status = response.ok ? 200 : 400
+  status = response.ok ? 200 : 400,
+  servedAt = Date.now()
 ): Response {
-  return Response.json(response, {
+  const payload = response.ok
+    ? {
+        ...response,
+        refreshAfterMs: Math.max(0, response.data.expiresAt - servedAt),
+      }
+    : response;
+  return Response.json(payload, {
     headers: {
       "Access-Control-Allow-Origin": origin,
       "Cache-Control": "private, no-store",
@@ -209,16 +216,16 @@ function parseMetadataConfig(params: URLSearchParams): MetadataConfigResult {
 }
 
 export function createRadioMetadataWorkflow({
-  kv,
+  cache,
   captureError: captureErrorImpl = captureError,
   fetchImpl = fetch,
   now = Date.now,
   timeoutMs,
 }: RadioMetadataWorkflowDependencies = {}) {
   const retrieval = createRadioMetadataRetrieval({
+    cache,
     captureError: captureErrorImpl,
     fetchFollowingPublicRedirects: createMetadataUpstreamFetch(fetchImpl),
-    kv,
     now,
     timeoutMs,
   });
@@ -283,6 +290,7 @@ export function createRadioMetadataWorkflow({
       now,
       retrieve: () =>
         cacheMetadata({
+          cache,
           expiresAt: (result) => (result.ok ? result.data.expiresAt : 0),
           key: [
             configResult.config.kind,
@@ -290,7 +298,6 @@ export function createRadioMetadataWorkflow({
             validation.url,
             configResult.config,
           ],
-          kv,
           now,
           retrieve: () =>
             retrieval.retrieve(validation.url, configResult.config),
@@ -303,7 +310,8 @@ export function createRadioMetadataWorkflow({
       response,
       origin,
       requestId,
-      response.ok ? 200 : statusForError(response.error.code)
+      response.ok ? 200 : statusForError(response.error.code),
+      now()
     );
   };
 

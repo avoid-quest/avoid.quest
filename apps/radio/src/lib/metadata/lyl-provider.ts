@@ -1,4 +1,8 @@
-import { cacheMetadata, EPISODE_METADATA_TTL, type MetadataKv } from "./cache";
+import {
+  cacheMetadata,
+  EPISODE_METADATA_TTL,
+  type MetadataCache,
+} from "./cache";
 import { parseRadioTitle } from "./title-parser";
 import type { RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -7,6 +11,7 @@ type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 const LYL_GRAPHQL_URL = "https://strapi.lyl.live/graphql";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const GENERIC_ON_AIR_TITLES = new Set(["live", "lyl radio - live"]);
 const CALENDAR_QUERY = `
   query NowPlaying($from: DateTime!, $to: DateTime!) {
     onair { title hls }
@@ -86,7 +91,7 @@ type LylEpisode = NonNullable<
 type LylShow = NonNullable<NonNullable<LylShowResponse["data"]>["showBySlug"]>;
 
 export type LylProviderInput = {
-  kv?: MetadataKv;
+  cache?: MetadataCache;
   now?: () => number;
   expiresAt: number;
   fetchImpl: FetchLike;
@@ -157,6 +162,9 @@ function selectCurrentEntry(
   });
   if (titleMatches.length === 1) {
     return titleMatches[0] ?? null;
+  }
+  if (!GENERIC_ON_AIR_TITLES.has(comparableTitle(onAirTitle) ?? "")) {
+    return null;
   }
 
   const episodes = current.filter((entry) => entry.type === "EPISODE");
@@ -298,8 +306,8 @@ export async function tryLylApi(
   const episode =
     type === "EPISODE"
       ? await cacheMetadata({
+          cache: input.cache,
           key: ["lyl", "episode", slug, comparableTitle(title)],
-          kv: input.kv,
           now: input.now,
           retrieve: async () =>
             trustMatchingTitle(await getEpisode(input.fetchImpl, slug), title),
@@ -309,8 +317,8 @@ export async function tryLylApi(
   const show =
     type === "SHOW"
       ? await cacheMetadata({
+          cache: input.cache,
           key: ["lyl", "show", slug, comparableTitle(title)],
-          kv: input.kv,
           now: input.now,
           retrieve: async () =>
             trustMatchingTitle(await getShow(input.fetchImpl, slug), title),
@@ -340,7 +348,7 @@ export async function tryLylApi(
     artist,
     artworkUrl: asPublicUrl(details?.image?.url),
     bitrate: null,
-    expiresAt: input.expiresAt,
+    expiresAt: Math.min(input.expiresAt, Date.parse(asString(entry.end) ?? "")),
     genre: genre || null,
     itemUrl: new URL(
       `/${type === "EPISODE" ? "episode" : "show"}/${encodeURIComponent(slug)}`,

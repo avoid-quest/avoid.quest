@@ -149,51 +149,56 @@ parameters do not override it. Unknown or disabled IDs return HTTP 404 with
 response. The configured `url` and `kind` lookup remains supported for the radio
 app's editable stations.
 
-Both forms use the same retrieval and cache. Success returns `{ ok: true, data }`
+Both forms use the same retrieval and cache. Success returns `{ ok: true, data, refreshAfterMs }`
 with the existing `RadioNowPlaying` fields, including `streamUrl`, nullable
-`title`/`artworkUrl`, `sampledAt`, and `expiresAt`. Clients must match `streamUrl`
-to their playing catalog entry and discard expired snapshots. Keep the service's
+`title`/`artworkUrl`, `sampledAt`, and `expiresAt`. `refreshAfterMs` is the
+remaining snapshot lifetime calculated when the Worker sends the response.
+Clients must match `streamUrl` to their playing catalog entry and discard
+expired snapshots. Keep the service's
 anonymous session cookie on the requesting client and honor HTTP 429 retries.
 The existing session, rate-limit, URL validation and origin policies apply.
 When renaming a default station, give it an explicit `id` retaining its previous
 exported identity, whose value follows the `avoid-radio-` prefix.
 
-The radio Worker uses one `RADIO_METADATA` KV binding. Live snapshots expire
-after 15 minutes; episode/show enrichment after six hours; Radio Garden station
-attributes after 24 hours; and Radio Browser/Radio Garden searches after ten
-minutes. NTS channels reuse one live feed. Fields returned in the live feed
-retain its 15-minute lifetime even when they include artwork or station details.
-Separate enrichment caches cover Sygma, Cashmere, IPR, LYL, HKCR, and BlackOut.
-HKCR keeps its live/replay schedule separate from show details. BlackOut stores
-the verified full description and genres separately from its listening feed.
-Revised Airtime and HKCR cache keys bypass older incomplete enrichment records.
+The radio Worker stores expiring metadata in Cloudflare's Cache API. It no
+longer uses Workers KV. Live snapshots expire within 15 minutes; episode/show
+enrichment after six hours; Radio Garden station attributes after 24 hours;
+and Radio Browser/Radio Garden searches after ten minutes. NTS channels reuse
+one live feed and select its current or future slot at read time. Airtime, LYL,
+NTS, and HKCR snapshots expire at the known track or show end when sooner;
+Radio Alhara checks at least every five minutes and at its predicted track end.
+Separate enrichment caches
+cover Sygma, Cashmere, IPR, LYL, HKCR, and BlackOut. HKCR keeps its live/replay
+schedule separate from show details. BlackOut stores the verified full
+description and genres separately from its listening feed. Upstream response
+headers and cookies are not copied into these cached metadata entries.
 
-A continuously requested live key now needs about 96 refresh writes per day,
-instead of 1,440 at a one-minute TTL. Titles, artists, and show details can lag
-changes by up to 15 minutes. Polling remains at 30 seconds for playing stations;
-cache hits reuse the snapshot without writing it again. KV reads still count,
-and multiple keys, concurrent misses, enrichment, and other account usage mean
-this is not a hard guarantee of staying below the free daily quota.
-
-Cache hits preserve the original `sampledAt` and `expiresAt`. KV is eventually
-consistent: propagation can take 60 seconds or longer, and concurrent misses
-can repeat provider calls. Each KV read or write waits at most 500 ms before
-continuing without the cache result. Provider failures, including directory DNS
-failures and incomplete enrichment, are not stored as successful results. The
-existing local now-playing cache and in-flight deduplication remain, capped by
-the snapshot's expiry.
+Unscheduled changes can lag the snapshot lifetime, up to 15 minutes for most
+sources. Playing stations request metadata when `refreshAfterMs` elapses,
+instead of every 30 seconds. At a full 15-minute lifetime this reduces one
+listener's metadata requests from 120 to about four per hour. Expired snapshots
+retry after at least 30 seconds, upstream errors after one minute, and
+temporarily unsupported sources after one minute.
+Cache hits preserve the original `sampledAt` and `expiresAt`. The Cache API
+stores entries only in the data center handling the request and may evict them.
+Requests in another data center or after eviction may repeat provider calls.
+Each cache operation waits at most 500 ms before the response continues;
+Cloudflare's `waitUntil` lets a slow write finish after the response. Provider
+failures, including directory DNS failures and incomplete
+enrichment, are not stored as successful results. The existing local
+now-playing cache and in-flight deduplication remain, capped by the snapshot's
+expiry.
 
 Episode enrichment stores descriptive fields. Radio Garden resolves playback
 URLs on each request, outside the station cache. Radio Browser caches search
 descriptions and validated query-free playback URLs. Query-bearing URLs stay
-outside KV and are refreshed together by station UUID on cache hits. These searches
-still need one provider lookup; searches with only query-free URLs need none.
-Browser playback probes and player state stay local.
+outside the cache and are refreshed together by station UUID on cache hits.
+These searches still need one provider lookup; searches with only query-free
+URLs need none. Browser playback probes and player state stay local.
 
-The `RADIO_METADATA` entry in `wrangler.jsonc` binds the existing
-`radio-radio-metadata` namespace by ID, so repeated uploads reuse it instead of
-attempting to provision another namespace with the same name. Local development
-uses local KV. See [KV expiry and consistency](https://developers.cloudflare.com/kv/api/write-key-value-pairs/)
+The production Worker runs on the `radio.avoid.quest` custom domain, where
+Cloudflare supports Cache API operations. `workers.dev`, Dashboard editor,
+and Playground previews do not persist Cache API entries. See [Cache API behavior](https://developers.cloudflare.com/workers/runtime-apis/cache/)
 and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development

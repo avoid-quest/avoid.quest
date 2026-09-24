@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createMetadataCacheFixture } from "./cache-test-fixture";
 import {
   tryAirtimeLiveInfo,
   tryAzuraCastNowPlaying,
@@ -9,16 +10,16 @@ import {
   tryResonanceExtraApi,
   tryShoutcastStatus,
 } from "./external-providers";
-import { createMetadataKvFixture } from "./kv-test-fixture";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
 test("NTS channels share a live feed and retain its original sampling time", async () => {
-  const { kv } = createMetadataKvFixture();
+  const { cache } = createMetadataCacheFixture();
   let time = 1000;
   let calls = 0;
   const read = (channel: "1" | "2") =>
     tryNtsLiveApi(
       {
+        cache,
         expiresAt: time + 60_000,
         fetchImpl: () => {
           calls += 1;
@@ -31,7 +32,6 @@ test("NTS channels share a live feed and retain its original sampling time", asy
             })
           );
         },
-        kv,
         now: () => time,
         sampledAt: time,
         streamUrl: `https://stream-relay-geo.ntslive.net/stream${channel}`,
@@ -58,14 +58,138 @@ test("NTS channels share a live feed and retain its original sampling time", asy
   expect(calls).toBe(2);
 });
 
+test("NTS selects a scheduled next slot when the cached now slot has ended", async () => {
+  const { cache } = createMetadataCacheFixture();
+  const start = Date.parse("2026-09-24T12:00:00Z");
+  let time = start + 1000;
+  let calls = 0;
+  const read = () =>
+    tryNtsLiveApi(
+      {
+        cache,
+        expiresAt: time + 180_000,
+        fetchImpl: () => {
+          calls += 1;
+          return Promise.resolve(
+            Response.json({
+              results: [
+                {
+                  channel_name: "1",
+                  next: {
+                    broadcast_title: "Second show",
+                    embeds: {
+                      details: {
+                        description: "Second show's description",
+                        media: {
+                          picture_medium: "https://nts.live/second.jpg",
+                        },
+                      },
+                    },
+                    end_timestamp: "2026-09-24T12:02:00Z",
+                    start_timestamp: "2026-09-24T12:01:00Z",
+                  },
+                  now: {
+                    broadcast_title: "First show",
+                    end_timestamp: "2026-09-24T12:01:00Z",
+                    start_timestamp: "2026-09-24T12:00:00Z",
+                  },
+                },
+              ],
+            })
+          );
+        },
+        now: () => time,
+        sampledAt: time,
+        streamUrl: "https://streams.radiomast.io/nts1",
+      },
+      "1"
+    );
+
+  expect(await read()).toMatchObject({
+    expiresAt: start + 60_000,
+    title: "First show",
+  });
+  time = start + 61_000;
+  expect(await read()).toMatchObject({
+    artworkUrl: "https://nts.live/second.jpg",
+    expiresAt: start + 120_000,
+    sampledAt: start + 1000,
+    stationDescription: "Second show's description",
+    title: "Second show",
+  });
+  expect(calls).toBe(1);
+  time = start + 120_000;
+  expect(await read()).toBeNull();
+  expect(calls).toBe(2);
+  time = start + 150_000;
+  expect(await read()).toBeNull();
+  expect(calls).toBe(2);
+});
+
+test("NTS refreshes the feed at a gap in its scheduled slots", async () => {
+  const { cache } = createMetadataCacheFixture();
+  const start = Date.parse("2026-09-24T12:00:00Z");
+  let time = start + 1000;
+  let calls = 0;
+  const read = () =>
+    tryNtsLiveApi(
+      {
+        cache,
+        expiresAt: time + 180_000,
+        fetchImpl: () => {
+          calls += 1;
+          return Promise.resolve(
+            Response.json({
+              results: [
+                {
+                  channel_name: "1",
+                  next: {
+                    broadcast_title: "Later show",
+                    end_timestamp: "2026-09-24T12:03:00Z",
+                    start_timestamp: "2026-09-24T12:02:00Z",
+                  },
+                  now: {
+                    broadcast_title:
+                      calls === 1 ? "First show" : "Updated show",
+                    end_timestamp:
+                      calls === 1
+                        ? "2026-09-24T12:01:00Z"
+                        : "2026-09-24T12:02:00Z",
+                    start_timestamp:
+                      calls === 1
+                        ? "2026-09-24T12:00:00Z"
+                        : "2026-09-24T12:01:00Z",
+                  },
+                },
+              ],
+            })
+          );
+        },
+        now: () => time,
+        sampledAt: time,
+        streamUrl: "https://streams.radiomast.io/nts1",
+      },
+      "1"
+    );
+
+  expect(await read()).toMatchObject({
+    expiresAt: start + 60_000,
+    title: "First show",
+  });
+  time = start + 61_000;
+  expect(await read()).toMatchObject({ title: "Updated show" });
+  expect(calls).toBe(2);
+});
+
 test("Sygma episode enrichment outlives live snapshots without storing playback fields", async () => {
-  const { kv, entries, put } = createMetadataKvFixture();
+  const { cache, entries, put } = createMetadataCacheFixture();
   let time = 1000;
   let episodeCalls = 0;
   let liveCalls = 0;
   const read = () =>
     tryAirtimeLiveInfo(
       {
+        cache,
         expiresAt: time + 60_000,
         fetchImpl: (url) => {
           if (url.includes("backend.radio.syg.ma")) {
@@ -87,7 +211,6 @@ test("Sygma episode enrichment outlives live snapshots without storing playback 
             })
           );
         },
-        kv,
         now: () => time,
         sampledAt: time,
         streamUrl: "https://radio.syg.ma/audio/live",
@@ -115,13 +238,14 @@ test("Sygma episode enrichment outlives live snapshots without storing playback 
 test.each(["http", "json", "network", "abort"])(
   "retries partial Cashmere enrichment after %s failure without losing artwork",
   async (failure) => {
-    const { kv, put } = createMetadataKvFixture();
+    const { cache, put } = createMetadataCacheFixture();
     let time = 1000;
     let episodeCalls = 0;
     let graphqlCalls = 0;
     let liveCalls = 0;
     const read = () =>
       tryAirtimeLiveInfo({
+        cache,
         expiresAt: time + 60_000,
         fetchImpl: (url) => {
           if (url === "https://backstage.cashmereradio.com/graphql") {
@@ -179,7 +303,6 @@ test.each(["http", "json", "network", "abort"])(
             })
           );
         },
-        kv,
         now: () => time,
         sampledAt: time,
         streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
@@ -215,12 +338,13 @@ test.each(["http", "json", "network", "abort"])(
 );
 
 test("caches valid empty Cashmere episode and show searches between live samples", async () => {
-  const { kv, put } = createMetadataKvFixture();
+  const { cache, put } = createMetadataCacheFixture();
   let time = 1000;
   let graphqlCalls = 0;
   let showCalls = 0;
   const read = () =>
     tryAirtimeLiveInfo({
+      cache,
       expiresAt: time + 60_000,
       fetchImpl: (url) => {
         if (url === "https://backstage.cashmereradio.com/graphql") {
@@ -237,7 +361,6 @@ test("caches valid empty Cashmere episode and show searches between live samples
           Response.json({ tracks: { current: { name: "Unarchived Show" } } })
         );
       },
-      kv,
       now: () => time,
       sampledAt: time,
       streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
@@ -261,6 +384,92 @@ function json(data: unknown) {
 }
 
 describe("external radio metadata providers", () => {
+  test.each([
+    [
+      "Europe/Moscow",
+      "2026-09-24T13:05:00Z",
+      "2026-09-24 16:11:26",
+      "2026-09-24T13:11:26Z",
+    ],
+    [
+      "Europe/Berlin",
+      "2026-09-24T13:20:00Z",
+      "2026-09-24 15:27:35",
+      "2026-09-24T13:27:35Z",
+    ],
+    [
+      "America/Los_Angeles",
+      "2026-09-24T12:15:00Z",
+      "2026-09-24 05:20:56",
+      "2026-09-24T12:20:56Z",
+    ],
+  ])(
+    "expires Airtime metadata at the track end in %s",
+    async (timezone, sampled, ends, expected) => {
+      const sampledAt = Date.parse(sampled);
+      const result = await tryAirtimeLiveInfo({
+        expiresAt: sampledAt + 900_000,
+        fetchImpl: () =>
+          Promise.resolve(
+            json({
+              station: { timezone },
+              tracks: { current: { ends, name: "Current track" } },
+            })
+          ),
+        sampledAt,
+        streamUrl: "https://radio.example/live",
+      });
+      expect(result?.expiresAt).toBe(Date.parse(expected));
+    }
+  );
+
+  test.each([
+    ["2026-09-24T13:00:00Z", "2026-09-24 16:30:00", "2026-09-24T13:15:00Z"],
+    ["2026-09-24T13:00:00Z", "2026-09-24 14:59:00", "2026-09-24T13:01:00Z"],
+    ["2026-03-29T00:50:00Z", "2026-03-29 03:10:00", "2026-03-29T00:51:00Z"],
+    ["2026-10-25T00:50:00Z", "2026-10-25 02:10:00", "2026-10-25T00:51:00Z"],
+  ])(
+    "bounds Airtime refresh safely from %s to %s",
+    async (sampled, ends, expected) => {
+      const sampledAt = Date.parse(sampled);
+      const result = await tryAirtimeLiveInfo({
+        expiresAt: sampledAt + 900_000,
+        fetchImpl: () =>
+          Promise.resolve(
+            json({
+              station: { timezone: "Europe/Berlin" },
+              tracks: { current: { ends, name: "Current track" } },
+            })
+          ),
+        sampledAt,
+        streamUrl: "https://radio.example/live",
+      });
+      expect(result?.expiresAt).toBe(Date.parse(expected));
+    }
+  );
+
+  test("rechecks an Airtime feed whose scheduler clock is stale", async () => {
+    const sampledAt = Date.parse("2026-09-24T13:00:00Z");
+    const result = await tryAirtimeLiveInfo({
+      expiresAt: sampledAt + 900_000,
+      fetchImpl: () =>
+        Promise.resolve(
+          json({
+            station: {
+              schedulerTime: "2026-09-24 14:45:00",
+              timezone: "Europe/Berlin",
+            },
+            tracks: {
+              current: { ends: "2026-09-24 15:10:00", name: "Old track" },
+            },
+          })
+        ),
+      sampledAt,
+      streamUrl: "https://radio.example/live",
+    });
+    expect(result?.expiresAt).toBe(sampledAt + 60_000);
+  });
+
   test("normalizes Sygma/Airtime live-info style current tracks", async () => {
     const calls: string[] = [];
     const result = await tryAirtimeLiveInfo({
@@ -680,11 +889,12 @@ describe("external radio metadata providers", () => {
   });
 
   test("retries Cashmere show enrichment when its page identity differs", async () => {
-    const { kv, put } = createMetadataKvFixture();
+    const { cache, put } = createMetadataCacheFixture();
     let time = 1000;
     let showCalls = 0;
     const read = () =>
       tryAirtimeLiveInfo({
+        cache,
         expiresAt: time + 60_000,
         fetchImpl: (url) => {
           if (url === "https://cashmereradio.airtime.pro/api/live-info-v2") {
@@ -718,7 +928,6 @@ describe("external radio metadata providers", () => {
             ])
           );
         },
-        kv,
         now: () => time,
         sampledAt: time,
         streamUrl: "https://cashmereradio.out.airtime.pro/cashmereradio_b",
@@ -1155,6 +1364,24 @@ describe("external radio metadata providers", () => {
     });
   });
 
+  test("expires HKCR metadata when its scheduled show ends", async () => {
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-09-03T04:15:00Z"),
+      fetchImpl: async () =>
+        json([
+          {
+            date: "2026-09-03",
+            endTime: "12:00",
+            startTime: "11:00",
+            title: "Current Show",
+          },
+        ]),
+      sampledAt: Date.parse("2026-09-03T03:50:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+    expect(result?.expiresAt).toBe(Date.parse("2026-09-03T04:00:00Z"));
+  });
+
   test.each([
     { artist: null, title: "Morning Show - Replay" },
     { artist: "Resident - Collective", title: "Morning Show" },
@@ -1331,6 +1558,22 @@ describe("external radio metadata providers", () => {
       stationName: "Radio Alhara",
       title: 'DIMKAL pres. "UNCOMPROMISING EXPRESSIONS"',
     });
+  });
+
+  test("checks Radio Alhara at its predicted track end", async () => {
+    const sampledAt = Date.parse("2026-09-24T12:55:00Z");
+    const result = await tryRadioAlharaApi({
+      expiresAt: sampledAt + 900_000,
+      fetchImpl: async () =>
+        json({
+          duration: 3600,
+          episodeTitle: "Hour-long episode",
+          trackStart: "2026-09-24T12:00:00Z",
+        }),
+      sampledAt,
+      streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
+    });
+    expect(result?.expiresAt).toBe(Date.parse("2026-09-24T13:00:00Z"));
   });
 
   test("propagates NTS aborts instead of treating them as unsupported", async () => {

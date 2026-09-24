@@ -11,7 +11,7 @@ import {
 import {
   cacheMetadata,
   DIRECTORY_SEARCH_TTL,
-  type MetadataKv,
+  type MetadataCache,
   STATION_METADATA_TTL,
 } from "@/lib/metadata/cache";
 
@@ -25,14 +25,14 @@ function hasPublicPlaybackUrl(value: string): boolean {
 }
 
 export async function searchCachedRadioBrowser(
-  kv: MetadataKv,
+  cache: MetadataCache,
   query: string,
   limit: number
 ) {
   let retrieved: RadioBrowserStation[] | undefined;
   const stations = await cacheMetadata({
+    cache,
     key: ["radio-browser", "search-v2", query, limit],
-    kv,
     retrieve: async () => {
       retrieved = await searchRadioBrowser(query, { limit });
       return retrieved.map((station) =>
@@ -72,22 +72,22 @@ export async function searchCachedRadioBrowser(
   });
 }
 
-export function searchCachedRadioGarden(kv: MetadataKv, query: string) {
+export function searchCachedRadioGarden(cache: MetadataCache, query: string) {
   return cacheMetadata({
+    cache,
     key: ["radio-garden", "search", query],
-    kv,
     retrieve: () => searchRadioGarden(query),
     ttl: DIRECTORY_SEARCH_TTL,
   });
 }
 
 export async function getCachedRadioGardenItem(
-  kv: MetadataKv,
+  cache: MetadataCache,
   channelId: string
 ) {
   const result = await cacheMetadata({
+    cache,
     key: ["radio-garden", "station", channelId],
-    kv,
     retrieve: () => getRadioGardenMetadata(channelId),
     shouldCache: (value) => value.success,
     ttl: STATION_METADATA_TTL,

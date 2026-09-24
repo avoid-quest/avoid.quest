@@ -1,7 +1,7 @@
-import { env } from "cloudflare:workers";
 import { runServerFn } from "@avoid.quest/error";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { workerMetadataCache } from "@/lib/metadata/edge-cache";
 import { searchCachedRadioBrowser } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
 
@@ -25,7 +25,7 @@ export const radioBrowserSearch = createServerFn({ method: "POST" })
       operation: "radioBrowserSearch",
       run: async () => ({
         results: await searchCachedRadioBrowser(
-          env.RADIO_METADATA,
+          workerMetadataCache,
           data.query,
           data.limit
         ),

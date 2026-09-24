@@ -1,7 +1,7 @@
 import {
   cacheMetadata,
   EPISODE_METADATA_TTL,
-  type MetadataKv,
+  type MetadataCache,
   RADIO_METADATA_SUCCESS_TTL_MS,
 } from "./cache";
 import { cleanMetadataText, parseRadioTitle } from "./title-parser";
@@ -32,6 +32,8 @@ const IPR_REPLAY_SUFFIX_PATTERN = /\s*\((?:r|replay)\)\s*$/i;
 const IPR_SEARCH_URL = "https://www.internetpublicradio.live/api/search";
 const INTEGER_FIELD_PATTERN = /^\d+$/;
 const HTML_TAG_PATTERN = /<[^>]*>/g;
+const AIRTIME_LOCAL_TIME_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 const RADIO_ALHARA_NOW_PLAYING_URL =
   "https://ch2.radioalhara.net/api/now-playing";
 const RESONANCE_EXTRA_API_URL =
@@ -41,7 +43,7 @@ const TRAILING_SLASH_PATTERN = /\/$/;
 const WHITESPACE_PATTERN = /\s+/g;
 
 export type ExternalMetadataProviderInput = {
-  kv?: MetadataKv;
+  cache?: MetadataCache;
   now?: () => number;
   fetchImpl: FetchLike;
   streamUrl: string;
@@ -51,6 +53,7 @@ export type ExternalMetadataProviderInput = {
 
 type AirtimeTrack = {
   album_artwork_image?: unknown;
+  ends?: unknown;
   name?: unknown;
   metadata?: {
     artist_name?: unknown;
@@ -69,6 +72,7 @@ type AirtimeTrack = {
 };
 
 type AirtimeLiveInfo = {
+  station?: { schedulerTime?: unknown; timezone?: unknown };
   tracks?: { current?: AirtimeTrack };
   current?: AirtimeTrack;
   shows?: { current?: AirtimeShow | AirtimeShow[] };
@@ -220,9 +224,11 @@ type ResonanceExtraSchedule = {
 
 type RadioAlharaNowPlaying = {
   artist?: unknown;
+  duration?: unknown;
   episodeTitle?: unknown;
   scheduledTitle?: unknown;
   title?: unknown;
+  trackStart?: unknown;
 };
 
 type Link = {
@@ -364,6 +370,82 @@ function getAirtimeItemUrl(input: {
   );
 }
 
+function airtimeWallTime(value: unknown): number | null {
+  const match = asString(value)?.match(AIRTIME_LOCAL_TIME_PATTERN);
+  if (!match) {
+    return null;
+  }
+  const parts = match.slice(1).map(Number);
+  const wallTime = Date.UTC(
+    parts[0] ?? 0,
+    (parts[1] ?? 0) - 1,
+    parts[2] ?? 0,
+    parts[3] ?? 0,
+    parts[4] ?? 0,
+    parts[5] ?? 0
+  );
+  return Number.isFinite(wallTime) &&
+    new Date(wallTime).toISOString().slice(0, 19) ===
+      asString(value)?.replace(" ", "T")
+    ? wallTime
+    : null;
+}
+
+function airtimeLocalTime(instant: number, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone: timezone,
+    year: "numeric",
+  }).formatToParts(instant);
+  const field = (name: string) =>
+    Number(parts.find((part) => part.type === name)?.value);
+  return Date.UTC(
+    field("year"),
+    field("month") - 1,
+    field("day"),
+    field("hour"),
+    field("minute"),
+    field("second")
+  );
+}
+
+function airtimeTrackExpiresAt(input: {
+  data: AirtimeLiveInfo;
+  sampledAt: number;
+  expiresAt: number;
+}): number {
+  const track = input.data.tracks?.current ?? input.data.current;
+  const timezone = asString(input.data.station?.timezone);
+  const endWall = airtimeWallTime(track?.ends);
+  if (!(timezone && endWall !== null)) {
+    return input.expiresAt;
+  }
+  const shortRetry = Math.min(input.expiresAt, input.sampledAt + 60_000);
+  try {
+    const nowWall = airtimeLocalTime(input.sampledAt, timezone);
+    const schedulerWall = airtimeWallTime(input.data.station?.schedulerTime);
+    if (
+      schedulerWall !== null &&
+      Math.abs(schedulerWall - nowWall) > 2 * 60_000
+    ) {
+      return shortRetry;
+    }
+    const candidate =
+      Math.floor(input.sampledAt / 1000) * 1000 + (endWall - nowWall);
+    return candidate > input.sampledAt &&
+      airtimeLocalTime(candidate, timezone) === endWall
+      ? Math.min(input.expiresAt, candidate)
+      : shortRetry;
+  } catch {
+    return input.expiresAt;
+  }
+}
+
 function normalizeAirtimeLiveInfo(input: {
   data: AirtimeLiveInfo;
   streamUrl: string;
@@ -390,7 +472,7 @@ function normalizeAirtimeLiveInfo(input: {
       asPublicUrl(metadata?.artwork) ??
       asPublicUrl(track?.album_artwork_image) ??
       asPublicUrl(show?.image_path),
-    expiresAt: input.expiresAt,
+    expiresAt: airtimeTrackExpiresAt(input),
     genre: asString(metadata?.genre),
     itemUrl: getAirtimeItemUrl({
       metadata,
@@ -974,6 +1056,7 @@ async function cachedAirtimeEnrichment(
   ] as const;
   let complete = false;
   const details = await cacheMetadata({
+    cache: input.cache,
     key: [
       new URL(input.streamUrl).hostname,
       "episode-details-v3",
@@ -981,7 +1064,6 @@ async function cachedAirtimeEnrichment(
       fields.map((field) => nowPlaying[field]),
       getAirtimeEpisodeDate(track?.metadata),
     ],
-    kv: input.kv,
     now: input.now,
     retrieve: async () => {
       const { complete: enrichmentComplete, nowPlaying: enriched } =
@@ -1305,40 +1387,161 @@ export async function tryAirtimeLiveInfo(
 }
 
 const NTS_LIVE_URL = "https://www.nts.live/api/v2/live";
+const NTS_SLOT_KEY_PATTERN = /^(?:now|next\d*)$/;
+const NTS_TIMESTAMP_PATTERN =
+  /T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+type NtsLiveSlot = {
+  broadcast_title?: unknown;
+  start_timestamp?: unknown;
+  end_timestamp?: unknown;
+  links?: Link[];
+  embeds?: {
+    details?: {
+      name?: unknown;
+      description?: unknown;
+      genres?: { value?: unknown }[];
+      media?: { picture_medium?: unknown };
+      links?: Link[];
+    };
+  };
+};
+
+function ntsTimestamp(value: unknown): number | null {
+  const timestamp = asString(value);
+  if (!(timestamp && NTS_TIMESTAMP_PATTERN.test(timestamp))) {
+    return null;
+  }
+  const time = Date.parse(timestamp);
+  return Number.isFinite(time) ? time : null;
+}
+
+function selectNtsLiveSlot(
+  channel: Record<string, unknown>,
+  at: number
+): { slot: NtsLiveSlot; endsAt: number | null } | null {
+  const slots = Object.entries(channel)
+    .filter(
+      ([key, value]) =>
+        NTS_SLOT_KEY_PATTERN.test(key) && value && typeof value === "object"
+    )
+    .map(([, value]) => {
+      const slot = value as NtsLiveSlot;
+      const startsAt = ntsTimestamp(slot.start_timestamp);
+      const endsAt = ntsTimestamp(slot.end_timestamp);
+      return { endsAt, slot, startsAt };
+    });
+  const [current] = slots
+    .filter(
+      (entry) =>
+        entry.startsAt !== null &&
+        entry.endsAt !== null &&
+        entry.startsAt <= at &&
+        at < entry.endsAt
+    )
+    .sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0));
+  if (current) {
+    return { endsAt: current.endsAt, slot: current.slot };
+  }
+  const now = slots.find((entry) => entry.slot === channel.now);
+  if (
+    now &&
+    now.startsAt === null &&
+    !slots.some((entry) => entry.startsAt !== null && entry.startsAt <= at)
+  ) {
+    return { endsAt: null, slot: now.slot };
+  }
+  return null;
+}
+
+function ntsFeedExpiresAt(
+  data: object,
+  at: number,
+  maxExpiresAt: number
+): number {
+  const { results } = data as { results?: unknown };
+  if (!Array.isArray(results)) {
+    return Math.min(maxExpiresAt, at + 60_000);
+  }
+  const channelEnds = (["1", "2"] as const)
+    .map((name) =>
+      results.find(
+        (value) =>
+          value &&
+          typeof value === "object" &&
+          (value as { channel_name?: unknown }).channel_name === name
+      )
+    )
+    .filter((value): value is Record<string, unknown> => !!value)
+    .map((channel) => {
+      const windows = Object.entries(channel)
+        .filter(([key]) => NTS_SLOT_KEY_PATTERN.test(key))
+        .map(([, slot]) => ({
+          end: ntsTimestamp((slot as NtsLiveSlot | null)?.end_timestamp),
+          start: ntsTimestamp((slot as NtsLiveSlot | null)?.start_timestamp),
+        }))
+        .filter(
+          (window): window is { start: number; end: number } =>
+            window.start !== null && window.end !== null && window.end > at
+        )
+        .sort((a, b) => a.start - b.start);
+      let coveredUntil = at;
+      for (const window of windows) {
+        if (window.start > coveredUntil) {
+          break;
+        }
+        coveredUntil = Math.max(coveredUntil, window.end);
+      }
+      return coveredUntil > at ? coveredUntil : at + 60_000;
+    });
+  return Math.min(
+    maxExpiresAt,
+    ...(channelEnds.length ? channelEnds : [at + 60_000])
+  );
+}
 
 export async function tryNtsLiveApi(
   input: ExternalMetadataProviderInput,
   requestedChannel?: "1" | "2"
 ): Promise<RadioNowPlaying | null> {
   try {
-    const channels = await cacheMetadata({
-      expiresAt: (value) =>
-        value?.find((channel) => channel !== null)?.expiresAt ?? 0,
+    const feed = await cacheMetadata({
+      cache: input.cache,
+      expiresAt: (value) => value?.expiresAt ?? 0,
       key: ["nts", "live-feed", NTS_LIVE_URL],
-      kv: input.kv,
       now: input.now,
       retrieve: async () => {
         const result = await fetchObjectJson(input.fetchImpl, NTS_LIVE_URL);
         if (!result) {
           return null;
         }
-        return (["1", "2"] as const).map((channel) =>
-          normalizeNtsLiveApi(
-            { ...input, streamUrl: "" },
+        return {
+          data: result.data,
+          expiresAt: ntsFeedExpiresAt(
             result.data,
-            channel,
-            result.response.url || NTS_LIVE_URL
-          )
-        );
+            input.sampledAt,
+            input.expiresAt
+          ),
+          resolvedUrl: result.response.url || NTS_LIVE_URL,
+          sampledAt: input.sampledAt,
+        };
       },
-      shouldCache: (value) => !!value?.some(Boolean),
+      shouldCache: (value) =>
+        !!value && Array.isArray((value.data as { results?: unknown }).results),
       ttl: RADIO_METADATA_SUCCESS_TTL_MS / 1000,
     });
     const selectedChannel =
       requestedChannel ??
       (new URL(input.streamUrl).pathname === "/stream2" ? "2" : "1");
-    const result = channels?.[selectedChannel === "1" ? 0 : 1];
-    return result ? { ...result, streamUrl: input.streamUrl } : null;
+    return feed
+      ? normalizeNtsLiveApi(
+          { ...input, expiresAt: feed.expiresAt, sampledAt: feed.sampledAt },
+          feed.data,
+          selectedChannel,
+          feed.resolvedUrl,
+          input.sampledAt
+        )
+      : null;
   } catch (error) {
     if (shouldPropagateFetchError(error)) {
       throw error;
@@ -1351,7 +1554,8 @@ function normalizeNtsLiveApi(
   input: ExternalMetadataProviderInput,
   data: object,
   channelName: "1" | "2",
-  resolvedUrl: string
+  resolvedUrl: string,
+  at = input.sampledAt
 ): RadioNowPlaying | null {
   const { results } = data as { results?: unknown };
   const channel = Array.isArray(results)
@@ -1360,23 +1564,11 @@ function normalizeNtsLiveApi(
           (item as { channel_name?: unknown }).channel_name === channelName
       )
     : null;
-  const now = (
-    channel as {
-      now?: {
-        broadcast_title?: unknown;
-        links?: Link[];
-        embeds?: {
-          details?: {
-            name?: unknown;
-            description?: unknown;
-            genres?: { value?: unknown }[];
-            media?: { picture_medium?: unknown };
-            links?: Link[];
-          };
-        };
-      };
-    } | null
-  )?.now;
+  if (!(channel && typeof channel === "object")) {
+    return null;
+  }
+  const selected = selectNtsLiveSlot(channel as Record<string, unknown>, at);
+  const now = selected?.slot;
   const title =
     asString(now?.broadcast_title) ?? asString(now?.embeds?.details?.name);
   if (!title) {
@@ -1394,7 +1586,7 @@ function normalizeNtsLiveApi(
 
   return buildNowPlaying({
     artworkUrl: asString(now?.embeds?.details?.media?.picture_medium),
-    expiresAt: input.expiresAt,
+    expiresAt: Math.min(input.expiresAt, selected?.endsAt ?? input.expiresAt),
     genre: asString(now?.embeds?.details?.genres?.[0]?.value),
     itemUrl,
     rawTitle: title,
@@ -1483,7 +1675,10 @@ function normalizeHkcrSchedule(input: {
   const result = buildNowPlaying({
     artworkUrl:
       asPublicUrl(entry.thumbnail?.url) ?? asPublicUrl(entry.picture?.url),
-    expiresAt: input.expiresAt,
+    expiresAt: Math.min(
+      input.expiresAt,
+      getHkcrScheduleWindow(entry)?.end ?? input.expiresAt
+    ),
     itemUrl:
       input.showUrl ??
       (residentSlug
@@ -1581,8 +1776,8 @@ async function fetchHkcrShow(
 ): Promise<HkcrShow | null> {
   try {
     return await cacheMetadata({
+      cache: input.cache,
       key: ["hkcr", "show-details-v2", HKCR_SHOW_URL, showId],
-      kv: input.kv,
       now: input.now,
       retrieve: async () => {
         const result = await fetchObjectJson(
@@ -1745,9 +1940,26 @@ function normalizeRadioAlharaNowPlaying(input: {
   const artist = asString(data.artist);
   const showTitle = asString(data.scheduledTitle) ?? asString(data.title);
   const rawTitle = artist ? `${artist} - ${title}` : title;
+  const trackStart = Date.parse(asString(data.trackStart) ?? "");
+  const { duration } = data;
+  const predictedEnd =
+    Number.isFinite(trackStart) &&
+    typeof duration === "number" &&
+    Number.isFinite(duration) &&
+    duration > 0
+      ? trackStart + duration * 1000
+      : null;
+  const nextCheck = Math.min(input.expiresAt, input.sampledAt + 5 * 60_000);
+  let expiresAt = nextCheck;
+  if (predictedEnd !== null) {
+    expiresAt = Math.min(
+      nextCheck,
+      predictedEnd > input.sampledAt ? predictedEnd : input.sampledAt + 60_000
+    );
+  }
   const result = buildNowPlaying({
     album: showTitle === title ? null : showTitle,
-    expiresAt: input.expiresAt,
+    expiresAt,
     rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
@@ -1834,6 +2046,7 @@ async function enrichBlackoutShow(
     const url = new URL("https://radioblackout.org/wp-json/wp/v2/shows");
     url.searchParams.set("slug", slug);
     const details = await cacheMetadata({
+      cache: input.cache,
       key: [
         "blackout",
         "show-details",
@@ -1841,7 +2054,6 @@ async function enrichBlackoutShow(
         itemUrl.toString(),
         comparableTitle(nowPlaying.title),
       ],
-      kv: input.kv,
       now: input.now,
       retrieve: async () => {
         const result = await fetchObjectJson(input.fetchImpl, url.toString());

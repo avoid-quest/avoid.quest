@@ -1,6 +1,6 @@
 import { captureError } from "@avoid.quest/error";
 import type { StreamUrlValidationFailure } from "@/lib/proxy/url-policy";
-import { type MetadataKv, RADIO_METADATA_SUCCESS_TTL_MS } from "./cache";
+import { type MetadataCache, RADIO_METADATA_SUCCESS_TTL_MS } from "./cache";
 import {
   type ExternalMetadataProviderInput,
   tryAirtimeLiveInfo,
@@ -39,7 +39,7 @@ import {
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export type RadioMetadataRetrievalDependencies = {
-  kv?: MetadataKv;
+  cache?: MetadataCache;
   captureError?: typeof captureError;
   fetchFollowingPublicRedirects: MetadataUpstreamFetch;
   now?: () => number;
@@ -160,7 +160,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function createRadioMetadataRetrieval({
-  kv,
+  cache,
   captureError: captureErrorImpl = captureError,
   fetchFollowingPublicRedirects,
   now = Date.now,
@@ -174,7 +174,8 @@ export function createRadioMetadataRetrieval({
   const tryIcy = async (
     streamUrl: string,
     sampledAt: number,
-    signal: AbortSignal
+    signal: AbortSignal,
+    ttlMs = RADIO_METADATA_SUCCESS_TTL_MS
   ): Promise<RadioMetadataResponse | null> => {
     const response = await fetchFollowingPublicRedirects(
       streamUrl,
@@ -209,7 +210,7 @@ export function createRadioMetadataRetrieval({
       return null;
     }
 
-    const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
+    const expiresAt = sampledAt + ttlMs;
     return {
       data: {
         album: null,
@@ -284,9 +285,9 @@ export function createRadioMetadataRetrieval({
     const expiresAt = sampledAt + RADIO_METADATA_SUCCESS_TTL_MS;
     const providerFetch = fetchWithSignal(signal);
     const input = {
+      cache,
       expiresAt,
       fetchImpl: providerFetch,
-      kv,
       now,
       sampledAt,
       streamUrl,
@@ -312,7 +313,7 @@ export function createRadioMetadataRetrieval({
           return externalResult;
         }
 
-        const icyResult = await tryIcy(streamUrl, sampledAt, signal);
+        const icyResult = await tryIcy(streamUrl, sampledAt, signal, 60_000);
         if (
           icyResult?.ok ||
           icyResult?.error.code === "RADIO_METADATA_UPSTREAM_ERROR"

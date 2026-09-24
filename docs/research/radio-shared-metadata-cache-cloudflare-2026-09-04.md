@@ -1,5 +1,9 @@
 # Shared radio metadata through a KV binding
 
+> Superseded on 2026-09-24. Production KV writes exceeded the free daily limit,
+> so the radio Worker now uses Cloudflare's Cache API for this expiring data.
+> See [the current cache behavior](../../apps/radio/README.md#shared-radio-metadata).
+
 Revised 2026-09-04 following the request to follow YAGNI. This replaces the earlier recommendation for a separate metadata Worker and Durable Objects. The broader product research is retained below as reference, not an implementation plan.
 
 Use **one Workers KV namespace bound directly to the existing radio Worker**, exposed as env.RADIO_METADATA. The current server routes and provider functions perform the reads and writes. Cloudflare documents this exact cache-aside use case. [KV caching example](https://developers.cloudflare.com/kv/examples/cache-data-with-workers-kv/)

@@ -44,7 +44,7 @@ export type RadioMetadataErrorCode =
   | "RADIO_METADATA_UPSTREAM_ERROR";
 
 export type RadioMetadataResponse =
-  | { ok: true; data: RadioNowPlaying }
+  | { ok: true; data: RadioNowPlaying; refreshAfterMs?: number }
   | {
       ok: false;
       error: {

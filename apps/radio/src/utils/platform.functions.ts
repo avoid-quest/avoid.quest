@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import {
   AppError,
   type AppErrorInit,
@@ -23,6 +22,7 @@ import {
 } from "@avoid.quest/platforms/soundcloud";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { workerMetadataCache } from "@/lib/metadata/edge-cache";
 import type { PlatformMetadata } from "@/lib/platform-types";
 import { getCachedRadioGardenItem } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
@@ -141,7 +141,7 @@ async function resolveRadioGardenItem(
 
   try {
     const result = await getCachedRadioGardenItem(
-      env.RADIO_METADATA,
+      workerMetadataCache,
       channelId
     );
     if (!result.success) {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { cacheMetadata, EPISODE_METADATA_TTL } from "./cache";
-import { createMetadataKvFixture } from "./kv-test-fixture";
+import { createMetadataCacheFixture } from "./cache-test-fixture";
 import { tryLylApi } from "./lyl-provider";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
@@ -43,8 +43,56 @@ function providerInput(
 }
 
 describe("LYL metadata provider", () => {
+  test("expires selected metadata at the calendar boundary", async () => {
+    const end = "2026-09-03T16:50:00.000Z";
+    const result = await tryLylApi({
+      ...providerInput((_url, init) => {
+        const { query } = JSON.parse(String(init?.body));
+        return Promise.resolve(
+          json({
+            data: query.includes("query NowPlaying")
+              ? {
+                  calendar: [currentEntry({ end })],
+                  onair: {
+                    hls: "https://radio.lyl.live/hls/live.m3u8",
+                    title: "Host - Current Entry",
+                  },
+                }
+              : { episodeBySlug: null },
+          })
+        );
+      }),
+      expiresAt: SAMPLED_AT + 15 * 60_000,
+    });
+
+    expect(result?.expiresAt).toBe(Date.parse(end));
+  });
+
+  test.each(["not-a-date", "2026-09-03T16:45:00.000Z"])(
+    "rejects calendar entries with invalid or elapsed end %s",
+    async (end) => {
+      const result = await tryLylApi(
+        providerInput(() =>
+          Promise.resolve(
+            json({
+              data: {
+                calendar: [currentEntry({ end })],
+                onair: {
+                  hls: "https://radio.lyl.live/hls/live.m3u8",
+                  title: "Current Entry",
+                },
+              },
+            })
+          )
+        )
+      );
+
+      expect(result).toBeNull();
+    }
+  );
+
   test("caches episode descriptions separately from the live calendar and playback URLs", async () => {
-    const { kv, entries, put } = createMetadataKvFixture();
+    const { cache, entries, put } = createMetadataCacheFixture();
     let time = SAMPLED_AT;
     let liveCalls = 0;
     let detailCalls = 0;
@@ -82,8 +130,8 @@ describe("LYL metadata provider", () => {
             })
           );
         }),
+        cache,
         expiresAt: time + 60_000,
-        kv,
         now: () => time,
         sampledAt: time,
       });
@@ -106,10 +154,10 @@ describe("LYL metadata provider", () => {
   test.each(["EPISODE", "SHOW"] as const)(
     "retries mismatched %s details despite an old cache entry, then reuses matching details",
     async (type) => {
-      const { kv, put } = createMetadataKvFixture();
+      const { cache, put } = createMetadataCacheFixture();
       await cacheMetadata({
+        cache,
         key: ["lyl", type.toLowerCase(), "current-entry"],
-        kv,
         now: () => SAMPLED_AT,
         retrieve: () =>
           Promise.resolve({
@@ -154,7 +202,7 @@ describe("LYL metadata provider", () => {
               })
             );
           }),
-          kv,
+          cache,
           now: () => SAMPLED_AT,
         });
 
@@ -184,7 +232,7 @@ describe("LYL metadata provider", () => {
   test.each(["EPISODE", "SHOW"] as const)(
     "isolates %s details when the selected title changes for the same slug",
     async (type) => {
-      const { kv } = createMetadataKvFixture();
+      const { cache } = createMetadataCacheFixture();
       let detailCalls = 0;
       const read = (title: string) =>
         tryLylApi({
@@ -216,7 +264,7 @@ describe("LYL metadata provider", () => {
               })
             );
           }),
-          kv,
+          cache,
           now: () => SAMPLED_AT,
         });
 
@@ -464,8 +512,8 @@ describe("LYL metadata provider", () => {
   });
 
   test("uses the only current episode when the positive on-air title is generic", async () => {
-    const result = await tryLylApi(
-      providerInput(() =>
+    const result = await tryLylApi({
+      ...providerInput(() =>
         Promise.resolve(
           json({
             data: {
@@ -475,7 +523,11 @@ describe("LYL metadata provider", () => {
                   title: "One Off",
                   type: "SHOW",
                 }),
-                currentEntry({ slug: "episode", title: "Scheduled Episode" }),
+                currentEntry({
+                  end: "2026-09-03T16:50:00.000Z",
+                  slug: "episode",
+                  title: "Scheduled Episode",
+                }),
               ],
               onair: {
                 hls: "https://radio.lyl.live/hls/live.m3u8",
@@ -484,13 +536,38 @@ describe("LYL metadata provider", () => {
             },
           })
         )
-      )
-    );
+      ),
+      expiresAt: SAMPLED_AT + 15 * 60_000,
+    });
 
     expect(result).toMatchObject({
+      expiresAt: Date.parse("2026-09-03T16:50:00.000Z"),
       itemUrl: "https://lyl.live/episode/episode",
       title: "Scheduled Episode",
     });
+  });
+
+  test("rejects a unique scheduled episode when on-air names another programme", async () => {
+    let calls = 0;
+    const result = await tryLylApi(
+      providerInput(() => {
+        calls += 1;
+        return Promise.resolve(
+          json({
+            data: {
+              calendar: [currentEntry({})],
+              onair: {
+                hls: "https://radio.lyl.live/hls/live.m3u8",
+                title: "Other Host - Different Programme",
+              },
+            },
+          })
+        );
+      })
+    );
+
+    expect(result).toBeNull();
+    expect(calls).toBe(1);
   });
 
   test("returns null when overlapping episodes cannot be disambiguated", async () => {

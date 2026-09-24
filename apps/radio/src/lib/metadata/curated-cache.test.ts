@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { cacheMetadata, EPISODE_METADATA_TTL } from "./cache";
+import { createMetadataCacheFixture } from "./cache-test-fixture";
 import {
   tryAirtimeLiveInfo,
   tryHkcrSchedule,
   tryRadioBlackoutApi,
 } from "./external-providers";
-import { createMetadataKvFixture } from "./kv-test-fixture";
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const START = Date.parse("2026-09-04T13:30:00Z");
@@ -32,13 +32,14 @@ const IPR_FIELDS = {
 };
 
 test("HKCR caches only show display fields for six hours, independently for each show ID", async () => {
-  const { kv, entries, put } = createMetadataKvFixture();
+  const { cache, entries, put } = createMetadataCacheFixture();
   let time = START;
   let scheduleCalls = 0;
   let replayCalls = 0;
   const showCalls = new Map<string, number>();
   const read = (showId: string) =>
     tryHkcrSchedule({
+      cache,
       expiresAt: time + 60_000,
       fetchImpl: (url) => {
         if (url.includes("/schedule/")) {
@@ -81,7 +82,6 @@ test("HKCR caches only show display fields for six hours, independently for each
           tracklist: ["private-tracklist"],
         });
       },
-      kv,
       now: () => time,
       sampledAt: time,
       streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
@@ -141,12 +141,13 @@ test("HKCR caches only show display fields for six hours, independently for each
 });
 
 test("BlackOut reuses sanitized full description and genres until six-hour expiry", async () => {
-  const { kv, entries, put } = createMetadataKvFixture();
+  const { cache, entries, put } = createMetadataCacheFixture();
   let time = START;
   let liveCalls = 0;
   let detailCalls = 0;
   const read = () =>
     tryRadioBlackoutApi({
+      cache,
       expiresAt: time + 60_000,
       fetchImpl: (url) => {
         if (url.endsWith("/api/listening")) {
@@ -171,7 +172,6 @@ test("BlackOut reuses sanitized full description and genres until six-hour expir
           },
         ]);
       },
-      kv,
       now: () => time,
       sampledAt: time,
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
@@ -203,11 +203,12 @@ test("BlackOut reuses sanitized full description and genres until six-hour expir
 test.each(["http", "json", "network", "abort"])(
   "BlackOut retries %s detail failures before caching recovery",
   async (failure) => {
-    const { kv, put } = createMetadataKvFixture();
+    const { cache, put } = createMetadataCacheFixture();
     let time = START;
     let detailCalls = 0;
     const read = () =>
       tryRadioBlackoutApi({
+        cache,
         expiresAt: time + 60_000,
         fetchImpl: (url) => {
           if (url.endsWith("/api/listening")) {
@@ -242,7 +243,6 @@ test.each(["http", "json", "network", "abort"])(
             },
           ]);
         },
-        kv,
         now: () => time,
         sampledAt: time,
         streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
@@ -271,12 +271,13 @@ test.each(["http", "json", "network", "abort"])(
 );
 
 test("cached empty BlackOut details preserve each fresh live excerpt", async () => {
-  const { kv, put } = createMetadataKvFixture();
+  const { cache, put } = createMetadataCacheFixture();
   let time = START;
   let liveCalls = 0;
   let detailCalls = 0;
   const read = () =>
     tryRadioBlackoutApi({
+      cache,
       expiresAt: time + 60_000,
       fetchImpl: (url) => {
         if (url.endsWith("/api/listening")) {
@@ -298,7 +299,6 @@ test("cached empty BlackOut details preserve each fresh live excerpt", async () 
           },
         ]);
       },
-      kv,
       now: () => time,
       sampledAt: time,
       streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
@@ -316,7 +316,7 @@ test("cached empty BlackOut details preserve each fresh live excerpt", async () 
 test.each(["http", "json", "network", "abort", "mismatched document"])(
   "IPR preserves art and its episode link after %s details, then retries and caches",
   async (failure) => {
-    const { kv, put, entries } = createMetadataKvFixture();
+    const { cache, put, entries } = createMetadataCacheFixture();
     let time = START;
     let liveCalls = 0;
     let searchCalls = 0;
@@ -324,6 +324,7 @@ test.each(["http", "json", "network", "abort", "mismatched document"])(
     const read = () =>
       tryAirtimeLiveInfo(
         {
+          cache,
           expiresAt: time + 60_000,
           fetchImpl: (url) => {
             if (url === IPR_FEED) {
@@ -376,7 +377,6 @@ test.each(["http", "json", "network", "abort", "mismatched document"])(
               },
             });
           },
-          kv,
           now: () => time,
           sampledAt: time,
           streamUrl: IPR_STREAM,
@@ -410,8 +410,9 @@ test.each(["http", "json", "network", "abort", "mismatched document"])(
 );
 
 test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrichment", async () => {
-  const { kv, entries } = createMetadataKvFixture();
+  const { cache, entries } = createMetadataCacheFixture();
   await cacheMetadata({
+    cache,
     key: [
       new URL(IPR_STREAM).hostname,
       "episode-details-v2",
@@ -419,7 +420,6 @@ test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrich
       [null, null, null, null],
       "2022-09-20",
     ],
-    kv,
     now: () => START,
     retrieve: () => Promise.resolve({}),
     ttl: EPISODE_METADATA_TTL,
@@ -428,6 +428,7 @@ test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrich
   let detailCalls = 0;
   const result = await tryAirtimeLiveInfo(
     {
+      cache,
       expiresAt: START + 60_000,
       fetchImpl: (url) => {
         if (url === IPR_FEED) {
@@ -454,7 +455,6 @@ test("an unexpired empty Airtime v2 entry cannot hide newly available IPR enrich
           },
         });
       },
-      kv,
       now: () => START,
       sampledAt: START,
       streamUrl: IPR_STREAM,

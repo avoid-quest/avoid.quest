@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { clearRadioMetadataCache } from "./cache";
-import { createMetadataKvFixture } from "./kv-test-fixture";
+import { createMetadataCacheFixture } from "./cache-test-fixture";
 import { createRadioMetadataWorkflow } from "./metadata-workflow";
 import type { RadioMetadataResponse } from "./types";
 
@@ -17,7 +17,7 @@ function createRequest(metadataUrls: string[]): Request {
 
 describe("createRadioMetadataWorkflow", () => {
   test("shares live snapshots between independent request contexts without resampling", async () => {
-    const { kv, put } = createMetadataKvFixture();
+    const { cache, put } = createMetadataCacheFixture();
     let time = 1000;
     const urls: string[] = [];
     const request = createRequest(["https://metadata.example/live-info"]);
@@ -26,13 +26,13 @@ describe("createRadioMetadataWorkflow", () => {
         clearRadioMetadataCache();
       }
       const workflow = createRadioMetadataWorkflow({
+        cache,
         fetchImpl: (url) => {
           urls.push(url);
           return Promise.resolve(
             Response.json({ current: { name: `Track ${urls.length}` } })
           );
         },
-        kv,
         now: () => time,
       });
       return workflow.handle({
@@ -42,9 +42,14 @@ describe("createRadioMetadataWorkflow", () => {
       });
     };
     const first = (await (await read("first")).json()) as RadioMetadataResponse;
+    expect(first).toMatchObject({ refreshAfterMs: 900_000 });
     time = 30_000;
     const warm = await read("second");
-    expect((await warm.json()) as RadioMetadataResponse).toEqual(first);
+    const warmPayload = (await warm.json()) as RadioMetadataResponse;
+    expect(warmPayload).toMatchObject({
+      data: first.ok ? first.data : null,
+      refreshAfterMs: 871_000,
+    });
     expect(warm.headers.get("x-request-id")).toBe("second");
     expect(warm.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://second.example"
@@ -55,12 +60,15 @@ describe("createRadioMetadataWorkflow", () => {
     expect(urls).toHaveLength(1);
     expect(put.mock.calls[0]?.[2]).toEqual({ expirationTtl: 900 });
 
-    // Cold Worker contexts must reuse KV throughout the full 15-minute window.
+    // Cold Worker contexts in one data center reuse the 15-minute snapshot.
     for (const timestamp of [61_000, 300_000, 900_999]) {
       time = timestamp;
       // biome-ignore lint/performance/noAwaitInLoops: Advance the fake clock between independent requests.
       const cached = await (await read("cached")).json();
-      expect(cached as RadioMetadataResponse).toEqual(first);
+      expect(cached as RadioMetadataResponse).toMatchObject({
+        data: first.ok ? first.data : null,
+        refreshAfterMs: 901_000 - timestamp,
+      });
     }
     expect(urls).toHaveLength(1);
     expect(put).toHaveBeenCalledTimes(1);
@@ -83,11 +91,11 @@ describe("createRadioMetadataWorkflow", () => {
   });
 
   test("does not store an upstream failure as a shared unsupported result", async () => {
-    const { kv, put } = createMetadataKvFixture();
+    const { cache, put } = createMetadataCacheFixture();
     clearRadioMetadataCache();
     const workflow = createRadioMetadataWorkflow({
+      cache,
       fetchImpl: () => Promise.resolve(new Response(null, { status: 503 })),
-      kv,
     });
     const response = await workflow.handle({
       origin: "https://app.example",

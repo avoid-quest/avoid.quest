@@ -18,7 +18,7 @@ import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
-const APP_VERSION = process.env.npm_package_version || "0.6.3";
+const APP_VERSION = process.env.npm_package_version || "0.6.4";
 const moduleRequire = createRequire(import.meta.url);
 
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;

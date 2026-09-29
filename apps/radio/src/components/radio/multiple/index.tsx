@@ -82,8 +82,8 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
       toggleMute(player.id);
     }
   };
-  const handleGlobalVolumeChange = (value: number[]) => {
-    setGlobalVolume(value[0] ?? 1);
+  const handleGlobalVolumeChange = (value: number) => {
+    setGlobalVolume(value);
   };
   const revealCard = (radio: Radio) => {
     requestAnimationFrame(() => {
@@ -140,7 +140,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   if (allRadios.length === 0) {
     return (
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col items-center px-4 py-6">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col items-center px-3 py-3">
         <RadioSearchBar
           className="w-full max-w-md"
           onSaveDiscovered={saveDiscoveredStation}
@@ -154,7 +154,7 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-auto px-4 py-6">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-auto px-3 py-3">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <RadioSearchBar
           className="min-w-56 flex-1"

@@ -27,7 +27,7 @@ export function RadioFieldPreview({
     switch (field) {
       case "logoUrl":
         return (
-          <div className="flex items-center justify-center rounded bg-muted p-2">
+          <div className="flex items-center justify-center rounded-md bg-muted p-2">
             <RadioLogo
               fallbackIcon={
                 <ImageIcon className="size-4 text-muted-foreground" />
@@ -43,14 +43,14 @@ export function RadioFieldPreview({
         return (
           <div className="space-y-1">
             {audioError ? (
-              <div className="flex items-center justify-center rounded border border-destructive/20 bg-destructive/10 p-2">
+              <div className="flex items-center justify-center rounded-md border border-destructive/20 bg-destructive/10 p-2">
                 <div className="text-center">
                   <Volume2Icon className="mx-auto mb-1 size-4 text-destructive" />
-                  <p className="text-destructive text-xs">Failed to load</p>
+                  <p className="text-destructive text-xs">Couldn't load</p>
                 </div>
               </div>
             ) : (
-              <div className="rounded bg-muted p-1">
+              <div className="rounded-md bg-muted p-1">
                 <audio
                   className="h-8 w-full"
                   controls
@@ -69,9 +69,9 @@ export function RadioFieldPreview({
       case "websiteUrl":
         return (
           <div className="space-y-1">
-            <div className="rounded bg-muted p-2">
+            <div className="rounded-md bg-muted p-2">
               <a
-                className="break-all text-primary text-xs hover:underline"
+                className="break-all rounded-sm text-primary text-xs outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 href={value}
                 rel="noopener noreferrer"
                 target="_blank"

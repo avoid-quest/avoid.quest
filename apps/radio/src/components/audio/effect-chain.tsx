@@ -78,7 +78,7 @@ function EffectTempoControl({
   return (
     <div className="flex items-center justify-end gap-2">
       <Label
-        className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
+        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
         htmlFor={`${deckId}-effects-tempo`}
       >
         Sync tempo
@@ -94,7 +94,7 @@ function EffectTempoControl({
         step={0.1}
         type="number"
       />
-      <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+      <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
         bpm
       </span>
     </div>
@@ -265,13 +265,13 @@ export function EffectChain({
       {showAddButton ? (
         <>
           <Button
-            className="w-full"
+            className="h-7 w-full text-xs"
             onClick={openPicker}
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="mr-2 size-4" />
-            Add Effect
+            <PlusIcon className="size-3.5" />
+            Add effect
           </Button>
 
           {showPicker ? (

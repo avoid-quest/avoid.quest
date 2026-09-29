@@ -95,10 +95,7 @@ describe("DeckTransport", () => {
     expect(
       html.includes("flex-1 flex-col justify-center gap-0.5 overflow-hidden")
     ).toBeTrue();
-    expect(html.includes("block w-full")).toBeTrue();
-    expect(html.includes("overflow-hidden")).toBeTrue();
-    expect(html.includes("text-ellipsis")).toBeTrue();
-    expect(html.includes("whitespace-nowrap")).toBeTrue();
+    expect(html.includes("block w-full truncate")).toBeTrue();
     expect(html.includes(`title="${LONG_TITLE}"`)).toBeTrue();
     expect(html.includes("Details for")).toBeFalse();
   });

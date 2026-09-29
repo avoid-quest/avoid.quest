@@ -2,6 +2,7 @@
 
 import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
+import { Field, FieldLabel } from "@avoid.quest/ui/components/field";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
   Select,
@@ -26,6 +27,13 @@ type RadioFromUrlTabProps = {
 };
 
 const createWorkflow = createBrowserManualWebsiteImportWorkflow;
+
+const FIELD_LABELS: Record<string, string> = {
+  description: "Description",
+  logoUrl: "Logo URL",
+  name: "Name",
+  streamUrl: "Stream URL",
+};
 
 type ScrapedStationEditorProps = {
   data: RadioMetadata;
@@ -63,32 +71,26 @@ function ScrapedStationEditor({
   return (
     <div className="space-y-4 rounded-md border p-4">
       <div className="space-y-3">
-        <div className="space-y-1.5">
-          <label
-            className="flex items-center gap-2 font-medium text-sm"
-            htmlFor="url-name"
-          >
-            Station Name
+        <Field className="gap-1.5">
+          <FieldLabel htmlFor="url-name">
+            Name
             {(data.name?.length ?? 0) > 0 ? (
               <span className="flex items-center gap-1 text-primary text-xs">
                 <CheckCircleIcon className="size-3" />
                 Found
               </span>
             ) : null}
-          </label>
+          </FieldLabel>
           <Input
             id="url-name"
             onChange={onNameChange}
             placeholder="Radio station name"
             value={name}
           />
-        </div>
+        </Field>
 
-        <div className="space-y-1.5">
-          <label
-            className="flex items-center gap-2 font-medium text-sm"
-            htmlFor="url-stream"
-          >
+        <Field className="gap-1.5">
+          <FieldLabel htmlFor="url-stream">
             Stream URL
             {streamOptions.length > 0 ? (
               <span className="flex items-center gap-1 text-primary text-xs">
@@ -99,10 +101,10 @@ function ScrapedStationEditor({
                   : ""}
               </span>
             ) : null}
-          </label>
+          </FieldLabel>
           {hasMultipleStreams ? (
             <Select onValueChange={setStreamUrl} value={streamUrl}>
-              <SelectTrigger>
+              <SelectTrigger id="url-stream">
                 <SelectValue placeholder="Select a stream URL" />
               </SelectTrigger>
               <SelectContent>
@@ -121,38 +123,34 @@ function ScrapedStationEditor({
               value={streamUrl}
             />
           )}
-        </div>
+        </Field>
 
-        <div className="space-y-1.5">
-          <label className="font-medium text-sm" htmlFor="url-logo">
-            Logo URL
-          </label>
+        <Field className="gap-1.5">
+          <FieldLabel htmlFor="url-logo">Logo URL</FieldLabel>
           <Input
             id="url-logo"
             onChange={onLogoUrlChange}
             placeholder="https://example.com/logo.png"
             value={logoUrl}
           />
-        </div>
+        </Field>
 
-        <div className="space-y-1.5">
-          <label className="font-medium text-sm" htmlFor="url-description">
-            Description
-          </label>
+        <Field className="gap-1.5">
+          <FieldLabel htmlFor="url-description">Description</FieldLabel>
           <Input
             id="url-description"
             onChange={onDescriptionChange}
             placeholder="Radio station description"
             value={description}
           />
-        </div>
+        </Field>
       </div>
 
       <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
         {logoUrl ? (
           <div className="space-y-1">
             <div className="font-medium text-muted-foreground text-xs">
-              Logo Preview
+              Logo
             </div>
             <RadioFieldPreview
               field="logoUrl"
@@ -164,7 +162,7 @@ function ScrapedStationEditor({
         {streamUrl ? (
           <div className="space-y-1">
             <div className="font-medium text-muted-foreground text-xs">
-              Audio Stream Preview
+              Stream
             </div>
             <RadioFieldPreview
               field="streamUrl"
@@ -177,8 +175,11 @@ function ScrapedStationEditor({
 
       {data.missingFields.length > 0 ? (
         <div className="border-t pt-3">
-          <p className="text-amber-600 text-xs">
-            Could not auto-detect: {data.missingFields.join(", ")}
+          <p className="text-muted-foreground text-xs">
+            Couldn't detect:{" "}
+            {data.missingFields
+              .map((field) => FIELD_LABELS[field] ?? field)
+              .join(", ")}
           </p>
         </div>
       ) : null}
@@ -231,12 +232,8 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
       setStreamUrl(result.data.fields.streamUrl);
       setLogoUrl(result.data.fields.logoUrl);
       setDescription(result.data.fields.description);
-    } catch (fetchError) {
-      setError(
-        fetchError instanceof Error
-          ? fetchError.message
-          : "Failed to fetch data"
-      );
+    } catch {
+      setError("Couldn't reach that site");
     } finally {
       setIsLoading(false);
     }
@@ -266,19 +263,14 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
         return;
       }
 
-      notifyStationSave(
-        result.data,
-        `Added "${name.trim()}" to your collection`
-      );
+      notifyStationSave(result.data, `Added "${name.trim()}"`);
       onSuccess();
     } catch (saveError) {
       captureError(saveError, {
         operation: "radio-from-url.add",
         surface: "ui",
       });
-      toast.error(
-        saveError instanceof Error ? saveError.message : "Failed to add station"
-      );
+      toast.error("Couldn't add station");
     } finally {
       setIsAdding(false);
     }
@@ -343,23 +335,6 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
       </form>
 
       {error ? <InlineError>{error}</InlineError> : null}
-
-      {isLoading ? (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <div className="size-2 animate-pulse rounded-full bg-blue-500" />
-            Looking for stream URLs
-          </div>
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <div className="size-2 animate-pulse rounded-full bg-blue-500" />
-            Finding logos and images
-          </div>
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <div className="size-2 animate-pulse rounded-full bg-blue-500" />
-            Extracting station details
-          </div>
-        </div>
-      ) : null}
 
       {/* Scraped Results */}
       {scrapedData ? (

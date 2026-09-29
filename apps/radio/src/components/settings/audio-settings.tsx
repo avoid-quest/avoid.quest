@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 "use client";
 
+import { Alert, AlertDescription } from "@avoid.quest/ui/components/alert";
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Collapsible,
@@ -21,6 +22,7 @@ import {
   ClockIcon,
   CopyIcon,
   HeadphonesIcon,
+  InfoIcon,
   type LucideIcon,
   RefreshCwIcon,
   Volume2Icon,
@@ -80,7 +82,7 @@ export function AudioSettings() {
       const current = getAudioSettings();
       setMainOutputId(current.mainOutputId);
       setCueOutputId(current.cueOutputId);
-      toast.error("Failed to apply the main output settings");
+      toast.error("Couldn't switch main output");
     }
   };
 
@@ -91,7 +93,7 @@ export function AudioSettings() {
       setCueOutputId(getAudioSettings().cueOutputId);
     } catch {
       setCueOutputId(getAudioSettings().cueOutputId);
-      toast.error("Failed to apply the CUE output settings");
+      toast.error("Couldn't switch CUE output");
     }
   };
 
@@ -101,7 +103,7 @@ export function AudioSettings() {
       setMainDelayMsState(getDelaySettings().mainDelayMs);
     } catch {
       setMainDelayMsState(getDelaySettings().mainDelayMs);
-      toast.error("Failed to apply the main output settings");
+      toast.error("Couldn't set main delay");
     }
   };
 
@@ -111,7 +113,7 @@ export function AudioSettings() {
       setCueDelayMsState(getDelaySettings().cueDelayMs);
     } catch {
       setCueDelayMsState(getDelaySettings().cueDelayMs);
-      toast.error("Failed to apply the CUE output settings");
+      toast.error("Couldn't set CUE delay");
     }
   };
   const handleMainDelayValues = ([value]: number[]) =>
@@ -138,7 +140,7 @@ export function AudioSettings() {
         setDiagnostic(null);
         toast.success("Audio diagnostic copied");
       } catch {
-        toast.error("Could not copy the audio diagnostic");
+        toast.error("Couldn't copy audio diagnostic");
       }
       return;
     }
@@ -148,14 +150,14 @@ export function AudioSettings() {
       setDiagnostic(JSON.stringify(report, null, 2));
       toast.success("Audio diagnostic ready to copy");
     } catch {
-      toast.error("Could not capture the audio diagnostic");
+      toast.error("Couldn't capture audio diagnostic");
     } finally {
       setIsCapturingDiagnostic(false);
     }
   };
   let diagnosticLabel = "Capture audio diagnostic";
   if (isCapturingDiagnostic) {
-    diagnosticLabel = "Capturing 5s...";
+    diagnosticLabel = "Capturing 5s…";
   } else if (diagnostic) {
     diagnosticLabel = "Copy audio diagnostic";
   }
@@ -164,20 +166,22 @@ export function AudioSettings() {
     <div className="space-y-4">
       {/* Permission request */}
       {sinkIdSupported && permissionState !== "granted" && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-          <p className="mb-2 text-xs">
+        <Alert className="py-2.5">
+          <InfoIcon />
+          <AlertDescription className="text-xs">
             Grant microphone permission to see device names and select audio
             devices.
-          </p>
-          <Button
-            disabled={isLoading}
-            onClick={requestPermission}
-            size="sm"
-            variant="outline"
-          >
-            {isLoading ? "Requesting..." : "Grant Permission"}
-          </Button>
-        </div>
+            <Button
+              className="mt-1"
+              disabled={isLoading}
+              onClick={requestPermission}
+              size="sm"
+              variant="outline"
+            >
+              {isLoading ? "Requesting…" : "Grant permission"}
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="divide-y">
@@ -192,7 +196,7 @@ export function AudioSettings() {
                   <SelectValue placeholder="Select output device" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">System Default</SelectItem>
+                  <SelectItem value="default">System default</SelectItem>
                   {outputDevices
                     .filter(
                       (device) =>
@@ -238,7 +242,7 @@ export function AudioSettings() {
               value={[mainDelayMs]}
             />
             <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-              {mainDelayMs}ms
+              {mainDelayMs} ms
             </span>
             <Button
               onClick={handleAutoLatency}
@@ -294,7 +298,7 @@ export function AudioSettings() {
                 value={[cueDelayMs]}
               />
               <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-                {cueDelayMs}ms
+                {cueDelayMs} ms
               </span>
             </div>
           </AudioSettingRow>

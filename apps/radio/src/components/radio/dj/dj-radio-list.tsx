@@ -1,18 +1,18 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
-import { Input } from "@avoid.quest/ui/components/input";
+import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
+import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   FileAudioIcon,
   GlobeIcon,
   MicIcon,
   RadioTowerIcon,
   SearchIcon,
-  Volume2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
@@ -27,9 +27,23 @@ import {
   SEARCH_ALL_PLATFORM_ID,
   STATIC_AUDIO_PLATFORM_ID,
 } from "@/lib/dj-library-sources";
-import { useSessionRadios } from "@/lib/hooks/use-session-radios";
+import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
+import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
+import {
+  isSessionRadio,
+  useSessionRadios,
+} from "@/lib/hooks/use-session-radios";
 import { useUnifiedRadioSearch } from "@/lib/hooks/use-unified-radio-search";
+import { EmptyHint } from "../empty-hint";
+import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import { RadioLogo } from "../radio-logo";
+import { SearchField } from "../search-field";
+import {
+  StationRowSubtitle,
+  StationRowText,
+  stationFallbackSubtitle,
+  stationRowButtonOnlyClassName,
+} from "../station-row";
 import { toDjBrowserRadio } from "./browser/browser-model";
 
 export {
@@ -44,6 +58,8 @@ export {
 } from "@/lib/dj-library-sources";
 export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
 export const EXTERNAL_PLATFORM_ID = SEARCH_ALL_PLATFORM_ID;
+
+type DeckId = "deck-a" | "deck-b";
 
 export function isPlatformItem(radio: Radio): boolean {
   return isPlatformPlaceholderItem(radio);
@@ -69,101 +85,134 @@ function PlatformIcon({ radio }: { radio: Radio }) {
   return <GlobeIcon className={className} style={{ color }} />;
 }
 
-export function RadioItemContent({ radio }: { radio: Radio }) {
-  const isPlatform = isPlatformItem(radio);
-  const platform = isPlatform ? getPlatformFromPlaceholderItem(radio) : null;
-  const platformColor = getPlatformSourceColor(platform);
-  const place =
-    radio.placeTitle?.toLocaleLowerCase() ===
-    radio.countryTitle?.toLocaleLowerCase()
-      ? undefined
-      : radio.placeTitle;
-  const subtitle =
-    [place, radio.countryTitle].filter(Boolean).join(", ") || radio.description;
-
+function PlatformTile({ radio }: { radio: Radio }) {
+  const platformColor = getPlatformSourceColor(
+    getPlatformFromPlaceholderItem(radio)
+  );
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-3">
-      {isPlatform ? (
-        <div
-          className="flex size-10 shrink-0 items-center justify-center rounded"
-          style={{ backgroundColor: `${platformColor}1a` }}
-        >
-          <PlatformIcon radio={radio} />
-        </div>
-      ) : (
-        <RadioLogo
-          fallbackIcon={
-            <Volume2Icon className="size-4 text-muted-foreground" />
-          }
-          logoUrl={radio.logoUrl}
-          name={radio.name}
-          size="md"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate font-medium text-sm">{radio.name}</h3>
-        {subtitle?.trim() !== "" && (
-          <p className="truncate text-muted-foreground text-xs">{subtitle}</p>
-        )}
-      </div>
+    <div
+      className="flex size-10 shrink-0 items-center justify-center rounded-sm border border-border/70"
+      style={{ backgroundColor: `${platformColor}1a` }}
+    >
+      <PlatformIcon radio={radio} />
     </div>
   );
 }
 
-function MobileRadioItem({
-  radio,
-  deckId,
-}: {
-  radio: Radio;
-  deckId: "deck-a" | "deck-b";
-}) {
-  const handleLoad = () => {
-    getDjDeckModule()
-      .deck(deckId)
-      .load({ radio, type: "library" })
-      .catch((error) => {
-        console.error("[dj] Failed to load mobile source:", error);
-      });
-  };
+function loadIntoDeck(deckId: DeckId, radio: Radio) {
+  getDjDeckModule()
+    .deck(deckId)
+    .load({ radio, type: "library" })
+    .catch((error) => {
+      console.error("[dj] Failed to load source:", error);
+    });
+}
+
+function SourceRow({ radio, deckId }: { radio: Radio; deckId: DeckId }) {
+  const handleLoad = () => loadIntoDeck(deckId, radio);
 
   return (
     <button
-      className="flex w-full shrink-0 items-center gap-2 rounded-lg border border-border/50 bg-card/50 p-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={stationRowButtonOnlyClassName}
       onClick={handleLoad}
       type="button"
     >
-      <RadioItemContent radio={radio} />
+      <PlatformTile radio={radio} />
+      <StationRowText title={radio.name}>
+        <StationRowSubtitle>{radio.description}</StationRowSubtitle>
+      </StationRowText>
     </button>
   );
 }
 
-function MobileList({
+function StationRow({
+  radio,
+  deckId,
+  showSessionMarker,
+  isActive,
+}: {
+  radio: Radio;
+  deckId: DeckId;
+  showSessionMarker: boolean;
+  /** The row Enter in the search field loads. */
+  isActive: boolean;
+}) {
+  const { elementRef, hasEnteredViewport } =
+    useHasEnteredViewport<HTMLButtonElement>();
+  const { metadata } = useRadioMetadata({
+    enabled: hasEnteredViewport,
+    poll: false,
+    radio,
+  });
+  const handleLoad = () => loadIntoDeck(deckId, radio);
+
+  return (
+    <button
+      className={cn(
+        stationRowButtonOnlyClassName,
+        isActive && "bg-muted/40",
+        showSessionMarker &&
+          isSessionRadio(radio) &&
+          "border-l-2 border-l-[#00d084]/40"
+      )}
+      onClick={handleLoad}
+      ref={elementRef}
+      type="button"
+    >
+      <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
+      <StationRowText title={radio.name}>
+        <RadioListItemMetadata
+          fallback={
+            <StationRowSubtitle>
+              {stationFallbackSubtitle(radio)}
+            </StationRowSubtitle>
+          }
+          metadata={metadata}
+          radio={radio}
+        />
+      </StationRowText>
+    </button>
+  );
+}
+
+function RowList({
   emptyLabel,
   items,
   deckId,
+  isSearch = false,
 }: {
   emptyLabel: string;
   items: Radio[];
-  deckId: "deck-a" | "deck-b";
+  deckId: DeckId;
+  /** Search results are marked by the search itself, not the session rule. */
+  isSearch?: boolean;
 }) {
   if (items.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-center">
-        <p className="text-muted-foreground text-sm">{emptyLabel}</p>
-      </div>
-    );
+    return <EmptyHint>{emptyLabel}</EmptyHint>;
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-      {items.map((radio) => (
-        <MobileRadioItem
-          deckId={deckId}
-          key={radio.id ?? radio.streamUrl}
-          radio={radio}
-        />
-      ))}
-    </div>
+    <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
+      <div className="flex w-0 min-w-full flex-col gap-1">
+        {items.map((radio, index) =>
+          isPlatformItem(radio) ? (
+            <SourceRow
+              deckId={deckId}
+              key={radio.id ?? radio.streamUrl}
+              radio={radio}
+            />
+          ) : (
+            <StationRow
+              deckId={deckId}
+              isActive={isSearch && index === 0}
+              key={radio.id ?? radio.streamUrl}
+              radio={radio}
+              showSessionMarker={!isSearch}
+            />
+          )
+        )}
+      </div>
+    </ScrollArea>
   );
 }
 
@@ -172,7 +221,7 @@ export function DjRadioList({
   deckId,
 }: {
   radios: Radio[];
-  deckId: "deck-a" | "deck-b";
+  deckId: DeckId;
 }) {
   const [activeTab, setActiveTab] = useState("stations");
   const [query, setQuery] = useState("");
@@ -189,6 +238,17 @@ export function DjRadioList({
   const visibleRadios = hasQuery ? results.map(toDjBrowserRadio) : allRadios;
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) =>
     setQuery(event.target.value);
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setQuery("");
+      return;
+    }
+    const [first] = visibleRadios;
+    if (event.key === "Enter" && hasQuery && first) {
+      event.preventDefault();
+      loadIntoDeck(deckId, first);
+    }
+  };
 
   return (
     <Tabs
@@ -205,38 +265,37 @@ export function DjRadioList({
         </TabsTrigger>
       </TabsList>
       {activeTab === "stations" && (
-        <div className="relative mb-2 shrink-0">
-          <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            aria-label="Search stations"
-            className="h-8 pl-8 text-xs"
-            maxLength={200}
-            onChange={handleQueryChange}
-            placeholder="Search stations…"
-            type="search"
-            value={query}
-          />
-        </div>
+        <SearchField
+          aria-label="Search stations"
+          className="mb-2 shrink-0"
+          isSearching={isSearching}
+          onChange={handleQueryChange}
+          onKeyDown={handleKeyDown}
+          value={query}
+        />
       )}
       <TabsContent
         className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+        tabIndex={-1}
         value="stations"
       >
-        <MobileList
+        <RowList
           deckId={deckId}
           emptyLabel={
-            (isSearching && "Searching station directories…") ||
-            (hasQuery && "No playable stations found") ||
-            "No stations in your collection"
+            (isSearching && "Checking station directories…") ||
+            (hasQuery && "No stations found") ||
+            "Search to add a station"
           }
+          isSearch={hasQuery}
           items={visibleRadios}
         />
       </TabsContent>
       <TabsContent
         className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+        tabIndex={-1}
         value="sources"
       >
-        <MobileList
+        <RowList
           deckId={deckId}
           emptyLabel="No sources available"
           items={PLATFORM_ITEMS}

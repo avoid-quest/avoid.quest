@@ -30,7 +30,7 @@ import { toast } from "sonner";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
-import { RadioManagement } from "./radio-management";
+import { LoadingFallback, RadioManagement } from "./radio-management";
 
 const ImportExport = lazy(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
@@ -45,6 +45,12 @@ const MidiSettings = lazy(() =>
 type SettingsSection = "radios" | "playback" | "midi" | "data";
 
 type DataPanel = "export" | "import" | "reset";
+
+const DATA_PANELS: { label: string; value: DataPanel }[] = [
+  { label: "Export", value: "export" },
+  { label: "Import", value: "import" },
+  { label: "Reset", value: "reset" },
+];
 
 const DATA_PANEL_GUIDANCE: Record<DataPanel, string> = {
   export:
@@ -144,7 +150,7 @@ export function SettingsForm({
                     key={section.key}
                     value={section.key}
                   >
-                    <Icon className="size-3.5 shrink-0" />
+                    <Icon className="hidden size-3.5 shrink-0 md:block" />
                     <span className="truncate">{section.label}</span>
                   </TabsTrigger>
                 );
@@ -225,17 +231,25 @@ function SectionContent({
       </Suspense>
     );
   }
+  const handleDataPanelChange = (value: string) => {
+    onDataPanelChange(value as DataPanel);
+  };
+
   return (
     <div className="space-y-3">
-      <SectionNav
-        onValueChange={onDataPanelChange}
-        options={[
-          { label: "Export", value: "export" },
-          { label: "Import", value: "import" },
-          { destructive: true, label: "Reset", value: "reset" },
-        ]}
-        value={dataPanel}
-      />
+      <Tabs onValueChange={handleDataPanelChange} value={dataPanel}>
+        <TabsList className="h-8">
+          {DATA_PANELS.map((panel) => (
+            <TabsTrigger
+              className="px-3 text-xs"
+              key={panel.value}
+              value={panel.value}
+            >
+              {panel.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       {DATA_PANEL_GUIDANCE[dataPanel] ? (
         <p className="text-muted-foreground text-xs">
           {DATA_PANEL_GUIDANCE[dataPanel]}
@@ -251,43 +265,12 @@ function SectionContent({
   );
 }
 
-function SectionNav<T extends string>({
-  options,
-  value,
-  onValueChange,
-}: {
-  options: { label: string; value: T; destructive?: boolean }[];
-  value: T;
-  onValueChange: (value: T) => void;
-}) {
-  const handleValueChange = (event: React.MouseEvent<HTMLButtonElement>) => {
-    onValueChange(event.currentTarget.value as T);
-  };
-
-  return (
-    <div className="flex gap-1 border-b pb-3">
-      {options.map((option) => (
-        <Button
-          className={option.destructive ? "text-destructive" : undefined}
-          key={option.value}
-          onClick={handleValueChange}
-          size="sm"
-          value={option.value}
-          variant={option.value === value ? "secondary" : "ghost"}
-        >
-          {option.label}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
   const handleRestoreStateToggle = (checked: boolean) => {
     try {
       setRestoreStateOnLoad(checked);
     } catch {
-      toast.error("Failed to update setting");
+      toast.error("Couldn't save setting");
     }
   };
 
@@ -344,19 +327,21 @@ function ResetSettings({
 
   return (
     <div className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
-      <span className="text-sm">Restore stations and playback settings</span>
+      <span className="text-sm">
+        Reset stations and playback settings to defaults
+      </span>
       <Dialog onOpenChange={onResetDialogChange} open={showResetDialog}>
         <DialogTrigger asChild>
           <Button size="sm" variant="destructive">
             <RotateCcwIcon /> Reset
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Reset stations and playback?</DialogTitle>
             <DialogDescription>
               Stations, playback settings, and saved sessions will return to
-              their defaults. MIDI mappings are kept. This cannot be undone.
+              their defaults. MIDI mappings are kept. This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -380,11 +365,5 @@ function ResetSettings({
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function LoadingFallback() {
-  return (
-    <p className="py-8 text-center text-muted-foreground text-xs">Loading…</p>
   );
 }

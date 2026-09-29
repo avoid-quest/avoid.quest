@@ -9,7 +9,7 @@ export function RootErrorView({ error, reset }: ErrorComponentProps) {
   const safeMessage =
     error instanceof AppError
       ? error.safeMessage
-      : "Something went wrong. Please try again.";
+      : "An unexpected error stopped this page.";
 
   useEffect(() => {
     captureError(error, {

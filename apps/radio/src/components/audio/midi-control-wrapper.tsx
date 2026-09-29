@@ -3,7 +3,7 @@
  * Wraps any controllable UI element with MIDI learn context menu and badge.
  *
  * Right-click to learn/re-learn, edit transform, or clear mapping.
- * Shows a violet badge when a MIDI mapping exists.
+ * Shows a badge when a MIDI mapping exists.
  */
 
 import {
@@ -58,14 +58,14 @@ export function MidiControlWrapper({
         <div className="relative">
           {hasMidi && <MidiBadge />}
           {isThisLearning && (
-            <span className="pointer-events-none absolute inset-0 z-10 animate-pulse rounded border-2 border-violet-500/50" />
+            <span className="pointer-events-none absolute inset-0 z-10 animate-pulse rounded border-2 border-primary border-dashed" />
           )}
           {children}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         {isThisLearning ? (
-          <ContextMenuItem onClick={stopLearning}>Cancel Learn</ContextMenuItem>
+          <ContextMenuItem onClick={stopLearning}>Cancel learn</ContextMenuItem>
         ) : (
           <ContextMenuItem onClick={startLearning}>
             {hasMidi ? "Re-learn MIDI control" : "Learn MIDI control"}

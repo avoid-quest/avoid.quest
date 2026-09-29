@@ -445,14 +445,16 @@ function DeckPanelInner({
           <div className="min-h-0 flex-1">
             <DjRadioList deckId={deckId} radios={radios} />
           </div>
-          <Button
-            className="h-7 text-xs"
-            onClick={handleCancelPickSource}
-            size="sm"
-            variant="ghost"
-          >
-            Cancel
-          </Button>
+          <div className="flex justify-end border-border/50 border-t pt-2">
+            <Button
+              className="h-7 text-xs"
+              onClick={handleCancelPickSource}
+              size="sm"
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       );
     } else if (isChangingUrl && isPlatformRadio(radio)) {
@@ -530,7 +532,7 @@ function DeckPanelInner({
     <div
       className={cn(
         "relative flex h-full min-h-0 w-full flex-col border-border/50 transition-colors",
-        isFileDragOver ? "bg-violet-500/5 ring-2 ring-violet-500/50" : "",
+        isFileDragOver ? "bg-primary/5 ring-2 ring-primary/50" : "",
         className
       )}
       onDragEnter={handleNativeDragEnter}

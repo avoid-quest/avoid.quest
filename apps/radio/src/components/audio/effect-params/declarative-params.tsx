@@ -21,10 +21,10 @@ import type {
   SliderParamDef,
   TextParamDef,
 } from "@/lib/audio/dsp/effects/schema";
-import { ParamCheckbox } from "./param-checkbox";
 import { ParamGroup } from "./param-group";
 import { ParamSelect } from "./param-select";
 import { ParamSlider } from "./param-slider";
+import { ParamSwitch } from "./param-switch";
 import { UniversalParams } from "./universal-params";
 
 type DeclarativeParamsProps = {
@@ -148,7 +148,7 @@ function CheckboxControl({
   }
 
   return (
-    <ParamCheckbox
+    <ParamSwitch
       checked={checked}
       description={param.description}
       id={`${ctx.effect.id}-${param.key}`}
@@ -175,9 +175,15 @@ function TextControl({
   }
 
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{param.label}</Label>
+    <div className="basis-full space-y-1">
+      <Label
+        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
+        htmlFor={id}
+      >
+        {param.label}
+      </Label>
       <Control
+        className={param.multiline ? "text-xs" : "h-7 text-xs"}
         id={id}
         onChange={updateText}
         placeholder={param.placeholder}

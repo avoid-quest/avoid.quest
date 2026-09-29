@@ -16,7 +16,7 @@ export function AccordionSection({
 }) {
   return (
     <AccordionItem
-      className="rounded-lg border border-border/50 bg-muted/30"
+      className="rounded-md border border-border/50 bg-muted/30"
       value={value}
     >
       <AccordionTrigger className="px-2 py-2 font-medium text-xs hover:no-underline">

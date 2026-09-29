@@ -1,3 +1,5 @@
+import { formatPan } from "@/components/radio/dj/shared/format-utils";
+
 export type ParamFormatter = (value: number) => string;
 
 export const paramFormatters: Record<string, ParamFormatter> = {
@@ -8,7 +10,7 @@ export const paramFormatters: Record<string, ParamFormatter> = {
   distance: (value: number) => `${value.toFixed(1)}`,
   frequency: (freq: number) => {
     if (freq >= 1000) {
-      return `${(freq / 1000).toFixed(1)}k Hz`;
+      return `${(freq / 1000).toFixed(1)} kHz`;
     }
     return `${freq.toFixed(0)} Hz`;
   },
@@ -21,24 +23,16 @@ export const paramFormatters: Record<string, ParamFormatter> = {
     const db = 20 * Math.log10(value);
     return `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
   },
-  milliseconds: (value: number) => `${value.toFixed(1)}ms`,
-  pan: (pan: number) => {
-    if (pan === 0) {
-      return "Center";
-    }
-    if (pan < 0) {
-      return `L ${Math.abs(pan).toFixed(2)}`;
-    }
-    return `R ${pan.toFixed(2)}`;
-  },
+  milliseconds: (value: number) => `${value.toFixed(1)} ms`,
+  pan: formatPan,
   percentage: (value: number) => `${Math.round(value * 100)}%`,
   percentage100: (value: number) => `${Math.round(value)}%`,
-  q: (value: number) => `Q ${value.toFixed(2)}`,
+  q: (value: number) => value.toFixed(2),
   ratio: (value: number) => `${value.toFixed(1)}:1`,
   samples: (value: number) => `${Math.round(value).toLocaleString()} samples`,
   semitones: (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(2)} st`,
-  time: (seconds: number) => `${seconds.toFixed(2)}s`,
-  timeMs: (seconds: number) => `${(seconds * 1000).toFixed(1)}ms`,
+  time: (seconds: number) => `${seconds.toFixed(2)} s`,
+  timeMs: (seconds: number) => `${(seconds * 1000).toFixed(1)} ms`,
 };
 
 export function formatParam(

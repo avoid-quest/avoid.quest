@@ -34,7 +34,7 @@ export function DeckFooter({
           size="sm"
           variant="ghost"
         >
-          <ChangeIcon className="mr-1.5 size-3" />
+          <ChangeIcon className="size-3.5" />
           {changeLabel}
         </Button>
       ) : null}
@@ -45,7 +45,7 @@ export function DeckFooter({
         title="Remove the source. Effects and channel settings stay."
         variant="ghost"
       >
-        <XIcon className="mr-1.5 size-3" />
+        <XIcon className="size-3.5" />
         Eject
       </Button>
     </div>

@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { parseHttpUrl } from "@avoid.quest/platforms/url-policy";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
   DialogClose,
@@ -20,6 +21,7 @@ import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { GenreBadges } from "./genre-badges";
 import { RadioLogo } from "./radio-logo";
+import { formatLocation } from "./station-row";
 
 type RadioNowPlayingProps = {
   radio: Radio;
@@ -73,9 +75,7 @@ function getIdentity(
     metadata?.title && metadata.artist !== metadata.title
       ? metadata.artist
       : null;
-  const location = [radio.placeTitle, radio.countryTitle]
-    .filter(Boolean)
-    .join(", ");
+  const location = formatLocation(radio.placeTitle, radio.countryTitle);
   const subtitle = artist || (hasNowPlaying ? null : location || null);
   return { hasNowPlaying, location, subtitle, title };
 }
@@ -90,17 +90,15 @@ export function RadioNowPlayingDetailsButton({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button
+        <Button
           aria-label={`Details for ${identity.title}`}
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            className
-          )}
+          className={cn("size-7 text-muted-foreground", className)}
+          size="icon"
           title={`View details for ${identity.title}`}
-          type="button"
+          variant="ghost"
         >
           <InfoIcon aria-hidden="true" className="size-3.5" />
-        </button>
+        </Button>
       </DialogTrigger>
       <NowPlayingDetails
         identity={identity}
@@ -145,7 +143,7 @@ export function RadioNowPlaying({
               <button
                 aria-label={`Details for ${title}`}
                 className={cn(
-                  "block shrink-0 cursor-pointer rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "block shrink-0 cursor-pointer rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   featured && "rounded-xl lg:rounded-2xl"
                 )}
                 title={`View details for ${title}`}
@@ -172,9 +170,8 @@ export function RadioNowPlaying({
             {hasNowPlaying ? (
               <p
                 className={cn(
-                  "mb-1 truncate font-medium text-[10px] text-muted-foreground uppercase tracking-wider",
-                  featured &&
-                    "mb-1.5 font-normal text-xs normal-case tracking-[0.01em]"
+                  "mb-0.5 truncate text-muted-foreground text-xs",
+                  featured && "mb-1.5"
                 )}
               >
                 {radio.name}
@@ -189,7 +186,7 @@ export function RadioNowPlaying({
               {metadata?.itemUrl ? (
                 <a
                   className={cn(
-                    "group flex min-w-0 items-start gap-1 rounded hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "group flex min-w-0 items-start gap-1 rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     featured && "lg:justify-center"
                   )}
                   href={metadata.itemUrl}
@@ -270,7 +267,7 @@ function StationInformation({
         </div>
         {websiteUrl ? (
           <a
-            className="inline-flex items-center gap-1 rounded text-muted-foreground text-xs underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1 rounded-sm text-muted-foreground text-xs underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             href={websiteUrl}
             rel="noopener noreferrer"
             target="_blank"
@@ -317,18 +314,22 @@ function NowPlayingDetails({
 
   return (
     <DialogContent
-      className="gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-3xl"
+      className="gap-0 overflow-hidden p-0 sm:max-w-3xl"
       showCloseButton={false}
     >
       <div className="flex shrink-0 items-center justify-between border-border/50 border-b px-5 py-3 sm:px-8">
         <DialogDescription className="font-medium text-xs">
           {hasNowPlaying ? "Show & station" : "Station details"}
         </DialogDescription>
-        <DialogClose
-          aria-label="Close"
-          className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <XIcon aria-hidden="true" className="size-4" />
+        <DialogClose asChild>
+          <Button
+            aria-label="Close"
+            className="size-7 text-muted-foreground"
+            size="icon"
+            variant="ghost"
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </Button>
         </DialogClose>
       </div>
       <div className="min-h-0 space-y-6 overflow-y-auto overscroll-contain p-5 sm:space-y-8 sm:p-8">
@@ -365,15 +366,16 @@ function NowPlayingDetails({
               genre={metadata?.genre}
             />
             {metadata?.itemUrl ? (
-              <a
-                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 py-1.5 font-medium text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                href={metadata.itemUrl}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                Open source page
-                <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
-              </a>
+              <Button asChild className="text-xs" size="sm" variant="outline">
+                <a
+                  href={metadata.itemUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open source page
+                  <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+                </a>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -393,7 +395,7 @@ function NowPlayingDetails({
           radio={radio}
         />
         <details className="group border-border/50 border-t pt-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-sm text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             Stream information
             <ChevronDownIcon
               aria-hidden="true"

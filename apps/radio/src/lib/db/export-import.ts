@@ -66,10 +66,10 @@ export const exportDatabase = (): void => {
 
     // Store export timestamp
     localStorage.setItem(STORAGE_KEY_LAST_EXPORT, new Date().toISOString());
-    toast.success("Configuration exported successfully");
+    toast.success("Backup downloaded");
   } catch (error) {
     console.error("Export failed:", error);
-    toast.error("Failed to export configuration");
+    toast.error("Couldn't download backup");
   }
 };
 
@@ -128,10 +128,10 @@ export const copyShareUrlToClipboard = async (): Promise<void> => {
   try {
     const shareUrl = generateShareUrl();
     await navigator.clipboard.writeText(shareUrl);
-    toast.success("Share link copied to clipboard");
+    toast.success("Share link copied");
   } catch (error) {
     console.error("Copy to clipboard failed:", error);
-    toast.error("Failed to copy share link");
+    toast.error("Couldn't copy share link");
   }
 };
 
@@ -450,11 +450,11 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
     }
 
     toast.success(
-      `Merged: ${newRadiosCount} new (hidden), ${updatedRadiosCount} updated`
+      `Imported ${newRadiosCount} new (hidden), ${updatedRadiosCount} updated`
     );
   } catch (error) {
     console.error("Merge import failed:", error);
-    toast.error("Couldn't merge");
+    toast.error("Couldn't import");
     throw error;
   }
 };
@@ -505,7 +505,7 @@ export const autoImportFromUrl = (): DatabaseExport | null => {
     return importedData;
   } catch (error) {
     console.error("Auto-import from URL failed:", error);
-    toast.error("Failed to import configuration from URL");
+    toast.error("Couldn't read share link");
     return null;
   }
 };

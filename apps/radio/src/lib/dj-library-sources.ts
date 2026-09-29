@@ -55,7 +55,7 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
       description: "Search across all platforms",
       enabled: true,
       id: SEARCH_ALL_PLATFORM_ID,
-      name: "Search All",
+      name: "Search all",
       platformMetadata: {
         itemType: "track",
         platform: "bandcamp",
@@ -146,7 +146,7 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
       description: "Load from file or URL (MP3, M3U, etc.)",
       enabled: true,
       id: STATIC_AUDIO_PLATFORM_ID,
-      name: "Audio File",
+      name: "Audio file",
       platformMetadata: {
         displayName: "",
         duration: 0,
@@ -171,7 +171,7 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
       description: "Route mic/line-in from your audio interface",
       enabled: true,
       id: AUDIO_INPUT_PLATFORM_ID,
-      name: "Audio Input",
+      name: "Audio input",
       platformMetadata: {
         channelCount: 2,
         channelSelection: { left: 0, right: 1 },

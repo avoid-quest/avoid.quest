@@ -62,7 +62,7 @@ test("keeps MIDI settings available outside DJ mode in Chromium", () => {
 
   expect(view.queryByText("Web MIDI not supported")).toBeNull();
   expect(view.getByText("MIDI mappings are applied in DJ mode.")).toBeTruthy();
-  expect(view.getByText("Grant MIDI Permission")).toBeTruthy();
+  expect(view.getByText("Grant MIDI permission")).toBeTruthy();
   expect(view.getAllByText("Play/Pause")).toHaveLength(2);
   expect(view.getByText("Crossfader")).toBeTruthy();
 });

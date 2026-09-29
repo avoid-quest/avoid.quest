@@ -76,7 +76,7 @@ describe("RootErrorView", () => {
     const view = renderError(new Error("boom"));
 
     expect(
-      view.getByText("Something went wrong. Please try again.")
+      view.getByText("An unexpected error stopped this page.")
     ).toBeTruthy();
   });
 });

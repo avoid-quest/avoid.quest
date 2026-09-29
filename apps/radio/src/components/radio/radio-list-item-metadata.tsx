@@ -32,7 +32,7 @@ export function RadioListItemMetadata({
       className={cn("mt-0.5 flex min-w-0 items-center gap-1.5", className)}
       title={`Now playing on ${radio.name}: ${identity}${genre ? `, ${genre}` : ""}`}
     >
-      <p className="min-w-0 flex-1 truncate text-muted-foreground text-xs leading-snug">
+      <p className="min-w-0 truncate text-muted-foreground text-xs leading-snug">
         {identity}
       </p>
       <GenreBadges

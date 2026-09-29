@@ -95,7 +95,7 @@ function ChannelBody({
           value={deck.channelFilter}
         />
         <ChannelSlider
-          defaultValue={0}
+          defaultValue={1}
           formatValue={formatPercent}
           label="FX"
           max={1}
@@ -142,6 +142,7 @@ function ChannelBody({
               {formatPercent(deck.volume)}
             </span>
             <Slider
+              aria-label={`Deck ${label} volume`}
               className="min-h-0 flex-1"
               defaultMarkerValue={1}
               defaultValue={[1]}

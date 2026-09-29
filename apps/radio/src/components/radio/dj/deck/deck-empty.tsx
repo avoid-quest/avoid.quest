@@ -30,7 +30,7 @@ export function DeckEmpty({
       <div className="flex min-h-0 flex-1 flex-col">
         <DjRadioList deckId={deckId} radios={radios} />
       </div>
-      <p className="shrink-0 py-1.5 text-center text-[10px] text-muted-foreground/50 [@media(pointer:coarse)]:hidden">
+      <p className="shrink-0 py-1.5 text-center text-muted-foreground text-xs [@media(pointer:coarse)]:hidden">
         or drop an audio file here
       </p>
 

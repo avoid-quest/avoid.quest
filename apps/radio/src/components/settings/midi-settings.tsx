@@ -5,8 +5,17 @@
  * Connected device list, preset selector, mapping table with learn mode.
  */
 
-import { Alert, AlertDescription } from "@avoid.quest/ui/components/alert";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@avoid.quest/ui/components/alert";
 import { Button } from "@avoid.quest/ui/components/button";
+import {
+  Field,
+  FieldLabel,
+  FieldTitle,
+} from "@avoid.quest/ui/components/field";
 import {
   Select,
   SelectContent,
@@ -32,6 +41,10 @@ import {
   type MidiActionDescriptor,
   type MidiMapping,
 } from "@/lib/midi";
+
+/** Same row layout as the Playback tab's AudioSettingRow. */
+const SETTING_ROW_CLASS =
+  "py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center";
 
 function formatMapping(mapping: MidiMapping | undefined): string {
   if (!mapping) {
@@ -105,10 +118,10 @@ function MappingRow({
       )}
       <Button
         aria-label={`Remove mapping for ${label}`}
-        className="h-7 w-7 p-0"
+        className="size-7"
         disabled={!mapping || isLearning}
         onClick={handleRemove}
-        size="sm"
+        size="icon"
         variant="ghost"
       >
         <XIcon className="size-3.5" />
@@ -146,9 +159,7 @@ function MappingGroup({
 
   return (
     <div className="space-y-1">
-      <h4 className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-        {title}
-      </h4>
+      <h4 className="font-medium text-sm">{title}</h4>
       <div className="divide-y border-y">
         {targetIds.map((id) => {
           const action = actions.find((a) => a.targetId === id);
@@ -251,17 +262,14 @@ export function MidiSettings() {
 
   if (!isSupported) {
     return (
-      <div className="space-y-3">
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-          <p className="font-mono text-xs uppercase tracking-wider">
-            Web MIDI not supported
-          </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/60">
-            MIDI controller support requires a Chromium-based browser (Chrome,
-            Edge, Opera). Firefox and Safari do not support the Web MIDI API.
-          </p>
-        </div>
-      </div>
+      <Alert className="py-2.5">
+        <InfoIcon />
+        <AlertTitle>Web MIDI not supported</AlertTitle>
+        <AlertDescription className="text-xs">
+          MIDI controller support requires a Chromium-based browser (Chrome,
+          Edge, Opera). Firefox and Safari do not support the Web MIDI API.
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -279,36 +287,36 @@ export function MidiSettings() {
       )}
 
       {!permissionGranted && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-          <p className="mb-2 text-xs">
+        <Alert className="py-2.5">
+          <InfoIcon />
+          <AlertDescription className="text-xs">
             Grant MIDI permission to detect controllers and receive MIDI
             messages.
-          </p>
-          <Button
-            disabled={isLoading}
-            onClick={handleConnect}
-            size="sm"
-            variant="outline"
-          >
-            {isLoading ? "Requesting..." : "Grant MIDI Permission"}
-          </Button>
-        </div>
+            <Button
+              className="mt-1"
+              disabled={isLoading}
+              onClick={handleConnect}
+              size="sm"
+              variant="outline"
+            >
+              {isLoading ? "Requesting…" : "Grant MIDI permission"}
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="divide-y border-y">
-        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
-          <label className="text-sm" htmlFor="midi-enabled">
-            Enable MIDI
-          </label>
+        <Field className={SETTING_ROW_CLASS} orientation="horizontal">
+          <FieldLabel htmlFor="midi-enabled">Enable MIDI</FieldLabel>
           <Switch
             checked={enabled}
             id="midi-enabled"
             onCheckedChange={handleEnabledChange}
           />
-        </div>
+        </Field>
 
-        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-start">
-          <h4 className="text-sm">Connected devices</h4>
+        <Field className={SETTING_ROW_CLASS} orientation="horizontal">
+          <FieldTitle>Connected devices</FieldTitle>
           <div className="flex min-w-0 items-start gap-2">
             {connectedDevices.length === 0 ? (
               <p className="min-w-0 flex-1 text-muted-foreground text-xs">
@@ -350,16 +358,16 @@ export function MidiSettings() {
               </Button>
             ) : null}
           </div>
-        </div>
+        </Field>
 
-        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
-          <h4 className="text-sm">Preset</h4>
+        <Field className={SETTING_ROW_CLASS} orientation="horizontal">
+          <FieldTitle>Preset</FieldTitle>
           <Select
             onValueChange={handlePresetChange}
             value={activePresetId ?? undefined}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a preset..." />
+              <SelectValue placeholder="Select a preset…" />
             </SelectTrigger>
             <SelectContent>
               {MIDI_PRESETS.map((preset) => (
@@ -372,15 +380,13 @@ export function MidiSettings() {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </Field>
       </div>
 
       {/* Mapping table */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-            Mappings
-          </h4>
+          <h4 className="font-medium text-sm">Mappings</h4>
           <Button
             className="h-7 text-xs"
             disabled={mappings.length === 0 || isLearning}
@@ -389,7 +395,7 @@ export function MidiSettings() {
             variant={confirmClear ? "destructive" : "ghost"}
           >
             <Trash2Icon className="size-3" />
-            {confirmClear ? "Confirm: clear all mappings" : "Clear all"}
+            {confirmClear ? "Clear all mappings?" : "Clear all"}
           </Button>
         </div>
 
@@ -439,7 +445,7 @@ export function MidiSettings() {
             onStartLearn={handleStartLearn}
             onStopLearn={handleStopLearn}
             targetIds={deckAEffectTargets}
-            title="Deck A Effects"
+            title="Deck A effects"
           />
 
           <MappingGroup
@@ -451,7 +457,7 @@ export function MidiSettings() {
             onStartLearn={handleStartLearn}
             onStopLearn={handleStopLearn}
             targetIds={deckBEffectTargets}
-            title="Deck B Effects"
+            title="Deck B effects"
           />
         </div>
       </div>

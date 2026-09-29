@@ -65,13 +65,13 @@ const BANDS: Band[] = [
 ];
 
 const BAND_TITLES: Record<string, string> = {
-  HI: "High bell",
+  Hi: "High bell",
   HP: "High pass",
   HS: "High shelf",
-  LO: "Low bell",
+  Lo: "Low bell",
   LP: "Low pass",
   LS: "Low shelf",
-  MID: "Mid bell",
+  Mid: "Mid bell",
 };
 
 const SLOPE_OPTIONS = [
@@ -156,7 +156,6 @@ export function RevampParams({
               <Switch
                 aria-label={`${band.name} enabled`}
                 checked={enabled}
-                className="scale-75"
                 onCheckedChange={(checked) =>
                   onUpdate({ [enabledKey]: checked } as Partial<EffectConfig>)
                 }
@@ -186,7 +185,9 @@ export function RevampParams({
                 : null}
               {band.hasOrder ? (
                 <ParamSelect
-                  className="w-full [&_button]:h-6 [&_button]:px-1.5 [&_button]:text-[10px]"
+                  // A band column is 31-43px wide: fill it, drop the chevron and
+                  // size the value like the knob values so "24 dB" still fits.
+                  className="w-full [&_button]:w-full [&_button]:justify-center [&_button]:px-0! [&_button]:text-[10px]! [&_button_svg]:hidden"
                   label="Slope"
                   onChange={(next) =>
                     onUpdate({

@@ -1,6 +1,6 @@
 import { Button } from "@avoid.quest/ui/components/button";
-import { Slider } from "@avoid.quest/ui/components/slider";
-import { PauseIcon, PlayIcon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { PauseIcon, PlayIcon } from "lucide-react";
+import { VolumeControl } from "@/components/audio/volume-control";
 
 export function MultipleGlobalControls({
   isAnyPlaying,
@@ -19,13 +19,14 @@ export function MultipleGlobalControls({
   globalVolume: number;
   onTogglePlayback: () => void;
   onToggleMute: () => void;
-  onVolumeChange: (value: number[]) => void;
+  onVolumeChange: (volume: number) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-3">
+    <div className="flex w-full shrink-0 items-center gap-3 sm:w-auto">
       <Button
-        className="h-8 gap-2 text-xs"
+        className="text-xs"
         onClick={onTogglePlayback}
+        size="sm"
         variant="outline"
       >
         {isAnyPlaying ? (
@@ -41,31 +42,14 @@ export function MultipleGlobalControls({
         )}
       </Button>
 
-      <div className="flex items-center gap-2">
-        <button
-          aria-label={globalMuted ? "Unmute all" : "Mute all"}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onToggleMute}
-          type="button"
-        >
-          {globalMuted ? (
-            <VolumeXIcon className="size-4" />
-          ) : (
-            <Volume2Icon className="size-4" />
-          )}
-        </button>
-        <div className="w-32 shrink-0">
-          <Slider
-            className="h-2"
-            defaultValue={[1]}
-            max={1}
-            min={0}
-            onValueChange={onVolumeChange}
-            step={0.01}
-            value={[globalVolume]}
-          />
-        </div>
-      </div>
+      <VolumeControl
+        className="flex-1 sm:w-40 sm:flex-none"
+        isMuted={globalMuted}
+        onToggleMute={onToggleMute}
+        onVolumeChange={onVolumeChange}
+        target="all"
+        volume={globalVolume}
+      />
     </div>
   );
 }

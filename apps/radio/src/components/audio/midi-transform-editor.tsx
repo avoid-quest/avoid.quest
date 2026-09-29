@@ -3,6 +3,7 @@
  * Inline editor for MIDI mapping transforms (invert, min/max, curve).
  */
 
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Select,
   SelectContent,
@@ -11,7 +12,8 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import type { ChangeEvent, MouseEvent } from "react";
+import { Switch } from "@avoid.quest/ui/components/switch";
+import { type MouseEvent, useId } from "react";
 import {
   DEFAULT_TRANSFORM,
   getMidiControl,
@@ -28,6 +30,7 @@ export function MidiTransformEditor({
   targetId,
   transform,
 }: MidiTransformEditorProps) {
+  const invertId = useId();
   function updateMappingTransform(patch: Partial<MidiTransform>) {
     getMidiControl().change({
       patch,
@@ -40,8 +43,8 @@ export function MidiTransformEditor({
     event.stopPropagation();
   }
 
-  function updateInvert(event: ChangeEvent<HTMLInputElement>) {
-    updateMappingTransform({ invert: event.target.checked });
+  function updateInvert(invert: boolean) {
+    updateMappingTransform({ invert });
   }
 
   function updateMin([min]: number[]) {
@@ -66,14 +69,13 @@ export function MidiTransformEditor({
     // biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation for context menu
     <div className="space-y-3 p-2" onClick={stopClickPropagation}>
       {/* Invert */}
-      <label className="flex items-center gap-2">
-        <input
+      <label className="flex items-center gap-2 text-xs" htmlFor={invertId}>
+        <Switch
           checked={transform.invert}
-          className="size-3.5 cursor-pointer accent-violet-500"
-          onChange={updateInvert}
-          type="checkbox"
+          id={invertId}
+          onCheckedChange={updateInvert}
         />
-        <span className="text-xs">Invert</span>
+        Invert
       </label>
 
       {/* Min */}
@@ -85,6 +87,7 @@ export function MidiTransformEditor({
           </span>
         </div>
         <Slider
+          aria-label="Transform minimum"
           defaultValue={[DEFAULT_TRANSFORM.min]}
           max={1}
           min={0}
@@ -103,6 +106,7 @@ export function MidiTransformEditor({
           </span>
         </div>
         <Slider
+          aria-label="Transform maximum"
           defaultValue={[DEFAULT_TRANSFORM.max]}
           max={1}
           min={0}
@@ -116,7 +120,7 @@ export function MidiTransformEditor({
       <div className="space-y-0.5">
         <span className="text-muted-foreground text-xs">Curve</span>
         <Select onValueChange={updateCurve} value={transform.curve}>
-          <SelectTrigger className="h-7 text-xs">
+          <SelectTrigger aria-label="Curve" size="xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -128,13 +132,14 @@ export function MidiTransformEditor({
       </div>
 
       {/* Reset */}
-      <button
-        className="w-full rounded-md border px-2 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted"
+      <Button
+        className="h-7 w-full text-muted-foreground text-xs"
         onClick={resetTransform}
-        type="button"
+        size="sm"
+        variant="outline"
       >
-        Reset Transform
-      </button>
+        Reset transform
+      </Button>
     </div>
   );
 }

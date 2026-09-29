@@ -64,6 +64,7 @@ export function MixerMaster({
               {formatPercent(masterVolume)}
             </span>
             <Slider
+              aria-label="Master volume"
               className="min-h-0 flex-1"
               defaultMarkerValue={100}
               defaultValue={[100]}

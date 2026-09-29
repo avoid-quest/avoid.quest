@@ -35,7 +35,7 @@ export function ModeSelect({ className }: { className?: string }) {
       );
       await modeLifecycleRequests.requestMode(value);
     } catch {
-      toast.error("Failed to update mode");
+      toast.error("Couldn't switch mode");
     }
   };
 

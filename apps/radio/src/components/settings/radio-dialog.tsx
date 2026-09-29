@@ -43,7 +43,7 @@ export function RadioDialog({
           <DialogTitle>{isEdit ? "Edit station" : "Add station"}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Update the radio station details."
+              ? "Update station details."
               : "Search Radio Garden, fetch from a URL, or enter details manually."}
           </DialogDescription>
         </DialogHeader>

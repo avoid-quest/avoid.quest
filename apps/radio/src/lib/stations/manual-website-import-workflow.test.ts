@@ -23,14 +23,14 @@ describe("createManualWebsiteImportWorkflow", () => {
     await expect(workflow.fetchDefaults("   ")).resolves.toEqual({
       error: {
         code: "MISSING_WEBSITE_URL",
-        message: "Please enter a URL",
+        message: "Enter a URL",
       },
       ok: false,
     });
     await expect(workflow.fetchDefaults("not a url")).resolves.toEqual({
       error: {
         code: "INVALID_WEBSITE_URL",
-        message: "Please enter a valid URL",
+        message: "Enter a valid URL",
       },
       ok: false,
     });
@@ -91,7 +91,7 @@ describe("createManualWebsiteImportWorkflow", () => {
     expect(result).toEqual({
       error: {
         code: "WEBSITE_FETCH_FAILED",
-        message: "Failed to fetch website data: Network unavailable",
+        message: "Couldn't reach that site",
       },
       ok: false,
     });
@@ -110,7 +110,7 @@ describe("createManualWebsiteImportWorkflow", () => {
     expect(result).toEqual({
       error: {
         code: "WEBSITE_PARSE_FAILED",
-        message: "Failed to parse website data: Malformed HTML",
+        message: "Couldn't read that site",
       },
       ok: false,
     });

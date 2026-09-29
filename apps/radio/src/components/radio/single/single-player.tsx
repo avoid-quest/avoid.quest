@@ -139,8 +139,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     }
   };
 
-  const handleVolumeChange = (value: number[]) => {
-    const newVolume = value[0] ?? 0;
+  const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
     if (newVolume > 0) {
       setUnmutedVolume(newVolume);
@@ -176,7 +175,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
           <StationList
             currentRadioId={currentRadio?.id}
-            isPlaying={isPlaying}
+            isPlaying={isPlaying && !isLoading}
             onDelete={handleDeleteRadio}
             onEdit={handleEditRadio}
             onSave={handleSaveSessionRadio}
@@ -189,7 +188,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                 onSaveDiscovered={saveDiscoveredStation}
                 onSelectDiscovered={selectDiscoveredStation}
                 onSelectLocal={selectRadio}
-                placeholder={`Search ${(radios ?? []).length + sessionRadios.length} stations…`}
                 radios={radios ?? []}
               />
             }

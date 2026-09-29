@@ -1,7 +1,6 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
-import { Input } from "@avoid.quest/ui/components/input";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   closestCenter,
@@ -19,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVerticalIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { GripVerticalIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
@@ -32,12 +31,14 @@ import {
 import { ConfirmDeleteDialog } from "../radio/confirm-delete-dialog";
 import { RadioItemActions } from "../radio/radio-item-actions";
 import { RadioLogo } from "../radio/radio-logo";
+import { SearchField } from "../radio/search-field";
 
 import { RadioDialog } from "./radio-dialog";
 
 type SortableRadioItemProps = {
   radio: Radio;
   disabled?: boolean;
+  sortDisabled?: boolean;
   onToggle: (radio: Radio, enabled: boolean) => void;
   onEdit: (radio: Radio) => void;
   onDelete: (radio: Radio) => void;
@@ -46,6 +47,7 @@ type SortableRadioItemProps = {
 function SortableRadioItem({
   radio,
   disabled,
+  sortDisabled,
   onToggle,
   onEdit,
   onDelete,
@@ -57,7 +59,7 @@ function SortableRadioItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: radio.id?.toString() ?? "" });
+  } = useSortable({ disabled: sortDisabled, id: radio.id?.toString() ?? "" });
 
   const OPACITY_DRAGGING = 0.5;
   const style = {
@@ -89,12 +91,12 @@ function SortableRadioItem({
         <div className="flex items-center gap-2">
           <span className="truncate text-sm">{radio.name}</span>
           {radio.enabled === false ? (
-            <span className="shrink-0 font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+            <span className="shrink-0 text-muted-foreground text-xs">
               Hidden
             </span>
           ) : null}
         </div>
-        <p className="truncate text-muted-foreground/60 text-xs">
+        <p className="truncate text-muted-foreground text-xs">
           {[radio.placeTitle, radio.countryTitle].filter(Boolean).join(", ") ||
             radio.description}
         </p>
@@ -163,7 +165,7 @@ export function RadioManagement() {
     try {
       updateRadio(String(radio.id), { enabled });
     } catch {
-      toast.error("Failed to update radio");
+      toast.error("Couldn't update station");
     } finally {
       setIsUpdating(false);
     }
@@ -179,7 +181,7 @@ export function RadioManagement() {
 
       reorderRadios(orderedIds);
     } catch {
-      toast.error("Failed to reorder radios");
+      toast.error("Couldn't reorder stations");
     } finally {
       setIsUpdating(false);
     }
@@ -242,34 +244,21 @@ export function RadioManagement() {
   };
 
   if (!radios) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <p className="text-muted-foreground text-xs">Loading…</p>
-      </div>
-    );
+    return <LoadingFallback />;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <SearchIcon className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
-          <Input
-            aria-label="Filter stations"
-            className="h-8 pl-8 text-xs"
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder={`Filter ${radios.length} stations…`}
-            type="search"
-            value={filter}
-          />
-        </div>
-        <Button
-          className="h-7"
-          onClick={handleAddRadio}
-          size="sm"
-          variant="outline"
-        >
-          <PlusIcon className="size-3" />
+        <SearchField
+          aria-label="Filter stations"
+          className="min-w-0 flex-1"
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder={`Filter ${radios.length} stations…`}
+          value={filter}
+        />
+        <Button onClick={handleAddRadio} size="sm" variant="outline">
+          <PlusIcon />
           Add station
         </Button>
       </div>
@@ -283,18 +272,25 @@ export function RadioManagement() {
             items={visibleRadios.map((radio) => radio.id?.toString() ?? "")}
             strategy={verticalListSortingStrategy}
           >
-            <div className="divide-y border-y">
-              {visibleRadios.map((radio) => (
-                <SortableRadioItem
-                  disabled={isUpdating || isFiltering}
-                  key={radio.id}
-                  onDelete={handleDeleteRadio}
-                  onEdit={handleEditRadio}
-                  onToggle={handleToggleRadio}
-                  radio={radio}
-                />
-              ))}
-            </div>
+            {visibleRadios.length > 0 ? (
+              <div className="divide-y border-y">
+                {visibleRadios.map((radio) => (
+                  <SortableRadioItem
+                    disabled={isUpdating}
+                    key={radio.id}
+                    onDelete={handleDeleteRadio}
+                    onEdit={handleEditRadio}
+                    onToggle={handleToggleRadio}
+                    radio={radio}
+                    sortDisabled={isFiltering}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-muted-foreground text-xs">
+                No stations found
+              </p>
+            )}
           </SortableContext>
         </DndContext>
       </div>
@@ -312,5 +308,11 @@ export function RadioManagement() {
         radio={deleteConfirm}
       />
     </div>
+  );
+}
+
+export function LoadingFallback() {
+  return (
+    <p className="py-8 text-center text-muted-foreground text-xs">Loading…</p>
   );
 }

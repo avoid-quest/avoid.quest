@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { Card, CardContent } from "@avoid.quest/ui/components/card";
+import { Card } from "@avoid.quest/ui/components/card";
 import {
   Dialog,
   DialogContent,
@@ -7,10 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
-import { Input } from "@avoid.quest/ui/components/input";
-import { cn } from "@avoid.quest/ui/lib/utils";
-import { FilterIcon, SearchIcon } from "lucide-react";
+import { FilterIcon } from "lucide-react";
 import { type ChangeEvent, type KeyboardEvent, useState } from "react";
+import { SearchField } from "@/components/radio/search-field";
 import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { EFFECT_ICONS } from "./effect-constants";
@@ -44,33 +43,24 @@ function EffectPickerOption({
 
   return (
     <Card
-      className={cn(
-        "group cursor-pointer border-2 transition-all duration-200 hover:border-primary/50 hover:shadow-md active:scale-[0.98]",
-        "focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
-      )}
+      className="cursor-pointer flex-row items-start gap-3 rounded-md border-border/50 p-3 shadow-none outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       onClick={selectEffect}
       onKeyDown={selectEffectWithKeyboard}
       role="button"
       tabIndex={0}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-            <Icon className="size-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-sm leading-tight">
-              {effect.name}
-            </h3>
-            <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
-              {effect.family}
-            </span>
-            <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
-              {effect.description}
-            </p>
-          </div>
-        </div>
-      </CardContent>
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted">
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-medium text-sm leading-tight">{effect.name}</h3>
+        <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+          {effect.family}
+        </span>
+        <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
+          {effect.description}
+        </p>
+      </div>
     </Card>
   );
 }
@@ -104,37 +94,27 @@ export function EffectPicker({
     <Dialog onOpenChange={onClose} open>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Add Effect</DialogTitle>
+          <DialogTitle>Add effect</DialogTitle>
           <DialogDescription>
             Type to search. Enter adds the first match.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="relative">
-            <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              autoFocus
-              className="pl-9"
-              onChange={updateSearchQuery}
-              onKeyDown={handleSearchKeyDown}
-              placeholder="Search effects…"
-              value={searchQuery}
-            />
-          </div>
+          <SearchField
+            autoFocus
+            onChange={updateSearchQuery}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Search effects…"
+            value={searchQuery}
+          />
 
           {filteredEffects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <SearchIcon className="mb-4 size-12 text-muted-foreground/50" />
-              <p className="font-medium text-muted-foreground text-sm">
-                No effects found
-              </p>
-              <p className="mt-1 text-muted-foreground text-xs">
-                Try a different search term
-              </p>
-            </div>
+            <p className="py-6 text-center text-muted-foreground text-xs">
+              No effects found. Try a different search term.
+            </p>
           ) : (
-            <div className="grid max-h-128 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+            <div className="grid max-h-128 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
               {filteredEffects.map((effect) => (
                 <EffectPickerOption
                   effect={effect}

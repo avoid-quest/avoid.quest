@@ -1,8 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
-import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Volume2Icon, VolumeXIcon } from "lucide-react";
+import { VolumeControl } from "@/components/audio/volume-control";
 import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-session";
@@ -48,8 +47,7 @@ export function MultipleRadioCard({
     radio,
   });
 
-  const handleVolumeChange = (value: number[]) =>
-    onVolumeChange(radio, value[0] ?? 0);
+  const handleVolumeChange = (value: number) => onVolumeChange(radio, value);
   const handleTogglePlayPause = () => onTogglePlayPause(radio);
   const handleToggleMute = () => onToggleMute(radio);
 
@@ -65,6 +63,15 @@ export function MultipleRadioCard({
       data-radio-id={String(radio.id)}
       ref={elementRef}
     >
+      {/* Header */}
+      <div className="py-3 pr-12 pl-3">
+        <RadioNowPlaying
+          isLoading={isLoading}
+          metadata={metadata}
+          radio={radio}
+        />
+      </div>
+      {/* Menu after the header so Tab reaches the station first */}
       <div className="absolute top-2 right-2">
         <RadioItemActions
           onDelete={onDelete}
@@ -74,17 +81,11 @@ export function MultipleRadioCard({
           radio={radio}
         />
       </div>
-      {/* Header */}
-      <div className="py-3 pr-12 pl-3">
-        <RadioNowPlaying
-          isLoading={isLoading}
-          metadata={metadata}
-          radio={radio}
-        />
-      </div>
 
       {/* Error */}
-      {error ? <InlineError className="mx-3 mb-2">{error}</InlineError> : null}
+      {error?.trim() ? (
+        <InlineError className="mx-3 mb-2">{error}</InlineError>
+      ) : null}
 
       {/* Controls */}
       <div className="mt-auto flex items-center gap-2 border-border/50 border-t px-3 py-2">
@@ -97,26 +98,12 @@ export function MultipleRadioCard({
           size="sm"
           variant={isPlaying && !isLoading ? "outline" : "default"}
         />
-        <button
-          aria-label={isMuted ? "Unmute" : "Mute"}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={handleToggleMute}
-          type="button"
-        >
-          {isMuted || volume === 0 ? (
-            <VolumeXIcon className="size-3.5" />
-          ) : (
-            <Volume2Icon className="size-3.5" />
-          )}
-        </button>
-        <Slider
-          className={cn("h-1.5 flex-1", isMuted && "opacity-40")}
-          defaultValue={[1]}
-          max={1}
-          min={0}
-          onValueChange={handleVolumeChange}
-          step={0.01}
-          value={[isMuted ? 0 : volume]}
+        <VolumeControl
+          className="flex-1"
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          onVolumeChange={handleVolumeChange}
+          volume={volume}
         />
       </div>
     </div>

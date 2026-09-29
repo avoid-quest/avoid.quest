@@ -52,6 +52,7 @@ export function ParamSlider({
       max={max}
       min={min}
       onChange={throttledOnChange}
+      size={36}
       step={step}
       title={description ? `${label}: ${description}` : undefined}
       value={value}

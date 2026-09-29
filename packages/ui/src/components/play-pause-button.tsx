@@ -48,7 +48,7 @@ export function PlayPauseButton({
   iconClassName,
   title,
   showLoadingText = false,
-  loadingText = "Loading...",
+  loadingText = "Loading…",
   inline = false,
 }: PlayPauseButtonProps) {
   const isDisabled = disabled || isLoading;

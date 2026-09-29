@@ -24,6 +24,22 @@ import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 
+/** Shared by every station menu so the copy action and its toast read the same. */
+export async function copyStreamUrl(radio: Radio) {
+  try {
+    await navigator.clipboard.writeText(radio.streamUrl);
+    toast.success("Stream URL copied");
+  } catch {
+    toast.error("Couldn't copy stream URL");
+  }
+}
+
+export function openStationWebsite(radio: Radio) {
+  if (radio.websiteUrl?.trim()) {
+    window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
+  }
+}
+
 type RadioItemActionsProps = {
   radio: Radio;
   onEdit?: (radio: Radio) => void;
@@ -93,21 +109,14 @@ export function RadioItemActions({
     onSave?.(radio);
   };
 
-  const handleCopyStreamLink = async (event: React.MouseEvent) => {
+  const handleCopyStreamLink = (event: React.MouseEvent) => {
     event.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(radio.streamUrl);
-      toast.success("Stream link copied to clipboard");
-    } catch {
-      toast.error("Failed to copy stream link");
-    }
+    copyStreamUrl(radio);
   };
 
   const handleGoToWebsite = (event: React.MouseEvent) => {
     event.stopPropagation();
-    if (radio.websiteUrl) {
-      window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
-    }
+    openStationWebsite(radio);
   };
   const handleStopPropagation = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -118,20 +127,20 @@ export function RadioItemActions({
       <DropdownMenuTrigger asChild>
         <Button
           aria-label={`Options for ${radio.name}`}
-          className="h-8 w-8 p-0"
+          className="size-7"
           disabled={disabled || isUpdating}
           onClick={handleStopPropagation}
-          size="sm"
+          size="icon"
           variant="ghost"
         >
-          <MoreHorizontalIcon className="size-4" />
+          <MoreHorizontalIcon />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {isSession && onSave ? (
           <>
             <DropdownMenuItem onClick={handleSave}>
-              <BookmarkPlusIcon className="size-4" />
+              <BookmarkPlusIcon />
               Save
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -139,13 +148,13 @@ export function RadioItemActions({
         ) : null}
 
         <DropdownMenuItem onClick={handleCopyStreamLink}>
-          <CopyIcon className="size-4" />
+          <CopyIcon />
           Copy stream URL
         </DropdownMenuItem>
 
         {Boolean(radio.websiteUrl?.trim()) && (
           <DropdownMenuItem onClick={handleGoToWebsite}>
-            <ExternalLinkIcon className="size-4" />
+            <ExternalLinkIcon />
             Website
           </DropdownMenuItem>
         )}
@@ -155,7 +164,7 @@ export function RadioItemActions({
             <DropdownMenuSeparator />
 
             <DropdownMenuItem onClick={handleEdit}>
-              <PencilIcon className="size-4" />
+              <PencilIcon />
               Edit
             </DropdownMenuItem>
 
@@ -163,12 +172,12 @@ export function RadioItemActions({
               <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
                 {radio.enabled ? (
                   <>
-                    <ToggleRightIcon className="size-4" />
+                    <ToggleRightIcon />
                     Hide
                   </>
                 ) : (
                   <>
-                    <ToggleLeftIcon className="size-4" />
+                    <ToggleLeftIcon />
                     Show
                   </>
                 )}
@@ -179,18 +188,15 @@ export function RadioItemActions({
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem
-          className="text-destructive focus:text-destructive"
-          onClick={handleDelete}
-        >
+        <DropdownMenuItem onClick={handleDelete} variant="destructive">
           {isSession ? (
             <>
-              <XIcon className="size-4" />
+              <XIcon />
               Remove
             </>
           ) : (
             <>
-              <Trash2Icon className="size-4" />
+              <Trash2Icon />
               Delete
             </>
           )}

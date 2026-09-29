@@ -137,6 +137,7 @@ function Slider({
   rangeOriginValue,
   variant = "default",
   size = "default",
+  "aria-label": ariaLabel,
   ...props
 }: SliderProps) {
   const isFader = variant === "fader";
@@ -242,6 +243,7 @@ function Slider({
       </Track>
       {Array.from({ length: values.length }, (_, index) => (
         <Thumb
+          aria-label={ariaLabel}
           className={cn(
             "block shrink-0 border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white",
             thumbShapeClass

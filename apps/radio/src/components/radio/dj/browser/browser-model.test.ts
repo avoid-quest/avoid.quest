@@ -5,13 +5,13 @@ import { toDjBrowserRadio } from "./browser-model";
 describe("DJ browser model", () => {
   test("keeps every existing source available in Other sources", () => {
     expect(PLATFORM_ITEMS.map(({ name }) => name)).toEqual([
-      "Search All",
+      "Search all",
       "Radio Garden",
       "Bandcamp",
       "SoundCloud",
       "YouTube",
-      "Audio File",
-      "Audio Input",
+      "Audio file",
+      "Audio input",
     ]);
   });
 

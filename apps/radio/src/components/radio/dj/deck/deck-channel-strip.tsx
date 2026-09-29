@@ -49,11 +49,12 @@ export function DeckChannelStrip({ className }: { className?: string }) {
     <div className={className}>
       <MidiControlWrapper targetId={`${prefix}volume`}>
         <div className="flex h-7 items-center gap-2 [@media(pointer:coarse)]:h-10">
-          <span className="w-8 shrink-0 font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+          <span className="w-8 shrink-0 font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
             vol
           </span>
           <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
             <Slider
+              aria-label="Volume"
               defaultMarkerValue={1}
               defaultValue={[1]}
               max={MAX_VOLUME}
@@ -64,7 +65,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
               variant="fader"
             />
           </div>
-          <span className="w-12 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+          <span className="w-12 shrink-0 text-right font-mono text-[10px] tabular-nums">
             {formatPercent(volume)}
           </span>
         </div>
@@ -83,7 +84,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           value={channelFilter}
         />
         <ChannelSlider
-          defaultValue={0}
+          defaultValue={1}
           formatValue={formatPercent}
           label="FX"
           max={1}

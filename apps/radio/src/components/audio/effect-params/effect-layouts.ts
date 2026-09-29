@@ -43,7 +43,7 @@ export const EFFECT_LAYOUTS: Partial<Record<EffectType, EffectLayout>> = {
       inputgain: "Input",
       lookahead: "Lookahead",
       makeup: "Makeup",
-      mix: "Mix",
+      mix: "Blend",
     },
     rows: [
       { keys: ["threshold", "ratio", "knee"] },
@@ -115,7 +115,7 @@ export const EFFECT_LAYOUTS: Partial<Record<EffectType, EffectLayout>> = {
     rows: [{ keys: ["threshold", "lookaheadEnabled"] }],
   },
   neuralAmp: {
-    labels: { input: "Input", mix: "Mix", output: "Output" },
+    labels: { input: "Input", mix: "Blend", output: "Output" },
     rows: [{ keys: ["input", "output", "mix", "mono"] }],
   },
   pitchShifter: {
@@ -187,7 +187,7 @@ export const EFFECT_LAYOUTS: Partial<Record<EffectType, EffectLayout>> = {
       envAttack: "Attack",
       envRelease: "Release",
       gain: "Output",
-      mix: "Mix",
+      mix: "Blend",
       modulatorMaxFreq: "Max",
       modulatorMinFreq: "Min",
       modulatorSource: "Modulator",
@@ -209,7 +209,7 @@ export const EFFECT_LAYOUTS: Partial<Record<EffectType, EffectLayout>> = {
       deviceInputGain: "Drive",
       deviceOutputGain: "Output",
       equation: "Curve",
-      mix: "Mix",
+      mix: "Blend",
     },
     rows: [
       { keys: ["equation", "deviceInputGain", "deviceOutputGain", "mix"] },

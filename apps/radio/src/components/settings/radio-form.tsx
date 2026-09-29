@@ -1,5 +1,6 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
+import { DialogFooter } from "@avoid.quest/ui/components/dialog";
 import {
   Field,
   FieldError,
@@ -10,12 +11,10 @@ import {
 import { Input } from "@avoid.quest/ui/components/input";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircleIcon } from "lucide-react";
 import { type Control, useController, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
-import type { RadioMetadata } from "@/lib/platform-types";
 import { type RadioFormData, radioSchema } from "@/lib/schemas/radio-schema";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
 import { notifyStationSave } from "@/lib/stations/station-save-notification";
@@ -26,47 +25,6 @@ type RadioFormProps = {
   radio?: Radio;
   onSuccess: () => void;
   onCancel: () => void;
-  scrapedData?: RadioMetadata | null;
-};
-
-// Extract values from scraped data
-const getScrapedValue = (
-  scrapedData: RadioMetadata | null,
-  field: keyof RadioMetadata,
-  fallback = ""
-): string => {
-  if (!scrapedData?.[field] || scrapedData[field]?.length === 0) {
-    return fallback;
-  }
-  const fieldData = scrapedData[field];
-  if (Array.isArray(fieldData) && fieldData.length > 0) {
-    const [firstOption] = fieldData;
-    if (
-      firstOption &&
-      typeof firstOption === "object" &&
-      "value" in firstOption
-    ) {
-      return firstOption.value || fallback;
-    }
-  }
-  return fallback;
-};
-
-// Track which fields were auto-filled
-const getAutoFilledFields = (scrapedData: RadioMetadata | null) => {
-  if (!scrapedData) {
-    return {};
-  }
-  return {
-    description: Boolean(
-      scrapedData.description && scrapedData.description.length > 0
-    ),
-    logoUrl: Boolean(scrapedData.logoUrl && scrapedData.logoUrl.length > 0),
-    name: Boolean(scrapedData.name && scrapedData.name.length > 0),
-    streamUrl: Boolean(
-      scrapedData.streamUrl && scrapedData.streamUrl.length > 0
-    ),
-  };
 };
 
 const handleFormSubmit = async (
@@ -99,17 +57,12 @@ const handleFormSubmit = async (
   }
 };
 
-const getFormDefaultValues = (
-  radio: Radio | undefined,
-  scrapedData: RadioMetadata | null | undefined
-): RadioFormData => ({
-  description:
-    radio?.description ?? getScrapedValue(scrapedData ?? null, "description"),
-  logoUrl: radio?.logoUrl ?? getScrapedValue(scrapedData ?? null, "logoUrl"),
-  name: radio?.name ?? getScrapedValue(scrapedData ?? null, "name"),
-  streamUrl:
-    radio?.streamUrl ?? getScrapedValue(scrapedData ?? null, "streamUrl"),
-  websiteUrl: radio?.websiteUrl ?? scrapedData?.websiteUrl ?? "",
+const getFormDefaultValues = (radio: Radio | undefined): RadioFormData => ({
+  description: radio?.description ?? "",
+  logoUrl: radio?.logoUrl ?? "",
+  name: radio?.name ?? "",
+  streamUrl: radio?.streamUrl ?? "",
+  websiteUrl: radio?.websiteUrl ?? "",
 });
 
 type RadioFormFieldName = keyof Pick<
@@ -118,7 +71,6 @@ type RadioFormFieldName = keyof Pick<
 >;
 
 type RadioFormFieldProps = {
-  autoFilled?: boolean;
   control: Control<RadioFormData>;
   label: string;
   multiline?: boolean;
@@ -127,7 +79,6 @@ type RadioFormFieldProps = {
 };
 
 function RadioFormField({
-  autoFilled = false,
   control,
   label,
   multiline = false,
@@ -144,15 +95,7 @@ function RadioFormField({
 
   return (
     <Field data-invalid={fieldState.invalid}>
-      <FieldLabel className="flex items-center gap-2" htmlFor={field.name}>
-        {label}
-        {autoFilled ? (
-          <div className="flex items-center gap-1 text-primary text-xs">
-            <CheckCircleIcon className="size-3" />
-            Auto-filled
-          </div>
-        ) : null}
-      </FieldLabel>
+      <FieldLabel htmlFor={field.name}>{label}</FieldLabel>
       {multiline ? (
         <Textarea className="min-h-20" {...inputProps} />
       ) : (
@@ -164,10 +107,10 @@ function RadioFormField({
 }
 
 function getSubmitLabel(isSubmitting: boolean, mode: "create" | "edit") {
-  if (isSubmitting) {
-    return "Saving…";
+  if (mode === "create") {
+    return isSubmitting ? "Adding…" : "Add station";
   }
-  return mode === "create" ? "Create" : "Update";
+  return isSubmitting ? "Saving…" : "Save";
 }
 
 export function RadioForm({
@@ -175,15 +118,12 @@ export function RadioForm({
   radio,
   onSuccess,
   onCancel,
-  scrapedData,
 }: RadioFormProps) {
   const form = useForm<RadioFormData>({
-    defaultValues: getFormDefaultValues(radio, scrapedData),
+    defaultValues: getFormDefaultValues(radio),
     // biome-ignore lint/suspicious/noExplicitAny: Zod 4 type inference workaround
     resolver: zodResolver(radioSchema as any),
   });
-
-  const autoFilledFields = getAutoFilledFields(scrapedData ?? null);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) =>
     form.handleSubmit((data) => handleFormSubmit(data, mode, radio, onSuccess))(
@@ -192,7 +132,7 @@ export function RadioForm({
   const watchedName = form.watch("name");
   const watchedLogoUrl = form.watch("logoUrl");
   const watchedStreamUrl = form.watch("streamUrl");
-  const showPreviews = mode === "edit" || Boolean(scrapedData);
+  const showPreviews = mode === "edit";
   const submitLabel = getSubmitLabel(form.formState.isSubmitting, mode);
 
   return (
@@ -200,7 +140,6 @@ export function RadioForm({
       <FieldSet>
         <FieldGroup>
           <RadioFormField
-            autoFilled={autoFilledFields.name}
             control={form.control}
             label="Name"
             name="name"
@@ -208,7 +147,6 @@ export function RadioForm({
           />
 
           <RadioFormField
-            autoFilled={autoFilledFields.streamUrl}
             control={form.control}
             label="Stream URL"
             name="streamUrl"
@@ -216,7 +154,6 @@ export function RadioForm({
           />
 
           <RadioFormField
-            autoFilled={autoFilledFields.logoUrl}
             control={form.control}
             label="Logo URL"
             name="logoUrl"
@@ -224,7 +161,6 @@ export function RadioForm({
           />
 
           <RadioFormField
-            autoFilled={autoFilledFields.description}
             control={form.control}
             label="Description"
             multiline
@@ -240,37 +176,14 @@ export function RadioForm({
           />
         </FieldGroup>
       </FieldSet>
-      {scrapedData && scrapedData.missingFields.length > 0 ? (
-        <div className="space-y-2 border-t pt-4">
-          <h4 className="font-medium text-amber-600 text-sm">
-            Missing Required Fields
-          </h4>
-          <p className="text-muted-foreground text-sm">
-            The following required fields were not found automatically and need
-            to be filled manually:
-          </p>
-          <ul className="list-inside list-disc space-y-1 text-muted-foreground text-sm">
-            {scrapedData.missingFields.map((field) => (
-              <li key={field}>
-                {field === "streamUrl" && "Stream URL (required)"}
-                {field === "name" && "Station Name (required)"}
-                {field === "logoUrl" && "Logo URL (optional)"}
-                {field === "description" && "Description (optional)"}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {/* URL Previews - Only show in edit mode or when scraped data is available */}
       {showPreviews ? (
         <div className="space-y-3 border-t pt-4">
-          <h4 className="font-medium text-sm">Live Previews</h4>
+          <h4 className="font-medium text-sm">Preview</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             {watchedLogoUrl ? (
               <div className="space-y-1">
                 <div className="font-medium text-muted-foreground text-xs">
-                  Logo Preview
+                  Logo
                 </div>
                 <RadioFieldPreview
                   field="logoUrl"
@@ -283,7 +196,7 @@ export function RadioForm({
             {watchedStreamUrl ? (
               <div className="space-y-1">
                 <div className="font-medium text-muted-foreground text-xs">
-                  Audio Stream Preview
+                  Stream
                 </div>
                 <RadioFieldPreview
                   field="streamUrl"
@@ -296,14 +209,14 @@ export function RadioForm({
         </div>
       ) : null}
 
-      <div className="flex justify-end gap-2 pt-4">
-        <Button onClick={onCancel} type="button" variant="outline">
+      <DialogFooter>
+        <Button onClick={onCancel} size="sm" type="button" variant="outline">
           Cancel
         </Button>
-        <Button disabled={form.formState.isSubmitting} type="submit">
+        <Button disabled={form.formState.isSubmitting} size="sm" type="submit">
           {submitLabel}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

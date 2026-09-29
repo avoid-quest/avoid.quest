@@ -200,7 +200,7 @@ export function SyncDialog({
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
                   <RefreshCwIcon className="size-4" />
-                  Updated Radios
+                  Updated stations
                 </h4>
                 <div className="space-y-2">
                   {changes.updates.map((update) => (
@@ -219,7 +219,7 @@ export function SyncDialog({
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
                   <PlusIcon className="size-4" />
-                  New Radios
+                  New stations
                 </h4>
                 <div className="space-y-2">
                   {changes.additions.map((radio) => (
@@ -236,18 +236,14 @@ export function SyncDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="shrink-0 gap-2 sm:gap-0">
-          <Button
-            className="w-full sm:w-auto"
-            onClick={handleSkip}
-            variant="outline"
-          >
+        <DialogFooter className="shrink-0">
+          <Button onClick={handleSkip} size="sm" variant="outline">
             Skip
           </Button>
           <Button
-            className="w-full sm:w-auto"
             disabled={totalSelected === 0}
             onClick={handleApply}
+            size="sm"
           >
             Apply ({totalSelected})
           </Button>

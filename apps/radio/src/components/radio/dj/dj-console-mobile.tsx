@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
+import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { AudioLinesIcon, HeadphonesIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
@@ -59,18 +60,15 @@ export function DjConsoleMobile({
     );
   const handleMasterVolumeChange = ([value]: number[]) =>
     onMasterVolumeChange((value ?? 0) / 100);
-  const handleSelectDeckA = () => setMobileTab("left");
-  const handleSelectDeckB = () => setMobileTab("right");
+  const handleDeckTabChange = (value: string) =>
+    setMobileTab(value === "right" ? "right" : "left");
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
       {/* Mini Mixer Bar */}
       <div className="flex shrink-0 flex-col gap-1 rounded-lg border border-border/50 bg-card/50 p-1.5 sm:gap-1.5 sm:p-2">
-        {/* VU meters row */}
-        <div className="flex items-center gap-2">
-          <span className="w-5 shrink-0 text-center font-bold font-mono text-[10px]">
-            A
-          </span>
+        {/* Meters line up over the crossfader track, A left, B right */}
+        <div className="flex items-center gap-2 px-7">
           <PeakMeter
             className="flex-1"
             compact={true}
@@ -85,9 +83,6 @@ export function DjConsoleMobile({
             orientation="horizontal"
             right={deckBPeakLevel.right}
           />
-          <span className="w-5 shrink-0 text-center font-bold font-mono text-[10px]">
-            B
-          </span>
         </div>
 
         {/* Crossfader: the big cap, full width */}
@@ -97,6 +92,7 @@ export function DjConsoleMobile({
         >
           <span className="w-4 shrink-0 font-bold font-mono text-xs">A</span>
           <Slider
+            aria-label="Crossfader"
             className="py-1"
             defaultMarkerValue={50}
             defaultValue={[50]}
@@ -118,7 +114,11 @@ export function DjConsoleMobile({
           {isCueActive ? (
             <Button
               aria-pressed={deckACueEnabled}
-              className="h-8 shrink-0 gap-1 font-mono text-[10px] uppercase"
+              className={cn(
+                "shrink-0 gap-1 font-mono text-[10px] uppercase tracking-wider",
+                deckACueEnabled &&
+                  "ring-2 ring-foreground/30 ring-offset-1 ring-offset-background"
+              )}
               onClick={handleDeckACueChange}
               size="sm"
               variant={deckACueEnabled ? "default" : "outline"}
@@ -129,10 +129,10 @@ export function DjConsoleMobile({
           <div
             className="flex min-w-0 flex-1 items-center gap-2"
             style={{ touchAction: "none" }}
-            title="Master volume"
           >
             <Volume2Icon className="size-3.5 shrink-0 text-muted-foreground" />
             <Slider
+              aria-label="Master volume"
               className="py-1"
               defaultMarkerValue={100}
               defaultValue={[100]}
@@ -143,14 +143,18 @@ export function DjConsoleMobile({
               value={[masterVolume * 100]}
               variant="fader"
             />
-            <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+            <span className="w-9 shrink-0 text-right font-mono text-[10px] tabular-nums">
               {Math.round(masterVolume * 100)}%
             </span>
           </div>
           {isCueActive ? (
             <Button
               aria-pressed={deckBCueEnabled}
-              className="h-8 shrink-0 gap-1 font-mono text-[10px] uppercase"
+              className={cn(
+                "shrink-0 gap-1 font-mono text-[10px] uppercase tracking-wider",
+                deckBCueEnabled &&
+                  "ring-2 ring-foreground/30 ring-offset-1 ring-offset-background"
+              )}
               onClick={handleDeckBCueChange}
               size="sm"
               variant={deckBCueEnabled ? "default" : "outline"}
@@ -166,36 +170,36 @@ export function DjConsoleMobile({
       ) : null}
 
       {/* Deck tabs */}
-      <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-muted p-0.5">
-        <Button
-          className="h-7 w-full min-w-0 justify-start gap-1.5 font-mono text-xs"
-          onClick={handleSelectDeckA}
-          size="sm"
-          variant={mobileTab === "left" ? "default" : "ghost"}
-        >
-          <span className="font-bold">A</span>
-          <span className="truncate font-sans">
-            {deckA?.radio?.name ?? "empty"}
-          </span>
-          {deckA?.isPlaying ? (
-            <AudioLinesIcon className="ml-auto size-3 shrink-0" />
-          ) : null}
-        </Button>
-        <Button
-          className="h-7 w-full min-w-0 justify-start gap-1.5 font-mono text-xs"
-          onClick={handleSelectDeckB}
-          size="sm"
-          variant={mobileTab === "right" ? "default" : "ghost"}
-        >
-          <span className="font-bold">B</span>
-          <span className="truncate font-sans">
-            {deckB?.radio?.name ?? "empty"}
-          </span>
-          {deckB?.isPlaying ? (
-            <AudioLinesIcon className="ml-auto size-3 shrink-0" />
-          ) : null}
-        </Button>
-      </div>
+      <Tabs onValueChange={handleDeckTabChange} value={mobileTab}>
+        <TabsList className="grid w-full shrink-0 grid-cols-2">
+          <TabsTrigger
+            className="min-w-0 justify-start gap-1.5 text-xs"
+            value="left"
+          >
+            <span className="font-bold font-mono">A</span>
+            <span className="truncate">{deckA?.radio?.name ?? "Empty"}</span>
+            {deckA?.isPlaying && !deckA.isLoading ? (
+              <AudioLinesIcon
+                aria-label="Playing"
+                className="ml-auto size-3 shrink-0"
+              />
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger
+            className="min-w-0 justify-start gap-1.5 text-xs"
+            value="right"
+          >
+            <span className="font-bold font-mono">B</span>
+            <span className="truncate">{deckB?.radio?.name ?? "Empty"}</span>
+            {deckB?.isPlaying && !deckB.isLoading ? (
+              <AudioLinesIcon
+                aria-label="Playing"
+                className="ml-auto size-3 shrink-0"
+              />
+            ) : null}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Deck content */}
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">

@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
+import { Switch } from "@avoid.quest/ui/components/switch";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import {
   ChevronDownIcon,
@@ -176,6 +177,7 @@ function NestedEffect({
   const [expanded, setExpanded] = useState(false);
   const metadata = getEffectMetadata(effect.type);
   const schema = getEffectSchema(effect.type);
+  const effectName = metadata?.name ?? effect.type;
   function toggleExpanded() {
     setExpanded((value) => !value);
   }
@@ -188,29 +190,29 @@ function NestedEffect({
     <div className="rounded-md border bg-background/70">
       <div className="flex items-center gap-2 p-2">
         <Button
-          className="h-7 flex-1 justify-start px-2"
+          aria-expanded={expanded}
+          className="h-7 flex-1 justify-start px-2 text-xs"
           onClick={toggleExpanded}
           size="sm"
           variant="ghost"
         >
           {expanded ? (
-            <ChevronDownIcon className="mr-2 size-3.5" />
+            <ChevronDownIcon className="size-3.5" />
           ) : (
-            <ChevronRightIcon className="mr-2 size-3.5" />
+            <ChevronRightIcon className="size-3.5" />
           )}
-          {metadata?.name ?? effect.type}
+          {effectName}
         </Button>
-        <Toggle
-          onPressedChange={updateEnabled}
-          pressed={effect.enabled}
-          size="sm"
-        >
-          {effect.enabled ? "ON" : "OFF"}
-        </Toggle>
+        <Switch
+          aria-label={`${effectName} enabled`}
+          checked={effect.enabled}
+          onCheckedChange={updateEnabled}
+        />
         <Button
-          className="size-7 p-0"
+          aria-label={`Remove ${effectName}`}
+          className="size-7"
           onClick={onRemove}
-          size="sm"
+          size="icon"
           variant="ghost"
         >
           <XIcon className="size-3.5" />
@@ -455,12 +457,13 @@ function ChainEditor({
         />
         {effect.type === "fxComposite" && effect.chains.length > 1 ? (
           <Button
-            className="size-8 p-0"
+            aria-label={`Remove ${chain.name || "chain"}`}
+            className="size-7"
             onClick={removeChain}
-            size="sm"
+            size="icon"
             variant="ghost"
           >
-            <XIcon className="size-4" />
+            <XIcon className="size-3.5" />
           </Button>
         ) : null}
       </div>
@@ -508,12 +511,12 @@ function ChainEditor({
           ))}
         {depth < MAX_EFFECT_TREE_DEPTH ? (
           <Button
-            className="w-full"
+            className="h-7 w-full text-xs"
             onClick={openPicker}
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="mr-2 size-4" />
+            <PlusIcon className="size-3.5" />
             Add nested effect
           </Button>
         ) : null}
@@ -629,12 +632,12 @@ export function ContainerParams({
 
       {effect.type === "fxComposite" && (
         <Button
-          className="w-full"
+          className="h-7 w-full text-xs"
           onClick={addChain}
           size="sm"
           variant="outline"
         >
-          <PlusIcon className="mr-2 size-4" />
+          <PlusIcon className="size-3.5" />
           Add parallel chain
         </Button>
       )}

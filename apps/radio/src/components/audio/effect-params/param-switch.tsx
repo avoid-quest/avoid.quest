@@ -27,7 +27,6 @@ export function ParamSwitch({
     >
       <Switch
         checked={checked}
-        className="scale-90"
         disabled={disabled}
         id={id}
         onCheckedChange={onChange}

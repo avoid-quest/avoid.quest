@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
-import { DownloadIcon, XIcon } from "lucide-react";
+import { DownloadIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -79,30 +79,19 @@ export function InstallPrompt() {
 
   return (
     <div className="slide-in-from-bottom-4 fade-in-0 fixed right-4 bottom-4 left-4 z-50 mx-auto max-w-md animate-in md:left-auto">
-      <div className="rounded-xl border border-border/50 bg-card/95 p-3 shadow-lg backdrop-blur-xl">
+      <div className="rounded-lg border border-border/50 bg-card/95 p-3 shadow-lg backdrop-blur-xl">
         <div className="flex items-start gap-2">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <DownloadIcon className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-semibold text-sm leading-none">
-                  Install radio as an app
-                </h3>
-                <p className="mt-1 text-muted-foreground text-xs">
-                  Opens in its own window and works offline.
-                </p>
-              </div>
-              <Button
-                className="h-6 w-6 shrink-0"
-                onClick={handleDismiss}
-                size="icon"
-                variant="ghost"
-              >
-                <XIcon className="h-4 w-4" />
-                <span className="sr-only">Dismiss</span>
-              </Button>
+            <div>
+              <h3 className="font-semibold text-sm leading-none">
+                Install radio as an app
+              </h3>
+              <p className="mt-1 text-muted-foreground text-xs">
+                Opens in its own window and works offline.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Button

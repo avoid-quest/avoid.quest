@@ -90,7 +90,7 @@ function ExternalSearchContent({
   ].join(":");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden py-2">
       <SearchInput
         bandcampFilter={bandcampFilter}
         locked={lockedPlatform !== undefined}
@@ -113,14 +113,19 @@ function ExternalSearchContent({
         showEmpty={hasSearched}
       />
 
-      <div className="flex items-center justify-between gap-2 border-t pt-2 text-muted-foreground text-xs">
+      <div className="flex items-center justify-between gap-2 border-border/50 border-t pt-2 text-muted-foreground text-xs">
         <span>
           {isLoadingLink
             ? "Loading link…"
             : "Bandcamp, SoundCloud, YouTube and audio links work too."}
         </span>
         {onCancel ? (
-          <Button onClick={onCancel} size="sm" variant="ghost">
+          <Button
+            className="h-7 text-xs"
+            onClick={onCancel}
+            size="sm"
+            variant="ghost"
+          >
             Cancel
           </Button>
         ) : null}

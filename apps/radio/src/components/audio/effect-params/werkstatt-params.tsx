@@ -8,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { InlineError } from "@/components/radio/inline-error";
 import type { EffectConfig } from "@/lib/audio";
 import {
   parseWerkstattDeclarations,
@@ -20,10 +21,10 @@ import {
   getWerkstattRuntimeStatus,
   subscribeWerkstattRuntimeStatus,
 } from "@/lib/audio/dsp/effects/werkstatt-runtime-status";
-import { ParamCheckbox } from "./param-checkbox";
 import { ParamGroup } from "./param-group";
 import { ParamSelect } from "./param-select";
 import { ParamSlider } from "./param-slider";
+import { ParamSwitch } from "./param-switch";
 
 type WerkstattEffect = Extract<EffectConfig, { type: "werkstatt" }>;
 
@@ -66,7 +67,7 @@ function DynamicControl({
 
   if (declaration.mapping === "bool") {
     return (
-      <ParamCheckbox
+      <ParamSwitch
         checked={value >= 0.5}
         id={`${effect.id}-werkstatt-${declaration.label}`}
         label={declaration.label}
@@ -122,7 +123,9 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
         if (active) {
           setDeclarations(null);
           setDeclarationError(
-            cause instanceof Error ? cause.message : "Invalid declarations."
+            cause instanceof Error
+              ? cause.message
+              : "Couldn't read the declarations."
           );
         }
       });
@@ -147,7 +150,9 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
       } as Partial<EffectConfig>);
     } catch (cause) {
       setDeclarationError(
-        cause instanceof Error ? cause.message : "Invalid Werkstatt source."
+        cause instanceof Error
+          ? cause.message
+          : "Couldn't read the Werkstatt source."
       );
     }
   }
@@ -205,7 +210,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
       <ParamGroup collapsible defaultOpen={false} title="Source editor">
         <div className="space-y-2">
           <Label htmlFor={`${effect.id}-werkstatt-source`}>
-            JavaScript Processor
+            JavaScript processor
           </Label>
           <Textarea
             className="min-h-72 font-mono text-xs"
@@ -216,6 +221,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
           />
           <div className="flex flex-wrap gap-2">
             <Button
+              className="h-7 text-xs"
               disabled={draft === appliedSource || declarationError !== null}
               onClick={compileDraft}
               size="sm"
@@ -224,6 +230,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
               Compile source
             </Button>
             <Button
+              className="h-7 text-xs"
               disabled={!declarations}
               onClick={resetParameters}
               size="sm"
@@ -234,7 +241,7 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
             </Button>
           </div>
           {declarationError === null ? null : (
-            <p className="text-destructive text-xs">{declarationError}</p>
+            <InlineError>{declarationError}</InlineError>
           )}
           {!(controlsAreApplied || declarationError) && (
             <p className="text-muted-foreground text-xs">

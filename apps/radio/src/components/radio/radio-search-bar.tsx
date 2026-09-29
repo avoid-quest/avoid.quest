@@ -1,21 +1,24 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
-import { Input } from "@avoid.quest/ui/components/input";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
-import { Spinner } from "@avoid.quest/ui/components/spinner";
-import {
-  BookmarkPlusIcon,
-  CheckIcon,
-  PlayIcon,
-  SearchIcon,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { cn } from "@avoid.quest/ui/lib/utils";
+import { BookmarkPlusIcon, CheckIcon, PlayIcon } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   type UnifiedRadioSearchResult,
   useUnifiedRadioSearch,
 } from "@/lib/hooks/use-unified-radio-search";
+import { EmptyHint } from "./empty-hint";
 import { RadioLogo } from "./radio-logo";
+import { SearchField } from "./search-field";
+import {
+  formatLocation,
+  StationRowSubtitle,
+  StationRowText,
+  stationRowButtonClassName,
+  stationRowClassName,
+} from "./station-row";
 
 type RadioSearchBarProps = {
   radios: Radio[];
@@ -27,8 +30,7 @@ type RadioSearchBarProps = {
 };
 
 function resultDetails(result: UnifiedRadioSearchResult): string | undefined {
-  const location = [result.location, result.country].filter(Boolean).join(", ");
-  return location || result.description;
+  return formatLocation(result.location, result.country) || result.description;
 }
 
 function sourceLabel(result: UnifiedRadioSearchResult): string {
@@ -48,12 +50,16 @@ function assertNever(value: never): never {
 }
 
 function SearchResultRow({
+  id,
   result,
+  isActive,
   onSelect,
   onSave,
   canSave,
 }: {
+  id: string;
   result: UnifiedRadioSearchResult;
+  isActive: boolean;
   onSelect: (result: UnifiedRadioSearchResult) => void;
   onSave: (result: UnifiedRadioSearchResult) => void;
   canSave: boolean;
@@ -67,7 +73,7 @@ function SearchResultRow({
     action = (
       <span
         aria-label="In your collection"
-        className="flex size-7 shrink-0 items-center justify-center text-emerald-500"
+        className="flex size-7 shrink-0 items-center justify-center text-muted-foreground"
         role="img"
       >
         <CheckIcon className="size-3.5" />
@@ -89,24 +95,20 @@ function SearchResultRow({
 
   return (
     <div
-      className="group flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/40"
+      className={cn(stationRowClassName, isActive && "bg-muted/40")}
+      id={id}
       title={sourceLabel(result)}
     >
       <button
         aria-label={`Listen to ${result.name}`}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={stationRowButtonClassName}
         onClick={handleSelect}
         type="button"
       >
         <RadioLogo logoUrl={result.logoUrl} name={result.name} size="md" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm leading-snug">{result.name}</p>
-          {details ? (
-            <p className="mt-0.5 truncate text-muted-foreground/60 text-xs leading-snug">
-              {details}
-            </p>
-          ) : null}
-        </div>
+        <StationRowText title={result.name}>
+          <StationRowSubtitle>{details}</StationRowSubtitle>
+        </StationRowText>
         <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
       </button>
       {action}
@@ -124,6 +126,9 @@ export function RadioSearchBar({
 }: RadioSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  // The result Enter plays; arrow keys move it.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const resultIdPrefix = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const { isSearching, results } = useUnifiedRadioSearch(query, radios);
 
@@ -164,8 +169,19 @@ export function RadioSearchBar({
       onSaveDiscovered?.(result.action.radio);
     }
   };
-  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) =>
+  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(event.target.value);
+    setActiveIndex(0);
+  };
+  const lastIndex = results.length - 1;
+  const clampedActiveIndex = Math.min(activeIndex, Math.max(lastIndex, 0));
+  const moveActive = (step: number) => {
+    const next = Math.max(0, Math.min(clampedActiveIndex + step, lastIndex));
+    setActiveIndex(next);
+    document
+      .getElementById(`${resultIdPrefix}-${next}`)
+      ?.scrollIntoView({ block: "nearest" });
+  };
   const handleFocus = () => setIsFocused(true);
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
@@ -173,10 +189,15 @@ export function RadioSearchBar({
       resetSearch();
       return;
     }
-    const [first] = results;
-    if (event.key === "Enter" && first) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      selectResult(first);
+      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    const active = results[clampedActiveIndex];
+    if (event.key === "Enter" && active) {
+      event.preventDefault();
+      selectResult(active);
     }
   };
 
@@ -187,32 +208,27 @@ export function RadioSearchBar({
     : "No stations found";
 
   return (
-    <div className={`relative ${className ?? ""}`} ref={containerRef}>
-      <div className="relative">
-        <SearchIcon className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
-        <Input
-          className="h-8 pl-8 text-xs"
-          maxLength={200}
-          onChange={handleQueryChange}
-          onFocus={handleFocus}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          type="search"
-          value={query}
-        />
-        {isSearching ? (
-          <Spinner className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
-        ) : null}
-      </div>
+    <div className={cn("relative", className)} ref={containerRef}>
+      <SearchField
+        aria-label="Search stations"
+        isSearching={isSearching}
+        onChange={handleQueryChange}
+        onFocus={handleFocus}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        value={query}
+      />
 
       {showDropdown ? (
         <div className="absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg">
           <ScrollArea className="max-h-72 overflow-hidden">
             {results.length > 0 ? (
-              <div className="px-1 pb-1">
-                {results.map((result) => (
+              <div className="flex w-0 min-w-full flex-col p-1">
+                {results.map((result, index) => (
                   <SearchResultRow
                     canSave={Boolean(onSaveDiscovered)}
+                    id={`${resultIdPrefix}-${index}`}
+                    isActive={index === clampedActiveIndex}
                     key={result.key}
                     onSave={saveResult}
                     onSelect={selectResult}
@@ -221,10 +237,7 @@ export function RadioSearchBar({
                 ))}
               </div>
             ) : (
-              <div className="flex items-center justify-center gap-2 px-4 py-6 text-center text-muted-foreground/60 text-xs">
-                {isSearching ? <Spinner className="size-3.5" /> : null}
-                {emptyLabel}
-              </div>
+              <EmptyHint>{emptyLabel}</EmptyHint>
             )}
           </ScrollArea>
         </div>

@@ -119,20 +119,20 @@ function TracklistNavigation() {
     <div className="flex items-center gap-1">
       <Button
         aria-label="Previous track"
-        className="size-6 p-0 [@media(pointer:coarse)]:size-9"
+        className="size-7 [@media(pointer:coarse)]:size-9"
         disabled={!hasPrevious}
         onClick={handlePrevious}
-        size="sm"
+        size="icon"
         variant="ghost"
       >
         <ChevronLeftIcon className="size-3.5" />
       </Button>
       <Button
         aria-label="Next track"
-        className="size-6 p-0 [@media(pointer:coarse)]:size-9"
+        className="size-7 [@media(pointer:coarse)]:size-9"
         disabled={!hasNext}
         onClick={handleNext}
-        size="sm"
+        size="icon"
         variant="ghost"
       >
         <ChevronRightIcon className="size-3.5" />
@@ -164,17 +164,17 @@ function TrackRow({
   return (
     <button
       className={cn(
-        "flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50",
-        isCurrent && "bg-primary/10"
+        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isCurrent && "bg-muted/40 font-medium"
       )}
       onClick={handlePlay}
       type="button"
     >
       <div className="flex size-4 shrink-0 items-center justify-center">
         {isCurrent ? (
-          <PlayIcon className="size-2.5 text-primary" />
+          <PlayIcon aria-label="Current track" className="size-2.5" />
         ) : (
-          <span className="font-mono text-[9px] text-muted-foreground">
+          <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
             {index + 1}
           </span>
         )}
@@ -185,7 +185,7 @@ function TrackRow({
         </div>
       </div>
       {track.duration ? (
-        <span className="shrink-0 font-mono text-[9px] text-muted-foreground tabular-nums">
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           {formatPlatformDuration(track.duration)}
         </span>
       ) : null}

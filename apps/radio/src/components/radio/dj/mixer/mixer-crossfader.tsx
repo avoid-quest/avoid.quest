@@ -33,6 +33,7 @@ export function MixerCrossfader({
         </span>
         <div className="flex-1 py-2" style={{ touchAction: "none" }}>
           <Slider
+            aria-label="Crossfader"
             defaultMarkerValue={50}
             defaultValue={[50]}
             max={100}

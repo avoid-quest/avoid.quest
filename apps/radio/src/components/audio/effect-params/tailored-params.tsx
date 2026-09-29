@@ -114,7 +114,7 @@ function Control({
   return (
     <div className="basis-full space-y-1">
       <label
-        className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
+        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
         htmlFor={id}
       >
         {label}

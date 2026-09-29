@@ -60,7 +60,7 @@ export function ImportExport({
       const url = await generateShareUrl();
       setShareUrl(url);
     } catch {
-      toast.error("Failed to generate share URL");
+      toast.error("Couldn't create share link");
     } finally {
       setIsExporting(false);
       setExportKind(null);
@@ -86,7 +86,7 @@ export function ImportExport({
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = importData;
     } catch {
-      toast.error("Failed to read import file");
+      toast.error("Couldn't read backup file");
     } finally {
       setIsImporting(false);
     }
@@ -96,7 +96,7 @@ export function ImportExport({
     const url = (document.getElementById("import-url") as HTMLInputElement)
       ?.value;
     if (!url) {
-      toast.error("Please enter a share URL");
+      toast.error("Paste a share link first");
       return;
     }
 
@@ -111,7 +111,7 @@ export function ImportExport({
         window as Window & { pendingImportData?: DatabaseExport }
       ).pendingImportData = importData;
     } catch {
-      toast.error("Failed to import from URL");
+      toast.error("Couldn't read share link");
     } finally {
       setIsImporting(false);
     }
@@ -122,7 +122,7 @@ export function ImportExport({
       window as Window & { pendingImportData?: DatabaseExport }
     ).pendingImportData;
     if (!importData) {
-      toast.error("No import data available");
+      toast.error("Nothing to import");
       return;
     }
 
@@ -185,27 +185,22 @@ export function ImportExport({
           </div>
 
           {lastExportDate?.valueOf() && (
-            <p className="font-mono text-[10px] text-muted-foreground/60 tabular-nums">
+            <p className="text-muted-foreground text-xs tabular-nums">
               Last exported: {new Date(lastExportDate).toLocaleString()}
             </p>
           )}
 
           {shareUrl?.trim() !== "" && (
             <div className="space-y-1.5">
-              <Label
-                className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
-                htmlFor="share-url"
-              >
-                Share URL
-              </Label>
+              <Label htmlFor="share-url">Share link</Label>
               <Input
                 className="font-mono text-xs"
                 id="share-url"
                 readOnly
                 value={shareUrl}
               />
-              <p className="text-[10px] text-muted-foreground/60">
-                Share this URL with others to import your configuration
+              <p className="text-muted-foreground text-xs">
+                Share this link to import your stations elsewhere.
               </p>
             </div>
           )}
@@ -216,16 +211,9 @@ export function ImportExport({
         <div className="space-y-3">
           <div className="grid gap-4 py-3 sm:grid-cols-2">
             <div className="space-y-3 border-b pb-4 sm:border-r sm:border-b-0 sm:pr-4 sm:pb-0">
-              <h3 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
-                From URL
-              </h3>
+              <h3 className="font-medium text-sm">From URL</h3>
               <div className="space-y-2">
-                <Label
-                  className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
-                  htmlFor="import-url"
-                >
-                  Share URL
-                </Label>
+                <Label htmlFor="import-url">Share link</Label>
                 <form
                   className="space-y-2"
                   onSubmit={(event) => {
@@ -245,23 +233,16 @@ export function ImportExport({
                     size="sm"
                     type="submit"
                   >
-                    {isImporting ? "Importing…" : "Import from URL"}
+                    {isImporting ? "Loading…" : "Preview"}
                   </Button>
                 </form>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h3 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
-                From File
-              </h3>
+              <h3 className="font-medium text-sm">From file</h3>
               <div className="space-y-2">
-                <Label
-                  className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
-                  htmlFor="import-file"
-                >
-                  JSON File
-                </Label>
+                <Label htmlFor="import-file">Backup file</Label>
                 <Input
                   accept=".json"
                   disabled={isImporting}
@@ -279,27 +260,23 @@ export function ImportExport({
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <h4 className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
-                    Import Preview
-                  </h4>
+                  <h4 className="font-medium text-sm">Preview</h4>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
+                <div className="grid grid-cols-2 gap-2 text-xs tabular-nums">
                   <div>
                     <span className="text-muted-foreground">New:</span>
-                    <span className="ml-1.5 text-emerald-500">
-                      {importPreview.newRadios}
-                    </span>
+                    <span className="ml-1.5">{importPreview.newRadios}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Updated:</span>
-                    <span className="ml-1.5 text-primary">
+                    <span className="ml-1.5">
                       {importPreview.updatedRadios}
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Unchanged:</span>
-                    <span className="ml-1.5 text-foreground/60">
+                    <span className="ml-1.5">
                       {importPreview.unchangedRadios}
                     </span>
                   </div>
@@ -312,9 +289,7 @@ export function ImportExport({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-                    Import Mode
-                  </Label>
+                  <Label>Mode</Label>
                   <RadioGroup
                     onValueChange={handleImportModeChange}
                     value={importMode}
@@ -322,13 +297,13 @@ export function ImportExport({
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem id="merge" value="merge" />
                       <Label className="text-xs" htmlFor="merge">
-                        Merge: update matches, add new ones hidden
+                        Merge: update matching stations, add new ones hidden
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem id="replace" value="replace" />
                       <Label className="text-xs" htmlFor="replace">
-                        Replace — overwrite the station list
+                        Replace: overwrite the station list
                       </Label>
                     </div>
                   </RadioGroup>

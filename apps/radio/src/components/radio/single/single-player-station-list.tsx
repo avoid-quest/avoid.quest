@@ -6,28 +6,18 @@ import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
+import { EmptyHint } from "../empty-hint";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import { RadioLogo } from "../radio-logo";
 import { RadioNowPlayingDetailsButton } from "../radio-now-playing";
-
-function StationLocationLabel({ radio }: { radio: Radio }) {
-  if (radio.placeTitle) {
-    return (
-      <p className="mt-0.5 truncate text-muted-foreground/60 text-xs leading-snug">
-        {radio.placeTitle}, {radio.countryTitle}
-      </p>
-    );
-  }
-  if (radio.description) {
-    return (
-      <p className="mt-0.5 line-clamp-2 text-muted-foreground/60 text-xs leading-snug">
-        {radio.description}
-      </p>
-    );
-  }
-  return null;
-}
+import {
+  StationRowSubtitle,
+  StationRowText,
+  stationFallbackSubtitle,
+  stationRowButtonClassName,
+  stationRowClassName,
+} from "../station-row";
 
 function StationRow({
   radio,
@@ -69,47 +59,48 @@ function StationRow({
   return (
     <div
       className={cn(
-        "group flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
-        "hover:bg-muted/40",
+        stationRowClassName,
+        isCurrent && "bg-muted/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
       ref={elementRef}
     >
       <button
-        className="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-current={isCurrent ? "true" : undefined}
+        className={stationRowButtonClassName}
         onClick={handleSelect}
         type="button"
       >
         <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p
-              className={cn(
-                "truncate text-sm leading-snug",
-                isCurrent && "font-semibold"
-              )}
-            >
-              {radio.name}
-            </p>
-            {isCurrent && isPlaying ? (
-              <span title="Playing">
-                <AudioLinesIcon aria-hidden className="size-3.5" />
-                <span className="sr-only">Playing</span>
-              </span>
-            ) : null}
-          </div>
+        <StationRowText
+          indicator={
+            isCurrent && isPlaying ? (
+              <AudioLinesIcon
+                aria-label="Playing"
+                className="size-3.5 shrink-0"
+                role="img"
+              />
+            ) : null
+          }
+          isCurrent={isCurrent}
+          title={radio.name}
+        >
           <RadioListItemMetadata
-            fallback={<StationLocationLabel radio={radio} />}
+            fallback={
+              <StationRowSubtitle>
+                {stationFallbackSubtitle(radio)}
+              </StationRowSubtitle>
+            }
             metadata={metadata}
             radio={radio}
           />
-        </div>
+        </StationRowText>
       </button>
       <div
         className={cn(
           "flex shrink-0 items-center gap-0.5",
           !isSession &&
-            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60"
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 [@media(pointer:coarse)]:opacity-60"
         )}
       >
         <RadioNowPlayingDetailsButton metadata={metadata} radio={radio} />
@@ -180,12 +171,7 @@ export function StationList({
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
-            <AudioLinesIcon className="mb-3 size-8 text-muted-foreground/20" />
-            <p className="text-muted-foreground/60 text-xs">
-              Search to add a station
-            </p>
-          </div>
+          <EmptyHint className="py-10">Search to add a station</EmptyHint>
         )}
       </ScrollArea>
     </div>

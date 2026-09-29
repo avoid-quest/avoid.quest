@@ -167,6 +167,54 @@ function dbToGain(db: number): number {
   return 10 ** (db / 20);
 }
 
+function lastEnabledIndex(effects: readonly EffectConfig[]): number {
+  for (let index = effects.length - 1; index >= 0; index -= 1) {
+    if (effects[index]?.enabled) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Places the trim pending in front of `effect`, which is about to join
+ * `effects`, and returns what is still pending after it. A bypassed effect
+ * passes the trim on untouched. Otherwise the trim goes on the previous
+ * enabled effect's post trim, which is exact, or else on this effect's pre
+ * trim. The pre trim only reaches the wet path, so below 100% mix a mute
+ * also zeroes the post trim; a level change there stays wet-only.
+ */
+function placeTrim(
+  effects: EffectConfig[],
+  effect: EffectConfig,
+  trim: Trim
+): { effect: EffectConfig; trim: Trim } {
+  if (!effect.enabled) {
+    return { effect, trim };
+  }
+  const level = trimLevel(trim);
+  if (level === 1) {
+    return { effect, trim: UNITY };
+  }
+  const previousIndex = lastEnabledIndex(effects);
+  const previous = effects[previousIndex];
+  if (previous) {
+    effects[previousIndex] = {
+      ...previous,
+      outputGain: previous.outputGain * level,
+    } as EffectConfig;
+    return { effect, trim: UNITY };
+  }
+  return {
+    effect: {
+      ...effect,
+      inputGain: effect.inputGain * level,
+      outputGain: level === 0 && effect.dryWet < 1 ? 0 : effect.outputGain,
+    } as EffectConfig,
+    trim: UNITY,
+  };
+}
+
 class LoweringError extends Error {
   readonly nodeId: string;
   readonly code: IssueCode;
@@ -345,12 +393,15 @@ class LaneLowerer {
           "Join these branches in a Merge"
         );
       }
-      effects.push(
-        this.lowerRegion(current, meeting, walk.trim, level + 1, effects.length)
+      const placed = placeTrim(
+        effects,
+        this.lowerRegion(current, meeting, level + 1, effects.length),
+        walk.trim
       );
-      walk.trim = UNITY;
+      effects.push(placed.effect);
+      walk.trim = placed.trim;
       if (meeting === stop) {
-        return { effects, end: meeting, trim: UNITY };
+        return { effects, end: meeting, trim: walk.trim };
       }
       walk.current = meeting;
       walk.closed = true;
@@ -406,13 +457,13 @@ class LaneLowerer {
     }
     // The key cable is the only source of truth for a sidechain.
     const { sidechain: _, ...effect } = config;
-    effects.push({
-      ...effect,
-      id,
-      inputGain: effect.inputGain * trimLevel(trim),
-      order: effects.length,
-    } as EffectConfig);
-    return UNITY;
+    const placed = placeTrim(
+      effects,
+      { ...effect, id, order: effects.length } as EffectConfig,
+      trim
+    );
+    effects.push(placed.effect);
+    return placed.trim;
   }
 
   /** Filter and Pan map onto the native strip, before any lane FX. */
@@ -457,7 +508,6 @@ class LaneLowerer {
   private lowerRegion(
     split: string,
     meeting: string,
-    trim: Trim,
     level: number,
     order: number
   ): EffectConfig {
@@ -471,7 +521,7 @@ class LaneLowerer {
     const base = effectOf(this.node(split));
     const outs = this.outsOf(split);
     if (!(base && isEffectContainer(base))) {
-      return this.lowerFanOut(`${split}:fan-out`, outs, meeting, trim, level, {
+      return this.lowerFanOut(`${split}:fan-out`, outs, meeting, level, {
         order,
       });
     }
@@ -522,7 +572,6 @@ class LaneLowerer {
                   `${chain.id}:fan-out`,
                   cables,
                   meeting,
-                  UNITY,
                   level + 1,
                   { order: 0 }
                 ),
@@ -547,7 +596,6 @@ class LaneLowerer {
         ? { frequencyBandCount: chains.length as 2 | 3 | 4 }
         : {}),
       id: split,
-      inputGain: container.inputGain * trimLevel(trim),
       order,
     } as EffectConfig;
   }
@@ -557,7 +605,6 @@ class LaneLowerer {
     id: string,
     cables: readonly WiredEdge[],
     meeting: string,
-    trim: Trim,
     level: number,
     { order }: { order: number }
   ): FxCompositeConfig {
@@ -593,7 +640,7 @@ class LaneLowerer {
       dryWet: 1,
       enabled: true,
       id,
-      inputGain: trimLevel(trim),
+      inputGain: 1,
       order,
       outputGain: 1,
       type: "fxComposite",
@@ -746,6 +793,8 @@ type Prepared = {
   issues: Issue[];
   wired: WiredEdge[];
   labels: ReadonlyMap<string, Lane>;
+  /** Keyed FX the validator flagged as a lane's second key. */
+  extraKeys: ReadonlySet<string>;
 };
 
 function withoutExcluded(
@@ -783,45 +832,53 @@ function refuse(graph: CompileGraph, { buses, lanes }: Topology): Issue[] {
 }
 
 /**
- * Drops what failed validation and refuses what this compiler cannot lower
- * yet (buses, other sources, control), until the patch is stable. Dropping
- * a node only ever removes signal, so this settles within a few rounds.
+ * Drops what failed validation, then refuses what this compiler cannot lower
+ * yet (buses, other sources, control), re-validating after every round until
+ * the patch is stable, so an issue a drop uncovers is reported too. Each
+ * round drops at least one node or cable, so this always settles. Advisory
+ * issues come from the final round, the patch the plan is built from.
  */
 function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
   const excludedNodes = new Set<string>();
   const excludedEdges = new Set<string>();
-  const exclude = (list: readonly Issue[]) => {
-    for (const issue of list) {
-      if (!ADVISORY_CODES.has(issue.code)) {
-        (issue.target === "node" ? excludedNodes : excludedEdges).add(issue.id);
-      }
-    }
-  };
-  const issues = [...analyseGraph(graph, env).issues];
-  exclude(issues);
-  let prepared: Prepared | null = null;
-  while (prepared === null) {
+  const issues: Issue[] = [];
+  for (;;) {
     const kept = withoutExcluded(graph, excludedNodes, excludedEdges);
-    const { topology, wired } = analyseGraph(kept, env);
-    const refused = refuse(kept, topology);
-    if (refused.length === 0) {
-      prepared = {
+    const analysis = analyseGraph(kept, env);
+    const advisory = analysis.issues.filter((issue) =>
+      ADVISORY_CODES.has(issue.code)
+    );
+    let blocking = analysis.issues.filter(
+      (issue) => !ADVISORY_CODES.has(issue.code)
+    );
+    if (blocking.length === 0) {
+      blocking = refuse(kept, analysis.topology);
+    }
+    if (blocking.length === 0) {
+      return {
         byId: new Map(kept.nodes.map((node) => [node.id, node])),
+        extraKeys: new Set(
+          advisory
+            .filter((issue) => issue.code === "lane-key")
+            .map((issue) => issue.id)
+        ),
         graph: kept,
-        issues,
-        labels: topology.lanes,
-        wired,
+        issues: [...issues, ...advisory],
+        labels: analysis.topology.lanes,
+        wired: analysis.wired,
       };
     }
-    issues.push(...refused);
-    exclude(refused);
+    for (const issue of blocking) {
+      issues.push(issue);
+      (issue.target === "node" ? excludedNodes : excludedEdges).add(issue.id);
+    }
   }
-  return prepared;
 }
 
 /** Keyed FX node id → the key's lane channel, grouped by the keyed lane. */
 function planKeys({
   byId,
+  extraKeys,
   labels,
   wired,
 }: Prepared): Map<string, Map<string, string>> {
@@ -836,6 +893,8 @@ function planKeys({
       typeof lane !== "string" ||
       station?.type !== "station" ||
       station.data.radio === null ||
+      // The key the validator flagged stays unkeyed, so the badge is honest.
+      extraKeys.has(edge.target) ||
       !(target && isKeyable(target))
     ) {
       continue;

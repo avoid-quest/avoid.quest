@@ -142,7 +142,8 @@ function edgeOps(previous: EdgePlan, next: EdgePlan): Op[] {
 /**
  * Diffs two plans by lane and cable id. Ops come in apply order: cables out,
  * lanes out, lanes in, lane changes, then cables in and cable changes, so a
- * cable never points at a lane that is not there.
+ * cable never points at a lane that is not there. A cable leaving a lane
+ * that goes away, or starts a new stream, goes with it and is added again.
  */
 export function diff(previous: ReconcilablePlan, next: ReconcilablePlan): Op[] {
   const removedEdges: Op[] = [];
@@ -150,10 +151,12 @@ export function diff(previous: ReconcilablePlan, next: ReconcilablePlan): Op[] {
   const addedLanes: Op[] = [];
   const changedLanes: Op[] = [];
   const edges: Op[] = [];
+  const replaced = new Set<string>();
 
   for (const [id, lane] of previous.lanes) {
     const kept = next.lanes.get(id);
     if (!kept || sourceKey(kept) !== sourceKey(lane)) {
+      replaced.add(id);
       removedLanes.push({
         laneId: id,
         soundId: lane.soundId,
@@ -170,15 +173,18 @@ export function diff(previous: ReconcilablePlan, next: ReconcilablePlan): Op[] {
     }
   }
 
-  for (const id of previous.edges.keys()) {
-    if (!next.edges.has(id)) {
+  const leaving = (edge: EdgePlan) => replaced.has(edge.from.id);
+  for (const [id, edge] of previous.edges) {
+    if (!next.edges.has(id) || leaving(edge)) {
       removedEdges.push({ edgeId: id, type: "removeEdge" });
     }
   }
   for (const [id, edge] of next.edges) {
     const before = previous.edges.get(id);
     edges.push(
-      ...(before ? edgeOps(before, edge) : [{ edge, type: "addEdge" as const }])
+      ...(before && !leaving(before)
+        ? edgeOps(before, edge)
+        : [{ edge, type: "addEdge" as const }])
     );
   }
 

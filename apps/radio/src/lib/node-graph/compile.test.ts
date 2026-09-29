@@ -262,7 +262,7 @@ describe("compile: lanes in series", () => {
       [
         station("a"),
         node("trim", "gain", { gainDb: -6 }),
-        fx("verb", "cheapReverb"),
+        fx("verb", "cheapReverb", { enabled: true }),
         node("out", "gain", { gainDb: 6 }),
         speakers,
       ],
@@ -282,11 +282,69 @@ describe("compile: lanes in series", () => {
 
   test("a muted cable before an FX silences its input", () => {
     const plan = build(
-      [station("a"), fx("verb", "cheapReverb"), speakers],
+      [station("a"), fx("verb", "cheapReverb", { enabled: true }), speakers],
       [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
     );
     expect(lane(plan, "a").effects[0]?.inputGain).toBe(0);
     expect(plan.edges.get("verb->speakers")?.muted).toBe(false);
+  });
+
+  test("a trim passes a bypassed FX untouched, since bypass drops its gains", () => {
+    const plan = build(
+      [
+        station("a"),
+        node("trim", "gain", { gainDb: -6 }),
+        fx("verb", "cheapReverb"),
+        speakers,
+      ],
+      [
+        audio("a", "trim", { muted: true }),
+        audio("trim", "verb"),
+        audio("verb", "speakers", { gain: 0.5 }),
+      ]
+    );
+    expect(lane(plan, "a").effects[0]?.inputGain).toBe(1);
+    expect(plan.edges.get("verb->speakers")).toMatchObject({
+      gain: 0.5 * 10 ** (-6 / 20),
+      muted: true,
+    });
+  });
+
+  test("a trim between FX lands on the previous FX's post trim", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("crush", "crusher", { enabled: true }),
+        fx("off", "fold"),
+        fx("verb", "cheapReverb", { dryWet: 0.5, enabled: true }),
+        speakers,
+      ],
+      [
+        audio("a", "crush"),
+        audio("crush", "off", { gain: 0.5 }),
+        audio("off", "verb", { gain: 0.5 }),
+        audio("verb", "speakers"),
+      ]
+    );
+    const [crush, off, verb] = lane(plan, "a").effects;
+    expect(crush?.outputGain).toBeCloseTo(0.25);
+    expect(off?.outputGain).toBe(1);
+    // Below 100% mix the pre trim misses the dry path, so it stays at unity.
+    expect(verb?.inputGain).toBe(1);
+  });
+
+  test("a mute before a part-wet first FX also silences its dry path", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("verb", "cheapReverb", { dryWet: 0.5, enabled: true }),
+        speakers,
+      ],
+      [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
+    );
+    const [verb] = lane(plan, "a").effects;
+    expect(verb?.inputGain).toBe(0);
+    expect(verb?.outputGain).toBe(0);
   });
 
   test("a dangling FX is skipped until it reaches an output", () => {
@@ -679,6 +737,31 @@ describe("compile: key cables", () => {
     expect(gate?.sidechain).toBeUndefined();
   });
 
+  test("the key goes to the FX the validator did not flag", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        // Listed first, so the validator flags the compressor as the extra key.
+        fx("gate", "gate", { enabled: true }),
+        fx("comp", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        key("news", "gate"),
+      ]
+    );
+    expect(codes(plan)).toEqual(["lane-key@comp"]);
+    const [comp, gate] = lane(plan, "music").effects;
+    expect(comp?.sidechain).toBeUndefined();
+    expect(gate?.sidechain).toEqual({ channelId: "n:news" });
+  });
+
   test("a stale sidechain without a key cable is dropped", () => {
     const plan = build(
       [
@@ -809,6 +892,21 @@ describe("compile: validation first", () => {
     );
     expect(codes(plan)).toEqual(["unshipped@bus"]);
     expect([...plan.lanes.keys()]).toEqual(["a", "b"]);
+    expect(plan.edges.size).toBe(0);
+  });
+
+  test("an issue a dropped node uncovers is reported too", () => {
+    const ids = Array.from({ length: 25 }, (_, index) => `s${index + 1}`);
+    const plan = build(
+      [...ids.map((id) => station(id)), fx("comp", "compressor"), speakers],
+      [audio("s25", "comp"), audio("comp", "speakers"), key("s1", "comp")]
+    );
+    // s25 is over the source budget; without it the key has no lane to key.
+    expect(codes(plan)).toEqual([
+      "budget-sources@s25",
+      "sidechain-target@s1~>comp",
+    ]);
+    expect(plan.lanes.has("s25")).toBe(false);
     expect(plan.edges.size).toBe(0);
   });
 

@@ -242,9 +242,27 @@ describe("diff", () => {
     const tuned = (streamUrl: string) =>
       plan([station("a", streamUrl), speakers], [audio("a", "speakers")]);
     const next = tuned("https://example.com/other.mp3");
-    expect(types(diff(tuned("https://example.com/a.mp3"), next))).toEqual([
-      "removeLane",
-      "addLane",
+    expect(diff(tuned("https://example.com/a.mp3"), next)).toEqual([
+      { edgeId: "a->speakers", type: "removeEdge" },
+      { laneId: "a", soundId: "node:n:a", type: "removeLane" },
+      { lane: next.lanes.get("a"), type: "addLane" } as Op,
+      { edge: next.edges.get("a->speakers"), type: "addEdge" } as Op,
+    ]);
+  });
+
+  test("a cable moved off a lane that goes away is removed, not rewired", () => {
+    const previous = plan(
+      [station("a"), station("b"), speakers],
+      [audio("a", "speakers", { id: "cable" })]
+    );
+    const next = plan(
+      [station("b"), speakers],
+      [audio("b", "speakers", { id: "cable" })]
+    );
+    expect(diff(previous, next)).toEqual([
+      { edgeId: "cable", type: "removeEdge" },
+      { laneId: "a", soundId: "node:n:a", type: "removeLane" },
+      { edge: next.edges.get("cable"), type: "addEdge" } as Op,
     ]);
   });
 

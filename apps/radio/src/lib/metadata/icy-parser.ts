@@ -34,10 +34,63 @@ export function parseIcyMetaInt(value: string | null): number | null {
   return parsed;
 }
 
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+
+// Windows-1252 is Latin-1 plus printable characters in 0x80–0x9F (curly
+// quotes, dashes, €). Spelled out so decoding doesn't depend on the runtime
+// shipping legacy TextDecoder encodings.
+const WINDOWS_1252_0X80_TO_0X9F = [
+  0x20_ac, 0x81, 0x20_1a, 0x01_92, 0x20_1e, 0x20_26, 0x20_20, 0x20_21, 0x02_c6,
+  0x20_30, 0x01_60, 0x20_39, 0x01_52, 0x8d, 0x01_7d, 0x8f, 0x90, 0x20_18,
+  0x20_19, 0x20_1c, 0x20_1d, 0x20_22, 0x20_13, 0x20_14, 0x02_dc, 0x21_22,
+  0x01_61, 0x20_3a, 0x01_53, 0x9d, 0x01_7e, 0x01_78,
+];
+
+function decodeWindows1252(bytes: Uint8Array): string {
+  let text = "";
+  for (const byte of bytes) {
+    text += String.fromCharCode(
+      byte >= 0x80 && byte <= 0x9f
+        ? (WINDOWS_1252_0X80_TO_0X9F[byte - 0x80] ?? byte)
+        : byte
+    );
+  }
+  return text;
+}
+
+/**
+ * ICY declares no charset: most encoders send UTF-8, older ones Latin-1
+ * (e.g. Lyl sends "é" as 0xE9). Take UTF-8 when the bytes are valid UTF-8.
+ */
+function decodeIcyText(bytes: Uint8Array): string {
+  try {
+    return utf8Decoder.decode(bytes);
+  } catch {
+    return decodeWindows1252(bytes);
+  }
+}
+
+/**
+ * `Headers.get()` returns one char per byte, so a UTF-8 icy-name like
+ * "Café" reads "CafÃ©". Re-read such values from their bytes.
+ */
+export function decodeIcyHeader(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const bytes: number[] = [];
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (code > 0xff) {
+      return value;
+    }
+    bytes.push(code);
+  }
+  return decodeIcyText(Uint8Array.from(bytes));
+}
+
 export function parseIcyMetadataBlock(block: Uint8Array): IcyMetadataFields {
-  const text = new TextDecoder("utf-8", { fatal: false })
-    .decode(block)
-    .replace(/\0+$/g, "");
+  const text = decodeIcyText(block).replace(/\0+$/g, "");
   const fields: Record<string, string> = {};
   const pattern = /([A-Za-z][A-Za-z0-9_-]*)='([\s\S]*?)';/g;
   let match = pattern.exec(text);

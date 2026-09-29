@@ -19,6 +19,7 @@ import {
   selectIcecastSource,
 } from "./icecast-status";
 import {
+  decodeIcyHeader,
   normalizeIcyMetadata,
   parseIcyMetadataBlock,
   parseIcyMetaInt,
@@ -219,14 +220,16 @@ export function createRadioMetadataRetrieval({
         bitrate:
           Number.parseInt(response.headers.get("icy-br") ?? "", 10) || null,
         expiresAt,
-        genre: response.headers.get("icy-genre"),
+        genre: decodeIcyHeader(response.headers.get("icy-genre")),
         itemUrl: null,
         rawTitle: icy.rawTitle,
         resolvedUrl: response.url || undefined,
         sampledAt,
         source: "icy",
-        stationDescription: response.headers.get("icy-description"),
-        stationName: response.headers.get("icy-name"),
+        stationDescription: decodeIcyHeader(
+          response.headers.get("icy-description")
+        ),
+        stationName: decodeIcyHeader(response.headers.get("icy-name")),
         streamUrl,
         title: icy.title,
       },

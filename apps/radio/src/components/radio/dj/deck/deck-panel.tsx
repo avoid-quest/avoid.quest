@@ -11,11 +11,9 @@ import type {
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { channelEffects } from "@/lib/channel-effects";
 import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
-import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
 import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
-import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
@@ -24,14 +22,12 @@ import {
   isFileMetadata,
   isStaticAudioMetadata,
 } from "@/lib/platform-types";
-import {
-  setDeckAPeakLevel,
-  setDeckBPeakLevel,
-} from "@/lib/stores/dj-runtime-store";
+import { setDjError } from "@/lib/stores/dj-runtime-store";
 import { DeviceForm } from "../device-form";
 import { DjRadioList } from "../dj-radio-list";
 import { ExternalSearch } from "../external-search";
 import { FileForm } from "../file-form";
+import { describeFileLoadFailure } from "../file-load-failure";
 import { type DeckContextValue, DeckProvider } from "./deck-context";
 import { DeviceInputContent } from "./deck-device-input-content";
 import { DeckEmpty } from "./deck-empty";
@@ -39,6 +35,7 @@ import { DeckHeader } from "./deck-header";
 import { LoadedDeckContent } from "./deck-loaded-content";
 import {
   calculateHasTracklist,
+  getChangeSourceSearchPlatform,
   isStreamingMetadata,
   resolveDeckPanelContentKind,
 } from "./deck-panel-helpers";
@@ -149,14 +146,6 @@ function DeckPanelInner({
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
-  const peakLevel = usePeakLevel(soundId);
-
-  // Publish peak levels to runtime store for mixer VU meters
-  const setPeakLevel =
-    deckId === "deck-a" ? setDeckAPeakLevel : setDeckBPeakLevel;
-  useEffect(() => {
-    setPeakLevel(peakLevel);
-  }, [peakLevel, setPeakLevel]);
 
   // Throttle channel strip setters
   const throttledSetPan = useThrottledParam(setPan);
@@ -196,6 +185,9 @@ function DeckPanelInner({
   const isFileSource =
     isFileMetadata(radio?.platformMetadata) ||
     isStaticAudioMetadata(radio?.platformMetadata);
+  const changeSourceSearchPlatform = getChangeSourceSearchPlatform(
+    radio?.platformMetadata
+  );
   const effectiveMetadata = metadata || radio?.platformMetadata;
   const hasTracklist = calculateHasTracklist(effectiveMetadata);
   const streamingMeta = isStreamingMetadata(effectiveMetadata)
@@ -212,22 +204,33 @@ function DeckPanelInner({
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDragCounter = useRef(0);
 
+  /** Load a file or remote file; resolves to why it failed, or null. */
+  const loadFile = async (
+    intent:
+      | { file: File; type: "file" }
+      | { type: "static-audio-url"; url: string }
+  ): Promise<string | null> => {
+    const result = await loadSource(intent);
+    return result.type === "failed" ? result.message : null;
+  };
+  const handleLoadFile = (file: File) => loadFile({ file, type: "file" });
+  const handleLoadRemoteUrl = (url: string) =>
+    loadFile({ type: "static-audio-url", url });
+
+  // A file dropped on the deck has no form to report to, so the mixer does.
   const handleFileDrop = useCallback(
     (file: File) => {
-      loadSource({ file, type: "file" }).catch((error) => {
-        console.error("[dj] Failed to load file source:", error);
-      });
+      loadSource({ file, type: "file" })
+        .then((result) => {
+          if (result.type === "failed") {
+            setDjError(describeFileLoadFailure(result.message), deckId);
+          }
+        })
+        .catch((error) => {
+          console.error("[dj] Failed to load file source:", error);
+        });
     },
-    [loadSource]
-  );
-
-  const handleLoadRemoteUrl = useCallback(
-    (url: string) => {
-      loadSource({ type: "static-audio-url", url }).catch((error) => {
-        console.error("[dj] Failed to load static audio URL:", error);
-      });
-    },
-    [loadSource]
+    [deckId, loadSource]
   );
 
   // Native drag handlers
@@ -315,14 +318,21 @@ function DeckPanelInner({
       );
   };
   const handleCancelFileChange = () => setIsChangingFile(false);
-  const handleFileChanged = (file: File) => {
-    setIsChangingFile(false);
-    handleFileDrop(file);
+  // Keep the change form open until the new file loads, so a failure shows
+  // in the form with what the user typed still there.
+  const closeFileChangeOnLoad = async (
+    loading: Promise<string | null>
+  ): Promise<string | null> => {
+    const failure = await loading;
+    if (!failure) {
+      setIsChangingFile(false);
+    }
+    return failure;
   };
-  const handleRemoteUrlChanged = (url: string) => {
-    setIsChangingFile(false);
-    handleLoadRemoteUrl(url);
-  };
+  const handleFileChanged = (file: File) =>
+    closeFileChangeOnLoad(handleLoadFile(file));
+  const handleRemoteUrlChanged = (url: string) =>
+    closeFileChangeOnLoad(handleLoadRemoteUrl(url));
   const handleCancelUrlChange = () => setIsChangingUrl(false);
   const handleCancelDeviceChange = () => setIsChangingDevice(false);
   const handleChangeDevice = () => setIsChangingDevice(true);
@@ -336,7 +346,7 @@ function DeckPanelInner({
   const handleChangeSource = () => {
     if (isFileSource) {
       setIsChangingFile(true);
-    } else if (radio && isPlatformRadio(radio)) {
+    } else if (changeSourceSearchPlatform) {
       setIsChangingUrl(true);
     } else {
       setIsPickingSource(true);
@@ -349,6 +359,16 @@ function DeckPanelInner({
   useEffect(() => {
     setIsPickingSource(false);
   }, [radio]);
+
+  // A different source replaced the one being changed (a dropped file, say):
+  // close the change forms too. Moving to the next track of the same item
+  // keeps the source, and the form, as they are.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs whenever the deck's source is replaced
+  useEffect(() => {
+    setIsChangingUrl(false);
+    setIsChangingFile(false);
+    setIsChangingDevice(false);
+  }, [radio?.id]);
 
   // Build the DeckContext value for child components
   const contextValue: DeckContextValue = {
@@ -371,7 +391,6 @@ function DeckPanelInner({
     metadata: effectiveMetadata,
     pan,
     pause,
-    peakLevel,
     play,
     radio,
     removeEffect,
@@ -410,7 +429,7 @@ function DeckPanelInner({
     content = (
       <FileForm
         onCancel={cancelPendingSource}
-        onLoad={handleFileDrop}
+        onLoad={handleLoadFile}
         onLoadUrl={handleLoadRemoteUrl}
       />
     );
@@ -457,19 +476,11 @@ function DeckPanelInner({
           </div>
         </div>
       );
-    } else if (isChangingUrl && isPlatformRadio(radio)) {
-      const editPlatform = radio.platformMetadata?.platform;
-      const searchPlatform =
-        editPlatform === "bandcamp" ||
-        editPlatform === "soundcloud" ||
-        editPlatform === "youtube" ||
-        editPlatform === "radiogarden"
-          ? editPlatform
-          : ("all" as const);
+    } else if (isChangingUrl && changeSourceSearchPlatform) {
       content = (
         <ExternalSearch
-          initialPlatform={searchPlatform}
-          key={searchPlatform}
+          initialPlatform={changeSourceSearchPlatform}
+          key={changeSourceSearchPlatform}
           onCancel={handleCancelUrlChange}
           onLoad={handleUrlChanged}
         />

@@ -13,10 +13,14 @@ import { useRef, useState } from "react";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { isStaticAudioUrl } from "@/lib/audio/remote-url";
 import { InlineError } from "../inline-error";
+import { describeFileLoadFailure } from "./file-load-failure";
+
+/** Resolves to why the load failed, or null once the source is on the deck. */
+type LoadFile<T> = (source: T) => Promise<string | null>;
 
 type FileFormProps = {
-  onLoad: (file: File) => void;
-  onLoadUrl?: (url: string) => void;
+  onLoad: LoadFile<File>;
+  onLoadUrl?: LoadFile<string>;
   onCancel?: () => void;
 };
 
@@ -27,8 +31,31 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
   const [urlInput, setUrlInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // The form stays up while the deck loads; a failure lands here, next to
+  // what the user picked or typed.
+  const load = (loading: Promise<string | null>) => {
+    setError(null);
+    setIsLoading(true);
+    loading
+      .then((failure) => {
+        if (failure) {
+          setError(describeFileLoadFailure(failure));
+        }
+      })
+      .catch((cause: unknown) => {
+        setError(
+          describeFileLoadFailure(
+            cause instanceof Error ? cause.message : String(cause)
+          )
+        );
+      })
+      .finally(() => setIsLoading(false));
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    // Let the same file be picked again after a failed load.
+    event.target.value = "";
     if (!file) {
       return;
     }
@@ -38,9 +65,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
       return;
     }
 
-    setError(null);
-    setIsLoading(true);
-    onLoad(file);
+    load(onLoad(file));
   };
 
   const handleBrowse = () => {
@@ -75,9 +100,9 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
       return;
     }
 
-    setError(null);
-    setIsLoading(true);
-    onLoadUrl?.(trimmed);
+    if (onLoadUrl) {
+      load(onLoadUrl(trimmed));
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {

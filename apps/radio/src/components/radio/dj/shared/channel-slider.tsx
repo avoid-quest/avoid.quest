@@ -6,6 +6,7 @@ const DEFAULT_SNAP_THRESHOLD_RATIO = 0.02;
 
 type ChannelSliderProps = {
   label: string;
+  ariaLabel?: string;
   value: number;
   defaultValue?: number;
   fillFromDefault?: boolean;
@@ -21,6 +22,7 @@ type ChannelSliderProps = {
 /** One channel control: a knob with a MIDI-learnable target. */
 export function ChannelSlider({
   label,
+  ariaLabel,
   value,
   defaultValue,
   fillFromDefault = false,
@@ -40,6 +42,7 @@ export function ChannelSlider({
 
   const knob = (
     <Knob
+      ariaLabel={ariaLabel}
       bipolar={fillFromDefault}
       defaultValue={defaultValue}
       format={formatValue}

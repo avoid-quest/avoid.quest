@@ -1641,3 +1641,496 @@ describe("external radio metadata providers", () => {
     ).rejects.toBeInstanceOf(RadioMetadataValidationError);
   });
 });
+
+describe("provider metadata correctness", () => {
+  test("renders Resonance Extra Markdown descriptions as plain text", async () => {
+    const result = await tryResonanceExtraApi({
+      expiresAt: 2000,
+      fetchImpl: async () =>
+        json({
+          now: {
+            description:
+              "[Ensemble x.y](http://www.ensemblexy.com) is a **London** based _ensemble_ &amp; ![logo](/logo.png) __duo__ with some_file_name.",
+            name: "Show",
+          },
+        }),
+      sampledAt: 1000,
+      streamUrl: "https://stream.resonance.fm/resonance-extra",
+    });
+
+    expect(result?.stationDescription).toBe(
+      "Ensemble x.y is a London based ensemble & logo duo with some_file_name."
+    );
+  });
+
+  test("drops HKCR tags that repeat the artist, title or show", async () => {
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-09-03T04:00:00Z"),
+      fetchImpl: (url) =>
+        Promise.resolve(
+          url === "https://cms.hkcr.live/shows/show-id"
+            ? json({
+                _id: "show-id",
+                slug: "hot-cue",
+                tags: [
+                  { name: "Hotcue" },
+                  { name: "Adults Play Radio" },
+                  { name: "west  africa" },
+                  { name: "Techno" },
+                  { name: "Hot Cue - 28/09/2026" },
+                  { name: "Dub" },
+                ],
+                title: "West Africa",
+              })
+            : json([
+                {
+                  date: "2026-09-03",
+                  endTime: "12:00",
+                  resident: { name: "Hot Cue" },
+                  show: "show-id",
+                  startTime: "11:00",
+                  title: "Hot Cue - 28/09/2026",
+                },
+              ])
+        ),
+      sampledAt: Date.parse("2026-09-03T03:30:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+
+    expect(result?.genre).toBe("Adults Play Radio, Techno, Dub");
+  });
+
+  test("drops an HKCR tag naming the programme before its guest", async () => {
+    // Live replay on 2026-09-29: resident "Adults Play Radio", programme
+    // "Ether Radio" (the resident's current name).
+    const result = await tryHkcrSchedule({
+      expiresAt: Date.parse("2026-09-29T22:00:00Z"),
+      fetchImpl: (url) =>
+        Promise.resolve(
+          url === "https://cms.hkcr.live/shows/show-id"
+            ? json({
+                _id: "show-id",
+                resident: { name: "Adults Play Radio" },
+                slug: "ether-radio",
+                tags: [
+                  { name: "Adults Play Radio" },
+                  { name: "Afrobeat" },
+                  { name: "Disco" },
+                  { name: "Ether Radio" },
+                  { name: "Highlife" },
+                  { name: "West Africa" },
+                ],
+                title: "ether radio w/ Freddy Carrasco (cousin sleep)",
+              })
+            : json([
+                {
+                  date: "2026-09-30",
+                  endTime: "06:00",
+                  show: "show-id",
+                  startTime: "05:00",
+                  title: "ether radio w/ Freddy Carrasco (cousin sleep)",
+                },
+              ])
+        ),
+      sampledAt: Date.parse("2026-09-29T21:30:00Z"),
+      streamUrl: "https://stream-test.hkcr.live/hls/main.m3u8",
+    });
+
+    expect(result).toMatchObject({
+      artist: "Adults Play Radio",
+      genre: "Afrobeat, Disco, Highlife, West Africa",
+    });
+  });
+
+  test.each([
+    [null, "Se Desbordó el Jardín - Aguirre invites Rosarito 1/2 (R)"],
+    ["Se Desbordó el Jardín", "Aguirre invites Rosarito 1/2 (R)"],
+  ])(
+    "matches an exact IPR episode for a Show - Episode title (artist %p)",
+    async (artist, trackTitle) => {
+      const searches: string[] = [];
+      const result = await tryAirtimeLiveInfo(
+        {
+          expiresAt: 2000,
+          fetchImpl: (url) => {
+            if (
+              url.startsWith("https://www.internetpublicradio.live/api/search?")
+            ) {
+              searches.push(new URL(url).searchParams.get("q") ?? "");
+              return Promise.resolve(
+                json([
+                  {
+                    _type: "episode",
+                    date: "2025-05-28",
+                    label:
+                      "Se Desbordó el Jardín - Aguirre invites Rosarito 1/2",
+                    resident: { slug: { current: "se-desbordo-el-jardin" } },
+                    slug: { current: "aguirre-invites-rosarito-1-2" },
+                  },
+                ])
+              );
+            }
+            return Promise.resolve(
+              url.includes("api.sanity.io")
+                ? json({})
+                : json({
+                    tracks: {
+                      current: {
+                        metadata: {
+                          artist_name: artist,
+                          comments: "28.05.25",
+                          track_title: trackTitle,
+                        },
+                      },
+                    },
+                  })
+            );
+          },
+          sampledAt: 1000,
+          streamUrl:
+            "https://stream-relay-geo.internetpublicradio.live/stream/main",
+        },
+        ["https://stream-relay-geo.internetpublicradio.live/api-filtered.php"]
+      );
+
+      expect(searches).toHaveLength(1);
+      expect(result?.itemUrl).toBe(
+        "https://www.internetpublicradio.live/se-desbordo-el-jardin/episodes/aguirre-invites-rosarito-1-2"
+      );
+    }
+  );
+
+  test.each([
+    // Boundary inside the cap.
+    [
+      "Tuesday 29th September 2026 22:30 - 23:00 BST",
+      "2026-09-29T21:50:00Z",
+      "2026-09-29T22:00:00Z",
+    ],
+    // Boundary beyond the cap.
+    [
+      "Tuesday 29th September 2026 22:30 - 23:00 BST",
+      "2026-09-29T21:40:00Z",
+      "2026-09-29T21:55:00Z",
+    ],
+    // Boundary floored at 30 seconds.
+    [
+      "Tuesday 29th September 2026 22:30 - 23:00 BST",
+      "2026-09-29T21:59:50Z",
+      "2026-09-29T22:00:20Z",
+    ],
+    // Programme ending at midnight.
+    [
+      "Tuesday 29th September 2026 23:00 - 00:00 BST",
+      "2026-09-29T22:50:00Z",
+      "2026-09-29T23:00:00Z",
+    ],
+    [
+      "Sunday 1st November 2026 10:00 - 11:00 GMT",
+      "2026-11-01T10:55:00Z",
+      "2026-11-01T11:00:00Z",
+    ],
+  ])(
+    "expires Resonance Extra at the programme end %s sampled %s",
+    async (startsEnds, sampled, expected) => {
+      const sampledAt = Date.parse(sampled);
+      const result = await tryResonanceExtraApi({
+        expiresAt: sampledAt + 900_000,
+        fetchImpl: async () =>
+          json({ now: { name: "Show", starts_ends: startsEnds } }),
+        sampledAt,
+        streamUrl: "https://stream.resonance.fm/resonance-extra",
+      });
+      expect(result?.expiresAt).toBe(Date.parse(expected));
+    }
+  );
+
+  test("falls back to the next Resonance Extra programme start", async () => {
+    const sampledAt = Date.parse("2026-09-29T21:50:00Z");
+    const result = await tryResonanceExtraApi({
+      expiresAt: sampledAt + 900_000,
+      fetchImpl: async () =>
+        json({
+          after: {
+            name: "Next",
+            starts_ends: "Tuesday 29th September 2026 23:00 - 00:00 BST",
+          },
+          now: { name: "Show", starts_ends: "not a schedule" },
+        }),
+      sampledAt,
+      streamUrl: "https://stream.resonance.fm/resonance-extra",
+    });
+    expect(result?.expiresAt).toBe(Date.parse("2026-09-29T22:00:00Z"));
+  });
+
+  test("rechecks a stale Resonance Extra programme after a minute", async () => {
+    const sampledAt = Date.parse("2026-09-29T22:05:00Z");
+    const result = await tryResonanceExtraApi({
+      expiresAt: sampledAt + 900_000,
+      fetchImpl: async () =>
+        json({
+          now: {
+            name: "Show",
+            starts_ends: "Tuesday 29th September 2026 22:30 - 23:00 BST",
+          },
+        }),
+      sampledAt,
+      streamUrl: "https://stream.resonance.fm/resonance-extra",
+    });
+    expect(result?.expiresAt).toBe(sampledAt + 60_000);
+  });
+
+  test.each([
+    [
+      { end: "00:00", start: "23:00" },
+      "2026-09-29T21:50:00Z",
+      "2026-09-29T22:00:00Z",
+    ],
+    [
+      { end: "00:00", start: "23:00" },
+      "2026-09-29T21:59:50Z",
+      "2026-09-29T22:00:20Z",
+    ],
+    [
+      { end: "01:00", start: "23:00" },
+      "2026-09-29T22:40:00Z",
+      "2026-09-29T22:55:00Z",
+    ],
+    [
+      { end: "01:00", start: "23:00" },
+      "2026-09-29T22:50:00Z",
+      "2026-09-29T23:00:00Z",
+    ],
+    [
+      { end: "12:00", start: "11:00" },
+      "2026-09-29T09:50:00Z",
+      "2026-09-29T10:00:00Z",
+    ],
+    // Slot not on air: keep the regular cap.
+    [
+      { end: "12:00", start: "11:00" },
+      "2026-09-29T15:00:00Z",
+      "2026-09-29T15:15:00Z",
+    ],
+  ])(
+    "expires Radio BlackOut at its slot end %j sampled %s",
+    async (slot, sampled, expected) => {
+      const sampledAt = Date.parse(sampled);
+      const result = await tryRadioBlackoutApi({
+        expiresAt: sampledAt + 900_000,
+        fetchImpl: async () =>
+          json({ slot: { day: "martedi", ...slot }, title: "Show" }),
+        sampledAt,
+        streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+      });
+      expect(result?.expiresAt).toBe(Date.parse(expected));
+    }
+  );
+
+  test("decodes Resonance Extra override values", async () => {
+    const result = await tryResonanceExtraApi({
+      expiresAt: 2000,
+      fetchImpl: async () =>
+        json({
+          now: {
+            host: "Tom &amp; Jerry",
+            name: "Tom &amp; Jerry&#039;s Hour",
+          },
+        }),
+      sampledAt: 1000,
+      streamUrl: "https://stream.resonance.fm/resonance-extra",
+    });
+    expect(result).toMatchObject({
+      artist: "Tom & Jerry",
+      rawTitle: "Tom & Jerry - Tom & Jerry's Hour",
+      title: "Tom & Jerry's Hour",
+    });
+  });
+
+  test("decodes Radio Alhara values and drops an artist equal to the title", async () => {
+    const read = (data: object) =>
+      tryRadioAlharaApi({
+        expiresAt: 2000,
+        fetchImpl: async () => json(data),
+        sampledAt: 1000,
+        streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
+      });
+
+    expect(
+      await read({ artist: "DJ Green Giant", title: "DJ Green Giant" })
+    ).toMatchObject({
+      artist: null,
+      rawTitle: "DJ Green Giant",
+      title: "DJ Green Giant",
+    });
+    expect(
+      await read({
+        artist: "Tom &amp; Jerry",
+        episodeTitle: "Caf&eacute; &amp; Bar&#039;s",
+      })
+    ).toMatchObject({
+      artist: "Tom & Jerry",
+      rawTitle: "Tom & Jerry - Café & Bar's",
+      title: "Café & Bar's",
+    });
+  });
+
+  test("decodes Latin-1 SHOUTcast currentsong responses", async () => {
+    const result = await tryShoutcastStatus({
+      expiresAt: 2000,
+      fetchImpl: (url) =>
+        Promise.resolve(
+          url.includes("/currentsong")
+            ? new Response(
+                Uint8Array.from("Björk - Jóga", (char) => char.charCodeAt(0)),
+                { headers: { "content-type": "text/plain" } }
+              )
+            : new Response("", { status: 404 })
+        ),
+      sampledAt: 1000,
+      streamUrl: "https://shoutcast.example/stream",
+    });
+    expect(result).toMatchObject({ artist: "Björk", title: "Jóga" });
+  });
+
+  test("reads SHOUTcast v1 7.html responses wrapped in HTML", async () => {
+    const result = await tryShoutcastStatus({
+      expiresAt: 2000,
+      fetchImpl: (url) =>
+        Promise.resolve(
+          url.includes("/7.html")
+            ? new Response(
+                Uint8Array.from(
+                  '<HTML><meta http-equiv="Pragma" content="no-cache"></head><body>1,1,39,500,2,128,Björk - Jóga, Live</body></html>',
+                  (char) => char.charCodeAt(0)
+                )
+              )
+            : new Response("", { status: 404 })
+        ),
+      sampledAt: 1000,
+      streamUrl: "https://shoutcast.example/stream",
+    });
+    expect(result).toMatchObject({
+      artist: "Björk",
+      rawTitle: "Björk - Jóga, Live",
+      title: "Jóga, Live",
+    });
+  });
+
+  test.each([
+    ["/art/cover.jpg", "https://azuracast.example/art/cover.jpg"],
+    ["javascript:alert(1)", null],
+    ["data:image/png;base64,AAAA", null],
+    ["https://cdn.example/cover.jpg", "https://cdn.example/cover.jpg"],
+  ])("validates AzuraCast artwork %s", async (art, expected) => {
+    const result = await tryAzuraCastNowPlaying(
+      {
+        expiresAt: 2000,
+        fetchImpl: async () =>
+          json({ now_playing: { song: { art, title: "Title" } } }),
+        sampledAt: 1000,
+        streamUrl: "https://azuracast.example/listen/main/radio.mp3",
+      },
+      "https://azuracast.example/api/nowplaying/main"
+    );
+    expect(result?.artworkUrl).toBe(expected);
+  });
+
+  test.each([
+    [
+      "/wp-content/uploads/show.jpg",
+      "https://radioblackout.org/wp-content/uploads/show.jpg",
+    ],
+    ["javascript:alert(1)", null],
+  ])("validates Radio BlackOut artwork %s", async (media, expected) => {
+    const result = await tryRadioBlackoutApi({
+      expiresAt: 2000,
+      fetchImpl: async () => json({ featured_media: media, title: "Show" }),
+      sampledAt: 1000,
+      streamUrl: "https://zeppelin.streampunk.cc/_stream/blackout.mp3",
+    });
+    expect(result?.artworkUrl).toBe(expected);
+  });
+
+  test.each([
+    ["/images/show.jpg", "https://www.nts.live/images/show.jpg"],
+    ["javascript:alert(1)", null],
+  ])("validates NTS artwork %s", async (picture, expected) => {
+    const result = await tryNtsLiveApi(
+      {
+        expiresAt: 2000,
+        fetchImpl: async () =>
+          json({
+            results: [
+              {
+                channel_name: "1",
+                now: {
+                  broadcast_title: "Show",
+                  embeds: { details: { media: { picture_medium: picture } } },
+                },
+              },
+            ],
+          }),
+        sampledAt: 1000,
+        streamUrl: "https://streams.radiomast.io/nts1",
+      },
+      "1"
+    );
+    expect(result?.artworkUrl).toBe(expected);
+  });
+
+  test("keeps Airtime artist and title fields instead of re-splitting them", async () => {
+    const result = await tryAirtimeLiveInfo(
+      {
+        expiresAt: 2000,
+        fetchImpl: async () =>
+          json({
+            shows: {
+              current: {
+                description: "<p>Show &amp; <b>tell</b></p>",
+                name: "Show",
+              },
+            },
+            tracks: {
+              current: {
+                metadata: {
+                  artist_name: "Simon &amp; Garfunkel - Live",
+                  track_title: "The Boxer",
+                },
+              },
+            },
+          }),
+        sampledAt: 1000,
+        streamUrl: "https://radio.example/live",
+      },
+      ["https://radio.example/api/live-info-v2"]
+    );
+    expect(result).toMatchObject({
+      artist: "Simon & Garfunkel - Live",
+      rawTitle: "Simon & Garfunkel - Live - The Boxer",
+      stationDescription: "Show & tell",
+      title: "The Boxer",
+    });
+  });
+
+  test("keeps AzuraCast artist and title fields instead of re-splitting them", async () => {
+    const result = await tryAzuraCastNowPlaying(
+      {
+        expiresAt: 2000,
+        fetchImpl: async () =>
+          json({
+            now_playing: {
+              song: { artist: "Simon & Garfunkel - Live", title: "The Boxer" },
+            },
+          }),
+        sampledAt: 1000,
+        streamUrl: "https://azuracast.example/listen/main/radio.mp3",
+      },
+      "https://azuracast.example/api/nowplaying/main"
+    );
+    expect(result).toMatchObject({
+      artist: "Simon & Garfunkel - Live",
+      title: "The Boxer",
+    });
+  });
+});

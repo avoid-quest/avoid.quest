@@ -41,11 +41,17 @@ export function getMediaSessionText(input: {
   metadata?: RadioNowPlaying | null;
 }): { title: string; artist: string } {
   const title = input.metadata?.title || input.radio.name;
-  const artist =
-    input.metadata?.artist ||
-    input.radio.description ||
-    input.radio.placeTitle ||
-    input.radio.name ||
-    "";
-  return { artist, title };
+  const artist = input.metadata?.artist?.trim();
+  if (artist && artist.toLocaleLowerCase() !== title.toLocaleLowerCase()) {
+    return { artist, title };
+  }
+  // A show is known: the station is the useful second line.
+  if (input.metadata?.title) {
+    return { artist: input.radio.name, title };
+  }
+  return {
+    artist:
+      input.radio.description || input.radio.placeTitle || input.radio.name,
+    title,
+  };
 }

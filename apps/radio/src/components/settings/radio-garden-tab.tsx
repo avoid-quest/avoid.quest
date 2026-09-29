@@ -135,9 +135,10 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
         <SearchField
           aria-label="Search Radio Garden"
           className="min-w-0 flex-1"
-          disabled={isSearching}
+          isSearching={isSearching}
           onChange={handleQueryChange}
           placeholder="Search 40,000+ radio stations…"
+          readOnly={isSearching}
           value={query}
         />
         <Button disabled={isSearching || !query.trim()} size="sm" type="submit">

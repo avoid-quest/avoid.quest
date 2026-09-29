@@ -4,7 +4,7 @@ import type {
   UnifiedSearchResult,
 } from "@avoid.quest/platforms";
 import { Button } from "@avoid.quest/ui/components/button";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
@@ -69,17 +69,32 @@ function ExternalSearchContent({
     setHasSearched(true);
   };
 
+  // Links and results resolve independently; only the latest pick may load.
+  const latestPick = useRef<"link" | "result" | null>(null);
   const { mutate: loadLink, isPending: isLoadingLink } = useDjTrackLoad({
     onError: (message) => setError(message),
-    onLoad: (radio) => onLoad(radio),
+    onLoad: (radio) => {
+      if (latestPick.current === "link") {
+        onLoad(radio);
+      }
+    },
   });
   const handleDirectLink = (value: string) => {
     if (!detectPlatformFromUrl(value)) {
       return false;
     }
     clearResults();
+    latestPick.current = "link";
     loadLink(value);
     return true;
+  };
+  const handleResultPick = () => {
+    latestPick.current = "result";
+  };
+  const handleResultLoad = (radio: Radio) => {
+    if (latestPick.current === "result") {
+      onLoad(radio);
+    }
   };
 
   const searchContextKey = [
@@ -108,7 +123,8 @@ function ExternalSearchContent({
 
       <SearchResults
         error={error}
-        onLoad={onLoad}
+        onLoad={handleResultLoad}
+        onPick={handleResultPick}
         results={results}
         showEmpty={hasSearched}
       />

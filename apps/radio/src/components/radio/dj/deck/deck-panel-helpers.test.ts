@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { Platform } from "@/lib/platform-types";
+import type { Platform, PlatformMetadata } from "@/lib/platform-types";
 import {
   calculateHasTracklist,
+  getChangeSourceSearchPlatform,
   isStreamingMetadata,
   resolveDeckPanelContentKind,
 } from "./deck-panel-helpers";
@@ -47,5 +48,60 @@ describe("resolveDeckPanelContentKind", () => {
 
     expect(isStreamingMetadata(metadata)).toBe(true);
     expect(calculateHasTracklist(metadata)).toBe(true);
+  });
+
+  test("shows Bandcamp artist and SoundCloud user tracklists", () => {
+    const tracks = [
+      { name: "One", streamUrl: "https://audio.example/one.mp3" },
+    ];
+    expect(
+      calculateHasTracklist({
+        itemType: "artist",
+        platform: "bandcamp",
+        tracks,
+        url: "https://artist.bandcamp.com",
+      } as PlatformMetadata)
+    ).toBe(true);
+    expect(
+      calculateHasTracklist({
+        itemType: "user",
+        platform: "soundcloud",
+        tracks,
+        url: "https://soundcloud.com/user",
+      } as PlatformMetadata)
+    ).toBe(true);
+    expect(
+      calculateHasTracklist({
+        itemType: "track",
+        platform: "soundcloud",
+        tracks,
+        url: "https://soundcloud.com/user/track",
+      } as PlatformMetadata)
+    ).toBe(false);
+  });
+
+  test("opens the Stations picker, not a track search, to change a station", () => {
+    expect(
+      getChangeSourceSearchPlatform({
+        itemType: "station",
+        platform: "radio-browser",
+        url: "https://radio.example/fip",
+      } as PlatformMetadata)
+    ).toBeNull();
+    expect(
+      getChangeSourceSearchPlatform({
+        itemType: "channel",
+        platform: "radiogarden",
+        url: "https://radio.garden/listen/fip",
+      } as PlatformMetadata)
+    ).toBeNull();
+    expect(getChangeSourceSearchPlatform(undefined)).toBeNull();
+    expect(
+      getChangeSourceSearchPlatform({
+        itemType: "track",
+        platform: "soundcloud",
+        url: "https://soundcloud.com/user/track",
+      } as PlatformMetadata)
+    ).toBe("soundcloud");
   });
 });

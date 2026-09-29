@@ -1,7 +1,11 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
-import type { DragEndEvent } from "@dnd-kit/core";
+import type {
+  Announcements,
+  DragEndEvent,
+  UniqueIdentifier,
+} from "@dnd-kit/core";
 import {
   closestCenter,
   DndContext,
@@ -32,6 +36,7 @@ import { ConfirmDeleteDialog } from "../radio/confirm-delete-dialog";
 import { RadioItemActions } from "../radio/radio-item-actions";
 import { RadioLogo } from "../radio/radio-logo";
 import { SearchField } from "../radio/search-field";
+import { stationFallbackSubtitle } from "../radio/station-row";
 
 import { RadioDialog } from "./radio-dialog";
 
@@ -79,14 +84,21 @@ function SortableRadioItem({
       ref={setNodeRef}
       style={style}
     >
-      <div
-        className="cursor-grab touch-manipulation text-muted-foreground/50 active:cursor-grabbing"
+      <button
+        aria-label={`Reorder ${radio.name}`}
+        className="cursor-grab touch-manipulation rounded-sm text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+        type="button"
         {...attributes}
         {...listeners}
       >
         <GripVerticalIcon className="size-3.5" />
-      </div>
-      <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="sm" />
+      </button>
+      <RadioLogo
+        decorative
+        logoUrl={radio.logoUrl}
+        name={radio.name}
+        size="sm"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm">{radio.name}</span>
@@ -97,8 +109,7 @@ function SortableRadioItem({
           ) : null}
         </div>
         <p className="truncate text-muted-foreground text-xs">
-          {[radio.placeTitle, radio.countryTitle].filter(Boolean).join(", ") ||
-            radio.description}
+          {stationFallbackSubtitle(radio)}
         </p>
       </div>
       <div className="flex items-center gap-1">
@@ -109,7 +120,7 @@ function SortableRadioItem({
           radio={radio}
         />
         <Checkbox
-          aria-label="Show in player"
+          aria-label={`Show ${radio.name} in player`}
           checked={radio.enabled ?? true}
           className="shrink-0"
           disabled={disabled}
@@ -122,8 +133,29 @@ function SortableRadioItem({
 
 const WHITESPACE = /\s+/;
 
+function stationName(radios: Radio[] | undefined, id: UniqueIdentifier) {
+  return (
+    radios?.find((radio) => radio.id?.toString() === String(id))?.name ??
+    "Station"
+  );
+}
+
 export function RadioManagement() {
   const { data: radios } = useAllRadios();
+  // Screen readers hear station names, not record ids, while reordering.
+  const reorderAnnouncements: Announcements = {
+    onDragCancel: ({ active }) =>
+      `Moving ${stationName(radios, active.id)} was cancelled.`,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? `${stationName(radios, active.id)} moved to the place of ${stationName(radios, over.id)}.`
+        : `${stationName(radios, active.id)} was dropped.`,
+    onDragOver: ({ active, over }) =>
+      over
+        ? `${stationName(radios, active.id)} is over ${stationName(radios, over.id)}.`
+        : undefined,
+    onDragStart: ({ active }) => `Picked up ${stationName(radios, active.id)}.`,
+  };
   const [isUpdating, setIsUpdating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -264,6 +296,13 @@ export function RadioManagement() {
       </div>
       <div style={{ touchAction: "pan-y" }}>
         <DndContext
+          accessibility={{
+            announcements: reorderAnnouncements,
+            screenReaderInstructions: {
+              draggable:
+                "To reorder, press Space or Enter, move with the arrow keys, then press Space or Enter again. Escape cancels.",
+            },
+          }}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           sensors={sensors}

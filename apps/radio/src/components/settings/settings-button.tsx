@@ -23,6 +23,15 @@ type SettingsButtonProps = {
   trigger?: React.ReactNode;
 };
 
+/** Escape during a keyboard reorder cancels the drag, not the whole drawer. */
+function keepOpenWhileReordering(event: KeyboardEvent) {
+  if (
+    document.querySelector("[aria-roledescription=sortable][aria-pressed=true]")
+  ) {
+    event.preventDefault();
+  }
+}
+
 export function SettingsButton({
   defaultTab,
   className,
@@ -45,7 +54,7 @@ export function SettingsButton({
           </Button>
         )}
       </DrawerTrigger>
-      <DrawerContent>
+      <DrawerContent onEscapeKeyDown={keepOpenWhileReordering}>
         <div className="mx-auto w-full max-w-6xl">
           <DrawerHeader className="pb-2">
             <DrawerTitle>Settings</DrawerTitle>

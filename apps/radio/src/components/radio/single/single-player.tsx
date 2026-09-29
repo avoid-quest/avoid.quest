@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
@@ -26,19 +26,27 @@ type SinglePlayerProps = {
 };
 
 async function handleToggleRadio(_radio: Radio, _enabled: boolean) {
-  // Handled by RadioItemActions component
+  // Handled by RadioItemActions. Hiding the current Station keeps it playing;
+  // the panel shows its live record, so its menu then offers Show.
 }
+
+/** Space toggles playback unless the key already activates something else. */
+const SPACE_SHORTCUT_IGNORED_TARGETS =
+  "input, textarea, select, button, a, summary, [role=slider], [role=menuitem], [role=option], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=dialog], [role=menu]";
 
 export function SinglePlayer({ radios }: SinglePlayerProps) {
   const {
     currentRadio,
     isPlaying,
     isLoading,
+    isMuted,
     error,
     volume,
+    playRadio,
     selectRadio,
     togglePlayPause,
     setVolume,
+    toggleMute,
   } = useSingleSession();
 
   const { metadata } = useRadioMetadata({
@@ -55,21 +63,14 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
   const sessionRadios = useSessionRadios((s) => s.radios);
   const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);
-  const handleResolved = useCallback(
-    async (radio: Radio) => {
-      await selectRadio(radio);
-    },
-    [selectRadio]
-  );
+  // A search pick means "listen to it", so it plays even when paused.
   const { saveDiscoveredStation, selectDiscoveredStation } =
-    useDiscoveredStationActions(handleResolved);
+    useDiscoveredStationActions(playRadio);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
-  const [unmutedVolume, setUnmutedVolume] = useState(1);
-  const isMuted = volume <= 0;
   // Nothing selected (cold start, or the station was deleted): show the
   // first station paused instead of an empty panel.
   useEffect(() => {
@@ -80,21 +81,20 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   }, [currentRadio, radios, selectRadio]);
 
   useEffect(() => {
-    if (volume > 0) {
-      setUnmutedVolume(volume);
-    }
-  }, [volume]);
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== " " || event.repeat || !currentRadio) {
+      if (
+        event.key !== " " ||
+        event.repeat ||
+        event.defaultPrevented ||
+        !currentRadio
+      ) {
         return;
       }
       const { target } = event;
       if (
         target instanceof HTMLElement &&
         (target.isContentEditable ||
-          target.closest("input, textarea, select, button, a, [role=slider]"))
+          target.closest(SPACE_SHORTCUT_IGNORED_TARGETS))
       ) {
         return;
       }
@@ -141,18 +141,6 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
-    if (newVolume > 0) {
-      setUnmutedVolume(newVolume);
-    }
-  };
-
-  const handleMuteToggle = () => {
-    if (isMuted) {
-      setVolume(unmutedVolume > 0 ? unmutedVolume : 1);
-    } else {
-      setUnmutedVolume(volume);
-      setVolume(0);
-    }
   };
   const handleCancelDelete = () => setDeleteConfirm(null);
 
@@ -166,7 +154,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             isMuted={isMuted}
             isPlaying={isPlaying}
             metadata={metadata}
-            onMuteToggle={handleMuteToggle}
+            onMuteToggle={toggleMute}
             onPlayPause={togglePlayPause}
             onVolumeChange={handleVolumeChange}
             radio={currentRadio}
@@ -187,7 +175,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               <RadioSearchBar
                 onSaveDiscovered={saveDiscoveredStation}
                 onSelectDiscovered={selectDiscoveredStation}
-                onSelectLocal={selectRadio}
+                onSelectLocal={playRadio}
                 radios={radios ?? []}
               />
             }
@@ -212,7 +200,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               isMuted={isMuted}
               isPlaying={isPlaying}
               metadata={metadata}
-              onMuteToggle={handleMuteToggle}
+              onMuteToggle={toggleMute}
               onPlayPause={togglePlayPause}
               onVolumeChange={handleVolumeChange}
               radio={currentRadio}

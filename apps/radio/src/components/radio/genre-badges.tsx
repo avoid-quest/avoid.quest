@@ -1,15 +1,26 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { isPlaceholderMetadataValue } from "@/lib/metadata/title-parser";
 
+const GENRE_SEPARATOR_PATTERN = /[,;|]/;
+// "Rock/Pop" is two genres; a spaced "R&B / Soul" stays one label.
+const GENRE_SLASH_PATTERN = /(?<=\S)\/(?=\S)/;
+
+/** Distinct genres, keeping the first spelling and dropping placeholders. */
 export function splitGenres(genre?: string | null): string[] {
-  return [
-    ...new Set(
-      genre
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    ),
-  ];
+  const genres = new Map<string, string>();
+  const parts = (genre?.split(GENRE_SEPARATOR_PATTERN) ?? [])
+    // Drop "n/a" before "/" splits it into "n" and "a".
+    .filter((part) => !isPlaceholderMetadataValue(part))
+    .flatMap((part) => part.split(GENRE_SLASH_PATTERN));
+  for (const part of parts) {
+    const value = part.trim();
+    const key = value.toLowerCase();
+    if (!(isPlaceholderMetadataValue(value) || genres.has(key))) {
+      genres.set(key, value);
+    }
+  }
+  return [...genres.values()];
 }
 
 const badgeClassName =
@@ -37,7 +48,6 @@ export function GenreBadges({
 
   return (
     <ul
-      aria-label="Genres"
       className={cn("flex min-w-0 flex-wrap items-center gap-1", className)}
       title={genres.join(", ")}
     >

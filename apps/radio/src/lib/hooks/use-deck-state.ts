@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 import {
+  type DeckId,
   type DjDeckHandle,
   type DjDeckLoadIntent,
   type DjDeckLoadResult,
@@ -35,11 +36,12 @@ type DeckStateActions = {
 };
 
 function createDeckActions(
+  deckId: DeckId,
   deck: DjDeckHandle,
   pendingSource: DjDeckModule["pendingSource"]
 ): DeckStateActions {
   return {
-    cancelPendingSource: pendingSource.cancel,
+    cancelPendingSource: () => pendingSource.cancel(deckId),
     loadSource: deck.load,
     pause: () => deck.transport({ type: "pause" }),
     play: () => deck.transport({ type: "play" }),
@@ -118,14 +120,14 @@ function createDeckStateResult(
 
 function usePendingPlatform(
   module: DjDeckModule,
-  deckId: "deck-a" | "deck-b"
+  deckId: DeckId
 ): Platform | undefined {
-  const pendingSource = useSyncExternalStore(
+  const pendingSources = useSyncExternalStore(
     module.pendingSource.subscribe,
     module.pendingSource.getSnapshot,
     module.pendingSource.getSnapshot
   );
-  return pendingSource?.deckId === deckId ? pendingSource.platform : undefined;
+  return pendingSources[deckId] ?? undefined;
 }
 
 /**
@@ -137,7 +139,7 @@ export function useDeckAState(): DeckStateResult {
   const deck = module.deck("deck-a");
   const pendingPlatform = usePendingPlatform(module, "deck-a");
   const actions = useMemo(
-    () => createDeckActions(deck, module.pendingSource),
+    () => createDeckActions("deck-a", deck, module.pendingSource),
     [deck, module.pendingSource]
   );
   return useMemo(
@@ -155,7 +157,7 @@ export function useDeckBState(): DeckStateResult {
   const deck = module.deck("deck-b");
   const pendingPlatform = usePendingPlatform(module, "deck-b");
   const actions = useMemo(
-    () => createDeckActions(deck, module.pendingSource),
+    () => createDeckActions("deck-b", deck, module.pendingSource),
     [deck, module.pendingSource]
   );
   return useMemo(

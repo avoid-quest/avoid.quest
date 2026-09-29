@@ -29,6 +29,33 @@ type DjConsoleMobileProps = {
   onDeckBCueChange: (enabled: boolean) => void;
 };
 
+/**
+ * The A and B meters over the crossfader. They update at meter rate, so they
+ * read peak levels here rather than re-rendering the whole console.
+ */
+function MiniMixerMeters() {
+  const deckAPeakLevel = useDeckAPeakLevel();
+  const deckBPeakLevel = useDeckBPeakLevel();
+  return (
+    <div className="flex items-center gap-2 px-7">
+      <PeakMeter
+        className="flex-1"
+        compact={true}
+        left={deckAPeakLevel.left}
+        orientation="horizontal"
+        right={deckAPeakLevel.right}
+      />
+      <PeakMeter
+        className="flex-1"
+        compact={true}
+        left={deckBPeakLevel.left}
+        orientation="horizontal"
+        right={deckBPeakLevel.right}
+      />
+    </div>
+  );
+}
+
 export function DjConsoleMobile({
   radios,
   crossfadePosition,
@@ -42,8 +69,6 @@ export function DjConsoleMobile({
   onDeckBCueChange,
 }: DjConsoleMobileProps) {
   const [mobileTab, setMobileTab] = useState<"left" | "right">("left");
-  const deckAPeakLevel = useDeckAPeakLevel();
-  const deckBPeakLevel = useDeckBPeakLevel();
   const deckA = useDeckA();
   const deckB = useDeckB();
   const djError = useDjError();
@@ -68,22 +93,7 @@ export function DjConsoleMobile({
       {/* Mini Mixer Bar */}
       <div className="flex shrink-0 flex-col gap-1 rounded-lg border border-border/50 bg-card/50 p-1.5 sm:gap-1.5 sm:p-2">
         {/* Meters line up over the crossfader track, A left, B right */}
-        <div className="flex items-center gap-2 px-7">
-          <PeakMeter
-            className="flex-1"
-            compact={true}
-            left={deckAPeakLevel.left}
-            orientation="horizontal"
-            right={deckAPeakLevel.right}
-          />
-          <PeakMeter
-            className="flex-1"
-            compact={true}
-            left={deckBPeakLevel.left}
-            orientation="horizontal"
-            right={deckBPeakLevel.right}
-          />
-        </div>
+        <MiniMixerMeters />
 
         {/* Crossfader: the big cap, full width */}
         <div

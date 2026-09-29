@@ -3,6 +3,7 @@ import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
   getMultipleChannelId,
+  getPlaybackChannel,
   getPlaybackSession,
   playbackSessionsCollection,
   updatePlaybackChannel,
@@ -1080,6 +1081,86 @@ describe("Multiple Playback", () => {
       "multiple",
       channelId,
       true
+    );
+  });
+
+  test("a saved Session Station keeps its Channel state and playback", async () => {
+    const other = station("other");
+    const discovered = station("rb_live");
+    insertMultipleSession([other, discovered]);
+    const sessionChannelId = getMultipleChannelId(discovered);
+    updatePlaybackChannel("multiple", sessionChannelId, (draft) => {
+      draft.effectsDryWet = 0.4;
+      draft.muted = true;
+      draft.pan = -0.5;
+      draft.volume = 0.35;
+    });
+    setPlaybackChannelRuntime(sessionChannelId, () => ({
+      isPlaying: true,
+      soundId: `multiple:${sessionChannelId}`,
+    }));
+    const context = createTestContext();
+    const playback = getMultiplePlayback({ ctx: context });
+    const saved = { ...discovered, id: "saved-1" };
+    const savedChannelId = getMultipleChannelId(saved);
+
+    playback.synchronizeStations([other, saved], []);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      getPlaybackSession("multiple")?.channels.map((channel) => channel.id)
+    ).toEqual([getMultipleChannelId(other), savedChannelId]);
+    expect(getPlaybackChannel("multiple", savedChannelId)).toMatchObject({
+      effectsDryWet: 0.4,
+      muted: true,
+      pan: -0.5,
+      radio: saved,
+      volume: 0.35,
+    });
+    expect(context.channels.deactivate).toHaveBeenCalledWith(sessionChannelId);
+    expect(context.audio.playSound).toHaveBeenCalledWith(
+      `multiple:${savedChannelId}`,
+      0
+    );
+  });
+
+  test("a new Station with an unrelated stream starts with default controls", () => {
+    const removed = station("removed");
+    insertMultipleSession([removed]);
+    updatePlaybackChannel(
+      "multiple",
+      getMultipleChannelId(removed),
+      (draft) => {
+        draft.volume = 0.35;
+      }
+    );
+    const context = createTestContext();
+    const added = station("added");
+
+    getMultiplePlayback({ ctx: context }).synchronizeStations([added], []);
+
+    expect(
+      getPlaybackChannel("multiple", getMultipleChannelId(added))?.volume
+    ).toBe(1);
+    expect(context.audio.playSound).not.toHaveBeenCalled();
+  });
+
+  test("unmuting re-applies the persisted Channel volume", () => {
+    const radio = station("unmute-volume");
+    const channelId = getMultipleChannelId(radio);
+    insertMultipleSession([radio]);
+    updatePlaybackChannel("multiple", channelId, (draft) => {
+      draft.muted = true;
+      draft.volume = 0.35;
+    });
+    const context = createTestContext();
+
+    getMultiplePlayback({ ctx: context }).toggleMute(channelId);
+
+    expect(context.channels.setVolume).toHaveBeenLastCalledWith(
+      "multiple",
+      channelId,
+      0.35
     );
   });
 });

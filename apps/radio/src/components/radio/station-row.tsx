@@ -57,6 +57,7 @@ export function StationRowText({
             "truncate text-sm leading-snug",
             isCurrent && "font-semibold"
           )}
+          dir="auto"
         >
           {title}
         </p>
@@ -76,7 +77,10 @@ export function StationRowSubtitle({
     return null;
   }
   return (
-    <p className="mt-0.5 truncate text-muted-foreground text-xs leading-snug">
+    <p
+      className="mt-0.5 truncate text-muted-foreground text-xs leading-snug"
+      dir="auto"
+    >
       {children}
     </p>
   );

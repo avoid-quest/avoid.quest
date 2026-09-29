@@ -1,8 +1,52 @@
 import { describe, expect, test } from "bun:test";
 import type { PlatformMetadata } from "@/lib/platform-types";
-import { getCurrentTrackIndex, isCollection } from "./metadata-helpers";
+import {
+  getCurrentTrackIndex,
+  isCollection,
+  isCollectionItem,
+} from "./metadata-helpers";
 
 describe("isCollection", () => {
+  test("treats Bandcamp artists and SoundCloud users as tracklists", () => {
+    for (const [platform, itemType] of [
+      ["bandcamp", "album"],
+      ["bandcamp", "artist"],
+      ["bandcamp", "collection"],
+      ["soundcloud", "playlist"],
+      ["soundcloud", "user"],
+      ["youtube", "playlist"],
+      ["static-audio", "playlist"],
+    ]) {
+      expect(isCollectionItem(platform, itemType)).toBeTrue();
+    }
+    for (const [platform, itemType] of [
+      ["bandcamp", "track"],
+      ["soundcloud", "track"],
+      ["youtube", "video"],
+      ["radiogarden", "channel"],
+    ]) {
+      expect(isCollectionItem(platform, itemType)).toBeFalse();
+    }
+  });
+
+  test("finds the clicked track inside a SoundCloud user's tracks", () => {
+    const metadata = {
+      itemType: "user",
+      platform: "soundcloud",
+      tracks: [
+        { name: "One", streamUrl: "https://radio.example/1.mp3" },
+        { name: "Two", streamUrl: "https://radio.example/2.mp3" },
+        { name: "Three", streamUrl: "https://radio.example/3.mp3" },
+      ],
+      url: "https://soundcloud.com/example",
+    } as PlatformMetadata;
+
+    expect(isCollection(metadata)).toBeTrue();
+    expect(getCurrentTrackIndex(metadata, "https://radio.example/3.mp3")).toBe(
+      2
+    );
+  });
+
   test("treats Bandcamp collection as collection metadata", () => {
     const metadata = {
       itemType: "collection",

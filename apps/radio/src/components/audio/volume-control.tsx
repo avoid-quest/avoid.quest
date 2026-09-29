@@ -50,6 +50,7 @@ export function VolumeControl({
       </Button>
       <Slider
         aria-label={`Volume${suffix}`}
+        aria-valuetext={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
         className="min-w-0 flex-1"
         defaultValue={[1]}
         max={1}

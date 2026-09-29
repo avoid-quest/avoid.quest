@@ -45,11 +45,13 @@ function TransportArtwork({
 }
 
 function TransportPlayButton({
+  label,
   isPlaying,
   isLoading,
   isBuffering,
   onPlayPause,
 }: {
+  label: string;
   isPlaying: boolean;
   isLoading: boolean;
   isBuffering: boolean;
@@ -63,6 +65,7 @@ function TransportPlayButton({
         inline
         isLoading={isLoading}
         isPlaying={isPlaying}
+        label={label}
         onClick={onPlayPause}
         size="icon"
         variant={isPlaying && !isLoading ? "outline" : "default"}
@@ -204,6 +207,7 @@ export function DeckTransport({
           isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
+          label={deckId === "deck-a" ? "deck A" : "deck B"}
           onPlayPause={handlePlayPause}
         />
 

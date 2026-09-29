@@ -83,6 +83,7 @@ function ChannelBody({
       <span className="font-bold font-mono text-xs">{label}</span>
       <div className="grid grid-cols-2 gap-x-1 gap-y-1">
         <ChannelSlider
+          ariaLabel={`Deck ${label} filter`}
           defaultValue={0}
           fillFromDefault
           formatValue={formatChannelFilter}
@@ -95,6 +96,7 @@ function ChannelBody({
           value={deck.channelFilter}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${label} effects mix`}
           defaultValue={1}
           formatValue={formatPercent}
           label="FX"
@@ -106,6 +108,7 @@ function ChannelBody({
           value={deck.effectsDryWet}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${label} pan`}
           defaultValue={0}
           fillFromDefault
           formatValue={formatPan}
@@ -118,6 +121,7 @@ function ChannelBody({
           value={deck.pan}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${label} speed`}
           defaultValue={1}
           fillFromDefault
           formatValue={formatSpeed}

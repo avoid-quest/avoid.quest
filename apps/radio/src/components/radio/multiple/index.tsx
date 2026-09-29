@@ -10,6 +10,10 @@ import { MultipleGlobalControls } from "./multiple-global-controls";
 import { MultipleRadioCard } from "./multiple-radio-card";
 import { useMultipleRadioManagement } from "./use-multiple-radio-management";
 
+/** Space toggles playback unless the key already activates something else. */
+const SPACE_SHORTCUT_IGNORED_TARGETS =
+  "input, textarea, select, button, a, summary, [role=slider], [role=menuitem], [role=option], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=dialog], [role=menu]";
+
 export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   const {
     session,
@@ -110,14 +114,19 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== " " || event.repeat || allRadios.length === 0) {
+      if (
+        event.key !== " " ||
+        event.repeat ||
+        event.defaultPrevented ||
+        allRadios.length === 0
+      ) {
         return;
       }
       const { target } = event;
       if (
         target instanceof HTMLElement &&
         (target.isContentEditable ||
-          target.closest("input, textarea, select, button, a, [role=slider]"))
+          target.closest(SPACE_SHORTCUT_IGNORED_TARGETS))
       ) {
         return;
       }

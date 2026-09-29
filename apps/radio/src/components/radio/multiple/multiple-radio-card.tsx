@@ -94,6 +94,7 @@ export function MultipleRadioCard({
           iconClassName="size-3.5"
           isLoading={isLoading}
           isPlaying={isPlaying}
+          label={radio.name}
           onClick={handleTogglePlayPause}
           size="sm"
           variant={isPlaying && !isLoading ? "outline" : "default"}
@@ -103,6 +104,7 @@ export function MultipleRadioCard({
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onVolumeChange={handleVolumeChange}
+          target={radio.name}
           volume={volume}
         />
       </div>

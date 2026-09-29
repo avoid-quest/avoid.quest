@@ -65,6 +65,17 @@ function Artwork({
   );
 }
 
+/** Case-insensitive, so "DJ X" and "dj x" count as one name. */
+export function sameText(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  return (
+    Boolean(a && b) &&
+    a?.trim().toLocaleLowerCase() === b?.trim().toLocaleLowerCase()
+  );
+}
+
 function getIdentity(
   radio: Radio,
   metadata: RadioNowPlayingMetadata | null | undefined
@@ -72,7 +83,7 @@ function getIdentity(
   const title = metadata?.title || metadata?.artist || radio.name;
   const hasNowPlaying = Boolean(metadata?.title || metadata?.artist);
   const artist =
-    metadata?.title && metadata.artist !== metadata.title
+    metadata?.title && !sameText(metadata.artist, metadata.title)
       ? metadata.artist
       : null;
   const location = formatLocation(radio.placeTitle, radio.countryTitle);
@@ -173,6 +184,7 @@ export function RadioNowPlaying({
                   "mb-0.5 truncate text-muted-foreground text-xs",
                   featured && "mb-1.5"
                 )}
+                dir="auto"
               >
                 {radio.name}
               </p>
@@ -194,7 +206,14 @@ export function RadioNowPlaying({
                   target="_blank"
                   title={title}
                 >
-                  <span className={featured ? "line-clamp-3" : "truncate"}>
+                  <span
+                    className={
+                      featured
+                        ? "line-clamp-3 [overflow-wrap:anywhere]"
+                        : "truncate"
+                    }
+                    dir="auto"
+                  >
                     {title}
                   </span>
                   <ArrowUpRightIcon
@@ -204,7 +223,12 @@ export function RadioNowPlaying({
                 </a>
               ) : (
                 <span
-                  className={featured ? "line-clamp-3" : "block truncate"}
+                  className={
+                    featured
+                      ? "line-clamp-3 [overflow-wrap:anywhere]"
+                      : "block truncate"
+                  }
+                  dir="auto"
                   title={title}
                 >
                   {title}
@@ -217,6 +241,7 @@ export function RadioNowPlaying({
                   "mt-0.5 truncate text-muted-foreground text-xs",
                   featured && "mt-2 text-sm lg:text-base"
                 )}
+                dir="auto"
                 title={subtitle}
               >
                 {subtitle}
@@ -278,7 +303,10 @@ function StationInformation({
         ) : null}
       </div>
       {description ? (
-        <p className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed">
+        <p
+          className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed"
+          dir="auto"
+        >
           {description}
         </p>
       ) : null}
@@ -344,11 +372,17 @@ function NowPlayingDetails({
               {hasNowPlaying ? (
                 <p className="text-muted-foreground text-xs">{radio.name}</p>
               ) : null}
-              <DialogTitle className="break-words text-2xl leading-tight tracking-tight sm:text-3xl">
+              <DialogTitle
+                className="break-words text-2xl leading-tight tracking-tight sm:text-3xl"
+                dir="auto"
+              >
                 {title}
               </DialogTitle>
               {subtitle ? (
-                <p className="break-words text-base text-muted-foreground">
+                <p
+                  className="break-words text-base text-muted-foreground"
+                  dir="auto"
+                >
                   {subtitle}
                 </p>
               ) : null}
@@ -384,7 +418,10 @@ function NowPlayingDetails({
             <h3 className="font-medium text-sm">
               {hasNowPlaying ? "About this broadcast" : "About the station"}
             </h3>
-            <p className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed">
+            <p
+              className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed"
+              dir="auto"
+            >
               {description}
             </p>
           </section>

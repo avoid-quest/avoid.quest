@@ -77,4 +77,28 @@ describe("metadata display formatting", () => {
       title: "Station",
     });
   });
+
+  test("names the station, not its description, under a known show", () => {
+    const radio: Radio = {
+      description: "A long paragraph about the station.",
+      name: "Sygma Radio",
+      streamUrl: "https://example.com/radio.mp3",
+    };
+
+    expect(
+      getMediaSessionText({
+        metadata: nowPlaying({ artist: null, title: "GUESTS 113" }),
+        radio,
+      })
+    ).toEqual({ artist: "Sygma Radio", title: "GUESTS 113" });
+    expect(
+      getMediaSessionText({
+        metadata: nowPlaying({
+          artist: "DJ Green Giant",
+          title: "dj green giant",
+        }),
+        radio,
+      })
+    ).toEqual({ artist: "Sygma Radio", title: "dj green giant" });
+  });
 });

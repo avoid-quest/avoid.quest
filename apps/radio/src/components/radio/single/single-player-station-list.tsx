@@ -71,7 +71,12 @@ function StationRow({
         onClick={handleSelect}
         type="button"
       >
-        <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
+        <RadioLogo
+          decorative
+          logoUrl={radio.logoUrl}
+          name={radio.name}
+          size="md"
+        />
         <StationRowText
           indicator={
             isCurrent && isPlaying ? (

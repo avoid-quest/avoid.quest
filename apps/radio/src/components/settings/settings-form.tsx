@@ -13,10 +13,11 @@ import { DrawerClose } from "@avoid.quest/ui/components/drawer";
 import {
   Field,
   FieldContent,
-  FieldTitle,
+  FieldLabel,
 } from "@avoid.quest/ui/components/field";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
+import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import {
   DatabaseIcon,
   type LucideIcon,
@@ -128,6 +129,8 @@ export function SettingsForm({
       setIsResetting(false);
     }
   };
+  // The section list is a column from md up: arrow keys follow its layout.
+  const isMobile = useIsMobile();
   const handleSectionChange = (value: string) => {
     setActive(value as SettingsSection);
   };
@@ -140,7 +143,11 @@ export function SettingsForm({
     <div className="flex h-[72vh] min-h-0 flex-col gap-3">
       <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
         <div className="flex shrink-0 flex-col md:w-40">
-          <Tabs onValueChange={handleSectionChange} value={active}>
+          <Tabs
+            onValueChange={handleSectionChange}
+            orientation={isMobile ? "horizontal" : "vertical"}
+            value={active}
+          >
             <TabsList className="grid h-auto w-full grid-cols-4 md:flex md:flex-col md:items-stretch md:bg-transparent md:p-0">
               {SETTINGS_SECTIONS.map((section) => {
                 const Icon = section.icon;
@@ -157,7 +164,7 @@ export function SettingsForm({
               })}
             </TabsList>
           </Tabs>
-          <span className="mt-auto hidden px-2 py-1 font-mono text-[10px] text-muted-foreground/40 md:block">
+          <span className="mt-auto hidden px-2 py-1 font-mono text-[10px] text-muted-foreground md:block">
             v{__APP_VERSION__}
           </span>
         </div>
@@ -177,7 +184,7 @@ export function SettingsForm({
       </div>
 
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[10px] text-muted-foreground/40 md:hidden">
+        <span className="font-mono text-[10px] text-muted-foreground md:hidden">
           v{__APP_VERSION__}
         </span>
         <DrawerClose asChild>
@@ -284,6 +291,7 @@ function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
             onCheckedChange={handleRestoreStateToggle}
           />
         }
+        controlId="restore-state"
         title="Restore playback state"
       />
     </div>
@@ -293,19 +301,22 @@ function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
 function SettingRow({
   title,
   control,
+  controlId,
   icon: Icon,
 }: {
   title: string;
   control: React.ReactNode;
+  /** The control's id, so the title is its accessible name. */
+  controlId: string;
   icon?: LucideIcon;
 }) {
   return (
     <Field className="py-3" orientation="horizontal">
       <FieldContent>
-        <FieldTitle>
+        <FieldLabel className="items-center font-medium" htmlFor={controlId}>
           {Icon ? <Icon className="size-3.5 text-muted-foreground" /> : null}
           {title}
-        </FieldTitle>
+        </FieldLabel>
       </FieldContent>
       {control}
     </Field>

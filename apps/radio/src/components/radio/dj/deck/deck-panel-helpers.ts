@@ -1,3 +1,4 @@
+import { isCollection } from "@/lib/external-url/metadata-helpers";
 import type {
   BandcampMetadata,
   Platform,
@@ -53,29 +54,24 @@ export function isStreamingMetadata(
 }
 
 export function calculateHasTracklist(metadata?: PlatformMetadata): boolean {
-  if (!isStreamingMetadata(metadata)) {
-    return false;
-  }
-  const hasTracks = Boolean(metadata.tracks && metadata.tracks.length > 0);
-  if (!hasTracks) {
-    return false;
-  }
+  return (
+    isStreamingMetadata(metadata) &&
+    Boolean(metadata.tracks && metadata.tracks.length > 0) &&
+    isCollection(metadata)
+  );
+}
 
-  if (metadata.platform === "bandcamp") {
-    return (
-      metadata.itemType === "album" ||
-      metadata.itemType === "artist" ||
-      metadata.itemType === "collection"
-    );
-  }
-  if (metadata.platform === "soundcloud") {
-    return metadata.itemType === "playlist" || metadata.itemType === "user";
-  }
-  if (metadata.platform === "youtube") {
-    return metadata.itemType === "playlist";
-  }
-  if (metadata.platform === "static-audio") {
-    return metadata.itemType === "playlist";
-  }
-  return false;
+/**
+ * The search "Change source" opens for a loaded item, or null when it should
+ * open the Stations picker instead (stations, directory stations, devices).
+ */
+export function getChangeSourceSearchPlatform(
+  metadata?: PlatformMetadata
+): "bandcamp" | "soundcloud" | "youtube" | null {
+  const platform = metadata?.platform;
+  return platform === "bandcamp" ||
+    platform === "soundcloud" ||
+    platform === "youtube"
+    ? platform
+    : null;
 }

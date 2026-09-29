@@ -485,6 +485,9 @@ export class AudioManager {
     }
 
     instance.playing = false;
+    // A pause while connecting abandons the connect; only playback start or an
+    // error would otherwise clear the flag.
+    instance.loading = false;
 
     // Device input: mute gain instead of stopping stream (instant unmute later)
     if (instance.isDeviceInput) {
@@ -500,6 +503,7 @@ export class AudioManager {
 
     notifySoundState(this.notifyListeners, soundId, instance, {
       error: null,
+      isLoading: false,
       isPlaying: false,
     });
   }

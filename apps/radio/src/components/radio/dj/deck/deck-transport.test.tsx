@@ -25,7 +25,6 @@ const deckContextMock = {
   metadata: undefined as PlatformMetadata | undefined,
   pan: 0,
   pause: () => undefined,
-  peakLevel: { left: 0, right: 0 },
   play: async () => undefined,
   radio: {
     name: LONG_TITLE,
@@ -145,7 +144,7 @@ describe("DeckTransport", () => {
       expect(html.includes("Details for Current Show")).toBeTrue();
       expect(html.includes('src="https://example.com/show.jpg"')).toBeTrue();
       expect(html.includes('href="https://example.com/show"')).toBeTrue();
-      expect(html.includes('aria-label="Play"')).toBeTrue();
+      expect(html.includes('aria-label="Play deck A"')).toBeTrue();
     });
   }
 });

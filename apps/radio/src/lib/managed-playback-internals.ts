@@ -109,6 +109,13 @@ export function restoreManagedChannels(
   }
 }
 
+/** A muted Channel starts silent; its volume stays for when it is unmuted. */
+export function getChannelPlayVolume(
+  channel: Pick<PlaybackChannelRecord, "muted" | "volume">
+): number {
+  return channel.muted ? 0 : channel.volume;
+}
+
 export async function playManagedSound(
   sessionId: ManagedPlaybackSessionId,
   soundId: string,
@@ -144,6 +151,14 @@ export async function setManagedChannelPlaying(
     if (runtime.soundId) {
       ctx.audio.pauseSound(runtime.soundId);
     }
+    // A pause during connect abandons it; don't leave the Channel loading.
+    if (runtime.isLoading || runtime.isBuffering || runtime.isPlaying) {
+      setPlaybackChannelRuntime(channel.id, () => ({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      }));
+    }
     return;
   }
 
@@ -159,7 +174,12 @@ export async function setManagedChannelPlaying(
     );
     ctx.channels.setMuted(sessionId, channel.id, channel.muted);
   }
-  await playManagedSound(sessionId, soundId, channel.volume, ctx);
+  await playManagedSound(
+    sessionId,
+    soundId,
+    getChannelPlayVolume(channel),
+    ctx
+  );
 }
 
 export function clearManagedPlaybackErrors(

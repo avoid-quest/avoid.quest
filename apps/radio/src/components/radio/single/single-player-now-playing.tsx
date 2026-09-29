@@ -77,7 +77,6 @@ function PlayerPanel({
       <div className="flex items-center gap-4 border-border/50 border-t pt-4">
         <PlayPauseButton
           className="size-12 shrink-0"
-          disabled={isLoading}
           iconClassName="size-5"
           isLoading={isLoading}
           isPlaying={isPlaying}

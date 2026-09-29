@@ -289,8 +289,9 @@ export function ImportExport({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Mode</Label>
+                  <Label id="import-mode-label">Mode</Label>
                   <RadioGroup
+                    aria-labelledby="import-mode-label"
                     onValueChange={handleImportModeChange}
                     value={importMode}
                   >

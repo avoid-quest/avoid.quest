@@ -18,6 +18,7 @@ import { JSDOM } from "jsdom";
 import type { Radio } from "@/lib/audio";
 import {
   radioMetadataKeys,
+  radioMetadataPreviewRefreshInterval,
   radioMetadataRefreshInterval,
 } from "@/lib/hooks/use-radio-metadata";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
@@ -163,6 +164,40 @@ test("polls at the server's remaining cache lifetime in the browser's clock", ()
   ).toBe(3_600_000);
 });
 
+test("refreshes previews after the server deadline, never faster than 5 minutes", () => {
+  const ok = (refreshAfterMs: number) => ({
+    data: metadata,
+    ok: true as const,
+    refreshAfterMs,
+  });
+  // A show ending in an hour: refetch when it ends.
+  expect(radioMetadataPreviewRefreshInterval(ok(3_600_000), 0, 0)).toBe(
+    3_600_000
+  );
+  // Short deadlines (e.g. per-track ICY) are held to the 5-minute floor.
+  expect(radioMetadataPreviewRefreshInterval(ok(60_000), 0, 0)).toBe(300_000);
+  // Time already spent counts toward the deadline.
+  expect(radioMetadataPreviewRefreshInterval(ok(3_600_000), 0, 3_000_000)).toBe(
+    600_000
+  );
+  // No metadata, or no deadline: no background requests.
+  expect(
+    radioMetadataPreviewRefreshInterval(
+      { error: { code: "X", message: "" }, ok: false } as never,
+      0,
+      0
+    )
+  ).toBeFalse();
+  expect(radioMetadataPreviewRefreshInterval(undefined, 0, 0)).toBeFalse();
+  expect(
+    radioMetadataPreviewRefreshInterval(
+      { data: metadata, ok: true } as never,
+      0,
+      0
+    )
+  ).toBeFalse();
+});
+
 test("gates preview requests and refreshes metadata when polling starts", async () => {
   const client = new QueryClient();
   const originalFetch = globalThis.fetch;
@@ -276,7 +311,7 @@ describe("RadioNowPlaying", () => {
           variant={variant}
         />
       );
-      const playerGenres = view.getByRole("list", { name: "Genres" });
+      const playerGenres = view.getByRole("list");
       const artworkButton = view.getByRole("button", {
         name: "Details for Current Show",
       });
@@ -300,7 +335,7 @@ describe("RadioNowPlaying", () => {
         view.getByRole("button", { name: "Details for Current Show" })
       );
       const details = within(view.getByRole("dialog"));
-      const genres = details.getByRole("list", { name: "Genres" });
+      const genres = details.getByRole("list");
       const pills = within(genres).getAllByRole("listitem");
       expect(pills.map((pill) => pill.textContent)).toEqual([
         "Art Pop",
@@ -324,13 +359,11 @@ describe("RadioNowPlaying", () => {
           variant="featured"
         />
       );
-      expect(view.queryByRole("list", { name: "Genres" })).toBeNull();
+      expect(view.queryByRole("list")).toBeNull();
       fireEvent.click(
         view.getByRole("button", { name: "Details for Current Show" })
       );
-      expect(
-        within(view.getByRole("dialog")).queryByRole("list", { name: "Genres" })
-      ).toBeNull();
+      expect(within(view.getByRole("dialog")).queryByRole("list")).toBeNull();
     });
   }
 

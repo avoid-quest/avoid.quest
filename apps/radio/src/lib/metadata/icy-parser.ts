@@ -61,8 +61,9 @@ function decodeWindows1252(bytes: Uint8Array): string {
 /**
  * ICY declares no charset: most encoders send UTF-8, older ones Latin-1
  * (e.g. Lyl sends "é" as 0xE9). Take UTF-8 when the bytes are valid UTF-8.
+ * SHOUTcast's plain-text status pages have the same problem.
  */
-function decodeIcyText(bytes: Uint8Array): string {
+export function decodeIcyText(bytes: Uint8Array): string {
   try {
     return utf8Decoder.decode(bytes);
   } catch {
@@ -89,20 +90,31 @@ export function decodeIcyHeader(value: string | null): string | null {
   return decodeIcyText(Uint8Array.from(bytes));
 }
 
+// A value ends at "';" only when the block ends or another `Key=` follows, so
+// titles such as "Rock';n'roll" survive.
+const ICY_FIELD_PATTERN =
+  /([A-Za-z][A-Za-z0-9_-]*)='([\s\S]*?)';(?=\s*(?:$|[A-Za-z][A-Za-z0-9_-]*=))/g;
+const LENIENT_ICY_FIELD_PATTERN = /([A-Za-z][A-Za-z0-9_-]*)='([\s\S]*?)';/g;
+const IMAGE_PATH_PATTERN = /\.(?:jpe?g|png|webp|gif|avif)$/i;
+
+function readIcyFields(text: string, pattern: RegExp): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [, key, value] of text.matchAll(pattern)) {
+    if (key) {
+      // Entities are decoded once, when the title is parsed.
+      fields[key] = (value ?? "").replace(/\0/g, "").trim();
+    }
+  }
+  return fields;
+}
+
 export function parseIcyMetadataBlock(block: Uint8Array): IcyMetadataFields {
   const text = decodeIcyText(block).replace(/\0+$/g, "");
-  const fields: Record<string, string> = {};
-  const pattern = /([A-Za-z][A-Za-z0-9_-]*)='([\s\S]*?)';/g;
-  let match = pattern.exec(text);
-
-  while (match) {
-    const [, key, matchedValue] = match;
-    const value = cleanMetadataText(matchedValue);
-    if (key) {
-      fields[key] = value;
-    }
-    match = pattern.exec(text);
-  }
+  const strictFields = readIcyFields(text, ICY_FIELD_PATTERN);
+  const fields =
+    Object.keys(strictFields).length > 0
+      ? strictFields
+      : readIcyFields(text, LENIENT_ICY_FIELD_PATTERN);
 
   return {
     fields,
@@ -113,12 +125,21 @@ export function parseIcyMetadataBlock(block: Uint8Array): IcyMetadataFields {
   };
 }
 
+function icyArtworkUrl(value: string | null): string | null {
+  const url = cleanMetadataText(value);
+  if (!(url && isPublicHttpUrl(url))) {
+    return null;
+  }
+  // StreamUrl is often the station homepage; only an image is artwork.
+  return IMAGE_PATH_PATTERN.test(new URL(url).pathname) ? url : null;
+}
+
 export function normalizeIcyMetadata(
-  metadata: IcyMetadataFields
+  metadata: IcyMetadataFields,
+  options: { stationNames?: readonly (string | null | undefined)[] } = {}
 ): ParsedIcyMetadata | null {
-  const parsedTitle = parseRadioTitle(metadata.streamTitle);
-  const streamUrl = cleanMetadataText(metadata.streamUrl);
-  const artworkUrl = streamUrl && isPublicHttpUrl(streamUrl) ? streamUrl : null;
+  const parsedTitle = parseRadioTitle(metadata.streamTitle, options);
+  const artworkUrl = icyArtworkUrl(metadata.streamUrl);
 
   if (!(parsedTitle.rawTitle || artworkUrl)) {
     return null;

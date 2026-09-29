@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { getMultipleChannelId } from "@/lib/collections/playback-sessions";
@@ -8,6 +8,7 @@ import {
   isSessionRadio,
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
+import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
 type UseMultipleRadioManagementOptions = {
   radios?: Radio[];
@@ -42,6 +43,9 @@ export function useMultipleRadioManagement({
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
+  // Hiding removes the card's Channel; remember which ones were playing so
+  // the toast's Undo can bring them back playing.
+  const hiddenWhilePlaying = useRef(new Set<string>());
 
   useEffect(() => {
     if (!(radios && hasMultipleSession)) {
@@ -78,10 +82,20 @@ export function useMultipleRadioManagement({
   );
 
   const handleToggleRadio = useCallback(
-    async (_radio: Radio, _enabled: boolean) => {
-      // Handled by RadioItemActions component
+    async (radio: Radio, enabled: boolean) => {
+      // RadioItemActions persists the change; this only restores playback.
+      const channelId = getMultipleChannelId(radio);
+      if (!enabled) {
+        if (getPlaybackChannelRuntime(channelId).isPlaying) {
+          hiddenWhilePlaying.current.add(channelId);
+        }
+        return;
+      }
+      if (hiddenWhilePlaying.current.delete(channelId)) {
+        await addRadio(radio, true);
+      }
     },
-    []
+    [addRadio]
   );
 
   const confirmDelete = useCallback(() => {

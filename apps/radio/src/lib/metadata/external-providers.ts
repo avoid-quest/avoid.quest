@@ -4,7 +4,13 @@ import {
   type MetadataCache,
   RADIO_METADATA_SUCCESS_TTL_MS,
 } from "./cache";
-import { cleanMetadataText, parseRadioTitle } from "./title-parser";
+import { decodeIcyText } from "./icy-parser";
+import {
+  cleanMetadataText,
+  type ParsedRadioTitle,
+  parseRadioTitle,
+  parseRadioTitleParts,
+} from "./title-parser";
 import type { RadioMetadataSource, RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
 
@@ -28,10 +34,44 @@ const HKCR_SHOW_URL = "https://cms.hkcr.live/shows";
 const HKCR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HKCR_TIME_PATTERN = /^\d{2}:\d{2}$/;
 const HKCR_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
+const HKCR_GUEST_SEPARATOR_PATTERN = /\s+w\/\s*/i;
 const IPR_REPLAY_SUFFIX_PATTERN = /\s*\((?:r|replay)\)\s*$/i;
 const IPR_SEARCH_URL = "https://www.internetpublicradio.live/api/search";
 const INTEGER_FIELD_PATTERN = /^\d+$/;
 const HTML_TAG_PATTERN = /<[^>]*>/g;
+const HTML_BODY_PATTERN = /<body[^>]*>([\s\S]*?)<\/body>/i;
+const MARKDOWN_LINK_PATTERN = /!?\[([^\]]*)\]\([^)]*\)/g;
+const MARKDOWN_STRONG_PATTERN = /(\*\*|__)(?=\S)([\s\S]*?\S)\1/g;
+const MARKDOWN_EMPHASIS_PATTERN =
+  /(?<![\w*])([*_])(?=\S)([\s\S]*?\S)\1(?![\w*])/g;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A provider boundary never schedules a check sooner than this.
+const MIN_BOUNDARY_TTL_MS = 30_000;
+// A boundary already in the past means stale data; recheck like Alhara does.
+const STALE_BOUNDARY_RECHECK_MS = 60_000;
+const BLACKOUT_TIME_ZONE = "Europe/Rome";
+const SLOT_TIME_PATTERN = /^(\d{2}):(\d{2})$/;
+const RESONANCE_SCHEDULE_PATTERN =
+  /^(?:[a-z]+\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(\d{4})\s+(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})\s+(bst|gmt|utc)$/i;
+const RESONANCE_MONTHS = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+];
+const UK_ZONE_OFFSETS_MS = new Map([
+  ["bst", 60 * 60 * 1000],
+  ["gmt", 0],
+  ["utc", 0],
+]);
 const AIRTIME_LOCAL_TIME_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
 const RADIO_ALHARA_NOW_PLAYING_URL =
@@ -142,6 +182,7 @@ type BlackoutListening = {
   excerpt?: unknown;
   featured_media?: unknown;
   link?: unknown;
+  slot?: { start?: unknown; end?: unknown };
 };
 
 type BlackoutShow = {
@@ -219,7 +260,9 @@ type ResonanceExtraSchedule = {
     path?: unknown;
     series_link?: unknown;
     series_name?: unknown;
+    starts_ends?: unknown;
   };
+  after?: { starts_ends?: unknown };
 };
 
 type RadioAlharaNowPlaying = {
@@ -306,11 +349,35 @@ function first<T>(value: T | T[] | undefined): T | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** Expires at a provider's programme boundary, within the regular cap. */
+function boundaryExpiresAt(
+  input: { sampledAt: number; expiresAt: number },
+  boundary: number | null | undefined
+): number {
+  if (
+    boundary === null ||
+    boundary === undefined ||
+    !Number.isFinite(boundary)
+  ) {
+    return input.expiresAt;
+  }
+  if (boundary <= input.sampledAt) {
+    return Math.min(
+      input.expiresAt,
+      input.sampledAt + STALE_BOUNDARY_RECHECK_MS
+    );
+  }
+  return Math.min(
+    input.expiresAt,
+    Math.max(input.sampledAt + MIN_BOUNDARY_TTL_MS, boundary)
+  );
+}
+
 function buildNowPlaying(input: {
   streamUrl: string;
   resolvedUrl?: string;
   source: RadioMetadataSource;
-  rawTitle: string;
+  titles: ParsedRadioTitle;
   album?: string | null;
   artworkUrl?: string | null;
   itemUrl?: string | null;
@@ -321,7 +388,7 @@ function buildNowPlaying(input: {
   sampledAt: number;
   expiresAt: number;
 }): RadioNowPlaying | null {
-  const parsed = parseRadioTitle(input.rawTitle);
+  const parsed = input.titles;
   if (!(parsed.title || parsed.artist)) {
     return null;
   }
@@ -456,14 +523,6 @@ function normalizeAirtimeLiveInfo(input: {
   const track = input.data.tracks?.current ?? input.data.current;
   const show = first(input.data.shows?.current ?? input.data.currentShow);
   const metadata = track?.metadata;
-  const artist = asString(metadata?.artist_name);
-  const title = asString(metadata?.track_title) ?? asString(track?.name);
-  const showName = asString(show?.name);
-  const rawTitle =
-    [artist, title].filter(Boolean).join(" - ") || title || showName;
-  if (!rawTitle) {
-    return null;
-  }
 
   return buildNowPlaying({
     album: asString(metadata?.album_title),
@@ -479,14 +538,37 @@ function normalizeAirtimeLiveInfo(input: {
       show,
       streamUrl: input.streamUrl,
     }),
-    rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "airtime-live-info",
-    stationDescription: asString(show?.description),
+    stationDescription: plainText(show?.description),
     stationName: AIRTIME_STATION_NAMES[new URL(input.streamUrl).hostname],
     streamUrl: input.streamUrl,
+    titles: airtimeTitles(track, show),
   });
+}
+
+/**
+ * Keeps Airtime's separate artist/title fields: re-splitting a joined string
+ * would turn "Simon & Garfunkel - Live" + "The Boxer" into "Live - The Boxer".
+ */
+function airtimeTitles(
+  track: AirtimeTrack | undefined,
+  show: AirtimeShow | undefined
+): ParsedRadioTitle {
+  const artist = asString(track?.metadata?.artist_name);
+  const trackTitle = asString(track?.metadata?.track_title);
+  if (trackTitle) {
+    return parseRadioTitleParts({ artist, title: trackTitle });
+  }
+  // Without metadata, Airtime's `name` is its own "artist - title" join.
+  const named = parseRadioTitle(asString(track?.name));
+  if (named.title) {
+    return artist && !named.artist
+      ? parseRadioTitleParts({ artist, title: named.title })
+      : named;
+  }
+  return parseRadioTitleParts({ title: artist ?? asString(show?.name) });
 }
 
 function getAirtimeCandidateUrls(streamUrl: string): string[] {
@@ -549,7 +631,8 @@ async function fetchText(
     return null;
   }
   try {
-    const text = await response.text();
+    // SHOUTcast text pages declare no reliable charset; decode like ICY.
+    const text = decodeIcyText(new Uint8Array(await response.arrayBuffer()));
     return text.trim() ? { response, text } : null;
   } catch {
     return null;
@@ -557,10 +640,9 @@ async function fetchText(
 }
 
 function comparableTitle(value: unknown): string | null {
-  const text = asString(value);
-  const rawTitle = text ? parseRadioTitle(text).rawTitle : null;
-  return rawTitle
-    ? rawTitle.normalize("NFKC").replace(/\s+/g, " ").toLowerCase()
+  const text = cleanMetadataText(asString(value));
+  return text
+    ? text.normalize("NFKC").replace(WHITESPACE_PATTERN, " ").toLowerCase()
     : null;
 }
 
@@ -874,6 +956,19 @@ function plainText(value: unknown): string | null {
     : null;
 }
 
+/** Links and emphasis to plain text, e.g. "[Ensemble](url) is **live**". */
+function markdownText(value: unknown): string | null {
+  const text = asString(value);
+  return text
+    ? plainText(
+        text
+          .replace(MARKDOWN_LINK_PATTERN, "$1")
+          .replace(MARKDOWN_STRONG_PATTERN, "$2")
+          .replace(MARKDOWN_EMPHASIS_PATTERN, "$2")
+      )
+    : null;
+}
+
 function getAirtimeEpisodeDate(
   metadata: AirtimeTrack["metadata"]
 ): string | null {
@@ -942,7 +1037,15 @@ async function enrichIprNowPlaying(
   ) {
     return { complete: true, nowPlaying };
   }
-  const title = nowPlaying.title.replace(IPR_REPLAY_SUFFIX_PATTERN, "").trim();
+  const withoutReplaySuffix = (value: string | null) =>
+    value?.replace(IPR_REPLAY_SUFFIX_PATTERN, "").trim() ?? null;
+  const title = withoutReplaySuffix(nowPlaying.title) ?? "";
+  // Labels may be the full "Show - Episode" string or just its title half.
+  const labels = new Set(
+    [title, withoutReplaySuffix(nowPlaying.rawTitle)]
+      .map(comparableTitle)
+      .filter(Boolean)
+  );
   const url = new URL(IPR_SEARCH_URL);
   url.searchParams.set("q", title);
   const result = await fetchObjectJson(fetchImpl, url.toString());
@@ -950,8 +1053,8 @@ async function enrichIprNowPlaying(
     return { complete: false, nowPlaying };
   }
 
-  const matches = (result.data as IprSearchResult[]).filter(
-    (candidate) => comparableTitle(candidate.label) === comparableTitle(title)
+  const matches = (result.data as IprSearchResult[]).filter((candidate) =>
+    labels.has(comparableTitle(candidate.label))
   );
   const episodes = matches.filter((candidate) => {
     const type = asString(candidate._type);
@@ -1175,18 +1278,15 @@ function normalizeAzuraCastNowPlaying(input: {
   const song = station?.now_playing?.song;
   const artist = asString(song?.artist);
   const title = asString(song?.title);
-  const rawTitle =
-    [artist, title].filter(Boolean).join(" - ") || asString(song?.text);
-  if (!rawTitle) {
-    return null;
-  }
 
   return buildNowPlaying({
     album: asString(song?.album),
-    artworkUrl: asString(song?.art),
+    artworkUrl: resolvePublicUrl(
+      song?.art,
+      input.resolvedUrl ?? input.streamUrl
+    ),
     expiresAt: input.expiresAt,
     genre: asString(song?.genre),
-    rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "azuracast-now-playing",
@@ -1195,6 +1295,9 @@ function normalizeAzuraCastNowPlaying(input: {
       asString(station?.live?.streamer_name),
     stationName: asString(station?.station?.name),
     streamUrl: input.streamUrl,
+    titles: title
+      ? parseRadioTitleParts({ artist, title })
+      : parseRadioTitle(asString(song?.text) ?? artist),
   });
 }
 
@@ -1255,16 +1358,20 @@ function normalizeShoutcastJson(input: {
     bitrate: asNumber(data.bitrate),
     expiresAt: input.expiresAt,
     genre: asString(data.servergenre),
-    rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "shoutcast-status",
     stationName: asString(data.servertitle),
     streamUrl: input.streamUrl,
+    titles: parseRadioTitle(rawTitle),
   });
 }
 
-function getShoutcast7HtmlTitle(text: string): string | null {
+function getShoutcast7HtmlTitle(html: string): string | null {
+  // SHOUTcast v1 wraps the CSV in <html><body>…</body></html>.
+  const text = (html.match(HTML_BODY_PATTERN)?.[1] ?? html)
+    .replace(HTML_TAG_PATTERN, "")
+    .trim();
   const fields = text.split(",");
   if (fields.length < 2) {
     return asString(text);
@@ -1298,11 +1405,11 @@ function normalizeShoutcastText(input: {
   }
   return buildNowPlaying({
     expiresAt: input.expiresAt,
-    rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "shoutcast-status",
     streamUrl: input.streamUrl,
+    titles: parseRadioTitle(rawTitle),
   });
 }
 
@@ -1585,17 +1692,20 @@ function normalizeNtsLiveApi(
   );
 
   return buildNowPlaying({
-    artworkUrl: asString(now?.embeds?.details?.media?.picture_medium),
+    artworkUrl: resolvePublicUrl(
+      now?.embeds?.details?.media?.picture_medium,
+      "https://www.nts.live"
+    ),
     expiresAt: Math.min(input.expiresAt, selected?.endsAt ?? input.expiresAt),
     genre: asString(now?.embeds?.details?.genres?.[0]?.value),
     itemUrl,
-    rawTitle: title,
     resolvedUrl,
     sampledAt: input.sampledAt,
     source: "nts-live-api",
     stationDescription: asString(now?.embeds?.details?.description),
     stationName: `NTS Radio | Channel ${channelName}`,
     streamUrl: input.streamUrl,
+    titles: parseRadioTitle(title),
   });
 }
 
@@ -1687,13 +1797,15 @@ function normalizeHkcrSchedule(input: {
             "https://hkcr.live"
           ).toString()
         : null),
-    rawTitle: artist && artist !== title ? `${artist} - ${title}` : title,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "hkcr-schedule",
     stationDescription: plainText(entry.description),
     stationName: "HKCR",
     streamUrl: input.streamUrl,
+    titles: parseRadioTitle(
+      artist && artist !== title ? `${artist} - ${title}` : title
+    ),
   });
   return result
     ? {
@@ -1761,13 +1873,37 @@ export async function tryHkcrSchedule(
   return normalized
     ? {
         ...normalized,
-        genre:
-          show?.tags
-            ?.map((tag) => asString(tag.name))
-            .filter(Boolean)
-            .join(", ") || null,
+        genre: hkcrGenre(show?.tags, [
+          normalized.artist,
+          normalized.title,
+          normalized.album,
+          show?.title,
+        ]),
       }
     : null;
+}
+
+/** HKCR tags repeat show and resident names; those are not genres. */
+function hkcrGenre(
+  tags: HkcrShow["tags"],
+  names: readonly unknown[]
+): string | null {
+  const key = (value: unknown) =>
+    cleanMetadataText(asString(value))
+      .normalize("NFKC")
+      .replace(WHITESPACE_PATTERN, "")
+      .toLowerCase();
+  // "ether radio w/ Freddy Carrasco" also names the programme "ether radio".
+  const programmes = names.map(
+    (name) => asString(name)?.split(HKCR_GUEST_SEPARATOR_PATTERN)[0]
+  );
+  const excluded = new Set([...names, ...programmes].map(key).filter(Boolean));
+  return (
+    tags
+      ?.map((tag) => asString(tag.name))
+      .filter((name): name is string => !!name && !excluded.has(key(name)))
+      .join(", ") || null
+  );
 }
 
 async function fetchHkcrShow(
@@ -1869,33 +2005,65 @@ function normalizeResonanceExtraSchedule(input: {
   sampledAt: number;
   expiresAt: number;
 }): RadioNowPlaying | null {
-  const { now } = input.data as ResonanceExtraSchedule;
-  const title = asString(now?.name);
-  if (!title) {
+  const { after, now } = input.data as ResonanceExtraSchedule;
+  if (!asString(now?.name)) {
     return null;
   }
-
-  const artist = asString(now?.host);
-  const rawTitle = artist ? `${artist} - ${title}` : title;
-  const result = buildNowPlaying({
+  return buildNowPlaying({
     album: asString(now?.series_name),
     artworkUrl: resolvePublicUrl(
       now?.backgrounds?.[0]?.image,
       "https://x.resonance.fm"
     ),
-    expiresAt: input.expiresAt,
+    expiresAt: boundaryExpiresAt(
+      input,
+      resonanceWindow(now?.starts_ends)?.end ??
+        resonanceWindow(after?.starts_ends)?.start
+    ),
     itemUrl:
       resolvePublicUrl(now?.path, "https://extra.resonance.fm") ??
       resolvePublicUrl(now?.series_link, "https://extra.resonance.fm"),
-    rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "resonance-extra-api",
-    stationDescription: asString(now?.description),
+    stationDescription: markdownText(now?.description),
     stationName: "Resonance Extra",
     streamUrl: input.streamUrl,
+    titles: parseRadioTitleParts({
+      artist: asString(now?.host),
+      title: asString(now?.name),
+    }),
   });
-  return result ? { ...result, artist, rawTitle, title } : null;
+}
+
+/** Parses "Tuesday 29th September 2026 22:30 - 23:00 BST". */
+function resonanceWindow(
+  value: unknown
+): { start: number; end: number } | null {
+  const match = asString(value)?.match(RESONANCE_SCHEDULE_PATTERN);
+  const month = RESONANCE_MONTHS.indexOf(match?.[2]?.toLowerCase() ?? "");
+  const offset = UK_ZONE_OFFSETS_MS.get(match?.[8]?.toLowerCase() ?? "");
+  if (!match || month < 0 || offset === undefined) {
+    return null;
+  }
+  const [day, year, startHour, startMinute, endHour, endMinute] = [
+    1, 3, 4, 5, 6, 7,
+  ].map((index) => Number(match[index]));
+  if (
+    Math.max(startHour, endHour) > 23 ||
+    Math.max(startMinute, endMinute) > 59
+  ) {
+    return null;
+  }
+  const start = Date.UTC(year, month, day, startHour, startMinute);
+  if (new Date(start).getUTCDate() !== day) {
+    return null;
+  }
+  let end = Date.UTC(year, month, day, endHour, endMinute);
+  if (end <= start) {
+    end += DAY_MS;
+  }
+  return { end: end - offset, start: start - offset };
 }
 
 export async function tryResonanceExtraApi(
@@ -1937,9 +2105,7 @@ function normalizeRadioAlharaNowPlaying(input: {
     return null;
   }
 
-  const artist = asString(data.artist);
   const showTitle = asString(data.scheduledTitle) ?? asString(data.title);
-  const rawTitle = artist ? `${artist} - ${title}` : title;
   const trackStart = Date.parse(asString(data.trackStart) ?? "");
   const { duration } = data;
   const predictedEnd =
@@ -1957,17 +2123,16 @@ function normalizeRadioAlharaNowPlaying(input: {
       predictedEnd > input.sampledAt ? predictedEnd : input.sampledAt + 60_000
     );
   }
-  const result = buildNowPlaying({
+  return buildNowPlaying({
     album: showTitle === title ? null : showTitle,
     expiresAt,
-    rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "radio-alhara-api",
     stationName: "Radio Alhara",
     streamUrl: input.streamUrl,
+    titles: parseRadioTitleParts({ artist: asString(data.artist), title }),
   });
-  return result ? { ...result, artist, rawTitle, title } : null;
 }
 
 export async function tryRadioAlharaApi(
@@ -2017,19 +2182,67 @@ export async function tryRadioBlackoutApi(
   if (!title) {
     return null;
   }
+  const resolvedUrl = result.response.url || endpoint;
   const nowPlaying = buildNowPlaying({
-    artworkUrl: asString(data.featured_media),
-    expiresAt: input.expiresAt,
+    artworkUrl: resolvePublicUrl(data.featured_media, resolvedUrl),
+    expiresAt: boundaryExpiresAt(
+      input,
+      blackoutSlotEnd(data.slot, input.sampledAt)
+    ),
     itemUrl: asPublicUrl(data.link),
-    rawTitle: title,
-    resolvedUrl: result.response.url || endpoint,
+    resolvedUrl,
     sampledAt: input.sampledAt,
     source: "radio-blackout-api",
     stationDescription: plainText(data.excerpt),
     stationName: "Radio BlackOut",
     streamUrl: input.streamUrl,
+    titles: parseRadioTitle(title),
   });
   return nowPlaying ? await enrichBlackoutShow(input, nowPlaying) : null;
+}
+
+function slotMinutes(value: unknown): number | null {
+  const match = asString(value)?.match(SLOT_TIME_PATTERN);
+  const hours = Number(match?.[1]);
+  const minutes = Number(match?.[2]);
+  return match && hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
+}
+
+/**
+ * The end of BlackOut's weekly `slot` ("23:00"–"00:00", Rome time) when the
+ * slot is on air now. The slot has no date, so an off-air slot gives nothing.
+ */
+function blackoutSlotEnd(
+  slot: BlackoutListening["slot"],
+  sampledAt: number
+): number | null {
+  const start = slotMinutes(slot?.start);
+  const end = slotMinutes(slot?.end);
+  if (start === null || end === null) {
+    return null;
+  }
+  try {
+    const nowWall = airtimeLocalTime(sampledAt, BLACKOUT_TIME_ZONE);
+    const midnight = Math.floor(nowWall / DAY_MS) * DAY_MS;
+    let startWall = midnight + start * 60_000;
+    let endWall = midnight + end * 60_000;
+    if (endWall <= startWall) {
+      if (nowWall < endWall) {
+        startWall -= DAY_MS;
+      } else {
+        endWall += DAY_MS;
+      }
+    }
+    if (!(startWall <= nowWall && nowWall < endWall)) {
+      return null;
+    }
+    const candidate = Math.floor(sampledAt / 1000) * 1000 + (endWall - nowWall);
+    return airtimeLocalTime(candidate, BLACKOUT_TIME_ZONE) === endWall
+      ? candidate
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function enrichBlackoutShow(

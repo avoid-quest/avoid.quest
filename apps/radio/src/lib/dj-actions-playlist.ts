@@ -4,6 +4,7 @@ import {
   type StreamFormat,
 } from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
+import { isCollectionItem } from "@/lib/external-url/metadata-helpers";
 
 type PlaylistTrack = {
   format?: StreamFormat;
@@ -26,19 +27,6 @@ function getTrackStreamUrl(track: PlaylistTrack, platform: string): string {
   }
 
   return "";
-}
-
-function isSupportedCollectionItem(
-  platform: string,
-  itemType: string | undefined
-): boolean {
-  return (
-    (platform === "bandcamp" &&
-      (itemType === "album" || itemType === "collection")) ||
-    (platform === "soundcloud" && itemType === "playlist") ||
-    (platform === "youtube" && itemType === "playlist") ||
-    (platform === "static-audio" && itemType === "playlist")
-  );
 }
 
 function findPlayableTrackStreamUrl(
@@ -101,7 +89,7 @@ const findNextTrack = (
   }
 
   const { tracks, platform, itemType } = platformMetadata;
-  if (!isSupportedCollectionItem(platform, itemType) || tracks.length === 0) {
+  if (!isCollectionItem(platform, itemType) || tracks.length === 0) {
     return null;
   }
 

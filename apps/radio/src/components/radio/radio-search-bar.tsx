@@ -95,8 +95,11 @@ function SearchResultRow({
 
   return (
     <div
+      aria-selected={isActive}
       className={cn(stationRowClassName, isActive && "bg-muted/40")}
       id={id}
+      role="option"
+      tabIndex={-1}
       title={sourceLabel(result)}
     >
       <button
@@ -105,7 +108,12 @@ function SearchResultRow({
         onClick={handleSelect}
         type="button"
       >
-        <RadioLogo logoUrl={result.logoUrl} name={result.name} size="md" />
+        <RadioLogo
+          decorative
+          logoUrl={result.logoUrl}
+          name={result.name}
+          size="md"
+        />
         <StationRowText title={result.name}>
           <StationRowSubtitle>{details}</StationRowSubtitle>
         </StationRowText>
@@ -125,25 +133,27 @@ export function RadioSearchBar({
   placeholder = "Search stations…",
 }: RadioSearchBarProps) {
   const [query, setQuery] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   // The result Enter plays; arrow keys move it.
   const [activeIndex, setActiveIndex] = useState(0);
   const resultIdPrefix = useId();
+  const listId = `${resultIdPrefix}-list`;
   const containerRef = useRef<HTMLDivElement>(null);
   const { isSearching, results } = useUnifiedRadioSearch(query, radios);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (!containerRef.current?.contains(event.target as Node)) {
-        setIsFocused(false);
+        setIsOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Focus stays in the input, so typing again reopens the results.
   const resetSearch = () => {
-    setIsFocused(false);
+    setIsOpen(false);
     setQuery("");
   };
 
@@ -172,7 +182,10 @@ export function RadioSearchBar({
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(event.target.value);
     setActiveIndex(0);
+    setIsOpen(true);
   };
+  const hasQuery = query.trim().length > 0;
+  const showDropdown = isOpen && hasQuery;
   const lastIndex = results.length - 1;
   const clampedActiveIndex = Math.min(activeIndex, Math.max(lastIndex, 0));
   const moveActive = (step: number) => {
@@ -182,11 +195,25 @@ export function RadioSearchBar({
       .getElementById(`${resultIdPrefix}-${next}`)
       ?.scrollIntoView({ block: "nearest" });
   };
-  const handleFocus = () => setIsFocused(true);
+  const handleFocus = () => setIsOpen(true);
+  // Mouse clicks outside are handled above; this covers keyboard focus
+  // leaving (a null relatedTarget is a click, not a focus move).
+  const handleBlur = (event: React.FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget;
+    if (next instanceof Node && !event.currentTarget.contains(next)) {
+      setIsOpen(false);
+    }
+  };
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
-      event.currentTarget.blur();
-      resetSearch();
+      if (query || showDropdown) {
+        event.preventDefault();
+        resetSearch();
+      }
+      return;
+    }
+    // Without visible results, arrows and Enter keep their usual meaning.
+    if (!showDropdown) {
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -201,29 +228,56 @@ export function RadioSearchBar({
     }
   };
 
-  const hasQuery = query.trim().length > 0;
-  const showDropdown = isFocused && hasQuery;
   const emptyLabel = isSearching
     ? "Checking station directories…"
     : "No stations found";
+  let statusLabel = "";
+  if (showDropdown) {
+    statusLabel =
+      results.length > 0
+        ? `${results.length} ${results.length === 1 ? "station" : "stations"}`
+        : emptyLabel;
+  }
+  const hasListbox = showDropdown && results.length > 0;
+  const activeResultId = hasListbox
+    ? `${resultIdPrefix}-${clampedActiveIndex}`
+    : undefined;
 
   return (
-    <div className={cn("relative", className)} ref={containerRef}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: focus bookkeeping that closes the results when focus leaves the search
+    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: focus bookkeeping that closes the results when focus leaves the search
+    <div
+      className={cn("relative", className)}
+      onBlur={handleBlur}
+      ref={containerRef}
+    >
       <SearchField
+        aria-activedescendant={activeResultId}
+        aria-autocomplete="list"
+        aria-controls={hasListbox ? listId : undefined}
+        aria-expanded={showDropdown}
         aria-label="Search stations"
         isSearching={isSearching}
         onChange={handleQueryChange}
         onFocus={handleFocus}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        role="combobox"
         value={query}
       />
+      <span className="sr-only" role="status">
+        {statusLabel}
+      </span>
 
       {showDropdown ? (
         <div className="absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg">
           <ScrollArea className="max-h-72 overflow-hidden">
             {results.length > 0 ? (
-              <div className="flex w-0 min-w-full flex-col p-1">
+              <div
+                className="flex w-0 min-w-full flex-col p-1"
+                id={listId}
+                role="listbox"
+              >
                 {results.map((result, index) => (
                   <SearchResultRow
                     canSave={Boolean(onSaveDiscovered)}

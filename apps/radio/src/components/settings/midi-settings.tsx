@@ -60,6 +60,8 @@ function formatMapping(mapping: MidiMapping | undefined): string {
 type MappingRowProps = {
   targetId: string;
   label: string;
+  /** The group, e.g. "Deck A", so buttons read "Learn Deck A Play/Pause". */
+  group: string;
   mapping: MidiMapping | undefined;
   isLearning: boolean;
   isLearningTarget: boolean;
@@ -71,6 +73,7 @@ type MappingRowProps = {
 function MappingRow({
   targetId,
   label,
+  group,
   mapping,
   isLearning,
   isLearningTarget,
@@ -84,6 +87,7 @@ function MappingRow({
   const handleRemove = () => {
     onRemove(targetId);
   };
+  const target = `${group} ${label}`;
 
   return (
     <div className="flex items-center gap-2 py-1.5">
@@ -98,6 +102,7 @@ function MappingRow({
       </span>
       {isLearningTarget ? (
         <Button
+          aria-label={`Cancel learning ${target}`}
           className="h-7 w-14 animate-pulse text-xs"
           onClick={onStopLearn}
           size="sm"
@@ -107,6 +112,7 @@ function MappingRow({
         </Button>
       ) : (
         <Button
+          aria-label={`Learn ${target}`}
           className="h-7 w-14 text-xs"
           disabled={isLearning}
           onClick={handleStartLearn}
@@ -117,7 +123,7 @@ function MappingRow({
         </Button>
       )}
       <Button
-        aria-label={`Remove mapping for ${label}`}
+        aria-label={`Remove mapping for ${target}`}
         className="size-7"
         disabled={!mapping || isLearning}
         onClick={handleRemove}
@@ -169,6 +175,7 @@ function MappingGroup({
           const mapping = mappings.find((m) => m.targetId === id);
           return (
             <MappingRow
+              group={title}
               isLearning={isLearning}
               isLearningTarget={learningTarget === id}
               key={id}
@@ -361,12 +368,12 @@ export function MidiSettings() {
         </Field>
 
         <Field className={SETTING_ROW_CLASS} orientation="horizontal">
-          <FieldTitle>Preset</FieldTitle>
+          <FieldLabel htmlFor="midi-preset">Preset</FieldLabel>
           <Select
             onValueChange={handlePresetChange}
             value={activePresetId ?? undefined}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full" id="midi-preset">
               <SelectValue placeholder="Select a preset…" />
             </SelectTrigger>
             <SelectContent>

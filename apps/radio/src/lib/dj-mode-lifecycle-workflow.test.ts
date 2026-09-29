@@ -123,7 +123,7 @@ function createTestDecks(onLoad: () => void = () => undefined): DjDeckModule & {
     load,
     pendingSource: {
       cancel: mock(() => undefined),
-      getSnapshot: mock(() => null),
+      getSnapshot: mock(() => ({ "deck-a": null, "deck-b": null })),
       subscribe: mock(() => () => undefined),
     },
   };

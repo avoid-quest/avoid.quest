@@ -9,6 +9,8 @@ type RadioLogoProps = {
   size?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl";
   className?: string;
   fallbackIcon?: React.ReactNode;
+  /** In rows that already show the name beside the logo: empty alt text. */
+  decorative?: boolean;
 };
 
 const sizeMap = {
@@ -54,6 +56,7 @@ const imagePaddingMap = {
 export function RadioLogo({
   logoUrl,
   name,
+  decorative = false,
   size = "md",
   className,
   fallbackIcon,
@@ -98,7 +101,7 @@ export function RadioLogo({
     >
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError and onLoad are valid img event handlers */}
       <img
-        alt={`${name} logo`}
+        alt={decorative ? "" : `${name} logo`}
         className={cn(
           "size-full rounded-sm object-contain transition-opacity",
           imagePaddingMap[size],

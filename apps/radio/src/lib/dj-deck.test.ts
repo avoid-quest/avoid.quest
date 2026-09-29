@@ -9,8 +9,13 @@ import {
   getPlaybackChannel,
   playbackSessionsCollection,
   updatePlaybackChannel,
+  updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
-import { reportDjErrorSurface } from "@/lib/dj/dj-error-surface";
+import {
+  clearDjErrorSurface,
+  reportDjErrorSurface,
+} from "@/lib/dj/dj-error-surface";
+import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade";
 import { getDjError } from "@/lib/stores/dj-runtime-store";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
@@ -24,7 +29,11 @@ import {
   type DjDeckAudioAdapter,
   type DjDeckPlatformAdapter,
 } from "./dj-deck";
-import { PLATFORM_ITEMS } from "./dj-library-sources";
+import {
+  BANDCAMP_PLATFORM_ID,
+  PLATFORM_ITEMS,
+  STATIC_AUDIO_PLATFORM_ID,
+} from "./dj-library-sources";
 import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
@@ -305,14 +314,17 @@ describe("DjDeckModule", () => {
     });
 
     expect(module.pendingSource.getSnapshot()).toEqual({
-      deckId: "deck-a",
-      platform: "external",
+      "deck-a": "external",
+      "deck-b": null,
     });
     expect(listener).toHaveBeenCalledTimes(1);
 
-    module.pendingSource.cancel();
+    module.pendingSource.cancel("deck-a");
 
-    expect(module.pendingSource.getSnapshot()).toBeNull();
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": null,
+      "deck-b": null,
+    });
     expect(listener).toHaveBeenCalledTimes(2);
 
     unsubscribe();
@@ -1146,7 +1158,7 @@ describe("DjDeckModule", () => {
     });
     expect(audio.transport).toHaveBeenCalledWith("left_station-1:1", {
       type: "play",
-      volume: 1,
+      volume: calculateDjCrossfadeVolumes(0.5, 1, 1)[0],
     });
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:1"]));
   });
@@ -1613,5 +1625,244 @@ describe("DjDeckModule", () => {
         userMessage: "Failed to play deck-a",
       })
     );
+  });
+});
+
+describe("DjDeckModule crossfaded starts", () => {
+  const station = (id: string): Radio => ({
+    id,
+    name: id,
+    streamUrl: `https://radio.example/${id}.mp3`,
+  });
+  const playing: AudioState = {
+    error: null,
+    hasEnded: false,
+    isBuffering: false,
+    isLoading: false,
+    isPlaying: true,
+    volume: 1,
+  };
+  const playVolumes = (audio: DjDeckAudioAdapter, soundId: string) =>
+    (audio.transport as ReturnType<typeof mock>).mock.calls
+      .filter(
+        ([calledSoundId, intent]) =>
+          calledSoundId === soundId && intent.type === "play"
+      )
+      .map(([, intent]) => intent.volume as number);
+  const setCrossfader = (position: number) =>
+    updatePlaybackSession("dj", (draft) => {
+      draft.crossfadePosition = position;
+    });
+  const createModule = (audio: DjDeckAudioAdapter) =>
+    createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+
+  test("starts a Deck silent when the crossfader sits on the other side", async () => {
+    setCrossfader(1);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-a");
+    await deck.load({ radio: station("one"), type: "radio" });
+
+    await deck.transport({ type: "play" });
+
+    const [volume] = playVolumes(audio, "left_one:1");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+
+  test("starts Deck B silent when the crossfader sits fully on A", async () => {
+    setCrossfader(0);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-b");
+    await deck.load({ radio: station("two"), type: "radio" });
+
+    await deck.transport({ type: "play" });
+
+    const [volume] = playVolumes(audio, "right_two:1");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+
+  test("restarts a playing Deck on a new source at its crossfaded gain", async () => {
+    setCrossfader(1);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-a");
+    await deck.load({ radio: station("one"), type: "radio" });
+    audio.emit("left_one:1", playing);
+
+    await deck.load({ radio: station("two"), type: "radio" });
+
+    const [volume] = playVolumes(audio, "left_two:2");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+
+  test("repeats an ended Deck at its crossfaded gain", async () => {
+    setCrossfader(1);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-a");
+    await deck.load({ radio: station("one"), type: "radio" });
+    deck.change({ enabled: true, type: "repeat" });
+
+    audio.emit("left_one:1", { ...playing, hasEnded: true, isPlaying: false });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [volume] = playVolumes(audio, "left_one:1");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+});
+
+describe("DjDeckModule pending sources", () => {
+  const platformItem = (id: number): Radio => {
+    const item = PLATFORM_ITEMS.find((radio) => radio.id === id);
+    if (!item) {
+      throw new Error(`Expected platform item ${id}`);
+    }
+    return item;
+  };
+  const station = (id: string): Radio => ({
+    id,
+    name: id,
+    streamUrl: `https://radio.example/${id}.mp3`,
+  });
+  const createModule = (
+    audio: DjDeckAudioAdapter = createAudioAdapter(),
+    platform: DjDeckPlatformAdapter = createPlatform()
+  ) =>
+    createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+
+  test("keeps one Deck's source form open while the other Deck loads, ejects and resets", async () => {
+    const module = createModule();
+    await module
+      .deck("deck-a")
+      .load({ radio: platformItem(BANDCAMP_PLATFORM_ID), type: "library" });
+    await module
+      .deck("deck-b")
+      .load({ radio: platformItem(STATIC_AUDIO_PLATFORM_ID), type: "library" });
+
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": "bandcamp",
+      "deck-b": "static-audio",
+    });
+
+    await module.deck("deck-b").load({ radio: station("two"), type: "radio" });
+    await module.deck("deck-b").transport({ type: "reset" });
+    await module
+      .deck("deck-b")
+      .load({ autoPlay: false, radio: null, type: "track" });
+
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": "bandcamp",
+      "deck-b": null,
+    });
+
+    module.pendingSource.cancel("deck-b");
+    expect(module.pendingSource.getSnapshot()["deck-a"]).toBe("bandcamp");
+
+    module.deactivate();
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": null,
+      "deck-b": null,
+    });
+  });
+
+  test("keeps a Deck's file form open until the remote file commits", async () => {
+    let finishLoad: ((radio: Radio) => void) | null = null;
+    const platform = createPlatform();
+    platform.loadItem = mock(
+      () =>
+        new Promise<Awaited<ReturnType<DjDeckPlatformAdapter["loadItem"]>>>(
+          (resolve) => {
+            finishLoad = (radio) => resolve({ radio, success: true });
+          }
+        )
+    );
+    const module = createModule(createAudioAdapter(), platform);
+    const deck = module.deck("deck-b");
+    await deck.load({
+      radio: platformItem(STATIC_AUDIO_PLATFORM_ID),
+      type: "library",
+    });
+
+    const loading = deck.load({
+      type: "static-audio-url",
+      url: "https://audio.example/track.mp3",
+    });
+    await Promise.resolve();
+
+    expect(module.pendingSource.getSnapshot()["deck-b"]).toBe("static-audio");
+
+    (finishLoad as ((radio: Radio) => void) | null)?.({
+      id: "remote-track",
+      name: "Remote track",
+      streamUrl: "https://audio.example/track.mp3",
+    });
+
+    expect(await loading).toEqual({ type: "loaded" });
+    expect(getPlaybackChannel("dj", "deck-b")?.radio?.id).toBe("remote-track");
+    expect(module.pendingSource.getSnapshot()["deck-b"]).toBeNull();
+  });
+
+  test("returns a remote file failure to the form instead of the mixer", async () => {
+    clearDjErrorSurface();
+    const platform = createPlatform();
+    platform.loadItem = mock(() =>
+      Promise.resolve({
+        code: "STATIC_AUDIO_CLIENT_RESOLUTION_FAILED",
+        error: "Failed to fetch",
+        success: false as const,
+      })
+    );
+    const module = createModule(createAudioAdapter(), platform);
+    const deck = module.deck("deck-b");
+    await deck.load({
+      radio: platformItem(STATIC_AUDIO_PLATFORM_ID),
+      type: "library",
+    });
+
+    const result = await deck.load({
+      type: "static-audio-url",
+      url: "https://audio.example/missing.mp3",
+    });
+
+    expect(result).toEqual({ message: "Failed to fetch", type: "failed" });
+    expect(module.pendingSource.getSnapshot()["deck-b"]).toBe("static-audio");
+    expect(getDjError()).toBeNull();
+    expect(getPlaybackChannel("dj", "deck-b")?.radio).toBeNull();
+  });
+
+  test("returns a local file failure to the form instead of the mixer", async () => {
+    clearDjErrorSurface();
+    const audio = createAudioAdapter();
+    audio.loadFile = mock(() =>
+      Promise.reject(new Error("Unsupported audio format"))
+    );
+    const module = createModule(audio);
+    const deck = module.deck("deck-a");
+    await deck.load({
+      radio: platformItem(STATIC_AUDIO_PLATFORM_ID),
+      type: "library",
+    });
+
+    const result = await deck.load({
+      file: new File(["noise"], "noise.bin"),
+      type: "file",
+    });
+
+    expect(result).toEqual({
+      message: "Unsupported audio format",
+      type: "failed",
+    });
+    expect(module.pendingSource.getSnapshot()["deck-a"]).toBe("static-audio");
+    expect(getDjError()).toBeNull();
   });
 });

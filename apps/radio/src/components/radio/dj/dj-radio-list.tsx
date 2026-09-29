@@ -159,7 +159,12 @@ function StationRow({
       ref={elementRef}
       type="button"
     >
-      <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
+      <RadioLogo
+        decorative
+        logoUrl={radio.logoUrl}
+        name={radio.name}
+        size="md"
+      />
       <StationRowText title={radio.name}>
         <RadioListItemMetadata
           fallback={

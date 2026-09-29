@@ -8,7 +8,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@avoid.quest/ui/components/collapsible";
-import { Field, FieldTitle } from "@avoid.quest/ui/components/field";
+import {
+  Field,
+  FieldLabel,
+  FieldTitle,
+} from "@avoid.quest/ui/components/field";
 import {
   Select,
   SelectContent,
@@ -185,14 +189,18 @@ export function AudioSettings() {
       )}
 
       <div className="divide-y">
-        <AudioSettingRow icon={Volume2Icon} title="Main output">
+        <AudioSettingRow
+          controlId={sinkIdSupported ? "main-output" : undefined}
+          icon={Volume2Icon}
+          title="Main output"
+        >
           {sinkIdSupported ? (
             <div className="flex min-w-0 gap-2">
               <Select
                 onValueChange={handleMainOutputChange}
                 value={mainOutputId}
               >
-                <SelectTrigger className="min-w-0 flex-1">
+                <SelectTrigger className="min-w-0 flex-1" id="main-output">
                   <SelectValue placeholder="Select output device" />
                 </SelectTrigger>
                 <SelectContent>
@@ -233,6 +241,8 @@ export function AudioSettings() {
         <AudioSettingRow icon={ClockIcon} title="Main delay">
           <div className="flex min-w-0 items-center gap-3">
             <Slider
+              aria-label="Main delay"
+              aria-valuetext={`${mainDelayMs} ms`}
               className="min-w-24 flex-1"
               defaultValue={[0]}
               max={500}
@@ -255,13 +265,17 @@ export function AudioSettings() {
           </div>
         </AudioSettingRow>
 
-        <AudioSettingRow icon={HeadphonesIcon} title="CUE output">
+        <AudioSettingRow
+          controlId={sinkIdSupported ? "cue-output" : undefined}
+          icon={HeadphonesIcon}
+          title="CUE output"
+        >
           {sinkIdSupported ? (
             <Select
               onValueChange={handleCueOutputChange}
               value={cueOutputId ?? "none"}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="min-w-0 flex-1" id="cue-output">
                 <SelectValue placeholder="Select CUE output" />
               </SelectTrigger>
               <SelectContent>
@@ -289,6 +303,8 @@ export function AudioSettings() {
           <AudioSettingRow icon={ClockIcon} title="CUE delay">
             <div className="flex min-w-0 items-center gap-3">
               <Slider
+                aria-label="CUE delay"
+                aria-valuetext={`${cueDelayMs} ms`}
                 className="min-w-24 flex-1"
                 defaultValue={[0]}
                 max={500}
@@ -329,21 +345,33 @@ export function AudioSettings() {
 function AudioSettingRow({
   title,
   icon: Icon,
+  controlId,
   children,
 }: {
   title: string;
   icon: LucideIcon;
+  /** The labelled control's id, so the title is its accessible name. */
+  controlId?: string;
   children: ReactNode;
 }) {
+  const heading = (
+    <>
+      <Icon className="size-3.5 text-muted-foreground" />
+      {title}
+    </>
+  );
   return (
     <Field
       className="py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center"
       orientation="horizontal"
     >
-      <FieldTitle>
-        <Icon className="size-3.5 text-muted-foreground" />
-        {title}
-      </FieldTitle>
+      {controlId ? (
+        <FieldLabel className="items-center font-medium" htmlFor={controlId}>
+          {heading}
+        </FieldLabel>
+      ) : (
+        <FieldTitle>{heading}</FieldTitle>
+      )}
       {children}
     </Field>
   );

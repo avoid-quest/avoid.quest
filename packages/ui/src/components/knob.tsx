@@ -16,6 +16,8 @@ type KnobProps = {
   /** "log" spaces values geometrically, so a 0.5..2 range puts 1 at the centre. */
   scale?: "linear" | "log";
   label?: string;
+  /** Accessible name when the visible caption is too terse ("FILT"). */
+  ariaLabel?: string;
   format?: (value: number) => string;
   onChange: (value: number) => void;
   disabled?: boolean;
@@ -55,6 +57,7 @@ function Knob({
   bipolar = false,
   scale = "linear",
   label,
+  ariaLabel,
   format = (v) => String(Math.round(v * 100) / 100),
   onChange,
   disabled = false,
@@ -152,7 +155,7 @@ function Knob({
     >
       <div
         aria-disabled={disabled || undefined}
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         aria-valuemax={max}
         aria-valuemin={min}
         aria-valuenow={value}

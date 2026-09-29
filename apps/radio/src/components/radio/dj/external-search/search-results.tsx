@@ -20,6 +20,8 @@ import {
 type SearchResultsProps = {
   error: string | null;
   onLoad: (radio: Radio) => void;
+  /** Called when a result is picked, before it resolves. */
+  onPick?: () => void;
   results: UnifiedSearchResult[];
   showEmpty?: boolean;
 };
@@ -34,6 +36,7 @@ const PLATFORM_LABELS = {
 function ResultItem({
   result,
   onLoad,
+  onPick,
   onError,
   isDisabled,
   isLoading,
@@ -41,6 +44,7 @@ function ResultItem({
 }: {
   result: UnifiedSearchResult;
   onLoad: (radio: Radio) => void;
+  onPick?: () => void;
   onError: (message: string) => void;
   isDisabled: boolean;
   isLoading: boolean;
@@ -58,6 +62,7 @@ function ResultItem({
   const handleClick = () => {
     onError("");
     onLoadingChange(true);
+    onPick?.();
     loadItem(result.url);
   };
 
@@ -121,12 +126,14 @@ function ManagedResultItem({
   result,
   loadingId,
   onLoad,
+  onPick,
   onError,
   onLoadingIdChange,
 }: {
   result: UnifiedSearchResult;
   loadingId: string | null;
   onLoad: (radio: Radio) => void;
+  onPick?: () => void;
   onError: (message: string) => void;
   onLoadingIdChange: (id: string | null) => void;
 }) {
@@ -140,6 +147,7 @@ function ManagedResultItem({
       onError={onError}
       onLoad={onLoad}
       onLoadingChange={handleLoadingChange}
+      onPick={onPick}
       result={result}
     />
   );
@@ -148,6 +156,7 @@ function ManagedResultItem({
 export function SearchResults({
   error,
   onLoad,
+  onPick,
   results,
   showEmpty = false,
 }: SearchResultsProps) {
@@ -177,6 +186,7 @@ export function SearchResults({
               onError={setLoadError}
               onLoad={onLoad}
               onLoadingIdChange={setLoadingId}
+              onPick={onPick}
               result={result}
             />
           ))}

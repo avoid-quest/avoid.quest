@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
 import { GenreBadges, splitGenres } from "./genre-badges";
+import { sameText } from "./radio-now-playing";
 
 export function RadioListItemMetadata({
   radio,
@@ -21,7 +22,7 @@ export function RadioListItemMetadata({
   }
 
   const artist =
-    metadata?.title && metadata.artist !== metadata.title
+    metadata?.title && !sameText(metadata.artist, metadata.title)
       ? metadata.artist
       : null;
   const [genre] = splitGenres(metadata?.genre);
@@ -32,7 +33,10 @@ export function RadioListItemMetadata({
       className={cn("mt-0.5 flex min-w-0 items-center gap-1.5", className)}
       title={`Now playing on ${radio.name}: ${identity}${genre ? `, ${genre}` : ""}`}
     >
-      <p className="min-w-0 truncate text-muted-foreground text-xs leading-snug">
+      <p
+        className="min-w-0 truncate text-muted-foreground text-xs leading-snug"
+        dir="auto"
+      >
         {identity}
       </p>
       <GenreBadges

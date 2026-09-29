@@ -47,4 +47,20 @@ describe("sanitizeForBluetooth", () => {
     const result = sanitizeForBluetooth(input);
     expect(result).toBe("BBC Radio");
   });
+
+  test("keeps accented letters as their base letter", () => {
+    expect(sanitizeForBluetooth("Cliché Toupée")).toBe("Cliche Toupee");
+    expect(sanitizeForBluetooth("Se Desbordó el Jardín")).toBe(
+      "Se Desbordo el Jardin"
+    );
+  });
+
+  test("maps typographic punctuation to ASCII", () => {
+    expect(sanitizeForBluetooth("GUESTS 113 – Nice Strangers")).toBe(
+      "GUESTS 113 - Nice Strangers"
+    );
+    expect(sanitizeForBluetooth("Summer’s “Last” Sound…")).toBe(
+      `Summer's "Last" Sound...`
+    );
+  });
 });

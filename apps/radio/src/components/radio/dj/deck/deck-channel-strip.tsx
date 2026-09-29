@@ -35,6 +35,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
   } = useDeckContext();
 
   const prefix = `${deckId}:`;
+  const deckLabel = deckId === "deck-a" ? "A" : "B";
   const handleVolume = ([value]: number[]) =>
     setVolume(
       snapChannelSliderValue({
@@ -54,7 +55,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           </span>
           <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
             <Slider
-              aria-label="Volume"
+              aria-label={`Deck ${deckLabel} volume`}
               defaultMarkerValue={1}
               defaultValue={[1]}
               max={MAX_VOLUME}
@@ -72,6 +73,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
       </MidiControlWrapper>
       <div className="flex items-start justify-around pt-1">
         <ChannelSlider
+          ariaLabel={`Deck ${deckLabel} filter`}
           defaultValue={0}
           fillFromDefault
           formatValue={formatChannelFilter}
@@ -84,6 +86,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           value={channelFilter}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${deckLabel} effects mix`}
           defaultValue={1}
           formatValue={formatPercent}
           label="FX"
@@ -95,6 +98,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           value={effectsDryWet}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${deckLabel} pan`}
           defaultValue={0}
           fillFromDefault
           formatValue={formatPan}
@@ -107,6 +111,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           value={pan}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${deckLabel} speed`}
           defaultValue={1}
           fillFromDefault
           formatValue={formatSpeed}

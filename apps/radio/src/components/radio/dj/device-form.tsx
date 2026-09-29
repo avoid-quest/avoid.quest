@@ -85,7 +85,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
           <Select
             disabled={isLoading}
             onValueChange={setSelectedDeviceId}
-            value={selectedDeviceId ?? undefined}
+            value={selectedDeviceId ?? ""}
           >
             <SelectTrigger
               aria-label="Audio input"

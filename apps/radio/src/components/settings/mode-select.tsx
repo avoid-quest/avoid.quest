@@ -45,6 +45,7 @@ export function ModeSelect({ className }: { className?: string }) {
 
   return (
     <ToggleGroup
+      aria-label="Playback mode"
       className={cn("w-full max-w-xs", className)}
       onValueChange={handleModeChange}
       type="single"

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   decodeIcyHeader,
+  decodeIcyText,
   normalizeIcyMetadata,
   parseIcyMetadataBlock,
   parseIcyMetaInt,
@@ -103,5 +104,77 @@ describe("ICY metadata parsing", () => {
     expect(decodeIcyHeader("Radio Caf\u00e9")).toBe("Radio Café");
     expect(decodeIcyHeader("Plain ASCII")).toBe("Plain ASCII");
     expect(decodeIcyHeader(null)).toBeNull();
+  });
+
+  test("decodes HTML entities in StreamTitle exactly once", () => {
+    const parsed = parseIcyMetadataBlock(
+      block("StreamTitle='Tom &amp;amp; Jerry - Caf&eacute;';")
+    );
+    expect(normalizeIcyMetadata(parsed)).toMatchObject({
+      artist: "Tom &amp; Jerry",
+      rawTitle: "Tom &amp; Jerry - Café",
+      title: "Café",
+    });
+  });
+
+  test("accepts StreamUrl as artwork only when it points at an image", () => {
+    const artworkFor = (streamUrl: string) =>
+      normalizeIcyMetadata(
+        parseIcyMetadataBlock(
+          block(`StreamTitle='Artist - Title';StreamUrl='${streamUrl}';`)
+        )
+      )?.artworkUrl;
+
+    expect(artworkFor("https://station.example/")).toBeNull();
+    expect(artworkFor("https://station.example/shows/today")).toBeNull();
+    expect(artworkFor("https://station.example/cover.html")).toBeNull();
+    expect(artworkFor("https://cdn.example/art.JPG?size=large")).toBe(
+      "https://cdn.example/art.JPG?size=large"
+    );
+    for (const extension of ["jpeg", "png", "webp", "gif", "avif"]) {
+      expect(artworkFor(`https://cdn.example/art.${extension}`)).toBe(
+        `https://cdn.example/art.${extension}`
+      );
+    }
+    expect(
+      normalizeIcyMetadata(
+        parseIcyMetadataBlock(block("StreamUrl='https://station.example/';"))
+      )
+    ).toBeNull();
+  });
+
+  test("keeps a quote-semicolon inside a StreamTitle value", () => {
+    const parsed = parseIcyMetadataBlock(
+      block("StreamTitle='Rock';n'roll - Live';StreamUrl='';")
+    );
+    expect(parsed.streamTitle).toBe("Rock';n'roll - Live");
+    expect(parsed.streamUrl).toBe("");
+    expect(
+      parseIcyMetadataBlock(block("StreamTitle='Rock';n'roll - Live';\0\0"))
+        .streamTitle
+    ).toBe("Rock';n'roll - Live");
+  });
+
+  test("still reads a value followed by trailing noise", () => {
+    expect(
+      parseIcyMetadataBlock(block("StreamTitle='Artist - Title';garbage"))
+        .streamTitle
+    ).toBe("Artist - Title");
+  });
+
+  test("normalizes the title against the station name", () => {
+    const parsed = parseIcyMetadataBlock(
+      block("StreamTitle='x.y FM #12 - Resonance EXTRA';")
+    );
+    expect(
+      normalizeIcyMetadata(parsed, { stationNames: ["Resonance Extra"] })
+    ).toMatchObject({ artist: null, title: "x.y FM #12" });
+  });
+
+  test("decodes text bytes as UTF-8 or Windows-1252", () => {
+    expect(decodeIcyText(block("Björk"))).toBe("Björk");
+    expect(decodeIcyText(Uint8Array.from([0x42, 0x6a, 0xf6, 0x72, 0x6b]))).toBe(
+      "Björk"
+    );
   });
 });

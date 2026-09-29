@@ -4,10 +4,12 @@ import {
   getMultipleChannelId,
   getPlaybackChannel,
   getPlaybackSession,
+  type PlaybackChannelRecord,
   removePlaybackChannel,
   replacePlaybackChannels,
   upsertPlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import { isSameStation } from "@/lib/stations/external-station-workflow";
 import {
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
@@ -110,18 +112,61 @@ async function runWithConcurrency<T>(
   );
 }
 
-function synchronizeStations(
-  saved: Radio[],
-  session: Radio[],
-  removeChannel: (channelId: string) => void
-): void {
-  const radios = [
+type CarriedChannel = {
+  from: PlaybackChannelRecord;
+  wasPlaying: boolean;
+};
+
+function getSynchronizedRadios(saved: Radio[], session: Radio[]): Radio[] {
+  return [
     ...saved,
     ...session.filter(
       (sessionStation) =>
         !saved.some((station) => station.id === sessionStation.id)
     ),
   ];
+}
+
+/**
+ * Channels whose Station comes back under a new id in this synchronization,
+ * e.g. a Session station that was just saved. Keyed by the new Channel id.
+ */
+function findCarriedChannels(
+  radios: Radio[],
+  existingChannels: readonly PlaybackChannelRecord[]
+): Map<string, CarriedChannel> {
+  const nextChannelIds = new Set(radios.map(getMultipleChannelId));
+  const removedChannels = existingChannels.filter(
+    (channel) => !nextChannelIds.has(channel.id)
+  );
+  const carried = new Map<string, CarriedChannel>();
+  for (const radio of radios) {
+    const channelId = getMultipleChannelId(radio);
+    if (existingChannels.some((channel) => channel.id === channelId)) {
+      continue;
+    }
+    const from = removedChannels.find(
+      (channel) =>
+        channel.radio &&
+        isSameStation(channel.radio, radio) &&
+        ![...carried.values()].some((entry) => entry.from === channel)
+    );
+    if (from) {
+      const runtime = getPlaybackChannelRuntime(from.id);
+      carried.set(channelId, {
+        from,
+        wasPlaying: runtime.isPlaying || runtime.isLoading,
+      });
+    }
+  }
+  return carried;
+}
+
+function synchronizeStations(
+  radios: Radio[],
+  carried: ReadonlyMap<string, CarriedChannel>,
+  removeChannel: (channelId: string) => void
+): void {
   const existingChannels = getPlaybackSession("multiple")?.channels ?? [];
   const existingChannelsById = new Map(
     existingChannels.map((channel) => [channel.id, channel])
@@ -140,6 +185,7 @@ function synchronizeStations(
       const channelId = getMultipleChannelId(radio);
       return {
         ...(existingChannelsById.get(channelId) ??
+          carried.get(channelId)?.from ??
           createDefaultChannel(channelId, "multiple", order)),
         id: channelId,
         order,
@@ -437,8 +483,28 @@ function createMultiplePlayback(
     setMasterVolume,
     setPlaying,
     setVolume,
-    synchronizeStations: (saved, session) =>
-      synchronizeStations(saved, session, removeChannelMembership),
+    synchronizeStations(saved, session) {
+      const radios = getSynchronizedRadios(saved, session);
+      const carried = findCarriedChannels(
+        radios,
+        getPlaybackSession("multiple")?.channels ?? []
+      );
+      for (const [channelId, { from }] of carried) {
+        const unmutedVolume = unmutedVolumes.get(from.id);
+        if (unmutedVolume !== undefined) {
+          unmutedVolumes.set(channelId, unmutedVolume);
+        }
+      }
+      synchronizeStations(radios, carried, removeChannelMembership);
+      // The old Channel's sound is gone with its id; resume on the new one.
+      for (const [channelId, { wasPlaying }] of carried) {
+        if (wasPlaying) {
+          startChannel(channelId).catch((error: unknown) => {
+            console.warn("[MultiplePlayback] Could not resume Station", error);
+          });
+        }
+      }
+    },
     toggleMasterMute() {
       const volume = getPlaybackSession("multiple")?.masterVolume ?? 1;
       if (volume > 0) {
@@ -458,6 +524,9 @@ function createMultiplePlayback(
           setVolume(channelId, unmutedVolumes.get(channelId) ?? 1);
         } else {
           ctx.channels.setMuted("multiple", channelId, false);
+          // The engine restores its own pre-mute gain, which is unset for a
+          // sound created muted; re-apply the persisted Channel volume.
+          ctx.channels.setVolume("multiple", channelId, channel.volume);
         }
         return;
       }

@@ -12,6 +12,11 @@ import { cleanup, render } from "@testing-library/react";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type { Radio } from "@/lib/audio";
+import { getMultipleChannelId } from "@/lib/collections/playback-sessions";
+import {
+  resetAllPlaybackRuntime,
+  setPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://radio.test",
@@ -65,26 +70,34 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetAllPlaybackRuntime();
   localStorage.clear();
   sessionStorage.clear();
 });
 
+type Management = ReturnType<typeof useMultipleRadioManagement>;
+
 function TestHarness({
+  addRadio = () => undefined,
   hasMultipleSession,
+  onRender,
   radios,
   syncRadios,
 }: {
+  addRadio?: (radio: Radio, persistSelection?: boolean) => void;
   hasMultipleSession: boolean;
+  onRender?: (management: Management) => void;
   radios?: Radio[];
   syncRadios: (saved: Radio[], session: Radio[]) => void;
 }) {
-  useMultipleRadioManagement({
-    addRadio: () => undefined,
+  const management = useMultipleRadioManagement({
+    addRadio,
     hasMultipleSession,
     radios,
     removeRadio: () => undefined,
     syncRadios,
   });
+  onRender?.(management);
 
   return null;
 }
@@ -129,5 +142,56 @@ describe("useMultipleRadioManagement", () => {
 
     expect(syncRadios).toHaveBeenCalledTimes(1);
     expect(syncRadios).toHaveBeenCalledWith([savedRadio], [sessionRadio]);
+  });
+
+  test("undoing Hide on a playing card brings it back playing", async () => {
+    const playing = {
+      enabled: true,
+      id: "playing-radio",
+      name: "Playing Radio",
+      streamUrl: "https://radio.example/playing.mp3",
+    } satisfies Radio;
+    const paused = {
+      enabled: true,
+      id: "paused-radio",
+      name: "Paused Radio",
+      streamUrl: "https://radio.example/paused.mp3",
+    } satisfies Radio;
+    setPlaybackChannelRuntime(getMultipleChannelId(playing), () => ({
+      isPlaying: true,
+    }));
+    const addRadio = mock(
+      (_radio: Radio, _persistSelection?: boolean) => undefined
+    );
+    let management: Management | null = null;
+    const captureManagement = (next: Management) => {
+      management = next;
+    };
+    const syncRadios = mock((_saved: Radio[], _session: Radio[]) => undefined);
+    render(
+      <TestHarness
+        addRadio={addRadio}
+        hasMultipleSession={true}
+        onRender={captureManagement}
+        radios={[playing, paused]}
+        syncRadios={syncRadios}
+      />
+    );
+    const current = () => {
+      if (!management) {
+        throw new Error("hook did not render");
+      }
+      return management;
+    };
+
+    await act(async () => {
+      await current().handleToggleRadio(playing, false);
+      await current().handleToggleRadio(paused, false);
+      await current().handleToggleRadio(playing, true);
+      await current().handleToggleRadio(paused, true);
+    });
+
+    expect(addRadio).toHaveBeenCalledTimes(1);
+    expect(addRadio).toHaveBeenCalledWith(playing, true);
   });
 });

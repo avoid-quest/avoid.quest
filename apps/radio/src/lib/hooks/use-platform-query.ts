@@ -7,33 +7,49 @@ export const platformKeys = {
   item: (url: string) => [...platformKeys.all, "item", url] as const,
 };
 
-type UsePlatformLoadOptions = {
+export type PlatformLoadCallbacks = {
   onSuccess?: (radio: Radio) => void;
   onError?: (error: string, code?: string) => void;
 };
 
-export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
+/**
+ * Resolve a platform link into a Radio.
+ *
+ * Callbacks go with each `load` call, not the hook: TanStack Query drops them
+ * once the caller unmounts or starts a newer load, so a pick the user
+ * cancelled never reaches a deck.
+ */
+export function usePlatformLoad() {
   const queryClient = useQueryClient();
-
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: loadPlatformItem,
-    onError: (error) => {
-      options.onError?.(
-        error instanceof Error ? error.message : "Failed to load platform item"
-      );
-    },
     onSuccess: (result) => {
-      if (result.success) {
-        const url = result.radio.platformMetadata?.url;
-        if (url) {
-          queryClient.setQueryData(platformKeys.item(url), result.radio);
-        }
-        options.onSuccess?.(result.radio);
-      } else {
-        options.onError?.(result.error, result.code);
+      const url = result.success ? result.radio.platformMetadata?.url : null;
+      if (result.success && url) {
+        queryClient.setQueryData(platformKeys.item(url), result.radio);
       }
     },
   });
+
+  const load = (url: string, callbacks: PlatformLoadCallbacks = {}) =>
+    mutation.mutate(url, {
+      onError: (error) => {
+        callbacks.onError?.(
+          error instanceof Error
+            ? error.message
+            : "Failed to load platform item"
+        );
+      },
+      onSuccess: (result) => {
+        if (result.success) {
+          callbacks.onSuccess?.(result.radio);
+        } else {
+          callbacks.onError?.(result.error, result.code);
+        }
+      },
+    });
+
+  return { isPending: mutation.isPending, load };
 }
 
 export function usePlatformItem(url: string | null) {

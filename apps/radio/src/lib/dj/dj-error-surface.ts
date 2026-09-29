@@ -18,14 +18,11 @@ export function clearDjErrorSurface(channelId?: string): void {
   setDjError(null);
 }
 
-export const reportDjErrorSurface: ReportDjError = (
-  message,
-  code,
-  error,
-  radio,
-  channelId
-) => {
-  setDjError(message, channelId ?? null);
+/**
+ * Record a DJ failure for diagnostics without showing it in the mixer, for
+ * failures the UI already shows next to the control that caused them.
+ */
+export const captureDjError: ReportDjError = (message, code, error, radio) => {
   capturePlaybackError(error ?? new Error(message), {
     errorCode: code,
     errorMessage: message,
@@ -35,4 +32,15 @@ export const reportDjErrorSurface: ReportDjError = (
     retryPhase: "none",
     streamUrl: radio?.streamUrl,
   });
+};
+
+export const reportDjErrorSurface: ReportDjError = (
+  message,
+  code,
+  error,
+  radio,
+  channelId
+) => {
+  setDjError(message, channelId ?? null);
+  captureDjError(message, code, error, radio, channelId);
 };

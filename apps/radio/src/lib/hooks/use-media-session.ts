@@ -8,17 +8,32 @@ import {
 } from "@/lib/metadata/display";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
 
+const ASCII_PUNCTUATION: [RegExp, string][] = [
+  [/[\u2010-\u2015\u2212]/g, "-"],
+  [/[\u2018\u2019\u201A\u2032]/g, "'"],
+  [/[\u201C\u201D\u201E\u00AB\u00BB\u2033]/g, '"'],
+  [/\u2026/g, "..."],
+  [/[\u00B7\u2022]/g, "-"],
+];
+
 /**
  * Sanitizes a string for safe use in AVRCP/Bluetooth metadata.
- * Strips non-Latin characters, collapses whitespace, falls back to "Radio".
+ * Accented letters keep their base letter and typographic punctuation
+ * becomes ASCII; other non-Latin characters are dropped. Collapses
+ * whitespace, falls back to "Radio".
  */
 export function sanitizeForBluetooth(str: string): string {
   if (!str || str.trim().length === 0) {
     return "Radio";
   }
 
+  let ascii = str.normalize("NFKD").replace(/\p{M}/gu, "");
+  for (const [pattern, replacement] of ASCII_PUNCTUATION) {
+    ascii = ascii.replace(pattern, replacement);
+  }
+
   // Keep only ASCII letters, numbers, and basic punctuation/spaces
-  const sanitized = str.replace(/[^\x20-\x7E]/g, "").trim();
+  const sanitized = ascii.replace(/[^\x20-\x7E]/g, "").trim();
 
   // Collapse multiple spaces into one
   const collapsed = sanitized.replace(/\s+/g, " ");

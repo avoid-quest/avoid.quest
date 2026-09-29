@@ -31,6 +31,8 @@ type SearchInputProps = {
   onYoutubeFilterChange: (filter: "songs" | "videos") => void;
   searchContextKey: string;
   locked?: boolean;
+  /** Return true when the query was handled as a direct link. */
+  onDirectLink?: (url: string) => boolean;
 };
 
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
@@ -69,6 +71,7 @@ export function SearchInput({
   onYoutubeFilterChange,
   searchContextKey,
   locked,
+  onDirectLink,
 }: SearchInputProps) {
   const [query, setQuery] = useState("");
   const { mutate: search, isPending, reset } = useExternalSearch();
@@ -82,6 +85,10 @@ export function SearchInput({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!query.trim()) {
+      return;
+    }
+    if (onDirectLink?.(query.trim())) {
+      setQuery("");
       return;
     }
     onClearResults();
@@ -188,7 +195,7 @@ export function SearchInput({
             className="h-8 pl-8 text-xs"
             disabled={isPending}
             onChange={handleQueryChange}
-            placeholder="Search tracks, albums..."
+            placeholder="Search, or paste a link"
             value={query}
           />
         </div>

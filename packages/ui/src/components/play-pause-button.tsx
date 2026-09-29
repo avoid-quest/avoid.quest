@@ -20,6 +20,7 @@ type PlayPauseButtonProps = {
     | "link";
   className?: string;
   iconClassName?: string;
+  title?: string;
   /** When true, displays loading text below the button. Ignored when `inline={true}`. */
   showLoadingText?: boolean;
   /** Text to display when loading. Only shown when `showLoadingText={true}` and `inline={false}`. */
@@ -45,6 +46,7 @@ export function PlayPauseButton({
   variant = "default",
   className,
   iconClassName,
+  title,
   showLoadingText = false,
   loadingText = "Loading...",
   inline = false,
@@ -71,6 +73,7 @@ export function PlayPauseButton({
       disabled={isDisabled}
       onClick={onClick}
       size={size}
+      title={title}
       variant={variant}
     >
       {renderIcon()}

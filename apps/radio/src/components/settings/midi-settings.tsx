@@ -23,6 +23,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useMidiControlSnapshot } from "@/lib/hooks/use-midi";
 import { usePlayerMode } from "@/lib/hooks/use-settings";
 import {
@@ -80,7 +81,7 @@ function MappingRow({
           mapping ? "text-foreground" : "text-muted-foreground"
         )}
       >
-        {formatMapping(mapping)}
+        {isLearningTarget ? "Move a control…" : formatMapping(mapping)}
       </span>
       {isLearningTarget ? (
         <Button
@@ -103,6 +104,7 @@ function MappingRow({
         </Button>
       )}
       <Button
+        aria-label={`Remove mapping for ${label}`}
         className="h-7 w-7 p-0"
         disabled={!mapping || isLearning}
         onClick={handleRemove}
@@ -217,6 +219,23 @@ export function MidiSettings() {
   const handlePresetChange = (presetId: string) => {
     control.change({ presetId, type: "load-preset" });
   };
+  const [confirmClear, setConfirmClear] = useState(false);
+  useEffect(() => {
+    if (!confirmClear) {
+      return;
+    }
+    const handle = setTimeout(() => setConfirmClear(false), 4000);
+    return () => clearTimeout(handle);
+  }, [confirmClear]);
+  const handleClearAllClick = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    setConfirmClear(false);
+    handleClearMappings();
+  };
+
   const handleClearMappings = () => {
     control.change({ type: "clear-mappings" });
   };
@@ -365,19 +384,19 @@ export function MidiSettings() {
           <Button
             className="h-7 text-xs"
             disabled={mappings.length === 0 || isLearning}
-            onClick={handleClearMappings}
+            onClick={handleClearAllClick}
             size="sm"
-            variant="ghost"
+            variant={confirmClear ? "destructive" : "ghost"}
           >
-            <Trash2Icon className="mr-1.5 size-3" />
-            Clear All
+            <Trash2Icon className="size-3" />
+            {confirmClear ? "Confirm: clear all mappings" : "Clear all"}
           </Button>
         </div>
 
         <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2 2xl:grid-cols-3">
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -389,7 +408,7 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -401,7 +420,7 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -413,7 +432,7 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -425,7 +444,7 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}

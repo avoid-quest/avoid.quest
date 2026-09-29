@@ -119,7 +119,7 @@ function TracklistNavigation() {
     <div className="flex items-center gap-1">
       <Button
         aria-label="Previous track"
-        className="h-6 w-6 p-0"
+        className="size-6 p-0 [@media(pointer:coarse)]:size-9"
         disabled={!hasPrevious}
         onClick={handlePrevious}
         size="sm"
@@ -129,7 +129,7 @@ function TracklistNavigation() {
       </Button>
       <Button
         aria-label="Next track"
-        className="h-6 w-6 p-0"
+        className="size-6 p-0 [@media(pointer:coarse)]:size-9"
         disabled={!hasNext}
         onClick={handleNext}
         size="sm"
@@ -137,9 +137,6 @@ function TracklistNavigation() {
       >
         <ChevronRightIcon className="size-3.5" />
       </Button>
-      <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
-        {currentTrackIndex + 1}/{tracks.length}
-      </span>
     </div>
   );
 }

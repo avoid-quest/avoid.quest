@@ -212,11 +212,11 @@ describe("StationDiscovery", () => {
     );
     await waitForSearch();
 
-    expect(providerQueries).toEqual([]);
-    expect(snapshots.at(-1)).toMatchObject({
-      isSearching: false,
-      results: [{ action: { radio: knownStation, type: "local" } }],
-    });
+    expect(providerQueries).toEqual(["rome"]);
+    expect(snapshots.at(-1)?.results.map((result) => result.name)).toEqual([
+      "Rome Saved Radio",
+      "Rome Directory Radio",
+    ]);
 
     discovery.search(
       {
@@ -228,7 +228,7 @@ describe("StationDiscovery", () => {
     );
     await waitForSearch();
 
-    expect(providerQueries).toEqual(["rome"]);
+    expect(providerQueries).toEqual(["rome", "rome"]);
     expect(snapshots.at(-1)?.results.map((result) => result.name)).toEqual([
       "Rome Saved Radio",
       "Rome Directory Radio",

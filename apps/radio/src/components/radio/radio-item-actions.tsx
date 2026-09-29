@@ -56,11 +56,23 @@ export function RadioItemActions({
     setIsUpdating(true);
     try {
       const newEnabled = !radio.enabled;
-      updateRadio(String(radio.id), { enabled: newEnabled });
+      const id = String(radio.id);
+      updateRadio(id, { enabled: newEnabled });
       onToggle(radio, newEnabled);
-      toast.success(`${radio.name} ${newEnabled ? "enabled" : "disabled"}`);
+      toast.success(
+        newEnabled ? `Showing "${radio.name}"` : `Hid "${radio.name}"`,
+        {
+          action: {
+            label: "Undo",
+            onClick: () => {
+              updateRadio(id, { enabled: !newEnabled });
+              onToggle(radio, !newEnabled);
+            },
+          },
+        }
+      );
     } catch {
-      toast.error("Failed to toggle radio");
+      toast.error("Couldn't update station");
     } finally {
       setIsUpdating(false);
     }
@@ -119,22 +131,22 @@ export function RadioItemActions({
         {isSession && onSave ? (
           <>
             <DropdownMenuItem onClick={handleSave}>
-              <BookmarkPlusIcon className="mr-2 size-4" />
-              Save to Collection
+              <BookmarkPlusIcon className="size-4" />
+              Save
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         ) : null}
 
         <DropdownMenuItem onClick={handleCopyStreamLink}>
-          <CopyIcon className="mr-2 size-4" />
-          Copy Stream Link
+          <CopyIcon className="size-4" />
+          Copy stream URL
         </DropdownMenuItem>
 
-        {radio.websiteUrl?.trim() !== "" && (
+        {Boolean(radio.websiteUrl?.trim()) && (
           <DropdownMenuItem onClick={handleGoToWebsite}>
-            <ExternalLinkIcon className="mr-2 size-4" />
-            Go to Website
+            <ExternalLinkIcon className="size-4" />
+            Website
           </DropdownMenuItem>
         )}
 
@@ -143,7 +155,7 @@ export function RadioItemActions({
             <DropdownMenuSeparator />
 
             <DropdownMenuItem onClick={handleEdit}>
-              <PencilIcon className="mr-2 size-4" />
+              <PencilIcon className="size-4" />
               Edit
             </DropdownMenuItem>
 
@@ -151,13 +163,13 @@ export function RadioItemActions({
               <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
                 {radio.enabled ? (
                   <>
-                    <ToggleRightIcon className="mr-2 size-4" />
-                    Disable
+                    <ToggleRightIcon className="size-4" />
+                    Hide
                   </>
                 ) : (
                   <>
-                    <ToggleLeftIcon className="mr-2 size-4" />
-                    Enable
+                    <ToggleLeftIcon className="size-4" />
+                    Show
                   </>
                 )}
               </DropdownMenuItem>
@@ -173,12 +185,12 @@ export function RadioItemActions({
         >
           {isSession ? (
             <>
-              <XIcon className="mr-2 size-4" />
+              <XIcon className="size-4" />
               Remove
             </>
           ) : (
             <>
-              <Trash2Icon className="mr-2 size-4" />
+              <Trash2Icon className="size-4" />
               Delete
             </>
           )}

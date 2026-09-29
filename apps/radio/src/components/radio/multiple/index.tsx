@@ -1,11 +1,10 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { Button } from "@avoid.quest/ui/components/button";
-import { AudioLinesIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMultipleSession } from "@/lib/hooks/use-multiple-session";
 import { RadioDialog } from "../../settings/radio-dialog";
+import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
 import { RadioSearchBar } from "../radio-search-bar";
 import { MultipleGlobalControls } from "./multiple-global-controls";
 import { MultipleRadioCard } from "./multiple-radio-card";
@@ -86,16 +85,52 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
   const handleGlobalVolumeChange = (value: number[]) => {
     setGlobalVolume(value[0] ?? 1);
   };
-  const handleSelectLocal = (radio: Radio) => addRadio(radio, true);
+  const revealCard = (radio: Radio) => {
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-radio-id="${String(radio.id)}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  };
+  const handleSelectLocal = (radio: Radio) => {
+    addRadio(radio, true);
+    revealCard(radio);
+  };
   const handleCancelDelete = () => setDeleteConfirm(null);
 
   const allRadios = [
-    ...(radios ?? []),
-    ...sessionRadios.filter((sr) => !radios?.some((r) => r.id === sr.id)),
+    ...sessionRadios,
+    ...(radios ?? []).filter(
+      (r) => !sessionRadios.some((sr) => sr.id === r.id)
+    ),
   ];
 
   const isAnyPlaying = players.some((p) => p.isPlaying);
   const playingCount = players.filter((p) => p.isPlaying).length;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== " " || event.repeat || allRadios.length === 0) {
+        return;
+      }
+      const { target } = event;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, button, a, [role=slider]"))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (isAnyPlaying) {
+        pauseAll();
+      } else {
+        playAll();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [allRadios.length, isAnyPlaying, pauseAll, playAll]);
 
   useMediaSession({
     mode: "multiple",
@@ -107,41 +142,38 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
     return (
       <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col items-center px-4 py-6">
         <RadioSearchBar
-          className="mb-4 w-full max-w-md"
+          className="w-full max-w-md"
           onSaveDiscovered={saveDiscoveredStation}
           onSelectDiscovered={selectDiscoveredStation}
           onSelectLocal={handleSelectLocal}
+          placeholder="Search to add a station"
           radios={radios ?? []}
         />
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-border/50 border-dashed bg-card/50 px-8 py-12">
-          <AudioLinesIcon className="size-8 text-muted-foreground/30" />
-          <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-            No stations enabled
-          </p>
-        </div>
       </div>
     );
   }
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-auto px-4 py-6">
-      {/* Search bar */}
-      <RadioSearchBar
-        className="mb-4"
-        onSaveDiscovered={saveDiscoveredStation}
-        onSelectDiscovered={selectDiscoveredStation}
-        onSelectLocal={handleSelectLocal}
-        radios={radios ?? []}
-      />
-
-      <MultipleGlobalControls
-        globalMuted={globalMuted}
-        globalVolume={globalVolume}
-        isAnyPlaying={isAnyPlaying}
-        onToggleMute={toggleGlobalMute}
-        onTogglePlayback={isAnyPlaying ? pauseAll : playAll}
-        onVolumeChange={handleGlobalVolumeChange}
-      />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <RadioSearchBar
+          className="min-w-56 flex-1"
+          onSaveDiscovered={saveDiscoveredStation}
+          onSelectDiscovered={selectDiscoveredStation}
+          onSelectLocal={handleSelectLocal}
+          radios={radios ?? []}
+        />
+        <MultipleGlobalControls
+          globalMuted={globalMuted}
+          globalVolume={globalVolume}
+          isAnyPlaying={isAnyPlaying}
+          onToggleMute={toggleGlobalMute}
+          onTogglePlayback={isAnyPlaying ? pauseAll : playAll}
+          onVolumeChange={handleGlobalVolumeChange}
+          playingCount={playingCount}
+          totalCount={allRadios.length}
+        />
+      </div>
 
       {/* Grid */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -168,26 +200,11 @@ export function MultipleRadios({ radios }: { radios?: Radio[] }) {
         radio={selectedRadio}
       />
 
-      {/* Delete Confirmation */}
-      {deleteConfirm?.valueOf() && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg border border-border/50 bg-card p-6">
-            <h3 className="mb-2 font-semibold text-sm">Delete Radio Station</h3>
-            <p className="mb-4 text-muted-foreground text-xs">
-              Are you sure you want to delete &ldquo;{deleteConfirm.name}
-              &rdquo;? This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button onClick={handleCancelDelete} size="sm" variant="outline">
-                Cancel
-              </Button>
-              <Button onClick={confirmDelete} size="sm" variant="destructive">
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDeleteDialog
+        onCancel={handleCancelDelete}
+        onConfirm={confirmDelete}
+        radio={deleteConfirm}
+      />
     </div>
   );
 }

@@ -1,5 +1,4 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { Button } from "@avoid.quest/ui/components/button";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
@@ -13,6 +12,7 @@ import {
 } from "@/lib/hooks/use-session-radios";
 import { useSingleSession } from "@/lib/hooks/use-single-session";
 import { RadioDialog } from "../../settings/radio-dialog";
+import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioSearchBar } from "../radio-search-bar";
 import {
@@ -70,12 +70,40 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
   const [unmutedVolume, setUnmutedVolume] = useState(1);
   const isMuted = volume <= 0;
+  // Nothing selected (cold start, or the station was deleted): show the
+  // first station paused instead of an empty panel.
+  useEffect(() => {
+    const [first] = radios ?? [];
+    if (!currentRadio && first) {
+      selectRadio(first);
+    }
+  }, [currentRadio, radios, selectRadio]);
 
   useEffect(() => {
     if (volume > 0) {
       setUnmutedVolume(volume);
     }
   }, [volume]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== " " || event.repeat || !currentRadio) {
+        return;
+      }
+      const { target } = event;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, button, a, [role=slider]"))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      togglePlayPause();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentRadio, togglePlayPause]);
 
   const handleEditRadio = (radio: Radio) => {
     setDialogMode("edit");
@@ -87,6 +115,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     if (isSessionRadio(radio)) {
       if (radio.id) {
         removeSessionRadio(radio.id);
+        toast.success(`Removed "${radio.name}"`);
       }
       return;
     }
@@ -103,9 +132,10 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     }
     try {
       deleteRadio(String(deleteConfirm.id));
+      toast.success(`Deleted "${deleteConfirm.name}"`);
       setDeleteConfirm(null);
     } catch {
-      toast.error("Failed to delete radio");
+      toast.error("Couldn't delete station");
     }
   };
 
@@ -137,12 +167,8 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             isMuted={isMuted}
             isPlaying={isPlaying}
             metadata={metadata}
-            onDelete={handleDeleteRadio}
-            onEdit={handleEditRadio}
             onMuteToggle={handleMuteToggle}
             onPlayPause={togglePlayPause}
-            onSave={handleSaveSessionRadio}
-            onToggle={handleToggleRadio}
             onVolumeChange={handleVolumeChange}
             radio={currentRadio}
             volume={volume}
@@ -150,17 +176,20 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
           <StationList
             currentRadioId={currentRadio?.id}
+            isPlaying={isPlaying}
             onDelete={handleDeleteRadio}
             onEdit={handleEditRadio}
             onSave={handleSaveSessionRadio}
             onSelect={selectRadio}
             onToggle={handleToggleRadio}
+            onTogglePlayPause={togglePlayPause}
             radios={radios}
             searchBar={
               <RadioSearchBar
                 onSaveDiscovered={saveDiscoveredStation}
                 onSelectDiscovered={selectDiscoveredStation}
                 onSelectLocal={selectRadio}
+                placeholder={`Search ${(radios ?? []).length + sessionRadios.length} stations…`}
                 radios={radios ?? []}
               />
             }
@@ -202,25 +231,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         radio={selectedRadio}
       />
 
-      {deleteConfirm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg border border-border/50 bg-card p-6">
-            <h3 className="mb-2 font-semibold text-sm">Delete Radio Station</h3>
-            <p className="mb-4 text-muted-foreground text-xs">
-              Are you sure you want to delete &ldquo;{deleteConfirm.name}
-              &rdquo;? This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button onClick={handleCancelDelete} size="sm" variant="outline">
-                Cancel
-              </Button>
-              <Button onClick={confirmDelete} size="sm" variant="destructive">
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDeleteDialog
+        onCancel={handleCancelDelete}
+        onConfirm={confirmDelete}
+        radio={deleteConfirm}
+      />
     </>
   );
 }

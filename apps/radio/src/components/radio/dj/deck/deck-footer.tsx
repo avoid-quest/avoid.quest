@@ -17,11 +17,11 @@ export function DeckFooter({
   isDeviceInput = false,
 }: DeckFooterProps) {
   const changeHandler = isDeviceInput ? onChangeDevice : onChangeUrl;
-  let changeLabel = "Change URL";
+  let changeLabel = "Change source";
   if (isDeviceInput) {
-    changeLabel = "Change Device";
+    changeLabel = "Change device";
   } else if (isFileSource) {
-    changeLabel = "Change File";
+    changeLabel = "Change file";
   }
   const ChangeIcon = isFileSource ? FileAudioIcon : Link2Icon;
 
@@ -42,6 +42,7 @@ export function DeckFooter({
         className="h-7 flex-1 text-xs hover:bg-destructive/10 hover:text-destructive"
         onClick={onClear}
         size="sm"
+        title="Remove the source. Effects and channel settings stay."
         variant="ghost"
       >
         <XIcon className="mr-1.5 size-3" />

@@ -8,6 +8,7 @@ import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import type { MultipleSessionPlayerState } from "@/lib/hooks/use-multiple-session";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
+import { InlineError } from "../inline-error";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioNowPlaying } from "../radio-now-playing";
 
@@ -61,6 +62,7 @@ export function MultipleRadioCard({
         isPlaying && !isLoading && "border-foreground/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
+      data-radio-id={String(radio.id)}
       ref={elementRef}
     >
       <div className="absolute top-2 right-2">
@@ -82,11 +84,7 @@ export function MultipleRadioCard({
       </div>
 
       {/* Error */}
-      {error ? (
-        <div className="mx-3 mb-2 rounded-md bg-destructive/10 px-2 py-1">
-          <p className="font-mono text-[10px] text-destructive">{error}</p>
-        </div>
-      ) : null}
+      {error ? <InlineError className="mx-3 mb-2">{error}</InlineError> : null}
 
       {/* Controls */}
       <div className="mt-auto flex items-center gap-2 border-border/50 border-t px-3 py-2">
@@ -101,28 +99,25 @@ export function MultipleRadioCard({
         />
         <button
           aria-label={isMuted ? "Unmute" : "Mute"}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={handleToggleMute}
           type="button"
         >
           {isMuted || volume === 0 ? (
-            <VolumeXIcon className="size-3" />
+            <VolumeXIcon className="size-3.5" />
           ) : (
-            <Volume2Icon className="size-3" />
+            <Volume2Icon className="size-3.5" />
           )}
         </button>
         <Slider
-          className="h-1.5 flex-1"
+          className={cn("h-1.5 flex-1", isMuted && "opacity-40")}
           defaultValue={[1]}
           max={1}
           min={0}
           onValueChange={handleVolumeChange}
           step={0.01}
-          value={[volume]}
+          value={[isMuted ? 0 : volume]}
         />
-        <span className="w-7 shrink-0 text-right font-mono text-[10px] text-muted-foreground/60 tabular-nums">
-          {Math.round(volume * 100)}
-        </span>
       </div>
     </div>
   );

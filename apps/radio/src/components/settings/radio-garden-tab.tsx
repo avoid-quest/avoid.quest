@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+
 import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
@@ -19,6 +20,7 @@ import type { RadioGardenSearchResult } from "@/lib/platform-types";
 import { createBrowserStationIntake } from "@/lib/stations/external-station-workflow";
 import { resolveRadioGardenStreamForWorkflow } from "@/lib/stations/radio-garden-resolve-adapter";
 import { notifyStationSave } from "@/lib/stations/station-save-notification";
+import { InlineError } from "../radio/inline-error";
 
 type RadioGardenTabProps = {
   onSuccess: () => void;
@@ -35,6 +37,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
   const [results, setResults] = useState<RadioGardenSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editedName, setEditedName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -52,9 +55,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
     try {
       const searchResults = await searchRadioGarden(query.trim());
       setResults(searchResults);
-      if (searchResults.length === 0) {
-        setSearchError("No stations found. Try a different search.");
-      }
+      setHasSearched(true);
     } catch (error) {
       captureError(error, {
         operation: "radio-garden.search",
@@ -157,10 +158,11 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
         </Button>
       </form>
 
-      {searchError ? (
-        <div className="rounded-md bg-destructive/10 p-3">
-          <p className="text-destructive text-sm">{searchError}</p>
-        </div>
+      {searchError ? <InlineError>{searchError}</InlineError> : null}
+      {!searchError && hasSearched && results.length === 0 ? (
+        <p className="py-4 text-center text-muted-foreground text-xs">
+          No stations found
+        </p>
       ) : null}
 
       {results.length > 0 && (
@@ -235,7 +237,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                       ) : (
                         <>
                           <PlusIcon className="mr-2 size-3" />
-                          Add to Collection
+                          Add station
                         </>
                       )}
                     </Button>

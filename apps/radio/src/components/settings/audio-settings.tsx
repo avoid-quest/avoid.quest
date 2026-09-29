@@ -2,7 +2,12 @@
 "use client";
 
 import { Button } from "@avoid.quest/ui/components/button";
-import { Label } from "@avoid.quest/ui/components/label";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@avoid.quest/ui/components/collapsible";
+import { Field, FieldTitle } from "@avoid.quest/ui/components/field";
 import {
   Select,
   SelectContent,
@@ -12,6 +17,7 @@ import {
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import {
+  ChevronDownIcon,
   ClockIcon,
   CopyIcon,
   HeadphonesIcon,
@@ -115,11 +121,14 @@ export function AudioSettings() {
   const handleAutoLatency = async () => {
     try {
       const detected = await autoCompensateLatency();
-      if (detected !== null) {
+      if (detected === null) {
+        toast.error("Couldn't detect latency");
+      } else {
         setMainDelayMsState(detected);
+        toast.success(`Main delay set to ${Math.round(detected)} ms`);
       }
     } catch {
-      toast.error("Failed to apply the main output settings");
+      toast.error("Couldn't detect latency");
     }
   };
   const handleDiagnostic = async () => {
@@ -154,7 +163,7 @@ export function AudioSettings() {
   return (
     <div className="space-y-4">
       {/* Permission request */}
-      {permissionState !== "granted" && (
+      {sinkIdSupported && permissionState !== "granted" && (
         <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
           <p className="mb-2 text-xs">
             Grant microphone permission to see device names and select audio
@@ -213,10 +222,7 @@ export function AudioSettings() {
               )}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">
-              Output device selection not supported in this browser. Audio will
-              play through system default.
-            </p>
+            <p className="text-muted-foreground text-sm">System default</p>
           )}
         </AudioSettingRow>
 
@@ -255,7 +261,7 @@ export function AudioSettings() {
                 <SelectValue placeholder="Select CUE output" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None (CUE Disabled)</SelectItem>
+                <SelectItem value="none">Off</SelectItem>
                 {outputDevices
                   .filter(
                     (device) =>
@@ -295,25 +301,23 @@ export function AudioSettings() {
         )}
       </div>
 
-      <Button
-        disabled={isCapturingDiagnostic}
-        onClick={handleDiagnostic}
-        size="sm"
-        variant="outline"
-      >
-        <CopyIcon className="size-3.5" />
-        {diagnosticLabel}
-      </Button>
-
-      {/* Browser compatibility note */}
-      {!sinkIdSupported && (
-        <div className="border-t pt-3">
-          <p className="text-muted-foreground text-xs">
-            <strong>Note:</strong> Output device selection requires Chrome or
-            Edge. Firefox and Safari use the system default output.
-          </p>
-        </div>
-      )}
+      <Collapsible>
+        <CollapsibleTrigger className="group flex items-center gap-1.5 rounded text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronDownIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+          Troubleshooting
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-3">
+          <Button
+            disabled={isCapturingDiagnostic}
+            onClick={handleDiagnostic}
+            size="sm"
+            variant="outline"
+          >
+            <CopyIcon className="size-3.5" />
+            {diagnosticLabel}
+          </Button>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -328,12 +332,15 @@ function AudioSettingRow({
   children: ReactNode;
 }) {
   return (
-    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
-      <Label className="flex items-center gap-2 text-sm">
+    <Field
+      className="py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center"
+      orientation="horizontal"
+    >
+      <FieldTitle>
         <Icon className="size-3.5 text-muted-foreground" />
         {title}
-      </Label>
+      </FieldTitle>
       {children}
-    </div>
+    </Field>
   );
 }

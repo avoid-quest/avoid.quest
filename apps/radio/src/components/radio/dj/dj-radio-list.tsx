@@ -1,5 +1,4 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
-import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import {
   Tabs,
@@ -8,8 +7,6 @@ import {
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
   FileAudioIcon,
   GlobeIcon,
   MicIcon,
@@ -113,8 +110,14 @@ export function RadioItemContent({ radio }: { radio: Radio }) {
   );
 }
 
-function MobileRadioItem({ radio }: { radio: Radio }) {
-  const load = (deckId: "deck-a" | "deck-b") => {
+function MobileRadioItem({
+  radio,
+  deckId,
+}: {
+  radio: Radio;
+  deckId: "deck-a" | "deck-b";
+}) {
+  const handleLoad = () => {
     getDjDeckModule()
       .deck(deckId)
       .load({ radio, type: "library" })
@@ -122,44 +125,26 @@ function MobileRadioItem({ radio }: { radio: Radio }) {
         console.error("[dj] Failed to load mobile source:", error);
       });
   };
-  const handleLoadDeckA = () => load("deck-a");
-  const handleLoadDeckB = () => load("deck-b");
 
   return (
-    <div className="flex w-full shrink-0 items-center justify-between gap-2 rounded-lg border bg-card p-3">
+    <button
+      className="flex w-full shrink-0 items-center gap-2 rounded-lg border border-border/50 bg-card/50 p-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={handleLoad}
+      type="button"
+    >
       <RadioItemContent radio={radio} />
-      <div className="flex shrink-0 gap-1">
-        <Button
-          aria-label="Load to Deck A"
-          className="h-8 w-8 p-0"
-          onClick={handleLoadDeckA}
-          size="sm"
-          title="Load to Deck A"
-          variant="outline"
-        >
-          <ChevronLeftIcon className="size-4" />
-        </Button>
-        <Button
-          aria-label="Load to Deck B"
-          className="h-8 w-8 p-0"
-          onClick={handleLoadDeckB}
-          size="sm"
-          title="Load to Deck B"
-          variant="outline"
-        >
-          <ChevronRightIcon className="size-4" />
-        </Button>
-      </div>
-    </div>
+    </button>
   );
 }
 
 function MobileList({
   emptyLabel,
   items,
+  deckId,
 }: {
   emptyLabel: string;
   items: Radio[];
+  deckId: "deck-a" | "deck-b";
 }) {
   if (items.length === 0) {
     return (
@@ -172,20 +157,31 @@ function MobileList({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
       {items.map((radio) => (
-        <MobileRadioItem key={radio.id ?? radio.streamUrl} radio={radio} />
+        <MobileRadioItem
+          deckId={deckId}
+          key={radio.id ?? radio.streamUrl}
+          radio={radio}
+        />
       ))}
     </div>
   );
 }
 
-export function DjRadioList({ radios }: { radios: Radio[] }) {
+export function DjRadioList({
+  radios,
+  deckId,
+}: {
+  radios: Radio[];
+  deckId: "deck-a" | "deck-b";
+}) {
   const [activeTab, setActiveTab] = useState("stations");
   const [query, setQuery] = useState("");
   const sessionRadios = useSessionRadios((state) => state.radios);
   const allRadios = [
-    ...radios,
-    ...sessionRadios.filter(
-      (sessionRadio) => !radios.some((radio) => radio.id === sessionRadio.id)
+    ...sessionRadios,
+    ...radios.filter(
+      (radio) =>
+        !sessionRadios.some((sessionRadio) => sessionRadio.id === radio.id)
     ),
   ];
   const { isSearching, results } = useUnifiedRadioSearch(query, allRadios);
@@ -227,6 +223,7 @@ export function DjRadioList({ radios }: { radios: Radio[] }) {
         value="stations"
       >
         <MobileList
+          deckId={deckId}
           emptyLabel={
             (isSearching && "Searching station directories…") ||
             (hasQuery && "No playable stations found") ||
@@ -239,7 +236,11 @@ export function DjRadioList({ radios }: { radios: Radio[] }) {
         className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
         value="sources"
       >
-        <MobileList emptyLabel="No sources available" items={PLATFORM_ITEMS} />
+        <MobileList
+          deckId={deckId}
+          emptyLabel="No sources available"
+          items={PLATFORM_ITEMS}
+        />
       </TabsContent>
     </Tabs>
   );

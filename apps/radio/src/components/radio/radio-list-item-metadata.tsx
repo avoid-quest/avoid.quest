@@ -1,17 +1,8 @@
-import { Badge } from "@avoid.quest/ui/components/badge";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import type { ReactNode } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
-
-function getFirstGenre(genre?: string | null): string | null {
-  return (
-    genre
-      ?.split(",")
-      .map((value) => value.trim())
-      .find(Boolean) ?? null
-  );
-}
+import { GenreBadges, splitGenres } from "./genre-badges";
 
 export function RadioListItemMetadata({
   radio,
@@ -33,7 +24,7 @@ export function RadioListItemMetadata({
     metadata?.title && metadata.artist !== metadata.title
       ? metadata.artist
       : null;
-  const genre = getFirstGenre(metadata?.genre);
+  const [genre] = splitGenres(metadata?.genre);
   const identity = [title, artist].filter(Boolean).join(" · ");
 
   return (
@@ -44,15 +35,11 @@ export function RadioListItemMetadata({
       <p className="min-w-0 flex-1 truncate text-muted-foreground text-xs leading-snug">
         {identity}
       </p>
-      {genre ? (
-        <Badge
-          className="h-4 max-w-24 shrink-0 truncate border-foreground/10 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none"
-          title={metadata?.genre ?? genre}
-          variant="outline"
-        >
-          {genre}
-        </Badge>
-      ) : null}
+      <GenreBadges
+        className="max-w-32 shrink-0 flex-nowrap"
+        genre={metadata?.genre}
+        limit={1}
+      />
     </div>
   );
 }

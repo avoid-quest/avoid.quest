@@ -1,8 +1,11 @@
-import type { EffectConfig } from "@/lib/audio";
+import type { EffectConfig, RevampConfig } from "@/lib/audio";
 import { getEffectSchema } from "@/lib/audio/dsp/effects/schema";
 import { ContainerParams } from "./container-params";
 import { DeclarativeParams } from "./declarative-params";
+import { EFFECT_LAYOUTS } from "./effect-layouts";
+import { RevampParams } from "./revamp-params";
 import { SidechainParams } from "./sidechain-params";
+import { TailoredParams } from "./tailored-params";
 import { Tone3000ModelParams } from "./tone3000-model-params";
 import { WerkstattParams } from "./werkstatt-params";
 
@@ -40,8 +43,30 @@ export function EffectParams({
     );
   }
 
-  return (
-    <div className="space-y-4">
+  const layout = EFFECT_LAYOUTS[effect.type];
+  let params: React.ReactNode;
+  if (effect.type === "revamp") {
+    params = (
+      <RevampParams
+        deckId={deckId}
+        effect={effect as RevampConfig}
+        effectId={effectId}
+        onUpdate={onUpdate}
+      />
+    );
+  } else if (layout) {
+    params = (
+      <TailoredParams
+        deckId={deckId}
+        effect={effect}
+        effectId={effectId}
+        layout={layout}
+        onUpdate={onUpdate}
+        schema={schema}
+      />
+    );
+  } else {
+    params = (
       <DeclarativeParams
         deckId={deckId}
         effect={effect}
@@ -49,6 +74,12 @@ export function EffectParams({
         onUpdate={onUpdate}
         schema={schema}
       />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {params}
       {(effect.type === "compressor" ||
         effect.type === "gate" ||
         effect.type === "vocoder") && (

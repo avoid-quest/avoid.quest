@@ -6,11 +6,13 @@ import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
+import { InlineError } from "../../inline-error";
 
 type SearchResultsProps = {
   error: string | null;
   onLoad: (radio: Radio) => void;
   results: UnifiedSearchResult[];
+  showEmpty?: boolean;
 };
 
 const PLATFORM_COLORS = {
@@ -154,28 +156,35 @@ function ManagedResultItem({
   );
 }
 
-export function SearchResults({ error, onLoad, results }: SearchResultsProps) {
+export function SearchResults({
+  error,
+  onLoad,
+  results,
+  showEmpty = false,
+}: SearchResultsProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   if (error) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-center text-destructive text-xs">{error}</p>
+        <InlineError>{error}</InlineError>
       </div>
     );
   }
 
   if (results.length === 0) {
-    return null;
+    return showEmpty ? (
+      <p className="py-6 text-center text-muted-foreground text-xs">
+        No results
+      </p>
+    ) : null;
   }
 
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="space-y-2 pr-3">
-        {!!loadError?.trim() && (
-          <p className="px-2 text-destructive text-xs">{loadError}</p>
-        )}
+        {!!loadError?.trim() && <InlineError>{loadError}</InlineError>}
 
         <div className="space-y-0.5">
           {results.map((result) => (

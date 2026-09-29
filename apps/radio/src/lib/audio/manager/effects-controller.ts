@@ -869,12 +869,7 @@ class EffectsController {
     this.officialRuntimeWarningReported = true;
     import("sonner")
       .then(({ toast }) =>
-        toast.warning("openDAW effects are using compatibility mode", {
-          description:
-            error instanceof Error
-              ? error.message
-              : "The browser audio engine could not be initialized.",
-        })
+        toast.warning("Some effects run in basic mode in this browser")
       )
       .catch(() => undefined);
   }

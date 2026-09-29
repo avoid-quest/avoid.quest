@@ -113,8 +113,8 @@ function TransportToggles({
         <button
           aria-label={repeat ? "Disable repeat" : "Enable repeat"}
           className={cn(
-            "flex size-6 items-center justify-center rounded-full transition-all",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            "flex size-6 items-center justify-center rounded-full transition-all [@media(pointer:coarse)]:size-9",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             repeat
               ? "bg-primary/15 text-primary"
               : "text-muted-foreground/40 hover:text-muted-foreground"
@@ -129,8 +129,8 @@ function TransportToggles({
         <button
           aria-label={autoplay ? "Disable autoplay" : "Enable autoplay"}
           className={cn(
-            "flex size-6 items-center justify-center rounded-full transition-all",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            "flex size-6 items-center justify-center rounded-full transition-all [@media(pointer:coarse)]:size-9",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             autoplay
               ? "bg-primary/15 text-primary"
               : "text-muted-foreground/40 hover:text-muted-foreground"

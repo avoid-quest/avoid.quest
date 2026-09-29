@@ -19,23 +19,31 @@ const SettingsForm = lazy(() =>
 type SettingsButtonProps = {
   defaultTab?: string;
   className?: string;
+  /** Custom trigger instead of the gear icon. */
+  trigger?: React.ReactNode;
 };
 
-export function SettingsButton({ defaultTab, className }: SettingsButtonProps) {
+export function SettingsButton({
+  defaultTab,
+  className,
+  trigger,
+}: SettingsButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <Drawer handleOnly={true} onOpenChange={setIsOpen} open={isOpen}>
       <DrawerTrigger asChild>
-        <Button
-          aria-label="Open settings"
-          className={cn("size-7", className)}
-          size="icon"
-          title="Settings"
-          variant="outline"
-        >
-          <Settings2Icon className="size-3.5" />
-        </Button>
+        {trigger ?? (
+          <Button
+            aria-label="Open settings"
+            className={cn("size-7", className)}
+            size="icon"
+            title="Settings"
+            variant="ghost"
+          >
+            <Settings2Icon className="size-3.5" />
+          </Button>
+        )}
       </DrawerTrigger>
       <DrawerContent>
         <div className="mx-auto w-full max-w-6xl">

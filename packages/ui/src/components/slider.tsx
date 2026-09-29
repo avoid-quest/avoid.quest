@@ -6,6 +6,10 @@ import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
 import { type ComponentProps, type CSSProperties, useMemo } from "react";
 
 type SliderProps = ComponentProps<typeof Root> & {
+  /** "fader" draws a thicker track with a bar thumb, for mixer-style level controls. */
+  variant?: "default" | "fader";
+  /** "lg" makes a fader cap bigger, for the one control you grab while performing. */
+  size?: "default" | "lg";
   defaultMarkerValue?: number;
   rangeOriginValue?: number;
 };
@@ -99,6 +103,24 @@ function getMarkerStyle({
   } satisfies CSSProperties;
 }
 
+function getThumbShapeClass(
+  isFader: boolean,
+  orientation: SliderOrientation,
+  size: "default" | "lg"
+): string {
+  if (!isFader) {
+    return "size-4 rounded-full";
+  }
+  // A fader cap: a bar with a centre grip line across it.
+  const grip = "relative after:absolute after:bg-primary/50 after:content-['']";
+  if (orientation === "vertical") {
+    const dims = size === "lg" ? "h-5 w-9" : "h-3.5 w-7";
+    return `${dims} rounded-sm ${grip} after:inset-x-1.5 after:top-1/2 after:h-px after:-translate-y-1/2`;
+  }
+  const dims = size === "lg" ? "h-9 w-5" : "h-7 w-3.5";
+  return `${dims} rounded-sm ${grip} after:inset-y-1.5 after:left-1/2 after:w-px after:-translate-x-1/2`;
+}
+
 function getThumbIndex(event: React.SyntheticEvent<HTMLElement>) {
   return Number(event.currentTarget.dataset.index);
 }
@@ -113,8 +135,12 @@ function Slider({
   onValueChange,
   orientation = "horizontal",
   rangeOriginValue,
+  variant = "default",
+  size = "default",
   ...props
 }: SliderProps) {
+  const isFader = variant === "fader";
+  const thumbShapeClass = getThumbShapeClass(isFader, orientation, size);
   const values = useMemo(
     () => getSliderValues({ defaultValue, max, min, value }),
     [value, defaultValue, min, max]
@@ -170,6 +196,7 @@ function Slider({
         className
       )}
       data-slot="slider"
+      data-variant={variant}
       defaultValue={defaultValue}
       max={max}
       min={min}
@@ -180,7 +207,12 @@ function Slider({
     >
       <Track
         className={cn(
-          "relative grow overflow-hidden rounded-full bg-muted data-[orientation=horizontal]:h-1.5 data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-1.5"
+          "relative grow overflow-hidden rounded-full bg-muted data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full",
+          isFader && size === "lg" && "data-[orientation=horizontal]:h-3",
+          isFader && size !== "lg" && "data-[orientation=horizontal]:h-2",
+          isFader && "data-[orientation=vertical]:w-2",
+          !isFader &&
+            "data-[orientation=horizontal]:h-1.5 data-[orientation=vertical]:w-1.5"
         )}
         data-slot="slider-track"
       >
@@ -210,7 +242,10 @@ function Slider({
       </Track>
       {Array.from({ length: values.length }, (_, index) => (
         <Thumb
-          className="block size-4 shrink-0 rounded-full border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white"
+          className={cn(
+            "block shrink-0 border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white",
+            thumbShapeClass
+          )}
           data-index={index}
           data-slot="slider-thumb"
           // biome-ignore lint/suspicious/noArrayIndexKey: shadcn

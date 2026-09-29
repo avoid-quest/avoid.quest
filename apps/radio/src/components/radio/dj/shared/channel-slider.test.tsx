@@ -6,7 +6,7 @@ const formatValue = (value: number) => `${value}`;
 const handleChange = () => undefined;
 
 describe("ChannelSlider", () => {
-  test("renders a default tick and larger coarse-pointer touch target", () => {
+  test("renders a labelled knob with the current value", () => {
     const html = renderToStaticMarkup(
       <ChannelSlider
         defaultValue={1}
@@ -20,9 +20,9 @@ describe("ChannelSlider", () => {
       />
     );
 
-    expect(html).toContain("[@media(pointer:coarse)]:h-10");
-    expect(html).toContain('data-slot="slider-default-marker"');
-    expect(html).toContain("left:63.09148264984227%");
+    expect(html).toContain('role="slider"');
+    expect(html).toContain('aria-label="VOL"');
+    expect(html).toContain('aria-valuenow="1"');
   });
 
   test("can fill bipolar controls from the default value outward", () => {
@@ -40,9 +40,8 @@ describe("ChannelSlider", () => {
       />
     );
 
-    expect(html).toContain('data-slot="slider-default-origin-range"');
-    expect(html).toContain("left:50%");
-    expect(html).toContain("width:25%");
+    expect(html).toContain('data-slot="knob-origin-arc"');
+    expect(html).toContain('aria-valuenow="0.5"');
   });
 
   test("snaps values near the default", () => {

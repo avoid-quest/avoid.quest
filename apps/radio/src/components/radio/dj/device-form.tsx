@@ -142,7 +142,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
               onClick={onCancel}
               variant="outline"
             >
-              {validDevices.length > 0 ? "Eject" : "Cancel"}
+              Cancel
             </Button>
           ) : null}
           {validDevices.length > 0 && (

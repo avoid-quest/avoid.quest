@@ -110,9 +110,9 @@ function MeterBar({
   return (
     <div
       className={cn(
-        "relative overflow-hidden border border-white/[0.06] bg-white/[0.02]",
+        "relative overflow-hidden rounded-sm bg-muted",
         isVertical
-          ? "min-h-0 min-w-0 flex-1"
+          ? "h-full min-h-0 min-w-0 flex-1"
           : `${compact ? "h-1" : "h-1.5"} w-full`
       )}
     >
@@ -190,31 +190,6 @@ export function PeakMeter({
     >
       <MeterBar compact={compact} level={left} orientation={orientation} />
       <MeterBar compact={compact} level={right} orientation={orientation} />
-    </div>
-  );
-}
-
-// ─── Deck wrapper ───────────────────────────────────────────────────────────
-
-export function DeckPeakMeter({
-  peakLevel,
-  className,
-}: {
-  peakLevel?: { left: number; right: number };
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex h-full w-5 shrink-0 items-stretch px-1 py-2",
-        className
-      )}
-    >
-      <PeakMeter
-        className="h-full w-full"
-        left={peakLevel?.left ?? 0}
-        right={peakLevel?.right ?? 0}
-      />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { parseHttpUrl } from "@avoid.quest/platforms/url-policy";
-import { Badge } from "@avoid.quest/ui/components/badge";
 import {
   Dialog,
   DialogClose,
@@ -19,6 +18,7 @@ import {
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
+import { GenreBadges } from "./genre-badges";
 import { RadioLogo } from "./radio-logo";
 
 type RadioNowPlayingProps = {
@@ -28,90 +28,6 @@ type RadioNowPlayingProps = {
   variant?: "featured" | "compact";
   className?: string;
 };
-
-function getGenres(genre?: string | null): string[] {
-  return [
-    ...new Set(
-      genre
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    ),
-  ];
-}
-
-function GenreBadges({
-  genre,
-  className,
-  overArtwork = false,
-}: {
-  genre?: string | null;
-  className?: string;
-  overArtwork?: boolean;
-}) {
-  const genres = getGenres(genre);
-  if (genres.length === 0) {
-    return null;
-  }
-  const badgeClassName = cn(
-    "max-w-full whitespace-normal border-foreground/15 bg-transparent px-1.5 py-0 text-left font-normal text-[9px] text-foreground/80 leading-3.5 [overflow-wrap:anywhere]",
-    overArtwork && "border-white/20 bg-black/65 text-white backdrop-blur-sm"
-  );
-
-  return (
-    <ul aria-label="Genres" className={cn("flex flex-wrap gap-1", className)}>
-      {genres.map((value, index) => (
-        <li
-          className={cn(
-            "flex min-w-0 max-w-full",
-            overArtwork && index > 0 && "hidden lg:flex"
-          )}
-          key={value}
-        >
-          <Badge className={badgeClassName} variant="outline">
-            {value}
-          </Badge>
-        </li>
-      ))}
-      {overArtwork && genres.length > 1 ? (
-        <li className="flex lg:hidden">
-          <Badge className={badgeClassName} variant="outline">
-            <span aria-hidden="true">+{genres.length - 1}</span>
-            <span className="sr-only">
-              {genres.length - 1} more genres in Details
-            </span>
-          </Badge>
-        </li>
-      ) : null}
-    </ul>
-  );
-}
-
-function CompactGenreBadge({ genre }: { genre?: string | null }) {
-  const genres = getGenres(genre);
-  const [firstGenre] = genres;
-  if (!firstGenre) {
-    return null;
-  }
-
-  const remaining = genres.length - 1;
-  return (
-    <Badge
-      className="mt-1.5 flex h-4 max-w-full gap-1 border-foreground/10 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none"
-      variant="outline"
-    >
-      <span aria-hidden="true" className="truncate">
-        {firstGenre}
-      </span>
-      {remaining > 0 ? (
-        <span aria-hidden="true" className="shrink-0">
-          +{remaining}
-        </span>
-      ) : null}
-      <span className="sr-only">Genres: {genres.join(", ")}</span>
-    </Badge>
-  );
-}
 
 function Artwork({
   radio,
@@ -246,13 +162,6 @@ export function RadioNowPlaying({
                 />
               </button>
             </DialogTrigger>
-            {featured ? (
-              <GenreBadges
-                className="pointer-events-none absolute inset-x-2 bottom-2 lg:inset-x-3 lg:bottom-3"
-                genre={metadata?.genre}
-                overArtwork
-              />
-            ) : null}
           </div>
           <div
             className={cn(
@@ -316,7 +225,11 @@ export function RadioNowPlaying({
                 {subtitle}
               </p>
             ) : null}
-            {featured ? null : <CompactGenreBadge genre={metadata?.genre} />}
+            <GenreBadges
+              className={cn("mt-1.5", featured && "mt-3 lg:justify-center")}
+              genre={metadata?.genre}
+              limit={featured ? 3 : 1}
+            />
             {connectionStatus}
           </div>
         </div>

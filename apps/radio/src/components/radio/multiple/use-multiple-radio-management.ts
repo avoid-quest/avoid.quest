@@ -91,9 +91,10 @@ export function useMultipleRadioManagement({
 
     try {
       deleteRadio(String(deleteConfirm.id));
+      toast.success(`Deleted "${deleteConfirm.name}"`);
       setDeleteConfirm(null);
     } catch {
-      toast.error("Failed to delete radio");
+      toast.error("Couldn't delete station");
     }
   }, [deleteConfirm]);
 

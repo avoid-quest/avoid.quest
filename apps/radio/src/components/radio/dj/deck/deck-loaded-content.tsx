@@ -64,7 +64,11 @@ export function LoadedDeckContent({
             <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
             </div>
-            <Accordion className="space-y-1" defaultValue={[]} type="multiple">
+            <Accordion
+              className="space-y-1"
+              defaultValue={effects.length > 0 ? ["effects"] : []}
+              type="multiple"
+            >
               {hasTracklist && tracks ? (
                 <AccordionSection
                   title={`Tracks (${currentTrackIndex + 1}/${tracks.length})`}
@@ -94,12 +98,9 @@ export function LoadedDeckContent({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <DeckTransport nowPlaying={metadata} />
-      <div className="rounded-lg border border-border/50 bg-muted/30 px-2 py-2">
-        <DeckChannelStrip />
-      </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="[&_[data-radix-scroll-area-viewport]>div]:block! min-h-0 flex-1">
         <Accordion
-          className="space-y-1"
+          className="w-full min-w-0 space-y-1"
           defaultValue={["effects"]}
           type="multiple"
         >

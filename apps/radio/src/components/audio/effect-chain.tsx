@@ -76,12 +76,15 @@ function EffectTempoControl({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
-      <Label className="flex-1 text-xs" htmlFor={`${deckId}-effects-tempo`}>
-        Synced effect tempo
+    <div className="flex items-center justify-end gap-2">
+      <Label
+        className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider"
+        htmlFor={`${deckId}-effects-tempo`}
+      >
+        Sync tempo
       </Label>
       <Input
-        className="h-8 w-24"
+        className="h-7 w-16 text-xs"
         defaultValue={tempo}
         id={`${deckId}-effects-tempo`}
         key={tempo}
@@ -91,7 +94,9 @@ function EffectTempoControl({
         step={0.1}
         type="number"
       />
-      <span className="text-muted-foreground text-xs">BPM</span>
+      <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+        bpm
+      </span>
     </div>
   );
 }
@@ -110,6 +115,10 @@ export function EffectChain({
   onTempoChange,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
+  // Only delay-style effects follow the synced tempo; hide the field otherwise.
+  const usesTempo = effects.some(
+    (effect) => "tempoSync" in effect || "preSyncTimeLeft" in effect
+  );
   const [showPicker, setShowPicker] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -157,8 +166,14 @@ export function EffectChain({
     .sort()
     .join(",");
   if (currentIdKey !== prevIdKey) {
+    const added = effects
+      .map((effect) => effect.id)
+      .filter((id) => !localOrder.includes(id));
     setPrevIdKey(currentIdKey);
     setLocalOrder(effects.map((effect) => effect.id));
+    if (added.length === 1 && added[0] !== undefined) {
+      setExpandedEffectId(added[0]);
+    }
   }
 
   const effectsById = new Map(effects.map((e) => [e.id, e]));
@@ -197,7 +212,7 @@ export function EffectChain({
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      {tempo !== undefined && onTempoChange !== undefined ? (
+      {tempo !== undefined && onTempoChange !== undefined && usesTempo ? (
         <EffectTempoControl
           deckId={deckId}
           onTempoChange={onTempoChange}
@@ -230,11 +245,6 @@ export function EffectChain({
                 />
               ))}
             </SortableContext>
-            {sortedEffects.length >= 2 && (
-              <p className="py-1 text-center text-muted-foreground text-xs">
-                Drag to reorder
-              </p>
-            )}
           </div>
           <DragOverlay>
             {activeEffect ? (

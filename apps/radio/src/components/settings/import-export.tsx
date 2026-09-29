@@ -34,6 +34,7 @@ export function ImportExport({
   );
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportKind, setExportKind] = useState<"file" | "link" | null>(null);
   const [shareUrl, setShareUrl] = useState<string>("");
   const [fileInputKey, setFileInputKey] = useState(0);
 
@@ -41,15 +42,18 @@ export function ImportExport({
 
   const handleExportFile = async () => {
     setIsExporting(true);
+    setExportKind("file");
     try {
       await exportDatabase();
     } finally {
       setIsExporting(false);
+      setExportKind(null);
     }
   };
 
   const handleGenerateShareUrl = async () => {
     setIsExporting(true);
+    setExportKind("link");
     try {
       await copyShareUrlToClipboard();
       // Generate the URL for display
@@ -59,6 +63,7 @@ export function ImportExport({
       toast.error("Failed to generate share URL");
     } finally {
       setIsExporting(false);
+      setExportKind(null);
     }
   };
 
@@ -137,7 +142,7 @@ export function ImportExport({
 
       setFileInputKey((key) => key + 1);
     } catch {
-      toast.error("Failed to apply import");
+      // The import library already reports the failure.
     } finally {
       setIsImporting(false);
     }
@@ -167,7 +172,7 @@ export function ImportExport({
               size="sm"
               variant="outline"
             >
-              {isExporting ? "Exporting..." : "Download Backup"}
+              {exportKind === "file" ? "Exporting…" : "Download backup"}
             </Button>
             <Button
               className="w-full"
@@ -175,7 +180,7 @@ export function ImportExport({
               onClick={handleGenerateShareUrl}
               size="sm"
             >
-              {isExporting ? "Generating..." : "Create Share Link"}
+              {exportKind === "link" ? "Generating…" : "Create share link"}
             </Button>
           </div>
 
@@ -221,20 +226,28 @@ export function ImportExport({
                 >
                   Share URL
                 </Label>
-                <Input
-                  disabled={isImporting}
-                  id="import-url"
-                  placeholder="https://radio.avoid.quest/import#data=..."
-                  type="url"
-                />
-                <Button
-                  className="w-full"
-                  disabled={isImporting}
-                  onClick={handleUrlImport}
-                  size="sm"
+                <form
+                  className="space-y-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleUrlImport();
+                  }}
                 >
-                  {isImporting ? "Importing..." : "Import from URL"}
-                </Button>
+                  <Input
+                    disabled={isImporting}
+                    id="import-url"
+                    placeholder="https://radio.avoid.quest/import#data=…"
+                    type="url"
+                  />
+                  <Button
+                    className="w-full"
+                    disabled={isImporting}
+                    size="sm"
+                    type="submit"
+                  >
+                    {isImporting ? "Importing…" : "Import from URL"}
+                  </Button>
+                </form>
               </div>
             </div>
 
@@ -309,7 +322,7 @@ export function ImportExport({
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem id="merge" value="merge" />
                       <Label className="text-xs" htmlFor="merge">
-                        Merge — update matches, add new disabled
+                        Merge: update matches, add new ones hidden
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -328,7 +341,7 @@ export function ImportExport({
                     onClick={handleApplyImport}
                     size="sm"
                   >
-                    {isImporting ? "Importing..." : "Apply Import"}
+                    {isImporting ? "Importing…" : "Apply import"}
                   </Button>
                   <Button
                     disabled={isImporting}

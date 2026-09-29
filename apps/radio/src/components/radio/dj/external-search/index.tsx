@@ -3,11 +3,13 @@ import type {
   SearchPlatform,
   UnifiedSearchResult,
 } from "@avoid.quest/platforms";
+import { Button } from "@avoid.quest/ui/components/button";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { detectPlatformFromUrl } from "@/lib/external-url/detect";
+import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
 import { SearchInput } from "./search-input";
 import { SearchResults } from "./search-results";
-import { UrlInput } from "./url-input";
 
 type ExternalSearchProps = {
   onLoad: (radio: Radio) => void;
@@ -30,6 +32,7 @@ function ExternalSearchContent({
     useState<SearchPlatform>("all");
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<UnifiedSearchResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [bandcampFilter, setBandcampFilter] = useState<"" | "t" | "a">("t");
   const [youtubeFilter, setYoutubeFilter] = useState<"songs" | "videos">(
     "songs"
@@ -39,6 +42,7 @@ function ExternalSearchContent({
   const clearResults = () => {
     setError(null);
     setResults([]);
+    setHasSearched(false);
   };
 
   const handlePlatformChange = (nextPlatform: SearchPlatform) => {
@@ -62,6 +66,20 @@ function ExternalSearchContent({
   const handleResults = (nextResults: UnifiedSearchResult[]) => {
     setError(null);
     setResults(nextResults);
+    setHasSearched(true);
+  };
+
+  const { mutate: loadLink, isPending: isLoadingLink } = useDjTrackLoad({
+    onError: (message) => setError(message),
+    onLoad: (radio) => onLoad(radio),
+  });
+  const handleDirectLink = (value: string) => {
+    if (!detectPlatformFromUrl(value)) {
+      return false;
+    }
+    clearResults();
+    loadLink(value);
+    return true;
   };
 
   const searchContextKey = [
@@ -78,6 +96,7 @@ function ExternalSearchContent({
         locked={lockedPlatform !== undefined}
         onBandcampFilterChange={handleBandcampFilterChange}
         onClearResults={clearResults}
+        onDirectLink={handleDirectLink}
         onError={handleError}
         onPlatformChange={handlePlatformChange}
         onResults={handleResults}
@@ -87,9 +106,25 @@ function ExternalSearchContent({
         youtubeFilter={youtubeFilter}
       />
 
-      <SearchResults error={error} onLoad={onLoad} results={results} />
+      <SearchResults
+        error={error}
+        onLoad={onLoad}
+        results={results}
+        showEmpty={hasSearched}
+      />
 
-      <UrlInput onCancel={onCancel} onLoad={onLoad} />
+      <div className="flex items-center justify-between gap-2 border-t pt-2 text-muted-foreground text-xs">
+        <span>
+          {isLoadingLink
+            ? "Loading link…"
+            : "Bandcamp, SoundCloud, YouTube and audio links work too."}
+        </span>
+        {onCancel ? (
+          <Button onClick={onCancel} size="sm" variant="ghost">
+            Cancel
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

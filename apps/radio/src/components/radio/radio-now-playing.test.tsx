@@ -265,7 +265,7 @@ test("keeps a fresh preview through playback and refreshes after its deadline", 
 
 describe("RadioNowPlaying", () => {
   for (const variant of ["featured", "compact"] as const) {
-    test(`attaches player genres to featured artwork and keeps full Details in ${variant} mode`, () => {
+    test(`shows player genres under the subtitle and full Details in ${variant} mode`, () => {
       const view = render(
         <RadioNowPlaying
           metadata={{
@@ -276,30 +276,24 @@ describe("RadioNowPlaying", () => {
           variant={variant}
         />
       );
-      const playerGenres = view.queryByRole("list", { name: "Genres" });
+      const playerGenres = view.getByRole("list", { name: "Genres" });
+      const artworkButton = view.getByRole("button", {
+        name: "Details for Current Show",
+      });
+      expect(artworkButton.contains(playerGenres)).toBe(false);
+      expect(
+        view.getByText("Host Name").parentElement?.contains(playerGenres)
+      ).toBe(true);
+      const visiblePills = within(playerGenres)
+        .getAllByRole("listitem")
+        .map((pill) => pill.textContent);
       if (variant === "featured") {
-        const artworkButton = view.getByRole("button", {
-          name: "Details for Current Show",
-        });
-        expect(artworkButton.parentElement?.contains(playerGenres)).toBe(true);
-        expect(artworkButton.querySelector("ul")).toBeNull();
-        expect(
-          view.getByText("Host Name").parentElement?.contains(playerGenres)
-        ).toBe(false);
-        expect(view.getByText("2 more genres in Details")).toBeTruthy();
+        expect(visiblePills).toEqual(["Art Pop", "Downtempo", "R&B / Soul"]);
         expect(view.getByText("Example Radio").nextElementSibling).toBe(
           view.getByRole("heading", { name: "Current Show" })
         );
       } else {
-        expect(playerGenres).toBeNull();
-        const fullGenreDescription = view.getByText(
-          "Genres: Art Pop, Downtempo, R&B / Soul"
-        );
-        expect(fullGenreDescription.classList.contains("sr-only")).toBe(true);
-        expect(
-          fullGenreDescription.parentElement?.querySelector("[aria-hidden]")
-            ?.textContent
-        ).toBe("Art Pop");
+        expect(visiblePills).toEqual(["Art Pop", "+22 more genres in Details"]);
       }
 
       fireEvent.click(
@@ -598,11 +592,13 @@ describe("RadioNowPlaying", () => {
       <QueryClientProvider client={client}>
         <StationList
           currentRadioId={listedRadio.id}
+          isPlaying={false}
           onDelete={noop}
           onEdit={noop}
           onSave={noop}
           onSelect={noop}
           onToggle={noop}
+          onTogglePlayPause={noop}
           radios={[listedRadio]}
           searchBar={null}
           sessionRadios={[]}

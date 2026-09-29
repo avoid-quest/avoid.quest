@@ -1025,7 +1025,7 @@ describe("DjDeckModule", () => {
     );
   });
 
-  test("clears a Deck source and Effects through the same interface", async () => {
+  test("ejecting a Deck source keeps its effects and channel settings", async () => {
     const audio = createAudioAdapter();
     const { change, effects } = createPersistingEffects();
     const module = createDjDeckModule({
@@ -1052,17 +1052,13 @@ describe("DjDeckModule", () => {
     await deck.load({ radio: null, type: "radio" });
 
     expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
-      effects: [],
-      effectsDryWet: 1,
+      effects: [expect.objectContaining({ id: "delay-1" })],
+      effectsDryWet: 0.3,
       radio: null,
     });
-    expect(change).toHaveBeenCalledWith(
+    expect(change).not.toHaveBeenCalledWith(
       { channelId: "deck-a", sessionId: "dj" },
       { tree: [], type: "replace" }
-    );
-    expect(change).toHaveBeenCalledWith(
-      { channelId: "deck-a", sessionId: "dj" },
-      { type: "set-dry-wet", value: 1 }
     );
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
     expect(audio.activeSounds).toEqual(new Set());

@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@avoid.quest/ui/components/card";
-import { Toggle } from "@avoid.quest/ui/components/toggle";
+import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import type {
   DraggableAttributes,
@@ -93,7 +93,7 @@ export function EffectItem({
         isExpanded && "shadow-md"
       )}
     >
-      <CardHeader className="flex! items-center! justify-between! flex-row! gap-3 pt-4 pb-3">
+      <CardHeader className="flex! items-center! justify-between! flex-row! gap-2 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Drag Handle */}
           <div
@@ -111,38 +111,37 @@ export function EffectItem({
             {...dragHandleAttributes}
             {...dragHandleListeners}
           >
-            <GripVerticalIcon className="size-4" />
+            <GripVerticalIcon className="size-3.5" />
           </div>
 
           {/* Icon */}
           <div
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-md transition-colors",
+              "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
               effect.enabled
                 ? "bg-primary/10 text-primary"
                 : "bg-muted text-muted-foreground"
             )}
           >
-            <Icon className="size-4" />
+            <Icon className="size-3.5" />
           </div>
 
           {/* Title */}
           <CardTitle
             className={cn(
-              "cursor-pointer truncate font-medium text-sm transition-colors hover:text-foreground",
+              "min-w-0 flex-1 font-medium text-sm",
               !effect.enabled && "text-muted-foreground"
             )}
-            onClick={onExpand}
           >
-            {effectName}
+            <button
+              aria-expanded={isExpanded}
+              className="block w-full truncate text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onExpand}
+              type="button"
+            >
+              {effectName}
+            </button>
           </CardTitle>
-
-          {/* Bypassed badge */}
-          {!effect.enabled && (
-            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-              Bypassed
-            </span>
-          )}
         </div>
 
         {/** biome-ignore lint/a11y/noNoninteractiveElementInteractions: just a toggle */}
@@ -153,36 +152,29 @@ export function EffectItem({
           onPointerDown={stopPropagation}
           onTouchStart={stopPropagation}
         >
-          <Toggle
+          <Switch
             aria-label={`${effectName} enabled`}
-            className={cn(
-              "transition-all",
-              effect.enabled && "bg-primary text-primary-foreground"
-            )}
-            onPressedChange={handleEnabledChange}
-            pressed={effect.enabled}
-            size="sm"
-          >
-            {effect.enabled ? "ON" : "OFF"}
-          </Toggle>
+            checked={effect.enabled}
+            onCheckedChange={handleEnabledChange}
+          />
           <Button
             aria-label={`Reset ${effectName}`}
-            className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="size-7 p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             onClick={handleReset}
             size="sm"
             title="Reset to defaults"
             variant="ghost"
           >
-            <RotateCcwIcon className="size-4" />
+            <RotateCcwIcon className="size-3.5" />
           </Button>
           <Button
             aria-label={`Remove ${effectName}`}
-            className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            className="size-7 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             onClick={onRemove}
             size="sm"
             variant="ghost"
           >
-            <XIcon className="size-4" />
+            <XIcon className="size-3.5" />
           </Button>
         </div>
       </CardHeader>

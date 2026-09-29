@@ -58,7 +58,6 @@ export function DeckHeader({
     event.stopPropagation();
     try {
       await onReset();
-      toast.success("Deck reset");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to reset deck";
@@ -69,13 +68,13 @@ export function DeckHeader({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-1.5",
+        "absolute top-1 right-1 z-10 flex items-center gap-2 md:static md:px-3 md:py-1.5",
         isRight && "flex-row-reverse",
         className
       )}
     >
       {/* Deck label */}
-      <div className="flex items-center gap-1.5">
+      <div className="hidden items-center gap-1.5 md:flex">
         <span className="font-bold font-mono text-foreground text-xs uppercase tracking-[0.2em]">
           {label}
         </span>
@@ -88,7 +87,7 @@ export function DeckHeader({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            className="h-6 w-6 p-0"
+            className="size-6 p-0 [@media(pointer:coarse)]:size-9"
             disabled={!radio}
             onClick={handleStopPropagation}
             size="sm"
@@ -101,18 +100,18 @@ export function DeckHeader({
         {radio ? (
           <DropdownMenuContent align={isRight ? "start" : "end"}>
             <DropdownMenuItem onClick={handleCopyStreamLink}>
-              <CopyIcon className="mr-2 size-3.5" />
-              Copy Stream Link
+              <CopyIcon className="size-3.5" />
+              Copy stream URL
             </DropdownMenuItem>
-            {radio.websiteUrl?.trim() !== "" && (
+            {Boolean(radio.websiteUrl?.trim()) && (
               <DropdownMenuItem onClick={handleGoToWebsite}>
-                <ExternalLinkIcon className="mr-2 size-3.5" />
-                Go to Website
+                <ExternalLinkIcon className="size-3.5" />
+                Website
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={handleReset}>
-              <RefreshCwIcon className="mr-2 size-3.5" />
-              Reset Deck
+              <RefreshCwIcon className="size-3.5" />
+              Reset effects &amp; channel
             </DropdownMenuItem>
           </DropdownMenuContent>
         ) : null}

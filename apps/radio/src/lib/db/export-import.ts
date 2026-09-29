@@ -344,12 +344,10 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
       });
     }
 
-    toast.success(
-      `Configuration imported successfully: ${importData.radios.length} radios, settings updated`
-    );
+    toast.success(`Imported ${importData.radios.length} stations`);
   } catch (error) {
     console.error("Replace import failed:", error);
-    toast.error("Failed to import configuration");
+    toast.error("Couldn't import");
     throw error;
   }
 };
@@ -452,11 +450,11 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
     }
 
     toast.success(
-      `Configuration merged successfully: ${newRadiosCount} new, ${updatedRadiosCount} updated`
+      `Merged: ${newRadiosCount} new (hidden), ${updatedRadiosCount} updated`
     );
   } catch (error) {
     console.error("Merge import failed:", error);
-    toast.error("Failed to merge configuration");
+    toast.error("Couldn't merge");
     throw error;
   }
 };

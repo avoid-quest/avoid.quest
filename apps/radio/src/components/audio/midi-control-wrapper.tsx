@@ -68,14 +68,14 @@ export function MidiControlWrapper({
           <ContextMenuItem onClick={stopLearning}>Cancel Learn</ContextMenuItem>
         ) : (
           <ContextMenuItem onClick={startLearning}>
-            {hasMidi ? "Re-learn MIDI" : "Learn MIDI"}
+            {hasMidi ? "Re-learn MIDI control" : "Learn MIDI control"}
           </ContextMenuItem>
         )}
 
         {hasMidi && (
           <>
             <ContextMenuSub>
-              <ContextMenuSubTrigger>Edit Transform</ContextMenuSubTrigger>
+              <ContextMenuSubTrigger>Edit transform</ContextMenuSubTrigger>
               <ContextMenuSubContent className="w-56">
                 <MidiTransformEditor
                   targetId={targetId}
@@ -90,7 +90,7 @@ export function MidiControlWrapper({
               className="text-destructive focus:text-destructive"
               onClick={removeMapping}
             >
-              Clear Mapping
+              Clear mapping
             </ContextMenuItem>
           </>
         )}

@@ -71,10 +71,9 @@ export function ImportPage() {
         await mergeImportedData(importData);
       }
 
-      toast.success("Configuration imported successfully!");
       navigate({ to: "/" });
     } catch {
-      toast.error("Failed to import configuration");
+      // The import library already reports the failure.
     } finally {
       setIsImporting(false);
     }
@@ -117,7 +116,7 @@ export function ImportPage() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 p-4">
       <div className="space-y-2 text-center">
-        <h1 className="font-bold text-2xl">Import Configuration</h1>
+        <h1 className="font-semibold text-lg">Import configuration</h1>
         <p className="text-muted-foreground">
           Someone shared their radio configuration with you. Review the changes
           below and choose how to import them.
@@ -178,9 +177,8 @@ export function ImportPage() {
                     Merge (Recommended)
                   </Label>
                   <p className="text-muted-foreground text-sm">
-                    Keep your existing radios and settings, add new ones, and
-                    update changed ones. Your custom order and preferences will
-                    be preserved.
+                    Keeps your stations, order and settings. Updates changed
+                    stations and adds new ones hidden.
                   </p>
                 </div>
               </div>
@@ -208,7 +206,7 @@ export function ImportPage() {
               disabled={isImporting}
               onClick={handleApplyImport}
             >
-              {isImporting ? "Importing..." : "Import Configuration"}
+              {isImporting ? "Importing…" : "Import"}
             </Button>
             <Button
               disabled={isImporting}

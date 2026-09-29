@@ -11,6 +11,7 @@ import { FileAudioIcon, GlobeIcon, Loader2Icon } from "lucide-react";
 import { useRef, useState } from "react";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { isStaticAudioUrl } from "@/lib/audio/remote-url";
+import { InlineError } from "../inline-error";
 
 type FileFormProps = {
   onLoad: (file: File) => void;
@@ -95,20 +96,16 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
       <div className="w-full max-w-md space-y-4">
         <div className="flex items-center justify-center gap-2 text-muted-foreground">
           <FileAudioIcon className="size-5" />
-          <h3 className="font-medium text-sm">Load Audio</h3>
+          <h3 className="font-medium text-sm">Load audio</h3>
         </div>
 
-        {error ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
-            <p className="text-center text-destructive text-sm">{error}</p>
-          </div>
-        ) : null}
+        {error ? <InlineError>{error}</InlineError> : null}
 
         <Tabs onValueChange={handleTabChange} value={activeTab}>
           <TabsList className="w-full">
             <TabsTrigger className="flex-1" value="file">
               <FileAudioIcon className="mr-2 size-4" />
-              Local File
+              Local file
             </TabsTrigger>
             <TabsTrigger className="flex-1" value="url">
               <GlobeIcon className="mr-2 size-4" />
@@ -135,7 +132,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
               ) : (
                 <FileAudioIcon className="mr-2 size-4" />
               )}
-              {isLoading ? "Loading..." : "Browse Files"}
+              {isLoading ? "Loading…" : "Browse files"}
             </Button>
             <p className="text-center text-muted-foreground text-xs">
               MP3, WAV, FLAC, OGG, AAC, M4A, WebM
@@ -161,7 +158,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
               ) : (
                 <GlobeIcon className="mr-2 size-4" />
               )}
-              {isLoading ? "Loading..." : "Load URL"}
+              {isLoading ? "Loading…" : "Load URL"}
             </Button>
             <p className="text-center text-muted-foreground text-xs">
               MP3, WAV, OGG, FLAC, M4A + M3U/PLS playlists

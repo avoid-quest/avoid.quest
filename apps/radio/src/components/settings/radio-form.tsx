@@ -85,14 +85,17 @@ const handleFormSubmit = async (
         toast.error(result.error.message);
         return;
       }
-      notifyStationSave(result.data, "Radio station created successfully");
+      notifyStationSave(result.data, `Added "${data.name}"`);
     } else if (mode === "edit" && radio?.id) {
-      updateRadio(String(radio.id), data);
-      toast.success("Radio station updated successfully");
+      // An edited default station is the user's now; sync must not revert it.
+      updateRadio(String(radio.id), { ...data, isSystem: false });
+      toast.success(`Saved "${data.name}"`);
     }
     onSuccess();
   } catch {
-    toast.error(`Failed to ${mode} radio station`);
+    toast.error(
+      mode === "create" ? "Couldn't add station" : "Couldn't save station"
+    );
   }
 };
 
@@ -162,7 +165,7 @@ function RadioFormField({
 
 function getSubmitLabel(isSubmitting: boolean, mode: "create" | "edit") {
   if (isSubmitting) {
-    return "Saving...";
+    return "Saving…";
   }
   return mode === "create" ? "Create" : "Update";
 }

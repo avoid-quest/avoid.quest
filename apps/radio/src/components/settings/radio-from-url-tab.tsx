@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+
 import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
@@ -17,6 +18,7 @@ import type { RadioMetadata } from "@/lib/platform-types";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
 import { createBrowserManualWebsiteImportWorkflow } from "@/lib/stations/manual-website-import-workflow";
 import { notifyStationSave } from "@/lib/stations/station-save-notification";
+import { InlineError } from "../radio/inline-error";
 import { RadioFieldPreview } from "./radio-field-preview";
 
 type RadioFromUrlTabProps = {
@@ -186,7 +188,7 @@ function ScrapedStationEditor({
         disabled={isAdding || !name.trim() || !streamUrl.trim()}
         onClick={onAdd}
       >
-        {isAdding ? "Adding..." : "Add to Collection"}
+        {isAdding ? "Adding…" : "Add station"}
       </Button>
     </div>
   );
@@ -307,10 +309,17 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
     scrapedData?.streamUrl && scrapedData.streamUrl.length > 1
   );
 
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!isLoading && url.trim()) {
+      handleFetch();
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* URL Input */}
-      <div className="flex gap-2">
+      <form className="flex gap-2" onSubmit={handleSubmit}>
         <div className="relative flex-1">
           <LinkIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -321,23 +330,19 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
             value={url}
           />
         </div>
-        <Button disabled={isLoading || !url.trim()} onClick={handleFetch}>
+        <Button disabled={isLoading || !url.trim()} type="submit">
           {isLoading ? (
             <>
               <Spinner className="mr-2 size-4" />
-              Fetching...
+              Fetching…
             </>
           ) : (
             "Fetch"
           )}
         </Button>
-      </div>
+      </form>
 
-      {error ? (
-        <div className="rounded-md bg-destructive/10 p-3">
-          <p className="text-destructive text-sm">{error}</p>
-        </div>
-      ) : null}
+      {error ? <InlineError>{error}</InlineError> : null}
 
       {isLoading ? (
         <div className="space-y-1">

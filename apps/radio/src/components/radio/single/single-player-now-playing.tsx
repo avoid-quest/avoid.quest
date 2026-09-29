@@ -4,7 +4,7 @@ import { Music2Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
-import { RadioItemActions } from "../radio-item-actions";
+import { InlineError } from "../inline-error";
 import { RadioNowPlaying } from "../radio-now-playing";
 
 type SharedPanelProps = {
@@ -25,40 +25,17 @@ export function NowPlayingPanel(props: SharedPanelProps) {
   return <PlayerPanel {...props} />;
 }
 
-type MobilePanelProps = SharedPanelProps & {
-  onDelete: (radio: Radio) => void;
-  onEdit: (radio: Radio) => void;
-  onSave: (radio: Radio) => void;
-  onToggle: (radio: Radio, enabled: boolean) => void;
-};
-
 export function MobileNowPlayingPanel({
   radio,
-  onDelete,
-  onEdit,
-  onSave,
-  onToggle,
   ...playerProps
-}: MobilePanelProps) {
+}: SharedPanelProps) {
   if (!radio) {
     return null;
   }
 
   return (
-    <div className="relative shrink-0 border-border/50 border-b px-5 pt-12 pb-5 lg:hidden">
-      <PlayerPanel
-        {...playerProps}
-        actions={
-          <RadioItemActions
-            onDelete={onDelete}
-            onEdit={onEdit}
-            onSave={onSave}
-            onToggle={onToggle}
-            radio={radio}
-          />
-        }
-        radio={radio}
-      />
+    <div className="relative shrink-0 border-border/50 border-b px-5 py-5 lg:hidden">
+      <PlayerPanel {...playerProps} radio={radio} />
     </div>
   );
 }
@@ -80,9 +57,7 @@ function PlayerPanel({
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24">
         <Music2Icon className="size-12 text-muted-foreground/15" />
-        <p className="font-mono text-muted-foreground/40 text-xs uppercase tracking-wider">
-          Select a station
-        </p>
+        <p className="text-muted-foreground/60 text-xs">Select a station</p>
       </div>
     );
   }
@@ -97,11 +72,7 @@ function PlayerPanel({
         variant="featured"
       />
 
-      {!!error?.trim() && (
-        <div className="rounded-md bg-destructive/10 px-3 py-1.5">
-          <p className="font-mono text-destructive text-xs">{error}</p>
-        </div>
-      )}
+      {error?.trim() ? <InlineError>{error}</InlineError> : null}
 
       <div className="flex items-center gap-4 border-border/50 border-t pt-4">
         <PlayPauseButton
@@ -112,11 +83,12 @@ function PlayerPanel({
           isPlaying={isPlaying}
           onClick={onPlayPause}
           size="sm"
+          title={isPlaying ? "Pause (Space)" : "Play (Space)"}
           variant={isPlaying && !isLoading ? "outline" : "default"}
         />
         <button
           aria-label={isMuted ? "Unmute" : "Mute"}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onMuteToggle}
           type="button"
         >
@@ -135,9 +107,6 @@ function PlayerPanel({
           step={0.01}
           value={[volume]}
         />
-        <span className="w-9 shrink-0 text-right font-mono text-muted-foreground text-xs tabular-nums">
-          {Math.round(volume * 100)}%
-        </span>
       </div>
     </div>
   );

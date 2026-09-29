@@ -85,6 +85,14 @@ export function EffectPicker({
     setSearchQuery(event.target.value);
   }
 
+  function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const [first] = filteredEffects;
+    if (event.key === "Enter" && first) {
+      event.preventDefault();
+      onSelect(first.type);
+    }
+  }
+
   const filteredEffects = AVAILABLE_EFFECTS.filter(
     (effect) =>
       (allowContainers || !isEffectContainerType(effect.type)) &&
@@ -98,8 +106,7 @@ export function EffectPicker({
         <DialogHeader>
           <DialogTitle>Add Effect</DialogTitle>
           <DialogDescription>
-            Select an effect to add to the chain. All processing remains in your
-            browser.
+            Type to search. Enter adds the first match.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,17 +114,14 @@ export function EffectPicker({
           <div className="relative">
             <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              autoFocus
               className="pl-9"
               onChange={updateSearchQuery}
-              placeholder="Search effects..."
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search effects…"
               value={searchQuery}
             />
           </div>
-          <p className="rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs">
-            Stock-only chains use openDAW&apos;s client-side Rust/WASM engine.
-            Chains containing radio-only effects keep the compatibility engine
-            so existing sessions remain playable.
-          </p>
 
           {filteredEffects.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">

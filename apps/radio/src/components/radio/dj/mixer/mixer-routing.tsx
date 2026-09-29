@@ -1,5 +1,5 @@
-import { Badge } from "@avoid.quest/ui/components/badge";
-import { ClockIcon, HeadphonesIcon, Volume2Icon } from "lucide-react";
+import { HeadphonesIcon, Volume2Icon } from "lucide-react";
+import { useEffect } from "react";
 import { SettingsButton } from "@/components/settings/settings-button";
 import { type AudioDeviceInfo, useAudioDevices } from "@/lib/audio";
 import { useAudioSettings, useDelaySettings } from "@/lib/hooks/use-settings";
@@ -10,92 +10,63 @@ function resolveDeviceLabel(
   outputDevices: AudioDeviceInfo[]
 ): string {
   if (!deviceId || deviceId === "default") {
-    return "System Default";
+    return "System default";
   }
   const device = outputDevices.find((d) => d.deviceId === deviceId);
-  return device?.label || "Unknown Device";
+  return device?.label || "On";
 }
 
+/** Where the audio goes, in one line. Click to change it in audio settings. */
 export function MixerRouting() {
   const audioSettings = useAudioSettings();
   const delaySettings = useDelaySettings();
-  const { outputDevices } = useAudioDevices();
+  const { outputDevices, refreshDevices } = useAudioDevices();
 
   const { cueOutputId, mainOutputId: configuredMainOutputId } = audioSettings;
-  const mainOutputId = configuredMainOutputId ?? "default";
+
+  // Outputs are picked in settings after permission is granted there; the
+  // list this component loaded on mount may predate that, so reload it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the chosen outputs change
+  useEffect(() => {
+    refreshDevices();
+  }, [cueOutputId, configuredMainOutputId, refreshDevices]);
   const canResolveDevices =
     getOutputRouting().getSnapshot().sinkSelectionSupported;
-
   const mainLabel = canResolveDevices
-    ? resolveDeviceLabel(mainOutputId, outputDevices)
-    : "System Default";
-  const isDualMode = !!cueOutputId;
-  const resolvedCueLabel = canResolveDevices
-    ? resolveDeviceLabel(cueOutputId, outputDevices)
-    : "System Default";
-  const cueLabel = isDualMode ? resolvedCueLabel : null;
+    ? resolveDeviceLabel(configuredMainOutputId ?? "default", outputDevices)
+    : "System default";
+  let cueLabel = "Cue off";
+  if (cueOutputId) {
+    cueLabel = canResolveDevices
+      ? resolveDeviceLabel(cueOutputId, outputDevices)
+      : "System default";
+  }
+  const delays = [
+    `Main delay ${delaySettings.mainDelayMs} ms`,
+    cueOutputId ? `cue delay ${delaySettings.cueDelayMs} ms` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-          Output Routing
-        </span>
-        <SettingsButton className="size-6 rounded-sm" defaultTab="audio" />
-      </div>
-
-      {/* Main output */}
-      <div className="space-y-0.5 rounded-md border border-border/50 bg-muted/30 p-2">
-        <div className="flex items-center gap-1.5">
-          <Volume2Icon className="size-3 shrink-0 text-muted-foreground" />
-          <span className="font-medium text-[11px] text-muted-foreground">
-            Main
+    <SettingsButton
+      defaultTab="audio"
+      trigger={
+        <button
+          className="flex w-full items-center gap-3 rounded text-[10px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={`${delays}. Click to change outputs.`}
+          type="button"
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-1">
+            <Volume2Icon className="size-3 shrink-0" />
+            <span className="truncate">{mainLabel}</span>
           </span>
-        </div>
-        <p className="truncate text-xs leading-none">{mainLabel}</p>
-        <div className="flex items-center gap-1 text-muted-foreground">
-          <ClockIcon className="size-2.5 shrink-0" />
-          <span className="font-mono text-[10px] leading-none">
-            {delaySettings.mainDelayMs}ms
+          <span className="flex min-w-0 items-center gap-1">
+            <HeadphonesIcon className="size-3 shrink-0" />
+            <span className="truncate">{cueLabel}</span>
           </span>
-        </div>
-      </div>
-
-      {/* CUE output */}
-      <div className="space-y-0.5 rounded-md border border-border/50 bg-muted/30 p-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <HeadphonesIcon className="size-3 shrink-0 text-muted-foreground" />
-            <span className="font-medium text-[11px] text-muted-foreground">
-              CUE
-            </span>
-          </div>
-          {isDualMode ? (
-            <Badge className="h-4 border-emerald-500/20 bg-emerald-500/10 px-1.5 text-[9px] text-emerald-500">
-              Active
-            </Badge>
-          ) : (
-            <Badge className="h-4 px-1.5 text-[9px]" variant="outline">
-              Off
-            </Badge>
-          )}
-        </div>
-        {isDualMode ? (
-          <>
-            <p className="truncate text-xs leading-none">{cueLabel}</p>
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <ClockIcon className="size-2.5 shrink-0" />
-              <span className="font-mono text-[10px] leading-none">
-                {delaySettings.cueDelayMs}ms
-              </span>
-            </div>
-          </>
-        ) : (
-          <p className="truncate text-muted-foreground text-xs leading-none">
-            Not configured
-          </p>
-        )}
-      </div>
-    </div>
+        </button>
+      }
+    />
   );
 }

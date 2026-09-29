@@ -749,6 +749,15 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     ]);
   };
 
+  /** Eject: drop the source but keep effects and channel settings. */
+  const clearPersistedSource = (deckId: DeckId): void => {
+    updatePlaybackChannel("dj", deckId, (draft) => {
+      draft.radio = null;
+      draft.repeat = false;
+      draft.autoplay = true;
+    });
+  };
+
   const resetPersistedState = async (
     deckId: DeckId,
     clearSource: boolean
@@ -813,7 +822,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       getPlaybackChannelRuntime(deckId).isPlaying;
     deactivateDeck(deckId);
     if (!radio) {
-      await resetPersistedState(deckId, true);
+      clearPersistedSource(deckId);
       releaseReplacedFile(previous, null);
       return;
     }

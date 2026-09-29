@@ -139,7 +139,7 @@ export function DeviceInputContent({
         ) : (
           <>
             <MicIcon className="mr-2 size-4" />
-            Go Live
+            Go live
           </>
         )}
       </Button>

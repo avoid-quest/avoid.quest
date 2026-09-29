@@ -109,13 +109,12 @@ function getDescription(changes: SyncChanges) {
   const hasUpdates = changes.updates.length > 0;
   const hasAdditions = changes.additions.length > 0;
 
+  const updated = `${changes.updates.length} updated`;
+  const added = `${changes.additions.length} new`;
   if (hasUpdates && hasAdditions) {
-    return `${changes.updates.length} radio(s) updated, ${changes.additions.length} new radio(s) available`;
+    return `${updated}, ${added}`;
   }
-  if (hasUpdates) {
-    return `${changes.updates.length} radio(s) have updated metadata`;
-  }
-  return `${changes.additions.length} new radio(s) available`;
+  return hasUpdates ? updated : added;
 }
 
 export function SyncDialog({
@@ -186,13 +185,12 @@ export function SyncDialog({
   };
 
   const totalSelected = selectedUpdates.size + selectedAdditions.size;
-  const totalChanges = changes.updates.length + changes.additions.length;
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-hidden p-4 sm:p-6">
         <DialogHeader className="shrink-0 pr-8 sm:pr-0">
-          <DialogTitle>Radio Updates Available</DialogTitle>
+          <DialogTitle>Station updates</DialogTitle>
           <DialogDescription>{getDescription(changes)}</DialogDescription>
         </DialogHeader>
 
@@ -251,7 +249,7 @@ export function SyncDialog({
             disabled={totalSelected === 0}
             onClick={handleApply}
           >
-            Apply Selected ({totalSelected}/{totalChanges})
+            Apply ({totalSelected})
           </Button>
         </DialogFooter>
       </DialogContent>

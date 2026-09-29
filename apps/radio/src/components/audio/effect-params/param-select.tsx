@@ -6,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { cn } from "@avoid.quest/ui/lib/utils";
 
 type SelectOption = {
   value: string;
@@ -18,6 +19,7 @@ type ParamSelectProps = {
   options: readonly SelectOption[];
   disabled?: boolean;
   onChange: (value: string) => void;
+  className?: string;
 };
 
 export function ParamSelect({
@@ -26,12 +28,15 @@ export function ParamSelect({
   options,
   disabled = false,
   onChange,
+  className,
 }: ParamSelectProps) {
   return (
-    <div className="space-y-2">
-      <Label className="text-xs">{label}</Label>
+    <div className={cn("w-40 space-y-1", className)}>
+      <Label className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+        {label}
+      </Label>
       <Select disabled={disabled} onValueChange={onChange} value={value}>
-        <SelectTrigger className="h-8">
+        <SelectTrigger className="h-7 text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

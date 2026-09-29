@@ -40,9 +40,7 @@ export function RadioDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[90vh] w-full max-w-2xl">
         <DialogHeader className="shrink-0">
-          <DialogTitle>
-            {isEdit ? "Edit Radio Station" : "Add Radio Station"}
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Edit station" : "Add station"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Update the radio station details."

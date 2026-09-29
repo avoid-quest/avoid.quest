@@ -1,7 +1,6 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
-import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChannelSelection,
@@ -115,8 +114,6 @@ function DeckPanelInner({
   deckState,
   radios,
 }: DeckPanelInnerProps) {
-  const { isOver, setNodeRef } = useDroppable({ id: deckId });
-
   const {
     radio,
     isPlaying,
@@ -191,9 +188,9 @@ function DeckPanelInner({
 
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
+  const [isPickingSource, setIsPickingSource] = useState(false);
   const [isChangingDevice, setIsChangingDevice] = useState(false);
   const [isChangingFile, setIsChangingFile] = useState(false);
-  const isMobile = useIsMobile();
 
   const isDeviceInput = radio?.platformMetadata?.platform === "device-input";
   const isFileSource =
@@ -339,10 +336,19 @@ function DeckPanelInner({
   const handleChangeSource = () => {
     if (isFileSource) {
       setIsChangingFile(true);
-    } else {
+    } else if (radio && isPlatformRadio(radio)) {
       setIsChangingUrl(true);
+    } else {
+      setIsPickingSource(true);
     }
   };
+  const handleCancelPickSource = () => setIsPickingSource(false);
+
+  // A new source arrived (from the picker or a drop): close the picker.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs whenever the deck's source changes
+  useEffect(() => {
+    setIsPickingSource(false);
+  }, [radio]);
 
   // Build the DeckContext value for child components
   const contextValue: DeckContextValue = {
@@ -433,6 +439,22 @@ function DeckPanelInner({
           onLoadUrl={handleRemoteUrlChanged}
         />
       );
+    } else if (isPickingSource) {
+      content = (
+        <div className="flex h-full min-h-0 flex-col gap-2">
+          <div className="min-h-0 flex-1">
+            <DjRadioList deckId={deckId} radios={radios} />
+          </div>
+          <Button
+            className="h-7 text-xs"
+            onClick={handleCancelPickSource}
+            size="sm"
+            variant="ghost"
+          >
+            Cancel
+          </Button>
+        </div>
+      );
     } else if (isChangingUrl && isPlatformRadio(radio)) {
       const editPlatform = radio.platformMetadata?.platform;
       const searchPlatform =
@@ -479,28 +501,22 @@ function DeckPanelInner({
       );
     } else {
       // Normal deck (streaming/file)
-      const onChangeUrl = isPlatformRadio(radio)
-        ? handleChangeSource
-        : undefined;
-
       content = (
         <DeckProvider value={contextValue}>
-          <LoadedDeckContent onChangeUrl={onChangeUrl} onClear={handleClear} />
+          <LoadedDeckContent
+            onChangeUrl={handleChangeSource}
+            onClear={handleClear}
+          />
         </DeckProvider>
       );
     }
-  } else if (isMobile) {
-    content = (
-      <div className="flex h-full min-h-0 flex-col gap-2">
-        <DjRadioList radios={radios} />
-      </div>
-    );
   } else {
     content = (
       <DeckEmpty
         addEffect={addEffect}
+        deckId={deckId}
         effects={effects}
-        onFileDrop={handleFileDrop}
+        radios={radios}
         removeEffect={removeEffect}
         reorderEffects={reorderEffects}
         updateEffect={updateEffect}
@@ -513,8 +529,7 @@ function DeckPanelInner({
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: DnD drop zone for native file drag
     <div
       className={cn(
-        "flex h-full min-h-0 w-full flex-col border-border/50 transition-colors",
-        isOver ? "bg-primary/5" : "",
+        "relative flex h-full min-h-0 w-full flex-col border-border/50 transition-colors",
         isFileDragOver ? "bg-violet-500/5 ring-2 ring-violet-500/50" : "",
         className
       )}
@@ -522,7 +537,6 @@ function DeckPanelInner({
       onDragLeave={handleNativeDragLeave}
       onDragOver={handleNativeDragOver}
       onDrop={handleNativeDrop}
-      ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
       <div className="flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden px-1.5 pb-1.5 sm:px-2 sm:pb-2">

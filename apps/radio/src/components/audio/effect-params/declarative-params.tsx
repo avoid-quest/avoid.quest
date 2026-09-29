@@ -272,7 +272,7 @@ export function DeclarativeParams({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-wrap items-start gap-x-2 gap-y-3">
       {schema.params.map((param) => (
         <ParamControl
           ctx={ctx}

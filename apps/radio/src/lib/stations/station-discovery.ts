@@ -81,6 +81,9 @@ type NetworkInformationNavigator = Navigator & {
 };
 
 function preferredAudioProbeConcurrency(): number {
+  if (audioProbeThrottled) {
+    return 1;
+  }
   if (typeof navigator === "undefined") {
     return MAX_CONCURRENT_AUDIO_PROBES;
   }
@@ -93,6 +96,8 @@ function preferredAudioProbeConcurrency(): number {
 
 const pendingAudioProbes: Array<() => void> = [];
 let activeAudioProbeCount = 0;
+/** While playback is loading or buffering, probe one stream at a time. */
+let audioProbeThrottled = false;
 
 function abortReason(signal: AbortSignal): unknown {
   return signal.reason ?? new DOMException("Search aborted", "AbortError");
@@ -338,6 +343,8 @@ export function createStationDiscovery(
   let generation = 0;
   let activeController: AbortController | null = null;
   let debounce: ReturnType<typeof setTimeout> | undefined;
+  /** Directory results from the previous query, kept on screen while the next one loads. */
+  let previousRemoteResults: StationDiscoveryResult[] = [];
 
   return {
     search(input, publish) {
@@ -352,22 +359,51 @@ export function createStationDiscovery(
       const localResults = filterKnownStations(input.knownStations, query).map(
         toLocalResult
       );
-      if (query.length < 2 || input.playbackNeedsNetwork) {
+      if (query.length < 2) {
+        previousRemoteResults = [];
         publish(snapshot(localResults, false, query));
         return () => undefined;
       }
+      audioProbeThrottled = input.playbackNeedsNetwork === true;
 
-      publish(snapshot(localResults, true, query));
+      const staleRemoteResults = previousRemoteResults;
+      publish(snapshot([...localResults, ...staleRemoteResults], true, query));
       const controller = new AbortController();
       activeController = controller;
       debounce = setTimeout(() => {
         let pendingProviderCount = 2;
-        let radioBrowserResults: StationDiscoveryResult[] = [];
-        let radioGardenResults: StationDiscoveryResult[] = [];
+        const providerResults: Record<
+          Exclude<StationDiscoverySource, "local">,
+          StationDiscoveryResult[]
+        > = { "radio-browser": [], "radio-garden": [] };
+
+        const isCurrent = () =>
+          !controller.signal.aborted && requestGeneration === generation;
+
+        const publishCurrent = () => {
+          const fresh = [
+            ...providerResults["radio-browser"],
+            ...providerResults["radio-garden"],
+          ];
+          const searching = pendingProviderCount > 0;
+          previousRemoteResults = fresh;
+          publish(
+            snapshot(
+              [
+                ...localResults,
+                ...fresh,
+                ...(searching ? staleRemoteResults : []),
+              ],
+              searching,
+              query
+            )
+          );
+        };
 
         const loadProvider = async (
+          source: Exclude<StationDiscoverySource, "local">,
           adapter: StationDirectoryAdapter
-        ): Promise<StationDiscoveryResult[]> => {
+        ): Promise<void> => {
           let candidates: StationDiscoveryCandidate[];
           try {
             candidates = await adapter.search(query, {
@@ -375,13 +411,13 @@ export function createStationDiscovery(
               signal: controller.signal,
             });
           } catch {
-            return [];
+            return;
           }
           const safeCandidates = candidates.filter(hasSafeStreamUrl);
           const scheduleProbes = async (
             index = 0,
-            scheduled: Promise<StationDiscoveryCandidate | null>[] = []
-          ): Promise<Promise<StationDiscoveryCandidate | null>[]> => {
+            scheduled: Promise<unknown>[] = []
+          ): Promise<Promise<unknown>[]> => {
             const candidate = safeCandidates[index];
             if (!candidate) {
               return scheduled;
@@ -391,39 +427,33 @@ export function createStationDiscovery(
                 () =>
                   adapters.streamProbe.prepare(candidate, controller.signal),
                 controller.signal
-              ).catch(() => null)
+              )
+                .then((prepared) => {
+                  // Show each playable station as soon as it is verified.
+                  if (prepared && isCurrent()) {
+                    providerResults[source].push(toRemoteResult(prepared));
+                    publishCurrent();
+                  }
+                })
+                .catch(() => undefined)
             );
             await Promise.resolve();
             return scheduleProbes(index + 1, scheduled);
           };
           const probes = await scheduleProbes();
-          const probed = await Promise.all(probes);
-          return probed.flatMap((candidate) =>
-            candidate ? [toRemoteResult(candidate)] : []
-          );
+          await Promise.all(probes);
         };
 
         const settleProvider = async (
           source: Exclude<StationDiscoverySource, "local">,
           adapter: StationDirectoryAdapter
         ) => {
-          const results = await loadProvider(adapter);
-          if (controller.signal.aborted || requestGeneration !== generation) {
+          await loadProvider(source, adapter);
+          if (!isCurrent()) {
             return;
           }
-          if (source === "radio-browser") {
-            radioBrowserResults = results;
-          } else {
-            radioGardenResults = results;
-          }
           pendingProviderCount -= 1;
-          publish(
-            snapshot(
-              [...localResults, ...radioBrowserResults, ...radioGardenResults],
-              pendingProviderCount > 0,
-              query
-            )
-          );
+          publishCurrent();
         };
 
         settleProvider("radio-browser", adapters.radioBrowser).catch(

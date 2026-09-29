@@ -182,6 +182,13 @@ describe("migrateNodeGraph", () => {
       }),
     ],
     [
+      "a cable louder than +12 dB",
+      (raw: ReturnType<typeof multipleLayout>) => ({
+        ...raw,
+        edges: [{ ...raw.edges[0], gain: 1000 }],
+      }),
+    ],
+    [
       "a Loop feedback above 0.95",
       (raw: ReturnType<typeof multipleLayout>) => ({
         ...raw,

@@ -437,48 +437,61 @@ export function findCycles(
   return search.cycles;
 }
 
-/** Flags each cycle on its last cable, which is the one a drag just added. */
+/**
+ * Refuses cables until no illegal cycle is left. An audio cycle is legal only
+ * when every loop in it passes through a Loop node, whose delay makes it
+ * audible; control cycles are never legal. Each round flags the last cable of
+ * every remaining cycle, which is the one a drag just added, and repeats in
+ * case one strongly connected component held several independent cycles.
+ */
 function checkCycles(context: Context, wired: WiredEdge[]): WiredEdge[] {
   const rejected = new Set<WiredEdge>();
   const nodeIds = context.graph.nodes.map((node) => node.id);
+  const isLoop = (id: string) => context.nodes.get(id)?.type === "loop";
   for (const kind of ["audio", "control"] as const) {
-    const kindEdges = wired.filter(({ from }) => from.kind === kind);
-    const cycles = findCycles(
-      nodeIds,
-      kindEdges.map(({ edge }) => edge)
+    let remaining = wired.filter(
+      ({ edge, from }) =>
+        from.kind === kind &&
+        // Taking the Loop nodes out leaves exactly the delay-free cycles.
+        !(kind === "audio" && (isLoop(edge.source) || isLoop(edge.target)))
     );
-    for (const cycle of cycles) {
-      const members = new Set(cycle);
-      const hasLoop = cycle.some(
-        (id) => context.nodes.get(id)?.type === "loop"
+    let cycles = findCycles(
+      nodeIds,
+      remaining.map(({ edge }) => edge)
+    );
+    while (cycles.length > 0) {
+      for (const cycle of cycles) {
+        const members = new Set(cycle);
+        const closing = remaining
+          .filter(
+            ({ edge }) => members.has(edge.source) && members.has(edge.target)
+          )
+          .at(-1);
+        if (!closing) {
+          continue;
+        }
+        rejected.add(closing);
+        if (kind === "audio") {
+          edgeIssue(
+            context,
+            closing.edge,
+            "feedback-needs-loop",
+            "Feedback needs a Loop"
+          );
+        } else {
+          edgeIssue(
+            context,
+            closing.edge,
+            "control-cycle",
+            "Control can't feed back into itself"
+          );
+        }
+      }
+      remaining = remaining.filter((wire) => !rejected.has(wire));
+      cycles = findCycles(
+        nodeIds,
+        remaining.map(({ edge }) => edge)
       );
-      if (kind === "audio" && hasLoop) {
-        continue;
-      }
-      const closing = kindEdges
-        .filter(
-          ({ edge }) => members.has(edge.source) && members.has(edge.target)
-        )
-        .at(-1);
-      if (!closing) {
-        continue;
-      }
-      rejected.add(closing);
-      if (kind === "audio") {
-        edgeIssue(
-          context,
-          closing.edge,
-          "feedback-needs-loop",
-          "Feedback needs a Loop"
-        );
-      } else {
-        edgeIssue(
-          context,
-          closing.edge,
-          "control-cycle",
-          "Control can't feed back into itself"
-        );
-      }
     }
   }
   return wired.filter((wire) => !rejected.has(wire));
@@ -556,44 +569,52 @@ function labelLanes(
   return lanes;
 }
 
-/** Groups bus nodes: a member has one input, from another bus node. */
+/**
+ * Groups bus nodes. A node joins the bus its audio comes from when every
+ * input is on that one bus, so a Split and Merge inside a bus stay one bus.
+ * Bus-making nodes, and nodes where a lane joins, start a bus of their own.
+ * A fixpoint: every legal cycle passes a Loop, which always starts a bus.
+ */
 function labelBuses(
   context: Context,
   inputs: ReadonlyMap<string, readonly string[]>,
   lanes: ReadonlyMap<string, Lane>
 ): Map<string, string> {
-  const upstreamBus = (id: string): string | undefined => {
-    const node = context.nodes.get(id);
-    const upstream = inputs.get(id) ?? [];
-    const [only] = upstream;
-    const joins =
-      node !== undefined &&
-      !BUS_NODE_TYPES.has(node.type) &&
-      upstream.length === 1 &&
-      only !== undefined &&
-      lanes.get(only) === null;
-    return joins ? only : undefined;
-  };
   const buses = new Map<string, string>();
-  for (const { id: start } of context.graph.nodes) {
-    if (lanes.get(start) !== null || buses.has(start)) {
-      continue;
+  const busNodes = context.graph.nodes.filter(
+    (node) => lanes.get(node.id) === null
+  );
+  for (const node of busNodes) {
+    buses.set(node.id, node.id);
+  }
+  const upstreamBus = (node: GraphNode): string | undefined => {
+    if (BUS_NODE_TYPES.has(node.type)) {
+      return;
     }
-    const chain = new Set<string>();
-    let current = start;
-    let head: string | undefined;
-    while (head === undefined) {
-      chain.add(current);
-      const up = upstreamBus(current);
-      if (up === undefined || chain.has(up)) {
-        head = current;
-      } else {
-        head = buses.get(up);
-        current = up;
+    let bus: string | undefined;
+    for (const id of inputs.get(node.id) ?? []) {
+      const lane = lanes.get(id);
+      if (lane === undefined) {
+        // Not fed by any source, so it carries no signal.
+        continue;
       }
+      const upstream = lane === null ? buses.get(id) : undefined;
+      if (upstream === undefined || (bus !== undefined && bus !== upstream)) {
+        return;
+      }
+      bus = upstream;
     }
-    for (const member of chain) {
-      buses.set(member, head);
+    return bus;
+  };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of busNodes) {
+      const next = upstreamBus(node) ?? node.id;
+      if (next !== buses.get(node.id)) {
+        buses.set(node.id, next);
+        changed = true;
+      }
     }
   }
   return buses;
@@ -831,6 +852,16 @@ function issueKey(issue: Issue): string {
 
 export const CANDIDATE_EDGE_ID = "candidate";
 
+/** An id for the candidate cable that no cable in the patch already uses. */
+function candidateEdgeId(graph: ValidatableGraph): string {
+  const taken = new Set(graph.edges.map((edge) => edge.id));
+  let id = CANDIDATE_EDGE_ID;
+  for (let suffix = 1; taken.has(id); suffix += 1) {
+    id = `${CANDIDATE_EDGE_ID}-${suffix}`;
+  }
+  return id;
+}
+
 /**
  * The problems a new cable would introduce; empty means it may connect.
  * Backs React Flow's isValidConnection and the keyboard Connect… dialog.
@@ -842,7 +873,7 @@ export function validateConnection(
 ): Issue[] {
   const candidate: GraphEdge = {
     gain: 1,
-    id: connection.id ?? CANDIDATE_EDGE_ID,
+    id: connection.id ?? candidateEdgeId(graph),
     muted: false,
     source: connection.source,
     sourceHandle: connection.sourceHandle ?? "",

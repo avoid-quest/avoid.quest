@@ -13,6 +13,12 @@ import type { MidiTransform } from "@/lib/midi/types";
 
 export const NODE_GRAPH_VERSION = 1;
 
+/**
+ * The loudest a cable may be, matching the Branch gain slider in container
+ * params, so an imported or shared patch cannot blast the speakers.
+ */
+export const MAX_EDGE_GAIN = 4;
+
 export const SOURCE_NODE_TYPES = [
   "station",
   "file",
@@ -176,7 +182,10 @@ const loopNodeSchema = z.object({
   ...nodeBase,
   data: z.object({
     feedback: z.number().min(0).max(0.95).default(0.5),
-    /** Seconds; at least one 128-frame render quantum at any sample rate. */
+    /**
+     * Seconds. Web Audio stretches a delay inside a cycle to one 128-frame
+     * render quantum, so the compiler clamps to 128 / sampleRate as well.
+     */
     time: z.number().min(0.003).max(2).default(0.25),
     tone: unitSchema.default(0.5),
   }),
@@ -224,7 +233,8 @@ export const graphEdgeSchema = z.object({
   color: z.string().optional(),
   /** Modulation depth on control cables. */
   depth: z.number().optional(),
-  gain: z.number().min(0).default(1),
+  /** Linear, capped like a container branch gain (+12 dB). */
+  gain: z.number().min(0).max(MAX_EDGE_GAIN).default(1),
   id: z.string().min(1),
   muted: z.boolean().default(false),
   source: z.string().min(1),

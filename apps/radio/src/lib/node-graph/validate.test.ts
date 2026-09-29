@@ -648,6 +648,57 @@ describe("validate: feedback", () => {
     ).toEqual([]);
   });
 
+  test("a delay-free cycle beside a Loop cycle still needs a Loop", () => {
+    // mix, echo, loop and trim form one component, but mix → echo → trim →
+    // mix never passes the Loop, so Web Audio would silence it.
+    expect(
+      check(
+        [
+          station("a"),
+          node("mix", "merge"),
+          fx("echo", "delay"),
+          node("loop", "loop"),
+          node("trim", "gain"),
+          speakers,
+        ],
+        [
+          audio("a", "mix"),
+          audio("mix", "echo"),
+          audio("echo", "speakers"),
+          audio("echo", "loop"),
+          audio("loop", "mix"),
+          audio("echo", "trim"),
+          audio("trim", "mix", { id: "short" }),
+        ],
+        { release: "v2" }
+      )
+    ).toEqual(["feedback-needs-loop@short"]);
+  });
+
+  test("breaks every cycle in a component, not only the last", () => {
+    // Both cycles share mix, so they are one component; refusing only the
+    // last cable would leave mix → echo → mix standing.
+    expect(
+      check(
+        [
+          station("a"),
+          node("mix", "merge"),
+          fx("echo", "delay"),
+          node("trim", "gain"),
+          speakers,
+        ],
+        [
+          audio("a", "mix"),
+          audio("mix", "echo"),
+          audio("echo", "speakers"),
+          audio("echo", "mix", { id: "back" }),
+          audio("mix", "trim"),
+          audio("trim", "mix", { id: "trim-back" }),
+        ]
+      )
+    ).toEqual(["feedback-needs-loop@trim-back", "feedback-needs-loop@back"]);
+  });
+
   test("control cycles are refused", () => {
     expect(
       check(
@@ -725,6 +776,27 @@ describe("validateConnection", () => {
         })
       )
     ).toEqual(["missing-node@candidate"]);
+  });
+
+  test("keeps its candidate apart from a cable already named candidate", () => {
+    const named = graph(
+      [station("a"), node("g", "gain"), speakers],
+      [
+        audio("a", "g"),
+        audio("g", "speakers", { id: "candidate" }),
+        audio("a", "speakers"),
+      ]
+    );
+    expect(
+      codes(
+        validateConnection(named, {
+          source: "g",
+          sourceHandle: "out:audio:main",
+          target: "g",
+          targetHandle: "in:audio:main",
+        })
+      )
+    ).toEqual(["port-max@candidate-1"]);
   });
 
   test("reports lane issues the cable would introduce", () => {
@@ -847,6 +919,38 @@ describe("validate: budgets", () => {
     ]);
     const [fewer, fewerEdges] = busPatch(limit, true);
     expect(check(fewer, fewerEdges, { profile, release: "v2" })).toEqual([]);
+  });
+
+  test("a Split and Merge inside a bus stay one bus", () => {
+    const nodes: NodeInput[] = [speakers];
+    const edges: EdgeInput[] = [];
+    for (const index of range(NODE_BUDGETS.mobile.buses)) {
+      nodes.push(
+        station(`a${index}`),
+        station(`b${index}`),
+        node(`bus${index}`, "merge"),
+        fx(`split${index}`, "fxComposite"),
+        fx(`crush${index}`, "crusher"),
+        fx(`fold${index}`, "fold"),
+        node(`join${index}`, "merge")
+      );
+      edges.push(
+        audio(`a${index}`, `bus${index}`),
+        audio(`b${index}`, `bus${index}`),
+        audio(`bus${index}`, `split${index}`),
+        audio(`split${index}`, `crush${index}`, { from: "branch-1" }),
+        audio(`split${index}`, `fold${index}`, { from: "branch-2" }),
+        audio(`crush${index}`, `join${index}`),
+        audio(`fold${index}`, `join${index}`),
+        audio(`join${index}`, "speakers")
+      );
+    }
+    // Three buses, each with FX: within the mobile bus budget, over the
+    // mobile FX-bus budget by one.
+    expect(check(nodes, edges, { profile: "mobile", release: "v2" })).toEqual([
+      "budget-bus-fx@bus3",
+    ]);
+    expect(check(nodes, edges, { release: "v2" })).toEqual([]);
   });
 
   test.each(["desktop", "mobile"] as const)("%s allows 4 Loops", (profile) => {

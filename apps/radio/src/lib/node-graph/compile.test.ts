@@ -1,0 +1,858 @@
+import { describe, expect, test } from "bun:test";
+import type {
+  EffectConfig,
+  EffectType,
+  FrequencySplitConfig,
+} from "@/lib/audio/dsp/effects/types";
+import {
+  normalizeEffectTree,
+  visitEffectTree,
+} from "@/lib/audio/dsp/routing/effect-tree";
+import { createNodeEffectConfig } from "./catalogue";
+import {
+  type CompileEnv,
+  compile,
+  type EnginePlan,
+  type LanePlan,
+  layoutSignature,
+  MONITORING_CHANNEL_CAP,
+} from "./compile";
+import {
+  type NodeGraph,
+  type NodeGraphInput,
+  type NodeType,
+  nodeGraphSchema,
+} from "./schema";
+
+type NodeInput = NodeGraphInput["nodes"][number];
+type EdgeInput = NodeGraphInput["edges"][number];
+
+const position = { x: 0, y: 0 };
+
+function station(id: string, radio = true): NodeInput {
+  return {
+    data: {
+      radio: radio
+        ? { id, name: id, streamUrl: `https://example.com/${id}.mp3` }
+        : null,
+    },
+    id,
+    position,
+    type: "station",
+  };
+}
+
+function fx(
+  id: string,
+  type: EffectType,
+  overrides: Partial<EffectConfig> = {}
+): NodeInput {
+  return {
+    data: {
+      effect: { ...createNodeEffectConfig(type, id), ...overrides },
+    },
+    id,
+    position,
+    type,
+  } as NodeInput;
+}
+
+function node(
+  id: string,
+  type: Exclude<NodeType, EffectType | "station">,
+  data: Record<string, unknown> = {}
+): NodeInput {
+  return { data, id, position, type } as NodeInput;
+}
+
+const speakers = node("speakers", "speakers");
+
+function audio(
+  source: string,
+  target: string,
+  {
+    from = "main",
+    to = "main",
+    id = `${source}->${target}`,
+    gain,
+    muted,
+  }: {
+    from?: string;
+    to?: string;
+    id?: string;
+    gain?: number;
+    muted?: boolean;
+  } = {}
+): EdgeInput {
+  return {
+    gain,
+    id,
+    muted,
+    source,
+    sourceHandle: `out:audio:${from}`,
+    target,
+    targetHandle: `in:audio:${to}`,
+  };
+}
+
+function key(source: string, target: string): EdgeInput {
+  return {
+    id: `${source}~>${target}`,
+    source,
+    sourceHandle: "out:audio:main",
+    target,
+    targetHandle: "in:sidechain:key",
+  };
+}
+
+function graph(nodes: NodeInput[], edges: EdgeInput[] = []): NodeGraph {
+  return nodeGraphSchema.parse({ edges, nodes, version: 1 });
+}
+
+const ENV: CompileEnv = { crossOriginIsolated: true };
+
+function build(
+  nodes: NodeInput[],
+  edges: EdgeInput[] = [],
+  env: Partial<CompileEnv> = {}
+): EnginePlan {
+  return compile(graph(nodes, edges), { ...ENV, ...env });
+}
+
+function lane(plan: EnginePlan, id: string): LanePlan {
+  const found = plan.lanes.get(id);
+  if (!found) {
+    throw new Error(`No lane ${id}`);
+  }
+  return found;
+}
+
+function codes(plan: EnginePlan): string[] {
+  return plan.issues.map((issue) => `${issue.code}@${issue.id}`);
+}
+
+/** The tree as [type, id] pairs, with chains as nested arrays. */
+function shape(effects: readonly EffectConfig[]): unknown[] {
+  return effects.map((effect) =>
+    "chains" in effect
+      ? [effect.type, effect.id, effect.chains.map((c) => shape(c.effects))]
+      : [effect.type, effect.id]
+  );
+}
+
+function effectIds(effects: readonly EffectConfig[]): string[] {
+  const ids: string[] = [];
+  visitEffectTree(effects, (effect) => {
+    ids.push(effect.id);
+  });
+  return ids;
+}
+
+describe("compile: the migrated Multiple layout", () => {
+  test("gives one lane per station and a cable per edge", () => {
+    const plan = build(
+      [station("a"), station("b"), speakers],
+      [audio("a", "speakers"), audio("b", "speakers")]
+    );
+    expect(plan.issues).toEqual([]);
+    expect([...plan.lanes.keys()]).toEqual(["a", "b"]);
+    expect(lane(plan, "a")).toMatchObject({
+      backend: null,
+      channelId: "n:a",
+      effects: [],
+      filter: null,
+      nodes: ["a"],
+      pan: 0,
+      soundId: "node:n:a",
+    });
+    expect(plan.edges.get("a->speakers")).toEqual({
+      from: { id: "a", kind: "lane" },
+      gain: 1,
+      id: "a->speakers",
+      muted: false,
+      to: { id: "speakers", kind: "sink" },
+    });
+    expect([...plan.sinks.values()]).toEqual([
+      { id: "speakers", type: "speakers" },
+    ]);
+  });
+
+  test("an empty station slot has no lane, and its cables survive in the graph", () => {
+    const plan = build(
+      [station("a"), station("empty", false), speakers],
+      [audio("a", "speakers"), audio("empty", "speakers")]
+    );
+    expect(plan.issues).toEqual([]);
+    expect([...plan.lanes.keys()]).toEqual(["a"]);
+    expect([...plan.edges.keys()]).toEqual(["a->speakers"]);
+  });
+});
+
+describe("compile: lanes in series", () => {
+  test("FX become EffectConfig entries whose id is the node id", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("verb", "cheapReverb"),
+        fx("crush", "crusher"),
+        speakers,
+      ],
+      [audio("a", "verb"), audio("verb", "crush"), audio("crush", "speakers")]
+    );
+    const { effects, nodes } = lane(plan, "a");
+    expect(shape(effects)).toEqual([
+      ["cheapReverb", "verb"],
+      ["crusher", "crush"],
+    ]);
+    expect(effects.map((effect) => effect.order)).toEqual([0, 1]);
+    expect(nodes).toEqual(["a", "verb", "crush"]);
+    expect(plan.edges.get("crush->speakers")?.from).toEqual({
+      id: "a",
+      kind: "lane",
+    });
+  });
+
+  test("a leading Filter and Pan map onto the native strip", () => {
+    const plan = build(
+      [
+        station("a"),
+        node("pan", "pan", { pan: -0.5 }),
+        node("cut", "filter", { frequency: 400, type: "highpass" }),
+        fx("verb", "cheapReverb"),
+        speakers,
+      ],
+      [
+        audio("a", "pan"),
+        audio("pan", "cut"),
+        audio("cut", "verb"),
+        audio("verb", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const lowered = lane(plan, "a");
+    expect(lowered.pan).toBe(-0.5);
+    expect(lowered.filter).toEqual({
+      frequency: 400,
+      Q: 1,
+      type: "highpass",
+    });
+    expect(shape(lowered.effects)).toEqual([["cheapReverb", "verb"]]);
+  });
+
+  test("a Filter after FX is refused and the lane goes quiet", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("verb", "cheapReverb"),
+        node("cut", "filter"),
+        speakers,
+      ],
+      [audio("a", "verb"), audio("verb", "cut"), audio("cut", "speakers")]
+    );
+    expect(codes(plan)).toEqual(["native-position@cut"]);
+    expect(plan.issues[0]?.message).toBe(
+      "Filter must come right after the station"
+    );
+    expect(lane(plan, "a").effects).toEqual([]);
+    expect(plan.edges.size).toBe(0);
+  });
+
+  test("Gain nodes and cable trims fold into the next input gain or the exit", () => {
+    const plan = build(
+      [
+        station("a"),
+        node("trim", "gain", { gainDb: -6 }),
+        fx("verb", "cheapReverb"),
+        node("out", "gain", { gainDb: 6 }),
+        speakers,
+      ],
+      [
+        audio("a", "trim", { gain: 0.5 }),
+        audio("trim", "verb"),
+        audio("verb", "out"),
+        audio("out", "speakers", { gain: 2 }),
+      ]
+    );
+    const [verb] = lane(plan, "a").effects;
+    expect(verb?.inputGain).toBeCloseTo(0.5 * 10 ** (-6 / 20));
+    expect(plan.edges.get("out->speakers")?.gain).toBeCloseTo(
+      2 * 10 ** (6 / 20)
+    );
+  });
+
+  test("a muted cable before an FX silences its input", () => {
+    const plan = build(
+      [station("a"), fx("verb", "cheapReverb"), speakers],
+      [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
+    );
+    expect(lane(plan, "a").effects[0]?.inputGain).toBe(0);
+    expect(plan.edges.get("verb->speakers")?.muted).toBe(false);
+  });
+
+  test("a dangling FX is skipped until it reaches an output", () => {
+    const plan = build(
+      [station("a"), fx("verb", "cheapReverb"), speakers],
+      [audio("a", "verb")]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(lane(plan, "a").effects).toEqual([]);
+    expect(plan.edges.size).toBe(0);
+  });
+});
+
+describe("compile: series-parallel regions", () => {
+  test("a Split closed by a Merge lowers to fxComposite", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("split", "fxComposite", { enabled: true }),
+        fx("verb", "cheapReverb"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        audio("split", "verb", { from: "branch-1", gain: 0.5 }),
+        audio("split", "merge", { from: "branch-2" }),
+        audio("verb", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const { effects } = lane(plan, "a");
+    expect(shape(effects)).toEqual([
+      ["fxComposite", "split", [[["cheapReverb", "verb"]], []]],
+    ]);
+    const [split] = effects;
+    if (split?.type !== "fxComposite") {
+      throw new Error("Expected a composite");
+    }
+    expect(split.chains.map((chain) => chain.id)).toEqual([
+      "split:chain-a",
+      "split:chain-b",
+    ]);
+    expect(split.chains[0]?.gain).toBeCloseTo(Math.SQRT1_2 * 0.5);
+    expect(split.chains[1]?.gain).toBeCloseTo(Math.SQRT1_2);
+    expect(plan.edges.get("merge->speakers")?.from.id).toBe("a");
+  });
+
+  test("a Stereo Split lowers to stereoSplit and mutes an unused side", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("lr", "stereoSplit", { enabled: true }),
+        fx("crush", "crusher"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "lr"),
+        audio("lr", "crush", { from: "left" }),
+        audio("crush", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "stereoSplit") {
+      throw new Error("Expected a stereo split");
+    }
+    expect(shape([split])).toEqual([
+      ["stereoSplit", "lr", [[["crusher", "crush"]], []]],
+    ]);
+    expect(split.chains.map((chain) => chain.muted)).toEqual([false, true]);
+  });
+
+  test("a Band Split lowers to frequencySplit with its crossovers", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("bands", "frequencySplit", { enabled: true }),
+        fx("crush", "crusher"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "bands"),
+        audio("bands", "crush", { from: "band-1" }),
+        audio("crush", "merge"),
+        audio("bands", "merge", { from: "band-2" }),
+        audio("bands", "merge", { from: "band-3" }),
+        audio("bands", "merge", { from: "band-4" }),
+        audio("merge", "speakers"),
+      ].map((edge, index) => ({ ...edge, id: `e${index}` }))
+    );
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "frequencySplit") {
+      throw new Error("Expected a band split");
+    }
+    expect(shape([split])).toEqual([
+      ["frequencySplit", "bands", [[["crusher", "crush"]], [], [], []]],
+    ]);
+    expect(split.crossoverFrequencies).toEqual([200, 1000, 5000]);
+    expect(split.frequencyBandCount).toBe(4);
+  });
+
+  test("an implicit fan-out that rejoins is treated as a Split", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("verb", "cheapReverb"),
+        fx("crush", "crusher"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "verb"),
+        audio("a", "crush", { muted: true }),
+        audio("a", "merge", { gain: 0.25 }),
+        audio("verb", "merge"),
+        audio("crush", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "fxComposite") {
+      throw new Error("Expected a composite");
+    }
+    expect(shape([split])).toEqual([
+      [
+        "fxComposite",
+        "a:fan-out",
+        [[["cheapReverb", "verb"]], [["crusher", "crush"]], []],
+      ],
+    ]);
+    expect(split.enabled).toBe(true);
+    expect(
+      split.chains.map(({ gain, id, muted }) => ({ gain, id, muted }))
+    ).toEqual([
+      { gain: 1, id: "a:fan-out:a->verb", muted: false },
+      { gain: 1, id: "a:fan-out:a->crush", muted: true },
+      { gain: 0.25, id: "a:fan-out:a->merge", muted: false },
+    ]);
+  });
+
+  test("regions nest, and branches may share their Merge", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("pre", "crusher"),
+        fx("verb", "cheapReverb"),
+        fx("echo", "delay"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "pre"),
+        audio("a", "merge"),
+        audio("pre", "verb"),
+        audio("pre", "echo"),
+        audio("verb", "merge"),
+        audio("echo", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(shape(lane(plan, "a").effects)).toEqual([
+      [
+        "fxComposite",
+        "a:fan-out",
+        [
+          [
+            ["crusher", "pre"],
+            [
+              "fxComposite",
+              "pre:fan-out",
+              [[["cheapReverb", "verb"]], [["delay", "echo"]]],
+            ],
+          ],
+          [],
+        ],
+      ],
+    ]);
+  });
+
+  test("branches that leave the lane without a Merge are refused", () => {
+    const plan = build(
+      [station("a"), fx("verb", "cheapReverb"), speakers],
+      [audio("a", "verb"), audio("a", "speakers"), audio("verb", "speakers")]
+    );
+    expect(codes(plan)).toEqual(["lane-branches@a"]);
+    expect(plan.edges.size).toBe(0);
+  });
+
+  test("a Merge that joins branches of different splits is refused", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("x", "crusher"),
+        fx("y", "fold"),
+        node("m1", "merge"),
+        node("m2", "merge"),
+        node("m3", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "x"),
+        audio("a", "y"),
+        audio("x", "m1"),
+        audio("x", "m2"),
+        audio("y", "m1"),
+        audio("y", "m2"),
+        audio("m1", "m3"),
+        audio("m2", "m3"),
+        audio("m3", "speakers"),
+      ]
+    );
+    expect(codes(plan)).toEqual(["not-series-parallel@m1"]);
+  });
+
+  /** `levels` splits inside each other, each an implicit fan-out. */
+  function nested(levels: number) {
+    const nodes: NodeInput[] = [station("a"), speakers];
+    const edges: EdgeInput[] = [audio("a", "f1")];
+    for (let level = 1; level <= levels + 1; level += 1) {
+      nodes.push(fx(`f${level}`, "crusher"));
+    }
+    for (let level = 1; level <= levels; level += 1) {
+      nodes.push(node(`m${level}`, "merge"));
+      edges.push(
+        audio(`f${level}`, `f${level + 1}`),
+        audio(`f${level}`, `m${level}`)
+      );
+      edges.push(
+        level === levels
+          ? audio(`f${level + 1}`, `m${level}`)
+          : audio(`m${level + 1}`, `m${level}`)
+      );
+    }
+    edges.push(audio("m1", "speakers"));
+    return build(nodes, edges);
+  }
+
+  test("splits nest up to depth 8", () => {
+    const plan = nested(8);
+    expect(plan.issues).toEqual([]);
+    const { effects } = lane(plan, "a");
+    expect(() => normalizeEffectTree(effects)).not.toThrow();
+    expect(effectIds(effects)).toContain("f9");
+    expect(plan.edges.has("m1->speakers")).toBe(true);
+  });
+
+  test("depth 9 is rejected on the split that goes too deep", () => {
+    const plan = nested(9);
+    expect(codes(plan)).toEqual(["split-depth@f9"]);
+    expect(lane(plan, "a").effects).toEqual([]);
+    expect(plan.edges.size).toBe(0);
+  });
+
+  test("5 bands are rejected", () => {
+    const patch = graph(
+      [
+        station("a"),
+        fx("bands", "frequencySplit", { enabled: true }),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "bands"),
+        audio("bands", "merge", { from: "band-1", id: "b1" }),
+        audio("bands", "merge", { from: "band-2", id: "b2" }),
+        audio("merge", "speakers"),
+      ]
+    );
+    // A stored config the schema would refuse, as a hostile import might.
+    const bands = patch.nodes.find((entry) => entry.id === "bands");
+    if (bands?.type !== "frequencySplit") {
+      throw new Error("Expected a band split");
+    }
+    const effect = bands.data.effect as FrequencySplitConfig;
+    const [chain] = effect.chains;
+    if (!chain) {
+      throw new Error("Expected a chain");
+    }
+    bands.data.effect = {
+      ...effect,
+      chains: [0, 1, 2, 3, 4].map((order) => ({
+        ...chain,
+        id: `band-${order}`,
+        order,
+      })),
+      crossoverFrequencies: [100, 400, 1600, 6400],
+    };
+    const plan = compile(patch, ENV);
+    expect(codes(plan)).toEqual(["split-branches@bands"]);
+    expect(plan.issues[0]?.message).toBe("Band Split takes 2 to 4 bands");
+  });
+
+  test("an implicit fan-out takes up to 4 branches", () => {
+    const ids = ["v1", "v2", "v3", "v4", "v5"];
+    const plan = build(
+      [
+        station("a"),
+        ...ids.map((id) => fx(id, "crusher")),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        ...ids.flatMap((id) => [audio("a", id), audio(id, "merge")]),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(codes(plan)).toEqual(["split-branches@a"]);
+  });
+
+  test("every lowered FX keeps its node id", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("split", "fxComposite", { enabled: true }),
+        fx("verb", "cheapReverb"),
+        fx("lr", "stereoSplit", { enabled: true }),
+        fx("crush", "crusher"),
+        node("inner", "merge"),
+        node("outer", "merge"),
+        fx("comp", "compressor"),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        audio("split", "verb", { from: "branch-1" }),
+        audio("verb", "outer"),
+        audio("split", "lr", { from: "branch-2" }),
+        audio("lr", "crush", { from: "left" }),
+        audio("lr", "inner", { from: "right" }),
+        audio("crush", "inner"),
+        audio("inner", "outer"),
+        audio("outer", "comp"),
+        audio("comp", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(effectIds(lane(plan, "a").effects).sort()).toEqual(
+      ["comp", "crush", "lr", "split", "verb"].sort()
+    );
+  });
+});
+
+describe("compile: key cables", () => {
+  test("a key cable writes sidechain.channelId n:<source>", () => {
+    const plan = build(
+      [station("music"), station("talk"), fx("comp", "compressor"), speakers],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+      channelId: "n:talk",
+    });
+    expect(lane(plan, "talk").effects).toEqual([]);
+  });
+
+  test("only the first keyed FX in the lane takes the key", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        fx("comp", "compressor"),
+        fx("gate", "gate"),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        key("news", "gate"),
+      ]
+    );
+    expect(codes(plan)).toEqual(["lane-key@gate"]);
+    const [comp, gate] = lane(plan, "music").effects;
+    expect(comp?.sidechain).toEqual({ channelId: "n:talk" });
+    expect(gate?.sidechain).toBeUndefined();
+  });
+
+  test("a stale sidechain without a key cable is dropped", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("comp", "compressor", { sidechain: { channelId: "n:gone" } }),
+        speakers,
+      ],
+      [audio("a", "comp"), audio("comp", "speakers")]
+    );
+    expect(lane(plan, "a").effects[0]?.sidechain).toBeUndefined();
+  });
+
+  test("a key from an empty station slot binds nothing", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("empty", false),
+        fx("comp", "compressor"),
+        speakers,
+      ],
+      [audio("music", "comp"), audio("comp", "speakers"), key("empty", "comp")]
+    );
+    expect(lane(plan, "music").effects[0]?.sidechain).toBeUndefined();
+  });
+});
+
+describe("compile: backend estimate", () => {
+  function fxLanes(count: number, env: Partial<CompileEnv> = {}) {
+    const ids = Array.from({ length: count }, (_, index) => `s${index + 1}`);
+    return build(
+      [
+        ...ids.flatMap((id) => [
+          station(id),
+          fx(`${id}-comp`, "compressor", { enabled: true }),
+        ]),
+        speakers,
+      ],
+      ids.flatMap((id) => [
+        audio(id, `${id}-comp`),
+        audio(`${id}-comp`, "speakers"),
+      ]),
+      env
+    );
+  }
+
+  test("a lane of openDAW FX is official when cross-origin isolated", () => {
+    const plan = fxLanes(1);
+    expect(lane(plan, "s1").backend).toBe("official");
+    expect(plan.budget.monitoringChannels).toBe(2);
+  });
+
+  test("it flips to compat when crossOriginIsolated is false", () => {
+    const plan = fxLanes(1, { crossOriginIsolated: false });
+    expect(lane(plan, "s1").backend).toBe("compat");
+    expect(plan.budget.monitoringChannels).toBe(0);
+  });
+
+  test("it flips to compat past the 8 monitoring channels", () => {
+    const plan = fxLanes(5);
+    expect([...plan.lanes.values()].map((entry) => entry.backend)).toEqual([
+      "official",
+      "official",
+      "official",
+      "official",
+      "compat",
+    ]);
+    expect(plan.budget.monitoringChannels).toBe(MONITORING_CHANNEL_CAP);
+  });
+
+  test("radio-only FX force compat, and a dry lane has no FX runtime", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("limit", "limiter", { enabled: true }),
+        station("b"),
+        fx("off", "compressor"),
+        speakers,
+      ],
+      [
+        audio("a", "limit"),
+        audio("limit", "speakers"),
+        audio("b", "off"),
+        audio("off", "speakers"),
+      ]
+    );
+    expect(lane(plan, "a").backend).toBe("compat");
+    expect(lane(plan, "b").backend).toBeNull();
+  });
+});
+
+describe("compile: validation first", () => {
+  test("refused cables and nodes never reach the plan", () => {
+    const plan = build(
+      [station("a"), station("b"), fx("code", "werkstatt"), speakers],
+      [
+        audio("a", "code"),
+        audio("code", "speakers"),
+        {
+          id: "bad",
+          source: "b",
+          sourceHandle: "out:audio",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+      ]
+    );
+    expect(codes(plan)).toEqual(["unshipped@code", "bad-handle@bad"]);
+    expect(lane(plan, "a").effects).toEqual([]);
+    expect(plan.edges.size).toBe(0);
+  });
+
+  test("a bus is refused until buses ship, and never dropped silently", () => {
+    const plan = build(
+      [
+        station("a"),
+        station("b"),
+        node("bus", "merge"),
+        fx("verb", "cheapReverb"),
+        speakers,
+      ],
+      [
+        audio("a", "bus"),
+        audio("b", "bus"),
+        audio("bus", "verb"),
+        audio("verb", "speakers"),
+      ],
+      { release: "v2" }
+    );
+    expect(codes(plan)).toEqual(["unshipped@bus"]);
+    expect([...plan.lanes.keys()]).toEqual(["a", "b"]);
+    expect(plan.edges.size).toBe(0);
+  });
+
+  test("the playing budget keeps the lane in the plan", () => {
+    const ids = ["a", "b", "c", "d", "e"];
+    const plan = build(
+      [...ids.map((id) => station(id)), speakers],
+      ids.map((id) => audio(id, "speakers")),
+      { playing: ids, profile: "mobile" }
+    );
+    expect(codes(plan)).toEqual(["budget-playing@e"]);
+    expect(plan.lanes.has("e")).toBe(true);
+    expect(plan.edges.has("e->speakers")).toBe(true);
+  });
+});
+
+describe("layoutSignature", () => {
+  const verb = createNodeEffectConfig("cheapReverb", "verb");
+  const crush = { ...createNodeEffectConfig("crusher", "crush"), order: 1 };
+
+  test("ignores params", () => {
+    expect(layoutSignature([verb, crush])).toBe(
+      layoutSignature([{ ...verb, decay: 0.9, dryWet: 0.3 }, crush])
+    );
+  });
+
+  test("changes with ids, order and chains", () => {
+    const base = layoutSignature([verb, crush]);
+    expect(layoutSignature([verb])).not.toBe(base);
+    expect(
+      layoutSignature([
+        { ...crush, order: 0 },
+        { ...verb, order: 1 },
+      ])
+    ).not.toBe(base);
+    const split = createNodeEffectConfig("fxComposite", "split");
+    const [first, second] = split.chains;
+    if (!(first && second)) {
+      throw new Error("Expected two chains");
+    }
+    expect(
+      layoutSignature([
+        { ...split, chains: [{ ...first, effects: [verb] }, second] },
+      ])
+    ).not.toBe(layoutSignature([split]));
+  });
+});

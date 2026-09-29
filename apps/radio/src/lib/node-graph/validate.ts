@@ -45,7 +45,13 @@ export type IssueCode =
   | "budget-tape-warp"
   | "budget-tape-warp-time"
   | "budget-lfos"
-  | "budget-edges";
+  | "budget-edges"
+  // Raised by the compiler, where the patch's shape is known.
+  | "native-position"
+  | "lane-branches"
+  | "split-depth"
+  | "split-branches"
+  | "not-series-parallel";
 
 export type Issue = {
   code: IssueCode;
@@ -144,7 +150,8 @@ const BUS_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   "tapeWarp",
 ]);
 
-type WiredEdge = {
+/** A cable that passed the port checks, with both ends resolved. */
+export type WiredEdge = {
   edge: GraphEdge;
   from: NodePort;
   to: NodePort;
@@ -500,7 +507,7 @@ function checkCycles(context: Context, wired: WiredEdge[]): WiredEdge[] {
 }
 
 /** undefined: not fed by any source; string: that source's lane; null: a bus. */
-type Lane = string | null | undefined;
+export type Lane = string | null | undefined;
 
 function joinLane(current: Lane, next: Lane): Lane {
   if (current === undefined) {
@@ -512,7 +519,7 @@ function joinLane(current: Lane, next: Lane): Lane {
   return null;
 }
 
-type Topology = {
+export type Topology = {
   lanes: Map<string, Lane>;
   /** Bus id per bus node: the node that starts the bus. */
   buses: Map<string, string>;
@@ -826,11 +833,18 @@ function checkBudgets(
   );
 }
 
-/** Validates a whole patch. An empty list means the compiler may take it. */
-export function validate(
+export type GraphAnalysis = {
+  issues: Issue[];
+  /** Cables that passed the port and cycle checks. */
+  wired: WiredEdge[];
+  topology: Topology;
+};
+
+/** Validates a patch and keeps what the compiler builds on. */
+export function analyseGraph(
   graph: ValidatableGraph,
   { playing = [], profile = "desktop", release = "v1" }: ValidateOptions = {}
-): Issue[] {
+): GraphAnalysis {
   const context: Context = {
     budget: NODE_BUDGETS[profile],
     graph,
@@ -845,7 +859,15 @@ export function validate(
   checkLanes(context, topology, keyed);
   checkBusRelease(context, topology);
   checkBudgets(context, topology, playing);
-  return context.issues;
+  return { issues: context.issues, topology, wired };
+}
+
+/** Validates a whole patch. An empty list means the compiler may take it. */
+export function validate(
+  graph: ValidatableGraph,
+  options?: ValidateOptions
+): Issue[] {
+  return analyseGraph(graph, options).issues;
 }
 
 function issueKey(issue: Issue): string {

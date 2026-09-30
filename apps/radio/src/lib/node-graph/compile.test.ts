@@ -17,6 +17,7 @@ import {
   compile,
   type EnginePlan,
   idleKeys,
+  isSourceLive,
   type LanePlan,
   layoutSignature,
   MONITORING_CHANNEL_CAP,
@@ -41,6 +42,7 @@ import {
   type NodeType,
   nodeGraphSchema,
 } from "./schema";
+import { forgetLocalFileUrls, keepLocalFileUrl } from "./sources";
 import { BUS_MERGE_MESSAGE, validate, validateConnection } from "./validate";
 
 type NodeInput = NodeGraphInput["nodes"][number];
@@ -359,6 +361,88 @@ describe("compile: audio inputs and output devices", () => {
 
     expect(codes(plan)).toEqual(["one-device-out@booth"]);
     expect(plan.sinks.has("booth")).toBe(false);
+  });
+});
+
+describe("compile: Track and File sources", () => {
+  const youtube = {
+    id: "yt-1",
+    name: "A video",
+    platformMetadata: {
+      itemType: "video",
+      platform: "youtube",
+      url: "https://www.youtube.com/watch?v=abc",
+      videoId: "abc",
+    },
+    streamUrl: "https://media.example/abc.m4a",
+  };
+  const picked = {
+    id: "local-1",
+    name: "Demo",
+    platformMetadata: { itemType: "track", platform: "local-file", url: "" },
+    streamUrl: "blob:https://radio.example/demo",
+  };
+
+  function source(
+    id: string,
+    type: "platform" | "file",
+    radio: Record<string, unknown> | null
+  ): NodeInput {
+    return { data: { radio }, id, position, type } as NodeInput;
+  }
+
+  test("a filled Track and a picked File each get their own radio lane", () => {
+    keepLocalFileUrl(picked.streamUrl);
+    try {
+      const plan = build(
+        [
+          source("track", "platform", youtube),
+          source("file", "file", picked),
+          speakers,
+        ],
+        [audio("track", "speakers"), audio("file", "speakers")]
+      );
+      expect(plan.issues).toEqual([]);
+      expect(lane(plan, "track")).toMatchObject({
+        channelId: "n:track",
+        radio: { id: "yt-1" },
+        source: { kind: "radio" },
+      });
+      expect(lane(plan, "file").radio).toMatchObject({ id: "local-1" });
+      expect(plan.edges.get("track->speakers")?.to.id).toBe("speakers");
+    } finally {
+      forgetLocalFileUrls();
+    }
+  });
+
+  test("an empty Track and a File from an earlier page have no lane, and a key from them says why", () => {
+    const nodes = [
+      station("music"),
+      source("track", "platform", null),
+      source("file", "file", picked),
+      fx("comp", "compressor", { enabled: true }),
+      fx("gate", "gate", { enabled: true }),
+      speakers,
+    ];
+    const edges = [
+      audio("music", "comp"),
+      audio("comp", "gate"),
+      audio("gate", "speakers"),
+      audio("track", "speakers"),
+      audio("file", "speakers"),
+      key("track", "comp"),
+    ];
+    const patch = graph(nodes, edges);
+    const plan = compile(patch, ENV);
+    expect([...plan.lanes.keys()]).toEqual(["music"]);
+    expect(patch.nodes.filter(isSourceLive).map((entry) => entry.id)).toEqual([
+      "music",
+    ]);
+    expect(idleKeys(patch, plan).get("track~>comp")).toBe("The Track is empty");
+    const fromFile = graph(nodes, [...edges.slice(0, 5), key("file", "comp")]);
+    expect(idleKeys(fromFile, compile(fromFile, ENV)).get("file~>comp")).toBe(
+      "Pick the file again"
+    );
   });
 });
 

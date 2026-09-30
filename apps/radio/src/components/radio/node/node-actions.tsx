@@ -3,13 +3,15 @@ import type { Radio } from "@/lib/audio";
 import type { NodeRadioManagement } from "./use-node-radio-management";
 
 /**
- * What canvas nodes need from the mode around them: station management and
+ * What canvas nodes need from the mode around them: source management and
  * the saved stations an empty slot's search offers first. Playback goes
  * straight to node playback, and live state to the runtime store.
  */
 export type NodeActions = Pick<
   NodeRadioManagement,
+  | "fillSource"
   | "fillStation"
+  | "fillStationFromUrl"
   | "handleDeleteRadio"
   | "handleEditRadio"
   | "handleSaveSessionRadio"

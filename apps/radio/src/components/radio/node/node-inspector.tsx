@@ -15,13 +15,15 @@ import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { EffectParams } from "@/components/audio/effect-params/effect-params";
 import { EffectVisualization } from "@/components/audio/visualizations/effect-visualization";
-import type { EffectConfig } from "@/lib/audio";
+import type { EffectConfig, Radio } from "@/lib/audio";
+import { getCurrentTrackIndex } from "@/lib/external-url/metadata-helpers";
 import { nodeMidiTargetPrefix } from "@/lib/midi/node-midi-actions";
 import { isSplitNode } from "@/lib/node-graph/branches";
 import {
   getNodeDefinition,
   isEffectNodeType,
 } from "@/lib/node-graph/catalogue";
+import { nodeLabel } from "@/lib/node-graph/describe";
 import {
   type NativeParams,
   setEffectParams,
@@ -35,7 +37,14 @@ import {
   setNodeSelection,
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
-import type { GraphNode } from "@/lib/node-graph/schema";
+import { type GraphNode, isRadioSourceNode } from "@/lib/node-graph/schema";
+import { getNodePlayback } from "@/lib/node-playback";
+import type { PlatformTrack } from "@/lib/platform-types";
+import {
+  calculateHasTracklist,
+  isStreamingMetadata,
+} from "../dj/deck/deck-panel-helpers";
+import { TracklistView } from "../dj/deck/deck-tracklist";
 import { BackendBadge } from "./backend-badge";
 import { RELEASE_DELAY_MS } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
@@ -47,7 +56,9 @@ import { SplitInspectorParams } from "./split-nodes";
  *
  * Every param of one FX or native strip node: the full EffectParams layout
  * (with its curve) where a node body shows only the first row. A split
- * shows its mix, its bands and each branch cable's controls. It follows
+ * shows its mix, its bands and each branch cable's controls. A Track or
+ * File holding an album or playlist shows its tracklist, DJ's, where a
+ * pick plays that track on its lane. It follows
  * the canvas selection in the desktop side panel and opens as a bottom
  * Drawer on a phone. Knobs are throttled like every param knob, and a
  * release is an undo step. Each knob learns MIDI as `node:<nodeId>:…`.
@@ -55,15 +66,50 @@ import { SplitInspectorParams } from "./split-nodes";
 
 type NativeNode = Parameters<typeof NativeControls>[0]["node"];
 
-/** FX and native strip nodes have params to inspect; Stations don't. */
+/** The tracks of a Track or File holding an album or playlist, if any. */
+export function sourceTracklist(
+  node: GraphNode | undefined
+): { tracks: PlatformTrack[]; currentTrackIndex: number } | null {
+  const radio = isRadioSourceNode(node)
+    ? (node.data.radio as Radio | null)
+    : null;
+  const metadata = radio?.platformMetadata;
+  if (
+    !(
+      radio &&
+      metadata &&
+      calculateHasTracklist(metadata) &&
+      isStreamingMetadata(metadata)
+    )
+  ) {
+    return null;
+  }
+  return {
+    currentTrackIndex: getCurrentTrackIndex(metadata, radio.streamUrl),
+    tracks: (metadata.tracks ?? []) as PlatformTrack[],
+  };
+}
+
+/**
+ * FX and native strip nodes have params to inspect, and an album's or
+ * playlist's Track its tracklist; Stations don't.
+ */
 export function isInspectable(node: GraphNode | undefined): boolean {
   return Boolean(
     node &&
       (isEffectNodeType(node.type) ||
         node.type === "filter" ||
         node.type === "pan" ||
-        node.type === "gain")
+        node.type === "gain" ||
+        sourceTracklist(node) !== null)
   );
+}
+
+/** What the inspector is titled: a source by what it holds. */
+function inspectorTitle(node: GraphNode): string {
+  return isRadioSourceNode(node)
+    ? nodeLabel(node)
+    : getNodeDefinition(node.type).name;
 }
 
 function findNode(
@@ -148,7 +194,16 @@ function InspectorParams({
     setTimeout(() => snapshotNodeGraph(store), RELEASE_DELAY_MS);
   };
   let params: React.ReactNode;
-  if (isSplitNode(node)) {
+  const tracklist = sourceTracklist(node);
+  if (tracklist) {
+    params = (
+      <TracklistView
+        currentTrackIndex={tracklist.currentTrackIndex}
+        onPlayTrack={(url) => getNodePlayback().playTrack(node.id, url)}
+        tracks={tracklist.tracks}
+      />
+    );
+  } else if (isSplitNode(node)) {
     // Branches are cables here, so the rack's nested chains don't apply.
     params = <SplitInspectorParams node={node} store={store} />;
   } else if (isEffectNodeType(node.type)) {
@@ -216,7 +271,7 @@ function InspectorTitle({
   headingId?: string;
 }) {
   const Icon = nodeIcon(node.type);
-  const title = getNodeDefinition(node.type).name;
+  const title = inspectorTitle(node);
   const effect = isEffectNodeType(node.type)
     ? (node.data as { effect: EffectConfig }).effect
     : null;
@@ -285,7 +340,7 @@ export function NodeInspector({
   const inspected = isInspectable(node) ? node : undefined;
 
   if (isPhone) {
-    const title = inspected ? getNodeDefinition(inspected.type).name : "";
+    const title = inspected ? inspectorTitle(inspected) : "";
     return (
       <Drawer
         handleOnly

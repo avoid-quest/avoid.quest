@@ -72,10 +72,10 @@ carries the four universal wrapper params: enabled, dryWet, inputGain and output
 
 | Category | Name | Inputs | Outputs | Params | For | Ship |
 |---|---|---|---|---|---|---|
-| Source | Station | control: volume, pan, station | audio; control: song-change (pulse), title-hash (v2) | radio ref (snapshot), volume, muted, play | A saved or session station as a lane: one managed sound through `createManagedSound` (`apps/radio/src/lib/playback-actions-shared.ts:85-104`). **Its empty state is the search**: with no station, the body is an inline `SearchField`, and the chosen result fills the slot (a session radio keeps the green `#00d084/40` stripe; session radios are tab-scoped, `apps/radio/src/lib/collections/session-radios.ts:14-37`). There is no separate Search node | v1 |
-| Source | File | control: volume | audio | file picker, loop | Local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`). Restore skips local files (`apps/radio/src/lib/managed-playback-internals.ts:77-110`), so after a reload the node shows "Re-pick file" | v2 |
+| Source | Station | control: volume, pan, station | audio; control: song-change (pulse), title-hash (v2) | radio ref (snapshot), volume, muted, play | A saved or session station as a lane: one managed sound through `createManagedSound` (`apps/radio/src/lib/playback-actions-shared.ts:85-104`). **Its empty state is the search**: with no station, the body is an inline `SearchField`, and the chosen result fills the slot. A pasted radio stream link becomes a session station; a pasted platform link loads and hands off to a Track (a session radio keeps the green `#00d084/40` stripe; session radios are tab-scoped, `apps/radio/src/lib/collections/session-radios.ts:14-37`). There is no separate Search node | v1 |
+| Source | File | control: volume (v2) | audio | radio (like a Station's), volume, muted, play | One of the Source family with Station and Track: same data, frame and strip slot (`components/radio/node/source-node-frame.tsx`). A local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`) or a static audio URL (MP3, M3U, PLS) resolved in the browser (`lib/audio/client-static-audio-resolver.ts`). Its empty body is DJ's `FileForm`. Restore skips local files (`isRestorableRadio`), and a local file's lane is live only for object URLs picked in this page (`lib/node-graph/sources.ts`), so after a reload the File keeps its name, has no lane and says "Pick the file again". A URL survives the reload. Albums and M3U playlists advance to the next track at the end of one | v1 |
 | Source | Audio input (`deviceIn`, DJ's word) | none | audio | device, channel pair of the first 2 channels, echo cancellation, volume, mute, Go live | `createDeviceSource` (`apps/radio/src/lib/audio/playback/device-source.ts:581`) via `AudioManager.playDeviceSound`, getUserMedia → splitter/merger. The start is DJ's own, shared as `apps/radio/src/lib/device-input-playback.ts` (`startDeviceInput`: `playDeviceSound(soundId, deviceId, { echoCancellation })`, then `setDeviceChannelSelection`). An input with no device has no lane, like an empty Station. Its channel carries DJ's device-input radio (`dj-library-sources.ts`), and restore skips it (`isRestorableRadio`), so a reload never opens the mic: only Go live does. Realtime path, so it skips the main delay (`apps/radio/src/lib/audio/routing/browser-output-adapter.ts:39-42`). Not a stream, so the playing budget ignores it. Its body: Allow microphone (a gesture), "Microphone blocked…", the device select with Refresh, the channel select, "Unplugged: plug it back in or pick another" (the lane pauses), Off / Live with Go live and Mute, and while it reaches an output an amber "Use headphones: a mic into speakers can howl" with an Echo cancellation switch. It is never wired on its own when added | v1 |
-| Source | Platform track | control: volume | audio | URL (YouTube, SoundCloud or Bandcamp), loop or stop at end | Resolved to an HTMLAudioElement through `apps/radio/src/lib/dj-platform-stream-port.ts`. Today `validateRadioForMode` blocks these outside DJ (`apps/radio/src/lib/external-url/utils.ts:224-250`); needs an owner decision (§12) | later |
+| Source | Track (`platform`) | control: volume (v2) | audio | radio (like a Station's), search chip, volume, muted, play | A YouTube, SoundCloud or Bandcamp track, album or playlist. Its empty body is DJ's `ExternalSearch`, unlocked ("Search all") or locked by a platform chip taken from `PLATFORM_SOURCE_DEFINITIONS`; a pick or a pasted link loads through `useDjTrackLoad`, and a `yt:` track is resolved first. A radio link hands off: filling any Source with another kind of radio turns it into the one that plays it, in place (`setSourceRadio`). `validateRadioForMode` allows platform radios in `"node"` (Single stays refused). An expired stream is renewed through DJ's refresh, shared as `lib/platform-stream-refresh.ts`, and resumes at its position. At the end of a track in an album or playlist the lane loads `findNextTrack`; the inspector lists the tracklist (DJ's `TracklistView`) | v1 |
 | Source | Static | control: level | audio | colour (white or pink), bandwidth | Looping noise `AudioBufferSourceNode` → Biquad bandpass. Native and cheap on Safari. Used by the Dial and the roulette bridge | v2 |
 
 The Station's control inputs appear when Control ships (PR 6). The `station` input and the
@@ -265,6 +265,9 @@ New files, all pure except the last three:
 | `apps/radio/src/lib/node-graph/signal-store.ts` | A separate TanStack `Store` of per-id level buffers. The rAF loop reads it directly; React never subscribes to it at meter rate |
 | `apps/radio/src/lib/audio/routing/node-bus-graph.ts` | Native bus layer: lane outs, buses, edge gains, Loop and Tape Warp, sinks, native modulators |
 | `apps/radio/src/lib/node-playback.ts` | Replaces `apps/radio/src/lib/multiple-playback.ts`. Applies `Op[]` and provides activate/deactivate |
+| `apps/radio/src/lib/node-graph/sources.ts` | Which Source node holds a radio (Station, Track, File), and whether a local file's object URL still plays in this page |
+| `apps/radio/src/lib/node-source-loaders.ts` | Fills a Source through DJ's loaders: platform items, local files, static audio URLs, pasted streams as session stations |
+| `apps/radio/src/lib/platform-stream-refresh.ts` | DJ's stream refresh (`getRefreshRequest` and the refresh call) and `yt:` track resolution, shared by DJ decks and Node lanes |
 
 `apps/radio/src` never imports zustand today; the `zustand ^5.0.15` line in
 `apps/radio/package.json:53` is unused. Holding node state in TanStack Store follows the house
@@ -927,7 +930,8 @@ isolation).
    outputs with the Title trigger. Station roulette and Radio Dérive through Static. Weather
    front. Stage pinned macros and the desktop Stage strip with its cable overlay.
 7. **More sources and outputs.** Audio input and Output device shipped early, in the
-   io-nodes layer (see §3). Still here: the Talk-over template, File, Recorder, Headphones
+   io-nodes layer (see §3), and Track and File in the platform-sources layer. Still here:
+   the Talk-over template, Recorder, Headphones
    (CUE), node-patches collection,
    export/import, and share URL.
 8. **Later.**
@@ -935,7 +939,6 @@ isolation).
      EffectsBackendRouter, or at least an on-demand bypass crossfade (§5.5).
    - openDAW Modulators for effect-param LFOs on the official backend.
    - Werkstatt code node.
-   - Platform tracks, if the owner approves.
    - Migration to React Flow 13 behind `components/radio/node/flow-adapter.ts`.
 
 ## 11. Prior art
@@ -978,8 +981,13 @@ isolation).
    radios. Node makes it curated, so newly saved stations do **not** auto-appear. Is that
    acceptable, or should "Start from Multiple" patches keep an "auto-add enabled stations"
    toggle on Speakers?
-6. **Platform tracks** (YouTube, SoundCloud, Bandcamp) in Node: allow them as sources with
-   loop or stop behaviour, or keep them DJ-only as today?
+6. **Platform tracks** (YouTube, SoundCloud, Bandcamp) in Node: decided, they ship as the
+   Track source (platform-sources layer). What stays out of Node: "Search all" is a search,
+   not a source (it is Track unlocked); DJ's Audio input placeholder is the Audio input node;
+   local files don't survive a reload; summing a Track with a Station needs a bus
+   (unshipped); the playing-stream budget caps simultaneous tracks; and DJ-only deck features
+   (crossfader, autoplay across decks) have no Node equivalent. A per-source Loop that stops
+   the next-track advance lands with a later layer.
 7. **Knob captions in node bodies.** Knob captions are mono caps
    (`packages/ui/src/components/knob.tsx:207-209`), and your rule keeps mono caps to the
    wordmark, the mode toggle and DJ hardware labels. Options: (a) accept them inside reused

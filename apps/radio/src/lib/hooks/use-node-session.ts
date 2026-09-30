@@ -11,9 +11,9 @@ import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 
 /** A source lane as the Speakers, Stage and Rack views render it. */
 export type NodeSourceState = {
-  /** The Station or Audio input node id. */
+  /** The Station, Track, File or Audio input node id. */
   id: string;
-  /** A Station's stream, or an Audio input's live capture. */
+  /** A stream (a Station, Track or File), or an Audio input's live capture. */
   kind: "station" | "input";
   channelId: string;
   radio: Radio;

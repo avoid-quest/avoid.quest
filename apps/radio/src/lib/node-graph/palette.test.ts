@@ -64,6 +64,11 @@ describe("paletteEntries", () => {
         .map((entry) => `${entry.section}:${entry.name}`)
     ).toEqual([
       "sources:Station",
+      "sources:Track",
+      "sources:YouTube",
+      "sources:SoundCloud",
+      "sources:Bandcamp",
+      "sources:File",
       "sources:Audio input",
       "sources:Station c",
       "routing:Split",
@@ -135,6 +140,11 @@ describe("paletteEntries", () => {
         .map((entry) => entry.name)
     ).toEqual([
       "Station",
+      "Track",
+      "YouTube",
+      "SoundCloud",
+      "Bandcamp",
+      "File",
       "Audio input",
       "Station c",
       "Split",
@@ -223,6 +233,11 @@ describe("paletteEntries: audio inputs and output devices", () => {
 
     expect(names(entries, "sources")).toEqual([
       "Station",
+      "Track",
+      "YouTube",
+      "SoundCloud",
+      "Bandcamp",
+      "File",
       "Audio input",
       "Desk mic",
       "Line in",

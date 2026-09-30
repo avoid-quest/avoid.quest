@@ -178,11 +178,12 @@ const OTHER_DEFINITIONS: Record<
     ports: [audioIn("main", "In", 8), controlIn("tune", "Tune"), audioOut()],
     ship: "v2",
   },
+  // A local file or a static audio URL (MP3, M3U, PLS), on its own lane.
   file: {
     category: "source",
     name: "File",
-    ports: [controlIn("volume", "Volume"), audioOut()],
-    ship: "v2",
+    ports: [controlIn("volume", "Volume", "v2"), audioOut()],
+    ship: "v1",
     source: true,
     stream: true,
   },
@@ -266,11 +267,12 @@ const OTHER_DEFINITIONS: Record<
     ports: [audioIn(), controlIn("pan", "Pan", "v2"), audioOut()],
     ship: "v1",
   },
+  // A YouTube, SoundCloud or Bandcamp track, album or playlist.
   platform: {
     category: "source",
-    name: "Platform track",
-    ports: [controlIn("volume", "Volume"), audioOut()],
-    ship: "later",
+    name: "Track",
+    ports: [controlIn("volume", "Volume", "v2"), audioOut()],
+    ship: "v1",
     source: true,
     stream: true,
   },

@@ -53,6 +53,7 @@ import {
 import { getMixer } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
+import { refreshPlatformStream } from "@/lib/platform-stream-refresh";
 import type { Platform } from "@/lib/platform-types";
 import {
   isDeviceInputMetadata,
@@ -270,55 +271,6 @@ function getTrackFormat(radio: Radio, streamUrl: string): StreamFormat {
     return "hls";
   }
   return inferStreamFormat(streamUrl);
-}
-
-type StreamRefreshRequest = {
-  failureCode: string;
-  failureMessage: string;
-  resolution: PlatformStreamResolutionInput;
-};
-
-function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
-  const metadata = radio.platformMetadata;
-  const videoId = isYouTubeMetadata(metadata)
-    ? (metadata.videoId ??
-      metadata.tracks?.find((track) => track.streamUrl === radio.streamUrl)
-        ?.videoId)
-    : undefined;
-  if (videoId) {
-    return {
-      failureCode: "DJ_YOUTUBE_REFRESH_FAILED",
-      failureMessage: "Failed to refresh YouTube stream - please reload",
-      resolution: {
-        platform: "youtube",
-        radio,
-        reason: "stream-refresh",
-        videoId,
-      },
-    };
-  }
-  if (
-    metadata?.platform !== "bandcamp" &&
-    metadata?.platform !== "soundcloud"
-  ) {
-    return null;
-  }
-  const canonicalUrl = metadata.url.trim();
-  if (!canonicalUrl) {
-    return null;
-  }
-  const providerName =
-    metadata.platform === "bandcamp" ? "Bandcamp" : "SoundCloud";
-  return {
-    failureCode: `DJ_${metadata.platform.toUpperCase()}_REFRESH_FAILED`,
-    failureMessage: `Failed to refresh ${providerName} stream - please reload`,
-    resolution: {
-      canonicalUrl,
-      platform: metadata.platform,
-      radio,
-      reason: "stream-refresh",
-    },
-  };
 }
 
 function createBrowserAudioAdapter(
@@ -1075,55 +1027,34 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     radio: Radio,
     position: number
   ): Promise<void> {
-    const request = getRefreshRequest(radio);
-    if (!request) {
-      return;
-    }
-    try {
-      const resolved = await options.platform.resolveStream(request.resolution);
-      if (
-        !isCurrent(deckId, generation) ||
-        getPlaybackChannelRuntime(deckId).soundId !== soundId
-      ) {
-        return;
-      }
-      if (!resolved) {
-        reportDjErrorSurface(
-          request.failureMessage,
-          request.failureCode,
-          undefined,
-          radio,
-          deckId
-        );
-        return;
-      }
-      const validation = validatePlaybackStreamUrl(resolved.streamUrl);
-      if (!validation.ok) {
-        throw new Error("Invalid refreshed stream URL");
-      }
-      await options.audio.refresh(
-        soundId,
-        validation.normalizedUrl,
-        position,
-        resolved.streamFormat
-      );
-      if (!isCurrent(deckId, generation)) {
-        return;
-      }
-      setPlaybackChannelRuntime(deckId, () => ({ error: null }));
-      clearDjErrorSurface(deckId);
-      applyCrossfade();
-    } catch (error) {
-      if (isCurrent(deckId, generation)) {
+    await refreshPlatformStream(radio, soundId, position, {
+      isCurrent: () =>
+        isCurrent(deckId, generation) &&
+        getPlaybackChannelRuntime(deckId).soundId === soundId,
+      onFailed: (request, error) =>
         reportFailure(
           deckId,
           "DJ_STREAM_REFRESH_FAILED",
           request.failureMessage,
           error,
           radio
-        );
-      }
-    }
+        ),
+      onRefreshed: () => {
+        setPlaybackChannelRuntime(deckId, () => ({ error: null }));
+        clearDjErrorSurface(deckId);
+        applyCrossfade();
+      },
+      onUnresolved: (request) =>
+        reportDjErrorSurface(
+          request.failureMessage,
+          request.failureCode,
+          undefined,
+          radio,
+          deckId
+        ),
+      refresh: options.audio.refresh,
+      resolveStream: options.platform.resolveStream,
+    });
   }
 
   const isContinuationCurrent = (

@@ -1,7 +1,8 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Badge } from "@avoid.quest/ui/components/badge";
+import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { KeyRoundIcon } from "lucide-react";
+import { KeyRoundIcon, ListMusicIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { findEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/node-graph/compile";
 import { nodeLabel } from "@/lib/node-graph/describe";
 import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
+import { isLocalFileGone, isTrackRadio } from "@/lib/node-graph/sources";
 import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { EmptyHint } from "../empty-hint";
@@ -179,6 +181,37 @@ function LaneChain({
   );
 }
 
+/** A local file from an earlier page has no lane until it is picked again. */
+function RepickFileRow({ radio }: { radio: Radio }) {
+  return (
+    <li className={cn(stationRowClassName, "opacity-60")}>
+      <StationRowText title={radio.name}>
+        <StationRowSubtitle>
+          Pick the file again on its File.
+        </StationRowSubtitle>
+      </StationRowText>
+    </li>
+  );
+}
+
+/** A Track's or File's tracklist opens in the inspector. */
+function TracksButton({ nodeId, name }: { nodeId: string; name: string }) {
+  const actions = useNodeActions();
+  return (
+    <Button
+      aria-label={`Tracks of ${name}`}
+      className="size-7 shrink-0 text-muted-foreground"
+      data-inspect-node={nodeId}
+      onClick={() => actions.inspectNode(nodeId)}
+      size="icon"
+      title="Tracks"
+      variant="ghost"
+    >
+      <ListMusicIcon className="size-3.5" />
+    </Button>
+  );
+}
+
 /** A hidden saved station keeps its node but has no lane; Show restores it. */
 function HiddenStationRow({ radio }: { radio: Radio }) {
   const actions = useNodeActions();
@@ -232,8 +265,13 @@ export function NodeRack({
       ? [{ id: node.id, radio: node.data.radio as Radio }]
       : []
   );
+  const repick = graph.nodes.flatMap((node) =>
+    node.type === "file" && isLocalFileGone(node.data.radio)
+      ? [{ id: node.id, radio: node.data.radio as Radio }]
+      : []
+  );
 
-  if (groups.length === 0 && hidden.length === 0) {
+  if (groups.length === 0 && hidden.length === 0 && repick.length === 0) {
     return <EmptyHint className="py-10">Search to add a station</EmptyHint>;
   }
 
@@ -247,22 +285,30 @@ export function NodeRack({
         >
           {group.lanes.map((lane) => {
             const radio = lane.radio as Radio;
-            // An Audio input is no saved station: it has no station menu.
+            // An Audio input, Track or File is no saved station: it has no
+            // station menu. An album or playlist opens its tracklist.
             const isInput = isDeviceInputMetadata(radio.platformMetadata);
+            const node = nodesById.get(lane.id);
+            let actionsSlot: React.ReactNode = null;
+            if (isTrackRadio(radio)) {
+              actionsSlot = isInspectable(node) ? (
+                <TracksButton name={radio.name} nodeId={lane.id} />
+              ) : null;
+            } else if (!isInput) {
+              actionsSlot = (
+                <RadioItemActions
+                  onDelete={actions.handleDeleteRadio}
+                  onEdit={actions.handleEditRadio}
+                  onSave={actions.handleSaveSessionRadio}
+                  onToggle={actions.handleToggleRadio}
+                  radio={radio}
+                />
+              );
+            }
             return (
               <li key={lane.id}>
                 <NodeSourceRow
-                  actions={
-                    isInput ? null : (
-                      <RadioItemActions
-                        onDelete={actions.handleDeleteRadio}
-                        onEdit={actions.handleEditRadio}
-                        onSave={actions.handleSaveSessionRadio}
-                        onToggle={actions.handleToggleRadio}
-                        radio={radio}
-                      />
-                    )
-                  }
+                  actions={actionsSlot}
                   controls={controls}
                   feedback={inputFeedback(graph, lane.id)}
                   muted={lane.muted}
@@ -281,6 +327,13 @@ export function NodeRack({
           })}
         </RackSection>
       ))}
+      {repick.length > 0 ? (
+        <RackSection title="Pick again">
+          {repick.map((file) => (
+            <RepickFileRow key={file.id} radio={file.radio} />
+          ))}
+        </RackSection>
+      ) : null}
       {hidden.length > 0 ? (
         <RackSection title="Hidden">
           {hidden.map((station) => (

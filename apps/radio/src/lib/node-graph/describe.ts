@@ -7,19 +7,26 @@
  */
 
 import { getNodeDefinition, type NodePort } from "./catalogue";
-import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
+import {
+  type GraphEdge,
+  type GraphNode,
+  isRadioSourceNode,
+  type NodeGraph,
+} from "./schema";
 import { parseHandleId } from "./validate";
 
 /**
- * A Station reads as its station, an Audio input or Output device as its
- * device once picked; every other node as its type.
+ * A Station, Track or File reads as what it holds, an Audio input or
+ * Output device as its device once picked; every other node as its type.
  */
 export function nodeLabel(node: GraphNode | undefined): string {
   if (!node) {
     return "Missing node";
   }
-  if (node.type === "station") {
-    return node.data.radio?.name ?? "Empty Station";
+  if (isRadioSourceNode(node)) {
+    return (
+      node.data.radio?.name ?? `Empty ${getNodeDefinition(node.type).name}`
+    );
   }
   if (
     (node.type === "deviceIn" || node.type === "deviceOut") &&

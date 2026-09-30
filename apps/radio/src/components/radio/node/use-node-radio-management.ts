@@ -2,6 +2,7 @@ import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
 import { deleteRadio } from "@/lib/hooks/use-radios";
 import {
@@ -13,6 +14,7 @@ import {
   addStationNode,
   findStationNodes,
   removeNodes,
+  setSourceRadio,
   setStationRadio,
   setStationsEnabled,
   syncStationSnapshots,
@@ -23,6 +25,11 @@ import {
   nodeStore,
 } from "@/lib/node-graph/node-store";
 import { getNodePlayback, type NodePlayback } from "@/lib/node-playback";
+import {
+  loadSourceUrl,
+  loadStreamStation,
+  type NodeSourceLoaderDependencies,
+} from "@/lib/node-source-loaders";
 import { findLiveStation } from "@/lib/stations/external-station-workflow";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
@@ -35,11 +42,14 @@ type UseNodeRadioManagementOptions = {
   playback?: StationPlayback;
   /** A Station the search bar added or found, e.g. to pan it into view. */
   onStationAdded?: (nodeId: string) => void;
+  /** The loaders behind a pasted link; DJ's by default. */
+  loaders?: NodeSourceLoaderDependencies;
 };
 
 /**
  * Station management on the canvas: the search bar adding a Station wired to
- * Speakers and starting it, an empty slot filled from its search, edit,
+ * Speakers and starting it, an empty slot filled from its search or a
+ * pasted stream link, a Track or File filled from its own body, edit,
  * delete, save-discovered, and hide-restore. Hiding a saved station disables
  * its Station node (greyed, lane released) instead of removing it, because
  * membership in a patch is the user's choice.
@@ -49,6 +59,7 @@ export function useNodeRadioManagement({
   store = nodeStore,
   playback = getNodePlayback(),
   onStationAdded,
+  loaders,
 }: UseNodeRadioManagementOptions = {}) {
   const sessionRadios = useSessionRadios((state) => state.radios);
   const removeSessionRadio = useSessionRadios(
@@ -122,6 +133,41 @@ export function useNodeRadioManagement({
     if (committed) {
       await startStation(nodeId);
     }
+  };
+
+  /**
+   * Fills a Station, Track or File with `radio`, turning it into the one
+   * that plays it (a radio link in a Track hands off to a Station), and
+   * starts it.
+   */
+  const fillSource = async (nodeId: string, radio: Radio) => {
+    const committed = commitNodeGraph(
+      (current) => setSourceRadio(current, nodeId, radio),
+      store,
+      "snapshot"
+    );
+    if (committed) {
+      await startStation(nodeId);
+    }
+  };
+
+  /**
+   * A link pasted into a Station's search: a platform link loads as a DJ
+   * deck would (a YouTube link makes it a Track), anything else is a radio
+   * stream, kept as a session station. Resolves to why it failed, or null.
+   */
+  const fillStationFromUrl = async (
+    nodeId: string,
+    url: string
+  ): Promise<string | null> => {
+    const loaded = detectPlatformFromUrl(url)
+      ? await loadSourceUrl(url, loaders)
+      : await loadStreamStation(url, loaders);
+    if ("error" in loaded) {
+      return loaded.error;
+    }
+    await fillSource(nodeId, loaded.radio);
+    return null;
   };
 
   const { saveDiscoveredStation, selectDiscoveredStation } =
@@ -224,7 +270,9 @@ export function useNodeRadioManagement({
     deleteConfirm,
     dialogMode,
     dialogOpen,
+    fillSource,
     fillStation,
+    fillStationFromUrl,
     handleDeleteRadio,
     handleEditRadio,
     handleSaveSessionRadio,

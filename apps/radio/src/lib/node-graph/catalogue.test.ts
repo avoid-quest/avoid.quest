@@ -3,6 +3,7 @@ import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import { EFFECT_DEFINITIONS } from "@/lib/audio/dsp/effects/schema";
 import {
   createNodeEffectConfig,
+  isShipped,
   NODE_DEFINITIONS,
   portHandleId,
   SIDECHAIN_EFFECT_TYPES,
@@ -59,7 +60,7 @@ describe("NODE_DEFINITIONS", () => {
     expect(NODE_DEFINITIONS.frequencySplit.name).toBe("Band Split");
   });
 
-  test("the v1 subset is Station, Audio input, Speakers, Output device, the native strip, FX and in-lane Merge", () => {
+  test("the v1 subset is Station, Track, File, Audio input, Speakers, Output device, the native strip, FX and in-lane Merge", () => {
     const v1 = definitions
       .filter(
         (definition) => definition.ship === "v1" && !definition.effectType
@@ -69,10 +70,12 @@ describe("NODE_DEFINITIONS", () => {
     expect(v1).toEqual([
       "deviceIn",
       "deviceOut",
+      "file",
       "filter",
       "gain",
       "merge",
       "pan",
+      "platform",
       "speakers",
       "station",
     ]);
@@ -185,6 +188,24 @@ describe("catalogue invariants", () => {
           .map(portHandleId)
       ).toEqual([]);
     }
+  });
+
+  test("Track and File are shipped stream sources drawing only their audio out", () => {
+    for (const type of ["platform", "file"] as const) {
+      const definition = NODE_DEFINITIONS[type];
+      expect(definition).toMatchObject({
+        category: "source",
+        ship: "v1",
+        source: true,
+        stream: true,
+      });
+      expect(
+        definition.ports
+          .filter((port) => isShipped(port.ship ?? definition.ship, "v1"))
+          .map(portHandleId)
+      ).toEqual(["out:audio:main"]);
+    }
+    expect(NODE_DEFINITIONS.platform.name).toBe("Track");
   });
 
   test("an output has no output port", () => {

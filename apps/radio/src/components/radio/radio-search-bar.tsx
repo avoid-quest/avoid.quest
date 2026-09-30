@@ -2,7 +2,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { BookmarkPlusIcon, CheckIcon, PlayIcon } from "lucide-react";
+import { BookmarkPlusIcon, CheckIcon, LinkIcon, PlayIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -10,6 +10,7 @@ import {
   useUnifiedRadioSearch,
 } from "@/lib/hooks/use-unified-radio-search";
 import { EmptyHint } from "./empty-hint";
+import { InlineError } from "./inline-error";
 import { RadioLogo } from "./radio-logo";
 import { SearchField } from "./search-field";
 import {
@@ -25,9 +26,53 @@ type RadioSearchBarProps = {
   onSelectDiscovered: (radio: Radio) => void;
   onSelectLocal: (radio: Radio) => void;
   onSaveDiscovered?: (radio: Radio) => void;
+  /**
+   * A pasted http(s) link, offered as its own row instead of a search.
+   * Resolves to why it didn't load, or null once it did.
+   */
+  onSubmitUrl?: (url: string) => Promise<string | null>;
   className?: string;
   placeholder?: string;
 };
+
+const PASTED_URL = /^https?:\/\/\S+$/i;
+
+/** The pasted link's row: Enter or a click loads it. */
+function LinkRow({
+  id,
+  url,
+  isLoading,
+  onSelect,
+}: {
+  id: string;
+  url: string;
+  isLoading: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      aria-selected
+      className={cn(stationRowClassName, "bg-muted/40")}
+      id={id}
+      role="option"
+      tabIndex={-1}
+    >
+      <button
+        className={stationRowButtonClassName}
+        disabled={isLoading}
+        onClick={onSelect}
+        type="button"
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+          <LinkIcon className="size-3.5" />
+        </span>
+        <StationRowText title={isLoading ? "Loading link…" : "Play this link"}>
+          <StationRowSubtitle>{url}</StationRowSubtitle>
+        </StationRowText>
+      </button>
+    </div>
+  );
+}
 
 function resultDetails(result: UnifiedRadioSearchResult): string | undefined {
   return formatLocation(result.location, result.country) || result.description;
@@ -124,11 +169,99 @@ function SearchResultRow({
   );
 }
 
+/**
+ * A pasted http(s) link in the search: loads through `onSubmitUrl` instead
+ * of searching, and keeps why it failed next to it.
+ */
+function usePastedLink(
+  query: string,
+  onSubmitUrl: RadioSearchBarProps["onSubmitUrl"],
+  onLoaded: () => void
+) {
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const url =
+    onSubmitUrl && PASTED_URL.test(query.trim()) ? query.trim() : null;
+  const submit = () => {
+    if (!(url && onSubmitUrl) || isLoading) {
+      return;
+    }
+    setError(null);
+    setIsLoading(true);
+    onSubmitUrl(url)
+      .then((failure) => {
+        if (failure) {
+          setError(failure);
+        } else {
+          onLoaded();
+        }
+      })
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => setIsLoading(false));
+  };
+  return { clearError: () => setError(null), error, isLoading, submit, url };
+}
+
+type PastedLink = ReturnType<typeof usePastedLink>;
+
+/** The pasted link's option, and why it failed if it did. */
+function PastedLinkList({
+  link,
+  listId,
+  optionId,
+}: {
+  link: PastedLink & { url: string };
+  listId: string;
+  optionId: string;
+}) {
+  return (
+    <>
+      <div
+        className="flex w-0 min-w-full flex-col p-1"
+        id={listId}
+        role="listbox"
+      >
+        <LinkRow
+          id={optionId}
+          isLoading={link.isLoading}
+          onSelect={link.submit}
+          url={link.url}
+        />
+      </div>
+      {link.error ? (
+        <InlineError className="mx-2 mb-2">{link.error}</InlineError>
+      ) : null}
+    </>
+  );
+}
+
+/** What the screen reader hears about the open results. */
+function searchStatus(
+  showDropdown: boolean,
+  link: PastedLink,
+  resultCount: number,
+  emptyLabel: string
+): string {
+  if (!showDropdown) {
+    return "";
+  }
+  if (link.url) {
+    return link.error ?? "Enter plays this link";
+  }
+  if (resultCount === 0) {
+    return emptyLabel;
+  }
+  return `${resultCount} ${resultCount === 1 ? "station" : "stations"}`;
+}
+
 export function RadioSearchBar({
   radios,
   onSelectDiscovered,
   onSelectLocal,
   onSaveDiscovered,
+  onSubmitUrl,
   className,
   placeholder = "Search stations…",
 }: RadioSearchBarProps) {
@@ -139,7 +272,17 @@ export function RadioSearchBar({
   const resultIdPrefix = useId();
   const listId = `${resultIdPrefix}-list`;
   const containerRef = useRef<HTMLDivElement>(null);
-  const { isSearching, results } = useUnifiedRadioSearch(query, radios);
+  // Focus stays in the input, so typing again reopens the results.
+  const resetSearch = () => {
+    setIsOpen(false);
+    setQuery("");
+  };
+  const link = usePastedLink(query, onSubmitUrl, resetSearch);
+  const pastedUrl = link.url;
+  const { isSearching, results } = useUnifiedRadioSearch(
+    pastedUrl ? "" : query,
+    radios
+  );
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -150,12 +293,6 @@ export function RadioSearchBar({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // Focus stays in the input, so typing again reopens the results.
-  const resetSearch = () => {
-    setIsOpen(false);
-    setQuery("");
-  };
 
   const selectResult = (result: UnifiedRadioSearchResult) => {
     switch (result.action.type) {
@@ -180,6 +317,7 @@ export function RadioSearchBar({
     }
   };
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    link.clearError();
     setQuery(event.target.value);
     setActiveIndex(0);
     setIsOpen(true);
@@ -204,6 +342,18 @@ export function RadioSearchBar({
       setIsOpen(false);
     }
   };
+  /** Enter: the pasted link, or the active result. False when neither. */
+  const pickActive = () => {
+    if (pastedUrl) {
+      link.submit();
+      return true;
+    }
+    const active = results[clampedActiveIndex];
+    if (active) {
+      selectResult(active);
+    }
+    return Boolean(active);
+  };
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       if (query || showDropdown) {
@@ -216,29 +366,26 @@ export function RadioSearchBar({
     if (!showDropdown) {
       return;
     }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (!pastedUrl && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
       moveActive(event.key === "ArrowDown" ? 1 : -1);
       return;
     }
-    const active = results[clampedActiveIndex];
-    if (event.key === "Enter" && active) {
+    if (event.key === "Enter" && pickActive()) {
       event.preventDefault();
-      selectResult(active);
     }
   };
 
   const emptyLabel = isSearching
     ? "Checking station directories…"
     : "No stations found";
-  let statusLabel = "";
-  if (showDropdown) {
-    statusLabel =
-      results.length > 0
-        ? `${results.length} ${results.length === 1 ? "station" : "stations"}`
-        : emptyLabel;
-  }
-  const hasListbox = showDropdown && results.length > 0;
+  const statusLabel = searchStatus(
+    showDropdown,
+    link,
+    results.length,
+    emptyLabel
+  );
+  const hasListbox = showDropdown && (pastedUrl !== null || results.length > 0);
   const activeResultId = hasListbox
     ? `${resultIdPrefix}-${clampedActiveIndex}`
     : undefined;
@@ -272,7 +419,14 @@ export function RadioSearchBar({
       {showDropdown ? (
         <div className="absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg">
           <ScrollArea className="max-h-72 overflow-hidden">
-            {results.length > 0 ? (
+            {pastedUrl ? (
+              <PastedLinkList
+                link={{ ...link, url: pastedUrl }}
+                listId={listId}
+                optionId={`${resultIdPrefix}-0`}
+              />
+            ) : null}
+            {!pastedUrl && results.length > 0 ? (
               <div
                 className="flex w-0 min-w-full flex-col p-1"
                 id={listId}
@@ -290,7 +444,8 @@ export function RadioSearchBar({
                   />
                 ))}
               </div>
-            ) : (
+            ) : null}
+            {pastedUrl || results.length > 0 ? null : (
               <EmptyHint>{emptyLabel}</EmptyHint>
             )}
           </ScrollArea>

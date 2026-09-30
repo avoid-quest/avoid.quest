@@ -300,7 +300,9 @@ describe("EffectNode on the canvas", () => {
     );
     const onNodesChange = mock((_changes: unknown[]) => undefined);
     const actions = {
+      fillSource: noop,
       fillStation: noop,
+      fillStationFromUrl: async () => null,
       handleDeleteRadio: noop,
       handleEditRadio: noop,
       handleSaveSessionRadio: noop,

@@ -157,7 +157,9 @@ const inspectNode = mock((_nodeId: string) => undefined);
 const STATION_MENU = /^Options for/;
 
 const actions: NodeActions = {
+  fillSource: asyncNoop,
   fillStation: asyncNoop,
+  fillStationFromUrl: async () => null,
   handleDeleteRadio: noop,
   handleEditRadio: noop,
   handleSaveSessionRadio: noop,

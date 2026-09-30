@@ -226,7 +226,17 @@ describe("NodePalette", () => {
     const names = [...sources.querySelectorAll("[role=button] h3")].map(
       (heading) => heading.textContent
     );
-    expect(names).toEqual(["Station", "Audio input", "KEXP", "NTS 1"]);
+    expect(names).toEqual([
+      "Station",
+      "Track",
+      "YouTube",
+      "SoundCloud",
+      "Bandcamp",
+      "File",
+      "Audio input",
+      "KEXP",
+      "NTS 1",
+    ]);
     // An effect can feed Speakers too, so the FX section is on offer.
     expect(view.getByRole("region", { name: "FX" })).toBeTruthy();
 
@@ -397,6 +407,11 @@ describe("NodePalette devices", () => {
 
     expect(sectionNames(view, "Sources")).toEqual([
       "Station",
+      "Track",
+      "YouTube",
+      "SoundCloud",
+      "Bandcamp",
+      "File",
       "Audio input",
       "Default - Desk mic",
       "Desk mic",

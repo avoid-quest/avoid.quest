@@ -125,6 +125,32 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
+const loaders = {
+  createSession: mock(async () => ({
+    data: {
+      radio: {
+        name: "stream.example",
+        streamUrl: "https://stream.example/live",
+      },
+    },
+    ok: true as const,
+  })),
+  loadItem: mock(async () => ({
+    radio: {
+      id: "yt-abc",
+      name: "A video",
+      platformMetadata: {
+        itemType: "video" as const,
+        platform: "youtube" as const,
+        url: "https://www.youtube.com/watch?v=abc",
+        videoId: "abc",
+      },
+      streamUrl: "https://media.example/abc.m4a",
+    },
+    success: true as const,
+  })),
+};
+
 function TestHarness({
   onRender,
   onStationAdded,
@@ -135,7 +161,13 @@ function TestHarness({
   savedRadios: Radio[];
 }) {
   onRender(
-    useNodeRadioManagement({ onStationAdded, playback, savedRadios, store })
+    useNodeRadioManagement({
+      loaders,
+      onStationAdded,
+      playback,
+      savedRadios,
+      store,
+    })
   );
   return null;
 }
@@ -346,5 +378,79 @@ describe("useNodeRadioManagement", () => {
     expect(station("src-kexp-2")?.data.radio?.enabled).toBe(true);
     // Only the one that was playing comes back playing.
     expect(playback.setPlaying.mock.calls).toEqual([["src-kexp-2", true]]);
+  });
+
+  test("Radio Browser and Radio Garden picks still fill an empty Station slot", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const slot = store.state.graph?.nodes.find(
+      (node) => node.type === "station"
+    );
+    const radioBrowser = {
+      id: "rb_1234",
+      name: "Radio Browser FM",
+      platformMetadata: {
+        hls: false,
+        itemType: "station" as const,
+        platform: "radio-browser" as const,
+        stationUuid: "1234",
+        url: "https://rb.example/1234",
+      },
+      streamUrl: "https://rb.example/live.mp3",
+    } satisfies Radio;
+
+    await act(async () => {
+      await hook.current().fillStation(slot?.id ?? "", radioBrowser);
+    });
+    expect(station(slot?.id ?? "")?.data.radio?.id).toBe("rb_1234");
+
+    await act(async () => {
+      await hook.current().fillSource(slot?.id ?? "", discovered);
+    });
+    expect(station(slot?.id ?? "")?.data.radio?.id).toBe("rg_lagos");
+    expect(playback.setPlaying).toHaveBeenCalledWith(slot?.id, true);
+  });
+
+  test("a stream link pasted into a Station becomes a session station", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const slotId =
+      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
+      "";
+
+    let failure: string | null = "unset";
+    await act(async () => {
+      failure = await hook
+        .current()
+        .fillStationFromUrl(slotId, "https://stream.example/live");
+    });
+
+    expect(failure).toBeNull();
+    expect(loaders.createSession).toHaveBeenCalled();
+    expect(station(slotId)?.data.radio).toMatchObject({
+      id: "stream.example",
+      streamUrl: "https://stream.example/live",
+    });
+  });
+
+  test("a YouTube link pasted into a Station hands off to a Track", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const slotId =
+      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
+      "";
+
+    await act(async () => {
+      await hook
+        .current()
+        .fillStationFromUrl(slotId, "https://www.youtube.com/watch?v=abc");
+    });
+
+    expect(loaders.loadItem).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=abc"
+    );
+    expect(
+      store.state.graph?.nodes.find((node) => node.id === slotId)
+    ).toMatchObject({ data: { radio: { id: "yt-abc" } }, type: "platform" });
   });
 });

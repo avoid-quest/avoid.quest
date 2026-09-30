@@ -29,6 +29,12 @@
  * start DJ decks use. Restore never opens a mic: its sound is only made
  * when the user goes live.
  *
+ * A Track or File lane watches its sound. A platform stream that expires
+ * mid-play is renewed through DJ's refresh (platform-stream-refresh) and
+ * resumes where it stopped; at the end of a track in an album or playlist,
+ * the lane moves to the next one and plays it. A local file's sound is made
+ * on play, since restore never prepares one.
+ *
  * Each lane with FX publishes a backend badge for its FX nodes: `compat`
  * from the compile estimate until the effects controller reports, then from
  * the controller's outcome, so a dry fallback reads `bypassed`.
@@ -40,6 +46,7 @@
  */
 
 import { Store } from "@tanstack/react-store";
+import type { AudioState, Radio } from "@/lib/audio";
 import { fadeOut } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
@@ -65,6 +72,8 @@ import {
   type DeviceInputAudio,
   startDeviceInput,
 } from "@/lib/device-input-playback";
+import { findNextTrack } from "@/lib/dj-actions-playlist";
+import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import {
   compile,
   type EnginePlan,
@@ -73,6 +82,7 @@ import {
   type LaneSource,
   laneChannelId,
 } from "@/lib/node-graph/compile";
+import { setSourceRadio } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   loadNodeGraph,
@@ -80,10 +90,20 @@ import {
   nodeStore,
 } from "@/lib/node-graph/node-store";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
-import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
+import {
+  type GraphNode,
+  isRadioSourceNode,
+  type NodeGraph,
+} from "@/lib/node-graph/schema";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
+import { isTrackRadio } from "@/lib/node-graph/sources";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { NODE_BUDGETS, type Profile } from "@/lib/node-graph/validate";
+import {
+  type ResolvePlatformStream,
+  radioOnTrack,
+  refreshPlatformStream,
+} from "@/lib/platform-stream-refresh";
 import {
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
@@ -133,13 +153,18 @@ export type NodePlayback = {
    */
   flush: () => void;
   pauseAll: () => void;
-  /** Plays every Station; an Audio input goes live only from its own Go live. */
+  /**
+   * Plays every Station, Track and File; an Audio input goes live only
+   * from its own Go live.
+   */
   playAll: () => Promise<void>;
   retryOutputDevice: (nodeId: string) => void;
   setMasterVolume: (volume: number) => void;
   /** Starts or stops a source's lane: a Station plays, an Audio input goes live. */
   setPlaying: (nodeId: string, playing: boolean) => Promise<void>;
   setVolume: (nodeId: string, volume: number) => void;
+  /** Moves a Track or File to one of its album's or playlist's tracks and plays it. */
+  playTrack: (nodeId: string, streamUrl: string) => Promise<void>;
   toggleMasterMute: () => void;
   toggleMute: (nodeId: string) => void;
   /** Resolves once the pending commit batch and its effect and fade ops end. */
@@ -239,6 +264,8 @@ export type GetNodePlaybackOptions = {
   fadeOutSound?: FadeOutSound;
   getEnv?: () => NodePlaybackEnv;
   laneOutputs?: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
+  /** Renews an expired platform stream, or resolves a `yt:` track. */
+  resolveStream?: ResolvePlatformStream;
   /** Where Output device sink statuses are published for their bodies. */
   sinkStatuses?: NodeSinkStatusStore;
   store?: NodeStore;
@@ -258,7 +285,7 @@ type ChannelStartOwnership = {
 /** A start waiting for its lane to settle, before it takes ownership. */
 type PendingChannelStart = { cancelled: boolean; channelId: string };
 
-/** A source's own level: a Station's or an Audio input's. */
+/** A source's own level: a Station's, Track's, File's or Audio input's. */
 type SourceData = { volume: number; muted: boolean };
 
 type DeviceLaneSource = Extract<LaneSource, { kind: "device" }>;
@@ -323,12 +350,32 @@ function budgetError(limit: number, channelId: string): PlaybackActionError {
   };
 }
 
-/** A node whose data holds a source level: a Station or an Audio input. */
+/**
+ * A node whose data holds a source level: a Station, Track, File or Audio
+ * input.
+ */
 function findSource(graph: NodeGraph | null, nodeId: string) {
   const node = graph?.nodes.find((entry) => entry.id === nodeId);
-  return node?.type === "station" || node?.type === "deviceIn"
+  return isRadioSourceNode(node) || node?.type === "deviceIn"
     ? node
     : undefined;
+}
+
+/** A lane failure the lane shows as it is worded, e.g. a refresh that failed. */
+function laneFailure(
+  channelId: string,
+  userMessage: string,
+  cause: unknown
+): PlaybackActionError {
+  return {
+    cause,
+    channelId,
+    code: "PLAY_ERROR",
+    mode: "node",
+    radio: getPlaybackChannel("node", channelId)?.radio ?? undefined,
+    rawMessage: cause instanceof Error ? cause.message : null,
+    userMessage,
+  };
 }
 
 /** A device start through AudioManager, as DJ decks make it. */
@@ -356,6 +403,7 @@ function createNodePlayback(
     fadeOutSound,
     getEnv,
     laneOutputs: createLaneOutputs,
+    resolveStream,
     sinkStatuses,
     store,
   }: Required<Omit<GetNodePlaybackOptions, "ctx">>
@@ -384,6 +432,10 @@ function createNodePlayback(
   const laneGenerations = new Map<string, number>();
   /** Per lane: the backend its effects last settled on, as reported. */
   const laneOutcomes = new Map<string, EffectsBackend>();
+  /** Per Track or File channel: the sound whose state it watches. */
+  const watchedSounds = new Map<string, string>();
+  /** Channels moving to their next track, so an end is handled once. */
+  const advancingLanes = new Set<string>();
 
   /**
    * A lane's level per output: the gains of its unmuted cables into it,
@@ -611,6 +663,9 @@ function createNodePlayback(
       if (playing && channel && source?.kind === "device") {
         await startDeviceLane(channel, source);
       } else {
+        if (playing && channel) {
+          makeTrackSound(channel);
+        }
         await setManagedChannelPlaying("node", channel, playing, ctx);
       }
       return true;
@@ -817,11 +872,161 @@ function createNodePlayback(
         if (ownership.cancellation === "pause") {
           pauseChannel(channelId);
         } else {
-          cleanupManagedChannel(channelId, ctx);
-          resetPlaybackChannelRuntime(channelId);
+          releaseChannel(channelId);
         }
       }
     }
+  };
+
+  /** Releases a channel's sound, its runtime and its watch. */
+  const releaseChannel = (channelId: string) => {
+    watchedSounds.delete(channelId);
+    cleanupManagedChannel(channelId, ctx);
+    resetPlaybackChannelRuntime(channelId);
+  };
+
+  const reportLaneFailure = (
+    channelId: string,
+    message: string,
+    cause: unknown = null
+  ) => {
+    const error = laneFailure(channelId, message, cause);
+    ctx.reportError(error);
+    setManagedPlaybackError(channelId, error, error.radio);
+  };
+
+  /**
+   * Moves a Track or File lane to another of its tracks, as one commit that
+   * folds into the next undo step, then plays it once the old sound fades.
+   */
+  const playLaneTrack = async (nodeId: string, radio: Radio) => {
+    const committed = commitNodeGraph(
+      (graph) => setSourceRadio(graph, nodeId, radio),
+      store
+    );
+    if (!committed) {
+      return;
+    }
+    applyPendingCommit();
+    await startChannel(laneChannelId(nodeId));
+  };
+
+  /**
+   * At the end of a track in an album or playlist, the lane moves to the
+   * next one (findNextTrack, as a DJ deck's autoplay), resolving a `yt:`
+   * track first. The last track just ends.
+   */
+  const advanceLane = async (channelId: string, isCurrent: () => boolean) => {
+    const lane = laneOfChannel(channelId);
+    const radio = lane?.radio as Radio | undefined;
+    const next = radio ? findNextTrack(radio) : null;
+    if (!(lane && radio && next) || advancingLanes.has(channelId)) {
+      return;
+    }
+    advancingLanes.add(channelId);
+    try {
+      const nextRadio = await radioOnTrack(
+        radio,
+        next.streamUrl,
+        resolveStream
+      );
+      if (!isCurrent()) {
+        return;
+      }
+      if (nextRadio) {
+        await playLaneTrack(lane.id, nextRadio);
+      } else {
+        reportLaneFailure(channelId, "Couldn't load the next track");
+      }
+    } catch (error) {
+      if (isCurrent()) {
+        reportLaneFailure(channelId, "Couldn't load the next track", error);
+      }
+    } finally {
+      advancingLanes.delete(channelId);
+    }
+  };
+
+  /**
+   * A Track or File sound's state: an expired platform stream is renewed
+   * and resumes at its position; an ended track moves to the next.
+   */
+  const handleTrackState = (
+    channelId: string,
+    soundId: string,
+    watchEpoch: number,
+    state: AudioState
+  ) => {
+    const isCurrent = () =>
+      epoch === watchEpoch &&
+      getPlaybackChannelRuntime(channelId).soundId === soundId;
+    const radio = laneOfChannel(channelId)?.radio as Radio | undefined;
+    if (!(radio && isCurrent())) {
+      return;
+    }
+    if (state.error?.code === "STREAM_INTERRUPTED") {
+      track(
+        refreshPlatformStream(radio, soundId, state.error.position ?? 0, {
+          isCurrent,
+          onFailed: (request, error) =>
+            reportLaneFailure(channelId, request.failureMessage, error),
+          onRefreshed: () =>
+            setPlaybackChannelRuntime(channelId, () => ({ error: null })),
+          onUnresolved: (request) =>
+            reportLaneFailure(channelId, request.failureMessage),
+          refresh: (id, streamUrl, position, streamFormat) =>
+            ctx.audioEngine.playback.refreshStreamUrl(
+              id,
+              streamUrl,
+              position,
+              streamFormat
+            ),
+          resolveStream,
+        })
+      ).catch(warn("Could not refresh a stream"));
+      return;
+    }
+    if (state.hasEnded && !state.isPlaying) {
+      track(advanceLane(channelId, isCurrent)).catch(
+        warn("Could not play the next track")
+      );
+    }
+  };
+
+  /** Watches a Track or File lane's sound once it has one. */
+  const watchLane = (channelId: string) => {
+    const radio = laneOfChannel(channelId)?.radio;
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    if (
+      !(soundId && isTrackRadio(radio)) ||
+      watchedSounds.get(channelId) === soundId
+    ) {
+      return;
+    }
+    watchedSounds.set(channelId, soundId);
+    const watchEpoch = epoch;
+    ctx.channels.subscribeRuntime("node", channelId, soundId, {
+      onAudioState: (state) =>
+        handleTrackState(channelId, soundId, watchEpoch, state),
+    });
+  };
+
+  /**
+   * A Track or File without a sound gets one before it plays, so its state
+   * is watched from the start. A local file has none until then: restore
+   * never prepares one.
+   */
+  const makeTrackSound = (channel: PlaybackChannelRecord) => {
+    if (
+      !(channel.radio && isTrackRadio(channel.radio)) ||
+      getPlaybackChannelRuntime(channel.id).soundId
+    ) {
+      return;
+    }
+    watchedSounds.delete(channel.id);
+    createManagedSound("node", channel.id, channel.radio, undefined, ctx);
+    ctx.channels.setMuted("node", channel.id, channel.muted);
+    watchLane(channel.id);
   };
 
   const reportLaneError = (channelId: string, error: unknown) => {
@@ -850,6 +1055,7 @@ function createNodePlayback(
     const channel = getPlaybackChannel("node", channelId);
     if (channel) {
       restoreManagedChannels("node", [channel], ctx);
+      watchLane(channelId);
     }
   };
 
@@ -901,8 +1107,7 @@ function createNodePlayback(
     }
     // Deactivate releases everything itself; don't touch a new epoch.
     if (epoch === startEpoch) {
-      cleanupManagedChannel(channelId, ctx);
-      resetPlaybackChannelRuntime(channelId);
+      releaseChannel(channelId);
       laneOutputs.release(channelId.slice(NODE_CHANNEL_PREFIX.length));
     }
   };
@@ -910,6 +1115,7 @@ function createNodePlayback(
   const removeLane = (laneId: string, channelId: string) => {
     bumpLane(laneId);
     laneOutcomes.delete(laneId);
+    advancingLanes.delete(channelId);
     const runtime = getPlaybackChannelRuntime(channelId);
     carriedLanes.set(laneId, runtime.isPlaying || runtime.isLoading);
     cancelChannelStarts("remove", channelId);
@@ -1207,8 +1413,11 @@ function createNodePlayback(
           if (node.id !== nodeId) {
             return node;
           }
-          if (node.type === "station") {
-            return { ...node, data: { ...node.data, ...update(node.data) } };
+          if (isRadioSourceNode(node)) {
+            return {
+              ...node,
+              data: { ...node.data, ...update(node.data) },
+            };
           }
           if (node.type === "deviceIn") {
             return { ...node, data: { ...node.data, ...update(node.data) } };
@@ -1259,6 +1468,8 @@ function createNodePlayback(
       settlingLanes.clear();
       carriedLanes.clear();
       laneOutcomes.clear();
+      watchedSounds.clear();
+      advancingLanes.clear();
       stopListening();
       loadNodeGraph(
         session.graph ?? buildNodeGraphFromTemplate("starter"),
@@ -1279,7 +1490,7 @@ function createNodePlayback(
       }
       for (const node of store.state.graph?.nodes ?? []) {
         if (
-          (node.type === "station" || node.type === "deviceIn") &&
+          (isRadioSourceNode(node) || node.type === "deviceIn") &&
           node.data.volume > 0
         ) {
           unmutedVolumes.set(node.id, node.data.volume);
@@ -1326,9 +1537,9 @@ function createNodePlayback(
         new Set([...initialSoundIds, ...getRuntimeSoundIds(channelIds)])
       );
       for (const channelId of channelIds) {
-        cleanupManagedChannel(channelId, ctx);
-        resetPlaybackChannelRuntime(channelId);
+        releaseChannel(channelId);
       }
+      advancingLanes.clear();
       laneOutputs.dispose();
       deviceSinks.dispose();
       publishSinkStatuses();
@@ -1353,7 +1564,7 @@ function createNodePlayback(
     async playAll() {
       const generation: PlayAllGeneration = { cancellation: null };
       activePlayAllGenerations.add(generation);
-      // Stations only: a mic goes live from its own Go live, never in bulk.
+      // Streams only: a mic goes live from its own Go live, never in bulk.
       const channels = (getPlaybackSession("node")?.channels ?? []).filter(
         (channel) =>
           !(
@@ -1378,6 +1589,22 @@ function createNodePlayback(
       applyPendingCommit();
       if (active && plan.sinks.get(nodeId)?.type === "deviceOut") {
         deviceSinks.retry(nodeId);
+      }
+    },
+    async playTrack(nodeId, streamUrl) {
+      const lane = plan.lanes.get(nodeId);
+      if (!lane) {
+        return;
+      }
+      const radio = await radioOnTrack(
+        lane.radio as Radio,
+        streamUrl,
+        resolveStream
+      );
+      if (radio) {
+        await playLaneTrack(nodeId, radio);
+      } else {
+        reportLaneFailure(lane.channelId, "Couldn't load this track");
       }
     },
     setMasterVolume,
@@ -1417,6 +1644,7 @@ export function getNodePlayback({
   fadeOutSound = fadeOut,
   getEnv = detectNodePlaybackEnv,
   laneOutputs = createNodeLaneOutputs,
+  resolveStream = resolveDjPlatformStreamUrl,
   sinkStatuses = nodeSinkStatuses,
   store = nodeStore,
 }: GetNodePlaybackOptions = {}): NodePlayback {
@@ -1432,6 +1660,7 @@ export function getNodePlayback({
     fadeOutSound,
     getEnv,
     laneOutputs,
+    resolveStream,
     sinkStatuses,
     store,
   });

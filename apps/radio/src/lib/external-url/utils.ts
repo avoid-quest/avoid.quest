@@ -211,7 +211,7 @@ export class PlatformModeError extends Error {
 
   constructor(platform: string, mode: string) {
     super(
-      `${platform} tracks are only supported in DJ mode. Switch to DJ mode to play this track.`
+      `${platform} tracks play in DJ and Node modes. Switch to one of them to play this track.`
     );
     this.name = "PlatformModeError";
     this.platform = platform;
@@ -223,7 +223,8 @@ export class PlatformModeError extends Error {
  * Validate that a radio can be played in the given mode
  * @param radio The radio to validate
  * @param mode Playback session the radio would play in
- * @throws PlatformModeError if the radio is a platform track and mode is not "dj"
+ * @throws PlatformModeError if the radio is a platform track and mode is
+ * Single; DJ decks and Node mode's Track nodes play them
  */
 export function validateRadioForMode(
   radio: Radio | null,
@@ -233,8 +234,9 @@ export function validateRadioForMode(
     return;
   }
 
-  // Platform radios (SoundCloud/Bandcamp/YouTube) only work in DJ mode
-  // Radio Garden stations are live streams — they work in all modes
+  // Platform radios (SoundCloud/Bandcamp/YouTube) need a stream refresh
+  // when their URL expires, which DJ decks and Node lanes run and Single
+  // does not. Radio Garden stations are live streams — they work in all modes
   const djOnlyPlatforms: Record<string, string> = {
     bandcamp: "Bandcamp",
     soundcloud: "SoundCloud",
@@ -244,6 +246,7 @@ export function validateRadioForMode(
   if (
     isPlatformRadio(radio) &&
     mode !== "dj" &&
+    mode !== "node" &&
     platformKey in djOnlyPlatforms
   ) {
     const platform = djOnlyPlatforms[platformKey] ?? "External";

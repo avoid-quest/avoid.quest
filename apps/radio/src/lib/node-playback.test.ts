@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Store } from "@tanstack/react-store";
-import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
+import type {
+  AudioEngineFacade,
+  AudioManager,
+  AudioState,
+  Radio,
+} from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type {
   MainOutputConnect,
@@ -33,7 +38,7 @@ import { settingsCollection } from "@/lib/collections/settings";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { compile } from "@/lib/node-graph/compile";
-import { removeEdges, setEffectParams } from "@/lib/node-graph/graph-edits";
+import { removeEdges, setEffectParams, setSourceRadio } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -45,6 +50,11 @@ import {
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
+import {
+  forgetLocalFileUrls,
+  keepLocalFileUrl,
+  localFileRadio,
+} from "@/lib/node-graph/sources";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import type { Profile } from "@/lib/node-graph/validate";
 import {
@@ -282,6 +292,7 @@ function createHarness(
     laneOutputs?: GetNodePlaybackOptions["laneOutputs"];
     deviceSinks?: GetNodePlaybackOptions["deviceSinks"];
     sinkStatuses?: GetNodePlaybackOptions["sinkStatuses"];
+    resolveStream?: GetNodePlaybackOptions["resolveStream"];
     profile?: Profile;
   } = {}
 ): Harness {
@@ -308,6 +319,7 @@ function createHarness(
     }),
     laneOutputs: options.laneOutputs,
     ...(options.deviceSinks ? { deviceSinks: options.deviceSinks } : {}),
+    ...(options.resolveStream ? { resolveStream: options.resolveStream } : {}),
     sinkStatuses: options.sinkStatuses ?? new Store<NodeSinkStatuses>({}),
     store,
   });
@@ -1244,7 +1256,7 @@ describe("Node Playback starts", () => {
     expect(context.lifecycle.mainOutputSettingsApplied).toBe(true);
   });
 
-  test("activation restores valid Stations and resets local files", async () => {
+  test("activation restores valid Stations; a local file from an earlier page has no lane", async () => {
     const local = {
       ...radio("local"),
       platformMetadata: {
@@ -1263,10 +1275,6 @@ describe("Node Playback starts", () => {
     insertNodeSession(
       patch([station("valid"), station("local", { radio: local })])
     );
-    setPlaybackChannelRuntime(channelOf("local"), () => ({
-      isPlaying: true,
-      soundId: soundOf("local"),
-    }));
     const harness = createHarness();
 
     await harness.playback.activate();
@@ -1274,8 +1282,8 @@ describe("Node Playback starts", () => {
     expect(getPlaybackChannelRuntime(channelOf("valid")).soundId).toBe(
       soundOf("valid")
     );
+    expect(getPlaybackChannel("node", channelOf("local"))).toBeUndefined();
     expect(getPlaybackChannelRuntime(channelOf("local"))).toMatchObject({
-      error: null,
       isPlaying: false,
       soundId: null,
     });
@@ -3118,5 +3126,312 @@ describe("Node Playback audio inputs and output devices", () => {
     // Its send fades out before it comes off the lane.
     await new Promise((resolve) => setTimeout(resolve, LANE_DUCK_MS + 5));
     expect(sends()).toHaveLength(1);
+  });
+});
+
+function youtubeTrack(id: string): Radio {
+  return {
+    id,
+    name: `Video ${id}`,
+    platformMetadata: {
+      itemType: "video",
+      platform: "youtube",
+      url: `https://www.youtube.com/watch?v=${id}`,
+      videoId: id,
+    },
+    streamUrl: `https://media.example/${id}.m4a`,
+  };
+}
+
+function trackNode(
+  id: string,
+  radioOf: Radio | null = youtubeTrack(id),
+  type: "platform" | "file" = "platform"
+): NodeInput {
+  return {
+    data: { radio: radioOf },
+    id,
+    position: { x: 0, y: 0 },
+    type,
+  } as NodeInput;
+}
+
+const album: Radio = {
+  id: "album",
+  name: "An album",
+  platformMetadata: {
+    itemType: "album",
+    platform: "bandcamp",
+    tracks: [
+      { name: "One", streamUrl: "https://media.example/one.mp3" },
+      { name: "Two", streamUrl: "https://media.example/two.mp3" },
+    ],
+    url: "https://artist.bandcamp.com/album/an-album",
+  },
+  streamUrl: "https://media.example/one.mp3",
+} as Radio;
+
+/** The state listener a Track or File lane's sound was watched with. */
+function laneWatcher(context: PlaybackActionContext, nodeId: string) {
+  const calls = (
+    context.channels.subscribeRuntime as ReturnType<typeof mock>
+  ).mock.calls.filter(([, channelId]) => channelId === channelOf(nodeId));
+  const options = calls.at(-1)?.[3] as
+    | { onAudioState?: (state: AudioState) => void }
+    | undefined;
+  if (!options?.onAudioState) {
+    throw new Error(`Lane ${nodeId} is not watched`);
+  }
+  return options.onAudioState;
+}
+
+function audioState(overrides: Partial<AudioState> = {}): AudioState {
+  return {
+    error: null,
+    hasEnded: false,
+    isBuffering: false,
+    isLoading: false,
+    isPlaying: false,
+    volume: 1,
+    ...overrides,
+  };
+}
+
+describe("Node Playback: Track and File sources", () => {
+  afterEach(() => {
+    forgetLocalFileUrls();
+  });
+
+  test("a Track plays its platform stream through the managed engine", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    await harness.playback.setPlaying("video", true);
+
+    expect(harness.context.channels.activate).toHaveBeenCalledWith(
+      "node",
+      channelOf("video"),
+      expect.objectContaining({ id: "video" }),
+      soundOf("video")
+    );
+    expect(harness.context.audio.playSound).toHaveBeenCalledWith(
+      soundOf("video"),
+      1
+    );
+    expect(getPlaybackChannelRuntime(channelOf("video"))).toMatchObject({
+      error: null,
+      isPlaying: true,
+    });
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("an expired YouTube stream is renewed and resumes where it stopped", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolveStream = mock(async () => ({
+      streamFormat: "progressive" as const,
+      streamUrl: "https://media.example/renewed.m4a",
+    }));
+    const harness = createHarness({ resolveStream });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("video", true);
+
+    setPlaybackChannelRuntime(channelOf("video"), () => ({
+      error: { code: "STREAM_INTERRUPTED", message: "403" } as never,
+    }));
+    laneWatcher(
+      harness.context,
+      "video"
+    )(
+      audioState({
+        error: {
+          code: "STREAM_INTERRUPTED",
+          id: "e1",
+          message: "Stream interrupted at 42s",
+          position: 42,
+          timestamp: Date.now(),
+        },
+      })
+    );
+    await harness.playback.whenSettled();
+
+    expect(resolveStream).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "stream-refresh", videoId: "video" })
+    );
+    expect(
+      harness.context.audioEngine.playback.refreshStreamUrl
+    ).toHaveBeenCalledWith(
+      soundOf("video"),
+      "https://media.example/renewed.m4a",
+      42,
+      "progressive"
+    );
+    expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
+  });
+
+  test("a stream the platform can't renew says so on the lane", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const harness = createHarness({ resolveStream: mock(async () => null) });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("video", true);
+
+    laneWatcher(
+      harness.context,
+      "video"
+    )(
+      audioState({
+        error: {
+          code: "STREAM_INTERRUPTED",
+          id: "e1",
+          message: "expired",
+          position: 3,
+          timestamp: Date.now(),
+        },
+      })
+    );
+    await harness.playback.whenSettled();
+
+    expect(
+      harness.context.audioEngine.playback.refreshStreamUrl
+    ).not.toHaveBeenCalled();
+    expect(getPlaybackChannelRuntime(channelOf("video")).error?.message).toBe(
+      "Failed to refresh YouTube stream - please reload"
+    );
+  });
+
+  test("an album moves to its next track at the end of one, and plays it", async () => {
+    insertNodeSession(patch([trackNode("album", album)]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("album", true);
+
+    setPlaybackChannelRuntime(channelOf("album"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "album")(audioState({ hasEnded: true }));
+    await harness.playback.whenSettled();
+
+    const node = harness.store.state.graph?.nodes.find(
+      (entry) => entry.id === "album"
+    );
+    expect(node?.data).toMatchObject({
+      radio: { streamUrl: "https://media.example/two.mp3" },
+    });
+    expect(getPlaybackChannel("node", channelOf("album"))?.radio).toMatchObject(
+      { streamUrl: "https://media.example/two.mp3" }
+    );
+    expect(getPlaybackChannelRuntime(channelOf("album")).isPlaying).toBe(true);
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(2);
+
+    // The last track just ends.
+    setPlaybackChannelRuntime(channelOf("album"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "album")(audioState({ hasEnded: true }));
+    await harness.playback.whenSettled();
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(2);
+  });
+
+  test("a third playing Track past the mobile budget is refused with its message", async () => {
+    insertNodeSession(
+      patch([
+        station("a"),
+        station("b"),
+        trackNode("t1"),
+        trackNode("t2"),
+        trackNode("t3"),
+      ])
+    );
+    const harness = createHarness({ profile: "mobile" });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.setPlaying("b", true);
+    await harness.playback.setPlaying("t1", true);
+    await harness.playback.setPlaying("t2", true);
+
+    await harness.playback.setPlaying("t3", true);
+
+    expect(getPlaybackChannelRuntime(channelOf("t3"))).toMatchObject({
+      error: {
+        message:
+          "Up to 4 streams can play at once here. Pause one to start this.",
+      },
+      isPlaying: false,
+    });
+  });
+
+  test("a local file plays in its page; after a reload its File has no lane", async () => {
+    const picked = localFileRadio("file", {
+      displayName: "Demo",
+      duration: 10,
+      fileName: "demo.mp3",
+      fileSize: 100,
+      mimeType: "audio/mpeg",
+      objectUrl: "blob:https://radio.example/demo",
+    });
+    keepLocalFileUrl(picked.streamUrl);
+    insertNodeSession(patch([trackNode("file", null, "file")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    await commit(harness, (graph) => setSourceRadio(graph, "file", picked));
+    // Restore never prepares a local file; its sound is made on play.
+    expect(getPlaybackChannelRuntime(channelOf("file")).soundId).toBeNull();
+    await harness.playback.setPlaying("file", true);
+    expect(getPlaybackChannelRuntime(channelOf("file")).isPlaying).toBe(true);
+    expect(() => laneWatcher(harness.context, "file")).not.toThrow();
+
+    // A reload: the object URL died with the page.
+    const saved = getPlaybackSession("node")?.graph;
+    await harness.playback.deactivate();
+    forgetLocalFileUrls();
+    resetAllPlaybackRuntime();
+    await resetCollections();
+    insertSettings();
+    insertNodeSession(saved ?? undefined);
+    const reloaded = createHarness();
+    await reloaded.playback.activate();
+
+    expect(
+      reloaded.store.state.graph?.nodes.find((node) => node.id === "file")
+    ).toMatchObject({ data: { radio: { name: "Demo" } }, type: "file" });
+    expect(getPlaybackSession("node")?.channels).toEqual([]);
+  });
+
+  test("a static audio URL File survives a reload", async () => {
+    const mp3: Radio = {
+      id: "mp3",
+      name: "track.mp3",
+      platformMetadata: {
+        displayName: "track",
+        duration: 0,
+        fileName: "track.mp3",
+        fileSize: 0,
+        isLocal: false,
+        itemType: "track",
+        mimeType: "audio/mpeg",
+        platform: "static-audio",
+        streamUrl: "https://files.example/track.mp3",
+        url: "https://files.example/track.mp3",
+      },
+      streamUrl: "https://files.example/track.mp3",
+    };
+    insertNodeSession(patch([trackNode("file", mp3, "file")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+
+    await harness.playback.activate();
+
+    expect(getPlaybackChannelRuntime(channelOf("file")).soundId).toBe(
+      soundOf("file")
+    );
+    await harness.playback.setPlaying("file", true);
+    expect(getPlaybackChannelRuntime(channelOf("file")).isPlaying).toBe(true);
   });
 });

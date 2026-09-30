@@ -56,15 +56,57 @@ function getTrackKey(track: PlatformTrack) {
 }
 
 export function DeckTracklist({ className }: { className?: string }) {
-  const { tracks, currentTrackIndex, hasTracklist } = useDeckContext();
+  const { tracks, currentTrackIndex, hasTracklist, loadTrack } =
+    useDeckContext();
 
   if (!(hasTracklist && tracks) || tracks.length === 0) {
     return null;
   }
 
   return (
+    <TracklistView
+      className={className}
+      currentTrackIndex={currentTrackIndex}
+      onPlayTrack={loadTrack}
+      tracks={tracks}
+    />
+  );
+}
+
+type TracklistViewProps = {
+  tracks: PlatformTrack[];
+  currentTrackIndex: number;
+  /** Plays a track by its play URL; errors are surfaced by the caller. */
+  onPlayTrack: (url: string) => Promise<unknown>;
+  className?: string;
+};
+
+/**
+ * An album's or playlist's tracks with previous and next, the current one
+ * marked. Presentational: a DJ deck and a Node Track each say what a pick
+ * plays.
+ */
+export function TracklistView({
+  tracks,
+  currentTrackIndex,
+  onPlayTrack,
+  className,
+}: TracklistViewProps) {
+  const playUrl = (url: string) => {
+    if (url) {
+      onPlayTrack(url).catch(() => {
+        // Errors are surfaced by deck actions/telemetry.
+      });
+    }
+  };
+
+  return (
     <div className={cn("space-y-1.5", className)}>
-      <TracklistNavigation />
+      <TracklistNavigation
+        currentTrackIndex={currentTrackIndex}
+        onPlay={playUrl}
+        tracks={tracks}
+      />
       <ScrollArea className="h-40 rounded-md border border-border/50">
         <div className="space-y-0.5 p-1">
           {tracks.map((track, index) => (
@@ -72,6 +114,7 @@ export function DeckTracklist({ className }: { className?: string }) {
               index={index}
               isCurrent={index === currentTrackIndex}
               key={getTrackKey(track)}
+              onPlay={playUrl}
               track={track}
             />
           ))}
@@ -81,46 +124,30 @@ export function DeckTracklist({ className }: { className?: string }) {
   );
 }
 
-function TracklistNavigation() {
-  const { tracks, currentTrackIndex, loadTrack } = useDeckContext();
-
-  const handleNavigate = (direction: -1 | 1) => {
-    if (!tracks) {
-      return;
-    }
-    const url = findTrackPlayUrlInDirection(
-      tracks,
-      currentTrackIndex,
-      direction
-    );
-    if (url) {
-      loadTrack(url).catch(() => {
-        // Errors are surfaced by deck actions/telemetry.
-      });
-    }
-  };
-  const handlePrevious = () => handleNavigate(-1);
-  const handleNext = () => handleNavigate(1);
-
-  if (!tracks) {
-    return null;
-  }
-
+function TracklistNavigation({
+  tracks,
+  currentTrackIndex,
+  onPlay,
+}: {
+  tracks: PlatformTrack[];
+  currentTrackIndex: number;
+  onPlay: (url: string) => void;
+}) {
   const nextUrl = findTrackPlayUrlInDirection(tracks, currentTrackIndex, 1);
   const previousUrl = findTrackPlayUrlInDirection(
     tracks,
     currentTrackIndex,
     -1
   );
-  const hasNext = Boolean(nextUrl);
-  const hasPrevious = Boolean(previousUrl);
+  const handlePrevious = () => onPlay(previousUrl);
+  const handleNext = () => onPlay(nextUrl);
 
   return (
     <div className="flex items-center gap-1">
       <Button
         aria-label="Previous track"
         className="size-7 [@media(pointer:coarse)]:size-9"
-        disabled={!hasPrevious}
+        disabled={!previousUrl}
         onClick={handlePrevious}
         size="icon"
         variant="ghost"
@@ -130,7 +157,7 @@ function TracklistNavigation() {
       <Button
         aria-label="Next track"
         className="size-7 [@media(pointer:coarse)]:size-9"
-        disabled={!hasNext}
+        disabled={!nextUrl}
         onClick={handleNext}
         size="icon"
         variant="ghost"
@@ -145,21 +172,14 @@ function TrackRow({
   track,
   index,
   isCurrent,
+  onPlay,
 }: {
   track: PlatformTrack;
   index: number;
   isCurrent: boolean;
+  onPlay: (url: string) => void;
 }) {
-  const { loadTrack } = useDeckContext();
-
-  const handlePlay = () => {
-    const url = getTrackPlayUrl(track);
-    if (url) {
-      loadTrack(url).catch(() => {
-        // Errors are surfaced by deck actions/telemetry.
-      });
-    }
-  };
+  const handlePlay = () => onPlay(getTrackPlayUrl(track));
 
   return (
     <button

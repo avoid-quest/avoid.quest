@@ -23,6 +23,8 @@ export type PickerItem = {
   /** A small sans tag under the name, e.g. the effect family. */
   badge?: string;
   icon: LucideIcon;
+  /** Tints the icon tile, e.g. a platform's colour. */
+  iconColor?: string;
 };
 
 export type PickerSection<TItem extends PickerItem> = {
@@ -54,8 +56,18 @@ function PickerOption<TItem extends PickerItem>({
       role="button"
       tabIndex={0}
     >
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted">
-        <Icon className="size-4" />
+      <div
+        className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted"
+        style={
+          item.iconColor
+            ? { backgroundColor: `${item.iconColor}1a` }
+            : undefined
+        }
+      >
+        <Icon
+          className="size-4"
+          style={item.iconColor ? { color: item.iconColor } : undefined}
+        />
       </div>
       <div className="min-w-0 flex-1">
         <h3 className="truncate font-medium text-sm leading-tight">

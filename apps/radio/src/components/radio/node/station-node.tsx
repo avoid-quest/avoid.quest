@@ -1,33 +1,27 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { Button } from "@avoid.quest/ui/components/button";
-import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
-import { XIcon } from "lucide-react";
-import { VolumeControl } from "@/components/audio/volume-control";
 import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
-import { findPort } from "@/lib/node-graph/catalogue";
-import { laneChannelId } from "@/lib/node-graph/compile";
-import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
 import type { GraphNode } from "@/lib/node-graph/schema";
-import { getNodePlayback } from "@/lib/node-playback";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { InlineError } from "../inline-error";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioNowPlaying } from "../radio-now-playing";
 import { RadioSearchBar } from "../radio-search-bar";
-import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
-import { keepControlKeys, NodePort } from "./module-frame";
+import type { FlowNode, FlowNodeProps } from "./flow-adapter";
+import { INTERACTIVE, keepControlKeys } from "./module-frame";
 import { useNodeActions } from "./node-actions";
+import {
+  EmptySourceFrame,
+  SOURCE_NODE_FRAME,
+  SourceOutPort,
+  SourceTransport,
+  useSourceLane,
+} from "./source-node-frame";
 
 type StationData = Extract<GraphNode, { type: "station" }>["data"];
 export type StationFlowNode = FlowNode<StationData, "station">;
-
-/** React Flow skips drag, pan and wheel zoom on these, so controls work. */
-const INTERACTIVE = "nodrag nopan nowheel";
 
 type StationNodeBodyProps = {
   radio: Radio | null;
@@ -47,6 +41,8 @@ type StationNodeBodyProps = {
   onSelectLocal: (radio: Radio) => void;
   onSelectDiscovered: (radio: Radio) => void;
   onSaveDiscovered?: (radio: Radio) => void;
+  /** A pasted stream link; resolves to why it failed, or null. */
+  onSubmitUrl?: (url: string) => Promise<string | null>;
   onRemove?: () => void;
   onEdit?: (radio: Radio) => void;
   onDelete?: (radio: Radio) => void;
@@ -54,17 +50,17 @@ type StationNodeBodyProps = {
   onSave?: (radio: Radio) => void;
 };
 
-const AUDIO_OUT = findPort("station", "out", "audio", "main");
-
-const NODE_FRAME = "w-60 rounded-md border bg-card text-card-foreground";
-
-/** An empty Station slot: its body is the station search. */
+/**
+ * An empty Station slot: its body is the station search, where a pasted
+ * radio stream link is played as a session station.
+ */
 function EmptyStation({
   radios,
   selected,
   onSelectLocal,
   onSelectDiscovered,
   onSaveDiscovered,
+  onSubmitUrl,
   onRemove,
 }: Pick<
   StationNodeBodyProps,
@@ -73,45 +69,25 @@ function EmptyStation({
   | "onSelectLocal"
   | "onSelectDiscovered"
   | "onSaveDiscovered"
+  | "onSubmitUrl"
   | "onRemove"
 >) {
   return (
-    <div
-      className={cn(
-        NODE_FRAME,
-        "border-dashed",
-        selected ? "border-ring" : "border-border"
-      )}
+    <EmptySourceFrame
+      onRemove={onRemove}
+      removeLabel="Remove empty Station"
+      selected={selected}
+      title="Station"
     >
-      <div className="flex h-8 items-center justify-between pr-1 pl-3">
-        <span className="font-medium text-muted-foreground text-xs">
-          Station
-        </span>
-        {onRemove ? (
-          <Button
-            aria-label="Remove empty Station"
-            className={cn("size-7 text-muted-foreground", INTERACTIVE)}
-            onClick={onRemove}
-            onKeyDown={keepControlKeys}
-            size="icon"
-            variant="ghost"
-          >
-            <XIcon className="size-3.5" />
-          </Button>
-        ) : null}
-      </div>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
-      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
-      <div className={cn("px-2 pb-2", INTERACTIVE)} onKeyDown={keepControlKeys}>
-        <RadioSearchBar
-          onSaveDiscovered={onSaveDiscovered}
-          onSelectDiscovered={onSelectDiscovered}
-          onSelectLocal={onSelectLocal}
-          placeholder="Search a station"
-          radios={radios}
-        />
-      </div>
-    </div>
+      <RadioSearchBar
+        onSaveDiscovered={onSaveDiscovered}
+        onSelectDiscovered={onSelectDiscovered}
+        onSelectLocal={onSelectLocal}
+        onSubmitUrl={onSubmitUrl}
+        placeholder="Search or paste a stream"
+        radios={radios}
+      />
+    </EmptySourceFrame>
   );
 }
 
@@ -137,6 +113,7 @@ export function StationNodeBody({
   onSelectLocal,
   onSelectDiscovered,
   onSaveDiscovered,
+  onSubmitUrl,
   onRemove,
   onEdit,
   onDelete,
@@ -159,6 +136,7 @@ export function StationNodeBody({
         onSaveDiscovered={onSaveDiscovered}
         onSelectDiscovered={onSelectDiscovered}
         onSelectLocal={onSelectLocal}
+        onSubmitUrl={onSubmitUrl}
         radios={radios}
         selected={selected}
       />
@@ -171,7 +149,7 @@ export function StationNodeBody({
   return (
     <div
       className={cn(
-        NODE_FRAME,
+        SOURCE_NODE_FRAME,
         "relative border-border/50",
         isLive && "border-foreground/40",
         selected && "border-ring",
@@ -213,35 +191,17 @@ export function StationNodeBody({
           Hidden. Show it to play here.
         </p>
       ) : (
-        // biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself
-        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
-        <div
-          className={cn(
-            "flex items-center gap-2 border-border/50 border-t px-3 py-1.5",
-            INTERACTIVE
-          )}
-          onKeyDown={keepControlKeys}
-        >
-          <PlayPauseButton
-            className="size-7 shrink-0"
-            iconClassName="size-3.5"
-            isLoading={isLoading}
-            isPlaying={isPlaying}
-            label={radio.name}
-            onClick={onTogglePlayPause}
-            size="sm"
-            variant={isLive ? "outline" : "default"}
-          />
-          <VolumeControl
-            className="flex-1"
-            isMuted={muted || volume === 0}
-            onToggleMute={onToggleMute}
-            onVolumeChange={onVolumeChange}
-            onVolumeCommit={onVolumeCommit}
-            target={radio.name}
-            volume={volume}
-          />
-        </div>
+        <SourceTransport
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          muted={muted}
+          onToggleMute={onToggleMute}
+          onTogglePlayPause={onTogglePlayPause}
+          onVolumeChange={onVolumeChange}
+          onVolumeCommit={onVolumeCommit}
+          target={radio.name}
+          volume={volume}
+        />
       )}
     </div>
   );
@@ -254,21 +214,15 @@ export function StationNode({
   selected,
 }: FlowNodeProps<StationFlowNode>) {
   const actions = useNodeActions();
-  const playback = getNodePlayback();
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(id)]
-  );
-  const isPlaying = runtime?.isPlaying ?? false;
-  const isLoading = runtime?.isLoading ?? false;
+  const lane = useSourceLane(id);
   const radio = data.radio as Radio | null;
 
   return (
     <>
       <StationNodeBody
-        error={runtime?.error?.message ?? null}
-        isLoading={isLoading}
-        isPlaying={isPlaying}
+        error={lane.error}
+        isLoading={lane.isLoading}
+        isPlaying={lane.isPlaying}
         muted={data.muted}
         onDelete={actions.handleDeleteRadio}
         onEdit={actions.handleEditRadio}
@@ -281,31 +235,22 @@ export function StationNode({
         onSelectLocal={(picked) => {
           actions.fillStation(id, picked);
         }}
+        onSubmitUrl={(url) => actions.fillStationFromUrl(id, url)}
         onToggle={actions.handleToggleRadio}
-        onToggleMute={() => {
-          playback.toggleMute(id);
-          snapshotNodeGraph();
-        }}
-        onTogglePlayPause={() => {
-          playback.setPlaying(id, !isPlaying);
-        }}
-        onVolumeChange={(volume) => playback.setVolume(id, volume)}
-        onVolumeCommit={() => snapshotNodeGraph()}
+        onToggleMute={lane.onToggleMute}
+        onTogglePlayPause={lane.onTogglePlayPause}
+        onVolumeChange={lane.onVolumeChange}
+        onVolumeCommit={lane.onVolumeCommit}
         radio={radio}
         radios={actions.radios}
         selected={selected}
         volume={data.volume}
       />
-      {AUDIO_OUT ? (
-        <NodePort
-          ariaLabel={`${radio?.name ?? "Station"} audio out`}
-          className={cn(isPlaying && !isLoading && "node-port-live")}
-          label="Audio out"
-          port={AUDIO_OUT}
-          position={Position.Right}
-          type="station"
-        />
-      ) : null}
+      <SourceOutPort
+        isLive={lane.isPlaying && !lane.isLoading}
+        name={radio?.name ?? "Station"}
+        type="station"
+      />
     </>
   );
 }

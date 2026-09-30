@@ -48,6 +48,7 @@ import {
   startConnectionHints,
 } from "./connection-hints";
 import { EffectNode } from "./effect-node";
+import { FileNode } from "./file-node";
 import {
   ConnectionMode,
   type FlowConnection,
@@ -86,6 +87,7 @@ import { OutputDeviceNode } from "./output-device-node";
 import { SpeakersNode } from "./speakers-node";
 import { SplitNode } from "./split-nodes";
 import { StationNode } from "./station-node";
+import { TrackNode } from "./track-node";
 
 type Point = { x: number; y: number };
 type Size = { width: number; height: number };
@@ -101,10 +103,12 @@ const nodeTypes = {
   ),
   deviceIn: AudioInputNode,
   deviceOut: OutputDeviceNode,
+  file: FileNode,
   filter: NativeStripNode,
   gain: NativeStripNode,
   merge: MergeNode,
   pan: NativeStripNode,
+  platform: TrackNode,
   speakers: SpeakersNode,
   station: StationNode,
 } satisfies FlowNodeTypes;

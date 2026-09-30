@@ -27,6 +27,24 @@ export const SOURCE_NODE_TYPES = [
   "static",
 ] as const;
 
+/**
+ * The Source family that plays a `Radio`: a live Station, a platform Track
+ * ("platform") and a File. They share their data, their frame and their
+ * lane; the radio's kind decides which one holds it (`sources.ts`).
+ */
+export const RADIO_SOURCE_NODE_TYPES = ["station", "platform", "file"] as const;
+
+export type RadioSourceNodeType = (typeof RADIO_SOURCE_NODE_TYPES)[number];
+
+/** The platforms a Track's search can lock to; unset searches them all. */
+export const TRACK_SEARCH_PLATFORMS = [
+  "youtube",
+  "soundcloud",
+  "bandcamp",
+] as const;
+
+export type TrackSearchPlatform = (typeof TRACK_SEARCH_PLATFORMS)[number];
+
 export const NATIVE_NODE_TYPES = ["filter", "pan", "gain"] as const;
 
 /** FX nodes reuse the effect type ids, containers (Split…) included. */
@@ -76,7 +94,7 @@ export type EffectNodeType = (typeof EFFECT_NODE_TYPES)[number];
 
 /** Node types whose data is typed today; the rest stay loose until they ship. */
 const TYPED_NODE_TYPES = [
-  "station",
+  ...RADIO_SOURCE_NODE_TYPES,
   "deviceIn",
   "speakers",
   "deviceOut",
@@ -115,15 +133,38 @@ const nodeBase = {
   position: positionSchema,
 };
 
+/** What every radio source holds: its radio snapshot, fader and mute. */
+const radioSourceData = {
+  muted: z.boolean().default(false),
+  /** `null` is the empty slot, whose body is its search or file form. */
+  radio: stationRadioSchema.nullable().default(null),
+  volume: unitSchema.default(1),
+};
+
+const EMPTY_SOURCE_DATA = { muted: false, radio: null, volume: 1 } as const;
+
 const stationNodeSchema = z.object({
   ...nodeBase,
-  data: z.object({
-    muted: z.boolean().default(false),
-    /** `null` is the empty slot, whose body is the station search. */
-    radio: stationRadioSchema.nullable().default(null),
-    volume: unitSchema.default(1),
-  }),
+  data: z.object(radioSourceData),
   type: z.literal("station"),
+});
+
+const platformNodeSchema = z.object({
+  ...nodeBase,
+  data: z
+    .object({
+      ...radioSourceData,
+      /** The platform chip an empty Track's search is locked to. */
+      searchPlatform: z.enum(TRACK_SEARCH_PLATFORMS).optional(),
+    })
+    .default(EMPTY_SOURCE_DATA),
+  type: z.literal("platform"),
+});
+
+const fileNodeSchema = z.object({
+  ...nodeBase,
+  data: z.object(radioSourceData).default(EMPTY_SOURCE_DATA),
+  type: z.literal("file"),
 });
 
 /** A device's 0-based input channels feeding left and right. */
@@ -256,6 +297,8 @@ const looseNodeSchema = z.object({
 
 export const graphNodeSchema = z.discriminatedUnion("type", [
   stationNodeSchema,
+  platformNodeSchema,
+  fileNodeSchema,
   deviceInNodeSchema,
   speakersNodeSchema,
   deviceOutNodeSchema,
@@ -355,6 +398,16 @@ export type NodeGraph = z.infer<typeof nodeGraphSchema>;
 export type NodeGraphInput = z.input<typeof nodeGraphSchema>;
 export type GraphNode = NodeGraph["nodes"][number];
 export type GraphEdge = NodeGraph["edges"][number];
+export type RadioSourceNode = Extract<GraphNode, { type: RadioSourceNodeType }>;
+
+export function isRadioSourceNode(
+  node: GraphNode | undefined
+): node is RadioSourceNode {
+  return (
+    node !== undefined &&
+    (RADIO_SOURCE_NODE_TYPES as readonly string[]).includes(node.type)
+  );
+}
 
 export type NodeGraphMigration =
   | { status: "ok"; graph: NodeGraph }

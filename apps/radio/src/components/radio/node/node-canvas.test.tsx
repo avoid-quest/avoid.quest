@@ -171,7 +171,9 @@ function mountStarter() {
 function mountGraph(graph: import("@/lib/node-graph/schema").NodeGraph) {
   nodeStoreModule.loadNodeGraph(graph);
   const actions = {
+    fillSource: noop,
     fillStation: noop,
+    fillStationFromUrl: async () => null,
     handleDeleteRadio: noop,
     handleEditRadio: noop,
     handleSaveSessionRadio: noop,

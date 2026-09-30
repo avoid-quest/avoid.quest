@@ -1,10 +1,10 @@
-import type { NodeGraph } from "@/lib/node-graph/schema";
+import { isRadioSourceNode, type NodeGraph } from "@/lib/node-graph/schema";
 import { EmptyHint } from "../empty-hint";
 
 /** Whether some source in the patch holds something to play. */
 export function hasFilledSource(graph: Pick<NodeGraph, "nodes">): boolean {
   return graph.nodes.some(
-    (node) => node.type === "station" && node.data.radio !== null
+    (node) => isRadioSourceNode(node) && node.data.radio !== null
   );
 }
 
@@ -12,10 +12,13 @@ export function hasFilledSource(graph: Pick<NodeGraph, "nodes">): boolean {
 function firstStep(graph: NodeGraph, isPhone: boolean): string {
   // `/` needs a keyboard; on a phone the toolbar's + opens the same palette.
   const addNode = isPhone ? "tap + to add a node" : "press / to add a node";
-  const hasSlot = graph.nodes.some((node) => node.type === "station");
-  return hasSlot
+  const slot = graph.nodes.find(isRadioSourceNode);
+  if (!slot) {
+    return `Search to add a station, or ${addNode}`;
+  }
+  return slot.type === "station"
     ? `Search a station in the slot, or ${addNode}`
-    : `Search to add a station, or ${addNode}`;
+    : `Fill the ${slot.type === "file" ? "File" : "Track"}, or ${addNode}`;
 }
 
 /**

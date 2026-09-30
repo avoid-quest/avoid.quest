@@ -7,23 +7,15 @@ import {
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  FileAudioIcon,
-  GlobeIcon,
-  MicIcon,
-  RadioTowerIcon,
-  SearchIcon,
-} from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import {
-  AUDIO_INPUT_PLATFORM_ID,
   getPlatformFromPlaceholderItem,
   getPlatformSourceColor,
+  getPlatformSourceDefinition,
   isPlatformPlaceholderItem,
   PLATFORM_ITEMS,
-  RADIO_GARDEN_PLATFORM_ID,
   SEARCH_ALL_PLATFORM_ID,
   STATIC_AUDIO_PLATFORM_ID,
 } from "@/lib/dj-library-sources";
@@ -35,6 +27,7 @@ import {
 } from "@/lib/hooks/use-session-radios";
 import { useUnifiedRadioSearch } from "@/lib/hooks/use-unified-radio-search";
 import { EmptyHint } from "../empty-hint";
+import { platformSourceIcon } from "../platform-source-icon";
 import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import { RadioLogo } from "../radio-logo";
 import { SearchField } from "../search-field";
@@ -68,21 +61,10 @@ export function isPlatformItem(radio: Radio): boolean {
 function PlatformIcon({ radio }: { radio: Radio }) {
   const platform = getPlatformFromPlaceholderItem(radio);
   const color = getPlatformSourceColor(platform);
-  const className = "size-5";
-
-  if (radio.id === AUDIO_INPUT_PLATFORM_ID) {
-    return <MicIcon className={className} style={{ color }} />;
-  }
-  if (radio.id === STATIC_AUDIO_PLATFORM_ID) {
-    return <FileAudioIcon className={className} style={{ color }} />;
-  }
-  if (radio.id === RADIO_GARDEN_PLATFORM_ID) {
-    return <RadioTowerIcon className={className} style={{ color }} />;
-  }
-  if (radio.id === SEARCH_ALL_PLATFORM_ID) {
-    return <SearchIcon className={className} style={{ color }} />;
-  }
-  return <GlobeIcon className={className} style={{ color }} />;
+  const Icon = platformSourceIcon(
+    getPlatformSourceDefinition(radio)?.icon ?? "youtube"
+  );
+  return <Icon className="size-5" style={{ color }} />;
 }
 
 function PlatformTile({ radio }: { radio: Radio }) {

@@ -3,7 +3,8 @@
  *
  * Pure edits the canvas commits to the node store: cables in and out, nodes
  * moved or removed, FX and native strip params, the viewport, and the
- * Station edits behind search. The search bar adds
+ * Source edits behind search. Filling a Station, Track or File with a radio
+ * of another kind turns the node into the one that plays it. The search bar adds
  * a Station wired to Speakers, an empty Station slot is filled in place, and
  * saved-station snapshots follow their records (a rename, a new stream, a
  * hide). Each returns the same graph when nothing changes, so a no-op
@@ -34,9 +35,12 @@ import {
   type EffectNodeType,
   type GraphEdge,
   type GraphNode,
+  isRadioSourceNode,
   MAX_EDGE_GAIN,
   type NodeGraph,
+  type TrackSearchPlatform,
 } from "./schema";
+import { sourceTypeForRadio } from "./sources";
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
@@ -152,16 +156,35 @@ export function wireToSpeakers(graph: NodeGraph, source: string): GraphEdge[] {
   ];
 }
 
-/** Below the lowest Station, or one column left of Speakers in a new patch. */
+/**
+ * The rows an empty Track and File take: their bodies are a platform
+ * search and a file form, taller than a Station card.
+ */
+const EMPTY_SOURCE_ROW_HEIGHT = {
+  file: 240,
+  platform: 320,
+  station: STATION_ROW_HEIGHT,
+} as const;
+
+function rowHeight(node: GraphNode): number {
+  return isRadioSourceNode(node) && node.data.radio === null
+    ? EMPTY_SOURCE_ROW_HEIGHT[node.type]
+    : STATION_ROW_HEIGHT;
+}
+
+/**
+ * Below the lowest Station, Track or File, or one column left of Speakers
+ * in a new patch.
+ */
 export function nextStationPosition(graph: NodeGraph): Position {
-  const stations = graph.nodes.filter(isStation);
+  const stations = graph.nodes.filter(isRadioSourceNode);
   const [first] = stations;
   if (first) {
     return {
       x: first.position.x,
-      y:
-        Math.max(...stations.map((station) => station.position.y)) +
-        STATION_ROW_HEIGHT,
+      y: Math.max(
+        ...stations.map((station) => station.position.y + rowHeight(station))
+      ),
     };
   }
   const speakers = graph.nodes.find((node) => node.type === "speakers");
@@ -247,6 +270,53 @@ export function setStationRadio(
     }
     changed = true;
     return { ...node, data: { ...node.data, radio } };
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/**
+ * Puts `radio` into a Station, Track or File. A radio of another kind turns
+ * the node into the one that plays it, in place: its id, cables, fader and
+ * mute stay, so a radio link pasted into a Track becomes a Station.
+ */
+export function setSourceRadio(
+  graph: NodeGraph,
+  nodeId: string,
+  radio: Radio
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node): GraphNode => {
+    if (node.id !== nodeId || !isRadioSourceNode(node)) {
+      return node;
+    }
+    changed = true;
+    const { muted, volume } = node.data;
+    return {
+      ...node,
+      data: { muted, radio, volume },
+      type: sourceTypeForRadio(radio),
+    };
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/** Locks an empty Track's search to a platform chip, or unlocks it. */
+export function setTrackSearchPlatform(
+  graph: NodeGraph,
+  nodeId: string,
+  searchPlatform: TrackSearchPlatform | undefined
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node): GraphNode => {
+    if (
+      node.id !== nodeId ||
+      node.type !== "platform" ||
+      node.data.searchPlatform === searchPlatform
+    ) {
+      return node;
+    }
+    changed = true;
+    return { ...node, data: { ...node.data, searchPlatform } };
   });
   return changed ? { ...graph, nodes } : graph;
 }
@@ -913,8 +983,8 @@ export function duplicateNodes(
   const copyOf = new Map<string, string>();
   const copies = originals.map((node): GraphNode => {
     const id =
-      node.type === "station" && node.data.radio
-        ? stationNodeId(node.data.radio, taken)
+      isRadioSourceNode(node) && node.data.radio
+        ? stationNodeId(node.data.radio as Radio, taken)
         : uniqueId(node.type === "station" ? "src-slot" : node.type, taken);
     taken.add(id);
     copyOf.set(node.id, id);

@@ -187,7 +187,9 @@ function Harness({ store }: { store: NodeStore }) {
   const graph = nodeStoreModule.useNodeGraph(store);
   const inspectorShown = !isPhone && inspector.nodeId !== null;
   const actions = {
+    fillSource: asyncNoop,
     fillStation: asyncNoop,
+    fillStationFromUrl: async () => null,
     handleDeleteRadio: noop,
     handleEditRadio: noop,
     handleSaveSessionRadio: noop,
@@ -451,5 +453,66 @@ describe("NodeInspector", () => {
       );
     });
     expect(view.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("NodeInspector: a Track's tracklist", () => {
+  function albumStore(): NodeStore {
+    const { AUDIO_IN_HANDLE, AUDIO_OUT_HANDLE, SPEAKERS_NODE_ID } = templates;
+    return nodeStoreModule.createNodeStore(
+      nodeGraphSchema.parse({
+        edges: [
+          {
+            id: `album->${SPEAKERS_NODE_ID}`,
+            source: "album",
+            sourceHandle: AUDIO_OUT_HANDLE,
+            target: SPEAKERS_NODE_ID,
+            targetHandle: AUDIO_IN_HANDLE,
+          },
+        ],
+        nodes: [
+          {
+            data: {
+              radio: {
+                id: "album",
+                name: "An album",
+                platformMetadata: {
+                  itemType: "album",
+                  platform: "bandcamp",
+                  tracks: [
+                    { name: "One", streamUrl: "https://media.example/1.mp3" },
+                    { name: "Two", streamUrl: "https://media.example/2.mp3" },
+                  ],
+                  url: "https://artist.bandcamp.com/album/an-album",
+                },
+                streamUrl: "https://media.example/2.mp3",
+              },
+            },
+            id: "album",
+            position,
+            type: "platform",
+          },
+          { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+        ],
+        version: 1,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      })
+    );
+  }
+
+  test("the Rack opens an album's tracks in the inspector, the current one marked", () => {
+    const view = renderHarness(albumStore());
+
+    fireEvent.click(view.getByRole("button", { name: "Tracks of An album" }));
+
+    const panel = view.getByRole("region", { name: "An album" });
+    const rows = within(panel)
+      .getAllByRole("button")
+      .map((row) => row.textContent);
+    expect(rows).toContain("1One");
+    expect(within(panel).getByLabelText("Current track")).toBeTruthy();
+    expect(
+      within(panel).getByRole("button", { name: "Next track" })
+    ).toHaveProperty("disabled", true);
   });
 });

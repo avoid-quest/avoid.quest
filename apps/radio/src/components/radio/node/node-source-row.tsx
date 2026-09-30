@@ -16,6 +16,7 @@ import {
   nodeStore,
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
+import { isTrackRadio, trackSubtitle } from "@/lib/node-graph/sources";
 import type { NodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
@@ -61,7 +62,8 @@ type NodeSourceRowProps = {
 
 /**
  * One source lane as a station row, plus whatever the view adds (a menu,
- * FX chips): a Station with play, name, now playing and volume, or an Audio
+ * FX chips): a Station with play, name, now playing and volume (a Track or
+ * File with where it comes from instead of now playing), or an Audio
  * input with Go live, its device, Off / Live and volume. Live state comes
  * from the runtime store by lane channel, as on the canvas node.
  */
@@ -201,8 +203,11 @@ function StationSourceRow({
   const isLive = isPlaying && !isLoading;
   const { elementRef, hasEnteredViewport } =
     useHasEnteredViewport<HTMLDivElement>();
+  // A Track or File has no now playing to fetch; its subtitle says where
+  // it comes from.
+  const isTrack = isTrackRadio(radio);
   const { metadata } = useRadioMetadata({
-    enabled: isPlaying || hasEnteredViewport,
+    enabled: !isTrack && (isPlaying || hasEnteredViewport),
     poll: isLive,
     radio,
   });
@@ -247,7 +252,9 @@ function StationSourceRow({
             <RadioListItemMetadata
               fallback={
                 <StationRowSubtitle>
-                  {stationFallbackSubtitle(radio)}
+                  {isTrack
+                    ? trackSubtitle(radio)
+                    : stationFallbackSubtitle(radio)}
                 </StationRowSubtitle>
               }
               metadata={metadata}

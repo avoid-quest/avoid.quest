@@ -21,6 +21,7 @@ import {
   EFFECT_NODE_TYPES,
   type GraphEdge,
   type GraphNode,
+  isRadioSourceNode,
   NATIVE_NODE_TYPES,
   type NodeGraph,
   type NodeType,
@@ -32,7 +33,7 @@ type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 /**
- * The node types the canvas draws today: Station and Audio input,
+ * The node types the canvas draws today: Station, Track, File and Audio input,
  * Speakers and Output device, the native strip, every shipped effect (all
  * but Werkstatt) with the splits, and the Merge that closes them.
  */
@@ -40,6 +41,8 @@ export const DRAWN_NODE_TYPES: readonly NodeType[] = [
   "speakers",
   "deviceOut",
   "station",
+  "platform",
+  "file",
   "deviceIn",
   "merge",
   ...NATIVE_NODE_TYPES,
@@ -281,9 +284,9 @@ export function toFlowNodes(
 }
 
 /**
- * Nodes carrying a playing source's audio: each live Station or Audio
- * input, and every node its audio cables reach through FX, up to the
- * outputs.
+ * Nodes carrying a playing source's audio: each live Station, Track, File
+ * or Audio input, and every node its audio cables reach through FX, up to
+ * the outputs.
  */
 export function liveNodeIds(
   graph: Pick<NodeGraph, "nodes" | "edges">,
@@ -293,7 +296,7 @@ export function liveNodeIds(
   const queue = graph.nodes
     .filter(
       (node) =>
-        (node.type === "station" || node.type === "deviceIn") &&
+        (isRadioSourceNode(node) || node.type === "deviceIn") &&
         liveLanes.has(laneChannelId(node.id))
     )
     .map((node) => node.id);

@@ -3,8 +3,9 @@
  *
  * What the add-node palette offers and what picking an entry does, as pure
  * functions over the graph. Sources, FX, Routing and Outputs are the shipped
- * node types (a Station can come pre-filled with a station, an Audio input
- * or an Output device with a device the browser lists; an effect comes on),
+ * node types (a Station can come pre-filled with a station, a Track locked
+ * to a platform chip, an Audio input or an Output device with a device the
+ * browser lists; an effect comes on),
  * Templates replace the patch. A cable dropped on empty space narrows the list to nodes with a
  * port that takes it and wires the new node in; a cable dropped on a node
  * connects when exactly one of its ports fits. Every check is the same
@@ -15,6 +16,7 @@
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
+import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
 import { bandCountOf, withBandCount } from "./branches";
 import {
   createNodeEffectConfig,
@@ -41,9 +43,13 @@ import {
   type EffectNodeType,
   type GraphNode,
   graphNodeSchema,
+  isRadioSourceNode,
   NATIVE_NODE_TYPES,
   type NodeGraph,
   type NodeType,
+  RADIO_SOURCE_NODE_TYPES,
+  TRACK_SEARCH_PLATFORMS,
+  type TrackSearchPlatform,
 } from "./schema";
 import {
   buildNodeGraphFromTemplate,
@@ -83,6 +89,8 @@ export type PaletteNodeEntry = {
   name: string;
   /** Set on a Station that comes filled with this station. */
   radio?: Radio;
+  /** Set on a Track whose search comes locked to this platform chip. */
+  searchPlatform?: TrackSearchPlatform;
   /** Set on an Audio input or Output device that comes set to this device. */
   device?: PaletteDevice;
 };
@@ -180,12 +188,14 @@ const SECTION_OF = {
 const SECTION_ORDER = ["sources", "fx", "routing", "outputs"] as const;
 
 /**
- * Within a section: Station before Audio input (saved stations follow
- * both), splits before the Merge that closes them, Speakers before Output
- * devices.
+ * Within a section: Station, Track and File before Audio input (saved
+ * stations follow them all), splits before the Merge that closes them,
+ * Speakers before Output devices.
  */
 const PLACE_ORDER: readonly NodeType[] = [
   "station",
+  "platform",
+  "file",
   "deviceIn",
   "fxComposite",
   "stereoSplit",
@@ -210,11 +220,20 @@ export function createPaletteNode(
   id: string,
   position: Position,
   radio: Radio | null = null,
-  device: PaletteDevice | null = null
+  device: PaletteDevice | null = null,
+  searchPlatform?: TrackSearchPlatform
 ): GraphNode | null {
-  if (type === "station") {
+  if (type === "station" || type === "file") {
     return {
       data: { muted: false, radio, volume: 1 },
+      id,
+      position,
+      type,
+    };
+  }
+  if (type === "platform") {
+    return {
+      data: { muted: false, radio, searchPlatform, volume: 1 },
       id,
       position,
       type,
@@ -471,6 +490,7 @@ export function paletteEntries(
     }
     entries.push(
       { id: type, kind: "node", name: definition.name, section, type },
+      ...(type === "platform" ? trackChipEntries() : []),
       ...(type === "deviceIn" ? inputDeviceEntries(devices.inputs) : [])
     );
   }
@@ -504,6 +524,37 @@ function stationEntries(radios: readonly Radio[]): PaletteNodeEntry[] {
     });
   }
   return entries;
+}
+
+/**
+ * The platform a Track chip locks its search to, with DJ's name, blurb,
+ * colour and icon for it (dj-library-sources.ts).
+ */
+export function trackChip(platform: TrackSearchPlatform) {
+  const definition = PLATFORM_SOURCE_DEFINITIONS.find(
+    (entry) => entry.pendingPlatform === platform
+  );
+  return {
+    color: definition?.color ?? "#ff7700",
+    description: definition?.radio.description ?? "",
+    icon: definition?.icon ?? "search",
+    name: definition?.radio.name ?? platform,
+  };
+}
+
+/**
+ * A Track per platform chip, its search locked to it. The plain Track is
+ * DJ's "Search all": the same search, unlocked.
+ */
+function trackChipEntries(): PaletteNodeEntry[] {
+  return TRACK_SEARCH_PLATFORMS.map((platform) => ({
+    id: `platform:${platform}`,
+    kind: "node",
+    name: trackChip(platform).name,
+    searchPlatform: platform,
+    section: "sources",
+    type: "platform",
+  }));
 }
 
 /** An Audio input per input the browser lists, set to it. */
@@ -591,6 +642,10 @@ function besideEverything(graph: NodeGraph): Position {
   };
 }
 
+function isRadioSourceType(type: NodeType): boolean {
+  return (RADIO_SOURCE_NODE_TYPES as readonly string[]).includes(type);
+}
+
 function nodeIdFor(graph: NodeGraph, type: NodeType): string {
   // Deleted nodes keep their MIDI bindings for Undo; new instances must not reuse them.
   return type === "speakers"
@@ -610,8 +665,8 @@ export type AddPaletteNodeOptions = ValidateOptions & {
 /**
  * Adds the node an entry names. A dropped cable is wired into the node's
  * first port that takes it, and a cable picked with `I` gets the node
- * inserted into it; otherwise a new Station is wired to Speakers, as the
- * search bar does. An Audio input is never wired on its own: a mic into
+ * inserted into it; otherwise a new Station, Track or File is wired to
+ * Speakers, as the search bar does. An Audio input is never wired on its own: a mic into
  * speakers can howl, so that cable is the user's to make. Returns the
  * same graph when the node can't be built.
  */
@@ -625,11 +680,12 @@ export function addPaletteNode(
     entry.type,
     nodeId,
     position ??
-      (entry.type === "station" || entry.type === "deviceIn"
+      (isRadioSourceType(entry.type) || entry.type === "deviceIn"
         ? nextStationPosition(graph)
         : besideEverything(graph)),
     entry.radio ?? null,
-    entry.device ?? null
+    entry.device ?? null,
+    entry.searchPlatform
   );
   if (!node) {
     return { graph, nodeId: null };
@@ -643,7 +699,7 @@ export function addPaletteNode(
     const [cable] = validCables(added, node, from, options);
     return { graph: cable ? connectNodes(added, cable) : added, nodeId };
   }
-  if (entry.type === "station") {
+  if (isRadioSourceNode(node)) {
     return {
       graph: { ...added, edges: wireToSpeakers(added, nodeId) },
       nodeId,

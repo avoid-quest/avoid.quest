@@ -35,10 +35,12 @@ import {
   type PaletteEntry,
   type PaletteFrom,
   paletteEntries,
+  trackChip,
 } from "@/lib/node-graph/palette";
 import { NATIVE_NODE_TYPES, type NodeType } from "@/lib/node-graph/schema";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import type { ValidateOptions } from "@/lib/node-graph/validate";
+import { platformSourceIcon } from "../platform-source-icon";
 import { formatLocation } from "../station-row";
 import { effectNodeWidth } from "./effect-node";
 import { type NativeNodeType, nativeNodeWidth } from "./native-strip-nodes";
@@ -140,6 +142,7 @@ export function usePaletteShortcut(onOpen: () => void) {
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
   deviceIn: "A mic or line-in; pick its device on it",
   deviceOut: "Another output beside Speakers; pick its device on it",
+  file: "A local file, or an MP3, M3U or PLS link",
   filter: "The station's own low- or high-pass, right after it",
   frequencySplit: "Lows, mids and highs down their own branches",
   fxComposite:
@@ -147,6 +150,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
   gain: "A level trim on the path, up to +12 dB",
   merge: "Joins a split's branches back into one",
   pan: "The station's own panner, right after it",
+  platform: "Search YouTube, SoundCloud and Bandcamp, or paste a link",
   speakers: "The main output",
   station: "An empty slot; pick its station from its search",
   stereoSplit: "Left and right down their own branches",
@@ -179,6 +183,17 @@ function toItem(entry: PaletteEntry): PaletteItem {
       description: NODE_DESCRIPTIONS[entry.type] ?? metadata?.description,
       entry,
       icon: nodeIcon(entry.type),
+      id: entry.id,
+      name: entry.name,
+    };
+  }
+  if (entry.searchPlatform) {
+    const chip = trackChip(entry.searchPlatform);
+    return {
+      description: `Track: ${chip.description}`,
+      entry,
+      icon: platformSourceIcon(chip.icon),
+      iconColor: chip.color,
       id: entry.id,
       name: entry.name,
     };

@@ -152,7 +152,9 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   });
 
   const actions: NodeActions = {
+    fillSource: management.fillSource,
     fillStation: management.fillStation,
+    fillStationFromUrl: management.fillStationFromUrl,
     handleDeleteRadio: management.handleDeleteRadio,
     handleEditRadio: management.handleEditRadio,
     handleSaveSessionRadio: management.handleSaveSessionRadio,

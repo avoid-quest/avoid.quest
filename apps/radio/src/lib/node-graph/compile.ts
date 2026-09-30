@@ -2,7 +2,8 @@
  * Node Graph Compiler
  *
  * Lowers a validated patch onto what the engine already runs: one managed
- * sound per live source (a Station's stream or an Audio input's capture),
+ * sound per live source (a Station's stream, a Track's or File's audio, or
+ * an Audio input's capture),
  * a leading Filter and Pan on its native strip, and
  * its FX as one series-parallel EffectConfig tree. Cables leaving a lane
  * become edge gains keyed by the cable id, and key cables become sidechain
@@ -31,7 +32,15 @@ import {
   isEffectNodeType,
   SIDECHAIN_EFFECT_TYPES,
 } from "./catalogue";
-import type { GraphEdge, GraphNode, NodeGraph, NodeType } from "./schema";
+import {
+  type GraphEdge,
+  type GraphNode,
+  isRadioSourceNode,
+  type NodeGraph,
+  type NodeType,
+  type RadioSourceNode,
+} from "./schema";
+import { isLocalFileGone } from "./sources";
 import {
   analyseGraph,
   type Issue,
@@ -71,7 +80,7 @@ type DeviceInNode = Extract<GraphNode, { type: "deviceIn" }>;
 
 export type ChannelSelectionPlan = DeviceInNode["data"]["channelSelection"];
 
-/** What a lane plays: a station's stream, or a device's live capture. */
+/** What a lane plays: a radio's stream, or a device's live capture. */
 export type LaneSource =
   | { kind: "radio"; radio: StationRadio }
   | {
@@ -146,19 +155,20 @@ export type EnginePlan = {
 };
 
 /**
- * A Station plays when it holds a radio whose saved station is not hidden.
- * An empty or hidden Station keeps its cables but has no lane.
+ * A Station, Track or File plays when it holds a radio whose saved station
+ * is not hidden and, for a local file, whose file was picked in this page.
+ * An empty, hidden or re-pick File keeps its cables but has no lane.
  */
-export function isStationLive(node: GraphNode): node is Extract<
-  GraphNode,
-  { type: "station" }
-> & {
+export function isRadioSourceLive(
+  node: GraphNode | undefined
+): node is RadioSourceNode & {
   data: { radio: StationRadio };
 } {
   return (
-    node.type === "station" &&
+    isRadioSourceNode(node) &&
     node.data.radio !== null &&
-    node.data.radio.enabled !== false
+    node.data.radio.enabled !== false &&
+    !isLocalFileGone(node.data.radio)
   );
 }
 
@@ -169,9 +179,12 @@ export function isDeviceInLive(
   return node.type === "deviceIn" && node.data.deviceId !== null;
 }
 
-/** A source that has a lane: a live Station or an Audio input with a device. */
+/**
+ * A source that has a lane: a live Station, Track or File, or an Audio
+ * input with a device.
+ */
 export function isSourceLive(node: GraphNode): boolean {
-  return isStationLive(node) || isDeviceInLive(node);
+  return isRadioSourceLive(node) || isDeviceInLive(node);
 }
 
 /**
@@ -208,7 +221,7 @@ function laneSourceOf(node: GraphNode): {
   volume: number;
   muted: boolean;
 } | null {
-  if (isStationLive(node)) {
+  if (isRadioSourceLive(node)) {
     const { muted, radio, volume } = node.data;
     return { muted, radio, source: { kind: "radio", radio }, volume };
   }
@@ -236,6 +249,8 @@ export function laneSoundId(nodeId: string): string {
 /** Node types this compiler lowers; later layers add theirs. */
 const COMPILED_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   "station",
+  "platform",
+  "file",
   "deviceIn",
   "filter",
   "pan",
@@ -540,6 +555,8 @@ class LaneLowerer {
     this.nodes.push(id);
     switch (node.type) {
       case "station":
+      case "platform":
+      case "file":
       case "deviceIn":
         return trim;
       case "gain":
@@ -1219,23 +1236,32 @@ function effectsById(
   return into;
 }
 
+const EMPTY_SOURCE_REASONS = {
+  file: "The File is empty",
+  platform: "The Track is empty",
+  station: "The station slot is empty",
+} as const;
+
 /** Why a source has no lane to key from, or null when it has one. */
-function silentStation(node: GraphNode | undefined): string | null {
+function silentSource(node: GraphNode | undefined): string | null {
   if (node?.type === "deviceIn" && !isDeviceInLive(node)) {
     return "Pick the input's device first";
   }
-  if (node?.type !== "station" || isStationLive(node)) {
+  if (!isRadioSourceNode(node) || isRadioSourceLive(node)) {
     return null;
   }
-  return node.data.radio
-    ? "The station is hidden"
-    : "The station slot is empty";
+  if (!node.data.radio) {
+    return EMPTY_SOURCE_REASONS[node.type];
+  }
+  return isLocalFileGone(node.data.radio)
+    ? "Pick the file again"
+    : "The station is hidden";
 }
 
 /**
  * Why each key cable that keys nothing is idle, by cable id, as the canvas
  * says it: the issue that refused it (a lane's second key, a key from a
- * bus), an empty or hidden Station, or an effect switched off. A key that
+ * bus), an empty or hidden source, or an effect switched off. A key that
  * reaches its effect's sidechain is left out.
  */
 export function idleKeys(
@@ -1278,7 +1304,7 @@ export function idleKeys(
       edge.id,
       issues.get(`edge:${edge.id}`) ??
         issues.get(`node:${edge.target}`) ??
-        silentStation(byId.get(edge.source)) ??
+        silentSource(byId.get(edge.source)) ??
         issues.get(`node:${edge.source}`) ??
         "This key isn't used"
     );

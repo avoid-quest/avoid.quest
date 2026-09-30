@@ -303,6 +303,68 @@ describe("SourceStrip", () => {
       [{ keyLock: false }],
     ]);
   });
+
+  test("a trailing strip update keeps every control changed in its throttle window", async () => {
+    const onStripChange = mock((_patch: object) => undefined);
+    const view = renderStrip("file", { onStripChange });
+    act(() => {
+      fireEvent.keyDown(view.getByRole("slider", { name: "Trim Source" }), {
+        key: "ArrowUp",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Pan Source" }), {
+        key: "ArrowRight",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Speed Source" }), {
+        key: "ArrowUp",
+      });
+    });
+    expect(onStripChange.mock.calls).toEqual([[{ trimDb: 0.5 }]]);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(onStripChange.mock.calls).toEqual([
+      [{ trimDb: 0.5 }],
+      [{ pan: 0.01, speed: 1.01 }],
+    ]);
+  });
+
+  test("each pending field keeps its latest clamped value", async () => {
+    const onStripChange = mock((_patch: object) => undefined);
+    const view = renderStrip("file", { onStripChange });
+    act(() => {
+      fireEvent.keyDown(view.getByRole("slider", { name: "Trim Source" }), {
+        key: "ArrowUp",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Pan Source" }), {
+        key: "Home",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Speed Source" }), {
+        key: "End",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Pan Source" }), {
+        key: "End",
+      });
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(onStripChange.mock.calls).toEqual([
+      [{ trimDb: 0.5 }],
+      [{ pan: 1, speed: 2 }],
+    ]);
+  });
+
+  test("unmount cancels pending strip edits", async () => {
+    const onStripChange = mock((_patch: object) => undefined);
+    const view = renderStrip("file", { onStripChange });
+    act(() => {
+      fireEvent.keyDown(view.getByRole("slider", { name: "Trim Source" }), {
+        key: "ArrowUp",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Pan Source" }), {
+        key: "ArrowRight",
+      });
+    });
+    view.unmount();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(onStripChange.mock.calls).toEqual([[{ trimDb: 0.5 }]]);
+  });
 });
 
 describe("CompactSourceStrip", () => {

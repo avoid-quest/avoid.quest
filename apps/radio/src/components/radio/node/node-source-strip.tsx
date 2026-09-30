@@ -242,6 +242,7 @@ export function NodeSourceStripPanel({
             }
           : undefined
       }
+      key={node.id}
       kind={node.type}
       media={
         node.type === "platform" || node.type === "file"

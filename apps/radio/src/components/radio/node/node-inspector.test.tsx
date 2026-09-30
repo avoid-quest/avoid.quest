@@ -436,6 +436,52 @@ describe("NodeInspector", () => {
     expect(view.getByRole("button", { name: "Browse files" })).toBeTruthy();
   });
 
+  test("a queued strip edit cannot follow the selection into another source", async () => {
+    const store = createStore();
+    nodeStoreModule.commitNodeGraph(
+      (graph) =>
+        nodeGraphSchema.parse({
+          ...graph,
+          nodes: [
+            ...graph.nodes,
+            {
+              data: {
+                radio: {
+                  id: "second",
+                  name: "Second",
+                  streamUrl: "https://radio.example/second.mp3",
+                },
+              },
+              id: "second",
+              position,
+              type: "station",
+            },
+          ],
+        }),
+      store
+    );
+    nodeStoreModule.setNodeSelection({ edges: [], nodes: ["kexp"] }, store);
+    const view = renderHarness(store);
+    act(() => {
+      fireEvent.keyDown(view.getByRole("slider", { name: "Pan KEXP" }), {
+        key: "ArrowRight",
+      });
+      fireEvent.keyDown(view.getByRole("slider", { name: "Trim KEXP" }), {
+        key: "ArrowUp",
+      });
+      nodeStoreModule.setNodeSelection({ edges: [], nodes: ["second"] }, store);
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    const station = store.state.graph?.nodes.find(
+      (node) => node.id === "second"
+    );
+    expect(station?.type).toBe("station");
+    if (station?.type === "station") {
+      expect(station.data.strip.trimDb).toBe(0);
+      expect(station.data.strip.pan).toBe(0);
+    }
+  });
+
   test("selecting an FX node shows its full params", () => {
     const store = createStore();
     const view = renderHarness(store);

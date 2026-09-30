@@ -10,7 +10,7 @@ import {
   Repeat1Icon,
   SkipBackIcon,
 } from "lucide-react";
-import { useId } from "react";
+import { useId, useRef } from "react";
 import type { ChannelSelection } from "@/lib/audio";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
@@ -533,7 +533,18 @@ export function SourceStrip({
   input,
 }: SourceStripProps) {
   const has = (control: StripControl) => hasStripControl(kind, control);
-  const throttledChange = useThrottledParam(onStripChange);
+  const pendingChange = useRef<Partial<MediaStrip & InputStrip>>({});
+  const throttledChange = useThrottledParam(
+    (patch: Partial<MediaStrip & InputStrip>) => {
+      pendingChange.current = {};
+      onStripChange(patch);
+    }
+  );
+  // One trailing commit keeps every changed control, not just the last one.
+  const changeStrip = (patch: Partial<MediaStrip & InputStrip>) => {
+    pendingChange.current = { ...pendingChange.current, ...patch };
+    throttledChange(pendingChange.current);
+  };
   const speed = "speed" in strip ? strip : null;
   return (
     <div className="flex flex-col gap-3" data-slot="source-strip">
@@ -567,14 +578,14 @@ export function SourceStrip({
           label="Trim"
           max={STRIP_TRIM_DB.max}
           min={STRIP_TRIM_DB.min}
-          onChange={(trimDb) => throttledChange({ trimDb })}
+          onChange={(trimDb) => changeStrip({ trimDb })}
           step={0.5}
           value={strip.trimDb}
         />
         <StripPanKnob
           ariaLabel={`Pan ${target}`}
           label="Pan"
-          onChange={(pan) => throttledChange({ pan })}
+          onChange={(pan) => changeStrip({ pan })}
           value={strip.pan}
         />
         {speed && has("speed") ? (
@@ -582,7 +593,7 @@ export function SourceStrip({
             <StripSpeedKnob
               ariaLabel={`Speed ${target}`}
               label="Speed"
-              onChange={(value) => throttledChange({ speed: value })}
+              onChange={(value) => changeStrip({ speed: value })}
               value={speed.speed}
             />
             <Toggle

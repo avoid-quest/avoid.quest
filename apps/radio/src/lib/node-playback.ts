@@ -285,7 +285,7 @@ type ChannelStartOwnership = {
 /** A Track or File sound being watched; each remade sound gets a new one. */
 type LaneWatch = { soundId: string };
 
-/** A start waiting for its lane to settle, before it takes ownership. */
+/** A start resolving its track or waiting for its lane to settle. */
 type PendingChannelStart = { cancelled: boolean; channelId: string };
 
 /** A source's own level: a Station's, Track's, File's or Audio input's. */
@@ -714,15 +714,19 @@ function createNodePlayback(
     }
   };
 
-  const cancelChannelStarts = (
-    cancellation: PlaybackCancellation,
-    channelId?: string
-  ) => {
+  const cancelPendingChannelStarts = (channelId?: string) => {
     for (const pending of pendingChannelStarts) {
       if (!channelId || pending.channelId === channelId) {
         pending.cancelled = true;
       }
     }
+  };
+
+  const cancelChannelStarts = (
+    cancellation: PlaybackCancellation,
+    channelId?: string
+  ) => {
+    cancelPendingChannelStarts(channelId);
     let cancelled = false;
     for (const ownership of activeChannelStarts) {
       if (channelId && ownership.channelId !== channelId) {
@@ -832,13 +836,16 @@ function createNodePlayback(
     }
   };
 
-  const startChannel = async (channelId: string) => {
+  const startChannel = async (channelId: string, isCurrent = () => true) => {
     // Without a settling lane this stays synchronous up to the play call,
     // inside the user's gesture.
     if (
       settlingLanes.has(channelId.slice(NODE_CHANNEL_PREFIX.length)) &&
       !(await awaitLaneSettled(channelId))
     ) {
+      return;
+    }
+    if (!isCurrent()) {
       return;
     }
     const limit = NODE_BUDGETS[getEnv().profile].playingStreams;
@@ -853,20 +860,22 @@ function createNodePlayback(
       laneOutputs.attach(nodeId, lane.soundId);
     }
     const ownership = beginChannelStart(channelId);
+    const ownsStart = () =>
+      isCurrent() &&
+      ownership.cancellation === null &&
+      channelStartRevisions.get(channelId) === ownership.revision;
     try {
       const starting = setChannelPlaying(
         channelId,
         true,
         ownership.revision,
-        () =>
-          ownership.cancellation === null &&
-          channelStartRevisions.get(channelId) === ownership.revision
+        ownsStart
       );
       // The play call builds the sound's nodes and requests the stream
       // synchronously; write the strip now, before any audio reaches them.
       applyLaneStrip(channelId);
       const started = await starting;
-      if (started && ownership.cancellation === null) {
+      if (started && ownsStart()) {
         // Again once it plays, for nodes the start built later.
         settleStartedLane(channelId, lane);
       }
@@ -876,11 +885,9 @@ function createNodePlayback(
         ownership.cancellation !== null &&
         channelStartRevisions.get(channelId) === ownership.cancellationRevision
       ) {
-        if (ownership.cancellation === "pause") {
-          pauseChannel(channelId);
-        } else {
-          releaseChannel(channelId);
-        }
+        const cancel =
+          ownership.cancellation === "pause" ? pauseChannel : releaseChannel;
+        cancel(channelId);
       }
     }
   };
@@ -906,7 +913,11 @@ function createNodePlayback(
    * Moves a Track or File lane to another of its tracks, as one commit that
    * folds into the next undo step, then plays it once the old sound fades.
    */
-  const playLaneTrack = async (nodeId: string, radio: Radio) => {
+  const playLaneTrack = async (
+    nodeId: string,
+    radio: Radio,
+    isCurrent = () => true
+  ) => {
     const committed = commitNodeGraph(
       (graph) => setSourceRadio(graph, nodeId, radio),
       store
@@ -915,7 +926,7 @@ function createNodePlayback(
       return;
     }
     applyPendingCommit();
-    await startChannel(laneChannelId(nodeId));
+    await startChannel(laneChannelId(nodeId), isCurrent);
   };
 
   /**
@@ -1604,16 +1615,51 @@ function createNodePlayback(
     },
     async playTrack(nodeId, streamUrl) {
       const lane = plan.lanes.get(nodeId);
-      if (!lane) {
+      const source = findSource(store.state.graph, nodeId);
+      if (!(active && lane && isRadioSourceNode(source))) {
         return;
       }
-      const radio = await radioOnTrack(
-        lane.radio as Radio,
-        streamUrl,
-        resolveStream
-      );
+      cancelPendingChannelStarts(lane.channelId);
+      advanceChannelRevision(lane.channelId);
+      const pending: PendingChannelStart = {
+        cancelled: false,
+        channelId: lane.channelId,
+      };
+      const startEpoch = epoch;
+      const hasSource = (expectedRadio: Radio) => {
+        const current = findSource(store.state.graph, nodeId);
+        return (
+          active &&
+          epoch === startEpoch &&
+          isRadioSourceNode(current) &&
+          current.type === source.type &&
+          current.data.radio === expectedRadio
+        );
+      };
+      const isCurrent = () =>
+        !pending.cancelled && hasSource(lane.radio as Radio);
+      pendingChannelStarts.add(pending);
+      let radio: Radio | null;
+      try {
+        radio = await radioOnTrack(
+          lane.radio as Radio,
+          streamUrl,
+          resolveStream
+        );
+      } catch (error) {
+        if (isCurrent()) {
+          reportLaneFailure(lane.channelId, "Couldn't load this track", error);
+        }
+        return;
+      } finally {
+        // Its own source replacement cancels pending starts during the fade.
+        pendingChannelStarts.delete(pending);
+      }
+      if (!isCurrent()) {
+        return;
+      }
       if (radio) {
-        await playLaneTrack(nodeId, radio);
+        await playLaneTrack(nodeId, radio, () => hasSource(radio));
       } else {
         reportLaneFailure(lane.channelId, "Couldn't load this track");
       }

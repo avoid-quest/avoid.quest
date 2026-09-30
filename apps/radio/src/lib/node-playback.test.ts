@@ -35,6 +35,7 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
+import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { compile } from "@/lib/node-graph/compile";
@@ -3143,6 +3144,28 @@ function youtubeTrack(id: string): Radio {
   };
 }
 
+function settleTrackResolution(
+  resolution: {
+    reject: (reason: Error) => void;
+    resolve: (value: PlatformStreamResolution | null) => void;
+  },
+  outcome: "resolved" | "unresolved" | "rejected",
+  trackId = "next"
+): void {
+  if (outcome === "rejected") {
+    resolution.reject(new Error("selection resolution failed"));
+    return;
+  }
+  resolution.resolve(
+    outcome === "resolved"
+      ? {
+          streamFormat: "progressive",
+          streamUrl: `https://media.example/${trackId}.m4a`,
+        }
+      : null
+  );
+}
+
 function trackNode(
   id: string,
   radioOf: Radio | null = youtubeTrack(id),
@@ -3245,6 +3268,304 @@ describe("Node Playback: Track and File sources", () => {
     });
     expect(harness.context.reportError).not.toHaveBeenCalled();
   });
+
+  test("a current manual Track selection resolves, commits and plays", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolution = Promise.withResolvers<PlatformStreamResolution | null>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    const selected = harness.playback.playTrack("video", "yt:next");
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/next.m4a",
+    });
+    await selected;
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackChannel("node", channelOf("video"))?.radio).toMatchObject(
+      {
+        streamUrl: "https://media.example/next.m4a",
+      }
+    );
+    expect(getPlaybackChannelRuntime(channelOf("video")).isPlaying).toBe(true);
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test.each(["resolved", "unresolved", "rejected"] as const)(
+    "a manual Track selection %s after deactivation has no effect",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const resolution =
+        Promise.withResolvers<PlatformStreamResolution | null>();
+      const harness = createHarness({
+        resolveStream: () => resolution.promise,
+      });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+
+      const selected = harness.playback.playTrack("video", "yt:next");
+      await harness.playback.deactivate();
+      const { graph: expectedGraph } = harness.store.state;
+      settleTrackResolution(resolution, outcome);
+      await selected;
+      await harness.playback.whenSettled();
+
+      expect(harness.store.state.graph).toBe(expectedGraph);
+      expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+      expect(getPlaybackChannelRuntime(channelOf("video"))).toMatchObject({
+        error: null,
+        isPlaying: false,
+        soundId: null,
+      });
+      expect(harness.context.reportError).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["resolved", "unresolved", "rejected"] as const)(
+    "a manual Track selection %s after source replacement has no effect",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const resolution =
+        Promise.withResolvers<PlatformStreamResolution | null>();
+      const harness = createHarness({
+        resolveStream: () => resolution.promise,
+      });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+
+      const selected = harness.playback.playTrack("video", "yt:next");
+      commitNodeGraph(
+        (graph) => setSourceRadio(graph, "video", youtubeTrack("replacement")),
+        harness.store
+      );
+      const { graph: expectedGraph } = harness.store.state;
+      settleTrackResolution(resolution, outcome);
+      await selected;
+      await harness.playback.whenSettled();
+
+      expect(harness.store.state.graph).toBe(expectedGraph);
+      expect(getPlaybackChannel("node", channelOf("video"))?.radio?.id).toBe(
+        "replacement"
+      );
+      expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+      expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
+      expect(harness.context.reportError).not.toHaveBeenCalled();
+    }
+  );
+
+  test("a manual Track selection from an earlier activation has no effect", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolution = Promise.withResolvers<PlatformStreamResolution | null>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    const selected = harness.playback.playTrack("video", "yt:next");
+    await harness.playback.deactivate();
+    await harness.playback.activate();
+    const { graph: expectedGraph } = harness.store.state;
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/next.m4a",
+    });
+    await selected;
+    await harness.playback.whenSettled();
+
+    expect(harness.store.state.graph).toBe(expectedGraph);
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test.each(["resolved", "unresolved", "rejected"] as const)(
+    "an older manual Track selection %s after the latest pick has no effect",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const older = Promise.withResolvers<PlatformStreamResolution | null>();
+      const latest = Promise.withResolvers<PlatformStreamResolution | null>();
+      const harness = createHarness({
+        resolveStream: (input) =>
+          input.platform === "youtube" && input.videoId === "old"
+            ? older.promise
+            : latest.promise,
+      });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+
+      const first = harness.playback.playTrack("video", "yt:old");
+      const second = harness.playback.playTrack("video", "yt:latest");
+      latest.resolve({
+        streamFormat: "progressive",
+        streamUrl: "https://media.example/latest.m4a",
+      });
+      await second;
+      const { graph: expectedGraph } = harness.store.state;
+      settleTrackResolution(older, outcome, "old");
+      await first;
+      await harness.playback.whenSettled();
+
+      expect(harness.store.state.graph).toBe(expectedGraph);
+      expect(
+        getPlaybackChannel("node", channelOf("video"))?.radio
+      ).toMatchObject({
+        streamUrl: "https://media.example/latest.m4a",
+      });
+      expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
+      expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
+      expect(harness.context.reportError).not.toHaveBeenCalled();
+    }
+  );
+
+  test("an older manual Track selection cannot commit while the latest pick resolves", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const older = Promise.withResolvers<PlatformStreamResolution | null>();
+    const latest = Promise.withResolvers<PlatformStreamResolution | null>();
+    const harness = createHarness({
+      resolveStream: (input) =>
+        input.platform === "youtube" && input.videoId === "old"
+          ? older.promise
+          : latest.promise,
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    const first = harness.playback.playTrack("video", "yt:old");
+    const second = harness.playback.playTrack("video", "yt:latest");
+    const { graph: expectedGraph } = harness.store.state;
+    older.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/old.m4a",
+    });
+    await first;
+    expect(harness.store.state.graph).toBe(expectedGraph);
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+
+    latest.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/latest.m4a",
+    });
+    await second;
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackChannel("node", channelOf("video"))?.radio).toMatchObject(
+      {
+        streamUrl: "https://media.example/latest.m4a",
+      }
+    );
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("a newer manual Track selection cancels an older fade waiter and still plays", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const older = Promise.withResolvers<PlatformStreamResolution | null>();
+    const latest = Promise.withResolvers<PlatformStreamResolution | null>();
+    const fade = Promise.withResolvers<void>();
+    const fading = Promise.withResolvers<void>();
+    const harness = createHarness({
+      fadeOutSound: () => {
+        fading.resolve();
+        return fade.promise;
+      },
+      resolveStream: (input) =>
+        input.platform === "youtube" && input.videoId === "old"
+          ? older.promise
+          : latest.promise,
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    const first = harness.playback.playTrack("video", "yt:old");
+    settleTrackResolution(older, "resolved", "old");
+    await fading.promise;
+    expect(harness.fadeOutSound).toHaveBeenCalledTimes(1);
+    const second = harness.playback.playTrack("video", "yt:latest");
+    fade.resolve();
+    await first;
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+
+    settleTrackResolution(latest, "resolved", "latest");
+    await second;
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackChannel("node", channelOf("video"))?.radio).toMatchObject(
+      {
+        streamUrl: "https://media.example/latest.m4a",
+      }
+    );
+    expect(getPlaybackChannelRuntime(channelOf("video")).isPlaying).toBe(true);
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("a manual Track selection after its source is removed has no effect", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolution = Promise.withResolvers<PlatformStreamResolution | null>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    const selected = harness.playback.playTrack("video", "yt:next");
+    await commit(harness, () => patch([]));
+    const { graph: expectedGraph } = harness.store.state;
+    settleTrackResolution(resolution, "resolved");
+    await selected;
+    await harness.playback.whenSettled();
+
+    expect(harness.store.state.graph).toBe(expectedGraph);
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+    expect(getPlaybackChannelRuntime(channelOf("video")).soundId).toBeNull();
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("a manual Track selection keeps a fader edit made while it resolves", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolution = Promise.withResolvers<PlatformStreamResolution | null>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    const selected = harness.playback.playTrack("video", "yt:next");
+    harness.playback.setVolume("video", 0.25);
+    settleTrackResolution(resolution, "resolved");
+    await selected;
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackChannel("node", channelOf("video"))).toMatchObject({
+      radio: { streamUrl: "https://media.example/next.m4a" },
+      volume: 0.25,
+    });
+    expect(harness.context.audio.playSound).toHaveBeenCalledWith(
+      soundOf("video"),
+      0.25
+    );
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test.each(["unresolved", "rejected"] as const)(
+    "a current manual Track selection that is %s reports its failure",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const resolution =
+        Promise.withResolvers<PlatformStreamResolution | null>();
+      const harness = createHarness({
+        resolveStream: () => resolution.promise,
+      });
+      await harness.playback.activate();
+
+      const selected = harness.playback.playTrack("video", "yt:next");
+      settleTrackResolution(resolution, outcome);
+      await selected;
+
+      expect(getPlaybackChannelRuntime(channelOf("video")).error?.message).toBe(
+        "Couldn't load this track"
+      );
+      expect(harness.context.reportError).toHaveBeenCalledTimes(1);
+      expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+    }
+  );
 
   test("an expired YouTube stream is renewed and resumes where it stopped", async () => {
     insertNodeSession(patch([trackNode("video")]));

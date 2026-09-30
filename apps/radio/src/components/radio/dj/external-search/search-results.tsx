@@ -163,6 +163,14 @@ export function SearchResults({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Row callbacks stop on unmount, so release their parent loading lock here.
+  if (
+    loadingId !== null &&
+    (error || !results.some((result) => result.id === loadingId))
+  ) {
+    setLoadingId(null);
+  }
+
   if (error) {
     return <InlineError>{error}</InlineError>;
   }

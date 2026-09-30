@@ -49,12 +49,20 @@ type MediaSessionOptions =
       metadata?: RadioNowPlaying | null;
     }
   | { mode: "multiple"; radios: Radio[]; playingCount: number }
+  | { mode: "node"; radios: Radio[]; playingCount: number }
   | {
       mode: "dj";
       deckA: Radio | null;
       deckB: Radio | null;
       isPlaying: boolean;
     };
+
+const NODE_PATCH_TITLE = "Node patch";
+
+/** "2 stations playing"; plain ASCII, so it is safe for AVRCP as is. */
+function formatPlayingCount(count: number): string {
+  return `${count} ${count === 1 ? "station" : "stations"} playing`;
+}
 
 function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "single") {
@@ -63,6 +71,11 @@ function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "multiple") {
     return options.playingCount > 0
       ? `Multiple stations${RADIO_DOCUMENT_TITLE_SUFFIX}`
+      : IDLE_RADIO_DOCUMENT_TITLE;
+  }
+  if (options.mode === "node") {
+    return options.playingCount > 0
+      ? `${NODE_PATCH_TITLE} (${options.playingCount})${RADIO_DOCUMENT_TITLE_SUFFIX}`
       : IDLE_RADIO_DOCUMENT_TITLE;
   }
   // dj
@@ -115,6 +128,16 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
   if (options.mode === "multiple") {
     return new MediaMetadata({ title: "Multiple stations" });
   }
+  if (options.mode === "node") {
+    return new MediaMetadata(
+      options.playingCount > 0
+        ? {
+            artist: formatPlayingCount(options.playingCount),
+            title: NODE_PATCH_TITLE,
+          }
+        : { title: NODE_PATCH_TITLE }
+    );
+  }
   // dj
   const deckInfo = buildDjDeckInfo(options.deckA, options.deckB);
   if (!deckInfo) {
@@ -124,7 +147,7 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
 }
 
 function isAnyPlaying(options: MediaSessionOptions): boolean {
-  if (options.mode === "multiple") {
+  if (options.mode === "multiple" || options.mode === "node") {
     return options.playingCount > 0;
   }
   return options.isPlaying;

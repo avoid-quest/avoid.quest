@@ -41,7 +41,8 @@
 
 @layer components {
   /* Ports: a 10 px dot on the node edge with a 20 px hit target (28 px on
-     touch). Labels come from the native title on hover. */
+     touch). The dot is border-box, so the target insets from its 6 px
+     padding box. Labels come from the native title on hover. */
   .react-flow__handle.node-port {
     width: 10px;
     height: 10px;
@@ -51,14 +52,14 @@
 
   .react-flow__handle.node-port::before {
     position: absolute;
-    inset: -6px;
+    inset: -7px;
     content: "";
     border-radius: 9999px;
   }
 
   @media (pointer: coarse) {
     .react-flow__handle.node-port::before {
-      inset: -10px;
+      inset: -11px;
     }
   }
 

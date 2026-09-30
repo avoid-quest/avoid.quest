@@ -108,9 +108,7 @@ export function useAudioDevices(
         return;
       }
       const { state } = status;
-      if (state === "denied" || state === "granted") {
-        setPermissionState(state);
-      }
+      setPermissionState(state);
       if (state === "granted") {
         loadDevices();
       }

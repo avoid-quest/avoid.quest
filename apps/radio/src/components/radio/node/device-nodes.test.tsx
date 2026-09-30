@@ -83,11 +83,19 @@ const media = {
   }),
   handlers: new Set<() => void>(),
   permission: "prompt" as "prompt" | "granted" | "denied",
+  permissionHandlers: new Set<() => void>(),
 };
 
 function plug(devices: Device[]) {
   media.devices = devices;
   for (const handler of media.handlers) {
+    handler();
+  }
+}
+
+function changePermission(state: typeof media.permission) {
+  media.permission = state;
+  for (const handler of media.permissionHandlers) {
     handler();
   }
 }
@@ -126,9 +134,15 @@ beforeAll(async () => {
     configurable: true,
     value: {
       query: async () => ({
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-        state: media.permission,
+        addEventListener: (_type: string, handler: () => void) => {
+          media.permissionHandlers.add(handler);
+        },
+        removeEventListener: (_type: string, handler: () => void) => {
+          media.permissionHandlers.delete(handler);
+        },
+        get state() {
+          return media.permission;
+        },
       }),
     },
   });
@@ -244,6 +258,59 @@ describe("Audio input node", () => {
     expect(view.getByText("Off")).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: "Go live Desk mic" }));
     expect(onToggleLive).toHaveBeenCalledTimes(1);
+  });
+
+  test("resetting a blocked permission offers an explicit microphone request", async () => {
+    media.permission = "denied";
+    const view = render(<InputHarness />);
+    await flush();
+
+    act(() => changePermission("prompt"));
+    await flush();
+
+    expect(
+      view.queryByText("Microphone blocked. Allow it in your browser settings.")
+    ).toBeNull();
+    const allow = view.getByRole("button", { name: "Allow microphone" });
+    expect(media.getUserMedia).not.toHaveBeenCalled();
+
+    fireEvent.click(allow);
+    await flush();
+    expect(media.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(view.queryByRole("button", { name: "Allow microphone" })).toBeNull();
+  });
+
+  test("granting permission in browser settings enables Go live without capture", async () => {
+    media.permission = "denied";
+    const onToggleLive = mock(noop);
+    const view = render(<InputHarness onToggleLive={onToggleLive} />);
+    await flush();
+
+    act(() => changePermission("granted"));
+    await flush();
+
+    const goLive = view.getByRole("button", { name: "Go live Desk mic" });
+    expect((goLive as HTMLButtonElement).disabled).toBe(false);
+    expect(media.getUserMedia).not.toHaveBeenCalled();
+    expect(onToggleLive).not.toHaveBeenCalled();
+    fireEvent.click(goLive);
+    expect(onToggleLive).toHaveBeenCalledTimes(1);
+  });
+
+  test("revoking permission blocks Go live without requesting capture", async () => {
+    media.permission = "granted";
+    const onToggleLive = mock(noop);
+    const view = render(<InputHarness onToggleLive={onToggleLive} />);
+    await flush();
+
+    act(() => changePermission("denied"));
+    await flush();
+
+    const goLive = view.getByRole("button", { name: "Go live Desk mic" });
+    expect((goLive as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(goLive);
+    expect(media.getUserMedia).not.toHaveBeenCalled();
+    expect(onToggleLive).not.toHaveBeenCalled();
   });
 
   test("hot-plug: a device that goes away reads Unplugged, and is offered again when back", async () => {

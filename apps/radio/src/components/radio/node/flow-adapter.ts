@@ -12,6 +12,8 @@ export type {
   Connection as FlowConnection,
   Edge as FlowEdge,
   EdgeChange as FlowEdgeChange,
+  EdgeProps as FlowEdgeProps,
+  EdgeTypes as FlowEdgeTypes,
   FinalConnectionState as FlowConnectionEnd,
   IsValidConnection as FlowIsValidConnection,
   Node as FlowNode,
@@ -21,6 +23,9 @@ export type {
   Viewport as FlowViewport,
 } from "@xyflow/react";
 export {
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
   Handle,
   Position,
   ReactFlow,

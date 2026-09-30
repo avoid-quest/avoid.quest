@@ -106,12 +106,95 @@ describe("flow elements", () => {
     ).toBe(port as unknown as Element);
   });
 
-  test("FX and the native strip are drawn; Werkstatt waits", () => {
+  test("FX, the splits, Merge and the native strip are drawn; Werkstatt waits", () => {
     expect(DRAWN_NODE_TYPES).toContain("compressor");
     expect(DRAWN_NODE_TYPES).toContain("fxComposite");
+    expect(DRAWN_NODE_TYPES).toContain("frequencySplit");
+    expect(DRAWN_NODE_TYPES).toContain("merge");
     expect(DRAWN_NODE_TYPES).toContain("pan");
     expect(DRAWN_NODE_TYPES).not.toContain("werkstatt");
-    expect(DRAWN_NODE_TYPES).not.toContain("merge");
+  });
+
+  test("a split's cables are branches carrying their params, and a Merge gets its badge", () => {
+    const graph: NodeGraph = nodeGraphSchema.parse({
+      ...patch,
+      edges: [
+        {
+          id: "kexp->lr",
+          source: "src-kexp",
+          sourceHandle: "out:audio:main",
+          target: "lr",
+          targetHandle: "in:audio:main",
+        },
+        {
+          gain: 0.5,
+          id: "lr.left",
+          pan: -1,
+          solo: true,
+          source: "lr",
+          sourceHandle: "out:audio:left",
+          target: "mix",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "lr.right",
+          muted: true,
+          source: "lr",
+          sourceHandle: "out:audio:right",
+          target: "mix",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "mix->speakers",
+          source: "mix",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+      ],
+      nodes: [
+        ...patch.nodes,
+        {
+          data: { effect: createNodeEffectConfig("stereoSplit", "lr") },
+          id: "lr",
+          position: { x: 0, y: 0 },
+          type: "stereoSplit",
+        },
+        { data: {}, id: "mix", position: { x: 0, y: 0 }, type: "merge" },
+      ],
+    });
+    const edges = toFlowEdges(graph, { liveLanes: new Set(), selection });
+
+    expect(
+      edges.map((edge) => [edge.id, edge.type ?? "default", edge.data])
+    ).toEqual([
+      ["kexp->lr", "default", undefined],
+      [
+        "lr.left",
+        "branch",
+        {
+          gain: 0.5,
+          muted: false,
+          name: "Left",
+          pan: -1,
+          solo: true,
+          tag: "L",
+        },
+      ],
+      [
+        "lr.right",
+        "branch",
+        { gain: 1, muted: true, name: "Right", pan: 0, solo: false, tag: "R" },
+      ],
+      ["mix->speakers", "default", undefined],
+    ]);
+    const merge = toFlowNodes(graph, {
+      measured: new Map(),
+      mergeRoles: new Map([["mix", "in-lane"]]),
+      positions: new Map(),
+      selection,
+    }).find((node) => node.id === "mix");
+    expect(merge?.data).toEqual({ inputs: 2, role: "in-lane" });
   });
 
   test("a playing Station's cables stay live through its FX, key cables don't", () => {

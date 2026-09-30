@@ -30,6 +30,7 @@ import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import {
   getNodeDefinition,
   isShipped,
+  type NodePort,
   portHandleId,
 } from "@/lib/node-graph/catalogue";
 import { portName } from "@/lib/node-graph/describe";
@@ -128,7 +129,8 @@ export function ModuleHeader({
   onEnabledChange?: (enabled: boolean) => void;
   /** Opens every param in the inspector. */
   onInspect?: () => void;
-  onReset: () => void;
+  /** Set when the node has params to put back; a Merge has none. */
+  onReset?: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -182,11 +184,13 @@ export function ModuleHeader({
                 All settings
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem onClick={onReset}>
-              <RotateCcwIcon />
-              Reset to defaults
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {onReset ? (
+              <DropdownMenuItem onClick={onReset}>
+                <RotateCcwIcon />
+                Reset to defaults
+              </DropdownMenuItem>
+            ) : null}
+            {onInspect || onReset ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onClick={onRemove} variant="destructive">
               <Trash2Icon />
               Remove
@@ -395,23 +399,31 @@ export function controlName(title: string, label: string): string {
 /**
  * A node's shipped ports as React Flow handles: inputs down the left edge,
  * outputs down the right, spread evenly. A key input wears the amber ring.
+ * A split shows only the outputs it has in use (`outputIds`),
+ * named for its branches (`portLabel`).
  */
 export function ModulePorts({
   type,
   title,
+  outputIds,
+  portLabel = portName,
 }: {
   type: NodeType;
   title: string;
+  outputIds?: readonly string[];
+  portLabel?: (port: NodePort) => string;
 }) {
   const definition = getNodeDefinition(type);
-  const ports = definition.ports.filter((port) =>
-    isShipped(port.ship ?? definition.ship, "v1")
+  const ports = definition.ports.filter(
+    (port) =>
+      isShipped(port.ship ?? definition.ship, "v1") &&
+      (port.direction === "in" || !outputIds || outputIds.includes(port.id))
   );
   const inputs = ports.filter((port) => port.direction === "in");
   const outputs = ports.filter((port) => port.direction === "out");
   const handles = (side: typeof inputs, position: Position) =>
     side.map((port, index) => {
-      const name = portName(port);
+      const name = portLabel(port);
       return (
         <Handle
           aria-label={`${title} ${name.toLowerCase()}`}

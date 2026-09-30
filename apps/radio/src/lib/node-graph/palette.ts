@@ -2,15 +2,17 @@
  * Node Palette
  *
  * What the add-node palette offers and what picking an entry does, as pure
- * functions over the graph. Sources, FX and Outputs are the shipped node
- * types (a Station can come pre-filled with a station; an effect comes on),
+ * functions over the graph. Sources, FX, Routing and Outputs are the shipped
+ * node types (a Station can come pre-filled with a station; an effect comes on),
  * Templates replace the patch. A cable dropped on empty space narrows the list to nodes with a
  * port that takes it and wires the new node in; a cable dropped on a node
  * connects when exactly one of its ports fits. Every check is the same
  * `validateConnection` React Flow runs while dragging.
  */
 
+import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
+import { withBandCount } from "./branches";
 import {
   createNodeEffectConfig,
   getNodeDefinition,
@@ -29,6 +31,7 @@ import {
   wireToSpeakers,
 } from "./graph-edits";
 import {
+  type EffectNodeType,
   type GraphNode,
   graphNodeSchema,
   NATIVE_NODE_TYPES,
@@ -44,13 +47,18 @@ import {
 
 type Position = GraphNode["position"];
 
-export type PaletteSection = "sources" | "fx" | "outputs" | "templates";
+export type PaletteSection =
+  | "sources"
+  | "fx"
+  | "routing"
+  | "outputs"
+  | "templates";
 
 export type PaletteNodeEntry = {
   kind: "node";
   /** Stable React key; also what a test or a shortcut picks by. */
   id: string;
-  section: "sources" | "fx" | "outputs";
+  section: "sources" | "fx" | "routing" | "outputs";
   type: NodeType;
   name: string;
   /** Set on a Station that comes filled with this station. */
@@ -98,11 +106,26 @@ export const PALETTE_TEMPLATES: readonly PaletteTemplateEntry[] = [
 const SECTION_OF = {
   fx: "fx",
   output: "outputs",
+  routing: "routing",
   source: "sources",
 } as const;
 
-/** Section order: what makes sound, what shapes it, where it goes. */
-const SECTION_ORDER = ["sources", "fx", "outputs"] as const;
+/**
+ * Section order: what makes sound, what shapes it, how it splits and
+ * joins, where it goes.
+ */
+const SECTION_ORDER = ["sources", "fx", "routing", "outputs"] as const;
+
+/** Splits first, then the Merge that closes them. */
+const ROUTING_ORDER: readonly NodeType[] = [
+  "fxComposite",
+  "stereoSplit",
+  "frequencySplit",
+  "merge",
+];
+
+/** A new Band Split starts at low, mid and high. */
+const NEW_BAND_COUNT = 3;
 
 /** The id a probe node takes while its ports are tried. */
 const PROBE_ID = "palette-probe";
@@ -124,10 +147,18 @@ export function createPaletteNode(
   }
   // An effect placed in a patch is meant to sound, so it starts on.
   const data = isEffectNodeType(type)
-    ? { effect: { ...createNodeEffectConfig(type, id), enabled: true } }
+    ? { effect: { ...createEffect(type, id), enabled: true } }
     : {};
   const parsed = graphNodeSchema.safeParse({ data, id, position, type });
   return parsed.success ? parsed.data : null;
+}
+
+function createEffect(type: EffectNodeType, id: string): EffectConfig {
+  const effect = createNodeEffectConfig(type, id);
+  // Band crossovers start from the defaults for three bands.
+  return effect.type === "frequencySplit"
+    ? withBandCount({ ...effect, crossoverFrequencies: [] }, NEW_BAND_COUNT)
+    : effect;
 }
 
 function withNode(graph: NodeGraph, node: GraphNode): NodeGraph {
@@ -182,8 +213,8 @@ function speakersPresent(graph: NodeGraph): boolean {
 }
 
 /**
- * Shipped Sources, FX and Outputs, in section order; Speakers only while the
- * patch has none.
+ * Shipped Sources, FX, Routing and Outputs, in section order; Speakers only
+ * while the patch has none.
  */
 function nodeTypesOnOffer(
   graph: NodeGraph,
@@ -206,14 +237,22 @@ function nodeTypesOnOffer(
   );
 }
 
-/** The native strip (Filter, Pan, Gain) leads FX; effects go by name. */
+/**
+ * The native strip (Filter, Pan, Gain) leads FX; effects go by name.
+ * Routing lists splits before the Merge that closes them.
+ */
 function byStripThenName(left: NodeDefinition, right: NodeDefinition) {
   const strip = (definition: NodeDefinition) =>
     definition.native
       ? NATIVE_NODE_TYPES.indexOf(definition.native)
       : NATIVE_NODE_TYPES.length;
+  const routing = (definition: NodeDefinition) =>
+    ROUTING_ORDER.includes(definition.type)
+      ? ROUTING_ORDER.indexOf(definition.type)
+      : ROUTING_ORDER.length;
   return (
     strip(left) - strip(right) ||
+    routing(left) - routing(right) ||
     (left.category === "fx" && right.category === "fx"
       ? left.name.localeCompare(right.name)
       : 0)

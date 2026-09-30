@@ -57,6 +57,10 @@ describe("paletteEntries", () => {
     ).toEqual([
       "sources:Station",
       "sources:Station c",
+      "routing:Split",
+      "routing:Stereo Split",
+      "routing:Band Split",
+      "routing:Merge",
       "templates:Start from Multiple",
       "templates:Blank",
     ]);
@@ -118,18 +122,48 @@ describe("paletteEntries", () => {
       entries
         .filter((entry) => entry.section !== "fx")
         .map((entry) => entry.name)
-    ).toEqual(["Station", "Station c"]);
+    ).toEqual([
+      "Station",
+      "Station c",
+      "Split",
+      "Stereo Split",
+      "Band Split",
+      "Merge",
+    ]);
     expect(entries.some((entry) => entry.id === "compressor")).toBe(true);
     expect(entries.some((entry) => entry.section === "templates")).toBe(false);
   });
 
-  test("a cable from an output offers only what takes audio: the FX", () => {
+  test("a cable from an output offers only what takes audio: FX and routing", () => {
     const entries = paletteEntries(patch, {
       from: { handle: AUDIO_OUT_HANDLE, node: "src-a", type: "source" },
     });
 
     expect(entries.length).toBeGreaterThan(0);
-    expect(entries.every((entry) => entry.section === "fx")).toBe(true);
+    expect(
+      entries.every(
+        (entry) => entry.section === "fx" || entry.section === "routing"
+      )
+    ).toBe(true);
+  });
+
+  test("a new Band Split starts with three bands", () => {
+    const { graph, nodeId } = addPaletteNode(patch, {
+      id: "frequencySplit",
+      kind: "node",
+      name: "Band Split",
+      section: "routing",
+      type: "frequencySplit",
+    });
+    const node = graph.nodes.find((entry) => entry.id === nodeId);
+
+    expect(node?.type).toBe("frequencySplit");
+    expect(
+      node?.type === "frequencySplit" &&
+        node.data.effect.type === "frequencySplit"
+        ? node.data.effect.crossoverFrequencies
+        : null
+    ).toEqual([250, 2500]);
   });
 });
 

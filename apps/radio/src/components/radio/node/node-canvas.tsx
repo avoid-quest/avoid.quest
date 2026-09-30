@@ -2,7 +2,10 @@
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
+import { compile, mergeRoles } from "@/lib/node-graph/compile";
 import {
   connectNodes,
   moveNodes,
@@ -24,15 +27,25 @@ import {
   paletteEntries,
 } from "@/lib/node-graph/palette";
 import type { NodeGraph } from "@/lib/node-graph/schema";
-import { type Connection, validateConnection } from "@/lib/node-graph/validate";
+import {
+  parallelToSeries,
+  seriesToParallel,
+} from "@/lib/node-graph/series-parallel";
+import {
+  type Connection,
+  connectionRefusal,
+  validateConnection,
+} from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { BranchEdge } from "./branch-edge";
 import { EffectNode } from "./effect-node";
 import {
   type FlowConnection,
   type FlowConnectionEnd,
   type FlowEdge,
   type FlowEdgeChange,
+  type FlowEdgeTypes,
   type FlowNodeChange,
   type FlowNodeTypes,
   type FlowViewport,
@@ -48,6 +61,7 @@ import {
   toFlowEdges,
   toFlowNodes,
 } from "./flow-elements";
+import { MergeNode } from "./merge-node";
 import { NativeStripNode } from "./native-strip-nodes";
 import {
   isCanvasKey,
@@ -55,22 +69,37 @@ import {
   type PaletteRequest,
 } from "./node-palette";
 import { SpeakersNode } from "./speakers-node";
+import { SplitNode } from "./split-nodes";
 import { StationNode } from "./station-node";
 
 type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 const nodeTypes = {
-  // Every drawn effect shares one node; Station and Speakers come last.
+  // Every drawn effect shares one node, and every split another; Station
+  // and Speakers come last.
   ...Object.fromEntries(
-    DRAWN_NODE_TYPES.filter(isEffectNodeType).map((type) => [type, EffectNode])
+    DRAWN_NODE_TYPES.filter(isEffectNodeType).map((type) => [
+      type,
+      isEffectContainerType(type) ? SplitNode : EffectNode,
+    ])
   ),
   filter: NativeStripNode,
   gain: NativeStripNode,
+  merge: MergeNode,
   pan: NativeStripNode,
   speakers: SpeakersNode,
   station: StationNode,
 } satisfies FlowNodeTypes;
+
+/** A cable out of a split draws as a branch, with its tag and controls. */
+const edgeTypes = { branch: BranchEdge } satisfies FlowEdgeTypes;
+
+/** P and S: series ⇄ parallel on the selected FX. */
+const SERIES_PARALLEL_EDITS = {
+  p: seriesToParallel,
+  s: parallelToSeries,
+} as const;
 
 /** Station node width, so a node fed from an input lands with its port at the cursor. */
 const STATION_WIDTH = 240;
@@ -183,10 +212,14 @@ function Canvas({
     screenToFlowPosition,
     setCenter,
   } = useReactFlow();
-  const validateOptions = { profile: detectNodePlaybackEnv().profile };
+  const [env] = useState(detectNodePlaybackEnv);
+  const validateOptions = { profile: env.profile };
+  // The compiler's verdict on each Merge, for its in-lane badge.
+  const roles = mergeRoles(graph, compile(graph, env));
 
   const nodes = toFlowNodes(graph, {
     measured,
+    mergeRoles: roles,
     positions: dragPositions,
     selection,
   });
@@ -309,6 +342,38 @@ function Canvas({
     );
   };
 
+  // A cable dropped on a port that refused it says why, e.g. a Merge that
+  // would sum two stations.
+  const explainRefusal = (connection: FlowConnectionEnd) => {
+    const { fromHandle, fromNode, toHandle, toNode } = connection;
+    if (!(fromHandle?.id && fromNode && toHandle?.id && toNode)) {
+      return;
+    }
+    const [source, target] =
+      fromHandle.type === "source"
+        ? [
+            { handle: fromHandle.id, node: fromNode.id },
+            { handle: toHandle.id, node: toNode.id },
+          ]
+        : [
+            { handle: toHandle.id, node: toNode.id },
+            { handle: fromHandle.id, node: fromNode.id },
+          ];
+    const message = connectionRefusal(
+      graph,
+      {
+        source: source.node,
+        sourceHandle: source.handle,
+        target: target.node,
+        targetHandle: target.handle,
+      },
+      validateOptions
+    );
+    if (message) {
+      toast(message);
+    }
+  };
+
   // A cable dropped on a node connects when exactly one of its ports fits;
   // dropped on empty space, it opens the palette narrowed to what fits.
   const handleConnectEnd = (
@@ -333,6 +398,8 @@ function Canvas({
       const cable = autoConnection(graph, from, onNode, validateOptions);
       if (cable) {
         handleConnect(cable);
+      } else {
+        explainRefusal(connection);
       }
       return;
     }
@@ -394,6 +461,39 @@ function Canvas({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onOpenConnect]);
+
+  // P puts two selected FX in series side by side (Split → both → Merge),
+  // and S puts them back in series. Each is one undo step.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (
+        !(key === "p" || key === "s") ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.defaultPrevented ||
+        !isCanvasKey(event.target, wrapperRef.current)
+      ) {
+        return;
+      }
+      const selected = nodeStore.state.selection;
+      const current = nodeStore.state.graph;
+      if (!current || selected.nodes.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      const edit = SERIES_PARALLEL_EDITS[key](current, selected);
+      if (!edit.ok) {
+        toast(edit.message);
+        return;
+      }
+      commitNodeGraph(() => edit.graph, nodeStore, "snapshot");
+      setNodeSelection(edit.selection);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // A template load can move everything; fit it back in view.
   useEffect(() => {
@@ -503,6 +603,7 @@ function Canvas({
         defaultViewport={initialViewport}
         deleteKeyCode={null}
         edges={edges}
+        edgeTypes={edgeTypes}
         fitView={isUntouchedViewport(initialViewport)}
         fitViewOptions={FIT_VIEW_OPTIONS}
         isValidConnection={isValidConnection}

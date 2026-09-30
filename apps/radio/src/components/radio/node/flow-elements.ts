@@ -7,12 +7,14 @@
  * stays testable without the canvas chunk.
  */
 
+import { branchName, branchTag, isSplitNode } from "@/lib/node-graph/branches";
 import { getNodeDefinition, isShipped } from "@/lib/node-graph/catalogue";
-import { laneChannelId } from "@/lib/node-graph/compile";
+import { laneChannelId, type MergeRole } from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
 import {
   EFFECT_NODE_TYPES,
+  type GraphEdge,
   type GraphNode,
   NATIVE_NODE_TYPES,
   type NodeGraph,
@@ -26,11 +28,13 @@ type Size = { width: number; height: number };
 
 /**
  * The node types the canvas draws today: Station, Speakers, the native
- * strip and every shipped effect (all but Werkstatt).
+ * strip, every shipped effect (all but Werkstatt) with the splits, and the
+ * Merge that closes them.
  */
 export const DRAWN_NODE_TYPES: readonly NodeType[] = [
   "speakers",
   "station",
+  "merge",
   ...NATIVE_NODE_TYPES,
   ...EFFECT_NODE_TYPES.filter((type) =>
     isShipped(getNodeDefinition(type).ship, "v1")
@@ -78,23 +82,55 @@ export function dropTargetOf(
   return target && "closest" in target ? (target as Element) : null;
 }
 
+/** What a Merge node draws: its compiler badge and how many cables it joins. */
+export type MergeNodeData = { role: MergeRole | null; inputs: number };
+
+/** What a branch cable draws: its tag, and the chain params it carries. */
+export type BranchEdgeData = {
+  tag: string;
+  name: string;
+  gain: number;
+  muted: boolean;
+  pan: number;
+  solo: boolean;
+};
+
+function mergeData(
+  graph: NodeGraph,
+  node: GraphNode,
+  roles: ReadonlyMap<string, MergeRole>
+): MergeNodeData {
+  return {
+    inputs: graph.edges.filter(
+      (edge) =>
+        edge.target === node.id &&
+        parseHandleId(edge.targetHandle)?.kind === "audio"
+    ).length,
+    role: roles.get(node.id) ?? null,
+  };
+}
+
 export function toFlowNodes(
   graph: NodeGraph,
   {
     selection,
     positions,
     measured,
+    mergeRoles = new Map(),
   }: {
     selection: NodeSelection;
     /** Positions mid-drag, not yet committed. */
     positions: ReadonlyMap<string, Point>;
     measured: ReadonlyMap<string, Size>;
+    /** What the compiler made of each Merge. */
+    mergeRoles?: ReadonlyMap<string, MergeRole>;
   }
 ): FlowNode[] {
   return graph.nodes.filter(isDrawn).map((node) => ({
     // Named like its cables, so "KEXP, audio module" rather than a bare role.
     ariaLabel: nodeLabel(node),
-    data: node.data,
+    data:
+      node.type === "merge" ? mergeData(graph, node, mergeRoles) : node.data,
     deletable: node.type !== "speakers",
     domAttributes: { "aria-roledescription": "audio module" },
     id: node.id,
@@ -137,6 +173,31 @@ export function liveNodeIds(
   return live;
 }
 
+/**
+ * A cable leaving a split is a branch: drawn with its tag, and carrying the
+ * chain's gain, pan, mute and solo. Other cables draw as plain wires.
+ */
+function branchOf(
+  source: GraphNode | undefined,
+  edge: GraphEdge
+): Pick<FlowEdge, "data" | "type"> | null {
+  if (
+    !isSplitNode(source) ||
+    parseHandleId(edge.targetHandle)?.kind !== "audio"
+  ) {
+    return null;
+  }
+  const data: BranchEdgeData = {
+    gain: edge.gain,
+    muted: edge.muted,
+    name: branchName(source, edge.sourceHandle),
+    pan: edge.pan ?? 0,
+    solo: edge.solo === true,
+    tag: branchTag(source, edge.sourceHandle),
+  };
+  return { data, type: "branch" };
+}
+
 export function toFlowEdges(
   graph: NodeGraph,
   {
@@ -148,11 +209,14 @@ export function toFlowEdges(
     liveLanes: ReadonlySet<string>;
   }
 ): FlowEdge[] {
-  const drawn = new Set(graph.nodes.filter(isDrawn).map((node) => node.id));
+  const drawn = new Map(
+    graph.nodes.filter(isDrawn).map((node) => [node.id, node])
+  );
   const live = liveNodeIds(graph, liveLanes);
   return graph.edges
     .filter((edge) => drawn.has(edge.source) && drawn.has(edge.target))
     .map((edge) => ({
+      ...branchOf(drawn.get(edge.source), edge),
       ariaLabel: edgeLabel(graph, edge),
       // A key cable carries its station's audio as a detector, not on air.
       className:

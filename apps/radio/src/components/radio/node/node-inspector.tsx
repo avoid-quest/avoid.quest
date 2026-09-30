@@ -17,6 +17,7 @@ import { EffectParams } from "@/components/audio/effect-params/effect-params";
 import { EffectVisualization } from "@/components/audio/visualizations/effect-visualization";
 import type { EffectConfig } from "@/lib/audio";
 import { nodeMidiTargetPrefix } from "@/lib/midi/node-midi-actions";
+import { isSplitNode } from "@/lib/node-graph/branches";
 import {
   getNodeDefinition,
   isEffectNodeType,
@@ -39,12 +40,14 @@ import { BackendBadge } from "./backend-badge";
 import { RELEASE_DELAY_MS } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
+import { SplitInspectorParams } from "./split-nodes";
 
 /**
  * Node Inspector
  *
  * Every param of one FX or native strip node: the full EffectParams layout
- * (with its curve) where a node body shows only the first row. It follows
+ * (with its curve) where a node body shows only the first row. A split
+ * shows its mix, its bands and each branch cable's controls. It follows
  * the canvas selection in the desktop side panel and opens as a bottom
  * Drawer on a phone. Knobs are throttled like every param knob, and a
  * release is an undo step. Each knob learns MIDI as `node:<nodeId>:…`.
@@ -145,7 +148,10 @@ function InspectorParams({
     setTimeout(() => snapshotNodeGraph(store), RELEASE_DELAY_MS);
   };
   let params: React.ReactNode;
-  if (isEffectNodeType(node.type)) {
+  if (isSplitNode(node)) {
+    // Branches are cables here, so the rack's nested chains don't apply.
+    params = <SplitInspectorParams node={node} store={store} />;
+  } else if (isEffectNodeType(node.type)) {
     const { effect } = node.data as { effect: EffectConfig };
     params = (
       <>

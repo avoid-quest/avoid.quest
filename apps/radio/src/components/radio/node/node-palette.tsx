@@ -132,15 +132,21 @@ export function usePaletteShortcut(onOpen: () => void) {
 
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
   filter: "The station's own low- or high-pass, right after it",
+  frequencySplit: "Lows, mids and highs down their own branches",
+  fxComposite:
+    "Parallel copies, each through its own FX. Or select two FX and press P",
   gain: "A level trim on the path, up to +12 dB",
+  merge: "Joins a split's branches back into one",
   pan: "The station's own panner, right after it",
   speakers: "The main output",
   station: "An empty slot; pick its station from its search",
+  stereoSplit: "Left and right down their own branches",
 };
 
 const SECTION_TITLES = {
   fx: "FX",
   outputs: "Outputs",
+  routing: "Routing",
   sources: "Sources",
   templates: "Templates",
 } as const;
@@ -161,7 +167,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
     const metadata = getEffectMetadata(entry.type);
     return {
       badge: metadata?.family,
-      description: metadata?.description,
+      description: NODE_DESCRIPTIONS[entry.type] ?? metadata?.description,
       entry,
       icon: nodeIcon(entry.type),
       id: entry.id,
@@ -184,7 +190,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
 function toSections(
   entries: readonly PaletteEntry[]
 ): PickerSection<PaletteItem>[] {
-  return (["sources", "fx", "outputs", "templates"] as const)
+  return (["sources", "fx", "routing", "outputs", "templates"] as const)
     .map((section) => ({
       items: entries.filter((entry) => entry.section === section).map(toItem),
       title: SECTION_TITLES[section],
@@ -208,7 +214,7 @@ type NodePaletteProps = {
 };
 
 /**
- * The add-node palette: Sources, FX, Outputs and Templates in the effect
+ * The add-node palette: Sources, FX, Routing, Outputs and Templates in the effect
  * picker's search-and-cards body. Picking a node adds it as one undo step,
  * wired into a dropped cable if there was one, else a Station to Speakers.
  */

@@ -237,6 +237,10 @@ export const graphEdgeSchema = z.object({
   gain: z.number().min(0).max(MAX_EDGE_GAIN).default(1),
   id: z.string().min(1),
   muted: z.boolean().default(false),
+  /** A branch cable's pan, added to its chain's (Split, Stereo or Band Split). */
+  pan: z.number().min(-1).max(1).optional(),
+  /** A branch cable's solo: its chain plays and unsoloed siblings go quiet. */
+  solo: z.boolean().optional(),
   source: z.string().min(1),
   sourceHandle: z.string().min(1),
   target: z.string().min(1),

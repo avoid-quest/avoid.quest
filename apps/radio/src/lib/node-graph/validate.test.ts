@@ -9,6 +9,8 @@ import {
   type NodeType,
 } from "./schema";
 import {
+  BUS_MERGE_MESSAGE,
+  connectionRefusal,
   findCycles,
   type Issue,
   NODE_BUDGETS,
@@ -830,6 +832,46 @@ describe("validateConnection", () => {
         })
       )
     ).toEqual(["missing-node@candidate"]);
+  });
+
+  test("refuses wiring a second station into an in-lane Merge, with the bus message", () => {
+    const merged = graph(
+      [
+        station("a"),
+        station("b"),
+        fx("split", "fxComposite"),
+        node("mix", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        audio("split", "mix", { from: "branch-1" }),
+        audio("split", "mix", { from: "branch-2", id: "branch-2" }),
+        audio("mix", "speakers"),
+        audio("b", "speakers"),
+      ]
+    );
+    const second = {
+      source: "b",
+      sourceHandle: "out:audio:main",
+      target: "mix",
+      targetHandle: "in:audio:main",
+    };
+
+    expect(validate(merged)).toEqual([]);
+    expect(codes(validateConnection(merged, second))).toEqual([
+      "unshipped@mix",
+    ]);
+    expect(connectionRefusal(merged, second)).toBe(BUS_MERGE_MESSAGE);
+    expect(BUS_MERGE_MESSAGE).toContain("needs a bus");
+    // The same Merge still takes more of its own station's branches.
+    expect(
+      connectionRefusal(merged, {
+        ...second,
+        source: "split",
+        sourceHandle: "out:audio:branch-3",
+      })
+    ).toBeNull();
   });
 
   test("keeps its candidate apart from a cable already named candidate", () => {

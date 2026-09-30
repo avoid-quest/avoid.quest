@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { useStore } from "@tanstack/react-store";
+import type { ReactNode } from "react";
 import {
   EFFECT_LAYOUTS,
   shortLabel,
@@ -199,6 +200,11 @@ export type EffectNodeBodyProps = {
   onRemove: () => void;
   /** Opens every param in the inspector. */
   onInspect?: () => void;
+  /**
+   * Replaces the first layout row, `columns` wide: a Band Split shows its
+   * bands and crossovers instead.
+   */
+  controls?: { columns: number; node: ReactNode };
 };
 
 /**
@@ -215,14 +221,18 @@ export function EffectNodeBody({
   onRelease,
   onRemove,
   onInspect,
+  controls: custom,
 }: EffectNodeBodyProps) {
   const title = getNodeDefinition(effect.type).name;
-  const controls = firstLayoutRow(effect.type);
+  const controls = custom ? [] : firstLayoutRow(effect.type);
   return (
     <ModuleFrame
       on={effect.enabled}
       selected={selected}
-      width={moduleWidth(controls.length, MIN_EFFECT_COLUMNS)}
+      width={moduleWidth(
+        custom?.columns ?? controls.length,
+        MIN_EFFECT_COLUMNS
+      )}
     >
       <ModuleHeader
         badge={badge ? <BackendBadgeLabel badge={badge} /> : null}
@@ -242,6 +252,7 @@ export function EffectNodeBody({
         title={title}
       />
       <ModuleControls onRelease={onRelease}>
+        {custom?.node}
         {controls.map((control) => (
           <BodyControlView
             control={control}

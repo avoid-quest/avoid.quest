@@ -25,6 +25,7 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
+import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { compile } from "@/lib/node-graph/compile";
 import { setEffectParams } from "@/lib/node-graph/graph-edits";
@@ -2061,6 +2062,71 @@ describe("Node Playback FX lanes", () => {
     );
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
     expect(harness.fadeOutSound).not.toHaveBeenCalled();
+  });
+
+  test("a 3-band Band Split closed by a Merge plays as one frequencySplit tree in the lane", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+
+    const bandSplit = (graph: NodeGraph): NodeGraph => {
+      const band = (index: number, target: string) => ({
+        id: `bands.band-${index}`,
+        source: "bands",
+        sourceHandle: `out:audio:band-${index}`,
+        target,
+        targetHandle: "in:audio:main",
+      });
+      const parsed = nodeGraphSchema.parse({
+        ...graph,
+        edges: [
+          cable("a", "bands"),
+          band(1, "comp"),
+          cable("comp", "merge"),
+          band(2, "merge"),
+          band(3, "merge"),
+          cable("merge", "speakers"),
+        ],
+        nodes: [
+          ...graph.nodes,
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("frequencySplit", "bands"),
+                enabled: true,
+              },
+            },
+            id: "bands",
+            position: { x: 240, y: 0 },
+            type: "frequencySplit",
+          },
+          compressor("comp"),
+          { data: {}, id: "merge", position: { x: 480, y: 0 }, type: "merge" },
+        ],
+      });
+      return setBandCount(parsed, "bands", 3);
+    };
+    await commit(harness, bandSplit);
+
+    const [tree] = getPlaybackChannel("node", channelOf("a"))?.effects ?? [];
+    expect(tree).toMatchObject({
+      crossoverFrequencies: [200, 1000],
+      frequencyBandCount: 3,
+      id: "bands",
+      type: "frequencySplit",
+    });
+    expect(
+      tree && "chains" in tree
+        ? tree.chains.map((chain) => chain.effects.map((effect) => effect.id))
+        : null
+    ).toEqual([["comp"], [], []]);
+    expect(harness.effectsChange).toHaveBeenLastCalledWith(
+      { channelId: channelOf("a"), sessionId: "node" },
+      {
+        tree: [expect.objectContaining({ type: "frequencySplit" })],
+        type: "replace",
+      }
+    );
   });
 
   test("the backend badge shows compat when not cross-origin isolated, on the lane and its FX", async () => {

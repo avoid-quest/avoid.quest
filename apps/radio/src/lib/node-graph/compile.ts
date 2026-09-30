@@ -188,6 +188,10 @@ function trimLevel(trim: Trim): number {
   return trim.muted ? 0 : trim.gain;
 }
 
+function clampPan(pan: number): number {
+  return Math.min(1, Math.max(-1, pan));
+}
+
 function dbToGain(db: number): number {
   return 10 ** (db / 20);
 }
@@ -567,21 +571,21 @@ class LaneLowerer {
           ? []
           : [{ ...chain, effects: [], muted: true, order: index }];
       }
-      const branch =
-        cables.length === 1 && cables[0]
-          ? this.lowerBranch(cables[0].edge, meeting, level)
-          : {
-              effects: [
-                this.lowerFanOut(
-                  `${chain.id}:fan-out`,
-                  cables,
-                  meeting,
-                  level + 1,
-                  { order: 0 }
-                ),
-              ],
-              trim: UNITY,
-            };
+      const cable = cables.length === 1 ? cables[0]?.edge : undefined;
+      const branch = cable
+        ? this.lowerBranch(cable, meeting, level)
+        : {
+            effects: [
+              this.lowerFanOut(
+                `${chain.id}:fan-out`,
+                cables,
+                meeting,
+                level + 1,
+                { order: 0 }
+              ),
+            ],
+            trim: UNITY,
+          };
       return [
         {
           ...chain,
@@ -589,6 +593,10 @@ class LaneLowerer {
           gain: chain.gain * branch.trim.gain,
           muted: chain.muted || branch.trim.muted,
           order: index,
+          // The branch cable carries the chain's pan and solo, on top of
+          // what the container holds (a MIDI-learned chain pan).
+          pan: clampPan(chain.pan + (cable?.pan ?? 0)),
+          solo: chain.solo || cable?.solo === true,
         },
       ];
     });
@@ -637,8 +645,8 @@ class LaneLowerer {
           muted: branch.trim.muted,
           name: `Branch ${index + 1}`,
           order: index,
-          pan: 0,
-          solo: false,
+          pan: edge.pan ?? 0,
+          solo: edge.solo === true,
         };
       }),
       dryWet: 1,
@@ -1045,4 +1053,37 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     lanes,
     sinks,
   };
+}
+
+/**
+ * What the compiler made of each Merge: `in-lane` when it closes a split
+ * inside one station's lane, `bus` when it would sum stations (refused
+ * until buses ship). A Merge fed by nothing has no role.
+ */
+export type MergeRole = "in-lane" | "bus";
+
+export function mergeRoles(
+  graph: Pick<NodeGraph, "nodes">,
+  plan: EnginePlan
+): Map<string, MergeRole> {
+  const inLane = new Set(
+    [...plan.lanes.values()].flatMap((lane) => lane.nodes)
+  );
+  const refused = new Set(
+    plan.issues
+      .filter((issue) => issue.target === "node" && issue.code === "unshipped")
+      .map((issue) => issue.id)
+  );
+  const roles = new Map<string, MergeRole>();
+  for (const node of graph.nodes) {
+    if (node.type !== "merge") {
+      continue;
+    }
+    if (inLane.has(node.id)) {
+      roles.set(node.id, "in-lane");
+    } else if (refused.has(node.id)) {
+      roles.set(node.id, "bus");
+    }
+  }
+  return roles;
 }

@@ -791,18 +791,20 @@ function busHeads(context: Context, { buses }: Topology): GraphNode[] {
   return context.graph.nodes.filter((node) => buses.get(node.id) === node.id);
 }
 
+/**
+ * Why a Merge can't take a second station: that makes it a bus, and buses
+ * ship after in-lane Merge.
+ */
+export const BUS_MERGE_MESSAGE =
+  "Merging different stations needs a bus, which comes in a later update";
+
 function checkBusRelease(context: Context, topology: Topology): void {
   if (isShipped("v2", context.release)) {
     return;
   }
   for (const node of busHeads(context, topology)) {
     if (node.type === "merge") {
-      nodeIssue(
-        context,
-        node,
-        "unshipped",
-        "Merging different stations isn't available yet"
-      );
+      nodeIssue(context, node, "unshipped", BUS_MERGE_MESSAGE);
     }
   }
 }
@@ -1006,4 +1008,19 @@ export function validateConnection(
       (issue.target === "edge" && issue.id === candidate.id) ||
       !before.has(issueKey(issue))
   );
+}
+
+/**
+ * Why a cable can't connect, as a toast says it; null when it can. The
+ * cable's own problem comes first, then what it would break elsewhere,
+ * e.g. a Merge that would sum two stations.
+ */
+export function connectionRefusal(
+  graph: ValidatableGraph,
+  connection: Connection,
+  options?: ValidateOptions
+): string | null {
+  const issues = validateConnection(graph, connection, options);
+  const own = issues.find((issue) => issue.target === "edge");
+  return (own ?? issues[0])?.message ?? null;
 }

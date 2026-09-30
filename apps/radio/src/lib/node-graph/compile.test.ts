@@ -10,6 +10,7 @@ import {
   normalizeEffectTree,
   visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
+import { setBandCount, setCrossover } from "./branches";
 import { createNodeEffectConfig } from "./catalogue";
 import {
   type CompileEnv,
@@ -18,6 +19,7 @@ import {
   type LanePlan,
   layoutSignature,
   MONITORING_CHANNEL_CAP,
+  mergeRoles,
 } from "./compile";
 import {
   type GraphEdge,
@@ -26,7 +28,7 @@ import {
   type NodeType,
   nodeGraphSchema,
 } from "./schema";
-import { validate, validateConnection } from "./validate";
+import { BUS_MERGE_MESSAGE, validate, validateConnection } from "./validate";
 
 type NodeInput = NodeGraphInput["nodes"][number];
 type EdgeInput = NodeGraphInput["edges"][number];
@@ -773,6 +775,107 @@ describe("compile: series-parallel regions", () => {
     ]);
     expect(split.crossoverFrequencies).toEqual([200, 1000, 5000]);
     expect(split.frequencyBandCount).toBe(4);
+  });
+
+  test("a Band Split set to 3 bands lowers to a 3-band frequencySplit in the lane", () => {
+    const base = graph(
+      [
+        station("a"),
+        fx("bands", "frequencySplit", { enabled: true }),
+        fx("crush", "crusher", { enabled: true }),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "bands"),
+        audio("bands", "crush", { from: "band-1", id: "low" }),
+        audio("crush", "merge"),
+        audio("bands", "merge", { from: "band-2", id: "mid" }),
+        audio("bands", "merge", { from: "band-3", id: "high" }),
+        audio("bands", "merge", { from: "band-4", id: "top" }),
+        audio("merge", "speakers"),
+      ]
+    );
+    const three = setCrossover(
+      setBandCount(base, "bands", 3),
+      "bands",
+      1,
+      3000
+    );
+
+    const plan = compile(three, ENV);
+    expect(plan.issues).toEqual([]);
+    // The fourth band's cable went with its band.
+    expect(three.edges.some((edge) => edge.id === "top")).toBe(false);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "frequencySplit") {
+      throw new Error("Expected a band split");
+    }
+    expect(shape([split])).toEqual([
+      ["frequencySplit", "bands", [[["crusher", "crush"]], [], []]],
+    ]);
+    expect(split.crossoverFrequencies).toEqual([200, 3000]);
+    expect(split.frequencyBandCount).toBe(3);
+    expect(split.chains.map((chain) => chain.name)).toEqual([
+      "Low",
+      "Mid",
+      "High",
+    ]);
+    expect(lane(plan, "a").nodes).toEqual(["a", "bands", "crush", "merge"]);
+    expect(mergeRoles(three, plan)).toEqual(new Map([["merge", "in-lane"]]));
+  });
+
+  test("a branch cable's gain, pan, mute and solo reach its chain", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("lr", "stereoSplit", { enabled: true }),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "lr"),
+        {
+          ...audio("lr", "merge", { from: "left", gain: 0.5, id: "left" }),
+          pan: -0.75,
+          solo: true,
+        },
+        {
+          ...audio("lr", "merge", { from: "right", id: "right", muted: true }),
+          pan: 0.25,
+        },
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "stereoSplit") {
+      throw new Error("Expected a stereo split");
+    }
+    expect(
+      split.chains.map(({ gain, muted, pan, solo }) => ({
+        gain,
+        muted,
+        pan,
+        solo,
+      }))
+    ).toEqual([
+      { gain: 0.5, muted: false, pan: -0.75, solo: true },
+      { gain: 1, muted: true, pan: 0.25, solo: false },
+    ]);
+  });
+
+  test("a Merge summing two stations is a refused bus, not in-lane", () => {
+    const merged = graph(
+      [station("a"), station("b"), node("merge", "merge"), speakers],
+      [audio("a", "merge"), audio("b", "merge"), audio("merge", "speakers")]
+    );
+    const plan = compile(merged, ENV);
+
+    expect(mergeRoles(merged, plan)).toEqual(new Map([["merge", "bus"]]));
+    expect(plan.issues.map((issue) => issue.message)).toContain(
+      BUS_MERGE_MESSAGE
+    );
   });
 
   test("an implicit fan-out that rejoins is treated as a Split", () => {

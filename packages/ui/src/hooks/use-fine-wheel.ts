@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 function sameValues(left: number[], right: number[]) {
   return left.length === right.length && left.every((v, i) => v === right[i]);
@@ -18,7 +18,7 @@ function nudge(
   return Number(legal.toPrecision(12));
 }
 
-/** Fine wheel changes bypass coarse drag steps and accumulate before a throttled parent catches up. */
+/** Share immediate control input while parent audio updates can remain throttled. */
 export function useFineWheel<T extends HTMLElement>({
   values,
   min,
@@ -40,6 +40,7 @@ export function useFineWheel<T extends HTMLElement>({
   onCommit?: (values: number[]) => void;
 }) {
   const elementRef = useRef<T>(null);
+  const [inputValues, setInputValues] = useState(values);
   const observed = useRef(values);
   const requested = useRef(values);
   const pending = useRef<number[][]>([]);
@@ -48,20 +49,20 @@ export function useFineWheel<T extends HTMLElement>({
     if (sameValues(values, observed.current)) {
       return;
     }
-    // Acknowledging an earlier request must not rewind newer wheel input.
+    // Acknowledging an earlier request must not rewind newer control input.
     const index = pending.current.findIndex((next) => sameValues(next, values));
     pending.current = index < 0 ? [] : pending.current.slice(index + 1);
     requested.current = pending.current.at(-1) ?? values;
     observed.current = values;
+    setInputValues(requested.current);
   }, [values]);
 
   function changeValues(next: number[]) {
-    if (sameValues(next, observed.current)) {
-      pending.current = [];
-    } else if (!sameValues(next, requested.current)) {
+    if (!sameValues(next, requested.current)) {
       pending.current.push(next);
     }
     requested.current = next;
+    setInputValues(next);
     onChange(next);
   }
 
@@ -114,5 +115,5 @@ export function useFineWheel<T extends HTMLElement>({
 
   // Read this in input handlers, not while rendering.
   const getRequestedValues = () => requested.current;
-  return { changeValues, elementRef, getRequestedValues };
+  return { changeValues, elementRef, getRequestedValues, inputValues };
 }

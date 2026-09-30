@@ -4,7 +4,7 @@ import { Knob } from "@avoid.quest/ui/components/knob";
 import { Slider } from "@avoid.quest/ui/components/slider";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
-import { createRef } from "react";
+import { createRef, useState } from "react";
 import { MixerCrossfader } from "@/components/radio/dj/mixer/mixer-crossfader";
 import { ChannelSlider } from "@/components/radio/dj/shared/channel-slider";
 import { getEffectParamDefs } from "@/lib/audio/dsp/effects/schema";
@@ -61,6 +61,17 @@ function wheel(element: Element, deltaY: number, ctrlKey = false) {
     cancelable: true,
     ctrlKey,
     deltaY,
+  });
+  act(() => element.dispatchEvent(event));
+  return event;
+}
+
+function pressKey(element: Element, name: string, shiftKey = false) {
+  const event = new dom.window.KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: name,
+    shiftKey,
   });
   act(() => element.dispatchEvent(event));
   return event;
@@ -288,5 +299,161 @@ describe("fine control wheel changes", () => {
     wheel(knob, -1);
     wheel(knob, -1);
     expect(changes).toEqual([0.01, 0.02, 0.03]);
+  });
+});
+
+describe("immediate control input with throttled audio updates", () => {
+  test("every effect knob arrow press is displayed while only the latest trailing value reaches audio", async () => {
+    const audioChanges: number[] = [];
+    function Harness() {
+      const [value, setValue] = useState(0);
+      return (
+        <ParamSlider
+          label="Mix"
+          max={1}
+          min={0}
+          onChange={(next) => {
+            audioChanges.push(next);
+            setValue(next);
+          }}
+          step={0.1}
+          value={value}
+        />
+      );
+    }
+    const view = render(<Harness />);
+    const knob = requireElement(view.container, '[role="slider"]');
+    act(() => {
+      for (let index = 0; index < 5; index += 1) {
+        knob.dispatchEvent(
+          new dom.window.KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "ArrowUp",
+          })
+        );
+      }
+    });
+    expect(audioChanges).toEqual([0.1]);
+    expect(knob.getAttribute("aria-valuenow")).toBe("0.5");
+    await act(() => Bun.sleep(50));
+    expect(audioChanges).toEqual([0.1, 0.5]);
+    expect(knob.getAttribute("aria-valuenow")).toBe("0.5");
+  });
+
+  test("channel arrow input survives earlier acknowledgements and preserves keyboard limits", () => {
+    const changes: number[] = [];
+    const control = (value: number) => (
+      <ChannelSlider
+        defaultValue={0}
+        formatValue={String}
+        label="Pan"
+        max={1}
+        min={-1}
+        onChange={(next) => changes.push(next)}
+        step={0.25}
+        value={value}
+      />
+    );
+    const view = render(control(0));
+    const knob = requireElement(view.container, '[role="slider"]');
+    pressKey(knob, "ArrowUp");
+    pressKey(knob, "ArrowRight");
+    pressKey(knob, "ArrowUp");
+    expect(changes).toEqual([0.25, 0.5, 0.75]);
+    view.rerender(control(0.25));
+    expect(knob.getAttribute("aria-valuenow")).toBe("0.75");
+    pressKey(knob, "ArrowLeft", true);
+    expect(changes.at(-1)).toBe(0.55);
+    pressKey(knob, "End");
+    pressKey(knob, "ArrowUp");
+    expect(changes.at(-1)).toBe(1);
+    pressKey(knob, "Home");
+    expect(changes.at(-1)).toBe(-1);
+    view.rerender(control(-0.5)); // An unrelated MIDI/edit value replaces local intent.
+    pressKey(knob, "ArrowRight");
+    expect(changes.at(-1)).toBe(-0.25);
+  });
+
+  test("wheel, keys, reset and the next drag share intent despite delayed earlier values", () => {
+    const changes: number[] = [];
+    const control = (value: number) => (
+      <Knob
+        defaultValue={0.5}
+        max={1}
+        min={0}
+        onChange={(next) => changes.push(next)}
+        step={0.1}
+        value={value}
+      />
+    );
+    const view = render(control(0.5));
+    const knob = requireElement(view.container, '[role="slider"]');
+    Object.defineProperty(knob, "setPointerCapture", {
+      value: () => undefined,
+    });
+    wheel(knob, -1);
+    pressKey(knob, "ArrowUp");
+    act(() =>
+      knob.dispatchEvent(
+        new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 })
+      )
+    );
+    view.rerender(control(0.51));
+    expect(knob.getAttribute("aria-valuenow")).toBe("0.5");
+    pressKey(knob, "ArrowUp");
+    act(() => {
+      knob.dispatchEvent(
+        new dom.window.PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientY: 100,
+          pointerId: 1,
+        })
+      );
+      knob.dispatchEvent(
+        new dom.window.PointerEvent("pointermove", {
+          bubbles: true,
+          clientY: 82,
+          pointerId: 1,
+        })
+      );
+    });
+    view.rerender(control(0.61));
+    expect(knob.getAttribute("aria-valuenow")).toBe("0.7");
+    pressKey(knob, "ArrowDown");
+    expect(changes).toEqual([0.51, 0.61, 0.5, 0.6, 0.7, 0.6]);
+  });
+
+  test("slider keys use immediate wheel and reset values while controlled props lag", () => {
+    const changes: number[][] = [];
+    const control = (value: number) => (
+      <Slider
+        max={1}
+        min={0}
+        onValueChange={(next) => changes.push(next)}
+        resetValue={[0.5]}
+        step={0.1}
+        value={[value]}
+      />
+    );
+    const view = render(control(0.5));
+    const thumb = requireElement(view.container, '[role="slider"]');
+    pressKey(thumb, "ArrowUp");
+    pressKey(thumb, "ArrowUp");
+    pressKey(thumb, "ArrowUp");
+    expect(changes).toEqual([[0.6], [0.7], [0.8]]);
+    wheel(thumb, -1);
+    pressKey(thumb, "ArrowDown");
+    expect(changes.at(-1)).toEqual([0.7]); // Ordinary keys preserve the legal drag step.
+    act(() =>
+      thumb.dispatchEvent(
+        new dom.window.MouseEvent("dblclick", { bubbles: true, button: 0 })
+      )
+    );
+    view.rerender(control(0.6));
+    expect(thumb.getAttribute("aria-valuenow")).toBe("0.5");
+    pressKey(thumb, "ArrowUp");
+    expect(changes.at(-1)).toEqual([0.6]);
   });
 });

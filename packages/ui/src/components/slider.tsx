@@ -174,17 +174,20 @@ function Slider({
     onValueChange?.(next);
   }
 
-  const { changeValues: handleValueChange, elementRef } =
-    useFineWheel<HTMLSpanElement>({
-      disabled,
-      max,
-      min,
-      minDistance: minStepsBetweenThumbs * step,
-      onChange: applyValueChange,
-      onCommit: onValueCommit,
-      values,
-      wheelStep,
-    });
+  const {
+    changeValues: handleValueChange,
+    elementRef,
+    inputValues,
+  } = useFineWheel<HTMLSpanElement>({
+    disabled,
+    max,
+    min,
+    minDistance: minStepsBetweenThumbs * step,
+    onChange: applyValueChange,
+    onCommit: onValueCommit,
+    values,
+    wheelStep,
+  });
   useImperativeHandle(
     forwardedRef,
     () => elementRef.current as HTMLSpanElement,
@@ -221,7 +224,7 @@ function Slider({
     defaultMarkerValue === undefined
       ? undefined
       : getPercent(defaultMarkerValue, min, max);
-  const valuePercent = getPercent(values[0] ?? min, min, max);
+  const valuePercent = getPercent(inputValues[0] ?? min, min, max);
   const originPercent =
     rangeOriginValue === undefined
       ? undefined
@@ -254,7 +257,7 @@ function Slider({
       orientation={orientation}
       ref={elementRef}
       step={step}
-      value={values}
+      value={inputValues}
       {...props}
       onContextMenu={composeHandlers(props.onContextMenu, reset.onContextMenu)}
       onDoubleClick={composeHandlers(props.onDoubleClick, reset.onDoubleClick)}
@@ -305,7 +308,7 @@ function Slider({
           />
         )}
       </Track>
-      {Array.from({ length: values.length }, (_, index) => (
+      {Array.from({ length: inputValues.length }, (_, index) => (
         <Thumb
           aria-label={ariaLabel}
           aria-valuetext={ariaValueText}

@@ -70,15 +70,17 @@ function Knob({
   className,
   title,
 }: KnobProps) {
-  const { changeValues, elementRef } = useFineWheel<HTMLDivElement>({
-    disabled,
-    max,
-    min,
-    onChange: ([next]) => onChange(next ?? min),
-    values: [value],
-    wheelStep,
-  });
+  const { changeValues, elementRef, getRequestedValues, inputValues } =
+    useFineWheel<HTMLDivElement>({
+      disabled,
+      max,
+      min,
+      onChange: ([next]) => onChange(next ?? min),
+      values: [value],
+      wheelStep,
+    });
   const changeValue = (next: number) => changeValues([next]);
+  const inputValue = inputValues[0] ?? value;
   const drag = useRef<{
     pointerId: number;
     startY: number;
@@ -87,7 +89,7 @@ function Knob({
   const range = max - min;
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
   const snap = (v: number) => {
-    const snapped = Math.round(v / step) * step;
+    const snapped = Number((Math.round(v / step) * step).toPrecision(12));
     if (
       defaultValue !== undefined &&
       Math.abs(snapped - defaultValue) < range * SNAP_RATIO
@@ -106,12 +108,12 @@ function Knob({
     isLog ? min * (max / min) ** t : min + t * range;
   const toAngle = (v: number) => toPosition(v) * SWEEP - SWEEP / 2;
   const origin = bipolar && defaultValue !== undefined ? defaultValue : min;
-  const valueAngle = toAngle(value);
+  const valueAngle = toAngle(inputValue);
   const originAngle = toAngle(origin);
   const c = size / 2;
   const r = c - 3;
   const tip = polar(c, c, r - 4, valueAngle);
-  const text = format(value);
+  const text = format(inputValue);
   const reset = useControlReset(
     disabled || defaultValue === undefined
       ? undefined
@@ -133,7 +135,7 @@ function Knob({
     event.currentTarget.focus();
     drag.current = {
       pointerId: event.pointerId,
-      startValue: toPosition(value),
+      startValue: toPosition(getRequestedValues()[0] ?? value),
       startY: event.clientY,
     };
   };
@@ -162,12 +164,13 @@ function Knob({
     if (disabled) {
       return;
     }
+    const current = getRequestedValues()[0] ?? value;
     const big = event.shiftKey ? range / 10 : step;
     let next: number | null = null;
     if (event.key === "ArrowUp" || event.key === "ArrowRight") {
-      next = value + big;
+      next = current + big;
     } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
-      next = value - big;
+      next = current - big;
     } else if (event.key === "Home") {
       next = min;
     } else if (event.key === "End") {
@@ -175,7 +178,7 @@ function Knob({
     }
     if (next !== null) {
       event.preventDefault();
-      changeValue(clamp(next));
+      changeValue(clamp(Number(next.toPrecision(12))));
     }
   };
 
@@ -194,7 +197,7 @@ function Knob({
         aria-label={ariaLabel ?? label}
         aria-valuemax={max}
         aria-valuemin={min}
-        aria-valuenow={value}
+        aria-valuenow={inputValue}
         aria-valuetext={text}
         className="cursor-ns-resize touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:p-1"
         onContextMenu={reset.onContextMenu}

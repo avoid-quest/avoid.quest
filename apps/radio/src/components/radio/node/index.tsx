@@ -48,6 +48,7 @@ import {
 import { NodeRack } from "./node-rack";
 import { NodeStage } from "./node-stage";
 import { NodeToolbar, useUndoShortcuts } from "./node-toolbar";
+import { RewireDialog } from "./rewire-dialog";
 import { useNodeRadioManagement } from "./use-node-radio-management";
 
 /**
@@ -87,6 +88,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const [phoneView, setPhoneView] = useState<PhoneView>("stage");
   const [palette, setPalette] = useState<PaletteRequest | null>(null);
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
+  const [rewireEdgeId, setRewireEdgeId] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
   const patchWasOpenRef = useRef(false);
   const isPhone = useIsMobile();
@@ -283,6 +285,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
           <NodeToolbar
             onAdd={() => openPalette()}
             onLoadTemplate={loadTemplate}
+            onRewire={setRewireEdgeId}
           />
         </div>
         {isPhone ? (
@@ -384,6 +387,15 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
           onClose={() => setConnectNodeId(null)}
           validateOptions={validateOptions}
         />
+
+        {rewireEdgeId ? (
+          <RewireDialog
+            edgeId={rewireEdgeId}
+            key={rewireEdgeId}
+            onClose={() => setRewireEdgeId(null)}
+            validateOptions={validateOptions}
+          />
+        ) : null}
 
         <RadioDialog
           mode={management.dialogMode}

@@ -6,7 +6,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
+import { useStore } from "@tanstack/react-store";
 import {
+  CableIcon,
   ChevronDownIcon,
   LayoutTemplateIcon,
   PlusIcon,
@@ -60,13 +62,18 @@ export function useUndoShortcuts(store: NodeStore = nodeStore) {
 export function NodeToolbar({
   onAdd,
   onLoadTemplate,
+  onRewire,
   store = nodeStore,
 }: {
   onAdd: () => void;
   onLoadTemplate: (template: NodeTemplateId) => void;
+  onRewire?: (edgeId: string) => void;
   store?: NodeStore;
 }) {
   const { canRedo, canUndo } = useNodeHistory(store);
+  const edgeId = useStore(store, (state) =>
+    state.selection.edges.length === 1 ? state.selection.edges[0] : null
+  );
 
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -103,6 +110,17 @@ export function NodeToolbar({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      {edgeId && onRewire ? (
+        <Button
+          aria-label="Rewire selected cable"
+          onClick={() => onRewire(edgeId)}
+          size="icon"
+          title="Rewire selected cable"
+          variant="outline"
+        >
+          <CableIcon />
+        </Button>
+      ) : null}
       <Button
         aria-keyshortcuts="Meta+Z Control+Z"
         aria-label="Undo"

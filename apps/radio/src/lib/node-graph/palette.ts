@@ -937,3 +937,45 @@ export function connectPorts(
   }
   return ports;
 }
+
+/** Ports a selected cable end can move to, including each refusal reason. */
+export function rewireTargets(
+  graph: NodeGraph,
+  edgeId: string,
+  end: "source" | "target",
+  options?: ValidateOptions
+): (ConnectTarget & { reason: string | null })[] {
+  const edge = graph.edges.find((entry) => entry.id === edgeId);
+  if (!edge) {
+    return [];
+  }
+  const without = {
+    ...graph,
+    edges: graph.edges.filter((entry) => entry.id !== edgeId),
+  };
+  const kind = parseHandleId(edge[`${end}Handle`])?.kind;
+  return graph.nodes.flatMap((node) =>
+    getNodeDefinition(node.type)
+      .ports.filter(
+        (port) =>
+          port.direction === (end === "source" ? "out" : "in") &&
+          port.kind === kind
+      )
+      .map((port) => {
+        const handle = portHandleId(port);
+        const connection: Connection = {
+          source: end === "source" ? node.id : edge.source,
+          sourceHandle: end === "source" ? handle : edge.sourceHandle,
+          target: end === "target" ? node.id : edge.target,
+          targetHandle: end === "target" ? handle : edge.targetHandle,
+        };
+        const verdict = connectionVerdict(without, connection, options);
+        return {
+          connection,
+          key: `${node.id} ${handle}`,
+          label: endLabel(node, handle),
+          reason: verdict.ok ? null : verdict.message,
+        };
+      })
+  );
+}

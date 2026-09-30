@@ -155,6 +155,7 @@ import {
   cleanupOrphanedSounds,
   getRuntimeSoundIds,
 } from "./mode-lifecycle-cleanup.js";
+import { createPendingChannelStarts } from "./pending-channel-starts.js";
 import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
@@ -324,9 +325,6 @@ type ChannelStartOwnership = {
 /** A Track or File sound being watched; each remade sound gets a new one. */
 type LaneWatch = { soundId: string };
 
-/** A start resolving its track or waiting for its lane to settle. */
-type PendingChannelStart = { cancelled: boolean; channelId: string };
-
 /** A source's own level: a Station's, Track's, File's or Audio input's. */
 type SourceData = { volume: number; muted: boolean };
 
@@ -463,7 +461,7 @@ function createNodePlayback(
   }: Required<Omit<GetNodePlaybackOptions, "ctx">>
 ): NodePlayback {
   const activeChannelStarts = new Set<ChannelStartOwnership>();
-  const pendingChannelStarts = new Set<PendingChannelStart>();
+  const pendingChannelStarts = createPendingChannelStarts();
   const activePlayAllGenerations = new Set<PlayAllGeneration>();
   const channelStartRevisions = new Map<string, number>();
   const unmutedVolumes = new Map<string, number>();
@@ -503,7 +501,10 @@ function createNodePlayback(
    * playing nor loading meanwhile, yet each resumes, so it keeps its slot
    * in the stream budget until a pause, removal or deactivate cancels it.
    */
-  const refreshingStreams = new Set<PendingChannelStart>();
+  const refreshingStreams = new Set<{
+    channelId: string;
+    isCurrent: () => boolean;
+  }>();
   /** Per channel: its sound's pre-fader tap on the headphone cue bus. */
   const cueTaps = new Map<
     string,
@@ -793,19 +794,11 @@ function createNodePlayback(
     }
   };
 
-  const cancelPendingChannelStarts = (channelId?: string) => {
-    for (const pending of pendingChannelStarts) {
-      if (!channelId || pending.channelId === channelId) {
-        pending.cancelled = true;
-      }
-    }
-  };
-
   const cancelChannelStarts = (
     cancellation: PlaybackCancellation,
     channelId?: string
   ) => {
-    cancelPendingChannelStarts(channelId);
+    pendingChannelStarts.cancel(channelId);
     let cancelled = false;
     for (const ownership of activeChannelStarts) {
       if (channelId && ownership.channelId !== channelId) {
@@ -859,7 +852,7 @@ function createNodePlayback(
       }
     }
     for (const refresh of refreshingStreams) {
-      if (!refresh.cancelled) {
+      if (refresh.isCurrent()) {
         busy.add(refresh.channelId);
       }
     }
@@ -944,15 +937,17 @@ function createNodePlayback(
     if (!settling) {
       return true;
     }
-    const pending: PendingChannelStart = { cancelled: false, channelId };
     const startEpoch = epoch;
-    pendingChannelStarts.add(pending);
+    const pending = pendingChannelStarts.begin(
+      channelId,
+      () => epoch === startEpoch
+    );
     try {
       await settling;
     } finally {
-      pendingChannelStarts.delete(pending);
+      pending.release();
     }
-    return !pending.cancelled && epoch === startEpoch;
+    return pending.isCurrent();
   };
 
   /**
@@ -1066,19 +1061,17 @@ function createNodePlayback(
     if (!(radio && soundId && watch)) {
       return false;
     }
-    const pending: PendingChannelStart = {
-      cancelled: false,
-      channelId: channel.id,
-    };
     const startEpoch = epoch;
-    const isCurrent = () =>
-      active &&
-      epoch === startEpoch &&
-      !pending.cancelled &&
-      ownsStart() &&
-      laneWatches.get(channel.id) === watch &&
-      getPlaybackChannelRuntime(channel.id).soundId === soundId;
-    pendingChannelStarts.add(pending);
+    const pending = pendingChannelStarts.begin(
+      channel.id,
+      () =>
+        active &&
+        epoch === startEpoch &&
+        ownsStart() &&
+        laneWatches.get(channel.id) === watch &&
+        getPlaybackChannelRuntime(channel.id).soundId === soundId
+    );
+    const { isCurrent } = pending;
     let started = false;
     try {
       await refreshPlatformStream(radio, soundId, position, {
@@ -1106,7 +1099,7 @@ function createNodePlayback(
       });
       return started;
     } finally {
-      pendingChannelStarts.delete(pending);
+      pending.release();
     }
   };
 
@@ -1142,9 +1135,8 @@ function createNodePlayback(
     if (!(lane && radio && next) || advancingLanes.has(channelId)) {
       return;
     }
-    const pending: PendingChannelStart = { cancelled: false, channelId };
-    const canAdvance = () => !pending.cancelled && isCurrent();
-    pendingChannelStarts.add(pending);
+    const pending = pendingChannelStarts.begin(channelId, isCurrent);
+    const canAdvance = pending.isCurrent;
     advancingLanes.add(channelId);
     try {
       const nextRadio = await radioOnTrack(
@@ -1155,7 +1147,7 @@ function createNodePlayback(
       if (!canAdvance()) {
         return;
       }
-      pendingChannelStarts.delete(pending);
+      pending.release();
       if (nextRadio) {
         await playLaneTrack(lane.id, nextRadio);
       } else {
@@ -1166,7 +1158,7 @@ function createNodePlayback(
         reportLaneFailure(channelId, "Couldn't load the next track", error);
       }
     } finally {
-      pendingChannelStarts.delete(pending);
+      pending.release();
       advancingLanes.delete(channelId);
     }
   };
@@ -1228,10 +1220,10 @@ function createNodePlayback(
     }
     if (state.error?.code === "STREAM_INTERRUPTED") {
       // A pause, removal or deactivate while it resolves drops the resume.
-      const pending: PendingChannelStart = { cancelled: false, channelId };
-      const canRefresh = () => !pending.cancelled && isCurrent();
-      pendingChannelStarts.add(pending);
-      refreshingStreams.add(pending);
+      const pending = pendingChannelStarts.begin(channelId, isCurrent);
+      const refresh = { channelId, isCurrent: pending.isCurrent };
+      const canRefresh = pending.isCurrent;
+      refreshingStreams.add(refresh);
       track(
         refreshPlatformStream(radio, soundId, state.error.position ?? 0, {
           isCurrent: canRefresh,
@@ -1250,8 +1242,8 @@ function createNodePlayback(
             ),
           resolveStream,
         }).finally(() => {
-          pendingChannelStarts.delete(pending);
-          refreshingStreams.delete(pending);
+          pending.release();
+          refreshingStreams.delete(refresh);
         })
       ).catch(warn("Could not refresh a stream"));
       return;
@@ -1926,12 +1918,8 @@ function createNodePlayback(
       if (!(active && lane && isRadioSourceNode(source))) {
         return;
       }
-      cancelPendingChannelStarts(lane.channelId);
+      pendingChannelStarts.cancel(lane.channelId);
       advanceChannelRevision(lane.channelId);
-      const pending: PendingChannelStart = {
-        cancelled: false,
-        channelId: lane.channelId,
-      };
       const startEpoch = epoch;
       const hasSource = (expectedRadio: Radio) => {
         const current = findSource(store.state.graph, nodeId);
@@ -1943,9 +1931,10 @@ function createNodePlayback(
           current.data.radio === expectedRadio
         );
       };
-      const isCurrent = () =>
-        !pending.cancelled && hasSource(lane.radio as Radio);
-      pendingChannelStarts.add(pending);
+      const pending = pendingChannelStarts.begin(lane.channelId, () =>
+        hasSource(lane.radio as Radio)
+      );
+      const { isCurrent } = pending;
       let radio: Radio | null;
       try {
         radio = await radioOnTrack(
@@ -1960,7 +1949,7 @@ function createNodePlayback(
         return;
       } finally {
         // Its own source replacement cancels pending starts during the fade.
-        pendingChannelStarts.delete(pending);
+        pending.release();
       }
       if (!isCurrent()) {
         return;

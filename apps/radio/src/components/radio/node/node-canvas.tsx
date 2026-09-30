@@ -5,7 +5,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
-import { compile, mergeRoles } from "@/lib/node-graph/compile";
+import { compile, idleKeys, mergeRoles } from "@/lib/node-graph/compile";
 import {
   connectNodes,
   moveNodes,
@@ -65,6 +65,7 @@ import {
   toFlowEdges,
   toFlowNodes,
 } from "./flow-elements";
+import { KeyEdge } from "./key-edge";
 import { MergeNode } from "./merge-node";
 import { type FlowPorts, FlowPortsProvider } from "./module-frame";
 import { NativeStripNode } from "./native-strip-nodes";
@@ -97,8 +98,14 @@ const nodeTypes = {
   station: StationNode,
 } satisfies FlowNodeTypes;
 
-/** A cable out of a split draws as a branch, with its tag and controls. */
-const edgeTypes = { branch: BranchEdge } satisfies FlowEdgeTypes;
+/**
+ * A cable out of a split draws as a branch, with its tag and controls; a
+ * cable into a sidechain as a key, amber and long-dashed.
+ */
+const edgeTypes = {
+  branch: BranchEdge,
+  key: KeyEdge,
+} satisfies FlowEdgeTypes;
 
 /** P and S: series ⇄ parallel on the selected FX. */
 const SERIES_PARALLEL_EDITS = {
@@ -219,8 +226,10 @@ function Canvas({
   } = useReactFlow();
   const [env] = useState(detectNodePlaybackEnv);
   const validateOptions = { profile: env.profile };
-  // The compiler's verdict on each Merge, for its in-lane badge.
-  const roles = mergeRoles(graph, compile(graph, env));
+  // The compiler's verdict on each Merge, for its in-lane badge, and on
+  // each key cable, for its idle tag.
+  const plan = compile(graph, env);
+  const roles = mergeRoles(graph, plan);
 
   const nodes = toFlowNodes(graph, {
     measured,
@@ -228,7 +237,11 @@ function Canvas({
     positions: dragPositions,
     selection,
   });
-  const edges = toFlowEdges(graph, { liveLanes, selection });
+  const edges = toFlowEdges(graph, {
+    idleKeys: idleKeys(graph, plan),
+    liveLanes,
+    selection,
+  });
 
   // React Flow can call onNodesChange and onEdgesChange back to back in one
   // event (select a node, deselect a cable), so each handler reads the

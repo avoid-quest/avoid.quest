@@ -47,9 +47,11 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
-import type {
-  ChannelEffectsResult,
-  EffectsRuntimeOutcome,
+import {
+  type ChannelEffectsResult,
+  createChannelEffects,
+  type DesiredEffectsState,
+  type EffectsRuntimeOutcome,
 } from "./channel-effects";
 import {
   type GetNodePlaybackOptions,
@@ -267,6 +269,7 @@ function createHarness(
     backendBadges?: NodeBackendBadgeStore;
     context?: PlaybackActionContext;
     crossOriginIsolated?: boolean;
+    effects?: GetNodePlaybackOptions["effects"];
     effectsOutcome?: () => EffectsRuntimeOutcome;
     fadeOutSound?: (soundId: string, durationMs: number) => Promise<void>;
     laneOutputs?: GetNodePlaybackOptions["laneOutputs"];
@@ -288,7 +291,7 @@ function createHarness(
   const playback = getNodePlayback({
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
-    effects: { change: effectsChange },
+    effects: options.effects ?? { change: effectsChange },
     fadeOutSound,
     getEnv: () => ({
       crossOriginIsolated: options.crossOriginIsolated ?? false,
@@ -2247,5 +2250,118 @@ describe("Node Playback FX lanes", () => {
     expect(laneBackendBadge("official", "compatibility")).toBe("compat");
     expect(laneBackendBadge("official", "bypass")).toBe("bypassed");
     expect(laneBackendBadge("compat", null)).toBe("compat");
+  });
+});
+
+describe("Node Playback key cables", () => {
+  const KEY_EDGE_ID = "b~>comp";
+
+  /** Station a → Compressor → Speakers; Station b straight to Speakers. */
+  function duckPatch(keyed: boolean): NodeGraph {
+    return nodeGraphSchema.parse({
+      edges: [
+        cable("a", "comp"),
+        cable("comp", "speakers"),
+        cable("b", "speakers"),
+        ...(keyed
+          ? [
+              {
+                id: KEY_EDGE_ID,
+                source: "b",
+                sourceHandle: "out:audio:main",
+                target: "comp",
+                targetHandle: "in:sidechain:key",
+              },
+            ]
+          : []),
+      ],
+      nodes: [
+        station("a"),
+        station("b"),
+        {
+          data: {
+            effect: {
+              ...createNodeEffectConfig("compressor", "comp"),
+              enabled: true,
+            },
+          },
+          id: "comp",
+          position: { x: 240, y: 0 },
+          type: "compressor",
+        },
+        speakers,
+      ],
+      version: 1,
+    });
+  }
+
+  /**
+   * Real channel effects over a recording runtime, bound as the channel
+   * state manager binds them: when a lane's sound is created.
+   */
+  function withChannelEffects() {
+    const desired = new Map<string, DesiredEffectsState>();
+    const effects = createChannelEffects({
+      runtime: {
+        reconcile: (soundId, state) => {
+          desired.set(soundId, state);
+          return Promise.resolve({
+            backend: "compatibility",
+            ready: true,
+            status: "ready",
+          });
+        },
+      },
+    });
+    const binds: Promise<unknown>[] = [];
+    const context = createTestContext();
+    const { activate } = context.channels;
+    context.channels.activate = mock((...args: Parameters<typeof activate>) => {
+      const soundId = activate(...args);
+      const [sessionId, channelId] = args;
+      binds.push(effects.bind({ channelId, sessionId }, soundId));
+      return soundId;
+    });
+    const harness = createHarness({ context, effects });
+    const settled = async () => {
+      await harness.playback.whenSettled();
+      await Promise.all(binds);
+    };
+    return { desired, harness, settled };
+  }
+
+  test("a key cable from Station b to a Compressor in a's lane binds b's sound as a's sidechain", async () => {
+    insertNodeSession(duckPatch(false));
+    const { desired, harness, settled } = withChannelEffects();
+    await harness.playback.activate();
+    await settled();
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
+
+    await commit(harness, () => duckPatch(true));
+    await settled();
+
+    expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
+      expect.objectContaining({
+        id: "comp",
+        sidechain: { channelId: channelOf("b") },
+      }),
+    ]);
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    // The key listens; it never puts FX or a key on b's own lane.
+    expect(desired.get(soundOf("b"))?.sidechainSoundId).toBeNull();
+
+    await commit(harness, () => duckPatch(false));
+    await settled();
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
+  });
+
+  test("a patch opened with its key binds once both lanes exist", async () => {
+    insertNodeSession(duckPatch(true));
+    const { desired, harness, settled } = withChannelEffects();
+
+    await harness.playback.activate();
+    await settled();
+
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
   });
 });

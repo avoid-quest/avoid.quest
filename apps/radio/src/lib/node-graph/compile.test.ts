@@ -16,6 +16,7 @@ import {
   type CompileEnv,
   compile,
   type EnginePlan,
+  idleKeys,
   type LanePlan,
   layoutSignature,
   MONITORING_CHANNEL_CAP,
@@ -1226,6 +1227,49 @@ describe("compile: key cables", () => {
       [audio("a", "comp"), audio("comp", "speakers")]
     );
     expect(lane(plan, "a").effects[0]?.sidechain).toBeUndefined();
+  });
+
+  test("idleKeys leaves a working key out and says why the others idle", () => {
+    const patch = graph(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        station("empty", false),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        fx("loose", "gate", { enabled: true }),
+        fx("idle", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        audio("talk", "idle"),
+        audio("idle", "speakers"),
+        key("talk", "comp"),
+        key("news", "gate"),
+        key("empty", "idle"),
+        // The loose gate is in no lane, so its key has nothing to key.
+        key("music", "loose"),
+      ]
+    );
+    const plan = compile(patch, ENV);
+
+    expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
+      "empty~>idle": "The station slot is empty",
+      "music~>loose": "A key only works on a station lane",
+      "news~>gate": "One key per lane",
+    });
+
+    const keyedOff = graph(
+      [station("music"), station("talk"), fx("off", "compressor"), speakers],
+      [audio("music", "off"), audio("off", "speakers"), key("talk", "off")]
+    );
+    expect(
+      Object.fromEntries(idleKeys(keyedOff, compile(keyedOff, ENV)))
+    ).toEqual({ "talk~>off": "Switch the effect on to use its key" });
   });
 
   test("a key from an empty station slot binds nothing", () => {

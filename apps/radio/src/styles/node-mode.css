@@ -92,6 +92,21 @@
     stroke-width: 2.5;
   }
 
+  /* A key (sidechain) cable: the Key amber in long dashes. A playing
+     station thickens it, and one that keys nothing fades. */
+  .react-flow__edge.node-edge-key .react-flow__edge-path {
+    stroke: var(--node-key);
+    stroke-dasharray: 6 4;
+  }
+
+  .react-flow__edge.node-edge-key-live .react-flow__edge-path {
+    stroke-width: 2.5;
+  }
+
+  .react-flow__edge.node-edge-key-idle .react-flow__edge-path {
+    opacity: 0.45;
+  }
+
   .react-flow__edge.selected .react-flow__edge-path,
   .react-flow__edge:focus-visible .react-flow__edge-path {
     stroke: var(--foreground);

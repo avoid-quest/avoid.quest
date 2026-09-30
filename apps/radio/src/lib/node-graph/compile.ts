@@ -38,6 +38,7 @@ import {
   type Lane,
   liveAudioNodes,
   nativePlacementIssues,
+  parseHandleId,
   type Topology,
   type ValidateOptions,
   type WiredEdge,
@@ -1098,4 +1099,76 @@ export function mergeRoles(
     }
   }
   return roles;
+}
+
+function effectsById(
+  effects: readonly EffectConfig[],
+  into = new Map<string, EffectConfig>()
+): Map<string, EffectConfig> {
+  for (const effect of effects) {
+    into.set(effect.id, effect);
+    if (isEffectContainer(effect)) {
+      for (const chain of effect.chains) {
+        effectsById(chain.effects, into);
+      }
+    }
+  }
+  return into;
+}
+
+/** Why a Station has no lane to key from, or null when it has one. */
+function silentStation(node: GraphNode | undefined): string | null {
+  if (node?.type !== "station" || isStationLive(node)) {
+    return null;
+  }
+  return node.data.radio
+    ? "The station is hidden"
+    : "The station slot is empty";
+}
+
+/**
+ * Why each key cable that keys nothing is idle, by cable id, as the canvas
+ * says it: the issue that refused it (a lane's second key, a key from a
+ * bus), an empty or hidden Station, or an effect switched off. A key that
+ * reaches its effect's sidechain is left out.
+ */
+export function idleKeys(
+  graph: Pick<NodeGraph, "nodes" | "edges">,
+  plan: EnginePlan
+): Map<string, string> {
+  const inLane = new Map<string, EffectConfig>();
+  const laneOf = new Map<string, LanePlan>();
+  for (const lane of plan.lanes.values()) {
+    effectsById(lane.effects, inLane);
+    for (const id of lane.nodes) {
+      laneOf.set(id, lane);
+    }
+  }
+  const issues = new Map(
+    plan.issues.map((issue) => [`${issue.target}:${issue.id}`, issue.message])
+  );
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const idle = new Map<string, string>();
+  for (const edge of graph.edges) {
+    if (parseHandleId(edge.targetHandle)?.kind !== "sidechain") {
+      continue;
+    }
+    const effect = inLane.get(edge.target);
+    const channelId = laneOf.get(edge.source)?.channelId;
+    if (channelId && effect?.sidechain?.channelId === channelId) {
+      if (!effect.enabled) {
+        idle.set(edge.id, "Switch the effect on to use its key");
+      }
+      continue;
+    }
+    idle.set(
+      edge.id,
+      issues.get(`edge:${edge.id}`) ??
+        issues.get(`node:${edge.target}`) ??
+        silentStation(byId.get(edge.source)) ??
+        issues.get(`node:${edge.source}`) ??
+        "This key isn't used"
+    );
+  }
+  return idle;
 }

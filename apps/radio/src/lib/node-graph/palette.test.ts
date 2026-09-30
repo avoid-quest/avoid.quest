@@ -66,6 +66,7 @@ describe("paletteEntries", () => {
       "routing:Band Split",
       "routing:Merge",
       "templates:Start from Multiple",
+      "templates:Duck",
       "templates:Blank",
     ]);
   });

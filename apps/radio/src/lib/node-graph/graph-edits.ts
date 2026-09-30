@@ -20,7 +20,7 @@ import {
   STATION_ROW_HEIGHT,
   stationNodeId,
 } from "./templates";
-import type { Connection } from "./validate";
+import { type Connection, parseHandleId } from "./validate";
 
 type StationNode = Extract<GraphNode, { type: "station" }>;
 type NativeNode = Extract<GraphNode, { type: "filter" | "pan" | "gain" }>;
@@ -260,7 +260,12 @@ export function removeSelection(
   return removeEdges(removeNodes(graph, nodes), selection.edges);
 }
 
-/** Adds a cable at unity gain. Validation happens before, on drag. */
+/**
+ * Adds a cable at unity gain. Validation happens before, on drag. A key
+ * into a Vocoder also switches its modulator to the external sidechain,
+ * which is what the key feeds; on its noise or self modulator the Vocoder
+ * would not hear it.
+ */
 export function connectNodes(
   graph: NodeGraph,
   { source, sourceHandle, target, targetHandle }: Connection
@@ -269,8 +274,17 @@ export function connectNodes(
     return graph;
   }
   const edgeIds = new Set(graph.edges.map((edge) => edge.id));
+  const vocoder = graph.nodes.find(
+    (node) => node.id === target && node.type === "vocoder"
+  );
+  const keyed =
+    vocoder && parseHandleId(targetHandle)?.kind === "sidechain"
+      ? setEffectParams(graph, target, {
+          modulatorSource: "external",
+        } as Partial<EffectConfig>)
+      : graph;
   return {
-    ...graph,
+    ...keyed,
     edges: [
       ...graph.edges,
       {

@@ -13,6 +13,7 @@ import {
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
+  buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
 } from "@/lib/node-graph/templates";
 import {
@@ -272,6 +273,32 @@ describe("NodeRack", () => {
     expect(view.getByText("Merge")).toBeTruthy();
     expect(view.queryByRole("button", { name: "Merge settings" })).toBeNull();
     expect(view.getByRole("button", { name: "Delay settings" })).toBeTruthy();
+  });
+
+  test("a keyed FX chip names the station that keys it", () => {
+    const { view } = renderRack(
+      buildNodeGraphFromTemplate("duck", {
+        saved: [
+          {
+            enabled: true,
+            id: "kexp",
+            name: "KEXP",
+            streamUrl: "https://radio.example/kexp.mp3",
+          },
+          {
+            enabled: true,
+            id: "r4",
+            name: "BBC Radio 4",
+            streamUrl: "https://radio.example/r4.mp3",
+          },
+        ],
+      })
+    );
+
+    const chip = view.getByRole("button", {
+      name: "Compressor settings, keyed by BBC Radio 4",
+    });
+    expect(chip.getAttribute("title")).toBe("Keyed by BBC Radio 4");
   });
 
   test("an empty patch points at the search", () => {

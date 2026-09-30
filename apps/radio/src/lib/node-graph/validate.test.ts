@@ -904,6 +904,83 @@ describe("validateConnection", () => {
     ).toBeNull();
   });
 
+  describe("key cables", () => {
+    const keyed = graph(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        fx("comp", "compressor"),
+        fx("gate", "gate"),
+        fx("loose", "crusher"),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        audio("talk", "speakers"),
+        audio("news", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    const keyInto = (source: string, target: string) => ({
+      source,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: "in:sidechain:key",
+    });
+
+    test("a first key from a station lane connects", () => {
+      const unkeyed = {
+        ...keyed,
+        edges: keyed.edges.filter((edge) => edge.id !== "talk->comp"),
+      };
+      expect(connectionRefusal(unkeyed, keyInto("talk", "comp"))).toBeNull();
+    });
+
+    test("a second key into the same lane is refused with One key per lane", () => {
+      expect(codes(validateConnection(keyed, keyInto("news", "gate")))).toEqual(
+        ["lane-key@gate"]
+      );
+      expect(connectionRefusal(keyed, keyInto("news", "gate"))).toBe(
+        "One key per lane"
+      );
+    });
+
+    test("an audio cable that brings a second keyed FX into a lane is refused too", () => {
+      const spare = graph(
+        [
+          station("music"),
+          station("talk"),
+          fx("comp", "compressor"),
+          fx("gate", "gate"),
+          speakers,
+        ],
+        [
+          audio("music", "comp"),
+          audio("comp", "speakers"),
+          key("talk", "comp"),
+          key("talk", "gate", "talk~>gate"),
+        ]
+      );
+      expect(
+        connectionRefusal(spare, {
+          source: "comp",
+          sourceHandle: "out:audio:main",
+          target: "gate",
+          targetHandle: "in:audio:main",
+        })
+      ).toBe("One key per lane");
+    });
+
+    test("a key from a node in no lane is refused", () => {
+      expect(connectionRefusal(keyed, keyInto("loose", "gate"))).toBe(
+        "A key must come from a station lane"
+      );
+    });
+  });
+
   test("keeps its candidate apart from a cable already named candidate", () => {
     const named = graph(
       [station("a"), node("g", "gain"), speakers],

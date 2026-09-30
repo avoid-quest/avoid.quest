@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { parsePlaybackSessionRecord } from "@/lib/collections/playback-sessions";
+import { compile } from "./compile";
 import { nodeGraphSchema } from "./schema";
 import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
+  DUCK_NODE_ID,
   SPEAKERS_NODE_ID,
   STATION_ROW_HEIGHT,
 } from "./templates";
@@ -144,5 +146,102 @@ describe("blank", () => {
     expect(session.graph?.edges).toEqual([]);
     expect(session.channels).toEqual([]);
     expect(session.masterVolume).toBe(1);
+  });
+});
+
+describe("duck", () => {
+  const env = { crossOriginIsolated: false };
+
+  test("a talk station keys a Compressor on a music station", () => {
+    const graph = buildNodeGraphFromTemplate("duck", {
+      saved: [
+        radio("kexp", { enabled: true, name: "KEXP", order: 0 }),
+        radio("r4", { enabled: true, name: "BBC Radio 4", order: 1 }),
+      ],
+    });
+
+    expect(nodeGraphSchema.parse(graph)).toEqual(graph);
+    expect(validate(graph)).toEqual([]);
+    expect(graph.edges).toEqual([
+      expect.objectContaining({ source: "src-kexp", target: DUCK_NODE_ID }),
+      expect.objectContaining({
+        source: DUCK_NODE_ID,
+        target: SPEAKERS_NODE_ID,
+      }),
+      expect.objectContaining({ source: "src-r4", target: SPEAKERS_NODE_ID }),
+      expect.objectContaining({
+        source: "src-r4",
+        target: DUCK_NODE_ID,
+        targetHandle: "in:sidechain:key",
+      }),
+    ]);
+
+    const plan = compile(graph, env);
+    expect(plan.issues).toEqual([]);
+    const [compressor] = plan.lanes.get("src-kexp")?.effects ?? [];
+    expect(compressor).toMatchObject({
+      autoMakeup: false,
+      enabled: true,
+      id: DUCK_NODE_ID,
+      sidechain: { channelId: "n:src-r4" },
+      type: "compressor",
+    });
+    // The talk plays dry, straight to Speakers.
+    expect(plan.lanes.get("src-r4")?.effects).toEqual([]);
+  });
+
+  test("picks the station that reads as talk, wherever it is in order", () => {
+    const graph = buildNodeGraphFromTemplate("duck", {
+      saved: [
+        radio("news", { enabled: true, name: "City News", order: 0 }),
+        radio("nts", { enabled: true, name: "NTS 1", order: 1 }),
+        radio("fip", { enabled: true, name: "FIP", order: 2 }),
+      ],
+    });
+
+    const key = graph.edges.find(
+      (edge) => edge.targetHandle === "in:sidechain:key"
+    );
+    expect(key?.source).toBe("src-news");
+    expect(
+      graph.edges.find((edge) => edge.target === DUCK_NODE_ID && edge !== key)
+        ?.source
+    ).toBe("src-nts");
+    expect(stationIds(graph)).toEqual(["src-nts", "src-news"]);
+  });
+
+  test("keeps levels, and builds a valid session whose music lane is keyed", () => {
+    const session = buildNodeSessionFromTemplate("duck", {
+      levels: (station) =>
+        station.id === "b" ? { muted: false, volume: 0.4 } : undefined,
+      saved: [radio("a", { enabled: true }), radio("b", { enabled: true })],
+    });
+
+    expect(parsePlaybackSessionRecord(session).graph).toEqual(session.graph);
+    expect(session.channels).toEqual([
+      expect.objectContaining({
+        effects: [
+          expect.objectContaining({
+            id: DUCK_NODE_ID,
+            sidechain: { channelId: "n:src-b" },
+          }),
+        ],
+        id: "n:src-a",
+      }),
+      expect.objectContaining({ effects: [], id: "n:src-b", volume: 0.4 }),
+    ]);
+  });
+
+  test("with no stations, the slots are empty searches and nothing plays", () => {
+    const graph = buildNodeGraphFromTemplate("duck");
+
+    expect(stationIds(graph)).toEqual(["src-music", "src-talk"]);
+    expect(
+      graph.nodes.every(
+        (node) => node.type !== "station" || node.data.radio === null
+      )
+    ).toBe(true);
+    expect(validate(graph)).toEqual([]);
+    expect(compile(graph, env).lanes.size).toBe(0);
   });
 });

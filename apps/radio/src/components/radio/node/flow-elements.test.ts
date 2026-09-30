@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+import { compile, idleKeys } from "@/lib/node-graph/compile";
 import { type NodeGraph, nodeGraphSchema } from "@/lib/node-graph/schema";
-import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
+import {
+  buildNodeGraphFromTemplate,
+  DUCK_NODE_ID,
+} from "@/lib/node-graph/templates";
 import {
   DRAWN_NODE_TYPES,
   dropTargetOf,
@@ -266,7 +270,8 @@ describe("flow elements", () => {
     ).toEqual({
       "comp->speakers": "node-edge-live",
       "kexp->comp": "node-edge-live",
-      "kexp->key": undefined,
+      // A key never glows Live; its playing station thickens it instead.
+      "kexp->key": "node-edge-key node-edge-key-live",
       "nts->gate": undefined,
     });
     expect(
@@ -276,5 +281,45 @@ describe("flow elements", () => {
         selection,
       }).find((node) => node.id === "comp")
     ).toMatchObject({ ariaLabel: "Compressor", type: "compressor" });
+  });
+
+  test("key cables draw as keys, and an idle one says why", () => {
+    const duck = buildNodeGraphFromTemplate("duck", {
+      saved: [
+        {
+          enabled: true,
+          id: "kexp",
+          name: "KEXP",
+          streamUrl: "https://radio.example/kexp.mp3",
+        },
+      ],
+    });
+    const plan = compile(duck, { crossOriginIsolated: false });
+    const key = (graph: NodeGraph, idle: ReadonlyMap<string, string>) =>
+      toFlowEdges(graph, { idleKeys: idle, liveLanes: new Set(), selection })
+        .filter((edge) => edge.type === "key")
+        .map(({ ariaLabel, className, data, target }) => ({
+          ariaLabel,
+          className,
+          data,
+          target,
+        }));
+
+    // The talk slot is empty, so the Compressor has nothing to listen to.
+    expect(key(duck, idleKeys(duck, plan))).toEqual([
+      {
+        ariaLabel:
+          "Empty Station audio to Compressor key input, not keying: The station slot is empty",
+        className: "node-edge-key node-edge-key-idle",
+        data: { idle: "The station slot is empty" },
+        target: DUCK_NODE_ID,
+      },
+    ]);
+    expect(key(duck, new Map())).toEqual([
+      expect.objectContaining({
+        className: "node-edge-key",
+        data: { idle: null },
+      }),
+    ]);
   });
 });

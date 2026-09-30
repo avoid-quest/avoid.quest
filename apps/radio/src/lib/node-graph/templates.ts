@@ -5,6 +5,8 @@
  *
  * - "start-from-multiple": every enabled saved station, then the session
  *   stations, in Multiple's order, each wired to Speakers at its volume;
+ * - "duck": a talk station keys a Compressor on a music station, so the
+ *   music dips whenever the talk speaks;
  * - "blank": Speakers only.
  *
  * `buildNodeSessionFromTemplate` also compiles the patch, so the session it
@@ -14,6 +16,7 @@
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import type { PlaybackSessionRecord } from "@/lib/collections/playback-sessions";
+import { createNodeEffectConfig } from "./catalogue";
 import { type CompileEnv, compile } from "./compile";
 import {
   type GraphEdge,
@@ -23,13 +26,18 @@ import {
 } from "./schema";
 import { deriveNodeChannels } from "./session-channels";
 
-export const NODE_TEMPLATE_IDS = ["start-from-multiple", "blank"] as const;
+export const NODE_TEMPLATE_IDS = [
+  "start-from-multiple",
+  "duck",
+  "blank",
+] as const;
 export type NodeTemplateId = (typeof NODE_TEMPLATE_IDS)[number];
 
 export const SPEAKERS_NODE_ID = "speakers";
 
-/** Station node width (240 px) plus a gutter. */
-const COLUMN_WIDTH = 280;
+const STATION_WIDTH = 240;
+/** Station node width plus a gutter. */
+const COLUMN_WIDTH = STATION_WIDTH + 40;
 /** A Station card with now-playing, badges and controls, plus a gutter. */
 export const STATION_ROW_HEIGHT = 160;
 /** Past this many stations the template lays them out in two columns. */
@@ -39,6 +47,7 @@ const SPEAKERS_GAP = 200;
 
 export const AUDIO_OUT_HANDLE = "out:audio:main";
 export const AUDIO_IN_HANDLE = "in:audio:main";
+export const KEY_IN_HANDLE = "in:sidechain:key";
 
 export type NodeTemplateLevels = { volume: number; muted: boolean };
 
@@ -82,15 +91,22 @@ function slug(text: string): string {
   );
 }
 
-/** `src-<radio id or name slug>`, suffixed when two stations collide. */
-export function stationNodeId(radio: Radio, taken: Set<string>): string {
-  const base = `src-${radio.id === undefined ? slug(radio.name) : String(radio.id)}`;
+/** `base`, suffixed until no node has it, then marked taken. */
+function claimId(base: string, taken: Set<string>): string {
   let id = base;
   for (let suffix = 2; taken.has(id); suffix += 1) {
     id = `${base}-${suffix}`;
   }
   taken.add(id);
   return id;
+}
+
+/** `src-<radio id or name slug>`, suffixed when two stations collide. */
+export function stationNodeId(radio: Radio, taken: Set<string>): string {
+  return claimId(
+    `src-${radio.id === undefined ? slug(radio.name) : String(radio.id)}`,
+    taken
+  );
 }
 
 function speakersNode(position: { x: number; y: number }): GraphNode {
@@ -159,6 +175,106 @@ function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
   );
 }
 
+/** The Duck template's Compressor. */
+export const DUCK_NODE_ID = "duck";
+
+/**
+ * Station names that read as talk rather than music. Names only: station
+ * blurbs mention podcasts and talks far too often to go by.
+ */
+const TALK_STATION = /\b(talk|news|speech|spoken|radio 4|world service)\b/i;
+
+/**
+ * A ducking Compressor: keyed, a talk station at speaking level pulls the
+ * music down by about 12 dB, and lets it back up over 400 ms. Auto makeup
+ * stays off, or it would undo the dip.
+ */
+const DUCK_PARAMS = {
+  attack: 5,
+  autoMakeup: false,
+  automakeup: false,
+  makeup: 0,
+  ratio: 6,
+  release: 400,
+  threshold: -30,
+};
+
+/** Where the Duck Compressor sits: a cable's length right of the stations. */
+const DUCK_FX_X = STATION_WIDTH + 120;
+/** The Compressor body, three knobs wide, plus a cable's length. */
+const DUCK_SPEAKERS_X = DUCK_FX_X + 224 + 120;
+
+/**
+ * Two stations and a Compressor: the music plays through the Compressor,
+ * the talk plays straight to Speakers and also keys the Compressor. The
+ * talk is the first station that reads as talk, else the second; the music
+ * is the first of the rest. A missing one is an empty slot to search.
+ */
+function duck(sources: NodeTemplateSources): NodeGraph {
+  const stations = orderedStations(sources);
+  const talkRadio =
+    stations.find((radio) => TALK_STATION.test(radio.name)) ?? stations[1];
+  const musicRadio = stations.find((radio) => radio !== talkRadio);
+  const taken = new Set([SPEAKERS_NODE_ID, DUCK_NODE_ID]);
+  const station = (
+    radio: Radio | undefined,
+    role: string,
+    y: number
+  ): StationNode => ({
+    data: {
+      muted: false,
+      radio: radio ?? null,
+      volume: 1,
+      ...(radio ? sources.levels?.(radio) : undefined),
+    },
+    id: radio ? stationNodeId(radio, taken) : claimId(`src-${role}`, taken),
+    position: { x: 0, y },
+    type: "station",
+  });
+  const music = station(musicRadio, "music", 0);
+  const talk = station(talkRadio, "talk", STATION_ROW_HEIGHT);
+  const cable = (
+    source: string,
+    target: string,
+    targetHandle = AUDIO_IN_HANDLE
+  ): GraphEdge => ({
+    gain: 1,
+    id: `${source}->${target}`,
+    muted: false,
+    source,
+    sourceHandle: AUDIO_OUT_HANDLE,
+    target,
+    targetHandle,
+  });
+  return {
+    edges: [
+      cable(music.id, DUCK_NODE_ID),
+      cable(DUCK_NODE_ID, SPEAKERS_NODE_ID),
+      cable(talk.id, SPEAKERS_NODE_ID),
+      cable(talk.id, DUCK_NODE_ID, KEY_IN_HANDLE),
+    ],
+    nodes: [
+      music,
+      talk,
+      {
+        data: {
+          effect: {
+            ...createNodeEffectConfig("compressor", DUCK_NODE_ID),
+            ...DUCK_PARAMS,
+            enabled: true,
+          },
+        },
+        id: DUCK_NODE_ID,
+        position: { x: DUCK_FX_X, y: 0 },
+        type: "compressor",
+      },
+      speakersNode({ x: DUCK_SPEAKERS_X, y: STATION_ROW_HEIGHT / 2 }),
+    ],
+    version: NODE_GRAPH_VERSION,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
 export function buildNodeGraphFromTemplate(
   template: NodeTemplateId,
   sources: NodeTemplateSources = {}
@@ -166,6 +282,8 @@ export function buildNodeGraphFromTemplate(
   switch (template) {
     case "start-from-multiple":
       return startFromMultiple(sources);
+    case "duck":
+      return duck(sources);
     case "blank":
       return {
         edges: [],

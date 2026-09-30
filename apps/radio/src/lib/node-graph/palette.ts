@@ -96,6 +96,14 @@ export const PALETTE_TEMPLATES: readonly PaletteTemplateEntry[] = [
     template: "start-from-multiple",
   },
   {
+    description: "A talk station ducks a music station while it speaks",
+    id: "template:duck",
+    kind: "template",
+    name: "Duck",
+    section: "templates",
+    template: "duck",
+  },
+  {
     description: "Speakers only",
     id: "template:blank",
     kind: "template",

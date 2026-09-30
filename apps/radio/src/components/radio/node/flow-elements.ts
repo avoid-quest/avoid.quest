@@ -101,6 +101,9 @@ export type BranchEdgeData = {
   solo: boolean;
 };
 
+/** What a key cable draws: why it keys nothing, or null while it keys. */
+export type KeyEdgeData = { idle: string | null };
+
 function mergeData(
   graph: NodeGraph,
   node: GraphNode,
@@ -205,15 +208,45 @@ function branchOf(
   return { data, type: "branch" };
 }
 
+/**
+ * A key cable draws in the Key amber, long-dashed, and says when it keys
+ * nothing and why. It carries its station's audio to a detector, not on
+ * air, so it never glows Live; a playing station only thickens it.
+ */
+function keyOf(
+  edge: GraphEdge,
+  label: string,
+  live: ReadonlySet<string>,
+  idleKeys: ReadonlyMap<string, string>
+): Pick<FlowEdge, "ariaLabel" | "className" | "data" | "type"> {
+  const idle = idleKeys.get(edge.id) ?? null;
+  const data: KeyEdgeData = { idle };
+  let className = "node-edge-key";
+  if (idle) {
+    className += " node-edge-key-idle";
+  } else if (live.has(edge.source)) {
+    className += " node-edge-key-live";
+  }
+  return {
+    ariaLabel: idle ? `${label}, not keying: ${idle}` : label,
+    className,
+    data,
+    type: "key",
+  };
+}
+
 export function toFlowEdges(
   graph: NodeGraph,
   {
     selection,
     liveLanes,
+    idleKeys = new Map(),
   }: {
     selection: NodeSelection;
     /** Channel ids of the lanes playing now. */
     liveLanes: ReadonlySet<string>;
+    /** Key cables that key nothing, with why (`idleKeys` in compile). */
+    idleKeys?: ReadonlyMap<string, string>;
   }
 ): FlowEdge[] {
   const drawn = new Map(
@@ -222,21 +255,26 @@ export function toFlowEdges(
   const live = liveNodeIds(graph, liveLanes);
   return graph.edges
     .filter((edge) => drawn.has(edge.source) && drawn.has(edge.target))
-    .map((edge) => ({
-      ...branchOf(drawn.get(edge.source), edge),
-      ariaLabel: edgeLabel(graph, edge),
-      // A key cable carries its station's audio as a detector, not on air.
-      className:
-        live.has(edge.source) &&
-        parseHandleId(edge.targetHandle)?.kind === "audio"
-          ? "node-edge-live"
-          : undefined,
-      domAttributes: { "aria-roledescription": "cable" },
-      id: edge.id,
-      selected: selection.edges.includes(edge.id),
-      source: edge.source,
-      sourceHandle: edge.sourceHandle,
-      target: edge.target,
-      targetHandle: edge.targetHandle,
-    }));
+    .map((edge) => {
+      const kind = parseHandleId(edge.targetHandle)?.kind;
+      const label = edgeLabel(graph, edge);
+      return {
+        ...branchOf(drawn.get(edge.source), edge),
+        ariaLabel: label,
+        className:
+          live.has(edge.source) && kind === "audio"
+            ? "node-edge-live"
+            : undefined,
+        ...(kind === "sidechain"
+          ? keyOf(edge, label, live, idleKeys)
+          : undefined),
+        domAttributes: { "aria-roledescription": "cable" },
+        id: edge.id,
+        selected: selection.edges.includes(edge.id),
+        source: edge.source,
+        sourceHandle: edge.sourceHandle,
+        target: edge.target,
+        targetHandle: edge.targetHandle,
+      };
+    });
 }

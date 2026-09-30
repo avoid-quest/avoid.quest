@@ -1,8 +1,10 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { KeyRoundIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { findEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
@@ -102,9 +104,12 @@ function RackSection({
 function LaneChain({
   lane,
   nodesById,
+  laneNames,
 }: {
   lane: LanePlan;
   nodesById: Map<string, GraphNode>;
+  /** Station name by lane channel id, to name what keys an FX. */
+  laneNames: ReadonlyMap<string, string>;
 }) {
   const actions = useNodeActions();
   const fx = lane.nodes
@@ -130,6 +135,9 @@ function LaneChain({
             </Badge>
           );
         }
+        const keyChannel = findEffectInTree(lane.effects, node.id)?.sidechain
+          ?.channelId;
+        const keyedBy = keyChannel ? laneNames.get(keyChannel) : undefined;
         return (
           <Badge
             asChild
@@ -138,12 +146,23 @@ function LaneChain({
             variant="outline"
           >
             <button
-              aria-label={`${name} settings`}
+              aria-label={
+                keyedBy
+                  ? `${name} settings, keyed by ${keyedBy}`
+                  : `${name} settings`
+              }
               data-inspect-node={node.id}
               onClick={() => actions.inspectNode(node.id)}
+              title={keyedBy ? `Keyed by ${keyedBy}` : undefined}
               type="button"
             >
               {name}
+              {keyedBy ? (
+                <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
+                  <KeyRoundIcon aria-hidden className="size-2.5" />
+                  <span className="max-w-24 truncate">{keyedBy}</span>
+                </span>
+              ) : null}
             </button>
           </Badge>
         );
@@ -198,6 +217,9 @@ export function NodeRack({
   const plan = compile(graph, env ?? detectedEnv);
   const groups = groupLanes(plan);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const laneNames = new Map(
+    [...plan.lanes.values()].map((lane) => [lane.channelId, lane.radio.name])
+  );
   const hidden = graph.nodes.flatMap((node) =>
     node.type === "station" && node.data.radio?.enabled === false
       ? [{ id: node.id, radio: node.data.radio as Radio }]
@@ -236,7 +258,11 @@ export function NodeRack({
                   radio={radio}
                   volume={lane.volume}
                 >
-                  <LaneChain lane={lane} nodesById={nodesById} />
+                  <LaneChain
+                    lane={lane}
+                    laneNames={laneNames}
+                    nodesById={nodesById}
+                  />
                 </NodeSourceRow>
               </li>
             );

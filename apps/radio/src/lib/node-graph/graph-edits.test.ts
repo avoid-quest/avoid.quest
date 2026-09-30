@@ -226,6 +226,53 @@ describe("setEffectParams", () => {
   });
 });
 
+describe("connectNodes: key cables", () => {
+  const start = patch(radio("a"), radio("b"));
+  const withFx = (type: "vocoder" | "compressor") =>
+    addPaletteNode(start, {
+      id: type,
+      kind: "node",
+      name: type,
+      section: "fx",
+      type,
+    }).graph;
+  const keyFrom = (target: string) => ({
+    source: "src-b",
+    sourceHandle: "out:audio:main",
+    target,
+    targetHandle: "in:sidechain:key",
+  });
+  const effectOf = (graph: ReturnType<typeof withFx>, id: string) =>
+    graph.nodes.find((node) => node.id === id)?.data as {
+      effect: Record<string, unknown>;
+    };
+
+  test("a key into a Vocoder switches its modulator to the sidechain", () => {
+    const vocoder = withFx("vocoder");
+    expect(effectOf(vocoder, "vocoder").effect.modulatorSource).toBe(
+      "noise-pink"
+    );
+
+    const keyed = connectNodes(vocoder, keyFrom("vocoder"));
+
+    expect(effectOf(keyed, "vocoder").effect.modulatorSource).toBe("external");
+    expect(keyed.edges.at(-1)).toMatchObject({
+      source: "src-b",
+      targetHandle: "in:sidechain:key",
+    });
+  });
+
+  test("a key into a Compressor leaves its params alone", () => {
+    const compressor = withFx("compressor");
+    const keyed = connectNodes(compressor, keyFrom("compressor"));
+
+    expect(keyed.nodes).toBe(compressor.nodes);
+    expect(effectOf(keyed, "compressor").effect).not.toHaveProperty(
+      "modulatorSource"
+    );
+  });
+});
+
 describe("setNativeParams", () => {
   const { graph: withPan, nodeId } = addPaletteNode(patch(radio("a")), {
     id: "pan",

@@ -243,6 +243,9 @@ export class EffectSource {
     const existingConfig = this.effectConfigs.get(effectId);
     if (existingConfig) {
       Object.assign(existingConfig.raw, config);
+      // Updates carry the effect's full config, and the compiler omits
+      // signalGain once a leading trim moves to another effect.
+      existingConfig.raw.signalGain = config.signalGain;
       if (processor instanceof ContainerEffect) {
         processor.configure(existingConfig.raw as EffectConfig);
       }
@@ -251,9 +254,8 @@ export class EffectSource {
       } else if (typeof config.enabled === "number") {
         existingConfig.enabled = config.enabled !== 0;
       }
-      if (typeof config.signalGain === "number") {
-        existingConfig.signalGain = config.signalGain;
-      }
+      existingConfig.signalGain =
+        typeof config.signalGain === "number" ? config.signalGain : 1;
       if (typeof config.inputGain === "number") {
         existingConfig.inputGain = config.inputGain;
       }

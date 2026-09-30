@@ -204,6 +204,7 @@ function createTestContext(): PlaybackActionContext {
           status: "inactive",
         })
       ),
+      getTrackProgress: mock((_soundId: string) => null),
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -3566,6 +3567,208 @@ describe("Node Playback: Track and File sources", () => {
       expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     }
   );
+
+  test.each([
+    ["youtube", youtubeTrack("video")],
+    ["bandcamp", album],
+    [
+      "soundcloud",
+      {
+        id: "soundcloud",
+        name: "SoundCloud track",
+        platformMetadata: {
+          itemType: "track",
+          platform: "soundcloud",
+          url: "https://soundcloud.com/artist/track",
+        },
+        streamUrl: "https://media.example/expired.mp3",
+      } as Radio,
+    ],
+  ] as const)(
+    "a restored expired %s URL renews once before replay",
+    async (_platform, source) => {
+      insertNodeSession(patch([trackNode("video", source)]));
+      const resolveStream = mock(async () => ({
+        streamFormat: "progressive" as const,
+        streamUrl: "https://media.example/renewed.mp3",
+      }));
+      const harness = createHarness({ resolveStream });
+      instantStarts(harness.context);
+      (
+        harness.context.audio.playSound as ReturnType<typeof mock>
+      ).mockImplementationOnce(() =>
+        Promise.reject(new Error("Expired media URL: 403"))
+      );
+      harness.context.audio.getTrackProgress = mock(() => ({
+        duration: 120,
+        position: 42,
+      }));
+      await harness.playback.activate();
+      harness.playback.setVolume("video", 0.2);
+      harness.playback.flush();
+
+      await harness.playback.setPlaying("video", true);
+
+      expect(resolveStream).toHaveBeenCalledTimes(1);
+      expect(resolveStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: source.platformMetadata?.platform,
+          reason: "stream-refresh",
+        })
+      );
+      expect(
+        harness.context.audioEngine.playback.refreshStreamUrl
+      ).toHaveBeenCalledWith(
+        soundOf("video"),
+        "https://media.example/renewed.mp3",
+        42,
+        "progressive"
+      );
+      expect(harness.context.audio.playSound).toHaveBeenCalledTimes(2);
+      expect(harness.context.audio.playSound).toHaveBeenLastCalledWith(
+        soundOf("video"),
+        0.2
+      );
+      expect(getPlaybackChannelRuntime(channelOf("video"))).toMatchObject({
+        error: null,
+        isPlaying: true,
+      });
+      expect(harness.context.reportError).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["unresolved", "rejected", "invalid", "retry-failed"] as const)(
+    "an initial renewal is bounded and reports %s",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const resolveStream = mock(() => {
+        if (outcome === "rejected") {
+          return Promise.reject(new Error("Platform unavailable"));
+        }
+        return Promise.resolve(
+          outcome === "unresolved"
+            ? null
+            : {
+                streamFormat: "progressive" as const,
+                streamUrl:
+                  outcome === "invalid"
+                    ? "javascript:bad()"
+                    : "https://media.example/renewed.m4a",
+              }
+        );
+      });
+      const harness = createHarness({ resolveStream });
+      harness.context.audio.playSound = mock(() =>
+        Promise.reject(new Error("Expired media URL: 403"))
+      );
+      await harness.playback.activate();
+
+      await harness.playback.setPlaying("video", true);
+
+      expect(resolveStream).toHaveBeenCalledTimes(1);
+      expect(harness.context.audio.playSound).toHaveBeenCalledTimes(
+        outcome === "retry-failed" ? 2 : 1
+      );
+      expect(
+        harness.context.audioEngine.playback.refreshStreamUrl
+      ).toHaveBeenCalledTimes(outcome === "retry-failed" ? 1 : 0);
+      expect(getPlaybackChannelRuntime(channelOf("video")).error?.message).toBe(
+        "Failed to refresh YouTube stream - please reload"
+      );
+      expect(harness.context.reportError).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each([
+    "source-pause",
+    "all-pause",
+    "deactivate",
+    "replace",
+    "manual-pick",
+  ] as const)("an initial renewal cannot resume after %s", async (action) => {
+    insertNodeSession(patch([trackNode("video")]));
+    const renewal = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const resolving = Promise.withResolvers<void>();
+    const resolveStream = mock(() => {
+      resolving.resolve();
+      return renewal.promise;
+    });
+    const harness = createHarness({ resolveStream });
+    instantStarts(harness.context);
+    (
+      harness.context.audio.playSound as ReturnType<typeof mock>
+    ).mockImplementationOnce(() =>
+      Promise.reject(new Error("Expired media URL: 403"))
+    );
+    await harness.playback.activate();
+    const starting = harness.playback.setPlaying("video", true);
+    await resolving.promise;
+
+    if (action === "source-pause") {
+      await harness.playback.setPlaying("video", false);
+    } else if (action === "all-pause") {
+      harness.playback.pauseAll();
+    } else if (action === "deactivate") {
+      await harness.playback.deactivate();
+    } else if (action === "replace") {
+      await commit(harness, (graph) =>
+        setSourceRadio(graph, "video", youtubeTrack("other"))
+      );
+    } else {
+      await harness.playback.playTrack(
+        "video",
+        "https://media.example/selected.m4a"
+      );
+    }
+    renewal.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/stale.m4a",
+    });
+    await starting;
+    await harness.playback.whenSettled();
+
+    expect(
+      harness.context.audioEngine.playback.refreshStreamUrl
+    ).not.toHaveBeenCalled();
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(
+      action === "manual-pick" ? 2 : 1
+    );
+    if (action === "replace" || action === "manual-pick") {
+      expect(
+        getPlaybackChannel("node", channelOf("video"))?.radio?.streamUrl
+      ).toBe(
+        action === "replace"
+          ? "https://media.example/other.m4a"
+          : "https://media.example/selected.m4a"
+      );
+    } else {
+      expect(getPlaybackChannelRuntime(channelOf("video")).isPlaying).toBe(
+        false
+      );
+    }
+  });
+
+  test("an autoplay rejection does not renew a platform URL", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolveStream = mock(async () => null);
+    const harness = createHarness({ resolveStream });
+    harness.context.audio.playSound = mock(() =>
+      Promise.reject(new DOMException("Gesture required", "NotAllowedError"))
+    );
+    await harness.playback.activate();
+
+    await harness.playback.setPlaying("video", true);
+
+    expect(resolveStream).not.toHaveBeenCalled();
+    expect(
+      harness.context.audioEngine.playback.refreshStreamUrl
+    ).not.toHaveBeenCalled();
+    expect(harness.context.reportError).toHaveBeenCalledTimes(1);
+  });
 
   test("an expired YouTube stream is renewed and resumes where it stopped", async () => {
     insertNodeSession(patch([trackNode("video")]));

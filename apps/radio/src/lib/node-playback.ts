@@ -30,9 +30,10 @@
  * when the user goes live.
  *
  * A Track or File lane watches its sound. A platform stream that expires
- * mid-play is renewed through DJ's refresh (platform-stream-refresh) and
- * resumes where it stopped; at the end of a track in an album or playlist,
- * the lane moves to the next one and plays it. A local file's sound is made
+ * on first play or mid-play is renewed through DJ's refresh
+ * (platform-stream-refresh) and resumes where it stopped; at the end of a
+ * track in an album or playlist, the lane moves to the next one and plays
+ * it. A local file's sound is made
  * on play, since restore never prepares one.
  *
  * Each lane with FX publishes a backend badge for its FX nodes: `compat`
@@ -100,6 +101,7 @@ import { isTrackRadio } from "@/lib/node-graph/sources";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { NODE_BUDGETS, type Profile } from "@/lib/node-graph/validate";
 import {
+  getRefreshRequest,
   type ResolvePlatformStream,
   radioOnTrack,
   refreshPlatformStream,
@@ -396,6 +398,17 @@ function deviceInputAudio(ctx: PlaybackActionContext): DeviceInputAudio {
   };
 }
 
+function canRenewTrack(radio: Radio, error: unknown): boolean {
+  return (
+    isTrackRadio(radio) &&
+    getRefreshRequest(radio) !== null &&
+    !(
+      error instanceof DOMException &&
+      ["AbortError", "NotAllowedError"].includes(error.name)
+    )
+  );
+}
+
 function createNodePlayback(
   ctx: PlaybackActionContext,
   {
@@ -666,6 +679,11 @@ function createNodePlayback(
     clearManagedPlaybackErrors([channelId]);
     const channel = getPlaybackChannel("node", channelId);
     const source = laneOfChannel(channelId)?.source;
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    const position =
+      playing && isTrackRadio(channel?.radio) && soundId
+        ? (ctx.audio.getTrackProgress(soundId)?.position ?? 0)
+        : 0;
     try {
       if (playing && channel && source?.kind === "device") {
         await startDeviceLane(channel, source);
@@ -677,6 +695,14 @@ function createNodePlayback(
       }
       return true;
     } catch (error) {
+      if (
+        playing &&
+        channel?.radio &&
+        canRenewTrack(channel.radio, error) &&
+        shouldReportError()
+      ) {
+        return await recoverTrackStart(channel, position, shouldReportError);
+      }
       if (shouldReportError()) {
         const reportedError = reportPlaybackActionError(ctx.reportError, {
           cause: error,
@@ -907,6 +933,62 @@ function createNodePlayback(
     const error = laneFailure(channelId, message, cause);
     ctx.reportError(error);
     setManagedPlaybackError(channelId, error, error.radio);
+  };
+
+  /** One renewal and retry when a persisted platform URL fails to start. */
+  const recoverTrackStart = async (
+    channel: PlaybackChannelRecord,
+    position: number,
+    ownsStart: () => boolean
+  ) => {
+    const { radio } = channel;
+    const { soundId } = getPlaybackChannelRuntime(channel.id);
+    const watch = laneWatches.get(channel.id);
+    if (!(radio && soundId && watch)) {
+      return false;
+    }
+    const pending: PendingChannelStart = {
+      cancelled: false,
+      channelId: channel.id,
+    };
+    const startEpoch = epoch;
+    const isCurrent = () =>
+      active &&
+      epoch === startEpoch &&
+      !pending.cancelled &&
+      ownsStart() &&
+      laneWatches.get(channel.id) === watch &&
+      getPlaybackChannelRuntime(channel.id).soundId === soundId;
+    pendingChannelStarts.add(pending);
+    let started = false;
+    try {
+      await refreshPlatformStream(radio, soundId, position, {
+        isCurrent,
+        onFailed: (request, error) =>
+          reportLaneFailure(channel.id, request.failureMessage, error),
+        onRefreshed: () => {
+          started = true;
+          setPlaybackChannelRuntime(channel.id, () => ({ error: null }));
+        },
+        onUnresolved: (request) =>
+          reportLaneFailure(channel.id, request.failureMessage),
+        refresh: async (id, streamUrl, seekPosition, streamFormat) => {
+          await ctx.audioEngine.playback.refreshStreamUrl(
+            id,
+            streamUrl,
+            seekPosition,
+            streamFormat
+          );
+          if (isCurrent()) {
+            await setManagedChannelPlaying("node", channel, true, ctx);
+          }
+        },
+        resolveStream,
+      });
+      return started;
+    } finally {
+      pendingChannelStarts.delete(pending);
+    }
   };
 
   /**

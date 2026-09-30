@@ -5,15 +5,16 @@ import {
   ToggleGroupItem,
 } from "@avoid.quest/ui/components/toggle-group";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
+import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "@/lib/hooks/use-settings";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import { playerModes } from "@/lib/types";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
 const modeIcons = {
   dj: SwordsIcon,
-  multiple: LayersIcon,
+  node: CableIcon,
   single: ListMusicIcon,
 } as const;
 
@@ -49,7 +50,7 @@ export function ModeSelect({ className }: { className?: string }) {
       className={cn("w-full max-w-xs", className)}
       onValueChange={handleModeChange}
       type="single"
-      value={settings?.player.mode || "single"}
+      value={normalizePlayerMode(settings?.player.mode)}
       variant="outline"
     >
       {playerModes.map((mode) => {

@@ -31,9 +31,21 @@ import {
   type NodeGraph,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
+import { compile } from "@/lib/node-graph/compile";
+import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
+import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
+import {
+  migrateMultipleSession,
+  watchLegacyMultipleWrites,
+} from "./migrations/multiple-to-node";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
-import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
+import {
+  getSessionRadios,
+  isSessionRadio,
+  sessionRadiosCollection,
+} from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -432,12 +444,12 @@ function buildDjSessionFromLegacy(): PlaybackSessionRecord {
   return buildDjSessionFromLegacyState(readLegacyDjState());
 }
 
-function buildMultipleSessionFromEnabledRadios(): PlaybackSessionRecord {
-  return buildMultipleSessionFromRadios(
-    Array.from(radiosCollection.state.values()) as Array<
-      Radio & { enabled?: boolean; order?: number }
-    >
-  );
+/** "Start from Multiple" over the enabled saved and session stations. */
+function buildNodeSessionFromEnabledRadios(): PlaybackSessionRecord {
+  return buildNodeSessionFromTemplate("start-from-multiple", {
+    saved: [...radiosCollection.state.values()] as Radio[],
+    session: getSessionRadios(),
+  });
 }
 
 function upsertSession(session: PlaybackSessionRecord): void {
@@ -451,26 +463,50 @@ function upsertSession(session: PlaybackSessionRecord): void {
   playbackSessionsCollection.insert(session);
 }
 
-function pruneStaleMultipleSessionChannels(): void {
-  const multipleSession = playbackSessionsCollection.state.get("multiple");
-  if (!multipleSession) {
+/**
+ * A Station whose session radio left this tab's sessionStorage becomes an
+ * empty slot: its cables stay, and recompiling drops its lane.
+ */
+function pruneStaleNodeSources(): void {
+  const session = playbackSessionsCollection.state.get("node");
+  const graph = session?.graph;
+  if (!graph) {
     return;
   }
 
   const sessionRadioIds = readStoredSessionRadioIds();
-  const channels = multipleSession.channels.filter((channel) => {
-    if (!isSessionOnlyRadio(channel.radio)) {
-      return true;
-    }
-
-    return sessionRadioIds.has(String(channel.radio?.id));
-  });
-
-  if (channels.length === multipleSession.channels.length) {
+  const isStale = (radio: Radio | null) =>
+    isSessionOnlyRadio(radio) && !sessionRadioIds.has(String(radio?.id));
+  if (
+    !graph.nodes.some(
+      (node) => node.type === "station" && isStale(node.data.radio as Radio)
+    )
+  ) {
     return;
   }
 
-  replacePlaybackChannels("multiple", channels);
+  const nextGraph = {
+    ...graph,
+    nodes: graph.nodes.map((node) =>
+      node.type === "station" && isStale(node.data.radio as Radio)
+        ? { ...node, data: { ...node.data, radio: null } }
+        : node
+    ),
+  };
+  const channels = deriveNodeChannels(
+    compile(nextGraph, { crossOriginIsolated: false }),
+    session.channels
+  );
+  updatePlaybackSession("node", (draft) => {
+    draft.graph = nextGraph;
+    draft.channels = channels;
+    if (
+      draft.activeChannelId &&
+      !channels.some((channel) => channel.id === draft.activeChannelId)
+    ) {
+      draft.activeChannelId = null;
+    }
+  });
 }
 
 export const playbackSessionsCollection = createCollection(
@@ -648,6 +684,17 @@ async function externalizeStoredNamModels(): Promise<void> {
   }
 }
 
+let stopWatchingLegacyWrites: (() => void) | null = null;
+
+/**
+ * Stops the cross-tab Multiple listeners that `initializePlaybackSessions`
+ * starts, so a test can write Multiple records without them converting.
+ */
+export function stopLegacyMultipleListeners(): void {
+  stopWatchingLegacyWrites?.();
+  stopWatchingLegacyWrites = null;
+}
+
 export async function initializePlaybackSessions(): Promise<void> {
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
@@ -655,6 +702,18 @@ export async function initializePlaybackSessions(): Promise<void> {
     settingsCollection.stateWhenReady(),
     sessionRadiosCollection.stateWhenReady(),
   ]);
+
+  // Before any update: a stale "multiple" record would fail validation.
+  const legacyCollections = {
+    radios: radiosCollection,
+    sessionRadios: sessionRadiosCollection,
+    sessions: playbackSessionsCollection,
+  };
+  migrateMultipleSession(legacyCollections);
+  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites({
+    ...legacyCollections,
+    settings: settingsCollection,
+  });
 
   const settings = settingsCollection.state.get(SETTINGS_ID);
   const shouldRestore = settings?.player.restoreStateOnLoad !== false;
@@ -667,28 +726,28 @@ export async function initializePlaybackSessions(): Promise<void> {
 
   if (!shouldRestore) {
     upsertSession(buildSingleSessionFromLegacyState());
-    upsertSession(buildMultipleSessionFromEnabledRadios());
+    upsertSession(buildNodeSessionFromEnabledRadios());
     upsertSession(buildDjSessionFromLegacyState());
     scheduleNamModelCleanup(discardedModelIds);
   } else if (playbackSessionsCollection.state.size === 0) {
     upsertSession(buildSingleSessionFromLegacy());
-    upsertSession(buildMultipleSessionFromEnabledRadios());
+    upsertSession(buildNodeSessionFromEnabledRadios());
     upsertSession(buildDjSessionFromLegacy());
   } else {
     if (!playbackSessionsCollection.state.has("single")) {
       upsertSession(buildSingleSessionFromLegacy());
     }
-    if (!playbackSessionsCollection.state.has("multiple")) {
-      upsertSession(buildMultipleSessionFromEnabledRadios());
+    if (!playbackSessionsCollection.state.has("node")) {
+      upsertSession(buildNodeSessionFromEnabledRadios());
     }
     if (!playbackSessionsCollection.state.has("dj")) {
       upsertSession(buildDjSessionFromLegacy());
     }
   }
 
-  pruneStaleMultipleSessionChannels();
+  pruneStaleNodeSources();
 
-  const activeMode = settings?.player.mode ?? "single";
+  const activeMode = normalizePlayerMode(settings?.player.mode);
   const activeSession = playbackSessionsCollection.state.get(activeMode);
   if (activeSession) {
     playbackSessionsCollection.update(activeMode, (draft) => {

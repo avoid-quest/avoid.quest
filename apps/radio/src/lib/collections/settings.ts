@@ -5,6 +5,7 @@ import {
 import { z } from "zod";
 import { supportsMediaElementVolumeControl } from "../audio/playback/media-element-volume-control.js";
 import { settings as defaultSettings } from "../const";
+import { normalizePlayerMode } from "../normalize-player-mode";
 
 const playerModeSchema = z.enum(["multiple", "node", "single", "dj"]);
 
@@ -45,6 +46,9 @@ export type SettingsRecord = z.infer<typeof settingsSchema>;
 
 const SETTINGS_ID = "app-settings";
 
+/** The stored mode the settings migration replaced, if it replaced one. */
+let replacedPlayerMode: string | undefined;
+
 export const settingsCollection = createCollection(
   localStorageCollectionOptions({
     getKey: (item) => item.id,
@@ -71,6 +75,37 @@ export async function initializeSettings(): Promise<void> {
       },
     });
   }
+
+  migrateLegacyPlayerMode();
+}
+
+/**
+ * Settings step of the Multiple → Node migration. A stored "multiple" becomes
+ * "node", and an unknown mode becomes "single". Settings load unvalidated, so
+ * this runs right after they load, before anything else updates the record.
+ * It also runs when another tab writes a legacy mode back. Idempotent.
+ *
+ * It lives here rather than beside the session step, so the critical settings
+ * chunk does not pull in the graph compiler.
+ */
+export function migrateLegacyPlayerMode(): void {
+  const mode: unknown = getSettings()?.player.mode;
+  if (mode === undefined) {
+    return;
+  }
+  const next = normalizePlayerMode(mode);
+  if (next === mode) {
+    return;
+  }
+  replacedPlayerMode ??= String(mode);
+  settingsCollection.update(SETTINGS_ID, (draft) => {
+    draft.player.mode = next;
+  });
+}
+
+/** The mode `migrateLegacyPlayerMode` first replaced, for the backup. */
+export function getReplacedPlayerMode(): string | undefined {
+  return replacedPlayerMode;
 }
 
 /**

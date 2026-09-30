@@ -1,13 +1,9 @@
 import type { Radio } from "@/lib/audio";
-import type { SettingsRecord } from "@/lib/collections/settings";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 
-type PlayerMode = SettingsRecord["player"]["mode"];
 type ModeComponentProps = { radios?: Radio[] };
 
 let singlePromise: Promise<{
-  default: React.ComponentType<ModeComponentProps>;
-}>;
-let multiplePromise: Promise<{
   default: React.ComponentType<ModeComponentProps>;
 }>;
 let nodePromise: Promise<{
@@ -26,25 +22,12 @@ export function loadSingleRadio() {
   return singlePromise;
 }
 
-export function loadMultipleRadios() {
-  multiplePromise ??= Promise.all([
-    import("./multiple"),
-    import("@/lib/collections/playback-sessions"),
-  ]).then(async ([component, sessions]) => {
-    await sessions.initializePlaybackSessions();
-    return { default: component.MultipleRadios };
-  });
-  return multiplePromise;
-}
-
 export function loadNodeRadios() {
   nodePromise ??= Promise.all([
     import("./node"),
     import("@/lib/collections/playback-sessions"),
-    import("@/lib/node-graph/node-session"),
-  ]).then(async ([component, sessions, nodeSession]) => {
+  ]).then(async ([component, sessions]) => {
     await sessions.initializePlaybackSessions();
-    nodeSession.ensureNodePlaybackSession();
     return { default: component.NodeRadios };
   });
   return nodePromise;
@@ -61,11 +44,11 @@ export function loadDjPlayer() {
   return djPromise;
 }
 
-export function preloadRadioMode(mode: PlayerMode) {
+/** Preloads a mode's chunk; a legacy or unknown mode is normalised first. */
+export function preloadRadioMode(mode: unknown) {
   return {
     dj: loadDjPlayer,
-    multiple: loadMultipleRadios,
     node: loadNodeRadios,
     single: loadSingleRadio,
-  }[mode]();
+  }[normalizePlayerMode(mode)]();
 }

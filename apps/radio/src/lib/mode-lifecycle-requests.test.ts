@@ -96,6 +96,31 @@ describe("mode lifecycle requests", () => {
     expect(switchTo).toHaveBeenCalledWith("multiple");
   });
 
+  test("does not re-request the mode already being switched to", async () => {
+    const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
+    const requests = createModeLifecycleRequests({
+      manager: {
+        activateInitialMode: mock(
+          async (_mode: PlaybackSessionId) => undefined
+        ),
+        getSnapshot: mock(() => ({
+          currentMode: "single" as const,
+          error: null,
+          phase: "deactivating" as const,
+          requestedMode: "node" as const,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
+        switchTo,
+      },
+    });
+
+    await requests.requestMode("node");
+    await requests.requestMode("dj");
+
+    expect(switchTo).toHaveBeenCalledTimes(1);
+    expect(switchTo).toHaveBeenCalledWith("dj");
+  });
+
   test("cancels stale runtime synchronization after settings change", async () => {
     insertPlaybackSession("multiple");
     insertSettings("dj");

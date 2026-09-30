@@ -17,6 +17,7 @@ import {
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
 import type { NodeGraphInput } from "@/lib/node-graph/schema";
+import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
 import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
@@ -36,6 +37,7 @@ import {
   playbackSessionsCollection,
   removePlaybackChannel,
   SINGLE_ACTIVE_CHANNEL_ID,
+  stopLegacyMultipleListeners,
   updatePlaybackChannel,
   updatePlaybackSession,
 } from "./playback-sessions";
@@ -127,6 +129,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  stopLegacyMultipleListeners();
   await resetPlaybackState();
 });
 
@@ -884,62 +887,48 @@ describe("multiple session persistence", () => {
     expect(session?.masterVolume).toBe(0.75);
   });
 
-  test("initializePlaybackSessions preserves a stored multiple session", async () => {
+  test("initializePlaybackSessions preserves a stored node session", async () => {
     await Promise.all([
       playbackSessionsCollection.stateWhenReady(),
-      radiosCollection.stateWhenReady(),
       settingsCollection.stateWhenReady(),
     ]);
-
-    radiosCollection.insert({
-      enabled: true,
-      id: "radio-1",
-      isSystem: false,
-      name: "Persisted",
-      order: 0,
-      streamUrl: "https://radio.example/persisted.mp3",
-    });
 
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: {
-        mode: "multiple",
+        mode: "node",
         restoreStateOnLoad: true,
       },
     });
 
     playbackSessionsCollection.insert({
       activeChannelId: null,
-      channels: [
-        {
-          ...createDefaultChannel("multi:radio-1", "multiple", 0),
-          muted: true,
-          radio: {
-            id: "radio-1",
-            name: "Persisted",
-            streamUrl: "https://radio.example/persisted.mp3",
-          },
-          volume: 0.44,
-        },
-      ],
+      channels: createDuckChannels(),
       crossfadePosition: 0.5,
+      graph: createDuckGraph(),
       headphoneVolume: 0.7,
-      id: "multiple",
+      id: "node",
       masterVolume: 0.23,
     });
 
     await initializePlaybackSessions();
 
-    const multipleSession = getPlaybackSession("multiple");
-    expect(multipleSession?.masterVolume).toBe(0.23);
-    expect(multipleSession?.headphoneVolume).toBe(0.7);
-    expect(multipleSession?.channels[0]?.volume).toBe(0.44);
-    expect(multipleSession?.channels[0]?.muted).toBe(true);
+    const nodeSession = getPlaybackSession("node");
+    expect(nodeSession?.masterVolume).toBe(0.23);
+    expect(nodeSession?.headphoneVolume).toBe(0.7);
+    expect(nodeSession?.graph?.nodes.map((node) => node.id)).toEqual([
+      "src-kexp",
+      "src-talk",
+      "comp",
+      "speakers",
+    ]);
+    expect(nodeSession?.channels[0]?.volume).toBe(0.8);
     expect(getPlaybackSession("single")).toBeDefined();
     expect(getPlaybackSession("dj")).toBeDefined();
+    expect(getPlaybackSession("multiple")).toBeUndefined();
   });
 
-  test("initializePlaybackSessions prunes stale session-only radios from the multiple session", async () => {
+  test("initializePlaybackSessions empties a Station whose session radio is gone", async () => {
     await Promise.all([
       playbackSessionsCollection.stateWhenReady(),
       settingsCollection.stateWhenReady(),
@@ -948,48 +937,50 @@ describe("multiple session persistence", () => {
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: {
-        mode: "multiple",
+        mode: "node",
         restoreStateOnLoad: true,
       },
     });
 
-    playbackSessionsCollection.insert({
-      activeChannelId: "multi:rg_hidden",
-      channels: [
-        {
-          ...createDefaultChannel("multi:radio-1", "multiple", 0),
-          radio: {
-            id: "radio-1",
-            name: "Saved Radio",
-            streamUrl: "https://radio.example/saved.mp3",
-          },
-        },
-        {
-          ...createDefaultChannel("multi:rg_hidden", "multiple", 1),
-          radio: {
-            id: "rg_hidden",
-            name: "Hidden Session Radio",
-            streamUrl: "https://radio.example/hidden.mp3",
-          },
-          volume: 0.5,
-        },
-      ],
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      id: "multiple",
-      masterVolume: 0.4,
+    const hidden = {
+      id: "rg_hidden",
+      name: "Hidden Session Radio",
+      streamUrl: "https://radio.example/hidden.mp3",
+    };
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", {
+        levels: (radio) =>
+          radio.id === hidden.id ? { muted: false, volume: 0.5 } : undefined,
+        masterVolume: 0.4,
+        saved: [{ ...KEXP_RADIO, enabled: true, order: 0 }],
+        session: [hidden],
+      })
+    );
+    updatePlaybackSession("node", (draft) => {
+      draft.activeChannelId = getNodeChannelId("src-rg_hidden");
     });
 
     await initializePlaybackSessions();
 
-    const multipleSession = getPlaybackSession("multiple");
-    expect(
-      multipleSession?.channels.map((channel) => channel.radio?.id)
-    ).toEqual(["radio-1"]);
-    expect(multipleSession?.activeChannelId).toBeNull();
+    const nodeSession = getPlaybackSession("node");
+    const station = nodeSession?.graph?.nodes.find(
+      (node) => node.id === "src-rg_hidden"
+    );
+    expect(station?.type).toBe("station");
+    expect(station?.data).toMatchObject({ radio: null, volume: 0.5 });
+    // The cable survives, so refilling the slot plays through it again.
+    expect(nodeSession?.graph?.edges.map((edge) => edge.id)).toEqual([
+      "src-kexp->speakers",
+      "src-rg_hidden->speakers",
+    ]);
+    expect(nodeSession?.channels.map((channel) => channel.id)).toEqual([
+      "n:src-kexp",
+    ]);
+    expect(nodeSession?.activeChannelId).toBeNull();
+    expect(nodeSession?.masterVolume).toBe(0.4);
   });
 
-  test("initializePlaybackSessions preserves current session-only radios when session storage still has them", async () => {
+  test("initializePlaybackSessions keeps a Station whose session radio is still stored", async () => {
     await Promise.all([
       playbackSessionsCollection.stateWhenReady(),
       settingsCollection.stateWhenReady(),
@@ -998,42 +989,29 @@ describe("multiple session persistence", () => {
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: {
-        mode: "multiple",
+        mode: "node",
         restoreStateOnLoad: true,
       },
     });
 
-    addSessionRadio({
+    const live = {
       id: "rg_live",
       name: "Live Session Radio",
       streamUrl: "https://radio.example/live.mp3",
-    });
-
-    playbackSessionsCollection.insert({
-      activeChannelId: "multi:rg_live",
-      channels: [
-        {
-          ...createDefaultChannel("multi:rg_live", "multiple", 0),
-          radio: {
-            id: "rg_live",
-            name: "Live Session Radio",
-            streamUrl: "https://radio.example/live.mp3",
-          },
-          volume: 0.33,
-        },
-      ],
-      crossfadePosition: 0.5,
-      headphoneVolume: 1,
-      id: "multiple",
-      masterVolume: 0.4,
-    });
+    };
+    addSessionRadio(live);
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", { session: [live] })
+    );
+    const before = getPlaybackSession("node");
 
     await initializePlaybackSessions();
 
-    const multipleSession = getPlaybackSession("multiple");
-    expect(multipleSession?.channels).toHaveLength(1);
-    expect(multipleSession?.channels[0]?.radio?.id).toBe("rg_live");
-    expect(multipleSession?.activeChannelId).toBe("multi:rg_live");
+    const nodeSession = getPlaybackSession("node");
+    expect(nodeSession?.graph).toEqual(before?.graph);
+    expect(nodeSession?.channels.map((channel) => channel.radio?.id)).toEqual([
+      "rg_live",
+    ]);
   });
 
   test("initializePlaybackSessions resets stored sessions when restore is disabled", async () => {
@@ -1151,13 +1129,15 @@ describe("multiple session persistence", () => {
     expect(singleSession?.channels[0]?.radio).toBeNull();
     expect(singleSession?.channels[0]?.volume).toBe(1);
 
-    const multipleSession = getPlaybackSession("multiple");
-    expect(multipleSession?.masterVolume).toBe(1);
-    expect(multipleSession?.channels).toHaveLength(1);
-    expect(multipleSession?.channels[0]?.id).toBe("multi:saved-radio-1");
-    expect(multipleSession?.channels[0]?.radio?.id).toBe("saved-radio-1");
-    expect(multipleSession?.channels[0]?.volume).toBe(1);
-    expect(multipleSession?.channels[0]?.muted).toBe(false);
+    // The Multiple record migrated, then Node rebuilt from saved stations.
+    expect(getPlaybackSession("multiple")).toBeUndefined();
+    const nodeSession = getPlaybackSession("node");
+    expect(nodeSession?.masterVolume).toBe(1);
+    expect(nodeSession?.channels).toHaveLength(1);
+    expect(nodeSession?.channels[0]?.id).toBe("n:src-saved-radio-1");
+    expect(nodeSession?.channels[0]?.radio?.id).toBe("saved-radio-1");
+    expect(nodeSession?.channels[0]?.volume).toBe(1);
+    expect(nodeSession?.channels[0]?.muted).toBe(false);
 
     const djSession = getPlaybackSession("dj");
     const deckA = djSession?.channels.find(

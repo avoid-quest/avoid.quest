@@ -1,70 +1,56 @@
 import { lazy, type ReactElement, Suspense, useEffect } from "react";
 import type { Radio } from "@/lib/audio";
-import type { SettingsRecord } from "@/lib/collections/settings";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
+import {
+  normalizePlayerMode,
+  type PlayerMode,
+} from "@/lib/normalize-player-mode";
 import { RadioLoadingSkeleton } from "./radio-loading-skeleton";
 import {
   loadDjPlayer,
-  loadMultipleRadios,
   loadNodeRadios,
   loadSingleRadio,
 } from "./radio-mode-loader";
 
-type RadioMode = SettingsRecord["player"]["mode"];
-
-// Node is registered but not yet offered in ModeSelect.
-const RADIO_MODES: RadioMode[] = ["single", "multiple", "node", "dj"];
-
 const SingleRadio = lazy(loadSingleRadio);
-const MultipleRadios = lazy(loadMultipleRadios);
 const NodeRadios = lazy(loadNodeRadios);
 const DjPlayer = lazy(loadDjPlayer);
-
-const DEFAULT_RADIO_MODE: RadioMode = "single";
 
 type RadioModeRenderer = (radios: Radio[]) => ReactElement;
 
 const radioModeRenderers = {
   dj: (radios) => <DjPlayer radios={radios} />,
-  multiple: (radios) => <MultipleRadios radios={radios} />,
   node: (radios) => <NodeRadios radios={radios} />,
   single: (radios) => <SingleRadio radios={radios} />,
-} satisfies Record<RadioMode, RadioModeRenderer>;
+} satisfies Record<PlayerMode, RadioModeRenderer>;
 
-function RadioMode({ mode, radios }: { mode: RadioMode; radios: Radio[] }) {
+function RadioMode({ mode, radios }: { mode: PlayerMode; radios: Radio[] }) {
   return radioModeRenderers[mode](radios);
-}
-
-function getConfiguredMode(mode: unknown): RadioMode | undefined {
-  return isRadioMode(mode) ? mode : undefined;
-}
-
-function isRadioMode(mode: unknown): mode is RadioMode {
-  return (
-    typeof mode === "string" &&
-    RADIO_MODES.some((radioMode) => radioMode === mode)
-  );
 }
 
 export function Radios() {
   const radiosQuery = useEnabledRadios();
   const settingsQuery = useSettings();
-  const configuredMode = getConfiguredMode(settingsQuery.data?.player.mode);
-  const mode = configuredMode ?? DEFAULT_RADIO_MODE;
+  const storedMode: unknown = settingsQuery.data?.player.mode;
+  const mode = normalizePlayerMode(storedMode);
 
   useEffect(() => {
-    if (!configuredMode) {
+    if (storedMode === undefined) {
       return;
     }
     import("@/lib/mode-lifecycle-requests")
       .then(({ modeLifecycleRequests }) =>
-        modeLifecycleRequests.synchronizeMode(configuredMode)
+        // A legacy mode ("multiple", or one another tab wrote) is requested
+        // under its replacement, which commits a valid value.
+        storedMode === mode
+          ? modeLifecycleRequests.synchronizeMode(mode)
+          : modeLifecycleRequests.requestMode(mode)
       )
       .catch((error) => {
         console.error("[radio] Failed to synchronize playback mode:", error);
       });
-  }, [configuredMode]);
+  }, [mode, storedMode]);
 
   if (!(radiosQuery.isReady && settingsQuery.isReady)) {
     return <RadioLoadingSkeleton mode={mode} phase="database" />;

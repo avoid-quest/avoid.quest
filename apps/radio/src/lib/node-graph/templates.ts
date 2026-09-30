@@ -102,27 +102,29 @@ function speakersNode(position: { x: number; y: number }): GraphNode {
   };
 }
 
-function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
-  const radios = orderedStations(sources);
-  const columns = radios.length > SINGLE_COLUMN_MAX ? 2 : 1;
-  const rows = Math.max(1, Math.ceil(radios.length / columns));
+/** A station to lay out, with its level. */
+export type StationSeed = { radio: Radio } & Partial<NodeTemplateLevels>;
+
+/**
+ * Stations in order in one column, or two past eight, each wired to a
+ * Speakers node centred on their right. Shared by "Start from Multiple" and
+ * the Multiple → Node migration.
+ */
+export function buildStationPatch(seeds: readonly StationSeed[]): NodeGraph {
+  const columns = seeds.length > SINGLE_COLUMN_MAX ? 2 : 1;
+  const rows = Math.max(1, Math.ceil(seeds.length / columns));
   const taken = new Set([SPEAKERS_NODE_ID]);
-  const stations = radios.map((radio, index): StationNode => {
-    const levels = sources.levels?.(radio);
-    return {
-      data: {
-        muted: levels?.muted ?? false,
-        radio,
-        volume: levels?.volume ?? 1,
-      },
+  const stations = seeds.map(
+    ({ muted = false, radio, volume = 1 }, index): StationNode => ({
+      data: { muted, radio, volume },
       id: stationNodeId(radio, taken),
       position: {
         x: Math.floor(index / rows) * COLUMN_WIDTH,
         y: (index % rows) * STATION_ROW_HEIGHT,
       },
       type: "station",
-    };
-  });
+    })
+  );
   const edges = stations.map(
     (station): GraphEdge => ({
       gain: 1,
@@ -146,6 +148,15 @@ function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
     version: NODE_GRAPH_VERSION,
     viewport: { x: 0, y: 0, zoom: 1 },
   };
+}
+
+function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
+  return buildStationPatch(
+    orderedStations(sources).map((radio) => ({
+      radio,
+      ...sources.levels?.(radio),
+    }))
+  );
 }
 
 export function buildNodeGraphFromTemplate(
@@ -175,7 +186,19 @@ export function buildNodeSessionFromTemplate(
   sources: NodeTemplateSources = {},
   env: CompileEnv = { crossOriginIsolated: false }
 ): PlaybackSessionRecord {
-  const graph = buildNodeGraphFromTemplate(template, sources);
+  return buildNodeSessionFromGraph(
+    buildNodeGraphFromTemplate(template, sources),
+    sources.masterVolume,
+    env
+  );
+}
+
+/** The `"node"` playback session holding `graph`, lane channels included. */
+export function buildNodeSessionFromGraph(
+  graph: NodeGraph,
+  masterVolume = 1,
+  env: CompileEnv = { crossOriginIsolated: false }
+): PlaybackSessionRecord {
   return {
     activeChannelId: null,
     channels: deriveNodeChannels(compile(graph, env)),
@@ -183,7 +206,7 @@ export function buildNodeSessionFromTemplate(
     graph,
     headphoneVolume: 1,
     id: "node",
-    masterVolume: sources.masterVolume ?? 1,
+    masterVolume,
     tempo: DEFAULT_EFFECT_TEMPO,
   };
 }

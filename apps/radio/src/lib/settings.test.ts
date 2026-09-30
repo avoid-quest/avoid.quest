@@ -8,6 +8,7 @@ import {
   sessionRadiosCollection,
   settingsCollection,
 } from "./collections";
+import { stopLegacyMultipleListeners } from "./collections/playback-sessions";
 import { resetAllSettings } from "./settings";
 
 async function clearCollections() {
@@ -52,7 +53,10 @@ function insertStaleSession(id: PlaybackSessionId) {
 }
 
 beforeEach(clearCollections);
-afterEach(clearCollections);
+afterEach(async () => {
+  stopLegacyMultipleListeners();
+  await clearCollections();
+});
 
 describe("resetAllSettings", () => {
   test("deletes the single, node, dj and multiple sessions", async () => {
@@ -67,10 +71,10 @@ describe("resetAllSettings", () => {
 
     await resetAllSettings();
 
-    // Nothing rebuilds a node session yet, so it stays gone.
-    expect(getPlaybackSession("node")).toBeUndefined();
+    // Multiple is not rebuilt: Node replaced it.
+    expect(getPlaybackSession("multiple")).toBeUndefined();
     // The rest are rebuilt from defaults, not kept.
-    for (const id of ["single", "dj", "multiple"] as const) {
+    for (const id of ["single", "node", "dj"] as const) {
       const session = getPlaybackSession(id);
       expect(session?.masterVolume).toBe(1);
       expect(

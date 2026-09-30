@@ -35,6 +35,11 @@ export function createModeLifecycleRequests({
       if (!isPlaybackSessionId(value)) {
         return;
       }
+      // Already on its way there, e.g. the renderer and the cross-tab
+      // settings listener both following one legacy mode write.
+      if (manager.getSnapshot().requestedMode === value) {
+        return;
+      }
 
       await manager.switchTo(value);
     },

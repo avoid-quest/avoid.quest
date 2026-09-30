@@ -203,4 +203,25 @@ describe("StationNodeBody", () => {
     expect(view.queryByRole("button", { name: "Play KEXP" })).toBeNull();
     expect(view.queryByRole("alert")).toBeNull();
   });
+
+  test("keys on its volume slider stay on the Station, but undo goes on", () => {
+    const seen: string[] = [];
+    const listener = (event: KeyboardEvent) => {
+      seen.push(`${event.ctrlKey ? "Ctrl+" : ""}${event.key}`);
+    };
+    window.addEventListener("keydown", listener);
+    try {
+      const view = renderBody({ radio: kexp });
+      const [slider] = view.getAllByRole("slider");
+      // A Backspace here must not delete the selected Station, and an
+      // arrow must not move it.
+      fireEvent.keyDown(slider as HTMLElement, { key: "Backspace" });
+      fireEvent.keyDown(slider as HTMLElement, { key: "ArrowLeft" });
+      fireEvent.keyDown(slider as HTMLElement, { ctrlKey: true, key: "z" });
+    } finally {
+      window.removeEventListener("keydown", listener);
+    }
+
+    expect(seen).toEqual(["Ctrl+z"]);
+  });
 });

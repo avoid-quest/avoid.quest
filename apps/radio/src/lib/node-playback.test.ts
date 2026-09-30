@@ -2102,6 +2102,45 @@ describe("Node Playback FX lanes", () => {
     expect(badges.state).toEqual({ a: "bypassed", comp: "bypassed" });
   });
 
+  test("switching an FX back on never flashes bypassed while its runtime connects", async () => {
+    insertNodeSession(insertCompressor(patch([station("a")])));
+    const badges = new Store<NodeBackendBadges>({});
+    let outcome: EffectsRuntimeOutcome = {
+      backend: "official",
+      ready: true,
+      status: "ready",
+    };
+    const harness = createHarness({
+      backendBadges: badges,
+      crossOriginIsolated: true,
+      effectsOutcome: () => outcome,
+    });
+    await harness.playback.activate();
+
+    // Every FX off: nothing to process, which the controller reports as a
+    // ready bypass. That is not a dry fallback.
+    outcome = { backend: "bypass", ready: true, status: "ready" };
+    await commit(harness, (graph) =>
+      setEffectParams(graph, "comp", { enabled: false })
+    );
+    expect(badges.state).toEqual({});
+
+    const seen: NodeBackendBadges[] = [];
+    const subscription = badges.subscribe(() => {
+      seen.push(badges.state);
+    });
+    outcome = { backend: "official", ready: true, status: "ready" };
+    await commit(harness, (graph) =>
+      setEffectParams(graph, "comp", { enabled: true })
+    );
+    subscription.unsubscribe();
+
+    expect(
+      seen.some((state) => Object.values(state).includes("bypassed"))
+    ).toBe(false);
+    expect(badges.state).toEqual({});
+  });
+
   test("a start reads the outcome its effects graph settled on", async () => {
     insertNodeSession(insertCompressor(patch([station("a")])));
     const badges = new Store<NodeBackendBadges>({});

@@ -363,7 +363,10 @@ function createNodePlayback(
 
   /**
    * Keeps what the controller reported for a lane still in the plan. An
-   * inactive outcome means no effects graph yet, so the estimate shows.
+   * inactive outcome means no effects graph yet, so the estimate shows. A
+   * ready `bypass` only means nothing was on to process (every FX off), not
+   * a dry fallback, so it is not kept: switching an FX back on must not
+   * read `bypassed` while the new runtime connects.
    */
   const recordOutcome = (
     laneId: string,
@@ -375,7 +378,10 @@ function createNodePlayback(
     ) {
       return;
     }
-    if (outcome.status === "inactive") {
+    if (
+      outcome.status === "inactive" ||
+      (outcome.backend === "bypass" && outcome.status !== "failed")
+    ) {
       laneOutcomes.delete(laneId);
     } else {
       laneOutcomes.set(laneId, outcome.backend);

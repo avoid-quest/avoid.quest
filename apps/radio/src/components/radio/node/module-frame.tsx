@@ -23,7 +23,7 @@ import {
   RotateCcwIcon,
   Trash2Icon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import {
   getNodeDefinition,
@@ -45,6 +45,20 @@ import { Handle, Position } from "./flow-adapter";
 
 /** React Flow skips drag, pan and wheel zoom on these, so controls work. */
 export const INTERACTIVE = "nodrag nopan nowheel";
+
+/**
+ * Keeps a node control's keys on the node: an arrow turns a knob instead of
+ * moving the node, and Enter, Escape or Delete don't select, deselect or
+ * delete it. A menu or select portals out of the node but still bubbles
+ * through React, so its keys stop here too. Chords like Cmd+Z go on to the
+ * app's shortcuts, so undo works from a focused knob.
+ */
+export function keepControlKeys(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.length === 1) {
+    return;
+  }
+  event.stopPropagation();
+}
 
 /** One control column: the shared Knob's own width (w-16). */
 export const CONTROL_COLUMN_PX = 64;
@@ -132,7 +146,12 @@ export function ModuleHeader({
         {title}
       </span>
       {badge}
-      <div className={cn("flex shrink-0 items-center gap-1", INTERACTIVE)}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
+      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
+      <div
+        className={cn("flex shrink-0 items-center gap-1", INTERACTIVE)}
+        onKeyDown={keepControlKeys}
+      >
         {onEnabledChange && enabled !== undefined ? (
           <Switch
             aria-label={`${title} on`}
@@ -169,8 +188,9 @@ export function ModuleHeader({
 }
 
 /**
- * The body's control row. Keys stay here: an arrow on a focused knob turns
- * it instead of moving the node, and Delete or C don't reach the canvas.
+ * The body's control row. Keys stay here (`keepControlKeys`): an arrow on a
+ * focused knob turns it instead of moving the node, and Delete or C don't
+ * reach the canvas.
  * A pointer or key release is where the patch takes an undo step.
  */
 export function ModuleControls({
@@ -191,7 +211,7 @@ export function ModuleControls({
         "flex items-start gap-x-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
         INTERACTIVE
       )}
-      onKeyDown={(event) => event.stopPropagation()}
+      onKeyDown={keepControlKeys}
       onKeyUp={release}
       onPointerUp={release}
     >

@@ -215,11 +215,13 @@ describe("EffectNodeBody", () => {
 });
 
 describe("EffectNode on the canvas", () => {
-  test("arrow keys on a focused knob change its value and do not move the node", () => {
-    const effect = {
-      ...createDefaultEffectConfig("compressor", "comp", 0),
-      enabled: true,
-    };
+  const compressorEffect = () => ({
+    ...createDefaultEffectConfig("compressor", "comp", 0),
+    enabled: true,
+  });
+
+  /** A selected Compressor on a real React Flow, and its position moves. */
+  function mountCompressor(effect: EffectConfig) {
     nodeStoreModule.loadNodeGraph(
       nodeGraphSchema.parse({
         edges: [],
@@ -280,6 +282,24 @@ describe("EffectNode on the canvas", () => {
         </flow.ReactFlowProvider>
       </NodeActionsProvider>
     );
+    const moves = () =>
+      onNodesChange.mock.calls
+        .flatMap(([changes]) => changes as { type: string }[])
+        .filter((change) => change.type === "position");
+    // React Flow keeps a node hidden until it is measured, which JSDOM
+    // never is, and a hidden element has no accessible name.
+    const byLabel = (selector: string) =>
+      view.container.querySelector(selector) as HTMLElement;
+    return { byLabel, moves, onNodesChange, view };
+  }
+
+  afterEach(() => {
+    nodeStoreModule.loadNodeGraph(null);
+  });
+
+  test("arrow keys on a focused knob change its value and do not move the node", () => {
+    const effect = compressorEffect();
+    const { byLabel, moves, onNodesChange, view } = mountCompressor(effect);
     const wrapper = view.container.querySelector(
       ".react-flow__node"
     ) as HTMLElement | null;
@@ -289,18 +309,10 @@ describe("EffectNode on the canvas", () => {
     act(() => {
       fireEvent.keyDown(wrapper as HTMLElement, { key: "ArrowRight" });
     });
-    const moves = () =>
-      onNodesChange.mock.calls
-        .flatMap(([changes]) => changes as { type: string }[])
-        .filter((change) => change.type === "position");
     expect(moves().length).toBeGreaterThan(0);
     onNodesChange.mockClear();
 
-    // React Flow keeps a node hidden until it is measured, which JSDOM
-    // never is, and a hidden element has no accessible name.
-    const knob = view.container.querySelector(
-      '[role="slider"][aria-label="Compressor threshold"]'
-    ) as HTMLElement;
+    const knob = byLabel('[role="slider"][aria-label="Compressor threshold"]');
     knob.focus();
     act(() => {
       fireEvent.keyDown(knob, { key: "ArrowUp" });
@@ -316,7 +328,54 @@ describe("EffectNode on the canvas", () => {
       String(stored?.effect.threshold)
     );
     expect(moves()).toEqual([]);
-    nodeStoreModule.loadNodeGraph(null);
+  });
+
+  test("keys in the header's switch and menu do not move the node", () => {
+    const { byLabel, moves } = mountCompressor(compressorEffect());
+
+    const toggle = byLabel('[role="switch"][aria-label="Compressor on"]');
+    toggle.focus();
+    act(() => {
+      fireEvent.keyDown(toggle, { key: "ArrowRight" });
+    });
+    expect(moves()).toEqual([]);
+
+    // The menu portals out of the node, but its keys bubble through React.
+    const trigger = byLabel('[aria-label="Options for Compressor"]');
+    act(() => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    const menu = document.querySelector('[role="menu"]') as HTMLElement | null;
+    expect(menu).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(menu as HTMLElement, { key: "ArrowDown" });
+    });
+    expect(moves()).toEqual([]);
+  });
+
+  test("Cmd+Z from a focused knob still reaches the app's shortcuts", () => {
+    const { byLabel } = mountCompressor(compressorEffect());
+    const seen: string[] = [];
+    const listener = (event: KeyboardEvent) => {
+      seen.push(`${event.metaKey ? "Meta+" : ""}${event.key}`);
+    };
+    window.addEventListener("keydown", listener);
+    try {
+      const knob = byLabel(
+        '[role="slider"][aria-label="Compressor threshold"]'
+      );
+      knob.focus();
+      act(() => {
+        fireEvent.keyDown(knob, { key: "z", metaKey: true });
+        fireEvent.keyDown(knob, { key: "Backspace" });
+        fireEvent.keyDown(knob, { key: "ArrowUp" });
+      });
+    } finally {
+      window.removeEventListener("keydown", listener);
+    }
+
+    // Undo goes on; Delete and the arrows stay on the knob.
+    expect(seen).toEqual(["Meta+z"]);
   });
 });
 

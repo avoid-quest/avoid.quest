@@ -25,6 +25,7 @@ import {
   Handle,
   Position,
 } from "./flow-adapter";
+import { keepControlKeys } from "./module-frame";
 import { useNodeActions } from "./node-actions";
 
 type StationData = Extract<GraphNode, { type: "station" }>["data"];
@@ -94,6 +95,7 @@ function EmptyStation({
             aria-label="Remove empty Station"
             className={cn("size-7 text-muted-foreground", INTERACTIVE)}
             onClick={onRemove}
+            onKeyDown={keepControlKeys}
             size="icon"
             variant="ghost"
           >
@@ -101,7 +103,9 @@ function EmptyStation({
           </Button>
         ) : null}
       </div>
-      <div className={cn("px-2 pb-2", INTERACTIVE)}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
+      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
+      <div className={cn("px-2 pb-2", INTERACTIVE)} onKeyDown={keepControlKeys}>
         <RadioSearchBar
           onSaveDiscovered={onSaveDiscovered}
           onSelectDiscovered={onSelectDiscovered}
@@ -188,7 +192,12 @@ export function StationNodeBody({
         />
       </div>
       {/* Menu after the header so Tab reaches the station first */}
-      <div className={cn("absolute top-1.5 right-1.5", INTERACTIVE)}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
+      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
+      <div
+        className={cn("absolute top-1.5 right-1.5", INTERACTIVE)}
+        onKeyDown={keepControlKeys}
+      >
         <RadioItemActions
           onDelete={onDelete}
           onEdit={onEdit}
@@ -207,11 +216,14 @@ export function StationNodeBody({
           Hidden. Show it to play here.
         </p>
       ) : (
+        // biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself
+        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
         <div
           className={cn(
             "flex items-center gap-2 border-border/50 border-t px-3 py-1.5",
             INTERACTIVE
           )}
+          onKeyDown={keepControlKeys}
         >
           <PlayPauseButton
             className="size-7 shrink-0"

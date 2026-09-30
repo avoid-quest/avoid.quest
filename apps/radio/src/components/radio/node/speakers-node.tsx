@@ -8,6 +8,7 @@ import {
   Handle,
   Position,
 } from "./flow-adapter";
+import { keepControlKeys } from "./module-frame";
 import { NodeMasterControls } from "./node-master";
 
 type SpeakersData = Extract<GraphNode, { type: "speakers" }>["data"];
@@ -40,7 +41,11 @@ export function SpeakersNode({ selected }: FlowNodeProps<SpeakersFlowNode>) {
           </span>
           <span className="font-medium text-xs">Speakers</span>
         </div>
-        <NodeMasterControls className="nodrag nopan nowheel border-border/50 border-t bg-muted/30 p-2" />
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
+        {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
+        <div onKeyDown={keepControlKeys}>
+          <NodeMasterControls className="nodrag nopan nowheel border-border/50 border-t bg-muted/30 p-2" />
+        </div>
       </div>
     </>
   );

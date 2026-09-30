@@ -161,4 +161,27 @@ describe("NodeCanvas", () => {
     expect(view.queryByText(EMPTY_HINT)).toBeNull();
     expect(view.getByText(CABLE_HINT)).toBeTruthy();
   });
+
+  test("a patch with no slot points at the search bar", () => {
+    const view = render(
+      <NodeCanvasHint graph={templates.buildNodeGraphFromTemplate("blank")} />
+    );
+
+    expect(
+      view.getByText("Search to add a station, or press / to add a node")
+    ).toBeTruthy();
+  });
+
+  test("a phone says to tap +, since / needs a keyboard", () => {
+    const view = render(
+      <NodeCanvasHint
+        graph={templates.buildNodeGraphFromTemplate("starter")}
+        isPhone
+      />
+    );
+
+    expect(
+      view.getByText("Search a station in the slot, or tap + to add a node")
+    ).toBeTruthy();
+  });
 });

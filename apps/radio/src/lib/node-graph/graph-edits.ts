@@ -174,8 +174,34 @@ export function nextStationPosition(graph: NodeGraph): Position {
 }
 
 /**
+ * The first empty Station slot whose only cables run straight into
+ * Speakers, as a new Station from the search would be wired. A slot that
+ * also feeds an effect or a key input keeps its role.
+ */
+function emptySlotOnSpeakers(graph: NodeGraph): StationNode | undefined {
+  const speakers = new Set(
+    graph.nodes.filter((node) => node.type === "speakers").map((n) => n.id)
+  );
+  return graph.nodes.find((node): node is StationNode => {
+    if (!isStation(node) || node.data.radio !== null) {
+      return false;
+    }
+    const out = graph.edges.filter((edge) => edge.source === node.id);
+    return (
+      out.length > 0 &&
+      out.every(
+        (edge) =>
+          speakers.has(edge.target) && edge.targetHandle === AUDIO_IN_HANDLE
+      )
+    );
+  });
+}
+
+/**
  * Adds a Station for `radio` wired to Speakers, as the search bar does.
- * A Station already holding `radio` is returned instead of a second one.
+ * A Station already holding `radio` is returned instead of a second one,
+ * and an empty slot already wired to Speakers (the Starter's) is filled
+ * rather than left beside a new Station.
  */
 export function addStationNode(
   graph: NodeGraph,
@@ -184,6 +210,10 @@ export function addStationNode(
   const existing = findStationNode(graph, radio);
   if (existing) {
     return { graph, nodeId: existing.id };
+  }
+  const slot = emptySlotOnSpeakers(graph);
+  if (slot) {
+    return { graph: setStationRadio(graph, slot.id, radio), nodeId: slot.id };
   }
   const nodeId = stationNodeId(
     radio,

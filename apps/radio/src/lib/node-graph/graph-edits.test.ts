@@ -31,6 +31,7 @@ import { seriesToParallel } from "./series-parallel";
 import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
+  STARTER_STATION_ID,
   STATION_ROW_HEIGHT,
 } from "./templates";
 import { validate } from "./validate";
@@ -81,6 +82,30 @@ describe("addStationNode", () => {
 
     expect(graph).toBe(start);
     expect(nodeId).toBe("src-a");
+  });
+
+  test("fills the Starter's empty slot instead of adding beside it", () => {
+    const starter = buildNodeGraphFromTemplate("starter");
+    const { graph, nodeId } = addStationNode(starter, radio("a"));
+
+    expect(nodeId).toBe(STARTER_STATION_ID);
+    expect(graph.nodes).toHaveLength(2);
+    expect(graph.edges).toEqual(starter.edges);
+    expect(findStationNode(graph, radio("a"))?.id).toBe(STARTER_STATION_ID);
+    expect([...compile(graph, ENV).lanes.keys()]).toEqual([STARTER_STATION_ID]);
+
+    // Once filled, the next search adds a second Station.
+    const next = addStationNode(graph, radio("b"));
+    expect(next.nodeId).toBe("src-b");
+    expect(next.graph.nodes).toHaveLength(3);
+  });
+
+  test("leaves an empty slot that feeds an effect alone", () => {
+    const duck = buildNodeGraphFromTemplate("duck");
+    const { graph, nodeId } = addStationNode(duck, radio("a"));
+
+    expect(nodeId).toBe("src-a");
+    expect(graph.nodes).toHaveLength(duck.nodes.length + 1);
   });
 
   test("puts the first Station one column left of Speakers", () => {

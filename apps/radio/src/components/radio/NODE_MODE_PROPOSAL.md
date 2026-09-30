@@ -40,9 +40,13 @@ everything. A single hint line under the canvas reads "Drag a cable to empty spa
 node".
 
 A new user, or one with no stored node session, starts from the **Starter** patch instead:
-one empty Station slot, its body the station search, wired to Speakers. Until a source holds
-a station the canvas hint says what to do first: "Search a station in the slot, or press / to
-add a node". The richer templates stay in the Templates menu and the palette. Pressing `/`, double-clicking the canvas, or dropping a cable on empty space opens the
+one empty Station slot, its body the station search, wired to Speakers. A station picked from
+the search bar fills that slot rather than landing beside it. Until a source holds a station
+the canvas hint says what to do first: "Search a station in the slot, or press / to add a
+node" ("tap +" on a phone; "Search to add a station" when there is no slot). The richer
+templates stay in the Templates menu and the palette.
+
+Pressing `/`, double-clicking the canvas, or dropping a cable on empty space opens the
 palette, and a station picked there is wired in ahead of time. Pressing play makes the
 cables carrying signal brighten with their live level.
 
@@ -636,8 +640,9 @@ What this design does instead:
   Blank, in that order. Each replaces the patch as one undo step.
   - **Starter**: one empty Station slot wired to Speakers, in Duck's columns. It is the
     default for a new node session. Play all does nothing until the slot holds a station.
-  - **All my stations** (id `start-from-multiple`): every enabled saved station plus session stations, in Multiple's
-    order (saved first; `multiple-playback.ts:120-197`), each wired to Speakers at its volume.
+  - **All my stations** (id `start-from-multiple`): every enabled saved station plus session
+    stations, in Multiple's order (saved first; `multiple-playback.ts:120-197`), each wired
+    to Speakers at its volume.
   - **Duck** (PR 4): a talk station keys a Compressor on a music station.
   - **Frankenstation** and **Two cities** (PR 5): three stations in bands → Merge; two
     stations panned hard L/R.

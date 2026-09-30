@@ -8,16 +8,32 @@ export function hasFilledSource(graph: Pick<NodeGraph, "nodes">): boolean {
   );
 }
 
+/** What to do first in a patch with nothing to play. */
+function firstStep(graph: NodeGraph, isPhone: boolean): string {
+  // `/` needs a keyboard; on a phone the toolbar's + opens the same palette.
+  const addNode = isPhone ? "tap + to add a node" : "press / to add a node";
+  const hasSlot = graph.nodes.some((node) => node.type === "station");
+  return hasSlot
+    ? `Search a station in the slot, or ${addNode}`
+    : `Search to add a station, or ${addNode}`;
+}
+
 /**
  * The canvas's one line of direction. Until a source holds a station,
  * Play all has nothing to start, so it says what to do first; after that it
  * points at the cable gesture.
  */
-export function NodeCanvasHint({ graph }: { graph: NodeGraph | null }) {
+export function NodeCanvasHint({
+  graph,
+  isPhone = false,
+}: {
+  graph: NodeGraph | null;
+  isPhone?: boolean;
+}) {
   if (graph && !hasFilledSource(graph)) {
     return (
       <EmptyHint className="pointer-events-none absolute inset-x-0 bottom-0 z-10 py-4 md:py-4">
-        Search a station in the slot, or press / to add a node
+        {firstStep(graph, isPhone)}
       </EmptyHint>
     );
   }

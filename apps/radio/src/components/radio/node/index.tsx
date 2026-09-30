@@ -211,7 +211,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       ) : (
         <NodeCanvasSkeleton />
       )}
-      <NodeCanvasHint graph={graph} />
+      <NodeCanvasHint graph={graph} isPhone={isPhone} />
     </div>
   );
   const rack = graph ? <NodeRack graph={graph} /> : null;

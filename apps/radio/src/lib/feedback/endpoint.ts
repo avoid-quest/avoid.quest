@@ -24,6 +24,7 @@ const FEEDBACK_CATEGORY_NAMES_BY_VALUE = {
 } as const;
 const FEEDBACK_MODE_NAMES_BY_VALUE: Readonly<Record<string, string>> = {
   dj: "DJ",
+  multiple: "Multiple",
   node: "Node",
   single: "Single",
 };
@@ -69,7 +70,6 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
     ] ?? item.category?.trim();
   const mode = readStringMetadata(item, "mode");
   // The mode is untrusted client metadata, so only known modes are echoed.
-  // A retired mode such as "multiple" reads as Unknown too.
   let modeLabel: string | undefined;
   if (mode !== undefined) {
     modeLabel = Object.hasOwn(FEEDBACK_MODE_NAMES_BY_VALUE, mode)

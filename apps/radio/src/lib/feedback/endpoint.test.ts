@@ -210,7 +210,7 @@ describe("handleFeedbackRequest", () => {
     expect(formatted?.body).toContain("- App version: v");
   });
 
-  test("labels node and treats multiple or garbage modes as Unknown", async () => {
+  test("labels node and multiple and treats garbage modes as Unknown", async () => {
     const request = new Request("https://radio.test/api/feedback", {
       headers: {
         "cf-connecting-ip": "203.0.113.10",
@@ -242,7 +242,7 @@ describe("handleFeedbackRequest", () => {
 
     expect(modeRow("node")).toBe("| Mode | Node |");
     expect(modeRow("single")).toBe("| Mode | Single |");
-    expect(modeRow("multiple")).toBe("| Mode | Unknown |");
+    expect(modeRow("multiple")).toBe("| Mode | Multiple |");
     expect(modeRow("<script>|x")).toBe("| Mode | Unknown |");
     expect(modeRow("toString")).toBe("| Mode | Unknown |");
     expect(modeRow()).toBe("| Mode | Not provided |");

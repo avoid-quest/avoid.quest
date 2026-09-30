@@ -122,7 +122,8 @@ function NativeControls({ node, title, onChange, onStep }: Controls) {
           defaultValue={0}
           format={paramFormatters.gain}
           label="Gain"
-          max={12}
+          // The schema's full range, so a stored +24 dB trim stays put.
+          max={24}
           min={-40}
           name={name("Gain")}
           onChange={(gainDb) => onChange({ gainDb })}
@@ -218,4 +219,9 @@ export function NativeStripNode({
       <ModulePorts title={getNodeDefinition(type).name} type={type} />
     </>
   );
+}
+
+/** How wide a Filter, Pan or Gain node body draws. */
+export function nativeNodeWidth(type: NativeNodeType): number {
+  return moduleWidth(COLUMNS[type], MIN_NATIVE_COLUMNS);
 }

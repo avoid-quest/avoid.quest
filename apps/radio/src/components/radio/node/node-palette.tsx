@@ -34,10 +34,12 @@ import {
   type PaletteFrom,
   paletteEntries,
 } from "@/lib/node-graph/palette";
-import type { NodeType } from "@/lib/node-graph/schema";
+import { NATIVE_NODE_TYPES, type NodeType } from "@/lib/node-graph/schema";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import type { ValidateOptions } from "@/lib/node-graph/validate";
 import { formatLocation } from "../station-row";
+import { effectNodeWidth } from "./effect-node";
+import { type NativeNodeType, nativeNodeWidth } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
 
 /** Where the palette was opened from, and so where its pick lands. */
@@ -46,7 +48,30 @@ export type PaletteRequest = {
   position?: { x: number; y: number };
   /** A cable dropped on empty space: the palette narrows to what fits it. */
   from?: PaletteFrom | null;
+  /**
+   * Which edge of the new node `position.x` names. "right" lands a picked
+   * node's output port under a cable dragged back from an input, whatever
+   * its width.
+   */
+  edge?: "left" | "right";
 };
+
+/** A Station's node frame (w-60), and the width of anything not drawn as a module. */
+const STATION_WIDTH = 240;
+
+function drawnWidth(type: NodeType): number {
+  if (isEffectNodeType(type)) {
+    return effectNodeWidth(type);
+  }
+  if (isNativeNodeType(type)) {
+    return nativeNodeWidth(type);
+  }
+  return STATION_WIDTH;
+}
+
+function isNativeNodeType(type: NodeType): type is NativeNodeType {
+  return (NATIVE_NODE_TYPES as readonly NodeType[]).includes(type);
+}
 
 /** Keys that type into a field or act inside a menu or dialog. */
 const SHORTCUT_IGNORED_TARGETS =
@@ -215,10 +240,14 @@ export function NodePalette({
     let added: string | null = null;
     commitNodeGraph(
       (latest) => {
+        const { edge, position } = current;
         const result = addPaletteNode(latest, entry, {
           ...validateOptions,
           from: current.from,
-          position: current.position,
+          position:
+            position && edge === "right"
+              ? { ...position, x: position.x - drawnWidth(entry.type) }
+              : position,
         });
         added = result.nodeId;
         return result.graph;

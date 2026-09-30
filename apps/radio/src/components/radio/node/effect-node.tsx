@@ -95,6 +95,11 @@ export function firstLayoutRow(type: EffectType): BodyControl[] {
   }));
 }
 
+/** How wide an effect's node body draws. */
+export function effectNodeWidth(type: EffectType): number {
+  return moduleWidth(firstLayoutRow(type).length, MIN_EFFECT_COLUMNS);
+}
+
 function readValue(effect: EffectConfig, key: string): unknown {
   return (effect as unknown as Record<string, unknown>)[key];
 }
@@ -149,11 +154,10 @@ function BodyControlView({
         label={label}
         name={name}
         onChange={(next) => {
-          const option = param.options.find(
-            (entry) => String(entry.value) === next
-          );
+          // As the effect rack does: a numeric select commits a number.
           onStep({
-            [param.key]: option?.value ?? next,
+            [param.key]:
+              param.valueType === "number" ? Number.parseInt(next, 10) : next,
           } as Partial<EffectConfig>);
         }}
         options={param.options.map((option) => ({

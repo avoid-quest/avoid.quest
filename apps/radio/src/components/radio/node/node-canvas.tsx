@@ -346,11 +346,9 @@ function Canvas({
     // A node feeding an input sits left of the cursor, one fed by an output
     // right of it, so its port lands where the cable was let go.
     onOpenPalette({
+      edge: from.type === "target" ? "right" : "left",
       from,
-      position: {
-        x: from.type === "target" ? drop.x - STATION_WIDTH : drop.x,
-        y: drop.y - 20,
-      },
+      position: { x: drop.x, y: drop.y - 20 },
     });
   };
 

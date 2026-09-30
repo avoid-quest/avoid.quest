@@ -65,6 +65,19 @@ const { act, cleanup, fireEvent, render } = await import(
 
 afterEach(cleanup);
 
+// Radix Select measures and scrolls, which JSDOM does not do.
+for (const [key, value] of Object.entries({
+  hasPointerCapture: (): boolean => false,
+  releasePointerCapture: (): void => undefined,
+  scrollIntoView: (): void => undefined,
+})) {
+  Object.defineProperty(dom.window.HTMLElement.prototype, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
 type EffectNodeModule = typeof import("./effect-node");
 let EffectNode: EffectNodeModule["EffectNode"];
 let EffectNodeBody: EffectNodeModule["EffectNodeBody"];
@@ -173,6 +186,22 @@ describe("EffectNodeBody", () => {
     fireEvent.click(view.getByRole("switch", { name: "Compressor on" }));
 
     expect(onStep).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  test("a numeric select commits a number, as the effect rack does", async () => {
+    const onStep = mock((_patch: Partial<EffectConfig>) => undefined);
+    const view = renderBody(createDefaultEffectConfig("fold", "f1", 0), {
+      onStep,
+    });
+
+    fireEvent.keyDown(
+      view.getByRole("combobox", { name: endsWith("Oversample") }),
+      { key: "Enter" }
+    );
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    fireEvent.click(view.getByRole("option", { name: "8x" }));
+
+    expect(onStep).toHaveBeenCalledWith({ oversample: 8 });
   });
 
   test("shows a backend badge in its header", () => {
@@ -445,5 +474,26 @@ describe("NativeNodeBody", () => {
       key: "ArrowLeft",
     });
     expect(onChange).toHaveBeenCalledWith({ pan: -0.01 });
+    cleanup();
+
+    // A stored trim anywhere in the schema's range stays within the knob's.
+    const gain = render(
+      <NativeNodeBody
+        node={{
+          data: { gainDb: 18 },
+          id: "g",
+          position: { x: 0, y: 0 },
+          type: "gain",
+        }}
+        onChange={onChange}
+        onRelease={noop}
+        onRemove={noop}
+        onStep={noop}
+      />
+    );
+    const knob = gain.getByRole("slider", { name: "Gain" });
+    expect(Number(knob.getAttribute("aria-valuemax"))).toBeGreaterThanOrEqual(
+      Number(knob.getAttribute("aria-valuenow"))
+    );
   });
 });

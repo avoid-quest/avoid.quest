@@ -1,16 +1,19 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
-import { setEffectParams } from "@/lib/node-graph/graph-edits";
+import { removeNodes, setEffectParams } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   createNodeStore,
   type NodeStore,
+  undoNodeGraph,
 } from "@/lib/node-graph/node-store";
+import { addPaletteNode } from "@/lib/node-graph/palette";
 import {
   type NodeGraph,
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import {
   createMidiControl,
   type MidiBrowserAccess,
@@ -230,6 +233,66 @@ describe("createNodeMidiActions", () => {
 });
 
 describe("node MIDI through the MIDI control", () => {
+  test("a deleted node's learned CC stays dormant for a new instance and follows Undo", async () => {
+    const entry = {
+      id: "compressor",
+      kind: "node",
+      name: "Compressor",
+      section: "fx",
+      type: "compressor",
+    } as const;
+    const original = addPaletteNode(buildNodeGraphFromTemplate("blank"), entry);
+    const originalId = original.nodeId as string;
+    const store = createNodeStore(original.graph);
+    const { browser, control } = await connectedControl();
+    const binding = control.bindActions();
+    const updateActions = () =>
+      binding.update(
+        createNodeMidiActions(
+          store.state.graph as NodeGraph,
+          storeCommit(store)
+        )
+      );
+    updateActions();
+    control.activateNode();
+    const targetId = `node:${originalId}:threshold` as const;
+    control.change({ targetId, type: "start-learn" });
+    browser.emit([0xb0, 21, 64]);
+
+    commitNodeGraph(
+      (graph) => removeNodes(graph, [originalId]),
+      store,
+      "snapshot"
+    );
+    updateActions();
+    let addedId = "";
+    commitNodeGraph(
+      (graph) => {
+        const added = addPaletteNode(graph, entry);
+        addedId = added.nodeId as string;
+        return added.graph;
+      },
+      store,
+      "snapshot"
+    );
+    updateActions();
+    const newThreshold = effectOf(store, addedId).threshold;
+    browser.emit([0xb0, 21, 127]);
+    browser.flushFrame();
+    expect(effectOf(store, addedId).threshold).toBe(newThreshold);
+    expect(addedId).not.toBe(originalId);
+    expect(control.getSnapshot().mappingsByTarget.has(targetId)).toBe(true);
+
+    expect(undoNodeGraph(store)).toBe(true);
+    expect(undoNodeGraph(store)).toBe(true);
+    updateActions();
+    browser.time += 100;
+    browser.emit([0xb0, 21, 127]);
+    browser.flushFrame();
+    expect(effectOf(store, originalId).threshold).toBe(0);
+    binding.dispose();
+  });
+
   test("node params list as a group named after the node title", async () => {
     const store = createNodeStore(buildGraph());
     const { control } = await connectedControl();

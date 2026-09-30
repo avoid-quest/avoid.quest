@@ -142,9 +142,9 @@ describe("addPaletteNode", () => {
       radio: radio("c"),
     });
 
-    expect(nodeId).toBe("src-c");
+    expect(nodeId).toStartWith("station-");
     expect(graph.edges.at(-1)).toMatchObject({
-      source: "src-c",
+      source: nodeId,
       target: SPEAKERS_NODE_ID,
     });
     expect(validate(graph)).toEqual([]);
@@ -186,9 +186,9 @@ describe("addPaletteNode FX", () => {
       { position: { x: 240, y: 0 } }
     );
 
-    expect(nodeId).toBe("compressor");
+    expect(nodeId).toStartWith("compressor-");
     expect(graph.nodes.find((node) => node.id === nodeId)).toMatchObject({
-      data: { effect: { enabled: true, id: "compressor", type: "compressor" } },
+      data: { effect: { enabled: true, id: nodeId, type: "compressor" } },
       position: { x: 240, y: 0 },
       type: "compressor",
     });

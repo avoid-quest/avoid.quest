@@ -165,19 +165,22 @@ describe("NodePalette", () => {
 
     expect(view.queryByRole("dialog")).toBeNull();
     const { graph } = store.state;
-    expect(graph?.nodes.find((node) => node.id === "src-nts")).toMatchObject({
+    const added = graph?.nodes.find(
+      (node) => node.type === "station" && node.data.radio?.id === nts.id
+    );
+    expect(added).toMatchObject({
       data: { radio: nts },
       type: "station",
     });
     expect(graph?.edges.at(-1)).toMatchObject({
-      source: "src-nts",
+      source: added?.id,
       target: "speakers",
     });
 
     act(() => {
       undoNodeGraph(store);
     });
-    expect(store.state.graph?.nodes.some((node) => node.id === "src-nts")).toBe(
+    expect(store.state.graph?.nodes.some((node) => node.id === added?.id)).toBe(
       false
     );
   });

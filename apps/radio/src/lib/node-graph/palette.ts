@@ -35,11 +35,7 @@ import {
   type NodeGraph,
   type NodeType,
 } from "./schema";
-import {
-  type NodeTemplateId,
-  SPEAKERS_NODE_ID,
-  stationNodeId,
-} from "./templates";
+import { type NodeTemplateId, SPEAKERS_NODE_ID } from "./templates";
 import {
   type Connection,
   type ValidateOptions,
@@ -292,16 +288,11 @@ function besideEverything(graph: NodeGraph): Position {
   };
 }
 
-function nodeIdFor(
-  graph: NodeGraph,
-  type: NodeType,
-  radio: Radio | undefined
-): string {
-  const taken = new Set(graph.nodes.map((node) => node.id));
-  if (type === "station") {
-    return radio ? stationNodeId(radio, taken) : uniqueId("src-slot", taken);
-  }
-  return uniqueId(type === "speakers" ? SPEAKERS_NODE_ID : type, taken);
+function nodeIdFor(graph: NodeGraph, type: NodeType): string {
+  // Deleted nodes keep their MIDI bindings for Undo; new instances must not reuse them.
+  return type === "speakers"
+    ? uniqueId(SPEAKERS_NODE_ID, new Set(graph.nodes.map((node) => node.id)))
+    : `${type}-${crypto.randomUUID()}`;
 }
 
 export type AddPaletteNodeOptions = ValidateOptions & {
@@ -322,7 +313,7 @@ export function addPaletteNode(
   entry: PaletteNodeEntry,
   { position, from = null, ...options }: AddPaletteNodeOptions = {}
 ): { graph: NodeGraph; nodeId: string | null } {
-  const nodeId = nodeIdFor(graph, entry.type, entry.radio);
+  const nodeId = nodeIdFor(graph, entry.type);
   const node = createPaletteNode(
     entry.type,
     nodeId,

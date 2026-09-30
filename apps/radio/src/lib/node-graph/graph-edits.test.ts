@@ -198,29 +198,28 @@ describe("syncStationSnapshots", () => {
 });
 
 describe("setEffectParams", () => {
-  const withComp = addPaletteNode(patch(radio("a")), {
+  const { graph: withComp, nodeId } = addPaletteNode(patch(radio("a")), {
     id: "compressor",
     kind: "node",
     name: "Compressor",
     section: "fx",
     type: "compressor",
-  }).graph;
+  });
+  const compId = nodeId as string;
 
   test("merges a param into the effect and keeps its id", () => {
-    const graph = setEffectParams(withComp, "compressor", {
+    const graph = setEffectParams(withComp, compId, {
       id: "other",
       threshold: -24,
     } as never);
 
-    expect(graph.nodes.find((node) => node.id === "compressor")).toMatchObject({
-      data: { effect: { id: "compressor", threshold: -24 } },
+    expect(graph.nodes.find((node) => node.id === compId)).toMatchObject({
+      data: { effect: { id: compId, threshold: -24 } },
     });
   });
 
   test("returns the same graph when nothing changes or the node isn't FX", () => {
-    expect(setEffectParams(withComp, "compressor", { enabled: true })).toBe(
-      withComp
-    );
+    expect(setEffectParams(withComp, compId, { enabled: true })).toBe(withComp);
     expect(setEffectParams(withComp, "src-a", { enabled: false })).toBe(
       withComp
     );
@@ -228,24 +227,25 @@ describe("setEffectParams", () => {
 });
 
 describe("setNativeParams", () => {
-  const withPan = addPaletteNode(patch(radio("a")), {
+  const { graph: withPan, nodeId } = addPaletteNode(patch(radio("a")), {
     id: "pan",
     kind: "node",
     name: "Pan",
     section: "fx",
     type: "pan",
-  }).graph;
+  });
+  const panId = nodeId as string;
 
   test("sets only the fields the node has", () => {
-    const graph = setNativeParams(withPan, "pan", { frequency: 400, pan: -1 });
+    const graph = setNativeParams(withPan, panId, { frequency: 400, pan: -1 });
 
-    expect(graph.nodes.find((node) => node.id === "pan")?.data).toEqual({
+    expect(graph.nodes.find((node) => node.id === panId)?.data).toEqual({
       pan: -1,
     });
   });
 
   test("returns the same graph for a no-op", () => {
-    expect(setNativeParams(withPan, "pan", { pan: 0 })).toBe(withPan);
-    expect(setNativeParams(withPan, "pan", { frequency: 400 })).toBe(withPan);
+    expect(setNativeParams(withPan, panId, { pan: 0 })).toBe(withPan);
+    expect(setNativeParams(withPan, panId, { frequency: 400 })).toBe(withPan);
   });
 });

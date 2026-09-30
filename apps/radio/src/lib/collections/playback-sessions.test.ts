@@ -887,45 +887,95 @@ describe("multiple session persistence", () => {
     expect(session?.masterVolume).toBe(0.75);
   });
 
-  test("initializePlaybackSessions preserves a stored node session", async () => {
-    await Promise.all([
-      playbackSessionsCollection.stateWhenReady(),
-      settingsCollection.stateWhenReady(),
-    ]);
+  for (const restoreStateOnLoad of [true, false]) {
+    test(`initializePlaybackSessions preserves an authored node patch (restore ${restoreStateOnLoad})`, async () => {
+      await Promise.all([
+        playbackSessionsCollection.stateWhenReady(),
+        settingsCollection.stateWhenReady(),
+      ]);
 
+      settingsCollection.insert({
+        id: SETTINGS_ID,
+        player: {
+          mode: "node",
+          restoreStateOnLoad,
+        },
+      });
+
+      const modelId = createLocalNamModelId();
+      await saveNamModel(modelId, '{"authored":true}');
+      const effect = createNodeEffectConfig("neuralAmp", "amp");
+      if (effect.type !== "neuralAmp") {
+        throw new Error("Expected neural amp config");
+      }
+      effect.modelId = modelId;
+      const graph: NodeGraphInput = {
+        ...createDuckGraph(),
+        nodes: [
+          ...createDuckGraph().nodes,
+          {
+            data: { effect },
+            id: "amp",
+            position: { x: 240, y: 240 },
+            type: "neuralAmp",
+          },
+        ],
+        viewport: { x: 32, y: -18, zoom: 0.75 },
+      };
+      playbackSessionsCollection.insert({
+        activeChannelId: null,
+        channels: createDuckChannels(),
+        crossfadePosition: 0.5,
+        graph,
+        headphoneVolume: 0.7,
+        id: "node",
+        masterVolume: 0.23,
+      });
+      const before = getPlaybackSession("node");
+
+      await initializePlaybackSessions();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const nodeSession = getPlaybackSession("node");
+      expect(nodeSession?.graph).toEqual(before?.graph);
+      expect(nodeSession?.masterVolume).toBe(0.23);
+      expect(nodeSession?.headphoneVolume).toBe(0.7);
+      expect(nodeSession?.graph?.nodes.map((node) => node.id)).toEqual([
+        "src-kexp",
+        "src-talk",
+        "comp",
+        "speakers",
+        "amp",
+      ]);
+      expect(nodeSession?.channels[0]?.volume).toBe(0.8);
+      expect(getCachedNamModel(modelId)).toBe('{"authored":true}');
+      expect(getPlaybackSession("single")).toBeDefined();
+      expect(getPlaybackSession("dj")).toBeDefined();
+      expect(getPlaybackSession("multiple")).toBeUndefined();
+    });
+  }
+
+  test("initializePlaybackSessions creates the default Node patch when restore is disabled and none is stored", async () => {
+    await Promise.all([
+      settingsCollection.stateWhenReady(),
+      radiosCollection.stateWhenReady(),
+    ]);
     settingsCollection.insert({
       id: SETTINGS_ID,
-      player: {
-        mode: "node",
-        restoreStateOnLoad: true,
-      },
+      player: { mode: "node", restoreStateOnLoad: false },
     });
-
-    playbackSessionsCollection.insert({
-      activeChannelId: null,
-      channels: createDuckChannels(),
-      crossfadePosition: 0.5,
-      graph: createDuckGraph(),
-      headphoneVolume: 0.7,
-      id: "node",
-      masterVolume: 0.23,
-    });
+    radiosCollection.insert({ ...KEXP_RADIO, enabled: true });
 
     await initializePlaybackSessions();
 
-    const nodeSession = getPlaybackSession("node");
-    expect(nodeSession?.masterVolume).toBe(0.23);
-    expect(nodeSession?.headphoneVolume).toBe(0.7);
-    expect(nodeSession?.graph?.nodes.map((node) => node.id)).toEqual([
+    const session = getPlaybackSession("node");
+    expect(session?.graph?.nodes.map((node) => node.id)).toEqual([
       "src-kexp",
-      "src-talk",
-      "comp",
       "speakers",
     ]);
-    expect(nodeSession?.channels[0]?.volume).toBe(0.8);
-    expect(getPlaybackSession("single")).toBeDefined();
-    expect(getPlaybackSession("dj")).toBeDefined();
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(session?.masterVolume).toBe(1);
+    expect(session?.channels[0]?.radio?.id).toBe("kexp");
   });
 
   test("initializePlaybackSessions empties a Station whose session radio is gone", async () => {

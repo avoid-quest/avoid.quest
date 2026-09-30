@@ -710,6 +710,9 @@ export async function initializePlaybackSessions(): Promise<void> {
     sessionRadios: sessionRadiosCollection,
     sessions: playbackSessionsCollection,
   };
+  const hasStoredNodeGraph = Boolean(
+    playbackSessionsCollection.state.get("node")?.graph
+  );
   migrateMultipleSession(legacyCollections);
   stopWatchingLegacyWrites ??= watchLegacyMultipleWrites({
     ...legacyCollections,
@@ -727,7 +730,10 @@ export async function initializePlaybackSessions(): Promise<void> {
 
   if (!shouldRestore) {
     upsertSession(buildSingleSessionFromLegacyState());
-    upsertSession(buildNodeSessionFromEnabledRadios());
+    // Playback starts paused; disabling restoration must not erase a patch.
+    if (!hasStoredNodeGraph) {
+      upsertSession(buildNodeSessionFromEnabledRadios());
+    }
     upsertSession(buildDjSessionFromLegacyState());
     scheduleNamModelCleanup(discardedModelIds);
   } else if (playbackSessionsCollection.state.size === 0) {

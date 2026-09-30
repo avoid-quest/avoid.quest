@@ -4,7 +4,9 @@ import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   getPlaybackChannel,
   getPlaybackSession,
+  initializePlaybackSessions,
   playbackSessionsCollection,
+  stopLegacyMultipleListeners,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
@@ -311,6 +313,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  stopLegacyMultipleListeners();
   await resetCollections();
   resetAllPlaybackRuntime();
 });
@@ -349,6 +352,32 @@ describe("Node Playback", () => {
         volume: 0.35,
       }),
     ]);
+  });
+
+  test("restore disabled retains the authored patch and activates its lanes paused", async () => {
+    const graph = patch([station("authored", { volume: 0.42 })]);
+    insertNodeSession(graph, 0.23);
+    settingsCollection.update("app-settings", (draft) => {
+      draft.player.restoreStateOnLoad = false;
+    });
+    const harness = createHarness();
+
+    await initializePlaybackSessions();
+    await harness.playback.activate();
+
+    expect(harness.store.state.graph).toEqual(graph);
+    expect(harness.context.channels.activate).toHaveBeenCalledWith(
+      "node",
+      channelOf("authored"),
+      expect.objectContaining({ id: "authored" }),
+      soundOf("authored")
+    );
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+    expect(harness.context.audioEngine.playback.play).not.toHaveBeenCalled();
+    expect(getPlaybackChannelRuntime(channelOf("authored")).isPlaying).toBe(
+      false
+    );
+    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.23);
   });
 
   test("an empty Station slot has no lane", async () => {

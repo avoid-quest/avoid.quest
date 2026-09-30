@@ -234,6 +234,10 @@ describe("NodePalette", () => {
       "Bandcamp",
       "File",
       "Audio input",
+      "Browser / computer audio",
+      "Spotify",
+      "Mixcloud",
+      "Radio episodes / shows",
       "KEXP",
       "NTS 1",
     ]);
@@ -419,6 +423,10 @@ describe("NodePalette devices", () => {
       "Audio input",
       "Default - Desk mic",
       "Desk mic",
+      "Browser / computer audio",
+      "Spotify",
+      "Mixcloud",
+      "Radio episodes / shows",
       "KEXP",
       "NTS 1",
     ]);

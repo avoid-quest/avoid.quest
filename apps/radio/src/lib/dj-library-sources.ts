@@ -1,4 +1,5 @@
 import type { Radio } from "@/lib/audio";
+import { BROWSER_AUDIO_SOURCES } from "@/lib/audio/playback/display-audio";
 import type { Platform } from "@/lib/platform-types";
 
 export const AUDIO_INPUT_PLATFORM_ID = -3;
@@ -10,7 +11,13 @@ export const SOUNDCLOUD_PLATFORM_ID = -9;
 export const YOUTUBE_PLATFORM_ID = -10;
 
 export type DeckSourceLoadIntent =
-  | { type: "device-input"; deviceId: string; deviceLabel: string }
+  | {
+      type: "device-input";
+      deviceId: string;
+      deviceLabel: string;
+      capture?: "display";
+      sourceUrl?: string;
+    }
   | { type: "file"; file: File }
   | { type: "files"; files: readonly File[] }
   | { type: "radio"; radio: Radio | null }
@@ -185,6 +192,19 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
       streamUrl: "",
     },
   },
+  ...BROWSER_AUDIO_SOURCES.map((source, index) => ({
+    color: "#22c55e",
+    icon: "audio-input" as const,
+    id: -11 - index,
+    pendingPlatform: source.id,
+    radio: {
+      description: "Share audio from a browser tab or computer",
+      enabled: true,
+      id: -11 - index,
+      name: source.name,
+      streamUrl: "",
+    },
+  })),
 ] as const satisfies readonly PlatformSourceDefinition[];
 
 export const PLATFORM_ITEMS: Radio[] = PLATFORM_SOURCE_DEFINITIONS.map(

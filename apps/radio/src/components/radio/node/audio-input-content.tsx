@@ -22,6 +22,7 @@ import {
 } from "@/lib/node-graph/node-store";
 import { getNodePlayback } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { BrowserAudioHelp } from "../browser-audio-form";
 import { InlineError } from "../inline-error";
 import {
   DeviceNote,
@@ -140,12 +141,11 @@ export function AudioInputNodeBody({
   strip,
 }: AudioInputBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || AUDIO_INPUT_NAME;
-  const denied = devices.permissionState === "denied";
-  const unplugged = isUnplugged(
-    data.deviceId,
-    devices.inputs,
-    devices.inputsListed
-  );
+  const isDisplay = data.capture === "display";
+  const denied = !isDisplay && devices.permissionState === "denied";
+  const unplugged =
+    !isDisplay &&
+    isUnplugged(data.deviceId, devices.inputs, devices.inputsListed);
   const isLive = isPlaying && !isLoading;
   const canGoLive = data.deviceId !== null && !denied && !unplugged;
 
@@ -207,8 +207,16 @@ export function AudioInputNodeBody({
         )}
         onKeyDown={keepControlKeys}
       >
-        <InputState data={data} devices={devices} unplugged={unplugged} />
-        {denied ? null : (
+        {isDisplay ? (
+          <BrowserAudioHelp
+            key={data.sourceUrl}
+            showRadios={data.deviceLabel === "Radio episodes / shows"}
+            url={data.sourceUrl}
+          />
+        ) : (
+          <InputState data={data} devices={devices} unplugged={unplugged} />
+        )}
+        {denied || isDisplay ? null : (
           <>
             <DeviceSelect
               devices={devices.inputs}
@@ -229,7 +237,7 @@ export function AudioInputNodeBody({
             />
           </>
         )}
-        {data.feedsOutput && !denied ? (
+        {data.feedsOutput && !denied && !isDisplay ? (
           <FeedbackGuard
             echoCancellation={data.echoCancellation}
             onEchoCancellationChange={onEchoCancellationChange}
@@ -296,7 +304,8 @@ export function AudioInputNodeContent({
   const isPlaying = runtime?.isPlaying ?? false;
   const isLoading = runtime?.isLoading ?? false;
   useUnpluggedPause(
-    isUnplugged(data.deviceId, devices.inputs, devices.inputsListed),
+    data.capture !== "display" &&
+      isUnplugged(data.deviceId, devices.inputs, devices.inputsListed),
     isPlaying,
     () => {
       playback.setPlaying(id, false);

@@ -205,6 +205,8 @@ function toItem(entry: PaletteEntry): PaletteItem {
     description =
       formatLocation(entry.radio.placeTitle, entry.radio.countryTitle) ||
       "Station";
+  } else if (entry.device?.capture === "display") {
+    description = "Share audio from another tab, window or computer";
   } else if (entry.device) {
     description = entry.type === "deviceIn" ? "Audio input" : "Output device";
   }

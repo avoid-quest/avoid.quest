@@ -691,7 +691,8 @@ function createNodePlayback(
    */
   const startDeviceLane = async (
     channel: PlaybackChannelRecord,
-    source: DeviceLaneSource
+    source: DeviceLaneSource,
+    isCurrent: () => boolean
   ) => {
     const { radio } = channel;
     if (!radio) {
@@ -716,7 +717,7 @@ function createNodePlayback(
       soundId,
       getChannelPlayVolume(channel)
     );
-    await startDeviceInput(deviceInputAudio(ctx), soundId, source);
+    await startDeviceInput(deviceInputAudio(ctx), soundId, source, isCurrent);
     // A fader changed during the permission prompt keeps its latest value.
     const latest = getPlaybackChannel("node", channel.id);
     if (latest && !latest.muted) {
@@ -740,7 +741,7 @@ function createNodePlayback(
         : 0;
     try {
       if (playing && channel && source?.kind === "device") {
-        await startDeviceLane(channel, source);
+        await startDeviceLane(channel, source, shouldReportError);
       } else {
         if (playing && channel) {
           makeTrackSound(channel);

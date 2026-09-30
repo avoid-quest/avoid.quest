@@ -10,7 +10,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
 - **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, and Radio Browser/Radio Garden stations
-- **External inputs**: device audio input (mic/line-in), local file playback
+- **External inputs**: device audio input (mic/line-in), local files and folder playlists, shared browser/computer audio in Node and DJ
 - **PWA**: installable, service worker, offline shell
 - **Persistence**: TanStack DB collections backed by localStorage — radios, settings, playback sessions
 - **Visualizations**: spectrum analyser, waveform display, level/peak meters
@@ -18,6 +18,36 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 - **MIDI**: configurable controller mappings for all DJ actions
 - **Import/Export**: JSON config, shareable URL (lz-string compressed)
 - **Theme**: dark/light mode
+
+## Local folders and shared audio
+
+In Node, add **File**; in DJ, choose **Audio file**. **Browse folder** imports
+playable files from every subfolder into a playlist in natural filename order.
+Unsupported files are skipped. Enable autoplay to continue through the list;
+DJ enables it when loading a folder. Files stay on the device and must be picked
+again after a reload.
+
+Both modes offer **Spotify**, **Mixcloud**, **Radio episodes / shows** and
+**Browser / computer audio**. Open the source in another tab, play it there,
+then use **Go live** (Node) or **Share tab / computer audio** (DJ) and enable
+**Share tab audio** in the browser picker. Pasted Spotify, Mixcloud and supported
+station archive links load the same shared-audio source; direct audio-file and
+playlist URLs retain the normal seekable player. Tracks, shows and seeking are
+controlled in the source tab. Sharing is never restored automatically.
+
+This uses the browser's `getDisplayMedia`, with desktop Chrome/Edge recommended.
+Window/system audio support varies by browser and OS; a virtual audio input is
+another option for desktop software. Protected playback may be silent. Only the
+selected stream's audio reaches the mixer; the picker requires a video track,
+but the app does not render, record or upload it. Use headphones when sharing
+system audio to avoid feeding the mixer back into itself.
+
+Spotify does not expose a supported DJ mixing integration: its
+[developer policy](https://developer.spotify.com/policy) prohibits mixing Spotify
+content through its platform. These entries use user-selected browser sharing,
+with no Spotify SDK or direct media extraction. See Chrome's
+[screen-sharing controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls)
+for browser capture capabilities.
 
 ## Tech Stack
 

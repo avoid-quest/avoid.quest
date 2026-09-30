@@ -7,6 +7,10 @@
  */
 
 import type { ChannelSelection, DeviceAudioConstraints } from "@/lib/audio";
+import {
+  requestDisplayAudio,
+  stopCapturedAudio,
+} from "@/lib/audio/playback/display-audio";
 
 /** The engine calls a device start needs; AudioManager provides them. */
 export type DeviceInputAudio = {
@@ -20,6 +24,7 @@ export type DeviceInputAudio = {
 };
 
 export type DeviceInputTarget = {
+  capture?: "display";
   deviceId: string;
   channelSelection: ChannelSelection;
   /**
@@ -37,17 +42,39 @@ export type DeviceInputTarget = {
 export async function startDeviceInput(
   audio: DeviceInputAudio,
   soundId: string,
-  { channelSelection, deviceId, echoCancellation }: DeviceInputTarget,
+  { capture, channelSelection, deviceId, echoCancellation }: DeviceInputTarget,
   isCurrent: () => boolean = () => true
 ): Promise<number | null> {
-  await audio.startDevice(
-    soundId,
-    deviceId,
-    echoCancellation === undefined ? undefined : { echoCancellation },
-    channelSelection
-  );
-  if (!isCurrent()) {
+  const stream =
+    capture === "display" ? await requestDisplayAudio() : undefined;
+  if (stream && !isCurrent()) {
+    stopCapturedAudio(stream);
     return null;
   }
-  return audio.getDeviceChannelCount(soundId);
+  const constraints =
+    echoCancellation === undefined ? undefined : { echoCancellation };
+  try {
+    await audio.startDevice(
+      soundId,
+      deviceId,
+      stream ? { stream } : constraints,
+      channelSelection
+    );
+    if (!isCurrent()) {
+      if (stream) {
+        stopCapturedAudio(stream);
+      }
+      return null;
+    }
+  } catch (error) {
+    if (stream) {
+      stopCapturedAudio(stream);
+    }
+    throw error;
+  }
+  const count = audio.getDeviceChannelCount(soundId);
+  if (stream && count === null) {
+    stopCapturedAudio(stream);
+  }
+  return count;
 }

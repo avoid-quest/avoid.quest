@@ -123,8 +123,11 @@ function InputSourceRow({
   const isLive = isPlaying && !isLoading;
   const metadata = radio.platformMetadata;
   const deviceId = isDeviceInputMetadata(metadata) ? metadata.deviceId : null;
-  const unplugged = isUnplugged(deviceId, devices.inputs, devices.inputsListed);
-  const denied = devices.permissionState === "denied";
+  const isDisplay =
+    isDeviceInputMetadata(metadata) && metadata.capture === "display";
+  const unplugged =
+    !isDisplay && isUnplugged(deviceId, devices.inputs, devices.inputsListed);
+  const denied = !isDisplay && devices.permissionState === "denied";
   useUnpluggedPause(unplugged, isPlaying, () => {
     controls.setPlaying(nodeId, false);
   });
@@ -155,7 +158,9 @@ function InputSourceRow({
             title={radio.name}
           >
             <StationRowSubtitle>
-              {inputSubtitle(devices.permissionState, unplugged, isLive)}
+              {isDisplay
+                ? "Shared tab / computer audio"
+                : inputSubtitle(devices.permissionState, unplugged, isLive)}
             </StationRowSubtitle>
           </StationRowText>
         </div>
@@ -174,7 +179,7 @@ function InputSourceRow({
         {actions}
       </div>
       {strip ? <div className="pl-9">{strip}</div> : null}
-      {feedback ? (
+      {feedback && !isDisplay ? (
         <FeedbackGuard
           echoCancellation={feedback.echoCancellation}
           onEchoCancellationChange={(echoCancellation) => {

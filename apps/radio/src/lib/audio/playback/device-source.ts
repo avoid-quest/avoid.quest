@@ -47,6 +47,8 @@ export type DeviceSourceCallbacks = {
  * Audio constraints for device capture
  */
 export type DeviceAudioConstraints = {
+  /** A browser-selected stream, acquired during the initiating gesture. */
+  stream?: MediaStream;
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
@@ -443,9 +445,11 @@ export class DeviceSource {
     try {
       // Use 'exact' for device selection to ensure the correct device is captured
       // If the device is unavailable, NotFoundError is thrown and handled by handleStartError
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: initialRequest,
-      });
+      const stream =
+        constraints.stream ??
+        (await navigator.mediaDevices.getUserMedia({
+          audio: initialRequest,
+        }));
       if (revision !== this.startRevision) {
         for (const track of stream.getTracks()) {
           track.stop();
@@ -501,9 +505,9 @@ export class DeviceSource {
   }
 
   /**
-   * The browser ends a capture's tracks when its device is unplugged or the
-   * mic permission is revoked: the capture stops then, rather than read as
-   * live with no audio.
+   * The browser ends a capture's tracks when its device is unplugged, the
+   * mic permission is revoked or a shared tab or screen stops sharing: the
+   * capture stops then, rather than read as live with no audio.
    */
   private watchTrackEnd(stream: MediaStream): void {
     const ended = () => this.stop();

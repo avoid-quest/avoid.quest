@@ -15,6 +15,7 @@
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { BROWSER_AUDIO_SOURCES } from "@/lib/audio/playback/display-audio";
 import type { Radio } from "@/lib/audio/playback/types";
 import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
 import { bandCountOf, withBandCount } from "./branches";
@@ -83,7 +84,12 @@ export type PaletteSection =
   | "templates";
 
 /** An audio device as the palette offers it. */
-export type PaletteDevice = { deviceId: string; label: string };
+export type PaletteDevice = {
+  deviceId: string;
+  label: string;
+  capture?: "display";
+  sourceUrl?: string;
+};
 
 export type PaletteNodeEntry = {
   kind: "node";
@@ -263,7 +269,12 @@ export function createPaletteNode(
   if (isEffectNodeType(type)) {
     data = { effect: { ...createEffect(type, id), enabled: true } };
   } else if (device && (type === "deviceIn" || type === "deviceOut")) {
-    data = { deviceId: device.deviceId, deviceLabel: device.label };
+    data = {
+      capture: device.capture,
+      deviceId: device.deviceId,
+      deviceLabel: device.label,
+      sourceUrl: device.sourceUrl,
+    };
   }
   const parsed = graphNodeSchema.safeParse({ data, id, position, type });
   return parsed.success ? parsed.data : null;
@@ -510,7 +521,24 @@ export function paletteEntries(
     entries.push(
       { id: type, kind: "node", name: definition.name, section, type },
       ...(type === "platform" ? trackChipEntries() : []),
-      ...(type === "deviceIn" ? inputDeviceEntries(devices.inputs) : [])
+      ...(type === "deviceIn"
+        ? [
+            ...inputDeviceEntries(devices.inputs),
+            ...BROWSER_AUDIO_SOURCES.map((source) => ({
+              device: {
+                capture: "display" as const,
+                deviceId: "display",
+                label: source.name,
+                sourceUrl: source.url,
+              },
+              id: `capture:${source.id}`,
+              kind: "node" as const,
+              name: source.name,
+              section: "sources" as const,
+              type: "deviceIn" as const,
+            })),
+          ]
+        : [])
     );
   }
   // Saved stations close Sources, so a long list can't bury the inputs.
@@ -749,7 +777,10 @@ export function addPaletteNode(
     const [cable] = validCables(added, node, from, options);
     return { graph: cable ? connectNodes(added, cable) : added, nodeId };
   }
-  if (isRadioSourceNode(node)) {
+  if (
+    isRadioSourceNode(node) ||
+    (node.type === "deviceIn" && node.data.capture === "display")
+  ) {
     return {
       graph: { ...added, edges: wireToSpeakers(added, nodeId) },
       nodeId,

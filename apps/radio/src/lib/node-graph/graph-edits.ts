@@ -422,6 +422,24 @@ export function setSourceRadio(
     }
     changed = true;
     const { muted, strip, volume } = node.data;
+    const metadata = radio.platformMetadata;
+    if (metadata?.platform === "device-input") {
+      return {
+        ...node,
+        data: {
+          capture: metadata.capture,
+          channelSelection: metadata.channelSelection,
+          deviceId: metadata.deviceId,
+          deviceLabel: metadata.deviceLabel,
+          echoCancellation: false,
+          muted,
+          sourceUrl: metadata.sourceUrl,
+          strip: stripForType("deviceIn", strip),
+          volume,
+        },
+        type: "deviceIn",
+      };
+    }
     const type = sourceTypeForRadio(radio);
     const kept = stripForType(type, strip);
     // A cue point belongs to the track it was set on.

@@ -235,6 +235,60 @@ describe("NodeStage", () => {
     ).toBeTruthy();
   });
 
+  test("shared audio uses Go live without microphone feedback controls", async () => {
+    const session = buildNodeSessionFromTemplate("starter");
+    const graph = nodeGraphSchema.parse({
+      ...session.graph,
+      edges: [
+        {
+          id: "tab->speakers",
+          source: "tab",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+      ],
+      nodes: [
+        {
+          data: {
+            capture: "display",
+            deviceId: "display",
+            deviceLabel: "Spotify",
+            sourceUrl: "https://open.spotify.com/",
+          },
+          id: "tab",
+          position: { x: 0, y: 0 },
+          type: "deviceIn",
+        },
+        {
+          data: {},
+          id: "speakers",
+          position: { x: 300, y: 0 },
+          type: "speakers",
+        },
+      ],
+    });
+    playbackSessionsCollection.insert({
+      ...session,
+      channels: deriveNodeChannels(
+        compile(graph, { crossOriginIsolated: false })
+      ),
+      graph,
+    });
+    const { controls, view } = renderStage();
+    const sources = await waitFor(() =>
+      view.getByRole("list", { name: "Sources" })
+    );
+    expect(
+      within(sources).getByText("Shared tab / computer audio")
+    ).toBeTruthy();
+    fireEvent.click(
+      within(sources).getByRole("button", { name: "Go live Spotify" })
+    );
+    expect(controls.setPlaying).toHaveBeenLastCalledWith("tab", true);
+    expect(within(sources).queryByText("Echo cancellation")).toBeNull();
+  });
+
   test("an empty patch points at the search", async () => {
     const { view } = renderStage();
 

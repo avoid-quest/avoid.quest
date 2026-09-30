@@ -35,10 +35,12 @@ const youtubeMetadataSchema = z
 
 const deviceInputMetadataSchema = z
   .object({
+    capture: z.literal("display").optional(),
     deviceId: z.string(),
     deviceLabel: z.string(),
     itemType: z.literal("track"),
     platform: z.literal("device-input"),
+    sourceUrl: z.string().optional(),
     url: z.literal(""),
   })
   .passthrough();

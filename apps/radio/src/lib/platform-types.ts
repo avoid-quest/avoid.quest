@@ -49,6 +49,8 @@ import type { ChannelSelection } from "@/lib/audio";
 
 // Device input metadata
 export type DeviceInputMetadata = {
+  capture?: "display";
+  sourceUrl?: string;
   platform: "device-input";
   itemType: "track";
   url: "";
@@ -165,6 +167,10 @@ export type Platform =
   | "youtube"
   | "device-input"
   | "static-audio"
+  | "browser-audio"
+  | "spotify"
+  | "mixcloud"
+  | "radio-shows"
   | "external"
   | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =

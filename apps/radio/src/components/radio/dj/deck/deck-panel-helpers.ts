@@ -11,6 +11,7 @@ import type {
 export type DeckPanelContentKind =
   | "empty"
   | "loaded"
+  | "pending-browser"
   | "pending-device"
   | "pending-external"
   | "pending-file";
@@ -19,6 +20,14 @@ export function resolveDeckPanelContentKind(
   hasRadio: boolean,
   pendingPlatform?: Platform
 ): DeckPanelContentKind {
+  if (
+    pendingPlatform === "browser-audio" ||
+    pendingPlatform === "spotify" ||
+    pendingPlatform === "mixcloud" ||
+    pendingPlatform === "radio-shows"
+  ) {
+    return "pending-browser";
+  }
   if (pendingPlatform === "device-input") {
     return "pending-device";
   }

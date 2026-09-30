@@ -94,6 +94,7 @@ export type LaneSource =
   | { kind: "radio"; radio: StationRadio }
   | {
       kind: "device";
+      capture?: "display";
       deviceId: string;
       channelSelection: ChannelSelectionPlan;
       echoCancellation: boolean;
@@ -228,7 +229,10 @@ export function isSoloActive(nodes: readonly GraphNode[]): boolean {
  */
 export function deviceInputRadio(
   nodeId: string,
-  data: Pick<DeviceInNode["data"], "channelSelection" | "deviceLabel"> & {
+  data: Pick<
+    DeviceInNode["data"],
+    "channelSelection" | "deviceLabel" | "capture" | "sourceUrl"
+  > & {
     deviceId: string;
   }
 ): StationRadio {
@@ -237,6 +241,9 @@ export function deviceInputRadio(
     id: `device-input:${nodeId}`,
     name: data.deviceLabel || "Audio input",
     platformMetadata: {
+      ...(data.capture
+        ? { capture: data.capture, sourceUrl: data.sourceUrl }
+        : {}),
       channelCount: 2,
       channelSelection: data.channelSelection,
       deviceId: data.deviceId,
@@ -288,7 +295,13 @@ function laneSourceOf(node: GraphNode): LiveSource | null {
       cueListen: false,
       muted,
       radio: deviceInputRadio(node.id, node.data),
-      source: { channelSelection, deviceId, echoCancellation, kind: "device" },
+      source: {
+        channelSelection,
+        deviceId,
+        echoCancellation,
+        kind: "device",
+        ...(node.data.capture ? { capture: node.data.capture } : {}),
+      },
       strip,
       transport: null,
       volume,

@@ -20,6 +20,7 @@ import { InfoIcon, MicIcon, MicOffIcon } from "lucide-react";
 import { useMemo } from "react";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { ChannelSelection } from "@/lib/audio";
+import { BrowserAudioHelp } from "../../browser-audio-form";
 import { DeckChannelStrip } from "./deck-channel-strip";
 import { useDeckContext } from "./deck-context";
 import { DeckFooter } from "./deck-footer";
@@ -97,6 +98,10 @@ export function DeviceInputContent({
           radio={radio}
         />
       </div>
+      {radio?.platformMetadata?.platform === "device-input" &&
+      radio.platformMetadata.capture === "display" ? (
+        <BrowserAudioHelp url={radio.platformMetadata.sourceUrl} />
+      ) : null}
       <div className="flex items-center gap-2">
         <span className="flex w-16 shrink-0 items-center gap-1 font-medium text-muted-foreground text-xs">
           Channel

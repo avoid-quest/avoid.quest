@@ -53,6 +53,9 @@ export async function prepareSourceRadio(
     resolveStream = resolveDjPlatformStreamUrl,
   }: NodeSourceLoaderDependencies = {}
 ): Promise<SourceLoad> {
+  if (radio.platformMetadata?.platform === "device-input") {
+    return { radio };
+  }
   const playable = await radioOnTrack(
     radio,
     radio.streamUrl,

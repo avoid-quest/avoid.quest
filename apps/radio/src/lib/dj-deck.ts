@@ -340,7 +340,9 @@ export function createBrowserAudioAdapter(
     },
     getCueTap: (soundId) => context.audio.getPreFaderNode(soundId),
     getDeviceChannelCount: (soundId) =>
-      context.audio.getDeviceSource(soundId)?.channelCount ?? null,
+      context.audio.getDeviceSource(soundId)?.isActive
+        ? (context.audio.getDeviceSource(soundId)?.channelCount ?? null)
+        : null,
     loadFile: extractFileMetadata,
     refresh: (soundId, streamUrl, position, streamFormat) =>
       context.audioEngine.playback.refreshStreamUrl(
@@ -673,6 +675,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       { platform: "device-input" }
     >
   ): Promise<void> => {
+    const { playGeneration } = runtimes[deckId];
     // Seed the fader before the capture can reach the output.
     applyCrossfade();
     // The same start Node mode's Audio input lanes use.
@@ -680,7 +683,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       options.audio,
       soundId,
       metadata,
-      () => isCurrent(deckId, generation)
+      () =>
+        isCurrent(deckId, generation) &&
+        runtimes[deckId].playGeneration === playGeneration
     );
     if (channelCount === null) {
       return;
@@ -698,10 +703,14 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     generation: number,
     soundId: string,
     radio: Radio,
-    wasPlaying: boolean
+    wasPlaying: boolean,
+    captureOnLoad: boolean
   ): Promise<void> => {
     const metadata = radio.platformMetadata;
     if (isDeviceInputMetadata(metadata)) {
+      if (!captureOnLoad) {
+        return;
+      }
       await startDeviceInput(deckId, generation, soundId, metadata);
       if (isCurrent(deckId, generation)) {
         applyCrossfade();
@@ -814,7 +823,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     deckId: DeckId,
     loadGeneration: number,
     radio: Radio | null,
-    playbackPolicy: "paused" | "preserve" = "preserve"
+    playbackPolicy: "paused" | "preserve" = "preserve",
+    captureOnLoad = true
   ): Promise<void> => {
     if (!isLoadCurrent(deckId, loadGeneration)) {
       return;
@@ -859,7 +869,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         generation,
         soundId,
         radio,
-        wasPlaying
+        wasPlaying,
+        captureOnLoad
       );
       if (!isCurrent(deckId, generation)) {
         activationCleanup();
@@ -974,6 +985,17 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       getPlaybackChannelRuntime(deckId).soundId === soundId &&
       getPlaybackChannel("dj", deckId)?.radio?.streamUrl === radio.streamUrl;
     try {
+      if (
+        isDeviceInputMetadata(radio.platformMetadata) &&
+        options.audio.getDeviceChannelCount(soundId) === null
+      ) {
+        await startDeviceInput(
+          deckId,
+          generation,
+          soundId,
+          radio.platformMetadata
+        );
+      }
       await options.audio.resume();
       if (!stillCurrent()) {
         return;
@@ -1148,11 +1170,16 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<DeckSourceLoadResult> {
     const side = sideForDeck(deckId);
     await commitRadio(deckId, loadGeneration, {
-      description: "Device input (mic/line-in)",
+      description: intent.capture
+        ? "Shared tab / computer audio"
+        : "Device input (mic/line-in)",
       enabled: true,
       id: `device-input-${side}`,
       name: intent.deviceLabel,
       platformMetadata: {
+        ...(intent.capture
+          ? { capture: intent.capture, sourceUrl: intent.sourceUrl }
+          : {}),
         channelCount: 2,
         channelSelection: { left: 0, right: 1 },
         deviceId: intent.deviceId,
@@ -1352,6 +1379,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     loadGeneration: number,
     intent: Extract<DjDeckLoadIntent, { type: "track" | "track-url" }>
   ): Promise<DeckSourceLoadResult> {
+    if (isDeviceInputMetadata(intent.radio?.platformMetadata)) {
+      await commitRadio(deckId, loadGeneration, intent.radio, "paused", false);
+      return loaded();
+    }
     if (!intent.radio) {
       await commitRadio(deckId, loadGeneration, null);
       return loaded();

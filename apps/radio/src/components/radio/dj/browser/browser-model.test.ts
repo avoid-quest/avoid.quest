@@ -12,6 +12,10 @@ describe("DJ browser model", () => {
       "YouTube",
       "Audio file",
       "Audio input",
+      "Browser / computer audio",
+      "Spotify",
+      "Mixcloud",
+      "Radio episodes / shows",
     ]);
   });
 

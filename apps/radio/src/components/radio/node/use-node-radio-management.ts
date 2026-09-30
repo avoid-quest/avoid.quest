@@ -130,7 +130,7 @@ export function useNodeRadioManagement({
       store,
       "snapshot"
     );
-    if (committed) {
+    if (committed && radio.platformMetadata?.platform !== "device-input") {
       await startStation(nodeId);
     }
   };
@@ -146,7 +146,7 @@ export function useNodeRadioManagement({
       store,
       "snapshot"
     );
-    if (committed) {
+    if (committed && radio.platformMetadata?.platform !== "device-input") {
       await startStation(nodeId);
     }
   };

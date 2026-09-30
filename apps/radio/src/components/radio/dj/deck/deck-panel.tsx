@@ -9,6 +9,7 @@ import type {
   Radio,
 } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
+import type { BrowserAudioSource } from "@/lib/audio/playback/display-audio";
 import { channelEffects } from "@/lib/channel-effects";
 import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
@@ -23,6 +24,7 @@ import {
   isStaticAudioMetadata,
 } from "@/lib/platform-types";
 import { setDjError } from "@/lib/stores/dj-runtime-store";
+import { BrowserAudioForm } from "../../browser-audio-form";
 import { DeviceForm } from "../device-form";
 import { DjRadioList } from "../dj-radio-list";
 import { ExternalSearch } from "../external-search";
@@ -421,7 +423,23 @@ function DeckPanelInner({
   let content: React.ReactNode;
   const contentKind = resolveDeckPanelContentKind(!!radio, pendingPlatform);
 
-  if (contentKind === "pending-device") {
+  if (contentKind === "pending-browser") {
+    content = (
+      <BrowserAudioForm
+        onCancel={cancelPendingSource}
+        onLoad={async (sourceUrl, deviceLabel) => {
+          await loadSource({
+            capture: "display",
+            deviceId: "display",
+            deviceLabel,
+            sourceUrl,
+            type: "device-input",
+          });
+        }}
+        source={pendingPlatform as BrowserAudioSource}
+      />
+    );
+  } else if (contentKind === "pending-device") {
     content = (
       <DeviceForm
         onCancel={cancelPendingSource}
@@ -510,7 +528,11 @@ function DeckPanelInner({
             deviceLabel={deviceMeta.deviceLabel ?? radio.name}
             isLoading={isLoading}
             isPlaying={isPlaying}
-            onChangeDevice={handleChangeDevice}
+            onChangeDevice={
+              deviceMeta.capture === "display"
+                ? () => setIsPickingSource(true)
+                : handleChangeDevice
+            }
             onChannelSelectionChange={setChannelSelection}
             onClear={handleClear}
             onToggleMute={handleToggleMute}

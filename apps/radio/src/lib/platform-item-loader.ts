@@ -3,6 +3,10 @@ import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
 import type { Radio } from "@/lib/audio";
 import { resolveClientStaticAudio } from "@/lib/audio/client-static-audio-resolver";
 import { inferStreamFormat } from "@/lib/audio/playback/stream-format";
+import {
+  browserAudioRadio,
+  detectBrowserAudioSource,
+} from "@/lib/browser-audio-links";
 import { type PlatformItem, resolvePlatformItem } from "@/lib/platform-client";
 import { resolvePlatformStation } from "@/lib/stations/external-station-workflow";
 import { getYouTubeClient } from "@/lib/youtube";
@@ -124,6 +128,9 @@ export function createPlatformItemLoader({
   url: string
 ) => Promise<LoadPlatformItemResult> {
   return async (url) => {
+    if (detectBrowserAudioSource(url)) {
+      return { radio: browserAudioRadio(url), success: true };
+    }
     const result = await resolvePlatformStation(url, async (normalizedUrl) => {
       const platform = detectPlayablePlatformFromUrl(normalizedUrl);
       if (platform === "static-audio") {

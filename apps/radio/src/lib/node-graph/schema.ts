@@ -267,6 +267,7 @@ const deviceInNodeSchema = z.object({
   ...nodeBase,
   data: z
     .object({
+      capture: z.literal("display").optional(),
       channelSelection: channelSelectionSchema.default({ left: 0, right: 1 }),
       /** `null` until a device is picked; an empty input has no lane. */
       deviceId: z.string().nullable().default(null),
@@ -275,6 +276,7 @@ const deviceInNodeSchema = z.object({
       /** Off by default, like DJ's inputs; on is the feedback guard. */
       echoCancellation: z.boolean().default(false),
       muted: z.boolean().default(false),
+      sourceUrl: z.string().optional(),
       strip: inputStripSchema.default(() => ({ ...DEFAULT_INPUT_STRIP })),
       volume: unitSchema.default(1),
     })

@@ -209,6 +209,10 @@ describe("palette Sources", () => {
       "platform:bandcamp",
       "file",
       "deviceIn",
+      "capture:browser-audio",
+      "capture:spotify",
+      "capture:mixcloud",
+      "capture:radio-shows",
     ]);
     for (const platform of ["youtube", "soundcloud", "bandcamp"] as const) {
       const definition = PLATFORM_SOURCE_DEFINITIONS.find(

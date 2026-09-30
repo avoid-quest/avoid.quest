@@ -71,6 +71,10 @@ describe("paletteEntries", () => {
       "sources:Bandcamp",
       "sources:File",
       "sources:Audio input",
+      "sources:Browser / computer audio",
+      "sources:Spotify",
+      "sources:Mixcloud",
+      "sources:Radio episodes / shows",
       "sources:Station c",
       "routing:Split",
       "routing:Stereo Split",
@@ -147,6 +151,10 @@ describe("paletteEntries", () => {
       "Bandcamp",
       "File",
       "Audio input",
+      "Browser / computer audio",
+      "Spotify",
+      "Mixcloud",
+      "Radio episodes / shows",
       "Station c",
       "Split",
       "Stereo Split",
@@ -242,6 +250,10 @@ describe("paletteEntries: audio inputs and output devices", () => {
       "Audio input",
       "Desk mic",
       "Line in",
+      "Browser / computer audio",
+      "Spotify",
+      "Mixcloud",
+      "Radio episodes / shows",
     ]);
     expect(entries.find((entry) => entry.id === "deviceIn:line")).toMatchObject(
       { device: { deviceId: "line", label: "Line in" }, type: "deviceIn" }

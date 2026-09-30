@@ -8,6 +8,11 @@ import {
   DrawerTrigger,
 } from "@avoid.quest/ui/components/drawer";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Settings2Icon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
@@ -41,19 +46,28 @@ export function SettingsButton({
 
   return (
     <Drawer handleOnly={true} onOpenChange={setIsOpen} open={isOpen}>
-      <DrawerTrigger asChild>
-        {trigger ?? (
-          <Button
-            aria-label="Open settings"
-            className={cn("size-7", className)}
-            size="icon"
-            title="Settings"
-            variant="ghost"
-          >
-            <Settings2Icon className="size-3.5" />
-          </Button>
-        )}
-      </DrawerTrigger>
+      {trigger ? (
+        <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+      ) : (
+        <Tooltip>
+          {/* Drawer outside the tooltip, so its data-state is the one kept. */}
+          <DrawerTrigger asChild>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Open settings"
+                className={cn("size-7", className)}
+                size="icon"
+                variant="ghost"
+              >
+                <Settings2Icon className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+          </DrawerTrigger>
+          <TooltipContent side="bottom" sideOffset={6}>
+            Settings
+          </TooltipContent>
+        </Tooltip>
+      )}
       <DrawerContent onEscapeKeyDown={keepOpenWhileReordering}>
         <div className="mx-auto w-full max-w-6xl">
           <DrawerHeader className="pb-2">

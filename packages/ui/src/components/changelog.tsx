@@ -8,6 +8,11 @@ import {
   PopoverTrigger,
 } from "@avoid.quest/ui/components/popover";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@avoid.quest/ui/components/tooltip";
+import {
   type ChangelogEntry,
   type ChangelogSeenAt,
   getChangelogSeenAt,
@@ -57,13 +62,21 @@ export function Changelog({
     () => getChangelogSeenAt(storageKey),
     getServerSeenAt
   );
+  const [isOpen, setIsOpen] = useState(false);
+  const [isHintOpen, setIsHintOpen] = useState(false);
   // The mark from before this opening keeps new entries flagged while open.
   const [seenBeforeOpen, setSeenBeforeOpen] = useState<ChangelogSeenAt>();
   const hasUnseen = entries.some((entry) =>
     isChangelogEntryUnseen(entry, seenAt)
   );
 
+  // A hover while the list is open would otherwise linger until it closes.
+  const handleHintOpenChange = (open: boolean) => {
+    setIsHintOpen(open && !isOpen);
+  };
+
   const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
     if (!open) {
       return;
     }
@@ -75,21 +88,29 @@ export function Changelog({
   };
 
   return (
-    <Popover onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          aria-label={hasUnseen ? "What's new (unread)" : "What's new"}
-          className={cn("relative size-7", className)}
-          size="icon"
-          title="What's new"
-          variant="ghost"
-        >
-          <CircleQuestionMarkIcon className="size-3.5" />
-          {hasUnseen ? (
-            <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
-          ) : null}
-        </Button>
-      </PopoverTrigger>
+    <Popover onOpenChange={handleOpenChange} open={isOpen}>
+      {/* The hint stays out of the way of the open list. */}
+      <Tooltip onOpenChange={handleHintOpenChange} open={isHintOpen && !isOpen}>
+        {/* Popover outside the tooltip, so its data-state is the one kept. */}
+        <PopoverTrigger asChild>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={hasUnseen ? "What's new (unread)" : "What's new"}
+              className={cn("relative size-7", className)}
+              size="icon"
+              variant="ghost"
+            >
+              <CircleQuestionMarkIcon className="size-3.5" />
+              {hasUnseen ? (
+                <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+              ) : null}
+            </Button>
+          </TooltipTrigger>
+        </PopoverTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          What's new
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent align="end" className="w-80 p-0">
         <p className="px-3 pt-2.5 pb-1 font-medium text-xs">What's new</p>
         {entries.length > 0 ? (

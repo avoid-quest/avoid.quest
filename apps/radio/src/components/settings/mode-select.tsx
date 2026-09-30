@@ -4,6 +4,11 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@avoid.quest/ui/components/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -56,19 +61,27 @@ export function ModeSelect({ className }: { className?: string }) {
       {playerModes.map((mode) => {
         const Icon = modeIcons[mode.value];
         return (
-          <ToggleGroupItem
-            aria-label={mode.label}
-            className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
-            disabled={isTransitioning}
-            key={mode.value}
-            title={mode.label}
-            value={mode.value}
-          >
-            <Icon className="size-3.5" />
-            <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
+          <Tooltip key={mode.value}>
+            {/* Item outside the tooltip, so its on/off data-state is kept. */}
+            <ToggleGroupItem
+              aria-label={mode.label}
+              asChild
+              className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
+              disabled={isTransitioning}
+              value={mode.value}
+            >
+              <TooltipTrigger>
+                <Icon className="size-3.5" />
+                <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
+                  {mode.label}
+                </span>
+              </TooltipTrigger>
+            </ToggleGroupItem>
+            {/* Names the icon only while the label is hidden. */}
+            <TooltipContent className="sm:hidden" side="bottom" sideOffset={6}>
               {mode.label}
-            </span>
-          </ToggleGroupItem>
+            </TooltipContent>
+          </Tooltip>
         );
       })}
     </ToggleGroup>

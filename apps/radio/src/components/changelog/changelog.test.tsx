@@ -52,7 +52,9 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 });
 
 // Radix picks its layout effect when it loads, so it loads after the DOM.
-const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
 const { Changelog } = await import("@avoid.quest/ui/components/changelog");
 
 const KEY = "test-changelog-seen";
@@ -60,6 +62,21 @@ const ENTRIES: ChangelogEntry[] = [
   { date: "2026-09-20T12:00:00Z", id: "b", text: "Node mode" },
   { date: "2026-09-07T12:00:00Z", id: "a", text: "Metadata preview" },
 ];
+
+/** Lets Radix's zero-delay tooltip timers run. */
+function settle() {
+  return act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+}
+
+/** JSDOM never matches :focus-visible; this makes the trigger's focus count as keyboard focus. */
+function focusByKeyboard(trigger: HTMLElement) {
+  const matches = trigger.matches.bind(trigger);
+  Object.defineProperty(trigger, "matches", {
+    value: (selector: string) =>
+      selector === ":focus-visible" || matches(selector),
+  });
+  act(() => trigger.focus());
+}
 
 /** Queries cover document.body, where the list is portalled. */
 function renderChangelog(entries = ENTRIES) {
@@ -111,5 +128,33 @@ describe("Changelog", () => {
     const { getByText, trigger } = renderChangelog([]);
     fireEvent.click(trigger);
     expect(getByText("Nothing new yet.")).toBeTruthy();
+  });
+
+  test("names itself on keyboard focus, not on focus handed back after a click", async () => {
+    const { queryByRole, trigger } = renderChangelog();
+
+    act(() => trigger.focus());
+    await settle();
+    expect(queryByRole("tooltip")).toBeNull();
+
+    act(() => trigger.blur());
+    focusByKeyboard(trigger);
+    await settle();
+    expect(queryByRole("tooltip")?.textContent).toBe("What's new");
+  });
+
+  test("keeps its tooltip hidden while the list is open and after it closes", async () => {
+    const { queryByRole, trigger } = renderChangelog();
+    fireEvent.click(trigger);
+
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" });
+    await settle();
+    expect(queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await settle();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(queryByRole("tooltip")).toBeNull();
   });
 });

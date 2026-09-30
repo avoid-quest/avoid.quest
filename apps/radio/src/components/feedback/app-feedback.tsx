@@ -87,7 +87,6 @@ function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
       <TooltipTrigger asChild>
         <Button
           aria-label={viewModel.copy.triggerLabel}
-          className="text-muted-foreground hover:text-foreground"
           onClick={viewModel.show}
           size="icon"
           type="button"
@@ -96,7 +95,7 @@ function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
           <MessageCircleMore className="size-3.5" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent sideOffset={6}>
+      <TooltipContent side="bottom" sideOffset={6}>
         {viewModel.copy.triggerLabel}
       </TooltipContent>
     </Tooltip>

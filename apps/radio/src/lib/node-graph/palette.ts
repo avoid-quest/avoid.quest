@@ -41,7 +41,8 @@ import {
 import { type NodeTemplateId, SPEAKERS_NODE_ID } from "./templates";
 import {
   type Connection,
-  connectionRefusal,
+  type Issue,
+  kindsPatch,
   parseHandleId,
   type ValidateOptions,
   validateConnection,
@@ -433,10 +434,18 @@ export function autoConnection(
   return cables.length === 1 ? (cables[0] ?? null) : null;
 }
 
+/** The cable's own problem first, then what it would break elsewhere. */
+function refusalOf(issues: readonly Issue[]): Issue | undefined {
+  return issues.find((issue) => issue.target === "edge") ?? issues[0];
+}
+
 /**
  * Why a cable dropped on `nodeId`'s body didn't connect, as a toast says
- * it: e.g. a second station into a Merge. Null when a port of the cable's
- * kind would take it (the drop was only ambiguous) or the node has none.
+ * it: e.g. a second station into a Merge, or a second key into a lane.
+ * Every port the cable's kind may patch into counts, so a key cable (audio
+ * into a sidechain) is explained too. A port that is only full gives way to
+ * a port with a truer reason. Null when a port would take the cable (the
+ * drop was only ambiguous) or the node has none of its kind.
  */
 export function dropRefusal(
   graph: NodeGraph,
@@ -450,11 +459,70 @@ export function dropRefusal(
     return null;
   }
   const refusals = facingPorts(node, from)
-    .filter((port) => port.kind === kind)
+    .filter((port) =>
+      from.type === "source"
+        ? kindsPatch(kind, port.kind)
+        : kindsPatch(port.kind, kind)
+    )
     .map((port) =>
-      connectionRefusal(graph, cableBetween(from, node.id, port), options)
+      refusalOf(
+        validateConnection(graph, cableBetween(from, node.id, port), options)
+      )
     );
-  return refusals.includes(null) ? null : (refusals[0] ?? null);
+  if (refusals.includes(undefined)) {
+    return null;
+  }
+  return (
+    (refusals.find((issue) => issue?.code !== "port-max") ?? refusals[0])
+      ?.message ?? null
+  );
+}
+
+/** What a cable let go over a node does: connect, or say why it can't. */
+export type DropOutcome = { connect: Connection } | { refuse: string | null };
+
+/**
+ * A cable let go on one of `nodeId`'s ports takes that port or is refused
+ * with its reason, e.g. "Audio can't drive control; use a Follower". It
+ * never lands on another port of the node, so a key dropped on a loose
+ * Compressor's key input can't turn into an audio cable. Let go on the
+ * body, or on a port that is only full, it takes the one port that fits,
+ * else says why none did.
+ */
+export function dropOnNode(
+  graph: NodeGraph,
+  from: PaletteFrom,
+  nodeId: string,
+  port: string | null,
+  options?: ValidateOptions
+): DropOutcome {
+  if (port) {
+    const cable: Connection =
+      from.type === "source"
+        ? {
+            source: from.node,
+            sourceHandle: from.handle,
+            target: nodeId,
+            targetHandle: port,
+          }
+        : {
+            source: nodeId,
+            sourceHandle: port,
+            target: from.node,
+            targetHandle: from.handle,
+          };
+    const refusal = refusalOf(validateConnection(graph, cable, options));
+    if (!refusal) {
+      return { connect: cable };
+    }
+    if (refusal.code !== "port-max") {
+      return { refuse: refusal.message };
+    }
+  }
+  const cable = autoConnection(graph, from, nodeId, options);
+  return cable
+    ? { connect: cable }
+    : { refuse: dropRefusal(graph, from, nodeId, options) };
 }
 
 export type ConnectTarget = {

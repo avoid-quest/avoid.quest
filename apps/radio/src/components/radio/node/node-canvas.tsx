@@ -22,8 +22,7 @@ import {
   useNodeSelection,
 } from "@/lib/node-graph/node-store";
 import {
-  autoConnection,
-  dropRefusal,
+  dropOnNode,
   type PaletteFrom,
   paletteEntries,
 } from "@/lib/node-graph/palette";
@@ -32,11 +31,7 @@ import {
   parallelToSeries,
   seriesToParallel,
 } from "@/lib/node-graph/series-parallel";
-import {
-  type Connection,
-  connectionRefusal,
-  validateConnection,
-} from "@/lib/node-graph/validate";
+import { type Connection, validateConnection } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { BranchEdge } from "./branch-edge";
@@ -360,10 +355,10 @@ function Canvas({
     );
   };
 
-  // A cable dropped on a node that refused it says why, e.g. a Merge that
-  // would sum two stations: the port it landed on, else the node's port of
-  // the cable's kind.
-  const explainRefusal = (
+  // Let go on a port, that port decides; on the body, the one port that
+  // fits. A refusal says why, e.g. a Merge that would sum two stations, or
+  // a lane's second key.
+  const dropOnto = (
     connection: FlowConnectionEnd,
     from: PaletteFrom,
     onNode: string
@@ -373,27 +368,17 @@ function Canvas({
       toHandle?.id && toNode && toHandle.type !== from.type
         ? { handle: toHandle.id, node: toNode.id }
         : null;
-    let message: string | null;
-    if (onPort) {
-      const [source, target] =
-        from.type === "source"
-          ? [{ handle: from.handle, node: from.node }, onPort]
-          : [onPort, { handle: from.handle, node: from.node }];
-      message = connectionRefusal(
-        graph,
-        {
-          source: source.node,
-          sourceHandle: source.handle,
-          target: target.node,
-          targetHandle: target.handle,
-        },
-        validateOptions
-      );
-    } else {
-      message = dropRefusal(graph, from, onNode, validateOptions);
-    }
-    if (message) {
-      toast(message);
+    const outcome = dropOnNode(
+      graph,
+      from,
+      onPort?.node ?? onNode,
+      onPort?.handle ?? null,
+      validateOptions
+    );
+    if ("connect" in outcome) {
+      handleConnect(outcome.connect);
+    } else if (outcome.refuse) {
+      toast(outcome.refuse);
     }
   };
 
@@ -418,12 +403,7 @@ function Canvas({
       .closest(".react-flow__node")
       ?.getAttribute("data-id");
     if (onNode) {
-      const cable = autoConnection(graph, from, onNode, validateOptions);
-      if (cable) {
-        handleConnect(cable);
-      } else {
-        explainRefusal(connection, from, onNode);
-      }
+      dropOnto(connection, from, onNode);
       return;
     }
     if (

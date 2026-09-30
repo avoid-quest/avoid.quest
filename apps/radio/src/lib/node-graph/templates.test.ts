@@ -232,6 +232,25 @@ describe("duck", () => {
     ]);
   });
 
+  test("one station fills the slot its name reads as, and the other stays empty", () => {
+    const music = buildNodeGraphFromTemplate("duck", {
+      saved: [radio("nts", { enabled: true, name: "NTS 1" })],
+    });
+    expect(stationIds(music)).toEqual(["src-nts", "src-talk"]);
+
+    const talk = buildNodeGraphFromTemplate("duck", {
+      saved: [radio("r4", { enabled: true, name: "BBC Radio 4" })],
+    });
+    expect(stationIds(talk)).toEqual(["src-music", "src-r4"]);
+    expect(
+      talk.edges.find((edge) => edge.targetHandle === "in:sidechain:key")
+        ?.source
+    ).toBe("src-r4");
+    for (const graph of [music, talk]) {
+      expect(validate(graph)).toEqual([]);
+    }
+  });
+
   test("with no stations, the slots are empty searches and nothing plays", () => {
     const graph = buildNodeGraphFromTemplate("duck");
 

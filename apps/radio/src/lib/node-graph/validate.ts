@@ -244,19 +244,16 @@ function isInactiveBand(node: GraphNode, port: NodePort): boolean {
 
 /** audio→audio, audio→sidechain, control→control and midi→midi only. */
 function kindIssue(
-  from: NodePort,
-  to: NodePort
+  from: PortKind,
+  to: PortKind
 ): { code: IssueCode; message: string } | null {
-  if (
-    from.kind === "audio" &&
-    (to.kind === "audio" || to.kind === "sidechain")
-  ) {
+  if (from === "audio" && (to === "audio" || to === "sidechain")) {
     return null;
   }
-  if (from.kind === to.kind && from.kind !== "sidechain") {
+  if (from === to && from !== "sidechain") {
     return null;
   }
-  if (from.kind === "audio" && to.kind === "control") {
+  if (from === "audio" && to === "control") {
     return {
       code: "use-follower",
       message: "Audio can't drive control; use a Follower",
@@ -264,8 +261,13 @@ function kindIssue(
   }
   return {
     code: "kind-mismatch",
-    message: `Can't patch ${from.kind} into ${to.kind}`,
+    message: `Can't patch ${from} into ${to}`,
   };
+}
+
+/** Whether an output of kind `from` may feed an input of kind `to`. */
+export function kindsPatch(from: PortKind, to: PortKind): boolean {
+  return kindIssue(from, to) === null;
 }
 
 function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
@@ -297,7 +299,7 @@ function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
     );
     return null;
   }
-  const kind = kindIssue(from, to);
+  const kind = kindIssue(from.kind, to.kind);
   if (kind) {
     edgeIssue(context, edge, kind.code, kind.message);
     return null;

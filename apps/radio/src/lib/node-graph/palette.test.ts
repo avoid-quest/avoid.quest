@@ -6,6 +6,7 @@ import {
   autoConnection,
   connectPorts,
   createPaletteNode,
+  dropOnNode,
   dropRefusal,
   type PaletteFrom,
   type PaletteNodeEntry,
@@ -342,6 +343,126 @@ describe("dropRefusal", () => {
     const loose = { ...patch, edges: [] };
     expect(dropRefusal(loose, fromB, SPEAKERS_NODE_ID)).toBeNull();
     expect(dropRefusal(merged, fromB, "src-b")).toBeNull();
+  });
+
+  describe("key cables", () => {
+    // KEXP → Compressor (keyed by Radio 4) → Gate → Speakers, plus a
+    // loose FIP and a Crusher in no lane.
+    const duck = buildNodeGraphFromTemplate("duck", {
+      saved: [
+        radio("kexp", { name: "KEXP", order: 0 }),
+        radio("r4", { name: "BBC Radio 4", order: 1 }),
+      ],
+    });
+    const fip = createPaletteNode(
+      "station",
+      "src-fip",
+      { x: 0, y: 400 },
+      radio("fip", { name: "FIP" })
+    );
+    const gate = createPaletteNode("gate", "gate", { x: 600, y: 0 });
+    const crusher = createPaletteNode("crusher", "crusher", { x: 600, y: 200 });
+    if (!(fip && gate && crusher)) {
+      throw new Error("Expected a Station, a Gate and a Crusher");
+    }
+    const keyed = {
+      ...duck,
+      edges: [
+        ...duck.edges.filter((edge) => edge.id !== "duck->speakers"),
+        { ...patch.edges[0], id: "duck->gate", source: "duck", target: "gate" },
+        {
+          ...patch.edges[0],
+          id: "gate->speakers",
+          source: "gate",
+          target: SPEAKERS_NODE_ID,
+        },
+      ],
+      nodes: [...duck.nodes, fip, gate, crusher],
+    } as typeof duck;
+
+    test("a station dropped on a full FX in a keyed lane says One key per lane", () => {
+      expect(validate(keyed)).toEqual([]);
+      const fromFip: PaletteFrom = {
+        handle: AUDIO_OUT_HANDLE,
+        node: "src-fip",
+        type: "source",
+      };
+      expect(autoConnection(keyed, fromFip, "gate")).toBeNull();
+      expect(dropRefusal(keyed, fromFip, "gate")).toBe("One key per lane");
+    });
+
+    test("a key dropped on a node in no lane says why", () => {
+      const unkeyed = {
+        ...keyed,
+        edges: keyed.edges.filter(
+          (edge) => edge.targetHandle !== "in:sidechain:key"
+        ),
+      };
+      const fromKey: PaletteFrom = {
+        handle: "in:sidechain:key",
+        node: "duck",
+        type: "target",
+      };
+      expect(autoConnection(unkeyed, fromKey, "crusher")).toBeNull();
+      expect(dropRefusal(unkeyed, fromKey, "crusher")).toBe(
+        "A key must come from a station lane"
+      );
+      // A station would take it: the drop was fine.
+      expect(dropRefusal(unkeyed, fromKey, "src-fip")).toBeNull();
+    });
+  });
+});
+
+describe("dropOnNode", () => {
+  const fromB: PaletteFrom = {
+    handle: AUDIO_OUT_HANDLE,
+    node: "src-b",
+    type: "source",
+  };
+  const comp = createPaletteNode("compressor", "comp", { x: 400, y: 0 });
+  if (!comp) {
+    throw new Error("Expected a Compressor");
+  }
+  const loose = { ...patch, nodes: [...patch.nodes, comp] } as typeof patch;
+
+  test("a key let go on a loose Compressor's key input is refused, not rewired as audio", () => {
+    expect(dropOnNode(loose, fromB, "comp", "in:sidechain:key")).toEqual({
+      refuse: "A key only works on a station lane",
+    });
+    // On the body, the one port that fits still takes it.
+    expect(dropOnNode(loose, fromB, "comp", null)).toEqual({
+      connect: {
+        source: "src-b",
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: "comp",
+        targetHandle: AUDIO_IN_HANDLE,
+      },
+    });
+  });
+
+  test("a port that is only full gives way to the node's other ports", () => {
+    const mix = createPaletteNode("merge", "mix", { x: 400, y: 0 });
+    if (!mix) {
+      throw new Error("Expected a Merge");
+    }
+    const merged = {
+      ...patch,
+      edges: [
+        ...patch.edges.filter((edge) => edge.source !== "src-a"),
+        { ...patch.edges[0], id: "a-mix", source: "src-a", target: "mix" },
+        {
+          ...patch.edges[0],
+          id: "mix-out",
+          source: "mix",
+          target: SPEAKERS_NODE_ID,
+        },
+      ],
+      nodes: [...patch.nodes, mix],
+    } as typeof patch;
+
+    expect(dropOnNode(merged, fromB, "mix", AUDIO_IN_HANDLE)).toEqual({
+      refuse: BUS_MERGE_MESSAGE,
+    });
   });
 });
 

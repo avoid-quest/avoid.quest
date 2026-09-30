@@ -450,8 +450,10 @@ function checkCycles(context: Context, wired: WiredEdge[]): WiredEdge[] {
   const isLoop = (id: string) => context.nodes.get(id)?.type === "loop";
   for (const kind of ["audio", "control"] as const) {
     let remaining = wired.filter(
-      ({ edge, from }) =>
+      ({ edge, from, to }) =>
+        // A key cable taps its lane before the FX, so it closes no cycle.
         from.kind === kind &&
+        to.kind === kind &&
         // Taking the Loop nodes out leaves exactly the delay-free cycles.
         !(kind === "audio" && (isLoop(edge.source) || isLoop(edge.target)))
     );
@@ -871,6 +873,19 @@ export function validateConnection(
   connection: Connection,
   options?: ValidateOptions
 ): Issue[] {
+  if (
+    connection.id !== undefined &&
+    graph.edges.some((edge) => edge.id === connection.id)
+  ) {
+    return [
+      {
+        code: "duplicate-edge",
+        id: connection.id,
+        message: "That cable id is already taken",
+        target: "edge",
+      },
+    ];
+  }
   const candidate: GraphEdge = {
     gain: 1,
     id: connection.id ?? candidateEdgeId(graph),

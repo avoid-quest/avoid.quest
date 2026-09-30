@@ -711,6 +711,48 @@ describe("validate: feedback", () => {
     ).toEqual(["feedback-needs-loop@trim-back", "feedback-needs-loop@back"]);
   });
 
+  test("a key from downstream of its FX closes no cycle", () => {
+    // The key taps its lane before the FX, so no audio runs back.
+    expect(
+      check(
+        [
+          station("talk"),
+          fx("comp", "compressor"),
+          node("g", "gain"),
+          speakers,
+        ],
+        [
+          audio("talk", "comp"),
+          audio("comp", "g"),
+          audio("g", "speakers"),
+          key("g", "comp"),
+        ]
+      )
+    ).toEqual([]);
+  });
+
+  test("two lanes may key each other", () => {
+    expect(
+      check(
+        [
+          station("a"),
+          station("b"),
+          fx("ca", "compressor"),
+          fx("cb", "compressor"),
+          speakers,
+        ],
+        [
+          audio("a", "ca"),
+          audio("b", "cb"),
+          audio("ca", "speakers"),
+          audio("cb", "speakers"),
+          key("ca", "cb"),
+          key("cb", "ca"),
+        ]
+      )
+    ).toEqual([]);
+  });
+
   test("control cycles are refused", () => {
     expect(
       check(
@@ -809,6 +851,20 @@ describe("validateConnection", () => {
         })
       )
     ).toEqual(["port-max@candidate-1"]);
+  });
+
+  test("refuses a caller id another cable already has", () => {
+    expect(
+      codes(
+        validateConnection(base, {
+          id: "mix->echo",
+          source: "a",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        })
+      )
+    ).toEqual(["duplicate-edge@mix->echo"]);
   });
 
   test("reports lane issues the cable would introduce", () => {

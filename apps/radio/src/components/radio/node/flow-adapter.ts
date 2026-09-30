@@ -23,6 +23,7 @@ export type {
   NodeProps as FlowNodeProps,
   NodeTypes as FlowNodeTypes,
   OnConnectStart as FlowConnectStart,
+  Rect as FlowRect,
   Viewport as FlowViewport,
 } from "@xyflow/react";
 export {
@@ -30,6 +31,7 @@ export {
   ConnectionMode,
   EdgeLabelRenderer,
   getBezierPath,
+  getViewportForBounds,
   Handle,
   Position,
   ReactFlow,
@@ -37,6 +39,7 @@ export {
   useConnection,
   useNodeConnections,
   useNodeId,
+  useNodesInitialized,
   useReactFlow,
   useStore as useFlowStore,
   useUpdateNodeInternals,

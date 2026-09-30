@@ -160,8 +160,8 @@ describe("where a new node lands", () => {
     );
     expect(ys).toEqual([
       STATION_ROW_HEIGHT,
-      STATION_ROW_HEIGHT + 200,
-      STATION_ROW_HEIGHT + 400,
+      STATION_ROW_HEIGHT + 280,
+      STATION_ROW_HEIGHT + 560,
     ]);
   });
 

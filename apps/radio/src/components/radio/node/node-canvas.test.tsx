@@ -116,6 +116,7 @@ afterEach(() => {
 });
 
 let NodeCanvas: typeof import("./node-canvas")["default"];
+let phoneFitViewport: typeof import("./node-canvas")["phoneFitViewport"];
 let NodeCanvasHint: typeof import("./canvas-hint")["NodeCanvasHint"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
@@ -126,7 +127,7 @@ let catalogue: typeof import("@/lib/node-graph/catalogue");
 let schema: typeof import("@/lib/node-graph/schema");
 
 beforeAll(async () => {
-  ({ default: NodeCanvas } = await import("./node-canvas"));
+  ({ default: NodeCanvas, phoneFitViewport } = await import("./node-canvas"));
   ({ NodeCanvasHint } = await import("./canvas-hint"));
   ({ NodeActionsProvider } = await import("./node-actions"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
@@ -247,6 +248,34 @@ describe("NodeCanvas", () => {
     expect(
       view.getByText("Search a station in the slot, or tap + to add a node")
     ).toBeTruthy();
+  });
+});
+
+describe("phoneFitViewport", () => {
+  test("a patch too tall for the readable zoom opens on its top", () => {
+    const viewport = phoneFitViewport(
+      { height: 1400, width: 520, x: 0, y: -40 },
+      390,
+      600
+    );
+
+    expect(viewport.zoom).toBe(0.6);
+    // Its top edge sits 16 px below the canvas top, not above it.
+    expect(viewport.y + -40 * viewport.zoom).toBeCloseTo(16);
+    // 520 × 0.6 fits the phone's width, so it stays centred.
+    expect(viewport.x + 260 * viewport.zoom).toBeCloseTo(195);
+  });
+
+  test("a patch that fits is centred as React Flow would", () => {
+    const viewport = phoneFitViewport(
+      { height: 200, width: 300, x: 0, y: 0 },
+      390,
+      600
+    );
+
+    expect(viewport.zoom).toBe(1);
+    expect(viewport.x + 150).toBeCloseTo(195);
+    expect(viewport.y + 100).toBeCloseTo(300);
   });
 });
 
@@ -552,6 +581,60 @@ describe("NodeCanvas: dragging a cable", () => {
     } finally {
       toast.mockRestore();
     }
+  });
+
+  /** Grabs the end of cable `edgeId` at its input, as a rewire starts. */
+  const grabCableEnd = (container: HTMLElement, edgeId: string) => {
+    const end = container.querySelector(
+      `.react-flow__edge[data-id="${edgeId}"] .react-flow__edgeupdater-target`
+    );
+    if (!end) {
+      throw new Error(`No cable end on ${edgeId}`);
+    }
+    fireEvent.mouseDown(end, { button: 0, clientX: 0, clientY: 0 });
+  };
+
+  test("dragging a cable's end frees the input it leaves and rewires it in one undo step", async () => {
+    const { port, view } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    try {
+      grabCableEnd(view.container, "fip->comp");
+      move(-5000);
+      // The Compressor input the cable leaves takes it back, or another.
+      expect(
+        port("comp", "in:audio:main").classList.contains("node-port-accept")
+      ).toBe(true);
+      const reverbIn = port("verb", "in:audio:main");
+      move(-4990, reverbIn);
+      release(reverbIn);
+
+      expect(toast).not.toHaveBeenCalled();
+      const edges = () => nodeStoreModule.nodeStore.state.graph?.edges ?? [];
+      expect(edges().map((edge) => `${edge.source}->${edge.target}`)).toEqual(
+        expect.arrayContaining(["fip->verb"])
+      );
+      expect(edges().some((edge) => edge.id === "fip->comp")).toBe(false);
+
+      act(() => {
+        nodeStoreModule.undoNodeGraph();
+      });
+      expect(edges().some((edge) => edge.id === "fip->comp")).toBe(true);
+      expect(edges().some((edge) => edge.target === "verb")).toBe(false);
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
+  test("a cable end let go on empty space unplugs the cable", async () => {
+    const { view } = await mountPatch();
+    grabCableEnd(view.container, "fip->comp");
+    const pane = view.container.querySelector(".react-flow__pane");
+    move(-5000, pane);
+    release(pane);
+
+    expect(
+      nodeStoreModule.nodeStore.state.graph?.edges.map((edge) => edge.id)
+    ).not.toContain("fip->comp");
   });
 
   test("tap-then-tap lights the ports after the first tap and explains a refused second tap", async () => {

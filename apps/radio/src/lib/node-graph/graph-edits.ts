@@ -162,15 +162,19 @@ export function wireToSpeakers(graph: NodeGraph, source: string): GraphEdge[] {
 
 /**
  * The rows an empty Track and File take: their bodies are a platform
- * search and a file form, taller than a Station card. An Audio input's
- * device picker and Go live button take more than a Station too.
+ * search and a file form, taller than a Station card.
  */
 const EMPTY_SOURCE_ROW_HEIGHT = {
   file: 240,
   platform: 320,
   station: STATION_ROW_HEIGHT,
 } as const;
-const AUDIO_INPUT_ROW_HEIGHT = 200;
+/**
+ * An Audio input grows to about 260 px once wired and live (the headphones
+ * note, Mute and its strip), so its row leaves room for that: a node added
+ * below it while it is new is not covered once it is cabled.
+ */
+const AUDIO_INPUT_ROW_HEIGHT = 280;
 /** A Station card's width, for what shares the source column. */
 const SOURCE_COLUMN_WIDTH = 240;
 /** Where a new FX goes relative to Speakers: between it and the sources. */

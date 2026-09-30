@@ -604,8 +604,8 @@ column + gap-x-2 (max 4 columns), output 200 px.
 
 **Where a new node lands.** A Station, Track, File or Audio input from the palette stacks
 below the lowest node in the source column, by row: 160 px for a filled source, 240 px for
-an empty File (or one whose file is gone after a reload), 320 px for an empty Track, 200 px
-for an Audio input. An FX, Gain or Merge goes between the sources and Speakers
+an empty File (or one whose file is gone after a reload), 320 px for an empty Track, 280 px
+for an Audio input (about 260 px once wired and live). An FX, Gain or Merge goes between the sources and Speakers
 (`Speakers.x - 180`), below everything, so a cable wired Input → FX → Speakers runs forward;
 an output goes right of everything. A reveal after an add waits for the new node's measured
 size and keeps it clear of the canvas hint. On a phone, an empty Station, Track or File added
@@ -667,7 +667,8 @@ What this design does instead:
 - Category comes from the lucide icon tile and the port shape, not header colour.
 - No minimap in v1; fit-view is on `F`, and on a phone on tapping the open Patch tab again.
   A phone fit stops at zoom 0.6, where text reads and ports take a tap, and the patch pans
-  instead of shrinking past it.
+  instead of shrinking past it; a patch still too tall opens on its top (Speakers and the
+  first sources), not its middle.
 - Nodes are flat `bg-card` with the app's `border-border/50`.
 - Motion exists only where signal exists (Live), and reduced motion is honoured through the
   global clamp.

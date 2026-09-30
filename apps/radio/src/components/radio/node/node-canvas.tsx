@@ -14,7 +14,7 @@ import {
   reconnectEdge,
   removeEdges,
   removeNodesHealed,
-  setViewport,
+  setViewport as setGraphViewport,
 } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
@@ -61,9 +61,12 @@ import {
   type FlowEdgeTypes,
   type FlowNodeChange,
   type FlowNodeTypes,
+  type FlowRect,
   type FlowViewport,
+  getViewportForBounds,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useReactFlow,
 } from "./flow-adapter";
 import {
@@ -138,10 +141,74 @@ const FIT_VIEW_OPTIONS = { maxZoom: 1, padding: 0.2 };
  * tap, and the patch pans instead of shrinking past it.
  */
 const PHONE_FIT_VIEW_OPTIONS = { ...FIT_VIEW_OPTIONS, minZoom: 0.6 };
+/** The gap a phone fit leaves above (or left of) a patch too big to fit. */
+const PHONE_FIT_MARGIN = 16;
 /** The canvas hint's strip along the bottom, kept clear by a reveal. */
 const HINT_CLEARANCE = 32;
 /** Frames a reveal waits for a new node's measured size. */
 const REVEAL_MEASURE_FRAMES = 10;
+/**
+ * Where a phone fit leaves the view: the fit's own, except that a patch
+ * still too tall (or too wide) at the readable zoom shows its top (or left)
+ * edge, where Speakers and the first sources are, rather than its middle.
+ */
+export function phoneFitViewport(
+  box: FlowRect,
+  width: number,
+  height: number
+): FlowViewport {
+  const { maxZoom, minZoom, padding } = PHONE_FIT_VIEW_OPTIONS;
+  const fit = getViewportForBounds(
+    box,
+    width,
+    height,
+    minZoom,
+    maxZoom,
+    padding
+  );
+  const overflows = (size: number, room: number) =>
+    size * fit.zoom > room - 2 * PHONE_FIT_MARGIN;
+  return {
+    x: overflows(box.width, width)
+      ? PHONE_FIT_MARGIN - box.x * fit.zoom
+      : fit.x,
+    y: overflows(box.height, height)
+      ? PHONE_FIT_MARGIN - box.y * fit.zoom
+      : fit.y,
+    zoom: fit.zoom,
+  };
+}
+
+type FitTools = Pick<
+  ReturnType<typeof useReactFlow>,
+  "fitView" | "getNodes" | "getNodesBounds" | "setViewport"
+>;
+
+/**
+ * Fits the patch in view, as F, a template load or a second tap on Patch
+ * does; on a phone a patch too big for the readable zoom shows its top.
+ */
+function fitPatch(
+  { fitView, getNodes, getNodesBounds, setViewport }: FitTools,
+  wrapper: HTMLElement | null,
+  isPhone: boolean,
+  duration?: number
+): void {
+  const frame = wrapper?.getBoundingClientRect();
+  const nodes = getNodes();
+  if (!(isPhone && frame && nodes.length > 0)) {
+    fitView({
+      ...(isPhone ? PHONE_FIT_VIEW_OPTIONS : FIT_VIEW_OPTIONS),
+      duration,
+    });
+    return;
+  }
+  setViewport(
+    phoneFitViewport(getNodesBounds(nodes), frame.width, frame.height),
+    { duration }
+  );
+}
+
 /** No React Flow attribution in the canvas corner. */
 const PRO_OPTIONS = { hideAttribution: true };
 
@@ -283,14 +350,16 @@ function Canvas({
   const rewiring = (): { edge: string; graph: NodeGraph } | null =>
     rewireRef.current;
   const dragGraph = () => rewiring()?.graph ?? graph;
+  const fitTools = useReactFlow();
   const {
-    fitView,
     flowToScreenPosition,
     getInternalNode,
     getZoom,
     screenToFlowPosition,
     setCenter,
-  } = useReactFlow();
+  } = fitTools;
+  const nodesInitialized = useNodesInitialized();
+  const phoneAlignedRef = useRef(false);
   const [env] = useState(detectNodePlaybackEnv);
   const validateOptions = { profile: env.profile };
   // The compiler's verdict on each Merge, for its in-lane badge, and on
@@ -498,7 +567,7 @@ function Canvas({
   // undo step of its own.
   const handleMoveEnd = (_event: unknown, viewport: FlowViewport) => {
     commitNodeGraph(
-      (current) => setViewport(current, viewport),
+      (current) => setGraphViewport(current, viewport),
       nodeStore,
       "rebase"
     );
@@ -800,16 +869,29 @@ function Canvas({
     []
   );
 
+  // React Flow's first fit centres an untouched patch; on a phone it is
+  // redone once the nodes are measured, so a tall patch opens on its top. A
+  // pending reveal pans to its node instead, and a persisted viewport stays.
+  useEffect(() => {
+    if (!(isPhone && nodesInitialized) || phoneAlignedRef.current) {
+      return;
+    }
+    phoneAlignedRef.current = true;
+    if (!reveal && isUntouchedViewport(initialViewport)) {
+      fitPatch(fitTools, wrapperRef.current, isPhone);
+    }
+  }, [fitTools, initialViewport, isPhone, nodesInitialized, reveal]);
+
   // A template load can move everything; fit it back in view.
   useEffect(() => {
     if (fitRequest === 0) {
       return;
     }
     const frame = requestAnimationFrame(() => {
-      fitView({ ...fitViewOptions, duration: 200 });
+      fitPatch(fitTools, wrapperRef.current, isPhone, 200);
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitRequest, fitView, fitViewOptions]);
+  }, [fitRequest, fitTools, isPhone]);
 
   // F fits the patch in view, unless typing or inside a menu or dialog.
   useEffect(() => {
@@ -827,11 +909,11 @@ function Canvas({
         return;
       }
       event.preventDefault();
-      fitView({ ...fitViewOptions, duration: 200 });
+      fitPatch(fitTools, wrapperRef.current, isPhone, 200);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [fitView, fitViewOptions]);
+  }, [fitTools, isPhone]);
 
   // Delete heals, B bypasses, I inserts into a cable and Cmd+D duplicates.
   // React Flow's own delete key would listen on the whole document, so a

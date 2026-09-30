@@ -17,7 +17,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { commitNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
 import { migrateNodeGraph, type NodeGraph } from "@/lib/node-graph/schema";
-import { validate } from "@/lib/node-graph/validate";
+import { type Issue, validate } from "@/lib/node-graph/validate";
 import {
   normalizePlayerMode,
   type PlayerMode,
@@ -54,20 +54,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parses a backup's Node patch through the same gate as a stored one: Zod,
- * then `migrateNodeGraph`, then `validate()`. Any problem throws.
+ * A budget depends on the device and is enforced by the compiler, which
+ * reports the Stations past it. The app itself saves such patches (Start from
+ * Multiple over many stations, the search bar adding one more), so a backup
+ * of one must import.
  */
-function parseImportedNodeGraph(session: unknown): NodeGraph {
-  const migration = migrateNodeGraph(
-    isRecord(session) ? session.graph : undefined
-  );
+function isBudgetIssue(issue: Issue): boolean {
+  return issue.code.startsWith("budget-");
+}
+
+/**
+ * Parses a Node patch through the same gate as a stored one: Zod, then
+ * `migrateNodeGraph`, then `validate()`. Any problem but a budget throws.
+ */
+function parseImportedNodeGraph(raw: unknown): NodeGraph {
+  const migration = migrateNodeGraph(raw);
   if (migration.status === "read-only") {
     throw new Error("Incompatible patch - it is from a newer version");
   }
   if (migration.status === "invalid") {
     throw new Error(`Invalid patch: ${migration.error}`);
   }
-  const [issue] = validate(migration.graph);
+  const issue = validate(migration.graph).find(
+    (candidate) => !isBudgetIssue(candidate)
+  );
   if (issue) {
     throw new Error(`Invalid patch: ${issue.message}`);
   }
@@ -90,7 +100,9 @@ function readImportedNodePatch(importData: DatabaseExport): NodeGraph | null {
     throw new Error("Invalid sessions data");
   }
   if (sessions.node !== undefined) {
-    return parseImportedNodeGraph(sessions.node);
+    return parseImportedNodeGraph(
+      isRecord(sessions.node) ? sessions.node.graph : undefined
+    );
   }
   const { multiple } = sessions;
   if (multiple === undefined) {
@@ -99,11 +111,15 @@ function readImportedNodePatch(importData: DatabaseExport): NodeGraph | null {
   if (!(isRecord(multiple) && Array.isArray(multiple.channels))) {
     throw new Error("Invalid Multiple session");
   }
-  return buildNodeGraphFromMultipleRecord(
-    multiple,
-    createKeptRadioTest(
-      [...importData.radios, ...radiosCollection.state.values()],
-      sessionRadiosCollection.state.values()
+  // Through the same gate, so a snapshot the session schema rejects fails
+  // here, before any change, and not halfway through the import.
+  return parseImportedNodeGraph(
+    buildNodeGraphFromMultipleRecord(
+      multiple,
+      createKeptRadioTest(
+        [...importData.radios, ...radiosCollection.state.values()],
+        sessionRadiosCollection.state.values()
+      )
     )
   );
 }
@@ -240,13 +256,25 @@ export const copyShareUrlToClipboard = async (): Promise<void> => {
   }
 };
 
+/** Where import data comes from: a file backup, or a share link. */
+type ImportSource = "backup" | "share-link";
+
 /**
- * Parse import data from JSON string
+ * Parse import data from JSON string. A share link never carries a Node
+ * patch (share-by-URL patches are later work, with their own stripping), so
+ * one in a link is dropped unread rather than replacing the local patch.
  */
-export const parseImportData = (dataString: string): DatabaseExport => {
+export const parseImportData = (
+  dataString: string,
+  source: ImportSource = "backup"
+): DatabaseExport => {
   try {
-    const data = JSON.parse(dataString);
-    return validateImportData(data);
+    const data: unknown = JSON.parse(dataString);
+    return validateImportData(
+      source === "share-link" && isRecord(data)
+        ? { ...data, sessions: undefined }
+        : data
+    );
   } catch (error) {
     throw new Error("Invalid JSON format", { cause: error });
   }
@@ -313,7 +341,7 @@ export const importFromUrl = (url: string): DatabaseExport => {
       throw new Error("Failed to decompress data");
     }
 
-    return parseImportData(jsonString);
+    return parseImportData(jsonString, "share-link");
   } catch (error) {
     console.error("URL import failed:", error);
     throw new Error("Failed to import from URL", { cause: error });

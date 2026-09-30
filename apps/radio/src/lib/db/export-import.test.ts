@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import LZString from "lz-string";
 import type { Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
@@ -28,6 +29,7 @@ import {
 import type { DatabaseExport } from "@/lib/types";
 import {
   createDatabaseExport,
+  importFromUrl,
   mergeImportedData,
   parseImportData,
   previewImportChanges,
@@ -561,6 +563,66 @@ describe("Node patch backups", () => {
       ["n:src-kexp", ["room"]],
       ["n:src-nts", []],
     ]);
+  });
+
+  test("a patch over the device budgets round-trips", () => {
+    // Start from Multiple and the search bar add Stations past the budget;
+    // the compiler reports the extra ones, so an import must not refuse them.
+    const radios = Array.from({ length: 26 }, (_, index) =>
+      stationRadio(`station-${index}`)
+    );
+    radios.forEach((radio, index) => {
+      saveRadio(radio, index);
+    });
+    const graph = buildNodeGraphFromTemplate("start-from-multiple", {
+      saved: [...radiosCollection.state.values()] as Radio[],
+    });
+    expect(graph.nodes.filter((node) => node.type === "station")).toHaveLength(
+      26
+    );
+    playbackSessionsCollection.insert(buildNodeSessionFromGraph(graph));
+    const json = JSON.stringify(createDatabaseExport());
+    playbackSessionsCollection.delete("node");
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromGraph(buildNodeGraphFromTemplate("blank"))
+    );
+
+    replaceImportedData(parseImportData(json));
+
+    expect(getPlaybackSession("node")?.graph).toEqual(graph);
+  });
+
+  test("a share link never carries a patch", () => {
+    const local = seedLocalPatch();
+    const imported = buildNodeGraphFromTemplate("blank");
+    const payload = LZString.compressToBase64(
+      JSON.stringify(rawBackup({ sessions: { node: { graph: imported } } }))
+    );
+
+    const data = importFromUrl(
+      `https://radio.example/import#data=${encodeURIComponent(payload)}`
+    );
+    mergeImportedData(data);
+
+    expect(data.sessions).toBeUndefined();
+    expect(getPlaybackSession("node")?.graph).toEqual(local);
+  });
+
+  test("a share link with an invalid patch still imports its stations", () => {
+    const payload = LZString.compressToBase64(
+      JSON.stringify(
+        rawBackup({
+          radios: [stationRadio("kexp")],
+          sessions: { node: { graph: { version: 1 } } },
+        })
+      )
+    );
+
+    const data = importFromUrl(
+      `https://radio.example/import#data=${encodeURIComponent(payload)}`
+    );
+
+    expect(data.radios.map((radio) => radio.name)).toEqual(["KEXP"]);
   });
 
   test("an import replaces the open patch as one undo step", () => {

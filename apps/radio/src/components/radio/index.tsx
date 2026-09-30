@@ -1,21 +1,24 @@
 import { lazy, type ReactElement, Suspense, useEffect } from "react";
 import type { Radio } from "@/lib/audio";
+import type { SettingsRecord } from "@/lib/collections/settings";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
-import type { Settings } from "@/lib/types";
 import { RadioLoadingSkeleton } from "./radio-loading-skeleton";
 import {
   loadDjPlayer,
   loadMultipleRadios,
+  loadNodeRadios,
   loadSingleRadio,
 } from "./radio-mode-loader";
 
-type RadioMode = Settings["player"]["mode"];
+type RadioMode = SettingsRecord["player"]["mode"];
 
-const RADIO_MODES: RadioMode[] = ["single", "multiple", "dj"];
+// Node is registered but not yet offered in ModeSelect.
+const RADIO_MODES: RadioMode[] = ["single", "multiple", "node", "dj"];
 
 const SingleRadio = lazy(loadSingleRadio);
 const MultipleRadios = lazy(loadMultipleRadios);
+const NodeRadios = lazy(loadNodeRadios);
 const DjPlayer = lazy(loadDjPlayer);
 
 const DEFAULT_RADIO_MODE: RadioMode = "single";
@@ -25,6 +28,7 @@ type RadioModeRenderer = (radios: Radio[]) => ReactElement;
 const radioModeRenderers = {
   dj: (radios) => <DjPlayer radios={radios} />,
   multiple: (radios) => <MultipleRadios radios={radios} />,
+  node: (radios) => <NodeRadios radios={radios} />,
   single: (radios) => <SingleRadio radios={radios} />,
 } satisfies Record<RadioMode, RadioModeRenderer>;
 

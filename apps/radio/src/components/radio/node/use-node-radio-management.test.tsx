@@ -1,0 +1,304 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import { cleanup, render } from "@testing-library/react";
+// @ts-expect-error jsdom types are not installed in this workspace.
+import { JSDOM } from "jsdom";
+import { act } from "react";
+import type { Radio } from "@/lib/audio";
+import { radiosCollection } from "@/lib/collections/radios";
+import { compile, laneChannelId } from "@/lib/node-graph/compile";
+import { createNodeStore, type NodeStore } from "@/lib/node-graph/node-store";
+import type { GraphNode } from "@/lib/node-graph/schema";
+import {
+  buildNodeGraphFromTemplate,
+  SPEAKERS_NODE_ID,
+} from "@/lib/node-graph/templates";
+import {
+  resetAllPlaybackRuntime,
+  resetPlaybackChannelRuntime,
+  setPlaybackChannelRuntime,
+} from "@/lib/stores/playback-runtime-store";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  url: "https://radio.test",
+});
+
+for (const [key, value] of Object.entries({
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  localStorage: dom.window.localStorage,
+  navigator: dom.window.navigator,
+  sessionStorage: dom.window.sessionStorage,
+  window: dom.window,
+})) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
+const sessionRadiosState = {
+  radios: [] as Radio[],
+  removeSessionRadio: mock((_id: string | number) => undefined),
+};
+
+mock.module("@/lib/hooks/use-session-radios", () => ({
+  isSessionRadio: (radio: Radio) => String(radio.id ?? "").startsWith("rg_"),
+  useSessionRadios: <T,>(selector: (state: typeof sessionRadiosState) => T) =>
+    selector(sessionRadiosState),
+}));
+
+const saveDiscoveredStation = mock((_radio: Radio) => undefined);
+
+mock.module("@/lib/hooks/use-discovered-station-actions", () => ({
+  useDiscoveredStationActions: () => ({
+    saveDiscoveredStation,
+    selectDiscoveredStation: mock((_radio: Radio) => undefined),
+  }),
+}));
+
+let useNodeRadioManagement: typeof import("./use-node-radio-management")["useNodeRadioManagement"];
+
+beforeAll(async () => {
+  ({ useNodeRadioManagement } = await import("./use-node-radio-management"));
+});
+
+type Management = ReturnType<typeof useNodeRadioManagement>;
+
+const kexp = {
+  enabled: true,
+  id: "kexp",
+  name: "KEXP",
+  order: 0,
+  streamUrl: "https://radio.example/kexp.mp3",
+} satisfies Radio;
+const nts = {
+  enabled: true,
+  id: "nts",
+  name: "NTS 1",
+  order: 1,
+  streamUrl: "https://radio.example/nts.mp3",
+} satisfies Radio;
+const discovered = {
+  id: "rg_lagos",
+  name: "Lagos Talk",
+  streamUrl: "https://radio.example/lagos.mp3",
+} satisfies Radio;
+
+let store: NodeStore;
+const playback = {
+  setPlaying: mock(async (_nodeId: string, _playing: boolean) => undefined),
+  whenSettled: mock(async () => undefined),
+};
+
+beforeEach(() => {
+  sessionRadiosState.radios = [];
+  sessionRadiosState.removeSessionRadio.mockClear();
+  saveDiscoveredStation.mockClear();
+  playback.setPlaying.mockClear();
+  store = createNodeStore(
+    buildNodeGraphFromTemplate("start-from-multiple", { saved: [kexp, nts] })
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  resetAllPlaybackRuntime();
+  for (const id of Array.from(radiosCollection.state.keys())) {
+    radiosCollection.delete(id);
+  }
+  localStorage.clear();
+  sessionStorage.clear();
+});
+
+function TestHarness({
+  onRender,
+  onStationAdded,
+  savedRadios,
+}: {
+  onRender: (management: Management) => void;
+  onStationAdded?: (nodeId: string) => void;
+  savedRadios: Radio[];
+}) {
+  onRender(
+    useNodeRadioManagement({ onStationAdded, playback, savedRadios, store })
+  );
+  return null;
+}
+
+function renderManagement(
+  savedRadios: Radio[] = [kexp, nts],
+  onStationAdded?: (nodeId: string) => void
+) {
+  let management: Management | null = null;
+  const capture = (next: Management) => {
+    management = next;
+  };
+  const view = render(
+    <TestHarness
+      onRender={capture}
+      onStationAdded={onStationAdded}
+      savedRadios={savedRadios}
+    />
+  );
+  return {
+    current: () => {
+      if (!management) {
+        throw new Error("hook did not render");
+      }
+      return management;
+    },
+    rerender: (next: Radio[]) =>
+      view.rerender(
+        <TestHarness
+          onRender={capture}
+          onStationAdded={onStationAdded}
+          savedRadios={next}
+        />
+      ),
+  };
+}
+
+function station(id: string) {
+  return store.state.graph?.nodes.find(
+    (node): node is Extract<GraphNode, { type: "station" }> =>
+      node.id === id && node.type === "station"
+  );
+}
+
+function edgeIds() {
+  return store.state.graph?.edges.map((edge) => edge.id) ?? [];
+}
+
+describe("useNodeRadioManagement", () => {
+  test("edit opens the station dialog, and the Station follows the edit", async () => {
+    const hook = renderManagement();
+
+    act(() => hook.current().handleEditRadio(kexp));
+    expect(hook.current().dialogOpen).toBe(true);
+    expect(hook.current().dialogMode).toBe("edit");
+    expect(hook.current().selectedRadio).toBe(kexp);
+
+    const renamed = { ...kexp, name: "KEXP 90.3" };
+    await act(async () => {
+      hook.rerender([renamed, nts]);
+      await Promise.resolve();
+    });
+    expect(station("src-kexp")?.data.radio?.name).toBe("KEXP 90.3");
+  });
+
+  test("delete removes the saved station, then its Station node and cables", async () => {
+    radiosCollection.insert(kexp);
+    const hook = renderManagement();
+
+    act(() => hook.current().handleDeleteRadio(kexp));
+    expect(hook.current().deleteConfirm).toBe(kexp);
+    expect(station("src-kexp")).toBeDefined();
+
+    await act(async () => {
+      hook.current().confirmDelete();
+      await Promise.resolve();
+    });
+    expect(radiosCollection.state.has("kexp")).toBe(false);
+    expect(station("src-kexp")).toBeUndefined();
+    expect(edgeIds()).toEqual([`src-nts->${SPEAKERS_NODE_ID}`]);
+  });
+
+  test("removing a session station drops its Station without a confirm", async () => {
+    sessionRadiosState.radios = [discovered];
+    const hook = renderManagement();
+    await act(async () => {
+      await hook.current().addStation(discovered);
+    });
+    expect(station("src-rg_lagos")).toBeDefined();
+
+    act(() => hook.current().handleDeleteRadio(discovered));
+    expect(hook.current().deleteConfirm).toBeNull();
+    expect(sessionRadiosState.removeSessionRadio).toHaveBeenCalledWith(
+      "rg_lagos"
+    );
+    expect(station("src-rg_lagos")).toBeUndefined();
+  });
+
+  test("save-discovered saves the session station, and its Station follows the saved id", async () => {
+    sessionRadiosState.radios = [discovered];
+    const hook = renderManagement();
+    await act(async () => {
+      await hook.current().addStation(discovered);
+    });
+
+    act(() => hook.current().handleSaveSessionRadio(discovered));
+    expect(saveDiscoveredStation).toHaveBeenCalledWith(discovered);
+
+    // Saving removes the session copy and adds a saved one under a new id.
+    sessionRadiosState.radios = [];
+    const saved = { ...discovered, enabled: true, id: "saved-lagos", order: 2 };
+    await act(async () => {
+      hook.rerender([kexp, nts, saved]);
+      await Promise.resolve();
+    });
+    expect(station("src-rg_lagos")?.data.radio?.id).toBe("saved-lagos");
+  });
+
+  test("hide disables the Station node instead of removing it; Undo brings it back playing", async () => {
+    setPlaybackChannelRuntime(laneChannelId("src-kexp"), () => ({
+      isPlaying: true,
+    }));
+    const hook = renderManagement();
+
+    await act(async () => {
+      await hook.current().handleToggleRadio(kexp, false);
+    });
+    const { graph } = store.state;
+    if (!graph) {
+      throw new Error("no graph");
+    }
+    expect(station("src-kexp")?.data.radio?.enabled).toBe(false);
+    expect(edgeIds()).toContain(`src-kexp->${SPEAKERS_NODE_ID}`);
+    expect([
+      ...compile(graph, { crossOriginIsolated: false }).lanes.keys(),
+    ]).toEqual(["src-nts"]);
+
+    // The released lane stops playing.
+    resetPlaybackChannelRuntime(laneChannelId("src-kexp"));
+    await act(async () => {
+      await hook.current().handleToggleRadio(kexp, true);
+    });
+    expect(station("src-kexp")?.data.radio?.enabled).toBe(true);
+    expect(playback.setPlaying).toHaveBeenCalledWith("src-kexp", true);
+
+    playback.setPlaying.mockClear();
+    await act(async () => {
+      await hook.current().handleToggleRadio(nts, false);
+      await hook.current().handleToggleRadio(nts, true);
+    });
+    expect(playback.setPlaying).not.toHaveBeenCalled();
+  });
+
+  test("the search bar adds a Station wired to Speakers and starts it", async () => {
+    const onStationAdded = mock((_nodeId: string) => undefined);
+    const hook = renderManagement([kexp, nts], onStationAdded);
+    const radio3 = {
+      enabled: true,
+      id: "radio3",
+      name: "Radio 3",
+      streamUrl: "https://radio.example/radio3.mp3",
+    } satisfies Radio;
+
+    await act(async () => {
+      await hook.current().addStation(radio3);
+    });
+    expect(edgeIds()).toContain(`src-radio3->${SPEAKERS_NODE_ID}`);
+    expect(onStationAdded).toHaveBeenCalledWith("src-radio3");
+    expect(playback.setPlaying).toHaveBeenCalledWith("src-radio3", true);
+  });
+});

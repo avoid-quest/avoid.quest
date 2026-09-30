@@ -1,0 +1,97 @@
+/*
+ * Node mode: React Flow's structural styles in the base layer, so Tailwind
+ * utilities still win, plus the five signal tokens. Signal kind reads from
+ * the dash pattern first and colour second: idle audio is the achromatic
+ * Wire, and emerald appears only on live cables.
+ */
+@import "@xyflow/react/dist/base.css" layer(base);
+
+:root {
+  --node-wire: var(--muted-foreground);
+  --node-mod: #2563eb;
+  --node-key: #b45309;
+  --node-live: #047857;
+  --node-clip: var(--destructive);
+}
+
+.dark {
+  --node-mod: #3b82f6;
+  --node-key: #fbbf24;
+  --node-live: #34d399;
+}
+
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-node-border-default: 1px solid var(--border);
+  --xy-node-border-selected-default: 1px solid var(--ring);
+  --xy-edge-stroke-default: var(--node-wire);
+  --xy-edge-stroke-width-default: 2;
+  --xy-edge-stroke-selected-default: var(--foreground);
+  --xy-connectionline-stroke-default: var(--node-wire);
+  --xy-connectionline-stroke-width-default: 2;
+  --xy-handle-background-color-default: var(--background);
+  --xy-selection-background-color-default: color-mix(
+    in oklab,
+    var(--ring) 8%,
+    transparent
+  );
+  --xy-selection-border-default: 1px dashed var(--ring);
+  --xy-attribution-background-color-default: transparent;
+}
+
+@layer components {
+  /* Ports: a 10 px dot on the node edge with a 20 px hit target (28 px on
+     touch). Labels come from the native title on hover. */
+  .react-flow__handle.node-port {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--node-wire);
+    border-radius: 9999px;
+  }
+
+  .react-flow__handle.node-port::before {
+    position: absolute;
+    inset: -6px;
+    content: "";
+    border-radius: 9999px;
+  }
+
+  @media (pointer: coarse) {
+    .react-flow__handle.node-port::before {
+      inset: -10px;
+    }
+  }
+
+  .react-flow__handle.node-port.node-port-live {
+    background-color: var(--node-live);
+    border-color: var(--node-live);
+  }
+
+  .react-flow__handle.node-port.valid,
+  .react-flow__handle.node-port.connectingto {
+    border-color: var(--foreground);
+  }
+
+  .react-flow__node:focus-visible {
+    outline: none;
+  }
+
+  .react-flow__node:focus-visible > * {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* A cable carrying a playing Station. */
+  .react-flow__edge.node-edge-live .react-flow__edge-path {
+    stroke: var(--node-live);
+    stroke-width: 2.5;
+  }
+
+  .react-flow__edge.selected .react-flow__edge-path,
+  .react-flow__edge:focus-visible .react-flow__edge-path {
+    stroke: var(--foreground);
+  }
+
+  .react-flow__attribution a {
+    color: var(--muted-foreground);
+  }
+}

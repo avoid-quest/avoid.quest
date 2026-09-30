@@ -30,14 +30,15 @@ export const SPEAKERS_NODE_ID = "speakers";
 
 /** Station node width (240 px) plus a gutter. */
 const COLUMN_WIDTH = 280;
-const ROW_HEIGHT = 112;
+/** A Station card with now-playing, badges and controls, plus a gutter. */
+export const STATION_ROW_HEIGHT = 160;
 /** Past this many stations the template lays them out in two columns. */
 const SINGLE_COLUMN_MAX = 8;
 /** Gap between the last station column and Speakers. */
 const SPEAKERS_GAP = 200;
 
-const AUDIO_OUT = "out:audio:main";
-const AUDIO_IN = "in:audio:main";
+export const AUDIO_OUT_HANDLE = "out:audio:main";
+export const AUDIO_IN_HANDLE = "in:audio:main";
 
 export type NodeTemplateLevels = { volume: number; muted: boolean };
 
@@ -82,7 +83,7 @@ function slug(text: string): string {
 }
 
 /** `src-<radio id or name slug>`, suffixed when two stations collide. */
-function stationNodeId(radio: Radio, taken: Set<string>): string {
+export function stationNodeId(radio: Radio, taken: Set<string>): string {
   const base = `src-${radio.id === undefined ? slug(radio.name) : String(radio.id)}`;
   let id = base;
   for (let suffix = 2; taken.has(id); suffix += 1) {
@@ -117,7 +118,7 @@ function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
       id: stationNodeId(radio, taken),
       position: {
         x: Math.floor(index / rows) * COLUMN_WIDTH,
-        y: (index % rows) * ROW_HEIGHT,
+        y: (index % rows) * STATION_ROW_HEIGHT,
       },
       type: "station",
     };
@@ -128,9 +129,9 @@ function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
       id: `${station.id}->${SPEAKERS_NODE_ID}`,
       muted: false,
       source: station.id,
-      sourceHandle: AUDIO_OUT,
+      sourceHandle: AUDIO_OUT_HANDLE,
       target: SPEAKERS_NODE_ID,
-      targetHandle: AUDIO_IN,
+      targetHandle: AUDIO_IN_HANDLE,
     })
   );
   return {
@@ -139,7 +140,7 @@ function startFromMultiple(sources: NodeTemplateSources): NodeGraph {
       ...stations,
       speakersNode({
         x: columns * COLUMN_WIDTH + SPEAKERS_GAP,
-        y: ((rows - 1) * ROW_HEIGHT) / 2,
+        y: ((rows - 1) * STATION_ROW_HEIGHT) / 2,
       }),
     ],
     version: NODE_GRAPH_VERSION,

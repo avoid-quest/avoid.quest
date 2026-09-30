@@ -10,6 +10,9 @@ let singlePromise: Promise<{
 let multiplePromise: Promise<{
   default: React.ComponentType<ModeComponentProps>;
 }>;
+let nodePromise: Promise<{
+  default: React.ComponentType<ModeComponentProps>;
+}>;
 let djPromise: Promise<{ default: React.ComponentType<ModeComponentProps> }>;
 
 export function loadSingleRadio() {
@@ -34,6 +37,19 @@ export function loadMultipleRadios() {
   return multiplePromise;
 }
 
+export function loadNodeRadios() {
+  nodePromise ??= Promise.all([
+    import("./node"),
+    import("@/lib/collections/playback-sessions"),
+    import("@/lib/node-graph/node-session"),
+  ]).then(async ([component, sessions, nodeSession]) => {
+    await sessions.initializePlaybackSessions();
+    nodeSession.ensureNodePlaybackSession();
+    return { default: component.NodeRadios };
+  });
+  return nodePromise;
+}
+
 export function loadDjPlayer() {
   djPromise ??= Promise.all([
     import("./dj/dj-player"),
@@ -46,13 +62,10 @@ export function loadDjPlayer() {
 }
 
 export function preloadRadioMode(mode: PlayerMode) {
-  // Node has no UI yet, and `Radios` renders a mode it lacks as Single.
-  if (mode === "node") {
-    return loadSingleRadio();
-  }
   return {
     dj: loadDjPlayer,
     multiple: loadMultipleRadios,
+    node: loadNodeRadios,
     single: loadSingleRadio,
   }[mode]();
 }

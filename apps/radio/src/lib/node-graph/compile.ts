@@ -119,6 +119,23 @@ export type EnginePlan = {
   issues: Issue[];
 };
 
+/**
+ * A Station plays when it holds a radio whose saved station is not hidden.
+ * An empty or hidden Station keeps its cables but has no lane.
+ */
+export function isStationLive(node: GraphNode): node is Extract<
+  GraphNode,
+  { type: "station" }
+> & {
+  data: { radio: StationRadio };
+} {
+  return (
+    node.type === "station" &&
+    node.data.radio !== null &&
+    node.data.radio.enabled !== false
+  );
+}
+
 export function laneChannelId(nodeId: string): string {
   return `n:${nodeId}`;
 }
@@ -864,8 +881,7 @@ function planKeys({
     if (
       to.kind !== "sidechain" ||
       typeof lane !== "string" ||
-      station?.type !== "station" ||
-      station.data.radio === null ||
+      !(station && isStationLive(station)) ||
       // The key the validator flagged stays unkeyed, so the badge is honest.
       extraKeys.has(edge.target) ||
       !(target && isKeyable(target))
@@ -987,8 +1003,9 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   const edges = new Map<string, EdgePlan>();
   let monitoringChannels = 0;
   for (const node of prepared.graph.nodes) {
-    // An empty Station is a search slot: no lane, but its cables survive.
-    if (node.type !== "station" || node.data.radio === null) {
+    // An empty Station is a search slot and a hidden one is disabled: no
+    // lane, but their cables survive.
+    if (!isStationLive(node)) {
       continue;
     }
     const lowered = lowerLane(

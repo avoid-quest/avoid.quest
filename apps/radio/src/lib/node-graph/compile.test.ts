@@ -226,6 +226,30 @@ describe("compile: the migrated Multiple layout", () => {
     expect([...plan.lanes.keys()]).toEqual(["a"]);
     expect([...plan.edges.keys()]).toEqual(["a->speakers"]);
   });
+
+  test("a hidden station is disabled: no lane, and its cables survive", () => {
+    const hidden: NodeInput = {
+      data: {
+        radio: {
+          enabled: false,
+          id: "hidden",
+          name: "hidden",
+          streamUrl: "https://example.com/hidden.mp3",
+        },
+      },
+      id: "hidden",
+      position,
+      type: "station",
+    };
+    const patch = graph(
+      [station("a"), hidden, speakers],
+      [audio("a", "speakers"), audio("hidden", "speakers")]
+    );
+    const plan = compile(patch, ENV);
+    expect(plan.issues).toEqual([]);
+    expect([...plan.lanes.keys()]).toEqual(["a"]);
+    expect(patch.edges.map((edge) => edge.id)).toContain("hidden->speakers");
+  });
 });
 
 describe("compile: lanes in series", () => {

@@ -93,6 +93,17 @@ const VENDOR_CHUNK_GROUPS: Array<{
   },
   {
     match: (id) =>
+      id.includes("/node_modules/@xyflow/") ||
+      id.includes("/node_modules/classcat/") ||
+      id.includes("/node_modules/d3-") ||
+      // React Flow's own zustand 4; the app's zustand 5 is unused in src.
+      id.includes("/node_modules/zustand/"),
+    // Node mode's canvas only. Kept apart so it loads with the lazy canvas
+    // chunk instead of joining the eager shared vendor chunk.
+    name: "vendor-xyflow",
+  },
+  {
+    match: (id) =>
       id.includes("/node_modules/@dnd-kit/") ||
       id.includes("/node_modules/lucide-react/"),
     name: "vendor-ui",

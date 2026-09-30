@@ -6,6 +6,7 @@ import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
   SPEAKERS_NODE_ID,
+  STATION_ROW_HEIGHT,
 } from "./templates";
 import { validate } from "./validate";
 
@@ -104,7 +105,7 @@ describe("start-from-multiple", () => {
       graph.nodes.find((node) => node.id === SPEAKERS_NODE_ID)?.position;
 
     expect(xs(one)).toEqual(new Set([0]));
-    expect(speakersOf(one)).toEqual({ x: 480, y: 392 });
+    expect(speakersOf(one)).toEqual({ x: 480, y: 3.5 * STATION_ROW_HEIGHT });
     expect(xs(two)).toEqual(new Set([0, 280]));
     expect(speakersOf(two)?.x).toBeGreaterThan(280 + 240);
   });

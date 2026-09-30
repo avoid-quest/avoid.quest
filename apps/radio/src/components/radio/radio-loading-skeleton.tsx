@@ -1,10 +1,11 @@
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
-import type { Settings } from "@/lib/types";
+import type { SettingsRecord } from "@/lib/collections/settings";
 
-type RadioMode = Settings["player"]["mode"];
+type RadioMode = SettingsRecord["player"]["mode"];
 
 const CARDS = ["one", "two", "three", "four", "five", "six"];
 const ROWS = ["one", "two", "three", "four", "five"];
+const STATION_NODES = ["one", "two", "three"];
 
 function LoadingFrame({
   children,
@@ -110,6 +111,58 @@ function MultipleRadioLoadingSkeleton() {
   );
 }
 
+/** The patch canvas: three Station nodes cabled to Speakers. */
+export function NodeCanvasSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 w-full items-center justify-center gap-16 overflow-hidden p-6">
+      <div className="flex flex-col gap-4">
+        {STATION_NODES.map((node) => (
+          <section
+            className="w-60 rounded-md border border-border/50 bg-card"
+            key={node}
+          >
+            <div className="flex items-center gap-3 p-2.5">
+              <Skeleton className="size-12 shrink-0 rounded-md" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-2 w-1/3" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 border-border/50 border-t px-3 py-1.5">
+              <Skeleton className="size-7 shrink-0 rounded-full" />
+              <Skeleton className="size-7 shrink-0" />
+              <Skeleton className="h-1.5 flex-1" />
+            </div>
+          </section>
+        ))}
+      </div>
+      <section className="hidden w-50 rounded-md border border-border/50 bg-card sm:block">
+        <div className="flex h-8 items-center gap-2 px-2">
+          <Skeleton className="size-6 rounded-sm" />
+          <Skeleton className="h-3 w-16" />
+        </div>
+        <div className="flex flex-col gap-2 border-border/50 border-t p-2">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-7 w-full" />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NodeRadioLoadingSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="px-3 pt-3 pb-2">
+        <Skeleton className="h-8 w-full max-w-md" />
+      </div>
+      <div className="min-h-0 flex-1">
+        <NodeCanvasSkeleton />
+      </div>
+    </div>
+  );
+}
+
 /** An empty deck: source tabs, search, station rows. */
 function DeckSkeleton({ className }: { className?: string }) {
   return (
@@ -165,6 +218,7 @@ export function RadioLoadingSkeleton({
     <LoadingFrame mode={mode} phase={phase}>
       {mode === "single" && <SingleRadioLoadingSkeleton />}
       {mode === "multiple" && <MultipleRadioLoadingSkeleton />}
+      {mode === "node" && <NodeRadioLoadingSkeleton />}
       {mode === "dj" && <DjRadioLoadingSkeleton />}
     </LoadingFrame>
   );

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createNodeEffectConfig } from "./catalogue";
-import { migrateNodeGraph, NODE_GRAPH_VERSION } from "./schema";
+import {
+  migrateNodeGraph,
+  NODE_GRAPH_VERSION,
+  nodeGraphSchema,
+} from "./schema";
 
 const position = { x: 0, y: 0 };
 
@@ -52,6 +56,50 @@ function multipleLayout(version: number = NODE_GRAPH_VERSION) {
 }
 
 describe("migrateNodeGraph", () => {
+  test.each([0, 2])("rejects a current patch with %i Speakers", (count) => {
+    const raw = {
+      edges: [],
+      nodes: Array.from({ length: count }, (_, index) => ({
+        id: `speakers-${index}`,
+        position,
+        type: "speakers",
+      })),
+      version: NODE_GRAPH_VERSION,
+    };
+    expect(nodeGraphSchema.safeParse(raw).success).toBe(false);
+    const result = migrateNodeGraph(raw);
+    expect(result.status).toBe("invalid");
+    expect(result.status === "invalid" && result.error).toContain(
+      "A patch must have exactly one Speakers"
+    );
+  });
+
+  test("accepts disconnected nodes beside a single Speakers", () => {
+    const raw = { ...multipleLayout(), edges: [] };
+    const result = migrateNodeGraph(raw);
+    expect(nodeGraphSchema.safeParse(raw).success).toBe(true);
+    expect(result.status).toBe("ok");
+    expect(result.status === "ok" && result.graph.nodes).toHaveLength(4);
+  });
+
+  test("keeps a future patch without Speakers read-only and untouched", () => {
+    const raw = {
+      edges: [],
+      nodes: [],
+      version: NODE_GRAPH_VERSION + 1,
+    };
+    expect(migrateNodeGraph(raw)).toEqual({
+      graph: null,
+      status: "read-only",
+      version: NODE_GRAPH_VERSION + 1,
+    });
+    expect(raw).toEqual({
+      edges: [],
+      nodes: [],
+      version: NODE_GRAPH_VERSION + 1,
+    });
+  });
+
   test("accepts a v1 graph and fills defaults", () => {
     const result = migrateNodeGraph(multipleLayout());
     expect(result.status).toBe("ok");

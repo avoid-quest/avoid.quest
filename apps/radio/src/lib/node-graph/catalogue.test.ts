@@ -146,6 +146,7 @@ describe("non-v1 node types", () => {
             position: { x: 0, y: 0 },
             type,
           },
+          { id: "speakers", position: { x: 480, y: 0 }, type: "speakers" },
         ],
         version: 1,
       });

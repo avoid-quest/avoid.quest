@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { EffectType } from "@/lib/audio/dsp/effects/types";
 import { createNodeEffectConfig } from "./catalogue";
-import { type NodeGraphInput, type NodeType, nodeGraphSchema } from "./schema";
+import {
+  graphEdgeSchema,
+  graphNodeSchema,
+  type NodeGraph,
+  type NodeGraphInput,
+  type NodeType,
+} from "./schema";
 import {
   findCycles,
   type Issue,
@@ -82,8 +88,14 @@ function control(
   return cable(source, "out:control:main", target, `in:control:${to}`, id);
 }
 
-function graph(nodes: NodeInput[], edges: EdgeInput[] = []) {
-  return nodeGraphSchema.parse({ edges, nodes, version: 1 });
+function graph(nodes: NodeInput[], edges: EdgeInput[] = []): NodeGraph {
+  // Topology checks also cover incomplete subgraphs and duplicate outputs.
+  return {
+    edges: edges.map((edge) => graphEdgeSchema.parse(edge)),
+    nodes: nodes.map((entry) => graphNodeSchema.parse(entry)),
+    version: 1,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
 }
 
 function codes(issues: Issue[]): string[] {

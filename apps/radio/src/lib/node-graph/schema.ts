@@ -259,6 +259,13 @@ export const nodeGraphSchema = z
     viewport: viewportSchema.default({ x: 0, y: 0, zoom: 1 }),
   })
   .superRefine((graph, context) => {
+    if (graph.nodes.filter((node) => node.type === "speakers").length !== 1) {
+      context.addIssue({
+        code: "custom",
+        message: "A patch must have exactly one Speakers",
+        path: ["nodes"],
+      });
+    }
     const nodeIds = new Set<string>();
     for (const [index, node] of graph.nodes.entries()) {
       if (nodeIds.has(node.id)) {

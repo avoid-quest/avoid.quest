@@ -121,6 +121,9 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const handlePhoneViewChange = (value: string) => {
     if (isPhoneView(value)) {
       setPhoneView(value);
+      // A Station added from the Stage or Rack is already in view there;
+      // opening the Patch later must fit the view, not pan to a stale add.
+      setReveal(null);
     }
   };
 

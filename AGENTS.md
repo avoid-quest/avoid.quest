@@ -33,6 +33,12 @@ Keep runtime prompts, app prompts, chat prompts, and product-behavior prompts un
 - Security-sensitive server paths must fail closed. Preserve existing auth, session, rate-limit, origin/URL validation, secret checks, and admin gating behavior unless the task explicitly changes them.
 </repo_invariants>
 
+<radio_changelog>
+Commit messages touching `apps/radio` are user-facing: the in-app "What's new" list is built from git history at build time (`apps/radio/git-changelog.ts`). Every `feat` commit is listed by its subject, minus the type prefix and `(#123)`; a squash merge uses the PR title as that subject.
+- Write `feat` commit subjects and radio PR titles as short sentences a listener understands.
+- In the commit message body, add `Changelog: <user-facing text>` to reword an entry or to list a user-visible `fix`, and `Changelog: skip` on internal `feat` commits (schemas, compilers, refactors).
+</radio_changelog>
+
 <validation_contract>
 - Before claiming completion, run the narrowest command set that proves the change.
 - Docs-only changes: verify paths/commands manually; no repo-wide build is required.

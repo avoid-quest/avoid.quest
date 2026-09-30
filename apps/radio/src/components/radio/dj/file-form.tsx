@@ -8,7 +8,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
-import { FileAudioIcon, GlobeIcon } from "lucide-react";
+import { FileAudioIcon, FolderOpenIcon, GlobeIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { isStaticAudioUrl } from "@/lib/audio/remote-url";
@@ -21,15 +21,22 @@ type LoadFile<T> = (source: T) => Promise<string | null>;
 type FileFormProps = {
   onLoad: LoadFile<File>;
   onLoadUrl?: LoadFile<string>;
+  onLoadFiles?: LoadFile<readonly File[]>;
   onCancel?: () => void;
 };
 
-export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
+export function FileForm({
+  onLoad,
+  onLoadUrl,
+  onLoadFiles,
+  onCancel,
+}: FileFormProps) {
   const [activeTab, setActiveTab] = useState<"file" | "url">("file");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
 
   // The form stays up while the deck loads; a failure lands here, next to
   // what the user picked or typed.
@@ -53,7 +60,8 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files ?? []);
+    const [file] = files;
     // Let the same file be picked again after a failed load.
     event.target.value = "";
     if (!file) {
@@ -65,7 +73,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
       return;
     }
 
-    load(onLoad(file));
+    load(files.length > 1 && onLoadFiles ? onLoadFiles(files) : onLoad(file));
   };
 
   const handleBrowse = () => {
@@ -137,6 +145,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
           <input
             accept="audio/*"
             className="hidden"
+            multiple={!!onLoadFiles}
             onChange={handleFileChange}
             ref={inputRef}
             type="file"
@@ -151,6 +160,41 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
             {isLoading ? <Spinner /> : <FileAudioIcon />}
             {isLoading ? "Loading…" : "Browse files"}
           </Button>
+          {onLoadFiles ? (
+            <>
+              <input
+                className="hidden"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  event.target.value = "";
+                  if (files.length) {
+                    load(onLoadFiles(files));
+                  }
+                }}
+                ref={(element) => {
+                  folderRef.current = element;
+                  if (element) {
+                    element.webkitdirectory = true;
+                  }
+                }}
+                type="file"
+              />
+              <Button
+                className="h-7 w-full text-xs"
+                disabled={isLoading}
+                onClick={() => folderRef.current?.click()}
+                size="sm"
+                variant="outline"
+              >
+                <FolderOpenIcon /> Browse folder
+              </Button>
+              <p className="text-center text-muted-foreground text-xs">
+                Includes subfolders. Playable files become a playlist in
+                filename order. Pick again after reloading.
+              </p>
+            </>
+          ) : null}
           <p className="text-center text-muted-foreground text-xs">
             MP3, WAV, FLAC, OGG, AAC, M4A, WebM
           </p>

@@ -13,6 +13,10 @@ import {
   extractFileMetadata,
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
+import {
+  loadLocalAudioPlaylist,
+  localAudioUrls,
+} from "@/lib/audio/local-audio-playlist";
 import type { StreamFormat } from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
@@ -726,9 +730,11 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     previous: Radio | null,
     radio: Radio | null
   ): void => {
-    const previousUrl = getLocalFileUrl(previous);
-    if (previousUrl && previousUrl !== getLocalFileUrl(radio)) {
-      releaseFileUrl(previousUrl);
+    const retained = new Set(localAudioUrls(radio));
+    for (const url of localAudioUrls(previous)) {
+      if (!retained.has(url)) {
+        releaseFileUrl(url);
+      }
     }
   };
 
@@ -1225,6 +1231,44 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     return loaded();
   }
 
+  async function loadFilesIntent(
+    deckId: DeckId,
+    loadGeneration: number,
+    files: readonly File[]
+  ): Promise<DjDeckSourceResult> {
+    let radio: Radio | null = null;
+    try {
+      radio = await loadLocalAudioPlaylist(files, options.audio.loadFile);
+      if (isLoadCurrent(deckId, loadGeneration)) {
+        await commitRadio(deckId, loadGeneration, radio);
+        if (isLoadCurrent(deckId, loadGeneration)) {
+          updatePlaybackChannel("dj", deckId, (draft) => {
+            draft.autoplay = true;
+          });
+        }
+      }
+      return loaded();
+    } catch (error) {
+      return isLoadCurrent(deckId, loadGeneration)
+        ? fileLoadFailed(
+            deckId,
+            error instanceof Error ? error.message : "Failed to load folder",
+            "DJ_FOLDER_LOAD_FAILED",
+            error
+          )
+        : loaded();
+    } finally {
+      const owned = new Set(
+        localAudioUrls(getPlaybackChannel("dj", deckId)?.radio)
+      );
+      for (const url of localAudioUrls(radio)) {
+        if (!owned.has(url)) {
+          releaseFileUrl(url);
+        }
+      }
+    }
+  }
+
   async function pausePlayingSource(deckId: DeckId): Promise<void> {
     if (getPlaybackChannelRuntime(deckId).isPlaying) {
       await pause(deckId);
@@ -1335,6 +1379,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         return loaded();
       case "device-input":
         return await loadDeviceIntent(deckId, loadGeneration, intent);
+      case "files":
+        return await loadFilesIntent(deckId, loadGeneration, intent.files);
       case "file":
         return await loadFileIntent(deckId, loadGeneration, intent.file);
       case "static-audio-url":
@@ -1539,10 +1585,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     deactivate() {
       for (const deckId of ["deck-a", "deck-b"] as const) {
         setPendingSource(deckId, null);
-        const fileUrl = getLocalFileUrl(
-          getPlaybackChannel("dj", deckId)?.radio ?? null
-        );
-        if (fileUrl) {
+        for (const fileUrl of localAudioUrls(
+          getPlaybackChannel("dj", deckId)?.radio
+        )) {
           releaseFileUrl(fileUrl);
         }
         beginLoad(deckId);

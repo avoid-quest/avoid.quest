@@ -5,7 +5,11 @@ import {
   isLocalFileGone,
   releaseUnusedLocalFileUrls,
 } from "@/lib/node-graph/sources";
-import { loadLocalFile, loadSourceUrl } from "@/lib/node-source-loaders";
+import {
+  loadLocalFile,
+  loadLocalFiles,
+  loadSourceUrl,
+} from "@/lib/node-source-loaders";
 import { FileForm } from "../dj/file-form";
 import { useNodeActions } from "./node-actions";
 import { NodeCompactStrip } from "./node-source-strip";
@@ -36,6 +40,7 @@ type FileNodeBodyProps = Omit<SourceTransportProps, "target"> & {
   selected?: boolean;
   onLoadFile: LoadSource<File>;
   onLoadUrl: LoadSource<string>;
+  onLoadFiles?: LoadSource<readonly File[]>;
   onRemove?: () => void;
 };
 
@@ -45,6 +50,7 @@ export function FileNodeBody({
   selected = false,
   onLoadFile,
   onLoadUrl,
+  onLoadFiles,
   onRemove,
   ...transport
 }: FileNodeBodyProps) {
@@ -73,7 +79,11 @@ export function FileNodeBody({
           Pick the file again
         </p>
       ) : null}
-      <FileForm onLoad={onLoadFile} onLoadUrl={onLoadUrl} />
+      <FileForm
+        onLoad={onLoadFile}
+        onLoadFiles={onLoadFiles}
+        onLoadUrl={onLoadUrl}
+      />
     </EmptySourceFrame>
   );
 }
@@ -116,6 +126,7 @@ export function FileNodeContent({
       isPlaying={lane.isPlaying}
       muted={data.muted}
       onLoadFile={(file) => fill(loadLocalFile(id, file))}
+      onLoadFiles={(files) => fill(loadLocalFiles(files))}
       onLoadUrl={(url) => fill(loadSourceUrl(url))}
       onRemove={() => actions.removeNode(id)}
       onToggleMute={lane.onToggleMute}

@@ -664,6 +664,52 @@ describe("DjDeckModule", () => {
     expect(audio.activeSounds).toEqual(new Set([currentSoundId]));
   });
 
+  test("retains every folder track across track changes and releases the folder on replacement", async () => {
+    const audio = createAudioAdapter();
+    audio.loadFile = mock((file) =>
+      Promise.resolve({
+        displayName: file.name,
+        duration: 10,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "audio/mpeg",
+        objectUrl: `blob:https://radio.example/${file.name}`,
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      files: [new File(["audio"], "2.mp3"), new File(["audio"], "1.mp3")],
+      type: "files",
+    });
+    const channel = getPlaybackChannel("dj", "deck-a");
+    expect(channel?.autoplay).toBe(true);
+    expect(channel?.radio?.platformMetadata?.platform).toBe("static-audio");
+    const radio = channel?.radio as Radio;
+    await deck.load({
+      radio,
+      streamUrl: "blob:https://radio.example/2.mp3",
+      type: "track-url",
+    });
+    expect(audio.releaseFileUrl).not.toHaveBeenCalled();
+    await deck.load({
+      radio: { name: "Station", streamUrl: "https://radio.example/live" },
+      type: "radio",
+    });
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/1.mp3"
+    );
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/2.mp3"
+    );
+  });
+
   test("keeps a file URL until a replacement source commits", async () => {
     const audio = createAudioAdapter();
     audio.loadFile = mock(() =>

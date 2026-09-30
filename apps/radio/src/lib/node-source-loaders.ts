@@ -14,6 +14,10 @@ import {
   extractFileMetadata,
   type FileAudioMetadata,
 } from "@/lib/audio/file-metadata";
+import {
+  loadLocalAudioPlaylist,
+  localAudioUrls,
+} from "@/lib/audio/local-audio-playlist";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import { keepLocalFileUrl, localFileRadio } from "@/lib/node-graph/sources";
 import {
@@ -118,4 +122,21 @@ export async function loadStreamStation(
   const { radio } = result.data;
   // The session record is keyed by name when the radio has no id.
   return { radio: { ...radio, id: radio.id ?? radio.name } };
+}
+
+export async function loadLocalFiles(
+  files: readonly File[],
+  { loadFile = extractFileMetadata }: NodeSourceLoaderDependencies = {}
+): Promise<SourceLoad> {
+  try {
+    const radio = await loadLocalAudioPlaylist(files, loadFile);
+    for (const url of localAudioUrls(radio)) {
+      keepLocalFileUrl(url);
+    }
+    return { radio };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to load folder",
+    };
+  }
 }

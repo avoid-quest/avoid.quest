@@ -14,6 +14,7 @@
 
 import type { Radio } from "@/lib/audio";
 import type { FileAudioMetadata } from "@/lib/audio/file-metadata";
+import { localAudioUrls } from "@/lib/audio/local-audio-playlist";
 import {
   getCurrentTrackIndex,
   isCollection,
@@ -84,7 +85,7 @@ export function isTrackRadio(radio: RadioLike | null | undefined): boolean {
 }
 
 export function isLocalFileRadio(radio: RadioLike | null | undefined): boolean {
-  return platformOf(radio) === "local-file";
+  return localAudioUrls(radio as Radio | null).length > 0;
 }
 
 const pickedFileUrls = new Set<string>();
@@ -97,7 +98,9 @@ export function releaseUnusedLocalFileUrls(): void {
   for (const graph of getRetainedNodeGraphs()) {
     for (const node of graph.nodes) {
       if (isRadioSourceNode(node) && node.data.radio) {
-        retained.add(node.data.radio.streamUrl);
+        for (const url of localAudioUrls(node.data.radio as Radio)) {
+          retained.add(url);
+        }
       }
     }
   }
@@ -163,7 +166,10 @@ export function keepLocalFileUrl(url: string): void {
  * must be picked again. Any other radio is never gone.
  */
 export function isLocalFileGone(radio: RadioLike | null | undefined): boolean {
-  return isLocalFileRadio(radio) && !pickedFileUrls.has(radio?.streamUrl ?? "");
+  return (
+    isLocalFileRadio(radio) &&
+    localAudioUrls(radio as Radio).some((url) => !pickedFileUrls.has(url))
+  );
 }
 
 /** Forgets every picked file, as a reload does; for tests. */

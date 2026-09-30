@@ -208,12 +208,15 @@ function DeckPanelInner({
   const loadFile = async (
     intent:
       | { file: File; type: "file" }
+      | { files: readonly File[]; type: "files" }
       | { type: "static-audio-url"; url: string }
   ): Promise<string | null> => {
     const result = await loadSource(intent);
     return result.type === "failed" ? result.message : null;
   };
   const handleLoadFile = (file: File) => loadFile({ file, type: "file" });
+  const handleLoadFiles = (files: readonly File[]) =>
+    loadFile({ files, type: "files" });
   const handleLoadRemoteUrl = (url: string) =>
     loadFile({ type: "static-audio-url", url });
 
@@ -430,6 +433,7 @@ function DeckPanelInner({
       <FileForm
         onCancel={cancelPendingSource}
         onLoad={handleLoadFile}
+        onLoadFiles={handleLoadFiles}
         onLoadUrl={handleLoadRemoteUrl}
       />
     );
@@ -455,6 +459,7 @@ function DeckPanelInner({
         <FileForm
           onCancel={handleCancelFileChange}
           onLoad={handleFileChanged}
+          onLoadFiles={(files) => closeFileChangeOnLoad(handleLoadFiles(files))}
           onLoadUrl={handleRemoteUrlChanged}
         />
       );

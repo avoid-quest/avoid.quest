@@ -12,6 +12,7 @@ export const YOUTUBE_PLATFORM_ID = -10;
 export type DeckSourceLoadIntent =
   | { type: "device-input"; deviceId: string; deviceLabel: string }
   | { type: "file"; file: File }
+  | { type: "files"; files: readonly File[] }
   | { type: "radio"; radio: Radio | null }
   | { type: "static-audio-url"; url: string }
   | { type: "track"; radio: Radio | null; autoPlay?: boolean }

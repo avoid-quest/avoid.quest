@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Radio } from "@/lib/audio";
-import { loadLocalFile } from "@/lib/node-source-loaders";
+import { loadLocalFile, loadLocalFiles } from "@/lib/node-source-loaders";
 import {
   commitNodeGraph,
   loadNodeGraph,
@@ -165,4 +165,36 @@ describe("Node local-file URL lifetime", () => {
     expect(revokeUrl).toHaveBeenCalledWith(picked.streamUrl);
     expect(isLocalFileGone(imported)).toBe(true);
   });
+});
+
+test("keeps unplayed folder URLs in the patch and history until the whole folder is released", async () => {
+  const loaded = await loadLocalFiles(
+    [new File(["audio"], "1.mp3"), new File(["audio"], "2.mp3")],
+    {
+      loadFile: (file) =>
+        Promise.resolve({
+          displayName: file.name,
+          duration: 10,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: "audio/mpeg",
+          objectUrl: URL.createObjectURL(file),
+        }),
+    }
+  );
+  if ("error" in loaded) {
+    throw new Error(loaded.error);
+  }
+  loadNodeGraph(patch(loaded.radio));
+  await Promise.resolve();
+  releaseUnusedLocalFileUrls();
+  expect(revokeUrl).not.toHaveBeenCalled();
+  expect(isLocalFileGone(loaded.radio)).toBe(false);
+  commitNodeGraph(clearFile, undefined, "snapshot");
+  await Promise.resolve();
+  expect(revokeUrl).not.toHaveBeenCalled();
+  loadNodeGraph(null);
+  await Promise.resolve();
+  expect(revokeUrl).toHaveBeenCalledTimes(2);
+  expect(isLocalFileGone(loaded.radio)).toBe(true);
 });

@@ -65,7 +65,11 @@ function Knob({
   className,
   title,
 }: KnobProps) {
-  const drag = useRef<{ startY: number; startValue: number } | null>(null);
+  const drag = useRef<{
+    pointerId: number;
+    startY: number;
+    startValue: number;
+  } | null>(null);
   const range = max - min;
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
   const snap = (v: number) => {
@@ -96,17 +100,21 @@ function Knob({
   const text = format(value);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (disabled) {
+    if (disabled || drag.current !== null) {
       return;
     }
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus();
-    drag.current = { startValue: toPosition(value), startY: event.clientY };
+    drag.current = {
+      pointerId: event.pointerId,
+      startValue: toPosition(value),
+      startY: event.clientY,
+    };
   };
   const handlePointerMove = (event: React.PointerEvent) => {
     const { current } = drag;
-    if (current === null) {
+    if (current === null || current.pointerId !== event.pointerId) {
       return;
     }
     const fine = event.shiftKey ? 4 : 1;
@@ -114,8 +122,10 @@ function Knob({
       (current.startY - event.clientY) / (DRAG_PIXELS_FOR_FULL_RANGE * fine);
     onChange(snap(fromPosition(current.startValue + delta)));
   };
-  const handlePointerUp = () => {
-    drag.current = null;
+  const handlePointerEnd = (event: React.PointerEvent) => {
+    if (drag.current?.pointerId === event.pointerId) {
+      drag.current = null;
+    }
   };
   const handleDoubleClick = () => {
     if (!disabled && defaultValue !== undefined) {
@@ -163,9 +173,11 @@ function Knob({
         className="cursor-ns-resize touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:p-1"
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
+        onLostPointerCapture={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
+        onPointerUp={handlePointerEnd}
         role="slider"
         tabIndex={disabled ? -1 : 0}
       >

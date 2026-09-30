@@ -151,6 +151,7 @@ function createTestContext(): PlaybackActionContext {
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
+      setPan: mock((_soundId: string, _pan: number) => undefined),
       updateFilter: mock((_soundId: string, _config: unknown) => undefined),
     } as unknown as AudioManager,
     audioEngine: {
@@ -1313,5 +1314,150 @@ describe("Node Playback deactivation", () => {
         soundId: null,
       });
     }
+  });
+});
+
+describe("Node Playback native strip", () => {
+  function strip(pan: number, filter: boolean): NodeGraph {
+    const nodes: NodeInput[] = [
+      station("a"),
+      {
+        data: { pan },
+        id: "pan",
+        position: { x: 120, y: 0 },
+        type: "pan",
+      } as NodeInput,
+      speakers,
+    ];
+    const edges = [cable("pan", "speakers")];
+    if (filter) {
+      nodes.push({
+        data: { frequency: 800, Q: 1, type: "lowpass" },
+        id: "filter",
+        position: { x: 60, y: 0 },
+        type: "filter",
+      } as NodeInput);
+      edges.push(cable("a", "filter"), cable("filter", "pan"));
+    } else {
+      edges.push(cable("a", "pan"));
+    }
+    return nodeGraphSchema.parse({ edges, nodes, version: 1 });
+  }
+
+  test("a pan back to centre and a removed filter reach a playing sound", async () => {
+    insertNodeSession(strip(0.5, true));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    expect(harness.context.audio.setPan).toHaveBeenLastCalledWith(
+      soundOf("a"),
+      0.5
+    );
+    expect(harness.context.audio.updateFilter).toHaveBeenLastCalledWith(
+      soundOf("a"),
+      expect.objectContaining({
+        enabled: true,
+        frequency: 800,
+        type: "lowpass",
+      })
+    );
+
+    await commit(harness, () => strip(0, false));
+
+    expect(harness.context.audio.setPan).toHaveBeenLastCalledWith(
+      soundOf("a"),
+      0
+    );
+    expect(harness.context.audio.updateFilter).toHaveBeenLastCalledWith(
+      soundOf("a"),
+      expect.objectContaining({ enabled: false })
+    );
+    expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
+  });
+
+  test("a strip change made while paused applies when the Station resumes", async () => {
+    insertNodeSession(strip(0.5, false));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.setPlaying("a", false);
+
+    await commit(harness, () => strip(0, false));
+    await harness.playback.setPlaying("a", true);
+
+    expect(harness.context.audio.setPan).toHaveBeenLastCalledWith(
+      soundOf("a"),
+      0
+    );
+  });
+});
+
+describe("Node Playback settling lanes", () => {
+  test("a pause during an in-place stream change keeps the Station paused", async () => {
+    insertNodeSession(patch([station("a")]));
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    setPlaybackChannelRuntime(channelOf("a"), () => ({ isPlaying: true }));
+    const saved = { ...radio("a"), id: "saved-a" };
+
+    commitNodeGraph(withStation("a", { radio: saved }), harness.store);
+    await Promise.resolve();
+    await Promise.resolve();
+    await harness.playback.setPlaying("a", false);
+    fade.resolve();
+    await harness.playback.whenSettled();
+
+    expect(harness.context.channels.activate).toHaveBeenLastCalledWith(
+      "node",
+      channelOf("a"),
+      saved,
+      soundOf("a")
+    );
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+  });
+
+  test("a start waiting on a fading lane does not run after deactivate", async () => {
+    insertNodeSession(patch([station("a")]));
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    commitNodeGraph(
+      withStation("a", { radio: { ...radio("a"), id: "saved-a" } }),
+      harness.store
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const start = harness.playback.setPlaying("a", true);
+    const deactivation = harness.playback.deactivate();
+    fade.resolve();
+    await Promise.all([start, deactivation]);
+    await harness.playback.whenSettled();
+
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+    expect(getPlaybackChannelRuntime(channelOf("a"))).toMatchObject({
+      isPlaying: false,
+      soundId: null,
+    });
+  });
+
+  test("a removed playing Station added back in a later commit stays paused", async () => {
+    insertNodeSession(patch([station("a"), station("b")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    await commit(harness, () => patch([station("b")]));
+    await commit(harness, () => patch([station("a"), station("b")]));
+
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
+    expect(getPlaybackChannelRuntime(channelOf("a")).isPlaying).toBe(false);
   });
 });

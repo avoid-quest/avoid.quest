@@ -124,6 +124,9 @@ type ChannelStartOwnership = {
   revision: number;
 };
 
+/** A start waiting for its lane to settle, before it takes ownership. */
+type PendingChannelStart = { cancelled: boolean; channelId: string };
+
 type StationData = { volume: number; muted: boolean };
 
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
@@ -132,6 +135,14 @@ const NODE_CHANNEL_PREFIX = "n:";
 const IOS_USER_AGENT = /iPad|iPhone|iPod/;
 /** iPadOS reports a Mac user agent; touch points give it away. */
 const MAC_USER_AGENT = /Macintosh/;
+/** The engine's resting filter: a highpass at 0 Hz passes everything. */
+const BYPASS_FILTER = {
+  enabled: false,
+  frequency: 0,
+  gain: 0,
+  Q: 1,
+  type: "highpass",
+} as const;
 const EMPTY_PLAN: EnginePlan = {
   budget: { monitoringChannels: 0 },
   edges: new Map(),
@@ -194,6 +205,7 @@ function createNodePlayback(
   }: Required<Omit<GetNodePlaybackOptions, "ctx">>
 ): NodePlayback {
   const activeChannelStarts = new Set<ChannelStartOwnership>();
+  const pendingChannelStarts = new Set<PendingChannelStart>();
   const activePlayAllGenerations = new Set<PlayAllGeneration>();
   const channelStartRevisions = new Map<string, number>();
   const unmutedVolumes = new Map<string, number>();
@@ -256,6 +268,7 @@ function createNodePlayback(
     const channel = getPlaybackChannel("node", channelId);
     try {
       await setManagedChannelPlaying("node", channel, playing, ctx);
+      return true;
     } catch (error) {
       if (shouldReportError()) {
         const reportedError = reportPlaybackActionError(ctx.reportError, {
@@ -271,6 +284,7 @@ function createNodePlayback(
           channel?.radio ?? undefined
         );
       }
+      return false;
     }
   };
 
@@ -297,6 +311,11 @@ function createNodePlayback(
     cancellation: PlaybackCancellation,
     channelId?: string
   ) => {
+    for (const pending of pendingChannelStarts) {
+      if (!channelId || pending.channelId === channelId) {
+        pending.cancelled = true;
+      }
+    }
     let cancelled = false;
     for (const ownership of activeChannelStarts) {
       if (channelId && ownership.channelId !== channelId) {
@@ -347,7 +366,11 @@ function createNodePlayback(
     return busy.size;
   };
 
-  /** Re-applies a lane's native strip once its sound has nodes. */
+  /**
+   * Writes a lane's native strip onto its sound once the sound has nodes.
+   * Both halves are always written, so a pan back to centre or a removed
+   * filter reaches a sound that still holds the old values.
+   */
   const applyLaneStrip = (channelId: string) => {
     const lane = [...plan.lanes.values()].find(
       (entry) => entry.channelId === channelId
@@ -356,24 +379,43 @@ function createNodePlayback(
     if (!(lane && soundId)) {
       return;
     }
-    if (lane.pan !== 0) {
-      ctx.channels.setPan("node", channelId, lane.pan);
-    }
-    if (lane.filter) {
-      ctx.audio.updateFilter(soundId, {
-        ...lane.filter,
-        enabled: true,
-        gain: 0,
-      });
-    }
+    ctx.audio.setPan(soundId, lane.pan);
+    ctx.audio.updateFilter(
+      soundId,
+      lane.filter ? { ...lane.filter, enabled: true, gain: 0 } : BYPASS_FILTER
+    );
   };
 
-  const startChannel = async (channelId: string) => {
+  /**
+   * Waits out a lane's removal fade or re-add. Returns false when a pause,
+   * removal or deactivate arrived meanwhile, so the start must not run.
+   */
+  const awaitLaneSettled = async (channelId: string) => {
     const settling = settlingLanes.get(
       channelId.slice(NODE_CHANNEL_PREFIX.length)
     );
-    if (settling) {
+    if (!settling) {
+      return true;
+    }
+    const pending: PendingChannelStart = { cancelled: false, channelId };
+    const startEpoch = epoch;
+    pendingChannelStarts.add(pending);
+    try {
       await settling;
+    } finally {
+      pendingChannelStarts.delete(pending);
+    }
+    return !pending.cancelled && epoch === startEpoch;
+  };
+
+  const startChannel = async (channelId: string) => {
+    // Without a settling lane this stays synchronous up to the play call,
+    // inside the user's gesture.
+    if (
+      settlingLanes.has(channelId.slice(NODE_CHANNEL_PREFIX.length)) &&
+      !(await awaitLaneSettled(channelId))
+    ) {
+      return;
     }
     const limit = NODE_BUDGETS[getEnv().profile].playingStreams;
     if (countBusyStreams(channelId) >= limit) {
@@ -382,7 +424,7 @@ function createNodePlayback(
     }
     const ownership = beginChannelStart(channelId);
     try {
-      await setChannelPlaying(
+      const started = await setChannelPlaying(
         channelId,
         true,
         ownership.revision,
@@ -390,7 +432,7 @@ function createNodePlayback(
           ownership.cancellation === null &&
           channelStartRevisions.get(channelId) === ownership.revision
       );
-      if (ownership.cancellation === null) {
+      if (started && ownership.cancellation === null) {
         applyLaneStrip(channelId);
       }
     } finally {
@@ -460,10 +502,6 @@ function createNodePlayback(
         createLaneSound(channelId);
       } catch (error) {
         reportLaneError(channelId, error);
-        return;
-      }
-      if (wasPlaying) {
-        resumeLane(channelId);
       }
     });
     settlingLanes.set(laneId, ready);
@@ -472,6 +510,10 @@ function createNodePlayback(
         settlingLanes.delete(laneId);
       }
     });
+    // Queued behind `ready` now, so a pause during the fade still wins.
+    if (wasPlaying) {
+      resumeLane(channelId);
+    }
   };
 
   /** Fades a removed lane's sound out, then releases its channel. */
@@ -589,9 +631,31 @@ function createNodePlayback(
   };
 
   /**
+   * `strict` rethrows the first op failure; otherwise a failing lane is
+   * marked and the rest run.
+   */
+  const applyOps = (ops: readonly Op[], next: EnginePlan, strict: boolean) => {
+    for (const op of ops) {
+      if (strict) {
+        applyOp(op, next);
+        continue;
+      }
+      try {
+        applyOp(op, next);
+      } catch (error) {
+        if (op.type === "addLane") {
+          reportLaneError(op.lane.channelId, error);
+        } else {
+          warn(`Could not apply ${op.type}`)(error);
+        }
+      }
+    }
+  };
+
+  /**
    * Compiles the current graph, writes it with its derived channels in one
-   * session update, then applies the diff. `strict` rethrows the first op
-   * failure (activate); otherwise a failing lane is marked and the rest run.
+   * session update, then applies the diff. `strict` (activate) rethrows the
+   * first op failure.
    */
   const reconcile = (strict: boolean) => {
     const { graph } = store.state;
@@ -607,20 +671,12 @@ function createNodePlayback(
     });
     const ops = diff(plan, next);
     plan = next;
-    for (const op of ops) {
-      if (strict) {
-        applyOp(op, next);
-        continue;
-      }
-      try {
-        applyOp(op, next);
-      } catch (error) {
-        if (op.type === "addLane") {
-          reportLaneError(op.lane.channelId, error);
-        } else {
-          warn(`Could not apply ${op.type}`)(error);
-        }
-      }
+    try {
+      applyOps(ops, next, strict);
+    } finally {
+      // A carry is only "in place" within one batch; a later re-add of the
+      // same Station must not resume it.
+      carriedLanes.clear();
     }
   };
 

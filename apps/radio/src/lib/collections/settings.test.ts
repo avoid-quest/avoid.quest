@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { getChangelogSeenAt } from "@avoid.quest/ui/lib/changelog";
+import { CHANGELOG_STORAGE_KEY } from "../const";
 import {
   getSettings,
+  initializeSettings,
   setPlayerMode,
   settingsCollection,
   updatePlayerSettings,
@@ -51,5 +54,28 @@ describe("player mode", () => {
       })
     ).toThrow();
     expect(getSettings()?.player.mode).toBe("single");
+  });
+});
+
+describe("changelog on first visit", () => {
+  test("a new browser starts caught up; one with settings does not", async () => {
+    const stored = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+      },
+    });
+    try {
+      await initializeSettings();
+      expect(getChangelogSeenAt(CHANGELOG_STORAGE_KEY)).toBeString();
+
+      stored.clear();
+      await initializeSettings();
+      expect(getChangelogSeenAt(CHANGELOG_STORAGE_KEY)).toBeNull();
+    } finally {
+      Reflect.deleteProperty(globalThis, "localStorage");
+    }
   });
 });

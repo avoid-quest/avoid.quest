@@ -1,5 +1,4 @@
 import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
-import { ModeToggle } from "@avoid.quest/ui/components/mode-toggle";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { lazy, Suspense } from "react";
 import { ClientOnly } from "../client-only";
@@ -17,6 +16,11 @@ const ModeSelect = lazy(() =>
 const SettingsButton = lazy(() =>
   import("../settings/settings-button").then((module) => ({
     default: module.SettingsButton,
+  }))
+);
+const WhatsNew = lazy(() =>
+  import("../changelog/whats-new").then((module) => ({
+    default: module.WhatsNew,
   }))
 );
 
@@ -50,7 +54,11 @@ export function Header() {
             <SettingsButton />
           </Suspense>
         </ClientOnly>
-        <ModeToggle />
+        <ClientOnly fallback={<Skeleton className="size-7" />}>
+          <Suspense fallback={<Skeleton className="size-7" />}>
+            <WhatsNew />
+          </Suspense>
+        </ClientOnly>
       </div>
     </header>
   );

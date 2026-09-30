@@ -1,10 +1,11 @@
+import { markChangelogSeen } from "@avoid.quest/ui/lib/changelog";
 import {
   createCollection,
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
 import { supportsMediaElementVolumeControl } from "../audio/playback/media-element-volume-control.js";
-import { settings as defaultSettings } from "../const";
+import { CHANGELOG_STORAGE_KEY, settings as defaultSettings } from "../const";
 import { normalizePlayerMode } from "../normalize-player-mode";
 
 const playerModeSchema = z.enum(["node", "single", "dj"]);
@@ -67,6 +68,9 @@ export async function initializeSettings(): Promise<void> {
   const existing = await settingsCollection.stateWhenReady();
 
   if (existing.size === 0) {
+    // A first visit has nothing new to catch up on. Marked before the insert
+    // so anything waiting for settings already sees the mark.
+    markChangelogSeen(CHANGELOG_STORAGE_KEY);
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: {

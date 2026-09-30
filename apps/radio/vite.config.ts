@@ -14,6 +14,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
+import { gitChangelogPlugin } from "./git-changelog.ts";
 import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const WORKLET_OUT_DIR = ".worklet-build";
@@ -351,6 +352,7 @@ export default defineConfig({
   plugins: [
     audioWorkletPlugin(),
     openDawAssetsPlugin(),
+    gitChangelogPlugin(),
     cloudflare({
       viteEnvironment: { name: "ssr" },
     }),

@@ -12,20 +12,29 @@ import {
 import { DrawerClose } from "@avoid.quest/ui/components/drawer";
 import {
   Field,
-  FieldContent,
   FieldLabel,
+  FieldTitle,
 } from "@avoid.quest/ui/components/field";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@avoid.quest/ui/components/toggle-group";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import {
   DatabaseIcon,
   type LucideIcon,
+  MonitorIcon,
+  MoonIcon,
   RadioIcon,
   RotateCcwIcon,
   Settings2Icon,
+  SettingsIcon,
   SlidersHorizontalIcon,
+  SunIcon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
@@ -43,7 +52,7 @@ const MidiSettings = lazy(() =>
   import("./midi-settings").then((mod) => ({ default: mod.MidiSettings }))
 );
 
-type SettingsSection = "radios" | "playback" | "midi" | "data";
+type SettingsSection = "general" | "radios" | "playback" | "midi" | "data";
 
 type DataPanel = "export" | "import" | "reset";
 
@@ -51,6 +60,12 @@ const DATA_PANELS: { label: string; value: DataPanel }[] = [
   { label: "Export", value: "export" },
   { label: "Import", value: "import" },
   { label: "Reset", value: "reset" },
+];
+
+const THEMES: { icon: LucideIcon; label: string; value: string }[] = [
+  { icon: SunIcon, label: "Light", value: "light" },
+  { icon: MoonIcon, label: "Dark", value: "dark" },
+  { icon: MonitorIcon, label: "System", value: "system" },
 ];
 
 const DATA_PANEL_GUIDANCE: Record<DataPanel, string> = {
@@ -68,6 +83,7 @@ type SectionDefinition = {
 };
 
 const SETTINGS_SECTIONS: SectionDefinition[] = [
+  { icon: SettingsIcon, key: "general", label: "General" },
   { icon: RadioIcon, key: "radios", label: "Radios" },
   { icon: Settings2Icon, key: "playback", label: "Playback" },
   { icon: SlidersHorizontalIcon, key: "midi", label: "MIDI" },
@@ -86,7 +102,11 @@ function getInitialSection(defaultTab?: string): SettingsSection {
   ) {
     return "data";
   }
-  if (defaultTab === "playback" || defaultTab === "data") {
+  if (
+    defaultTab === "general" ||
+    defaultTab === "playback" ||
+    defaultTab === "data"
+  ) {
     return defaultTab;
   }
   return defaultTab === "midi" ? "midi" : "radios";
@@ -148,12 +168,12 @@ export function SettingsForm({
             orientation={isMobile ? "horizontal" : "vertical"}
             value={active}
           >
-            <TabsList className="grid h-auto w-full grid-cols-4 md:flex md:flex-col md:items-stretch md:bg-transparent md:p-0">
+            <TabsList className="grid h-auto w-full grid-cols-5 md:flex md:flex-col md:items-stretch md:bg-transparent md:p-0">
               {SETTINGS_SECTIONS.map((section) => {
                 const Icon = section.icon;
                 return (
                   <TabsTrigger
-                    className="min-w-0 gap-1.5 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
+                    className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
                     key={section.key}
                     value={section.key}
                   >
@@ -164,9 +184,6 @@ export function SettingsForm({
               })}
             </TabsList>
           </Tabs>
-          <span className="mt-auto hidden px-2 py-1 font-mono text-[10px] text-muted-foreground md:block">
-            v{__APP_VERSION__}
-          </span>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto border-t pt-3 md:border-t-0 md:border-l md:pt-0 md:pl-4">
@@ -184,9 +201,6 @@ export function SettingsForm({
       </div>
 
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[10px] text-muted-foreground md:hidden">
-          v{__APP_VERSION__}
-        </span>
         <DrawerClose asChild>
           <Button
             className="flex-1 md:ml-auto md:flex-none"
@@ -218,17 +232,17 @@ function SectionContent({
   onDataPanelChange,
   ...props
 }: SectionContentProps) {
+  if (section === "general") {
+    return <GeneralSettings settings={props.settings} />;
+  }
   if (section === "radios") {
     return <RadioManagement />;
   }
   if (section === "playback") {
     return (
-      <div className="space-y-3">
-        <Suspense fallback={<LoadingFallback />}>
-          <AudioSettings />
-        </Suspense>
-        <PlayerSettings {...props} />
-      </div>
+      <Suspense fallback={<LoadingFallback />}>
+        <AudioSettings />
+      </Suspense>
     );
   }
   if (section === "midi") {
@@ -272,7 +286,14 @@ function SectionContent({
   );
 }
 
-function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
+function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
+  const { theme, setTheme } = useTheme();
+  const handleThemeChange = (value: string) => {
+    // Pressing the selected item again would otherwise clear the choice.
+    if (value) {
+      setTheme(value);
+    }
+  };
   const handleRestoreStateToggle = (checked: boolean) => {
     try {
       setRestoreStateOnLoad(checked);
@@ -282,7 +303,30 @@ function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
   };
 
   return (
-    <div className="divide-y border-t">
+    <div className="divide-y">
+      <SettingRow
+        control={
+          <ToggleGroup
+            aria-label="Theme"
+            onValueChange={handleThemeChange}
+            type="single"
+            value={theme ?? "system"}
+            variant="outline"
+          >
+            {THEMES.map(({ icon: Icon, label, value }) => (
+              <ToggleGroupItem
+                className="h-7 cursor-pointer gap-1.5 px-2.5 text-xs"
+                key={value}
+                value={value}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        }
+        title="Theme"
+      />
       <SettingRow
         control={
           <Switch
@@ -293,6 +337,14 @@ function PlayerSettings({ settings }: Pick<SectionContentProps, "settings">) {
         }
         controlId="restore-state"
         title="Restore playback state"
+      />
+      <SettingRow
+        control={
+          <span className="font-mono text-muted-foreground text-xs">
+            v{__APP_VERSION__}
+          </span>
+        }
+        title="Version"
       />
     </div>
   );
@@ -306,18 +358,26 @@ function SettingRow({
 }: {
   title: string;
   control: React.ReactNode;
-  /** The control's id, so the title is its accessible name. */
-  controlId: string;
+  /** The control's id, so the title is its accessible name. Without one the
+   * control must name itself. */
+  controlId?: string;
   icon?: LucideIcon;
 }) {
+  const content = (
+    <>
+      {Icon ? <Icon className="size-3.5 text-muted-foreground" /> : null}
+      {title}
+    </>
+  );
   return (
     <Field className="py-3" orientation="horizontal">
-      <FieldContent>
+      {controlId ? (
         <FieldLabel className="items-center font-medium" htmlFor={controlId}>
-          {Icon ? <Icon className="size-3.5 text-muted-foreground" /> : null}
-          {title}
+          {content}
         </FieldLabel>
-      </FieldContent>
+      ) : (
+        <FieldTitle>{content}</FieldTitle>
+      )}
       {control}
     </Field>
   );

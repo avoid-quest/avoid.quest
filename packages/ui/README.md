@@ -6,7 +6,7 @@ Shared React UI component library for the main avoid.quest workspace.
 
 - **Components**: button, card, input, textarea, select, dialog, dropdown, tabs, carousel, accordion, avatar, badge, skeleton, tooltip, slider, switch, separator, popover, and more.
 - **Theme**: dark/light mode via `next-themes`, CSS variables, and OKLCH color space.
-- **Custom components**: avoid logo, site logo, mode toggle, rotary knob, play/pause button, and user avatar.
+- **Custom components**: avoid logo, site logo, mode toggle, rotary knob, play/pause button, user avatar, and changelog ("What's new" popover with an unread dot).
 - **Utilities**: `cn()` for Tailwind class merging.
 - **Assets**: favicons and icons exported from the package.
 

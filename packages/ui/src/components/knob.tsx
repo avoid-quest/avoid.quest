@@ -2,6 +2,7 @@
 "use client";
 
 import { useControlReset } from "@avoid.quest/ui/hooks/use-control-reset";
+import { useFineWheel } from "@avoid.quest/ui/hooks/use-fine-wheel";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useRef } from "react";
 
@@ -10,6 +11,8 @@ type KnobProps = {
   min: number;
   max: number;
   step?: number;
+  /** Whole-value wheel steps for discrete parameters; continuous parameters use 0.01. */
+  wheelStep?: number;
   /** Reset gesture and snap target. */
   defaultValue?: number;
   /** Fill the arc from the default value outward instead of from the minimum. */
@@ -47,13 +50,14 @@ function arc(cx: number, cy: number, r: number, from: number, to: number) {
 
 /**
  * Controlled rotary control. Drag up or down, hold Shift for fine steps,
- * double-click, double-tap or Ctrl-click to reset, arrow keys to nudge.
+ * double-click, double-tap or Ctrl-click to reset, arrow keys to nudge, wheel for 0.01 steps.
  */
 function Knob({
   value,
   min,
   max,
   step = 0.01,
+  wheelStep,
   defaultValue,
   bipolar = false,
   scale = "linear",
@@ -66,6 +70,15 @@ function Knob({
   className,
   title,
 }: KnobProps) {
+  const { changeValues, elementRef } = useFineWheel<HTMLDivElement>({
+    disabled,
+    max,
+    min,
+    onChange: ([next]) => onChange(next ?? min),
+    values: [value],
+    wheelStep,
+  });
+  const changeValue = (next: number) => changeValues([next]);
   const drag = useRef<{
     pointerId: number;
     startY: number;
@@ -102,7 +115,7 @@ function Knob({
   const reset = useControlReset(
     disabled || defaultValue === undefined
       ? undefined
-      : () => onChange(clamp(defaultValue))
+      : () => changeValue(clamp(defaultValue))
   );
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -133,7 +146,7 @@ function Knob({
     const fine = event.shiftKey ? 4 : 1;
     const delta =
       (current.startY - event.clientY) / (DRAG_PIXELS_FOR_FULL_RANGE * fine);
-    onChange(snap(fromPosition(current.startValue + delta)));
+    changeValue(snap(fromPosition(current.startValue + delta)));
   };
   const handlePointerEnd = (event: React.PointerEvent) => {
     if (event.type === "pointerup") {
@@ -162,7 +175,7 @@ function Knob({
     }
     if (next !== null) {
       event.preventDefault();
-      onChange(clamp(next));
+      changeValue(clamp(next));
     }
   };
 
@@ -192,6 +205,7 @@ function Knob({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
+        ref={elementRef}
         role="slider"
         tabIndex={disabled ? -1 : 0}
       >

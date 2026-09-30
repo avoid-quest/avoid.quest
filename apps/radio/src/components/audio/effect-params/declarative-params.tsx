@@ -87,6 +87,7 @@ function SliderControl({
       onChange={updateValue}
       step={param.step}
       value={value}
+      wheelStep={param.wheelStep}
     />
   );
 

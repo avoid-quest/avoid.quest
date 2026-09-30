@@ -2,12 +2,14 @@
 "use client";
 
 import { useControlReset } from "@avoid.quest/ui/hooks/use-control-reset";
+import { useFineWheel } from "@avoid.quest/ui/hooks/use-fine-wheel";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
 import {
   type ComponentProps,
   type CSSProperties,
   type SyntheticEvent,
+  useImperativeHandle,
   useState,
 } from "react";
 
@@ -18,6 +20,10 @@ type SliderProps = ComponentProps<typeof Root> & {
   size?: "default" | "lg";
   /** Gesture reset target; defaults to the initial defaultValue. */
   resetValue?: number[];
+  /** Snap ordinary pointer/key changes near the reset target; wheel nudges stay precise. */
+  snapToDefault?: boolean;
+  /** Whole-value wheel steps for discrete parameters; continuous parameters use 0.01. */
+  wheelStep?: number;
   defaultMarkerValue?: number;
   rangeOriginValue?: number;
 };
@@ -136,12 +142,17 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  step = 1,
+  wheelStep,
+  minStepsBetweenThumbs = 0,
+  ref: forwardedRef,
   onValueChange,
   onValueCommit,
   disabled = false,
   orientation = "horizontal",
   rangeOriginValue,
   resetValue,
+  snapToDefault = false,
   variant = "default",
   size = "default",
   "aria-label": ariaLabel,
@@ -156,11 +167,42 @@ function Slider({
   const values = value ?? internalValue;
   const resetValues = resetValue ?? defaultValue;
 
-  function handleValueChange(next: number[]) {
+  function applyValueChange(next: number[]) {
     if (value === undefined) {
       setInternalValue(next);
     }
     onValueChange?.(next);
+  }
+
+  const { changeValues: handleValueChange, elementRef } =
+    useFineWheel<HTMLSpanElement>({
+      disabled,
+      max,
+      min,
+      minDistance: minStepsBetweenThumbs * step,
+      onChange: applyValueChange,
+      onCommit: onValueCommit,
+      values,
+      wheelStep,
+    });
+  useImperativeHandle(
+    forwardedRef,
+    () => elementRef.current as HTMLSpanElement,
+    [elementRef]
+  );
+
+  function handleSliderValueChange(next: number[]) {
+    handleValueChange(
+      snapToDefault && resetValues
+        ? next.map((entry, index) => {
+            const target = resetValues[index];
+            return target !== undefined &&
+              Math.abs(entry - target) < (max - min) * 0.02
+              ? target
+              : entry;
+          })
+        : next
+    );
   }
 
   const reset = useControlReset(
@@ -206,9 +248,12 @@ function Slider({
       disabled={disabled}
       max={max}
       min={min}
-      onValueChange={handleValueChange}
+      minStepsBetweenThumbs={minStepsBetweenThumbs}
+      onValueChange={handleSliderValueChange}
       onValueCommit={onValueCommit}
       orientation={orientation}
+      ref={elementRef}
+      step={step}
       value={values}
       {...props}
       onContextMenu={composeHandlers(props.onContextMenu, reset.onContextMenu)}

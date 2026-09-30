@@ -90,6 +90,7 @@ function DynamicControl({
           : Math.max((declaration.max - declaration.min) / 1000, 0.000_001)
       }
       value={value}
+      wheelStep={declaration.mapping === "int" ? 1 : undefined}
     />
   );
 }

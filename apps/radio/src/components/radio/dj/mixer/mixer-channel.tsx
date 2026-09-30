@@ -9,10 +9,7 @@ import {
   useDeckAPeakLevel,
   useDeckBPeakLevel,
 } from "@/lib/stores/dj-runtime-store";
-import {
-  ChannelSlider,
-  snapChannelSliderValue,
-} from "../shared/channel-slider";
+import { ChannelSlider } from "../shared/channel-slider";
 import {
   formatChannelFilter,
   formatPan,
@@ -67,15 +64,7 @@ function ChannelBody({
 }) {
   const label = deckId === "deck-a" ? "A" : "B";
   const prefix = `${deckId}:`;
-  const handleVolume = ([value]: number[]) =>
-    deck.setVolume(
-      snapChannelSliderValue({
-        defaultValue: 1,
-        max: MAX_VOLUME,
-        min: 0,
-        value: value ?? 1,
-      })
-    );
+  const handleVolume = ([value]: number[]) => deck.setVolume(value ?? 1);
   const handleCue = () => onCueChange(!cueEnabled);
 
   return (
@@ -154,6 +143,7 @@ function ChannelBody({
               min={0}
               onValueChange={handleVolume}
               orientation="vertical"
+              snapToDefault
               step={0.01}
               value={[deck.volume]}
               variant="fader"

@@ -9,6 +9,7 @@ type ParamSliderProps = {
   min: number;
   max: number;
   step?: number;
+  wheelStep?: number;
   disabled?: boolean;
   onChange: (value: number) => void;
   formatter?: ParamFormatter;
@@ -27,6 +28,7 @@ export function ParamSlider({
   min,
   max,
   step = 0.01,
+  wheelStep,
   disabled = false,
   onChange,
   formatter,
@@ -56,6 +58,7 @@ export function ParamSlider({
       step={step}
       title={description ? `${label}: ${description}` : undefined}
       value={value}
+      wheelStep={wheelStep}
     />
   );
 }

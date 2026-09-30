@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChannelSlider, snapChannelSliderValue } from "./channel-slider";
+import { ChannelSlider } from "./channel-slider";
 
 const formatValue = (value: number) => `${value}`;
 const handleChange = () => undefined;
@@ -42,37 +42,5 @@ describe("ChannelSlider", () => {
 
     expect(html).toContain('data-slot="knob-origin-arc"');
     expect(html).toContain('aria-valuenow="0.5"');
-  });
-
-  test("snaps values near the default", () => {
-    expect(
-      snapChannelSliderValue({
-        defaultValue: 0,
-        max: 1,
-        min: -1,
-        value: 0.03,
-      })
-    ).toBe(0);
-    expect(
-      snapChannelSliderValue({
-        defaultValue: 0,
-        max: 1,
-        min: -1,
-        value: 0.05,
-      })
-    ).toBe(0.05);
-  });
-
-  test("leaves a one-step move off the default alone, as an arrow key makes", () => {
-    const range = { defaultValue: 0, max: 1, min: -1, step: 0.01 };
-    expect(
-      snapChannelSliderValue({ ...range, previousValue: 0, value: 0.01 })
-    ).toBe(0.01);
-    expect(
-      snapChannelSliderValue({ ...range, previousValue: 0.01, value: 0.02 })
-    ).toBe(0.02);
-    expect(
-      snapChannelSliderValue({ ...range, previousValue: 0.3, value: 0.02 })
-    ).toBe(0);
   });
 });

@@ -115,6 +115,7 @@ export const TONE_EFFECT_DEFINITIONS = {
         min: 1,
         step: 1,
         type: "slider",
+        wheelStep: 1,
       },
       {
         description:

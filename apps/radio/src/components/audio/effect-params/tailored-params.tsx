@@ -75,6 +75,7 @@ function Control({
         onChange={(next) => onUpdate({ [param.key]: next })}
         step={param.step}
         value={value}
+        wheelStep={param.wheelStep}
       />
     );
     return targetPrefix ? (

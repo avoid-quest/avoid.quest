@@ -1,7 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
-import { snapChannelSliderValue } from "../shared/channel-slider";
 
 type MixerCrossfaderProps = {
   crossfadePosition: number;
@@ -13,14 +12,7 @@ export function MixerCrossfader({
   onCrossfadeChange,
 }: MixerCrossfaderProps) {
   const handleValueChange = ([value]: number[]) =>
-    onCrossfadeChange(
-      snapChannelSliderValue({
-        defaultValue: 50,
-        max: 100,
-        min: 0,
-        value: value ?? 50,
-      }) / 100
-    );
+    onCrossfadeChange((value ?? 50) / 100);
 
   return (
     <MidiControlWrapper targetId="mixer:crossfader">
@@ -40,6 +32,7 @@ export function MixerCrossfader({
             min={0}
             onValueChange={handleValueChange}
             size="lg"
+            snapToDefault
             step={1}
             value={[crossfadePosition * 100]}
             variant="fader"

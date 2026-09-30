@@ -34,6 +34,8 @@ export type SliderParamDef<TKey extends string = string> = {
   min: number;
   max: number;
   step: number;
+  /** Whole-value wheel steps for discrete parameters; continuous parameters use 0.01. */
+  wheelStep?: number;
   description?: string;
 };
 

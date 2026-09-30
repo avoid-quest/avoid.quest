@@ -2,10 +2,7 @@
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { StripPanKnob, StripSpeedKnob } from "../../node/source-strip";
-import {
-  ChannelSlider,
-  snapChannelSliderValue,
-} from "../shared/channel-slider";
+import { ChannelSlider } from "../shared/channel-slider";
 import { formatChannelFilter, formatPercent } from "../shared/format-utils";
 import { useDeckContext } from "./deck-context";
 
@@ -33,15 +30,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
 
   const prefix = `${deckId}:`;
   const deckLabel = deckId === "deck-a" ? "A" : "B";
-  const handleVolume = ([value]: number[]) =>
-    setVolume(
-      snapChannelSliderValue({
-        defaultValue: 1,
-        max: MAX_VOLUME,
-        min: 0,
-        value: value ?? 1,
-      })
-    );
+  const handleVolume = ([value]: number[]) => setVolume(value ?? 1);
 
   return (
     <div className={className}>
@@ -58,6 +47,7 @@ export function DeckChannelStrip({ className }: { className?: string }) {
               max={MAX_VOLUME}
               min={0}
               onValueChange={handleVolume}
+              snapToDefault
               step={0.01}
               value={[volume]}
               variant="fader"

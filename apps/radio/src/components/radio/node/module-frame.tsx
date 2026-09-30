@@ -283,6 +283,7 @@ export type ModuleKnobProps = {
   min: number;
   max: number;
   step?: number;
+  wheelStep?: number;
   defaultValue?: number;
   bipolar?: boolean;
   scale?: "linear" | "log";
@@ -304,6 +305,7 @@ export function ModuleKnob({
   min,
   max,
   step = 0.01,
+  wheelStep,
   defaultValue,
   bipolar,
   scale,
@@ -327,6 +329,7 @@ export function ModuleKnob({
       step={step}
       title={description ? `${label}: ${description}` : label}
       value={value}
+      wheelStep={wheelStep}
     />
   );
   return (

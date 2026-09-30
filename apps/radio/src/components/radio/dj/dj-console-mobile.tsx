@@ -13,7 +13,6 @@ import {
 } from "@/lib/stores/dj-runtime-store";
 import { InlineError } from "../inline-error";
 import { DeckPanel } from "./deck/deck-panel";
-import { snapChannelSliderValue } from "./shared/channel-slider";
 import { PeakMeter } from "./shared/peak-meter";
 
 type DjConsoleMobileProps = {
@@ -75,14 +74,7 @@ export function DjConsoleMobile({
   const handleDeckACueChange = () => onDeckACueChange(!deckACueEnabled);
   const handleDeckBCueChange = () => onDeckBCueChange(!deckBCueEnabled);
   const handleCrossfadeChange = ([value]: number[]) =>
-    onCrossfadeChange(
-      snapChannelSliderValue({
-        defaultValue: 50,
-        max: 100,
-        min: 0,
-        value: value ?? 50,
-      }) / 100
-    );
+    onCrossfadeChange((value ?? 50) / 100);
   const handleMasterVolumeChange = ([value]: number[]) =>
     onMasterVolumeChange((value ?? 0) / 100);
   const handleDeckTabChange = (value: string) =>
@@ -110,6 +102,7 @@ export function DjConsoleMobile({
             min={0}
             onValueChange={handleCrossfadeChange}
             size="lg"
+            snapToDefault
             step={1}
             value={[crossfadePosition * 100]}
             variant="fader"

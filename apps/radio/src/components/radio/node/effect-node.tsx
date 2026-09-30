@@ -146,6 +146,7 @@ function BodyControlView({
         }
         step={param.step}
         value={value}
+        wheelStep={param.wheelStep}
       />
     );
   }

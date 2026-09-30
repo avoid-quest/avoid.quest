@@ -246,6 +246,11 @@ describe("isCanvasKey", () => {
     const canvas = document.createElement("div");
     const node = document.createElement("div");
     const slot = document.createElement("input");
+    const playButton = document.createElement("button");
+    const volume = document.createElement("span");
+    volume.setAttribute("role", "slider");
+    node.appendChild(playButton);
+    node.appendChild(volume);
     canvas.appendChild(node);
     canvas.appendChild(slot);
     const stageButton = document.createElement("button");
@@ -260,6 +265,8 @@ describe("isCanvasKey", () => {
     expect(isCanvasKey(node, canvas)).toBe(true);
     expect(isCanvasKey(document.body, canvas)).toBe(true);
     expect(isCanvasKey(slot, canvas)).toBe(false);
+    expect(isCanvasKey(playButton, canvas)).toBe(false);
+    expect(isCanvasKey(volume, canvas)).toBe(false);
     expect(isCanvasKey(stageButton, canvas)).toBe(false);
     expect(isCanvasKey(dialogButton, canvas)).toBe(false);
     expect(isCanvasKey(node, null)).toBe(false);

@@ -63,16 +63,24 @@ export function isShortcutIgnored(target: EventTarget | null): boolean {
   );
 }
 
+/** Controls on a node that act on their own keys, Backspace and C included. */
+const CANVAS_KEY_IGNORED_CONTROLS =
+  "button, a[href], [role=button], [role=slider], [role=menuitem], [role=switch], [role=checkbox]";
+
 /**
  * Canvas keys (C, Delete) act from the canvas, or with nothing focused;
- * not from a field, a dialog, the Stage or the Rack.
+ * not from a field, a dialog, a control on a node, the Stage or the Rack.
  */
 export function isCanvasKey(
   target: EventTarget | null,
   canvas: HTMLElement | null
 ): boolean {
   return (
-    !isShortcutIgnored(target) &&
+    !(
+      isShortcutIgnored(target) ||
+      (target instanceof HTMLElement &&
+        target.closest(CANVAS_KEY_IGNORED_CONTROLS) !== null)
+    ) &&
     (target === document.body ||
       (target instanceof Node && canvas?.contains(target) === true))
   );

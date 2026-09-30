@@ -51,12 +51,12 @@ export function Header() {
         </ClientOnly>
         <ClientOnly fallback={<Skeleton className="size-7" />}>
           <Suspense fallback={<Skeleton className="size-7" />}>
-            <SettingsButton />
+            <WhatsNew />
           </Suspense>
         </ClientOnly>
         <ClientOnly fallback={<Skeleton className="size-7" />}>
           <Suspense fallback={<Skeleton className="size-7" />}>
-            <WhatsNew />
+            <SettingsButton />
           </Suspense>
         </ClientOnly>
       </div>

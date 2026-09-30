@@ -73,10 +73,15 @@ function isPhoneView(value: string): value is PhoneView {
   return (PHONE_VIEWS as readonly string[]).includes(value);
 }
 
-/** A Station, Track or File with nothing in it yet. */
-function isEmptySource(graph: NodeGraph | null, nodeId: string): boolean {
+/**
+ * A Station, Track or File with something in it: the Stage and Rack list
+ * it ready to play. Anything else added (an empty one, an Audio input to
+ * pick a device on, an FX, a routing node, an output) is set up on the
+ * Patch.
+ */
+function isFilledSource(graph: NodeGraph | null, nodeId: string): boolean {
   const node = graph?.nodes.find((entry) => entry.id === nodeId);
-  return isRadioSourceNode(node) && node.data.radio === null;
+  return isRadioSourceNode(node) && node.data.radio !== null;
 }
 
 export function NodeRadios({ radios }: { radios?: Radio[] }) {
@@ -190,6 +195,12 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       }
       commitNodeGraph(() => edit.graph, nodeStore, "snapshot");
     },
+    revealNode: (nodeId) => {
+      if (isPhone) {
+        setPhoneView("patch");
+      }
+      setReveal({ nodeId });
+    },
     saveDiscoveredStation: management.saveDiscoveredStation,
     selectDiscoveredForStation: management.selectDiscoveredForStation,
     swapEffect: (nodeId) => openPalette({ swap: nodeId }),
@@ -200,10 +211,11 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const handleCancelDelete = () => management.setDeleteConfirm(null);
   // A node placed where the user pointed is in view already; one placed in
   // a free spot may not be.
-  // On a phone, an empty Station, Track or File added from the Stage or
-  // Rack shows on neither, so the Patch opens on it for its search or form.
+  // On a phone, anything but a filled source added from the Stage or Rack
+  // shows on neither, so the Patch opens on it for its search, form or
+  // cables.
   const handlePaletteAdded = (nodeId: string, request: PaletteRequest) => {
-    if (isPhone && isEmptySource(nodeStore.state.graph, nodeId)) {
+    if (isPhone && !isFilledSource(nodeStore.state.graph, nodeId)) {
       setPhoneView("patch");
       setReveal({ nodeId });
       return;

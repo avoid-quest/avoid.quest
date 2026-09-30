@@ -10,6 +10,7 @@ import {
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
+import { forgetLocalFileUrls, localFileRadio } from "@/lib/node-graph/sources";
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
@@ -86,6 +87,7 @@ afterEach(() => {
   cleanup();
   resetAllPlaybackRuntime();
   inspectNode.mockClear();
+  revealNode.mockClear();
 });
 
 const ENV: CompileEnv = { crossOriginIsolated: false, profile: "desktop" };
@@ -152,9 +154,11 @@ function buildGraph(): NodeGraph {
 }
 
 const inspectNode = mock((_nodeId: string) => undefined);
+const revealNode = mock((_nodeId: string) => undefined);
 
 /** A saved station's menu button, "Options for KEXP". */
 const STATION_MENU = /^Options for/;
+const REPICK_ROW = /Pick the file again/;
 
 const actions: NodeActions = {
   fillSource: asyncNoop,
@@ -167,6 +171,7 @@ const actions: NodeActions = {
   inspectNode,
   radios: [],
   removeNode: noop,
+  revealNode,
   saveDiscoveredStation: noop,
   selectDiscoveredForStation: noop,
   swapEffect: noop,
@@ -424,5 +429,37 @@ describe("NodeRack", () => {
     );
 
     expect(view.getByText("Search to add a station")).toBeTruthy();
+  });
+
+  test("a File to pick again after a reload shows its File on the Patch", () => {
+    forgetLocalFileUrls();
+    const { view } = renderRack(
+      nodeGraphSchema.parse({
+        edges: [cable("tone", SPEAKERS_NODE_ID)],
+        nodes: [
+          {
+            data: {
+              radio: localFileRadio("tone", {
+                displayName: "tone",
+                duration: 10,
+                fileName: "tone.wav",
+                fileSize: 100,
+                mimeType: "audio/wav",
+                objectUrl: "blob:https://radio.test/tone",
+              }),
+            },
+            id: "tone",
+            position,
+            type: "file",
+          },
+          { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+        ],
+        version: 2,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      } satisfies NodeGraphInput)
+    );
+
+    fireEvent.click(view.getByRole("button", { name: REPICK_ROW }));
+    expect(revealNode.mock.calls).toEqual([["tone"]]);
   });
 });

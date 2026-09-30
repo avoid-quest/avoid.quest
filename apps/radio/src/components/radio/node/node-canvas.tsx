@@ -2,7 +2,7 @@
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { type ExternalToast, toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import { compile, idleKeys, mergeRoles } from "@/lib/node-graph/compile";
@@ -27,6 +27,7 @@ import {
   dropOnNode,
   type PaletteFrom,
   paletteEntries,
+  type Replacement,
 } from "@/lib/node-graph/palette";
 import type { NodeGraph } from "@/lib/node-graph/schema";
 import {
@@ -34,11 +35,7 @@ import {
   seriesToParallel,
 } from "@/lib/node-graph/series-parallel";
 import { STATION_ROW_HEIGHT } from "@/lib/node-graph/templates";
-import {
-  type Connection,
-  type ValidateOptions,
-  validateConnection,
-} from "@/lib/node-graph/validate";
+import type { Connection, ValidateOptions } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { AudioInputNode } from "./audio-input-node";
@@ -343,7 +340,7 @@ function Canvas({
   const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
   const insertTargetRef = useRef<InsertTarget | null>(null);
   const probedRef = useRef<{ node: string; edge: string | null } | null>(null);
-  const insertionCanceledRef = useRef(false);
+  const insertionCanceledRef = useRef<boolean>(false);
   // A cable end being dragged to rewire it: the cable, and the patch
   // without it, which that drag's verdicts and drop are taken on.
   const rewireRef = useRef<{ edge: string; graph: NodeGraph } | null>(null);
@@ -580,10 +577,20 @@ function Canvas({
     rewireRef.current = { edge: edge.id, graph: removeEdges(graph, [edge.id]) };
   };
 
+  // A refusal says why. On a phone it shows at the top, clear of the
+  // node being wired and the canvas hint.
+  const refuse = (message: string, action?: ExternalToast["action"]) => {
+    if (!(action || isPhone)) {
+      toast(message);
+      return;
+    }
+    toast(message, { action, position: isPhone ? "top-center" : undefined });
+  };
+
   const rewire = (edgeId: string, connection: Connection) => {
     const edit = reconnectEdge(graph, edgeId, connection, validateOptions);
     if (!edit.ok) {
-      toast(edit.message);
+      refuse(edit.message);
       return;
     }
     commitNodeGraph(
@@ -644,8 +651,41 @@ function Canvas({
         handleConnect(outcome.connect);
       }
     } else if (outcome.refuse) {
-      toast(outcome.refuse);
+      const { replace } = outcome;
+      refuse(
+        outcome.refuse,
+        replace
+          ? {
+              label: "Replace",
+              onClick: () => replaceCable(replace, rewired?.edge ?? null),
+            }
+          : undefined
+      );
     }
+  };
+
+  // Replace on a one-cable refusal: the port's cable moves to the new far
+  // end, keeping its level. A cable being rewired onto the port takes its
+  // place instead, and the port's old cable goes. One undo step.
+  const replaceCable = (
+    { connection, edge }: Replacement,
+    rewired: string | null
+  ) => {
+    commitNodeGraph(
+      (current) => {
+        const edit = rewired
+          ? reconnectEdge(
+              removeEdges(current, [edge]),
+              rewired,
+              connection,
+              validateOptions
+            )
+          : reconnectEdge(current, edge, connection, validateOptions);
+        return edit.ok ? edit.graph : current;
+      },
+      nodeStore,
+      "snapshot"
+    );
   };
 
   // A cable dropped on a node connects when exactly one of its ports fits,
@@ -1011,6 +1051,8 @@ function Canvas({
         onReconnectStart={handleReconnectStart}
         panActivationKeyCode={null}
         proOptions={PRO_OPTIONS}
+        // A cable end to rewire is hard to hit at a phone's zoom.
+        reconnectRadius={isPhone ? 24 : 10}
         zoomOnDoubleClick={false}
       />
     </div>

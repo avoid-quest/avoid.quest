@@ -11,6 +11,7 @@ import {
   insertNodeOnEdge,
   moveNodes,
   nextFxPosition,
+  nextOutputPosition,
   nextStationPosition,
   reconnectEdge,
   removeEdges,
@@ -160,8 +161,8 @@ describe("where a new node lands", () => {
     );
     expect(ys).toEqual([
       STATION_ROW_HEIGHT,
-      STATION_ROW_HEIGHT + 280,
-      STATION_ROW_HEIGHT + 560,
+      STATION_ROW_HEIGHT + 340,
+      STATION_ROW_HEIGHT + 680,
     ]);
   });
 
@@ -193,37 +194,75 @@ describe("where a new node lands", () => {
     });
   });
 
-  test("an FX goes between the sources and Speakers, below everything", () => {
+  const gainEntry = {
+    id: "gain",
+    kind: "node",
+    name: "Gain",
+    section: "fx",
+    type: "gain",
+  } as const;
+
+  test("an FX goes in its own column between the sources and Speakers, below everything", () => {
     const start = patch(radio("a"), radio("b"));
     const speakers = start.nodes.find((node) => node.type === "speakers");
-    const { graph, nodeId } = addPaletteNode(start, {
-      id: "gain",
-      kind: "node",
-      name: "Gain",
-      section: "fx",
-      type: "gain",
-    });
+    const { graph, nodeId } = addPaletteNode(start, gainEntry);
 
     const position = positionOf(graph, nodeId);
     expect(position).toEqual(nextFxPosition(start) ?? undefined);
+    // Clear of the 240-wide source column, a cable's length right of it.
+    expect(position?.x).toBe(240 + 120);
     expect(position?.x).toBeLessThan(speakers?.position.x ?? 0);
     expect(position?.y).toBe(2 * STATION_ROW_HEIGHT);
   });
 
-  test("a Station added after an FX in the source column lands below it", () => {
-    // The Starter's Speakers sit close, so its FX column overlaps the slot's.
+  test("Speakers, and what is beside it, move right to make room for the FX column", () => {
+    // The Starter's Speakers sit a cable's length from the slot.
     const start = buildNodeGraphFromTemplate("starter");
-    const fx = addPaletteNode(start, {
-      id: "gain",
+    const withOutput = addPaletteNode(start, {
+      device: { deviceId: "usb", label: "USB" },
+      id: "deviceOut:usb",
       kind: "node",
-      name: "Gain",
-      section: "fx",
-      type: "gain",
+      name: "USB",
+      section: "outputs",
+      type: "deviceOut",
     });
-    const fxY = positionOf(fx.graph, fx.nodeId)?.y ?? 0;
+    const fx = addPaletteNode(withOutput.graph, gainEntry);
 
-    expect(fxY).toBe(STATION_ROW_HEIGHT);
-    expect(nextStationPosition(fx.graph).y).toBe(fxY + STATION_ROW_HEIGHT);
+    const fxX = positionOf(fx.graph, fx.nodeId)?.x ?? 0;
+    const speakersX = positionOf(fx.graph, "speakers")?.x ?? 0;
+    expect(fxX).toBe(240 + 120);
+    expect(speakersX).toBe(fxX + 224 + 120);
+    // The Output device keeps to the Speakers column.
+    expect(positionOf(fx.graph, withOutput.nodeId)?.x).toBe(speakersX);
+    // The source stays; a Station added next lands below it, not the FX.
+    expect(positionOf(fx.graph, STARTER_STATION_ID)).toEqual({ x: 0, y: 0 });
+    expect(nextStationPosition(fx.graph)).toEqual({
+      x: 0,
+      y: STATION_ROW_HEIGHT,
+    });
+  });
+
+  test("an Output device goes in the Speakers column, below the lowest output there", () => {
+    const start = patch(radio("a"), radio("b"));
+    const speakers = start.nodes.find((node) => node.type === "speakers");
+    const entry = {
+      device: { deviceId: "usb", label: "USB" },
+      id: "deviceOut:usb",
+      kind: "node",
+      name: "USB",
+      section: "outputs",
+      type: "deviceOut",
+    } as const;
+    const first = addPaletteNode(start, entry);
+
+    expect(positionOf(first.graph, first.nodeId)).toEqual({
+      x: speakers?.position.x ?? 0,
+      y: (speakers?.position.y ?? 0) + STATION_ROW_HEIGHT,
+    });
+    expect(nextOutputPosition(first.graph)).toEqual({
+      x: speakers?.position.x ?? 0,
+      y: (speakers?.position.y ?? 0) + 2 * STATION_ROW_HEIGHT,
+    });
   });
 });
 

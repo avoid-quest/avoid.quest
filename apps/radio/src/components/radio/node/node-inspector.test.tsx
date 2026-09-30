@@ -206,6 +206,7 @@ function Harness({
     inspectNode: inspector.inspect,
     radios: [],
     removeNode: noop,
+    revealNode: noop,
     saveDiscoveredStation: noop,
     selectDiscoveredForStation: noop,
     swapEffect: noop,
@@ -279,6 +280,11 @@ function compressorKnobsPastFirstRow(): string[] {
 
 describe("isInspectable", () => {
   test("sources and outputs expose settings; a Merge has none", () => {
+    const radio = (id: string) => ({
+      id,
+      name: id,
+      streamUrl: `https://radio.example/${id}.mp3`,
+    });
     const graph = nodeGraphSchema.parse({
       edges: [],
       nodes: [
@@ -314,9 +320,9 @@ describe("isInspectable", () => {
         graph.nodes.map((node) => [node.id, isInspectable(node)])
       )
     ).toEqual({
-      "empty-file": false,
-      "empty-station": false,
-      "empty-track": false,
+      "empty-file": true,
+      "empty-station": true,
+      "empty-track": true,
       file: true,
       input: true,
       merge: false,

@@ -41,8 +41,8 @@ export const SPEAKERS_NODE_ID = "speakers";
 const STATION_WIDTH = 240;
 /** Station node width plus a gutter. */
 const COLUMN_WIDTH = STATION_WIDTH + 40;
-/** A Station card with now-playing, badges and controls, plus a gutter. */
-export const STATION_ROW_HEIGHT = 160;
+/** A Station card with now-playing, genre chips and its strip, plus a gutter. */
+export const STATION_ROW_HEIGHT = 190;
 /** Past this many stations the template lays them out in two columns. */
 const SINGLE_COLUMN_MAX = 8;
 /** Gap between the last station column and Speakers. */

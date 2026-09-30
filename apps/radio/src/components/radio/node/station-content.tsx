@@ -80,6 +80,8 @@ function EmptyStation({
       title="Station"
     >
       <RadioSearchBar
+        // Wider than the slot, so similar names read apart.
+        dropdownClassName="right-auto w-80"
         onSaveDiscovered={onSaveDiscovered}
         onSelectDiscovered={onSelectDiscovered}
         onSelectLocal={onSelectLocal}

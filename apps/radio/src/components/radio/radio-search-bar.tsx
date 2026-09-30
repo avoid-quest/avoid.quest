@@ -32,6 +32,8 @@ type RadioSearchBarProps = {
    */
   onSubmitUrl?: (url: string) => Promise<string | null>;
   className?: string;
+  /** The results list; e.g. wider than a narrow field. */
+  dropdownClassName?: string;
   placeholder?: string;
 };
 
@@ -263,6 +265,7 @@ export function RadioSearchBar({
   onSaveDiscovered,
   onSubmitUrl,
   className,
+  dropdownClassName,
   placeholder = "Search stations…",
 }: RadioSearchBarProps) {
   const [query, setQuery] = useState("");
@@ -417,7 +420,12 @@ export function RadioSearchBar({
       </span>
 
       {showDropdown ? (
-        <div className="absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg">
+        <div
+          className={cn(
+            "absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg",
+            dropdownClassName
+          )}
+        >
           <ScrollArea className="max-h-72 overflow-hidden">
             {pastedUrl ? (
               <PastedLinkList

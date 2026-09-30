@@ -170,15 +170,18 @@ const EMPTY_SOURCE_ROW_HEIGHT = {
   station: STATION_ROW_HEIGHT,
 } as const;
 /**
- * An Audio input grows to about 260 px once wired and live (the headphones
- * note, Mute and its strip), so its row leaves room for that: a node added
- * below it while it is new is not covered once it is cabled.
+ * An Audio input grows to about 310 px once wired and live (the unplugged
+ * and headphones notes, Echo cancellation, Mute and its strip), so its row
+ * leaves room for that: a node added below it while it is new is not
+ * covered once it is cabled.
  */
-const AUDIO_INPUT_ROW_HEIGHT = 280;
+const AUDIO_INPUT_ROW_HEIGHT = 340;
 /** A Station card's width, for what shares the source column. */
 const SOURCE_COLUMN_WIDTH = 240;
-/** Where a new FX goes relative to Speakers: between it and the sources. */
-const FX_OFFSET_X = 180;
+/** A new FX's gap from the source column: a cable's length, as in Duck. */
+const FX_GAP_X = 120;
+/** The widest FX body (a Compressor, three knobs) plus a cable's length. */
+const FX_COLUMN_WIDTH = 224 + 120;
 
 /**
  * The height a node's row takes. A File whose picked file is gone after a
@@ -224,19 +227,78 @@ export function nextStationPosition(graph: NodeGraph): Position {
     : { x: 0, y: 0 };
 }
 
+function speakersOf(graph: NodeGraph): GraphNode | undefined {
+  return graph.nodes.find((node) => node.type === "speakers");
+}
+
+/** The source column's left edge: the first source's, else Speakers'. */
+function sourceColumnX(graph: NodeGraph, speakers: GraphNode): number {
+  const first = graph.nodes.find(isStripSource);
+  return first
+    ? first.position.x
+    : speakers.position.x - FIRST_STATION_OFFSET_X;
+}
+
 /**
- * Between the sources and Speakers, below everything, so the cables of an
- * FX wired Input → FX → Speakers run forward. `null` without Speakers.
+ * A column of its own between the sources and Speakers, below everything,
+ * so the cables of an FX wired Input → FX → Speakers run forward and none
+ * runs behind a source. `null` without Speakers.
  */
 export function nextFxPosition(graph: NodeGraph): Position | null {
-  const speakers = graph.nodes.find((node) => node.type === "speakers");
+  const speakers = speakersOf(graph);
   if (!speakers) {
     return null;
   }
   return {
-    x: speakers.position.x - FX_OFFSET_X,
+    x: sourceColumnX(graph, speakers) + SOURCE_COLUMN_WIDTH + FX_GAP_X,
     y: bottomOf(graph.nodes),
   };
+}
+
+/**
+ * Makes room for the FX column: when Speakers sits too close to the
+ * sources for an FX between them, Speakers and everything level with it or
+ * right of it move right. The same graph when the column already fits.
+ */
+export function withFxColumn(graph: NodeGraph): NodeGraph {
+  const speakers = speakersOf(graph);
+  const fx = nextFxPosition(graph);
+  if (!(speakers && fx)) {
+    return graph;
+  }
+  const edge = speakers.position.x;
+  const shift = fx.x + FX_COLUMN_WIDTH - edge;
+  if (shift <= 0) {
+    return graph;
+  }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) =>
+      node.position.x >= edge && !isStripSource(node)
+        ? {
+            ...node,
+            position: { ...node.position, x: node.position.x + shift },
+          }
+        : node
+    ),
+  };
+}
+
+/**
+ * In the Speakers column, below the lowest node there, so a cable into a
+ * new output runs beside Speakers' rather than through it. `null` without
+ * Speakers.
+ */
+export function nextOutputPosition(graph: NodeGraph): Position | null {
+  const speakers = speakersOf(graph);
+  if (!speakers) {
+    return null;
+  }
+  const column = graph.nodes.filter(
+    (node) =>
+      Math.abs(node.position.x - speakers.position.x) < SOURCE_COLUMN_WIDTH
+  );
+  return { x: speakers.position.x, y: bottomOf(column) };
 }
 
 /**

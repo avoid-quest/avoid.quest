@@ -208,7 +208,7 @@ describe("migrateMultipleSession", () => {
       "src-kexp->speakers",
       "src-nts->speakers",
     ]);
-    expect(node?.graph?.nodes.at(-1)?.position).toEqual({ x: 480, y: 80 });
+    expect(node?.graph?.nodes.at(-1)?.position).toEqual({ x: 480, y: 95 });
   });
 
   test("keeps Multiple's channel order", async () => {
@@ -234,7 +234,7 @@ describe("migrateMultipleSession", () => {
       node?.graph?.nodes
         .filter((entry) => entry.type === "station")
         .map((entry) => entry.position.y)
-    ).toEqual([0, 160, 320]);
+    ).toEqual([0, 190, 380]);
   });
 
   test("writes the backup once, with the raw record and the old mode", async () => {
@@ -280,12 +280,12 @@ describe("migrateMultipleSession", () => {
     expect(nodes.slice(0, 10).map((entry) => entry.position)).toEqual(
       stations.map((_, index) => ({
         x: index < 5 ? 0 : 280,
-        y: (index % 5) * 160,
+        y: (index % 5) * 190,
       }))
     );
     // Speakers clears the second column and stays vertically centred.
     expect(nodes.at(-1)).toMatchObject({
-      position: { x: 760, y: 320 },
+      position: { x: 760, y: 380 },
       type: "speakers",
     });
   });

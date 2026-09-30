@@ -26,6 +26,8 @@ export type NodeActions = Pick<
   swapEffect: (nodeId: string) => void;
   /** Opens a module's settings, source picker or device controls. */
   inspectNode: (nodeId: string) => void;
+  /** Brings a node into view on the Patch, opening it on a phone. */
+  revealNode: (nodeId: string) => void;
 };
 
 const NodeActionsContext = createContext<NodeActions | null>(null);

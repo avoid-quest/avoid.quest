@@ -181,8 +181,8 @@ describe("one rule for every way to connect", () => {
     expect(canConnect(graph, connection)).toBe(ok);
     clearConnectionHints();
 
-    // A drop on the port.
-    expect(dropOnNode(graph, from, node, handle)).toEqual(
+    // A drop on the port. A full one-cable port also offers to replace.
+    expect(dropOnNode(graph, from, node, handle)).toMatchObject(
       ok ? { connect: connection } : { refuse: message }
     );
 

@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import type { ExternalToast } from "sonner";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -470,7 +471,21 @@ describe("NodeCanvas: dragging a cable", () => {
       const key = port("comp", "in:sidechain:key");
       move(-5000, key);
       release(key);
-      expect(toast.mock.calls).toEqual([["This input takes one cable"]]);
+      const [[message, options]] = toast.mock.calls as [
+        [string, ExternalToast],
+      ];
+      expect(message).toBe("This input takes one cable");
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
+
+      // Replace moves the key's cable to KEXP, in one undo step.
+      const action = options.action as { label: string; onClick: () => void };
+      expect(action.label).toBe("Replace");
+      action.onClick();
+      const keys = nodeStoreModule.nodeStore.state.graph?.edges.filter(
+        (edge) =>
+          edge.target === "comp" && edge.targetHandle === "in:sidechain:key"
+      );
+      expect(keys?.map((edge) => edge.source)).toEqual(["kexp"]);
       expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
     } finally {
       toast.mockRestore();
@@ -654,7 +669,9 @@ describe("NodeCanvas: dragging a cable", () => {
       expect(key.title).toBe("This input takes one cable");
 
       tap(key);
-      expect(toast.mock.calls).toEqual([["This input takes one cable"]]);
+      expect(toast.mock.calls.map(([message]) => message)).toEqual([
+        "This input takes one cable",
+      ]);
       expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
       expect(
         port("verb", "in:audio:main").classList.contains("node-port-accept")

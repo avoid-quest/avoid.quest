@@ -73,7 +73,7 @@ carries the four universal wrapper params: enabled, dryWet, inputGain and output
 | Category | Name | Inputs | Outputs | Params | For | Ship |
 |---|---|---|---|---|---|---|
 | Source | Station | control: volume, pan, station | audio; control: song-change (pulse), title-hash (v2) | radio ref (snapshot), volume, muted, play | A saved or session station as a lane: one managed sound through `createManagedSound` (`apps/radio/src/lib/playback-actions-shared.ts:85-104`). **Its empty state is the search**: with no station, the body is an inline `SearchField`, and the chosen result fills the slot. A pasted radio stream link becomes a session station; a pasted platform link loads and hands off to a Track (a session radio keeps the green `#00d084/40` stripe; session radios are tab-scoped, `apps/radio/src/lib/collections/session-radios.ts:14-37`). There is no separate Search node | v1 |
-| Source | File | control: volume (v2) | audio | radio (like a Station's), volume, muted, play | One of the Source family with Station and Track: same data, frame and strip slot (`components/radio/node/source-node-frame.tsx`). A local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`) or a static audio URL (MP3, M3U, PLS) resolved in the browser (`lib/audio/client-static-audio-resolver.ts`). Its empty body is DJ's `FileForm`. Restore skips local files (`isRestorableRadio`), and a local file's lane is live only for object URLs picked in this page (`lib/node-graph/sources.ts`), so after a reload the File keeps its name, has no lane and says "Pick the file again". A URL survives the reload. Albums and M3U playlists advance to the next track at the end of one | v1 |
+| Source | File | control: volume (v2) | audio | radio (like a Station's), volume, muted, play | One of the Source family with Station and Track: same data, frame and strip slot (`components/radio/node/source-node-frame.tsx`). A local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`) or a static audio URL (MP3, M3U, PLS) resolved in the browser (`lib/audio/client-static-audio-resolver.ts`). Its empty body is DJ's `FileForm`. Restore skips local files (`isRestorableRadio`), and a local file's lane is live only for object URLs picked in this page (`lib/node-graph/sources.ts`), so after a reload the File keeps its name, has no lane and says "Pick the file again"; its Rack row under Pick again shows the File on the Patch. A URL survives the reload. Albums and M3U playlists advance to the next track at the end of one | v1 |
 | Source | Audio input (`deviceIn`, DJ's word) | none | audio | device, channel pair of the first 2 channels, echo cancellation, volume, mute, Go live | `createDeviceSource` (`apps/radio/src/lib/audio/playback/device-source.ts:581`) via `AudioManager.playDeviceSound`, getUserMedia → splitter/merger. The start is DJ's own, shared as `apps/radio/src/lib/device-input-playback.ts` (`startDeviceInput`: `playDeviceSound(soundId, deviceId, { echoCancellation })`, then `setDeviceChannelSelection`). An input with no device has no lane, like an empty Station. Its channel carries DJ's device-input radio (`dj-library-sources.ts`), and restore skips it (`isRestorableRadio`), so a reload never opens the mic: only Go live does. Realtime path, so it skips the main delay (`apps/radio/src/lib/audio/routing/browser-output-adapter.ts:39-42`). Not a stream, so the playing budget ignores it. Its body: Allow microphone (a gesture), "Microphone blocked…", the device select with Refresh, the channel select, "Unplugged: plug it back in or pick another" (the lane pauses), Off / Live with Go live and Mute, and while it reaches an output an amber "Use headphones: a mic into speakers can howl" with an Echo cancellation switch. It is never wired on its own when added | v1 |
 | Source | Track (`platform`) | control: volume (v2) | audio | radio (like a Station's), search chip, volume, muted, play | A YouTube, SoundCloud or Bandcamp track, album or playlist. Its empty body is DJ's `ExternalSearch`, unlocked ("Search all") or locked by a platform chip taken from `PLATFORM_SOURCE_DEFINITIONS`; a pick or a pasted link loads through `useDjTrackLoad`, and a `yt:` track is resolved first. A radio link hands off: filling any Source with another kind of radio turns it into the one that plays it, in place (`setSourceRadio`). `validateRadioForMode` allows platform radios in `"node"` (Single stays refused). An expired stream is renewed through DJ's refresh, shared as `lib/platform-stream-refresh.ts`, and resumes at its position. At the end of a track in an album or playlist the lane loads `findNextTrack`; the inspector lists the tracklist (DJ's `TracklistView`) | v1 |
 | Source | Static | control: level | audio | colour (white or pink), bandwidth | Looping noise `AudioBufferSourceNode` → Biquad bandpass. Native and cheap on Safari. Used by the Dial and the roulette bridge | v2 |
@@ -417,7 +417,10 @@ chains, with params excluded.
   port the cable may end on grows a foreground ring (`node-port-accept`), every other port
   fades to 0.3 and locks (`node-port-locked`, `isConnectableEnd=false`) with the reason as
   its native title. `isValidConnection` reads the same cache. A refused drop on a node, a
-  locked port or a port React Flow snapped to shows one toast with the verdict; a drop on
+  locked port or a port React Flow snapped to shows one toast with the verdict (at the top on
+  a phone, clear of the node being wired). When the one port the cable could take is a full
+  one-cable port, the toast offers Replace: that port's cable moves to the new far end in
+  one undo step (`dropOnNode`'s `replace`). A drop on
   empty space opens the palette narrowed to what fits. A drop on a port on the cable's own
   side counts as a drop on its node's body. Tap-then-tap works the same way:
   `onClickConnectStart` takes the verdicts, ports read the first tap from React Flow's
@@ -429,7 +432,8 @@ chains, with params excluded.
   verdicts are taken on the patch without that cable, so the one-cable input it filled
   takes it back, and a drop commits `reconnectEdge` as one undo step: the old cable goes,
   the new one comes, with the old level, mute and colour. A refused drop toasts its verdict
-  as a new cable's would, and a cable end let go on empty space unplugs the cable.
+  as a new cable's would, and a cable end let go on empty space unplugs the cable. A phone
+  picks a cable end up within 24 flow px (`reconnectRadius`), 10 on a desktop.
 - **Budgets.** Checked at compile time; exceeding a budget is an error on the offending node,
   never a silent drop.
 
@@ -603,13 +607,20 @@ border-border/50 bg-card`, no shadow. Widths are fixed: station 240 px, FX 64 px
 column + gap-x-2 (max 4 columns), output 200 px.
 
 **Where a new node lands.** A Station, Track, File or Audio input from the palette stacks
-below the lowest node in the source column, by row: 160 px for a filled source, 240 px for
-an empty File (or one whose file is gone after a reload), 320 px for an empty Track, 280 px
-for an Audio input (about 260 px once wired and live). An FX, Gain or Merge goes between the sources and Speakers
-(`Speakers.x - 180`), below everything, so a cable wired Input → FX → Speakers runs forward;
-an output goes right of everything. A reveal after an add waits for the new node's measured
-size and keeps it clear of the canvas hint. On a phone, an empty Station, Track or File added
-from the Stage or Rack opens the Patch on it, as neither lists an empty slot. Selecting an
+below the lowest node in the source column, by row: 190 px for a filled source (a Station
+with genre chips is about 172 px), 240 px for an empty File (or one whose file is gone after
+a reload), 320 px for an empty Track, 340 px for an Audio input (about 310 px once wired and
+live, with both notes). An FX, Gain or Merge goes in a column of its own a cable's length
+right of the source column (`sources.x + 240 + 120`, where Duck puts its Compressor), below
+everything, so a cable wired Input → FX → Speakers runs forward and none runs behind a
+source; when Speakers sits closer than that column needs (a Compressor's 224 px plus a
+cable's length), Speakers and every node level with or right of it move right in the same
+edit (`withFxColumn`). An output goes in the Speakers column, below the lowest node there,
+so a cable into it runs beside Speakers' rather than through it, and the patch stays as wide
+as it was. A reveal after an add waits for the new node's measured
+size and keeps it clear of the canvas hint. On a phone, anything but a filled source added
+from the Stage or Rack (an empty slot, an Audio input, an FX, a routing node or an output)
+opens the Patch on it, as neither lists it. Selecting an
 empty slot keeps the Rack: it has no strip to inspect until it holds something.
 
 ```
@@ -687,7 +698,8 @@ What this design does instead:
   compatible with the dragged port and auto-wires the new node. The search bar above the
   canvas adds a Station node wired to Speakers and starts it playing, as Multiple did
   (`apps/radio/src/components/radio/multiple/index.tsx:92-102`). An empty Station slot is
-  the same search inline. `Tab` is deliberately **not** hijacked, so focus traversal stays
+  the same search inline, its results list wider than the slot (w-80) so similar names read
+  apart. `Tab` is deliberately **not** hijacked, so focus traversal stays
   intact.
 - **Connecting.**
   - Drag port to port, or tap-then-tap (`connectOnClick`), with `connectionRadius` 24.

@@ -673,6 +673,50 @@ describe("dropOnNode", () => {
   });
 });
 
+describe("dropOnNode: Replace", () => {
+  const gain = createPaletteNode("gain", "gain", { x: 400, y: 0 });
+  if (!gain) {
+    throw new Error("Expected a Gain");
+  }
+  const fed = {
+    ...patch,
+    edges: [
+      ...patch.edges,
+      { ...patch.edges[0], id: "a-gain", source: "src-a", target: "gain" },
+    ],
+    nodes: [...patch.nodes, gain],
+  } as typeof patch;
+  const fromB: PaletteFrom = {
+    handle: AUDIO_OUT_HANDLE,
+    node: "src-b",
+    type: "source",
+  };
+  const replace = {
+    connection: {
+      source: "src-b",
+      sourceHandle: AUDIO_OUT_HANDLE,
+      target: "gain",
+      targetHandle: AUDIO_IN_HANDLE,
+    },
+    edge: "a-gain",
+  };
+
+  test("a full one-cable input offers to take the cable's place, on the port or the body", () => {
+    for (const port of [AUDIO_IN_HANDLE, null]) {
+      expect(dropOnNode(fed, fromB, "gain", port)).toEqual({
+        refuse: "This input takes one cable",
+        replace,
+      });
+    }
+  });
+
+  test("a refusal for another reason offers nothing to replace", () => {
+    expect(dropOnNode(fed, fromB, "src-a", null)).toEqual({
+      refuse: "A Station makes its own sound and takes no audio in",
+    });
+  });
+});
+
 describe("connectPorts", () => {
   test("lists only the ports a new cable could reach", () => {
     const loose = {

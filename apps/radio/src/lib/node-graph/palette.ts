@@ -36,9 +36,12 @@ import {
   insertNodeOnEdge,
   isSwappableType,
   nextFxPosition,
+  nextOutputPosition,
   nextStationPosition,
+  reconnectEdge,
   uniqueId,
   wireToSpeakers,
+  withFxColumn,
 } from "./graph-edits";
 import {
   type EffectNodeType,
@@ -648,7 +651,7 @@ function swapEntries(
     );
 }
 
-/** Right of the rightmost node, for an output with nowhere better to go. */
+/** Right of the rightmost node, for a node with nowhere better to go. */
 function besideEverything(graph: NodeGraph): Position {
   if (graph.nodes.length === 0) {
     return { x: 0, y: 0 };
@@ -660,18 +663,28 @@ function besideEverything(graph: NodeGraph): Position {
 }
 
 /**
- * A source stacks in the source column, an output goes beside everything,
- * and anything in between (an FX, a Gain, a Merge) between the sources and
- * Speakers, so its cables run forward.
+ * A source stacks in the source column, an output in the Speakers column,
+ * and anything in between (an FX, a Gain, a Merge) in a column of its own
+ * between them, so its cables run forward. With no Speakers, an output or
+ * an FX goes beside everything.
  */
 function defaultPosition(graph: NodeGraph, type: NodeType): Position {
   if (isRadioSourceType(type) || type === "deviceIn") {
     return nextStationPosition(graph);
   }
   if (isOutputType(type)) {
-    return besideEverything(graph);
+    return nextOutputPosition(graph) ?? besideEverything(graph);
   }
   return nextFxPosition(graph) ?? besideEverything(graph);
+}
+
+/** Whether a node of `type` lands in the FX column. */
+function isFxColumnType(type: NodeType): boolean {
+  return !(
+    isRadioSourceType(type) ||
+    type === "deviceIn" ||
+    isOutputType(type)
+  );
 }
 
 function isOutputType(type: NodeType): boolean {
@@ -707,10 +720,13 @@ export type AddPaletteNodeOptions = ValidateOptions & {
  * same graph when the node can't be built.
  */
 export function addPaletteNode(
-  graph: NodeGraph,
+  start: NodeGraph,
   entry: PaletteNodeEntry,
   { position, from = null, into = null, ...options }: AddPaletteNodeOptions = {}
 ): { graph: NodeGraph; nodeId: string | null } {
+  // An FX in a free spot gets its column, Speakers moving right for it.
+  const graph =
+    position || !isFxColumnType(entry.type) ? start : withFxColumn(start);
   const nodeId = nodeIdFor(graph, entry.type);
   const node = createPaletteNode(
     entry.type,
@@ -721,7 +737,7 @@ export function addPaletteNode(
     entry.searchPlatform
   );
   if (!node) {
-    return { graph, nodeId: null };
+    return { graph: start, nodeId: null };
   }
   const added = withNode(graph, node);
   if (into) {
@@ -836,8 +852,16 @@ function noPortRefusal(
     : null;
 }
 
-/** What a cable let go over a node does: connect, or say why it can't. */
-export type DropOutcome = { connect: Connection } | { refuse: string | null };
+/** The cable a refused one can take the place of, and the cable it becomes. */
+export type Replacement = { edge: string; connection: Connection };
+
+/**
+ * What a cable let go over a node does: connect, or say why it can't. A
+ * refusal for a one-cable port that has its cable offers to replace it.
+ */
+export type DropOutcome =
+  | { connect: Connection }
+  | { refuse: string | null; replace?: Replacement };
 
 /**
  * A cable let go on one of `nodeId`'s ports takes that port or is refused
@@ -878,9 +902,66 @@ export function dropOnNode(
     }
   }
   const cable = autoConnection(graph, from, nodeId, options);
-  return cable
-    ? { connect: cable }
-    : { refuse: dropRefusal(graph, from, nodeId, options) };
+  if (cable) {
+    return { connect: cable };
+  }
+  const refuse = dropRefusal(graph, from, nodeId, options);
+  const replace = refuse
+    ? replacement(graph, from, nodeId, port, options)
+    : null;
+  return replace ? { refuse, replace } : { refuse };
+}
+
+/**
+ * The one full port a refused drop could go into instead, when that port
+ * takes a single cable: its cable moves to the drop's far end, so the drop
+ * replaces it. Let go on the body, only when one such port faces the cable
+ * and the refusal is only that it is full.
+ */
+function replacement(
+  graph: NodeGraph,
+  from: PaletteFrom,
+  nodeId: string,
+  port: string | null,
+  options?: ValidateOptions
+): Replacement | null {
+  const node = graph.nodes.find((entry) => entry.id === nodeId);
+  const kind = parseHandleId(from.handle)?.kind;
+  if (!node || node.id === from.node || !kind) {
+    return null;
+  }
+  const patches = (facing: NodePort) =>
+    from.type === "source"
+      ? kindsPatch(kind, facing.kind)
+      : kindsPatch(facing.kind, kind);
+  const verdicts = facingPorts(node, from)
+    .filter((facing) =>
+      port === null ? patches(facing) : portHandleId(facing) === port
+    )
+    .map((facing) => {
+      const cable = cableBetween(from, node.id, facing);
+      return { cable, verdict: connectionVerdict(graph, cable, options) };
+    });
+  // A port refused for a truer reason than being full says that instead.
+  if (
+    verdicts.some(({ verdict }) => !verdict.ok && verdict.code !== "port-max")
+  ) {
+    return null;
+  }
+  const found = verdicts.flatMap(({ cable }): Replacement[] => {
+    const held = graph.edges.filter((edge) =>
+      from.type === "source"
+        ? edge.target === node.id && edge.targetHandle === cable.targetHandle
+        : edge.source === node.id && edge.sourceHandle === cable.sourceHandle
+    );
+    const [only] = held;
+    return held.length === 1 &&
+      only &&
+      reconnectEdge(graph, only.id, cable, options).ok
+      ? [{ connection: cable, edge: only.id }]
+      : [];
+  });
+  return found.length === 1 ? (found[0] ?? null) : null;
 }
 
 export type ConnectTarget = {

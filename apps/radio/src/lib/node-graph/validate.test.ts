@@ -102,7 +102,7 @@ function graph(nodes: NodeInput[], edges: EdgeInput[] = []): NodeGraph {
   return {
     edges: edges.map((edge) => graphEdgeSchema.parse(edge)),
     nodes: nodes.map((entry) => graphNodeSchema.parse(entry)),
-    version: 1,
+    version: 2,
     viewport: { x: 0, y: 0, zoom: 1 },
   };
 }

@@ -135,6 +135,10 @@ export type RadioBrowserMetadata = {
   url: string;
   stationUuid: string;
   hls: boolean;
+  /** As Radio Browser listed it at discovery, e.g. "MP3"; the media element can't tell. */
+  codec?: string;
+  /** kbps, as Radio Browser listed it at discovery. */
+  bitrate?: number;
 };
 
 export function isRadioBrowserMetadata(

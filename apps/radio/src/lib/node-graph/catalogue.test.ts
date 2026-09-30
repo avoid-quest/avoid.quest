@@ -153,7 +153,7 @@ describe("non-v1 node types", () => {
           },
           { id: "speakers", position: { x: 480, y: 0 }, type: "speakers" },
         ],
-        version: 1,
+        version: 2,
       });
       expect(validate(graph)).toContainEqual(
         expect.objectContaining({

@@ -56,16 +56,19 @@ type NodeSourceRowProps = {
   feedback?: { echoCancellation: boolean } | null;
   /** Trailing controls, e.g. the station menu. */
   actions?: ReactNode;
+  /** The compact channel strip, under the row. */
+  strip?: ReactNode;
   /** Shown under the row, e.g. the lane's FX. */
   children?: ReactNode;
 };
 
 /**
  * One source lane as a station row, plus whatever the view adds (a menu,
- * FX chips): a Station with play, name, now playing and volume (a Track or
- * File with where it comes from instead of now playing), or an Audio
- * input with Go live, its device, Off / Live and volume. Live state comes
- * from the runtime store by lane channel, as on the canvas node.
+ * its compact channel strip, FX chips): a Station with play, name, now
+ * playing and volume (a Track or File with where it comes from instead of
+ * now playing), or an Audio input with Go live, its device, Off / Live and
+ * volume. Live state comes from the runtime store by lane channel, as on
+ * the canvas node.
  */
 export function NodeSourceRow(props: NodeSourceRowProps) {
   return isDeviceInputMetadata(props.radio.platformMetadata) ? (
@@ -99,6 +102,7 @@ function InputSourceRow({
   controls,
   feedback,
   actions,
+  strip,
   children,
 }: NodeSourceRowProps) {
   const runtime = useStore(
@@ -162,6 +166,7 @@ function InputSourceRow({
         />
         {actions}
       </div>
+      {strip ? <div className="pl-9">{strip}</div> : null}
       {feedback ? (
         <FeedbackGuard
           echoCancellation={feedback.echoCancellation}
@@ -191,6 +196,7 @@ function StationSourceRow({
   muted,
   controls,
   actions,
+  strip,
   children,
 }: NodeSourceRowProps) {
   const runtime = useStore(
@@ -276,6 +282,7 @@ function StationSourceRow({
         />
         {actions}
       </div>
+      {strip ? <div className="pl-9">{strip}</div> : null}
       {children}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>

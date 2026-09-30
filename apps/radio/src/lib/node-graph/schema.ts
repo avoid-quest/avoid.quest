@@ -4,6 +4,10 @@
  * The versioned document Node mode persists: nodes, cables and the viewport.
  * `migrateNodeGraph` is the only way in from storage, backups or share links,
  * so an unknown future version is surfaced read-only instead of overwritten.
+ *
+ * v2 gave every source a channel strip (`data.strip`): trim, pan and solo,
+ * plus speed, key lock, loop and cue on a Track or File, and Monitor on an
+ * Audio input. v1 documents upgrade to it with default strips.
  */
 
 import { z } from "zod";
@@ -11,7 +15,7 @@ import { effectConfigSchema } from "@/lib/audio/dsp/effects/effect-config-schema
 import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { MidiTransform } from "@/lib/midi/types";
 
-export const NODE_GRAPH_VERSION = 1;
+export const NODE_GRAPH_VERSION = 2;
 
 /**
  * The loudest a cable may be, matching the Branch gain slider in container
@@ -133,6 +137,76 @@ const nodeBase = {
   position: positionSchema,
 };
 
+/** A strip's trim, in dB, before the lane's cables. */
+export const STRIP_TRIM_DB = { max: 12, min: -24 } as const;
+
+/** Playback rate the engine takes (audio-manager `setPlaybackRate`). */
+export const STRIP_SPEED = { max: 2, min: 0.5 } as const;
+
+/**
+ * What every source's channel strip holds. The fader and mute stay the
+ * source's own `volume` and `muted`; trim, pan and solo act on the lane.
+ */
+const stripCommon = {
+  /** Added to a Pan node's pan on the lane, clamped. */
+  pan: z.number().min(-1).max(1).default(0),
+  /** Any soloed source silences the lanes of every unsoloed one. */
+  solo: z.boolean().default(false),
+  trimDb: z.number().min(STRIP_TRIM_DB.min).max(STRIP_TRIM_DB.max).default(0),
+};
+
+/** A Station's strip: live radio has no transport to set. */
+const stationStripSchema = z.object(stripCommon);
+
+/** A Track's or File's strip: seekable media adds its transport. */
+const mediaStripSchema = z.object({
+  ...stripCommon,
+  /** Seconds into the track Cue jumps to, once set. */
+  cue: z.number().min(0).nullable().default(null),
+  /** Plays the lane pre-fader on the headphone cue output. */
+  cueListen: z.boolean().default(false),
+  /** Keeps the pitch while the speed changes (`preservesPitch`). */
+  keyLock: z.boolean().default(true),
+  /** Repeats the whole track at its end instead of moving on. */
+  loop: z.boolean().default(false),
+  speed: z.number().min(STRIP_SPEED.min).max(STRIP_SPEED.max).default(1),
+});
+
+/** An Audio input's strip. */
+const inputStripSchema = z.object({
+  ...stripCommon,
+  /**
+   * Go live, as last set. Never restored: a mic opens only from a gesture,
+   * so a loaded patch starts with it off.
+   */
+  monitor: z.boolean().default(false),
+});
+
+export type StationStrip = z.infer<typeof stationStripSchema>;
+export type MediaStrip = z.infer<typeof mediaStripSchema>;
+export type InputStrip = z.infer<typeof inputStripSchema>;
+export type SourceStrip = StationStrip | MediaStrip | InputStrip;
+
+export const DEFAULT_STATION_STRIP: StationStrip = {
+  pan: 0,
+  solo: false,
+  trimDb: 0,
+};
+
+export const DEFAULT_MEDIA_STRIP: MediaStrip = {
+  ...DEFAULT_STATION_STRIP,
+  cue: null,
+  cueListen: false,
+  keyLock: true,
+  loop: false,
+  speed: 1,
+};
+
+export const DEFAULT_INPUT_STRIP: InputStrip = {
+  ...DEFAULT_STATION_STRIP,
+  monitor: false,
+};
+
 /** What every radio source holds: its radio snapshot, fader and mute. */
 const radioSourceData = {
   muted: z.boolean().default(false),
@@ -141,13 +215,18 @@ const radioSourceData = {
   volume: unitSchema.default(1),
 };
 
-const EMPTY_SOURCE_DATA = { muted: false, radio: null, volume: 1 } as const;
-
 const stationNodeSchema = z.object({
   ...nodeBase,
-  data: z.object(radioSourceData),
+  data: z.object({
+    ...radioSourceData,
+    strip: stationStripSchema.default(() => ({ ...DEFAULT_STATION_STRIP })),
+  }),
   type: z.literal("station"),
 });
+
+const mediaStrip = mediaStripSchema.default(() => ({
+  ...DEFAULT_MEDIA_STRIP,
+}));
 
 const platformNodeSchema = z.object({
   ...nodeBase,
@@ -156,14 +235,25 @@ const platformNodeSchema = z.object({
       ...radioSourceData,
       /** The platform chip an empty Track's search is locked to. */
       searchPlatform: z.enum(TRACK_SEARCH_PLATFORMS).optional(),
+      strip: mediaStrip,
     })
-    .default(EMPTY_SOURCE_DATA),
+    .default(() => ({
+      muted: false,
+      radio: null,
+      strip: { ...DEFAULT_MEDIA_STRIP },
+      volume: 1,
+    })),
   type: z.literal("platform"),
 });
 
 const fileNodeSchema = z.object({
   ...nodeBase,
-  data: z.object(radioSourceData).default(EMPTY_SOURCE_DATA),
+  data: z.object({ ...radioSourceData, strip: mediaStrip }).default(() => ({
+    muted: false,
+    radio: null,
+    strip: { ...DEFAULT_MEDIA_STRIP },
+    volume: 1,
+  })),
   type: z.literal("file"),
 });
 
@@ -185,16 +275,18 @@ const deviceInNodeSchema = z.object({
       /** Off by default, like DJ's inputs; on is the feedback guard. */
       echoCancellation: z.boolean().default(false),
       muted: z.boolean().default(false),
+      strip: inputStripSchema.default(() => ({ ...DEFAULT_INPUT_STRIP })),
       volume: unitSchema.default(1),
     })
-    .default({
+    .default(() => ({
       channelSelection: { left: 0, right: 1 },
       deviceId: null,
       deviceLabel: "",
       echoCancellation: false,
       muted: false,
+      strip: { ...DEFAULT_INPUT_STRIP },
       volume: 1,
-    }),
+    })),
   type: z.literal("deviceIn"),
 });
 
@@ -409,6 +501,63 @@ export function isRadioSourceNode(
   );
 }
 
+/** A node with a channel strip: a Station, Track, File or Audio input. */
+export type StripSourceNode =
+  | RadioSourceNode
+  | Extract<GraphNode, { type: "deviceIn" }>;
+
+export function isStripSource(
+  node: GraphNode | undefined
+): node is StripSourceNode {
+  return isRadioSourceNode(node) || node?.type === "deviceIn";
+}
+
+/** Whether a source type plays seekable media: a Track or a File. */
+export function isMediaSourceType(type: NodeType): type is "platform" | "file" {
+  return type === "platform" || type === "file";
+}
+
+/**
+ * The strip a source of `type` holds, from any strip: what they share
+ * (trim, pan, solo) carries over, a Track's or File's transport only
+ * between those two, and the rest takes its default. A Track turned into
+ * a Station keeps its level and place in the mix.
+ */
+export function stripForType(
+  type: "station",
+  from?: Partial<SourceStrip>
+): StationStrip;
+export function stripForType(
+  type: "platform" | "file",
+  from?: Partial<SourceStrip>
+): MediaStrip;
+export function stripForType(
+  type: "deviceIn",
+  from?: Partial<SourceStrip>
+): InputStrip;
+export function stripForType(
+  type: RadioSourceNodeType | "deviceIn",
+  from?: Partial<SourceStrip>
+): SourceStrip;
+export function stripForType(
+  type: RadioSourceNodeType | "deviceIn",
+  from: Partial<SourceStrip> = {}
+): SourceStrip {
+  const common: StationStrip = {
+    pan: from.pan ?? DEFAULT_STATION_STRIP.pan,
+    solo: from.solo ?? DEFAULT_STATION_STRIP.solo,
+    trimDb: from.trimDb ?? DEFAULT_STATION_STRIP.trimDb,
+  };
+  if (type === "station") {
+    return common;
+  }
+  if (type === "deviceIn") {
+    return { ...DEFAULT_INPUT_STRIP, ...common };
+  }
+  const media = "speed" in from ? (from as Partial<MediaStrip>) : {};
+  return { ...DEFAULT_MEDIA_STRIP, ...media, ...common };
+}
+
 export type NodeGraphMigration =
   | { status: "ok"; graph: NodeGraph }
   /**
@@ -428,10 +577,51 @@ function readVersion(raw: unknown): number | null {
     : null;
 }
 
+const STRIP_SOURCE_TYPES: ReadonlySet<string> = new Set([
+  ...RADIO_SOURCE_NODE_TYPES,
+  "deviceIn",
+]);
+
 /**
- * Upgrades a stored graph to the current version and parses it.
- * v1 is the first version, so there is nothing to upgrade from yet.
+ * v1 → v2: every source gets its default channel strip. Read leniently,
+ * since a v1 document is only parsed after the upgrade: anything that is
+ * not a source node, or has no data object yet, passes through for the
+ * schema to fill or refuse.
  */
+function upgradeV1(raw: object): object {
+  const { nodes } = raw as { nodes?: unknown };
+  return {
+    ...raw,
+    nodes: Array.isArray(nodes)
+      ? nodes.map((node: unknown) => {
+          if (
+            typeof node !== "object" ||
+            node === null ||
+            !STRIP_SOURCE_TYPES.has(String((node as { type?: unknown }).type))
+          ) {
+            return node;
+          }
+          const { data, type } = node as { data?: unknown; type: string };
+          if (typeof data !== "object" || data === null || "strip" in data) {
+            return node;
+          }
+          return {
+            ...node,
+            data: {
+              ...data,
+              strip: stripForType(type as RadioSourceNodeType | "deviceIn"),
+            },
+          };
+        })
+      : nodes,
+    version: 2,
+  };
+}
+
+/** Upgrade steps by the version they start from. */
+const UPGRADES: Record<number, (raw: object) => object> = { 1: upgradeV1 };
+
+/** Upgrades a stored graph to the current version and parses it. */
 export function migrateNodeGraph(raw: unknown): NodeGraphMigration {
   const version = readVersion(raw);
   if (version === null || version < 1) {
@@ -448,7 +638,11 @@ export function migrateNodeGraph(raw: unknown): NodeGraphMigration {
       version,
     };
   }
-  const parsed = nodeGraphSchema.safeParse(raw);
+  let upgraded = raw as object;
+  for (let step = version; step < NODE_GRAPH_VERSION; step += 1) {
+    upgraded = UPGRADES[step]?.(upgraded) ?? upgraded;
+  }
+  const parsed = nodeGraphSchema.safeParse(upgraded);
   if (!parsed.success) {
     return { error: z.prettifyError(parsed.error), status: "invalid" };
   }

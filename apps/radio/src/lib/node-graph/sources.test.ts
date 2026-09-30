@@ -3,7 +3,11 @@ import type { Radio } from "@/lib/audio/playback/types";
 import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
 import { setSourceRadio, setTrackSearchPlatform } from "./graph-edits";
 import { addPaletteNode, paletteEntries, trackChip } from "./palette";
-import { migrateNodeGraph, nodeGraphSchema } from "./schema";
+import {
+  DEFAULT_MEDIA_STRIP,
+  migrateNodeGraph,
+  nodeGraphSchema,
+} from "./schema";
 import {
   forgetLocalFileUrls,
   isLocalFileGone,
@@ -115,11 +119,16 @@ describe("Source nodes in the patch", () => {
           type: "file",
         },
       ],
-      version: 1,
+      version: 2,
     });
     expect(migration.status).toBe("ok");
     const nodes = migration.status === "ok" ? migration.graph.nodes : [];
-    expect(nodes[0]?.data).toEqual({ muted: false, radio: null, volume: 1 });
+    expect(nodes[0]?.data).toEqual({
+      muted: false,
+      radio: null,
+      strip: DEFAULT_MEDIA_STRIP,
+      volume: 1,
+    });
     expect(nodes[1]?.data).toMatchObject({
       muted: false,
       radio: { id: "mp3" },
@@ -147,7 +156,7 @@ describe("Source nodes in the patch", () => {
         },
         { id: SPEAKERS_NODE_ID, position: { x: 400, y: 0 }, type: "speakers" },
       ],
-      version: 1,
+      version: 2,
     });
     const asTrack = setSourceRadio(graph, "track", youtube);
     expect(asTrack.nodes[0]).toMatchObject({
@@ -171,7 +180,7 @@ describe("Source nodes in the patch", () => {
     const graph = nodeGraphSchema.parse({
       edges: [],
       nodes: [{ id: "track", position: { x: 0, y: 0 }, type: "platform" }],
-      version: 1,
+      version: 2,
     });
     const locked = setTrackSearchPlatform(graph, "track", "soundcloud");
     expect(locked.nodes[0]?.data).toMatchObject({

@@ -28,6 +28,7 @@ import { StationRowSubtitle, StationRowText } from "../station-row";
 import type { FlowNode, FlowNodeProps } from "./flow-adapter";
 import { INTERACTIVE, keepControlKeys } from "./module-frame";
 import { useNodeActions } from "./node-actions";
+import { NodeCompactStrip } from "./node-source-strip";
 import {
   EmptySourceFrame,
   SOURCE_NODE_FRAME,
@@ -320,6 +321,17 @@ export function TrackNode({
         onVolumeChange={lane.onVolumeChange}
         onVolumeCommit={lane.onVolumeCommit}
         selected={selected}
+        strip={
+          radio ? (
+            <NodeCompactStrip
+              muted={data.muted}
+              nodeId={id}
+              onInspect={() => actions.inspectNode(id)}
+              strip={data.strip}
+              target={radio.name}
+            />
+          ) : null
+        }
         volume={data.volume}
       />
       <SourceOutPort

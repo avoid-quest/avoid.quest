@@ -63,7 +63,7 @@ function audio(
 }
 
 function plan(nodes: NodeInput[], edges: EdgeInput[]): EnginePlan {
-  return compile(nodeGraphSchema.parse({ edges, nodes, version: 1 }), {
+  return compile(nodeGraphSchema.parse({ edges, nodes, version: 2 }), {
     crossOriginIsolated: true,
   });
 }
@@ -105,6 +105,53 @@ function base(
 describe("diff", () => {
   test("an identical plan yields no ops", () => {
     expect(diff(base(), base())).toEqual([]);
+  });
+
+  test("a Track's speed, loop and cue listen are params, never a new sound", () => {
+    const track = (strip: Record<string, unknown>) =>
+      plan(
+        [
+          {
+            data: {
+              radio: {
+                id: "t",
+                name: "t",
+                streamUrl: "https://example.com/t.mp3",
+              },
+              strip,
+            },
+            id: "t",
+            position,
+            type: "file",
+          },
+          speakers,
+        ],
+        [audio("t", "speakers")]
+      );
+    expect(
+      diff(track({}), track({ cueListen: true, loop: true, speed: 1.25 }))
+    ).toEqual([
+      {
+        id: "t",
+        param: "transport",
+        target: "lane",
+        type: "setParam",
+        value: { keyLock: true, loop: true, speed: 1.25 },
+      },
+      {
+        id: "t",
+        param: "cueListen",
+        target: "lane",
+        type: "setParam",
+        value: true,
+      },
+    ]);
+    // A trim or solo is a cable level: its sound and fader stay.
+    expect(types(diff(track({}), track({ trimDb: -6 })))).toEqual(["setParam"]);
+    expect(diff(track({}), track({ trimDb: -6 }))[0]).toMatchObject({
+      param: "gain",
+      target: "edge",
+    });
   });
 
   test("a param-only change yields only setLaneEffects", () => {

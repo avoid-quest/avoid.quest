@@ -37,7 +37,11 @@ import {
   setNodeSelection,
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
-import { type GraphNode, isRadioSourceNode } from "@/lib/node-graph/schema";
+import {
+  type GraphNode,
+  isRadioSourceNode,
+  isStripSource,
+} from "@/lib/node-graph/schema";
 import { getNodePlayback } from "@/lib/node-playback";
 import type { PlatformTrack } from "@/lib/platform-types";
 import {
@@ -49,6 +53,7 @@ import { BackendBadge } from "./backend-badge";
 import { RELEASE_DELAY_MS } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
+import { NodeSourceStripPanel } from "./node-source-strip";
 import { SplitInspectorParams } from "./split-nodes";
 
 /**
@@ -56,9 +61,10 @@ import { SplitInspectorParams } from "./split-nodes";
  *
  * Every param of one FX or native strip node: the full EffectParams layout
  * (with its curve) where a node body shows only the first row. A split
- * shows its mix, its bands and each branch cable's controls. A Track or
- * File holding an album or playlist shows its tracklist, DJ's, where a
- * pick plays that track on its lane. It follows
+ * shows its mix, its bands and each branch cable's controls. A source
+ * (Station, Track, File or Audio input) shows its channel strip, and a
+ * Track or File holding an album or playlist its tracklist below, DJ's,
+ * where a pick plays that track on its lane. It follows
  * the canvas selection in the desktop side panel and opens as a bottom
  * Drawer on a phone. Knobs are throttled like every param knob, and a
  * release is an undo step. Each knob learns MIDI as `node:<nodeId>:…`.
@@ -91,8 +97,8 @@ export function sourceTracklist(
 }
 
 /**
- * FX and native strip nodes have params to inspect, and an album's or
- * playlist's Track its tracklist; Stations don't.
+ * FX and native strip nodes have params to inspect, and every source its
+ * channel strip; a Merge or an output doesn't.
  */
 export function isInspectable(node: GraphNode | undefined): boolean {
   return Boolean(
@@ -101,13 +107,13 @@ export function isInspectable(node: GraphNode | undefined): boolean {
         node.type === "filter" ||
         node.type === "pan" ||
         node.type === "gain" ||
-        sourceTracklist(node) !== null)
+        isStripSource(node))
   );
 }
 
 /** What the inspector is titled: a source by what it holds. */
 function inspectorTitle(node: GraphNode): string {
-  return isRadioSourceNode(node)
+  return isStripSource(node)
     ? nodeLabel(node)
     : getNodeDefinition(node.type).name;
 }
@@ -194,14 +200,23 @@ function InspectorParams({
     setTimeout(() => snapshotNodeGraph(store), RELEASE_DELAY_MS);
   };
   let params: React.ReactNode;
-  const tracklist = sourceTracklist(node);
-  if (tracklist) {
+  if (isStripSource(node)) {
+    const tracklist = sourceTracklist(node);
     params = (
-      <TracklistView
-        currentTrackIndex={tracklist.currentTrackIndex}
-        onPlayTrack={(url) => getNodePlayback().playTrack(node.id, url)}
-        tracks={tracklist.tracks}
-      />
+      <>
+        <NodeSourceStripPanel
+          node={node}
+          store={store}
+          target={inspectorTitle(node)}
+        />
+        {tracklist ? (
+          <TracklistView
+            currentTrackIndex={tracklist.currentTrackIndex}
+            onPlayTrack={(url) => getNodePlayback().playTrack(node.id, url)}
+            tracks={tracklist.tracks}
+          />
+        ) : null}
+      </>
     );
   } else if (isSplitNode(node)) {
     // Branches are cables here, so the rack's nested chains don't apply.

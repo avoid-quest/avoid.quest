@@ -9,8 +9,9 @@
  *   effects controller no-ops when identical and openDAW updates in place;
  * - FX added, removed or reordered: `duckLane` → `replaceLaneEffects` →
  *   `unduckLane`, a short dip instead of a click;
- * - native pan, filter and cable levels, a source's volume and mute, and
- *   an Audio input's channels: `setParam`, ramped by the engine;
+ * - native pan, filter and cable levels, a source's volume and mute, a
+ *   Track's or File's transport and cue listen, and an Audio input's
+ *   channels: `setParam`, ramped by the engine;
  * - cables: `addEdge` fades in, `removeEdge` fades out, and `rewireEdge`
  *   (same cable id, new ends) crossfades equal-power;
  * - lanes: `addLane` builds the sound paused, `removeLane` fades it out.
@@ -24,6 +25,7 @@ import type {
   EdgePlan,
   EnginePlan,
   LanePlan,
+  LaneTransport,
   NativeFilterPlan,
 } from "./compile";
 
@@ -68,6 +70,20 @@ export type Op =
       id: string;
       param: "channelSelection";
       value: ChannelSelectionPlan;
+    }
+  | {
+      type: "setParam";
+      target: "lane";
+      id: string;
+      param: "transport";
+      value: LaneTransport;
+    }
+  | {
+      type: "setParam";
+      target: "lane";
+      id: string;
+      param: "cueListen";
+      value: boolean;
     }
   | {
       type: "setParam";
@@ -166,6 +182,24 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
       target: "lane",
       type: "setParam",
       value: next.muted,
+    });
+  }
+  if (next.transport && !same(previous.transport, next.transport)) {
+    ops.push({
+      id: laneId,
+      param: "transport",
+      target: "lane",
+      type: "setParam",
+      value: next.transport,
+    });
+  }
+  if (previous.cueListen !== next.cueListen) {
+    ops.push({
+      id: laneId,
+      param: "cueListen",
+      target: "lane",
+      type: "setParam",
+      value: next.cueListen,
     });
   }
   const channels = channelsOf(next);

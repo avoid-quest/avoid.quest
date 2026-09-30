@@ -24,6 +24,8 @@ type PlaybackSource = {
   refreshUrl: (input: PlaybackInput, seekPosition?: number) => Promise<void>;
   seek: (position: number) => void;
   setPlaybackRate: (rate: number) => void;
+  /** Key lock: keep the pitch while the rate changes. */
+  setPreservesPitch: (preservesPitch: boolean) => void;
   stop: () => void;
 };
 

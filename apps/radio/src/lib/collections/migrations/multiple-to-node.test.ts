@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
+import { DEFAULT_STATION_STRIP } from "@/lib/node-graph/schema";
 import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
 import {
   createDefaultChannel,
@@ -182,8 +183,18 @@ describe("migrateMultipleSession", () => {
     const node = getPlaybackSession("node");
     expect(node?.masterVolume).toBe(0.35);
     expect(node?.graph?.nodes.map((entry) => entry.data)).toEqual([
-      { muted: true, radio: radio("kexp"), volume: 0.4 },
-      { muted: false, radio: radio("nts"), volume: 0.7 },
+      {
+        muted: true,
+        radio: radio("kexp"),
+        strip: DEFAULT_STATION_STRIP,
+        volume: 0.4,
+      },
+      {
+        muted: false,
+        radio: radio("nts"),
+        strip: DEFAULT_STATION_STRIP,
+        volume: 0.7,
+      },
       { muted: false },
     ]);
     expect(
@@ -324,8 +335,18 @@ describe("migrateMultipleSession", () => {
     );
 
     expect(graph.nodes.map((entry) => entry.data)).toEqual([
-      { muted: false, radio: radio("kexp"), volume: 1 },
-      { muted: true, radio: radio("nts"), volume: 1 },
+      {
+        muted: false,
+        radio: radio("kexp"),
+        strip: DEFAULT_STATION_STRIP,
+        volume: 1,
+      },
+      {
+        muted: true,
+        radio: radio("nts"),
+        strip: DEFAULT_STATION_STRIP,
+        volume: 1,
+      },
       { muted: false },
     ]);
     expect(buildNodeGraphFromMultipleRecord(null, () => true).nodes).toEqual([

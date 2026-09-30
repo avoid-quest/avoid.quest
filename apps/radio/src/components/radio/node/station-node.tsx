@@ -12,6 +12,7 @@ import { RadioSearchBar } from "../radio-search-bar";
 import type { FlowNode, FlowNodeProps } from "./flow-adapter";
 import { INTERACTIVE, keepControlKeys } from "./module-frame";
 import { useNodeActions } from "./node-actions";
+import { NodeCompactStrip } from "./node-source-strip";
 import {
   EmptySourceFrame,
   SOURCE_NODE_FRAME,
@@ -48,6 +49,8 @@ type StationNodeBodyProps = {
   onDelete?: (radio: Radio) => void;
   onToggle?: (radio: Radio, enabled: boolean) => void;
   onSave?: (radio: Radio) => void;
+  /** The compact channel strip under play and the fader. */
+  strip?: React.ReactNode;
 };
 
 /**
@@ -119,6 +122,7 @@ export function StationNodeBody({
   onDelete,
   onToggle,
   onSave,
+  strip,
 }: StationNodeBodyProps) {
   const { elementRef, hasEnteredViewport } =
     useHasEnteredViewport<HTMLDivElement>();
@@ -199,6 +203,7 @@ export function StationNodeBody({
           onTogglePlayPause={onTogglePlayPause}
           onVolumeChange={onVolumeChange}
           onVolumeCommit={onVolumeCommit}
+          strip={strip}
           target={radio.name}
           volume={volume}
         />
@@ -244,6 +249,17 @@ export function StationNode({
         radio={radio}
         radios={actions.radios}
         selected={selected}
+        strip={
+          radio ? (
+            <NodeCompactStrip
+              muted={data.muted}
+              nodeId={id}
+              onInspect={() => actions.inspectNode(id)}
+              strip={data.strip}
+              target={radio.name}
+            />
+          ) : null
+        }
         volume={data.volume}
       />
       <SourceOutPort

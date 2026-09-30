@@ -1,16 +1,12 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
+import { StripPanKnob, StripSpeedKnob } from "../../node/source-strip";
 import {
   ChannelSlider,
   snapChannelSliderValue,
 } from "../shared/channel-slider";
-import {
-  formatChannelFilter,
-  formatPan,
-  formatPercent,
-  formatSpeed,
-} from "../shared/format-utils";
+import { formatChannelFilter, formatPercent } from "../shared/format-utils";
 import { useDeckContext } from "./deck-context";
 
 const MAX_VOLUME = 1.585;
@@ -18,6 +14,7 @@ const MAX_VOLUME = 1.585;
 /**
  * Channel controls inside a deck (used on phones and device-input decks,
  * where there is no mixer column). Volume is a fader; the rest are knobs.
+ * Pan and speed are the shared source strip's knobs, as a Node source's.
  */
 export function DeckChannelStrip({ className }: { className?: string }) {
   const {
@@ -97,30 +94,17 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           targetId={`${prefix}effects-drywet`}
           value={effectsDryWet}
         />
-        <ChannelSlider
+        <StripPanKnob
           ariaLabel={`Deck ${deckLabel} pan`}
-          defaultValue={0}
-          fillFromDefault
-          formatValue={formatPan}
           label="PAN"
-          max={1}
-          min={-1}
           onChange={setPan}
-          step={0.01}
           targetId={`${prefix}pan`}
           value={pan}
         />
-        <ChannelSlider
+        <StripSpeedKnob
           ariaLabel={`Deck ${deckLabel} speed`}
-          defaultValue={1}
-          fillFromDefault
-          formatValue={formatSpeed}
           label="SPD"
-          max={2}
-          min={0.5}
           onChange={setSpeed}
-          scale="log"
-          step={0.01}
           targetId={`${prefix}speed`}
           value={speed}
         />

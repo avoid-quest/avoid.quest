@@ -127,7 +127,7 @@ function key(source: string, target: string): EdgeInput {
 }
 
 function graph(nodes: NodeInput[], edges: EdgeInput[] = []): NodeGraph {
-  return nodeGraphSchema.parse({ edges, nodes, version: 1 });
+  return nodeGraphSchema.parse({ edges, nodes, version: 2 });
 }
 
 function lastEdge(patch: NodeGraph): GraphEdge {
@@ -443,6 +443,131 @@ describe("compile: Track and File sources", () => {
     expect(idleKeys(fromFile, compile(fromFile, ENV)).get("file~>comp")).toBe(
       "Pick the file again"
     );
+  });
+});
+
+describe("compile: channel strips", () => {
+  function withStrip(input: NodeInput, strip: Record<string, unknown>) {
+    return {
+      ...input,
+      data: { ...(input.data as object), strip },
+    } as NodeInput;
+  }
+
+  test("a Station's trim multiplies into its exits and leaves the fader alone", () => {
+    const plan = build(
+      [
+        withStrip(station("a"), { trimDb: 6 }),
+        node("warm", "gain", { gainDb: 0 }),
+        speakers,
+      ],
+      [audio("a", "warm"), audio("warm", "speakers", { gain: 0.5 })]
+    );
+    expect(plan.edges.get("warm->speakers")?.gain).toBeCloseTo(
+      0.5 * 10 ** (6 / 20)
+    );
+    expect(10 ** (6 / 20)).toBeCloseTo(2, 0);
+    expect(lane(plan, "a").volume).toBe(1);
+  });
+
+  test("strip pan adds to the lane's Pan node, clamped", () => {
+    const plan = build(
+      [
+        withStrip(station("a"), { pan: 0.5 }),
+        node("pan", "pan", { pan: 0.75 }),
+        withStrip(station("b"), { pan: -0.25 }),
+        speakers,
+      ],
+      [audio("a", "pan"), audio("pan", "speakers"), audio("b", "speakers")]
+    );
+    expect(lane(plan, "a").pan).toBe(1);
+    expect(lane(plan, "b").pan).toBe(-0.25);
+  });
+
+  test("a solo mutes every unsoloed lane's exits, never its fader", () => {
+    const stations = [
+      withStrip(station("a"), { solo: true }),
+      station("b"),
+      station("c"),
+    ];
+    const edges = ["a", "b", "c"].map((id) => audio(id, "speakers"));
+    const soloed = build([...stations, speakers], edges);
+    expect(
+      [...soloed.edges.values()].map((edge) => [edge.id, edge.muted])
+    ).toEqual([
+      ["a->speakers", false],
+      ["b->speakers", true],
+      ["c->speakers", true],
+    ]);
+    expect([...soloed.lanes.values()].map((entry) => entry.muted)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+
+    const unsoloed = build(
+      [station("a"), station("b"), station("c"), speakers],
+      edges
+    );
+    expect([...unsoloed.edges.values()].every((edge) => !edge.muted)).toBe(
+      true
+    );
+  });
+
+  test("a solo on an empty slot has no lane, so it silences nothing", () => {
+    const plan = build(
+      [
+        withStrip(station("gone", false), { solo: true }),
+        station("b"),
+        speakers,
+      ],
+      [audio("gone", "speakers"), audio("b", "speakers")]
+    );
+    expect(plan.edges.get("b->speakers")?.muted).toBe(false);
+  });
+
+  test("a Track or File carries its transport; a Station and an input don't", () => {
+    const track = {
+      data: {
+        radio: {
+          id: "yt-1",
+          name: "A video",
+          platformMetadata: {
+            itemType: "video",
+            platform: "youtube",
+            url: "https://www.youtube.com/watch?v=abc",
+            videoId: "abc",
+          },
+          streamUrl: "https://media.example/abc.m4a",
+        },
+        strip: { cueListen: true, keyLock: false, loop: true, speed: 1.5 },
+      },
+      id: "track",
+      position,
+      type: "platform",
+    } as NodeInput;
+    const plan = build(
+      [
+        track,
+        station("a"),
+        node("mic", "deviceIn", { deviceId: "mic" }),
+        speakers,
+      ],
+      [
+        audio("track", "speakers"),
+        audio("a", "speakers"),
+        audio("mic", "speakers"),
+      ]
+    );
+    expect(lane(plan, "track").transport).toEqual({
+      keyLock: false,
+      loop: true,
+      speed: 1.5,
+    });
+    expect(lane(plan, "track").cueListen).toBe(true);
+    expect(lane(plan, "a").transport).toBeNull();
+    expect(lane(plan, "mic").transport).toBeNull();
+    expect(lane(plan, "mic").cueListen).toBe(false);
   });
 });
 

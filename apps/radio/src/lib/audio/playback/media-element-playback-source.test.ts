@@ -17,6 +17,8 @@ class FakeAudioElement {
   muted = false;
   paused = true;
   playbackRate = 1;
+  defaultPlaybackRate = 1;
+  preservesPitch = true;
   preload = "";
   readyState = 0;
   volume = 1;
@@ -336,6 +338,25 @@ describe("MediaElementPlaybackSource native playback", () => {
         "https://radio.example/second.mp3",
       ]);
       expect(onReady).toHaveBeenCalledTimes(1);
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("keeps its speed through a load and sets key lock on the element", () => {
+    const browser = installBrowser();
+    try {
+      const source = new MediaElementPlaybackSource(null, "native");
+      const audio = browser.audio();
+
+      source.setPlaybackRate(4);
+      source.setPreservesPitch(false);
+
+      // A load resets the rate to the default one, so both move together.
+      expect(audio.playbackRate).toBe(2);
+      expect(audio.defaultPlaybackRate).toBe(2);
+      expect(audio.preservesPitch).toBe(false);
       source.cleanup();
     } finally {
       browser.restore();

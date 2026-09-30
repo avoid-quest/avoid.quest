@@ -24,6 +24,7 @@ import {
   type GraphNode,
   NODE_GRAPH_VERSION,
   type NodeGraph,
+  stripForType,
 } from "./schema";
 import { deriveNodeChannels } from "./session-channels";
 
@@ -142,7 +143,12 @@ function starter(): NodeGraph {
     ],
     nodes: [
       {
-        data: { muted: false, radio: null, volume: 1 },
+        data: {
+          muted: false,
+          radio: null,
+          strip: stripForType("station"),
+          volume: 1,
+        },
         id: STARTER_STATION_ID,
         position: { x: 0, y: 0 },
         type: "station",
@@ -169,7 +175,7 @@ export function buildStationPatch(seeds: readonly StationSeed[]): NodeGraph {
   const taken = new Set([SPEAKERS_NODE_ID]);
   const stations = seeds.map(
     ({ muted = false, radio, volume = 1 }, index): StationNode => ({
-      data: { muted, radio, volume },
+      data: { muted, radio, strip: stripForType("station"), volume },
       id: stationNodeId(radio, taken),
       position: {
         x: Math.floor(index / rows) * COLUMN_WIDTH,
@@ -261,6 +267,7 @@ function duck(sources: NodeTemplateSources): NodeGraph {
     data: {
       muted: false,
       radio: radio ?? null,
+      strip: stripForType("station"),
       volume: 1,
       ...(radio ? sources.levels?.(radio) : undefined),
     },

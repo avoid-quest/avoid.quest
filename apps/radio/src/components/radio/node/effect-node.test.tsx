@@ -295,7 +295,7 @@ describe("EffectNode on the canvas", () => {
             type: "compressor",
           },
         ],
-        version: 1,
+        version: 2,
       })
     );
     const onNodesChange = mock((_changes: unknown[]) => undefined);

@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { createNodeEffectConfig } from "./catalogue";
 import {
+  DEFAULT_INPUT_STRIP,
+  DEFAULT_MEDIA_STRIP,
+  DEFAULT_STATION_STRIP,
   migrateNodeGraph,
   NODE_GRAPH_VERSION,
   nodeGraphSchema,
+  stripForType,
 } from "./schema";
 
 const position = { x: 0, y: 0 };
@@ -100,13 +104,14 @@ describe("migrateNodeGraph", () => {
     });
   });
 
-  test("accepts a v1 graph and fills defaults", () => {
-    const result = migrateNodeGraph(migratedLayout());
+  test("accepts a v1 graph, upgrades it to v2 and fills defaults", () => {
+    const result = migrateNodeGraph(migratedLayout(1));
     expect(result.status).toBe("ok");
     if (result.status !== "ok") {
       return;
     }
     const { graph } = result;
+    expect(graph.version).toBe(2);
     expect(graph.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
     expect(graph.edges[0]).toMatchObject({ gain: 1, muted: false });
     expect(graph.edges[1]?.gain).toBe(0.5);
@@ -120,12 +125,66 @@ describe("migrateNodeGraph", () => {
         name: "KEXP",
         streamUrl: "https://example.com/kexp.mp3",
       },
+      strip: DEFAULT_STATION_STRIP,
       volume: 0.8,
     });
     expect(empty?.type === "station" && empty.data.radio).toBeNull();
     expect(speakers?.data).toEqual({ muted: false });
     // The node id is the EffectConfig id, whatever the stored id said.
     expect(comp?.type === "compressor" && comp.data.effect.id).toBe("comp");
+  });
+
+  test("gives every v1 source its default strip", () => {
+    const result = migrateNodeGraph({
+      edges: [],
+      nodes: [
+        { data: { radio: null }, id: "station", position, type: "station" },
+        { id: "track", position, type: "platform" },
+        { data: { volume: 0.5 }, id: "file", position, type: "file" },
+        { data: { deviceId: "mic" }, id: "input", position, type: "deviceIn" },
+        { id: "speakers", position, type: "speakers" },
+      ],
+      version: 1,
+    });
+    expect(result.status === "ok" && result.graph.version).toBe(2);
+    const strips = Object.fromEntries(
+      (result.status === "ok" ? result.graph.nodes : []).map((node) => [
+        node.id,
+        "strip" in node.data ? node.data.strip : null,
+      ])
+    );
+    expect(strips).toEqual({
+      file: DEFAULT_MEDIA_STRIP,
+      input: DEFAULT_INPUT_STRIP,
+      speakers: null,
+      station: DEFAULT_STATION_STRIP,
+      track: DEFAULT_MEDIA_STRIP,
+    });
+  });
+
+  test("keeps a v2 strip as stored", () => {
+    const strip = {
+      ...DEFAULT_MEDIA_STRIP,
+      cue: 42.5,
+      keyLock: false,
+      loop: true,
+      pan: -0.25,
+      solo: true,
+      speed: 1.25,
+      trimDb: 6,
+    };
+    const result = migrateNodeGraph({
+      edges: [],
+      nodes: [
+        { data: { radio: null, strip }, id: "file", position, type: "file" },
+      ],
+      version: 2,
+    });
+    expect(
+      result.status === "ok" &&
+        result.graph.nodes[0]?.type === "file" &&
+        result.graph.nodes[0].data.strip
+    ).toEqual(strip);
   });
 
   test("keeps a pinned flag and the viewport", () => {
@@ -216,6 +275,34 @@ describe("migrateNodeGraph", () => {
       }),
     ],
     [
+      "a strip trim above +12 dB",
+      (raw: ReturnType<typeof migratedLayout>) => ({
+        ...raw,
+        nodes: [
+          {
+            data: { radio: null, strip: { trimDb: 18 } },
+            id: "hot",
+            position,
+            type: "station",
+          },
+        ],
+      }),
+    ],
+    [
+      "a Track speed past 2x",
+      (raw: ReturnType<typeof migratedLayout>) => ({
+        ...raw,
+        nodes: [
+          {
+            data: { radio: null, strip: { speed: 4 } },
+            id: "fast",
+            position,
+            type: "platform",
+          },
+        ],
+      }),
+    ],
+    [
       "an effect that does not match its node type",
       (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
@@ -277,5 +364,21 @@ describe("migrateNodeGraph", () => {
       status: "read-only",
       version: NODE_GRAPH_VERSION + 7,
     });
+  });
+});
+
+describe("stripForType", () => {
+  test("keeps what strips share when a source changes type", () => {
+    const track = { ...DEFAULT_MEDIA_STRIP, pan: 0.5, speed: 1.5, trimDb: -6 };
+    expect(stripForType("station", track)).toEqual({
+      pan: 0.5,
+      solo: false,
+      trimDb: -6,
+    });
+    expect(stripForType("file", track)).toEqual(track);
+    expect(
+      stripForType("platform", { pan: -1, solo: true, trimDb: 3 })
+    ).toEqual({ ...DEFAULT_MEDIA_STRIP, pan: -1, solo: true, trimDb: 3 });
+    expect(stripForType("deviceIn")).toEqual(DEFAULT_INPUT_STRIP);
   });
 });

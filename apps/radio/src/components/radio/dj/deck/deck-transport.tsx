@@ -283,7 +283,8 @@ function TransportProgress({
   );
 }
 
-function SeekableProgress({
+/** A seek bar with position and duration; it seeks once, on release. */
+export function SeekableProgress({
   duration,
   position,
   onSeek,

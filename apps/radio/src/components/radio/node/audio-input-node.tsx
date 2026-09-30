@@ -36,6 +36,7 @@ import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
 import type { AudioInputNodeData } from "./flow-elements";
 import { INTERACTIVE, keepControlKeys, NodePort } from "./module-frame";
 import { useNodeActions } from "./node-actions";
+import { NodeCompactStrip } from "./node-source-strip";
 import {
   isUnplugged,
   type NodeDevice,
@@ -76,6 +77,8 @@ type AudioInputBodyProps = {
   onVolumeCommit?: () => void;
   onToggleMute: () => void;
   onRemove: () => void;
+  /** The compact channel strip under Go live and the fader. */
+  strip?: React.ReactNode;
 };
 
 /** What the body says about the mic permission and the device, if anything. */
@@ -139,6 +142,7 @@ export function AudioInputNodeBody({
   onVolumeCommit,
   onToggleMute,
   onRemove,
+  strip,
 }: AudioInputBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || AUDIO_INPUT_NAME;
   const denied = devices.permissionState === "denied";
@@ -241,27 +245,30 @@ export function AudioInputNodeBody({
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
       <div
         className={cn(
-          "flex items-center gap-2 rounded-b-[inherit] border-border/50 border-t px-2 py-1.5",
+          "flex flex-col gap-1 rounded-b-[inherit] border-border/50 border-t px-2 py-1.5",
           INTERACTIVE
         )}
         onKeyDown={keepControlKeys}
       >
-        <InputLiveButton
-          disabled={!(canGoLive || isPlaying)}
-          isLoading={isLoading}
-          isPlaying={isPlaying}
-          onToggle={onToggleLive}
-          target={title}
-        />
-        <VolumeControl
-          className="flex-1"
-          isMuted={data.muted || data.volume === 0}
-          onToggleMute={onToggleMute}
-          onVolumeChange={onVolumeChange}
-          onVolumeCommit={onVolumeCommit}
-          target={title}
-          volume={data.volume}
-        />
+        <div className="flex items-center gap-2">
+          <InputLiveButton
+            disabled={!(canGoLive || isPlaying)}
+            isLoading={isLoading}
+            isPlaying={isPlaying}
+            onToggle={onToggleLive}
+            target={title}
+          />
+          <VolumeControl
+            className="flex-1"
+            isMuted={data.muted || data.volume === 0}
+            onToggleMute={onToggleMute}
+            onVolumeChange={onVolumeChange}
+            onVolumeCommit={onVolumeCommit}
+            target={title}
+            volume={data.volume}
+          />
+        </div>
+        {strip}
       </div>
       {error?.trim() ? (
         <InlineError className="mx-2 mb-2">{error}</InlineError>
@@ -327,6 +334,17 @@ export function AudioInputNode({
         onVolumeChange={(volume) => playback.setVolume(id, volume)}
         onVolumeCommit={() => snapshotNodeGraph()}
         selected={selected}
+        strip={
+          data.deviceId === null ? null : (
+            <NodeCompactStrip
+              muted={data.muted}
+              nodeId={id}
+              onInspect={() => actions.inspectNode(id)}
+              strip={data.strip}
+              target={title}
+            />
+          )
+        }
       />
       {AUDIO_OUT ? (
         <NodePort

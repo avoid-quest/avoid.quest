@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { edgeLabel, portName } from "./describe";
 import type { NodeGraph } from "./schema";
+import { DEFAULT_STATION_STRIP } from "./schema";
 import { buildNodeGraphFromTemplate } from "./templates";
 
 const patch = buildNodeGraphFromTemplate("start-from-multiple", {
@@ -28,7 +29,12 @@ describe("edgeLabel", () => {
     const graph: Pick<NodeGraph, "nodes"> = {
       nodes: [
         {
-          data: { muted: false, radio: null, volume: 1 },
+          data: {
+            muted: false,
+            radio: null,
+            strip: DEFAULT_STATION_STRIP,
+            volume: 1,
+          },
           id: "slot",
           position: { x: 0, y: 0 },
           type: "station",

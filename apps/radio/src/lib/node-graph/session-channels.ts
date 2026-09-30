@@ -3,7 +3,8 @@
  *
  * In the node session, `channels` is a cache derived from the compiled plan:
  * one channel per lane, id `n:<nodeId>`, role "node", carrying the lane's
- * radio, volume, mute, pan, filter and lowered FX tree. It is written with
+ * radio, volume, mute, pan, filter, lowered FX tree and, from its strip,
+ * speed, repeat (loop) and cue listen. It is written with
  * the graph in the same update, so restore, channel effects and NAM
  * externalisation keep working on it unchanged.
  */
@@ -16,7 +17,7 @@ import type { EnginePlan } from "./compile";
 
 /**
  * Channels for every lane in `plan`, in lane order. Fields the graph does
- * not own (dry/wet, speed, cue…) carry over from `previous`.
+ * not own (dry/wet, autoplay…) carry over from `previous`.
  */
 export function deriveNodeChannels(
   plan: Pick<EnginePlan, "lanes">,
@@ -31,6 +32,7 @@ export function deriveNodeChannels(
       createDefaultChannel(lane.channelId, "node", order);
     return {
       ...base,
+      cueEnabled: lane.cueListen,
       effects: lane.effects,
       filter: lane.filter
         ? { ...lane.filter, enabled: true, gain: 0 }
@@ -40,7 +42,9 @@ export function deriveNodeChannels(
       order,
       pan: lane.pan,
       radio: lane.radio as PlaybackChannelRecord["radio"],
+      repeat: lane.transport?.loop ?? false,
       role: "node",
+      speed: lane.transport?.speed ?? 1,
       volume: lane.volume,
     };
   });

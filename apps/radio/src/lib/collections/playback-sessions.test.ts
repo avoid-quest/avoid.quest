@@ -687,7 +687,7 @@ function createDuckGraph(): NodeGraphInput {
       },
       { id: "speakers", position: { x: 480, y: 56 }, type: "speakers" },
     ],
-    version: 1,
+    version: 2,
   };
 }
 
@@ -984,6 +984,51 @@ describe("session persistence and init", () => {
     ]);
     expect(session?.masterVolume).toBe(1);
     expect(session?.channels[0]?.radio?.id).toBe("kexp");
+  });
+
+  test("initializePlaybackSessions upgrades a stored v1 node session before any update", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      settingsCollection.stateWhenReady(),
+    ]);
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: { mode: "node", restoreStateOnLoad: true },
+    });
+    // A node session as a v1 release stored it: no strips, version 1.
+    writeLegacyRecord(playbackSessionsCollection, {
+      activeChannelId: null,
+      channels: createDuckChannels(),
+      crossfadePosition: 0.5,
+      graph: { ...createDuckGraph(), version: 1 },
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 0.6,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      (getPlaybackSession("node")?.graph as { version: number } | undefined)
+        ?.version
+    ).toBe(1);
+
+    await initializePlaybackSessions();
+
+    const nodeSession = getPlaybackSession("node");
+    expect(nodeSession?.graph?.version).toBe(2);
+    expect(nodeSession?.masterVolume).toBe(0.6);
+    const kexp = nodeSession?.graph?.nodes.find(
+      (node) => node.id === "src-kexp"
+    );
+    expect(kexp?.data).toMatchObject({
+      strip: { pan: 0, solo: false, trimDb: 0 },
+      volume: 0.8,
+    });
+    // Once upgraded, the record takes updates again.
+    expect(() =>
+      updatePlaybackSession("node", (draft) => {
+        draft.masterVolume = 0.5;
+      })
+    ).not.toThrow();
   });
 
   test("initializePlaybackSessions starts a new node session from the Starter patch", async () => {

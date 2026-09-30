@@ -1,4 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
+
 import {
   afterEach,
   beforeAll,
@@ -10,6 +11,7 @@ import {
 } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { DEFAULT_INPUT_STRIP } from "@/lib/node-graph/schema";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -181,6 +183,7 @@ function inputData(overrides: Partial<InputData> = {}): InputData {
     echoCancellation: false,
     feedsOutput: false,
     muted: false,
+    strip: DEFAULT_INPUT_STRIP,
     volume: 1,
     ...overrides,
   };

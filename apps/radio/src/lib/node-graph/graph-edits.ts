@@ -35,9 +35,13 @@ import {
   type EffectNodeType,
   type GraphEdge,
   type GraphNode,
+  type InputStrip,
   isRadioSourceNode,
+  isStripSource,
   MAX_EDGE_GAIN,
+  type MediaStrip,
   type NodeGraph,
+  stripForType,
   type TrackSearchPlatform,
 } from "./schema";
 import { isLocalFileGone, sourceTypeForRadio } from "./sources";
@@ -245,7 +249,7 @@ export function addStationNode(
   const nodes: GraphNode[] = [
     ...graph.nodes,
     {
-      data: { muted: false, radio, volume: 1 },
+      data: { muted: false, radio, strip: stripForType("station"), volume: 1 },
       id: nodeId,
       position: nextStationPosition(graph),
       type: "station",
@@ -276,8 +280,9 @@ export function setStationRadio(
 
 /**
  * Puts `radio` into a Station, Track or File. A radio of another kind turns
- * the node into the one that plays it, in place: its id, cables, fader and
- * mute stay, so a radio link pasted into a Track becomes a Station.
+ * the node into the one that plays it, in place: its id, cables, fader,
+ * mute and what its strip shares stay, so a radio link pasted into a Track
+ * becomes a Station.
  */
 export function setSourceRadio(
   graph: NodeGraph,
@@ -290,12 +295,21 @@ export function setSourceRadio(
       return node;
     }
     changed = true;
-    const { muted, volume } = node.data;
+    const { muted, strip, volume } = node.data;
+    const type = sourceTypeForRadio(radio);
+    const kept = stripForType(type, strip);
+    // A cue point belongs to the track it was set on.
+    const sameStream = node.data.radio?.streamUrl === radio.streamUrl;
     return {
       ...node,
-      data: { muted, radio, volume },
-      type: sourceTypeForRadio(radio),
-    };
+      data: {
+        muted,
+        radio,
+        strip: "cue" in kept && !sameStream ? { ...kept, cue: null } : kept,
+        volume,
+      },
+      type,
+    } as GraphNode;
   });
   return changed ? { ...graph, nodes } : graph;
 }
@@ -560,6 +574,59 @@ export function setDeviceParams(
     }
     changed = true;
     return { ...node, data: { ...node.data, ...own } } as GraphNode;
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/** What a source's channel strip can change; the rest of its kind ignores. */
+export type StripParams = Partial<MediaStrip & InputStrip>;
+
+/**
+ * Merges `patch` into a source's channel strip. Fields its kind has no
+ * control for (a Station's speed, say) are ignored, so a shared control
+ * can never give a Station a transport.
+ */
+export function setSourceStrip(
+  graph: NodeGraph,
+  nodeId: string,
+  patch: StripParams
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node): GraphNode => {
+    if (node.id !== nodeId || !isStripSource(node)) {
+      return node;
+    }
+    const { strip } = node.data;
+    const own = Object.fromEntries(
+      Object.entries(patch).filter(([key]) => key in strip)
+    );
+    if (holds(strip, own)) {
+      return node;
+    }
+    changed = true;
+    return {
+      ...node,
+      data: { ...node.data, strip: { ...strip, ...own } },
+    } as GraphNode;
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/**
+ * Every Audio input with Monitor off, as a patch loads: Go live is never
+ * restored, since a mic opens only from a gesture.
+ */
+export function withMonitorsOff(graph: NodeGraph): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node): GraphNode => {
+    if (node.type !== "deviceIn" || !node.data.strip.monitor) {
+      return node;
+    }
+    changed = true;
+    return {
+      ...node,
+      data: { ...node.data, strip: { ...node.data.strip, monitor: false } },
+    };
   });
   return changed ? { ...graph, nodes } : graph;
 }

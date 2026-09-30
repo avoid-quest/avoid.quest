@@ -13,10 +13,7 @@ import {
   extractFileMetadata,
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
-import {
-  inferStreamFormat,
-  type StreamFormat,
-} from "@/lib/audio/playback/stream-format";
+import type { StreamFormat } from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   type ChannelEffects,
@@ -58,7 +55,6 @@ import type { Platform } from "@/lib/platform-types";
 import {
   isDeviceInputMetadata,
   isFileMetadata,
-  isRadioBrowserMetadata,
   isYouTubeMetadata,
 } from "@/lib/platform-types";
 import {
@@ -69,6 +65,12 @@ import {
   createPlaybackActionError,
   toRuntimeAudioError,
 } from "@/lib/playback-action-errors.js";
+import {
+  repeatAtEnd,
+  seekSound,
+  setPlaybackRate,
+  streamFormatOf,
+} from "@/lib/source-strip";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
@@ -252,28 +254,8 @@ function createLocalFileRadio(
   };
 }
 
-function getTrackFormat(radio: Radio, streamUrl: string): StreamFormat {
-  const metadata = radio.platformMetadata;
-  if (metadata && "tracks" in metadata && metadata.tracks) {
-    const track = metadata.tracks.find((item) => item.streamUrl === streamUrl);
-    if (track && "format" in track && track.format) {
-      return track.format;
-    }
-  }
-  if (streamUrl === radio.streamUrl && radio.streamFormat) {
-    return radio.streamFormat;
-  }
-  if (
-    streamUrl === radio.streamUrl &&
-    isRadioBrowserMetadata(metadata) &&
-    metadata.hls
-  ) {
-    return "hls";
-  }
-  return inferStreamFormat(streamUrl);
-}
-
-function createBrowserAudioAdapter(
+/** Exported for the shared strip test; the module builds its own. */
+export function createBrowserAudioAdapter(
   context: PlaybackActionContext
 ): DjDeckAudioAdapter {
   return {
@@ -304,7 +286,7 @@ function createBrowserAudioAdapter(
         context.audio.setPan(soundId, channel.pan);
       }
       if (channel.speed !== 1) {
-        context.audio.setPlaybackRate(soundId, channel.speed);
+        setPlaybackRate(context.audio, soundId, channel.speed);
       }
       if (channel.channelFilter !== 0) {
         context.audio.setChannelFilter(soundId, channel.channelFilter);
@@ -341,7 +323,7 @@ function createBrowserAudioAdapter(
           context.audio.setPan(soundId, change.pan);
           break;
         case "speed":
-          context.audio.setPlaybackRate(soundId, change.speed);
+          setPlaybackRate(context.audio, soundId, change.speed);
           break;
         case "volume":
           context.audioEngine.volume.setChannelVolume(soundId, change.volume);
@@ -383,7 +365,7 @@ function createBrowserAudioAdapter(
           await context.audioEngine.playback.play(soundId, intent.volume);
           return;
         case "seek":
-          context.audioEngine.playback.seek(soundId, intent.position);
+          seekSound(context.audioEngine.playback, soundId, intent.position);
           return;
         default: {
           const exhaustive: never = intent;
@@ -955,7 +937,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
           onFailure
         )
       : {
-          streamFormat: getTrackFormat(radio, sourceUrl),
+          streamFormat: streamFormatOf(radio, sourceUrl),
           streamUrl: sourceUrl,
         };
     if (!resolved) {
@@ -1073,18 +1055,19 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<void> {
     runtimes[deckId].stripRestored = false;
     try {
-      await options.audio.transport(soundId, { position: 0, type: "seek" });
-      if (!isContinuationCurrent(deckId, generation, soundId)) {
-        return;
-      }
-      await options.audio.transport(soundId, {
-        type: "play",
-        volume: mixedVolume(deckId),
+      const repeated = await repeatAtEnd({
+        isCurrent: () => isContinuationCurrent(deckId, generation, soundId),
+        play: () =>
+          options.audio.transport(soundId, {
+            type: "play",
+            volume: mixedVolume(deckId),
+          }),
+        seek: () =>
+          options.audio.transport(soundId, { position: 0, type: "seek" }),
       });
-      if (!isContinuationCurrent(deckId, generation, soundId)) {
-        return;
+      if (repeated) {
+        applyCrossfade();
       }
-      applyCrossfade();
     } catch (error) {
       if (isContinuationCurrent(deckId, generation, soundId)) {
         reportFailure(

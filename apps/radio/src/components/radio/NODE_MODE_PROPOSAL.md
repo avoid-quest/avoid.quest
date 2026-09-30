@@ -78,6 +78,32 @@ carries the four universal wrapper params: enabled, dryWet, inputGain and output
 | Source | Track (`platform`) | control: volume (v2) | audio | radio (like a Station's), search chip, volume, muted, play | A YouTube, SoundCloud or Bandcamp track, album or playlist. Its empty body is DJ's `ExternalSearch`, unlocked ("Search all") or locked by a platform chip taken from `PLATFORM_SOURCE_DEFINITIONS`; a pick or a pasted link loads through `useDjTrackLoad`, and a `yt:` track is resolved first. A radio link hands off: filling any Source with another kind of radio turns it into the one that plays it, in place (`setSourceRadio`). `validateRadioForMode` allows platform radios in `"node"` (Single stays refused). An expired stream is renewed through DJ's refresh, shared as `lib/platform-stream-refresh.ts`, and resumes at its position. At the end of a track in an album or playlist the lane loads `findNextTrack`; the inspector lists the tracklist (DJ's `TracklistView`) | v1 |
 | Source | Static | control: level | audio | colour (white or pink), bandwidth | Looping noise `AudioBufferSourceNode` → Biquad bandpass. Native and cheap on Safari. Used by the Dial and the roulette bridge | v2 |
 
+**Channel strips.** Every Station, Track, File and Audio input has a channel strip
+(`data.strip`, schema v2), shown compact on its node body and Rack row (meter, M and S, pan
+knob, beside the existing `VolumeControl`, and a button that opens the full strip) and in
+full in the inspector, which now inspects every source. The strip is presentational
+(`components/radio/node/source-strip.tsx`, props only), wired to the patch by
+`node-source-strip.tsx`; DJ's `DeckChannelStrip` renders its pan and speed knobs from the
+same pieces. What each kind shows is one table (`STRIP_CONTROLS`), so a control a kind
+cannot use is absent, never disabled:
+
+| Kind | Common | Adds |
+|---|---|---|
+| Station | meter, trim (-24 to +12 dB), pan, M, S | read-only stream details: buffering (runtime `isBuffering`), format (HLS or progressive, DJ's rule, now `streamFormatOf` in `lib/source-strip.ts`), bitrate from now playing, else from Radio Browser, and Radio Browser's codec, both now kept on discovery (`RadioBrowserMetadata.codec`/`bitrate`) |
+| Track, File | same | speed 0.5–2x with key lock (`preservesPitch`, on by default), a seek bar with position and duration (DJ's `SeekableProgress`), loop (whole-track repeat at the end), Set cue and Cue (a stored position and a media-element seek), cue listen (pre-fader on the headphone cue bus, shown only when a cue output is set and `setSinkId` exists) |
+| Audio input | same, the meter labelled Input | Monitor (Go live), the channel pair and echo cancellation |
+
+The compiler folds the strip in: trim multiplies into each exit's `EdgePlan.gain` like an
+in-lane Gain, strip pan adds to the lane's Pan node, clamped, any solo mutes the exits of
+every unsoloed live lane, and a Track's or File's speed, key lock and loop become
+`LanePlan.transport` (cue listen `LanePlan.cueListen`). The fader and mute stay the source's
+own, so trim and solo never write the volume controller. The strip calls DJ decks and Node
+lanes share live in `lib/source-strip.ts` (`setPlaybackRate`, `setPreservesPitch`,
+`seekSound`, `repeatAtEnd`). Limits: the meter taps the sound after its fader, so it does not
+show trim, cable gains or solo; cue jumps are media-element seeks, not sample-accurate; loop is
+the whole track, not an A–B region; live radio and inputs have no speed, seek, loop or cue.
+Monitor is written as it goes live but never restored: a loaded patch has every Monitor off.
+
 The Station's control inputs appear when Control ships (PR 6). The `station` input and the
 song-change and title-hash outputs power roulette and Dérive (§4). Metadata polling stays
 gated to playing stations, as in Multiple (`apps/radio/src/lib/hooks/use-radio-metadata.ts`
@@ -709,11 +735,11 @@ What this design does instead:
 
 ## 8. Persistence and migration
 
-### Schema v1 (`apps/radio/src/lib/node-graph/schema.ts`)
+### Schema v2 (`apps/radio/src/lib/node-graph/schema.ts`)
 
 ```ts
 nodeGraphSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),                 // v2: every source's data has a `strip`
   nodes: z.array(z.object({
     id: z.string(),                      // stable; also EffectConfig id and lane key
     type: z.enum(NODE_TYPES),
@@ -735,7 +761,13 @@ nodeGraphSchema = z.object({
 ```
 
 `migrateNodeGraph(raw)` upgrades by `version`. An unknown future version is shown read-only
-and never overwritten.
+and never overwritten. v1 → v2 adds a default strip to every source: `{ trimDb: 0, pan: 0,
+solo: false }`, plus `{ speed: 1, keyLock: true, loop: false, cue: null, cueListen: false }`
+on a Track or File and `{ monitor: false }` on an Audio input. Because the session record
+pins the graph version, the stored node session is upgraded first in
+`initializePlaybackSessions`, before anything updates the collection
+(`collections/migrations/node-graph-v2.ts`), as the Multiple migration is. A v1 build in
+another tab reads a v2 patch as newer, so read-only.
 
 ### Where it lives
 
@@ -744,7 +776,7 @@ and never overwritten.
   gains `graph: nodeGraphSchema.optional()`.
 - `session.channels` stays, as a **derived cache** written by the compiler in the same
   update: one channel per lane, `id: "n:<nodeId>"`, `role: "node"`, carrying radio, volume,
-  muted, pan, filter, and `effects` (the lowered tree, including any `sidechain.channelId`).
+  muted, pan, filter, from the strip speed, repeat (loop) and cue listen, and `effects` (the lowered tree, including any `sidechain.channelId`).
   That keeps `restoreManagedChannels`, `setManagedChannelPlaying`, NAM externalisation and
   `channelEffects` (keyed `node:n:<id>`, `apps/radio/src/lib/channel-effects.ts:92-93`)
   working unchanged.

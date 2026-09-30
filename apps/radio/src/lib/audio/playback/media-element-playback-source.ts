@@ -295,7 +295,14 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   setPlaybackRate(rate: number): void {
     const clampedRate = Math.max(0.5, Math.min(2, rate));
     this.playbackRate = clampedRate;
+    // A load resets the rate to the default one; keep them together.
+    this.audio.defaultPlaybackRate = clampedRate;
     this.audio.playbackRate = clampedRate;
+  }
+
+  /** Key lock. The element keeps it across loads. */
+  setPreservesPitch(preservesPitch: boolean): void {
+    this.audio.preservesPitch = preservesPitch;
   }
 
   getPlaybackRate(): number {

@@ -49,7 +49,7 @@ function patch(nodes: NodeInput[], edges: ReturnType<typeof out>[] = []) {
       ...nodes,
       { data: {}, id: "speakers", position: { x: 0, y: 0 }, type: "speakers" },
     ],
-    version: 1,
+    version: 2,
   });
 }
 

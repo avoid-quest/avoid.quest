@@ -27,7 +27,14 @@
  *
  * An Audio input's lane is a live capture started through the device-input
  * start DJ decks use. Restore never opens a mic: its sound is only made
- * when the user goes live.
+ * when the user goes live, and a loaded patch has every Monitor off.
+ *
+ * Each source's channel strip compiles into the plan (trim and solo on its
+ * cables, pan on the lane). A Track's or File's transport goes through the
+ * strip calls DJ decks share (source-strip): speed and key lock once its
+ * sound plays and on each change, seek and cue as media-element seeks,
+ * loop as the whole-track repeat at the end, and cue listen as a pre-fader
+ * tap on the headphone cue bus.
  *
  * A Track or File lane watches its sound. A platform stream that expires
  * on first play or mid-play is renewed through DJ's refresh
@@ -76,6 +83,7 @@ import {
 import { findNextTrack } from "@/lib/dj-actions-playlist";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import {
+  type ChannelSelectionPlan,
   compile,
   type EnginePlan,
   type LaneBackend,
@@ -83,7 +91,11 @@ import {
   type LaneSource,
   laneChannelId,
 } from "@/lib/node-graph/compile";
-import { setSourceRadio } from "@/lib/node-graph/graph-edits";
+import {
+  setSourceRadio,
+  setSourceStrip,
+  withMonitorsOff,
+} from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   loadNodeGraph,
@@ -101,11 +113,22 @@ import { isTrackRadio, retainLocalFileUrl } from "@/lib/node-graph/sources";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { NODE_BUDGETS, type Profile } from "@/lib/node-graph/validate";
 import {
+  type CueDeckRegistration,
+  getOutputRouting,
+  type OutputRouting,
+} from "@/lib/output-routing.js";
+import {
   getRefreshRequest,
   type ResolvePlatformStream,
   radioOnTrack,
   refreshPlatformStream,
 } from "@/lib/platform-stream-refresh";
+import {
+  repeatAtEnd,
+  seekSound,
+  setPlaybackRate,
+  setPreservesPitch,
+} from "@/lib/source-strip";
 import {
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
@@ -167,6 +190,12 @@ export type NodePlayback = {
   setVolume: (nodeId: string, volume: number) => void;
   /** Moves a Track or File to one of its album's or playlist's tracks and plays it. */
   playTrack: (nodeId: string, streamUrl: string) => Promise<void>;
+  /** Seeks a Track or File, in seconds; live radio and inputs ignore it. */
+  seek: (nodeId: string, position: number) => void;
+  /** Stores where a Track or File is now as its cue point. */
+  setCue: (nodeId: string) => void;
+  /** Seeks a Track or File to its cue point, once one is set. */
+  jumpToCue: (nodeId: string) => void;
   toggleMasterMute: () => void;
   toggleMute: (nodeId: string) => void;
   /** Resolves once the pending commit batch and its effect and fade ops end. */
@@ -271,6 +300,8 @@ export type GetNodePlaybackOptions = {
   /** Where Output device sink statuses are published for their bodies. */
   sinkStatuses?: NodeSinkStatusStore;
   store?: NodeStore;
+  /** The headphone cue bus a Track's or File's cue listen taps into. */
+  cueOutput?: () => Pick<OutputRouting, "registerCueDeck">;
 };
 
 type PlaybackCancellation = "deactivate" | "pause" | "remove";
@@ -413,6 +444,7 @@ function createNodePlayback(
   ctx: PlaybackActionContext,
   {
     backendBadges,
+    cueOutput,
     deviceSinks: createDeviceSinks,
     effects,
     fadeOutDurationMs,
@@ -463,6 +495,11 @@ function createNodePlayback(
    * in the stream budget until a pause, removal or deactivate cancels it.
    */
   const refreshingStreams = new Set<PendingChannelStart>();
+  /** Per channel: its sound's pre-fader tap on the headphone cue bus. */
+  const cueTaps = new Map<
+    string,
+    { soundId: string; registration: CueDeckRegistration }
+  >();
 
   /**
    * A lane's level per output: the gains of its unmuted cables into it,
@@ -842,6 +879,48 @@ function createNodePlayback(
   };
 
   /**
+   * A Track's or File's speed and key lock, through the strip calls DJ
+   * decks share. Written once its sound plays, since a load resets the
+   * media element's rate, and on each change.
+   */
+  const applyLaneTransport = (channelId: string) => {
+    const transport = laneOfChannel(channelId)?.transport;
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    if (!(transport && soundId)) {
+      return;
+    }
+    setPlaybackRate(ctx.audio, soundId, transport.speed);
+    setPreservesPitch(ctx.audio, soundId, transport.keyLock);
+  };
+
+  /**
+   * Taps a lane pre-fader onto the headphone cue bus while its cue listen
+   * is on, as a DJ deck's CUE does, or takes the tap off. The tap exists
+   * once the sound plays.
+   */
+  const syncCueTap = (channelId: string) => {
+    const lane = laneOfChannel(channelId);
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    const current = cueTaps.get(channelId);
+    if (!(lane?.cueListen && soundId)) {
+      current?.registration.cleanup();
+      cueTaps.delete(channelId);
+      return;
+    }
+    const tap = ctx.audio.getPreFaderNode(soundId);
+    if (current?.soundId === soundId) {
+      current.registration.replaceTap(tap);
+      current.registration.setEnabled(true);
+      return;
+    }
+    current?.registration.cleanup();
+    cueTaps.set(channelId, {
+      registration: cueOutput().registerCueDeck(`node:${lane.id}`, tap, true),
+      soundId,
+    });
+  };
+
+  /**
    * Waits out a lane's removal fade or re-add. Returns false when a pause,
    * removal or deactivate arrived meanwhile, so the start must not run.
    */
@@ -864,11 +943,14 @@ function createNodePlayback(
   };
 
   /**
-   * Once a lane plays: its native strip, and the backend its effects graph
-   * settled on, which the play call awaited while it connected.
+   * Once a lane plays: its native strip, its transport and cue tap, and the
+   * backend its effects graph settled on, which the play call awaited while
+   * it connected.
    */
   const settleStartedLane = (channelId: string, lane: LanePlan | undefined) => {
     applyLaneStrip(channelId);
+    applyLaneTransport(channelId);
+    syncCueTap(channelId);
     if (lane) {
       recordOutcome(lane.id, ctx.audio.getEffectsRuntimeOutcome(lane.soundId));
     }
@@ -930,8 +1012,10 @@ function createNodePlayback(
     }
   };
 
-  /** Releases a channel's sound, its runtime and its watch. */
+  /** Releases a channel's sound, its runtime, its watch and its cue tap. */
   const releaseChannel = (channelId: string) => {
+    cueTaps.get(channelId)?.registration.cleanup();
+    cueTaps.delete(channelId);
     laneWatches.delete(channelId);
     cleanupManagedChannel(channelId, ctx);
     resetPlaybackChannelRuntime(channelId);
@@ -1067,8 +1151,46 @@ function createNodePlayback(
   };
 
   /**
+   * Plays an ended Track or File again from its start: its loop, through
+   * the whole-track repeat DJ decks use.
+   */
+  const repeatLane = async (
+    channelId: string,
+    soundId: string,
+    isCurrent: () => boolean
+  ) => {
+    if (advancingLanes.has(channelId)) {
+      return;
+    }
+    advancingLanes.add(channelId);
+    try {
+      const repeated = await repeatAtEnd({
+        isCurrent,
+        play: () => {
+          const channel = getPlaybackChannel("node", channelId);
+          return ctx.audio.playSound(
+            soundId,
+            channel ? getChannelPlayVolume(channel) : 1
+          );
+        },
+        seek: () => seekSound(ctx.audioEngine.playback, soundId, 0),
+      });
+      if (repeated) {
+        settleStartedLane(channelId, laneOfChannel(channelId));
+      }
+    } catch (error) {
+      if (isCurrent()) {
+        reportLaneFailure(channelId, "Couldn't repeat the track", error);
+      }
+    } finally {
+      advancingLanes.delete(channelId);
+    }
+  };
+
+  /**
    * A Track or File sound's state: an expired platform stream is renewed
-   * and resumes at its position; an ended track moves to the next.
+   * and resumes at its position; an ended track repeats when its strip
+   * loops, or else moves to the next.
    */
   const handleTrackState = (
     channelId: string,
@@ -1114,6 +1236,12 @@ function createNodePlayback(
       return;
     }
     if (state.hasEnded && !state.isPlaying) {
+      if (laneOfChannel(channelId)?.transport?.loop) {
+        track(repeatLane(channelId, soundId, isCurrent)).catch(
+          warn("Could not repeat the track")
+        );
+        return;
+      }
       track(advanceLane(channelId, isCurrent)).catch(
         warn("Could not play the next track")
       );
@@ -1335,6 +1463,17 @@ function createNodePlayback(
       .finally(endSwap);
   };
 
+  /** Channels switch live on an open capture; a new one opens with them. */
+  const applyLaneChannels = (
+    channelId: string,
+    selection: ChannelSelectionPlan
+  ) => {
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    if (soundId && ctx.audio.getDeviceSource(soundId)) {
+      ctx.audio.setDeviceChannelSelection(soundId, selection);
+    }
+  };
+
   /**
    * A removed or replaced lane keeps its old stream's level through its
    * fade-out: its cables go before its removeLane, and the new stream's
@@ -1381,18 +1520,18 @@ function createNodePlayback(
         break;
       case "pan":
       case "filter":
+      case "cueListen":
+        // Both live on the sound's nodes, which exist once it plays.
         if (getPlaybackChannelRuntime(channelId).isPlaying) {
-          applyLaneStrip(channelId);
+          (op.param === "cueListen" ? syncCueTap : applyLaneStrip)(channelId);
         }
         break;
-      case "channelSelection": {
-        // Channels switch live on an open capture; a new one opens with them.
-        const { soundId } = getPlaybackChannelRuntime(channelId);
-        if (soundId && ctx.audio.getDeviceSource(soundId)) {
-          ctx.audio.setDeviceChannelSelection(soundId, op.value);
-        }
+      case "transport":
+        applyLaneTransport(channelId);
         break;
-      }
+      case "channelSelection":
+        applyLaneChannels(channelId, op.value);
+        break;
       default: {
         const exhaustive: never = op;
         return exhaustive;
@@ -1564,7 +1703,7 @@ function createNodePlayback(
             return {
               ...node,
               data: { ...node.data, ...update(node.data) },
-            };
+            } as GraphNode;
           }
           if (node.type === "deviceIn") {
             return { ...node, data: { ...node.data, ...update(node.data) } };
@@ -1595,6 +1734,14 @@ function createNodePlayback(
 
   const setPlaying = async (nodeId: string, playing: boolean) => {
     const channelId = laneChannelId(nodeId);
+    if (isDeviceChannel(channelId)) {
+      // Monitor follows Go live, and no undo step toggles a mic.
+      commitNodeGraph(
+        (graph) => setSourceStrip(graph, nodeId, { monitor: playing }),
+        store,
+        "rebase"
+      );
+    }
     if (playing) {
       await startChannel(channelId);
       return;
@@ -1619,7 +1766,7 @@ function createNodePlayback(
       advancingLanes.clear();
       stopListening();
       loadNodeGraph(
-        session.graph ?? buildNodeGraphFromTemplate("starter"),
+        withMonitorsOff(session.graph ?? buildNodeGraphFromTemplate("starter")),
         store
       );
       observedGraph = store.state.graph;
@@ -1697,6 +1844,15 @@ function createNodePlayback(
       cleanupOrphanedSounds(soundIds, ctx, "node");
     },
     flush: applyPendingCommit,
+    jumpToCue(nodeId) {
+      const lane = plan.lanes.get(nodeId);
+      const node = findSource(store.state.graph, nodeId);
+      const cue = node && "cue" in node.data.strip ? node.data.strip.cue : null;
+      const { soundId } = getPlaybackChannelRuntime(laneChannelId(nodeId));
+      if (lane?.transport && soundId && cue !== null) {
+        seekSound(ctx.audioEngine.playback, soundId, cue);
+      }
+    },
     pauseAll() {
       for (const generation of activePlayAllGenerations) {
         if (generation.cancellation === null) {
@@ -1789,6 +1945,32 @@ function createNodePlayback(
         reportLaneFailure(lane.channelId, "Couldn't load this track");
       }
     },
+    seek(nodeId, position) {
+      const lane = plan.lanes.get(nodeId);
+      const { soundId } = getPlaybackChannelRuntime(laneChannelId(nodeId));
+      if (lane?.transport && soundId) {
+        seekSound(ctx.audioEngine.playback, soundId, position);
+      }
+    },
+    setCue(nodeId) {
+      const { soundId } = getPlaybackChannelRuntime(laneChannelId(nodeId));
+      const position = soundId
+        ? ctx.audio.getTrackProgress(soundId)?.position
+        : undefined;
+      if (
+        !plan.lanes.get(nodeId)?.transport ||
+        position === undefined ||
+        !Number.isFinite(position)
+      ) {
+        return;
+      }
+      commitNodeGraph(
+        (graph) =>
+          setSourceStrip(graph, nodeId, { cue: Math.max(0, position) }),
+        store,
+        "snapshot"
+      );
+    },
     setMasterVolume,
     setPlaying,
     setVolume,
@@ -1820,6 +2002,7 @@ function createNodePlayback(
 export function getNodePlayback({
   backendBadges = nodeBackendBadges,
   ctx = getDefaultPlaybackActionContext(),
+  cueOutput = getOutputRouting,
   deviceSinks = createNodeDeviceSinks,
   effects = channelEffects,
   fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
@@ -1836,6 +2019,7 @@ export function getNodePlayback({
   }
   const playback = createNodePlayback(ctx, {
     backendBadges,
+    cueOutput,
     deviceSinks,
     effects,
     fadeOutDurationMs,

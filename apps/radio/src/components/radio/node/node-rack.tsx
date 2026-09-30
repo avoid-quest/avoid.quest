@@ -15,7 +15,11 @@ import {
   type LanePlan,
 } from "@/lib/node-graph/compile";
 import { nodeLabel } from "@/lib/node-graph/describe";
-import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
+import {
+  type GraphNode,
+  isStripSource,
+  type NodeGraph,
+} from "@/lib/node-graph/schema";
 import { isLocalFileGone, isTrackRadio } from "@/lib/node-graph/sources";
 import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
@@ -30,8 +34,9 @@ import {
 import { BackendBadge } from "./backend-badge";
 import { inputFeedback } from "./flow-elements";
 import { useNodeActions } from "./node-actions";
-import { isInspectable } from "./node-inspector";
+import { isInspectable, sourceTracklist } from "./node-inspector";
 import { type NodeLaneControls, NodeSourceRow } from "./node-source-row";
+import { NodeCompactStrip } from "./node-source-strip";
 
 type RackGroup = { key: string; title: string; lanes: LanePlan[] };
 
@@ -238,8 +243,8 @@ function HiddenStationRow({ radio }: { radio: Radio }) {
 }
 
 /**
- * The compiled patch as a list: each lane with its station, play, volume
- * and FX, grouped by where it goes. With no canvas at all this is the
+ * The compiled patch as a list: each lane with its station, play, volume,
+ * compact channel strip and FX, grouped by where it goes. With no canvas at all this is the
  * complete path through the patch.
  */
 export function NodeRack({
@@ -291,7 +296,7 @@ export function NodeRack({
             const node = nodesById.get(lane.id);
             let actionsSlot: React.ReactNode = null;
             if (isTrackRadio(radio)) {
-              actionsSlot = isInspectable(node) ? (
+              actionsSlot = sourceTracklist(node) ? (
                 <TracksButton name={radio.name} nodeId={lane.id} />
               ) : null;
             } else if (!isInput) {
@@ -314,6 +319,18 @@ export function NodeRack({
                   muted={lane.muted}
                   nodeId={lane.id}
                   radio={radio}
+                  strip={
+                    isStripSource(node) ? (
+                      <NodeCompactStrip
+                        muted={lane.muted}
+                        nodeId={lane.id}
+                        onInspect={() => actions.inspectNode(lane.id)}
+                        onToggleMute={() => controls.toggleMute(lane.id)}
+                        strip={node.data.strip}
+                        target={radio.name}
+                      />
+                    ) : null
+                  }
                   volume={lane.volume}
                 >
                   <LaneChain

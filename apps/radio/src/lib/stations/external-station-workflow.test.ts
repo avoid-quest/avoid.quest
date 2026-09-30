@@ -742,6 +742,8 @@ describe("createStationIntake", () => {
       expect(result.data.radio).toMatchObject({
         id: "rb_station-1",
         name: "Browser Radio",
+        // Kept for the channel strip's stream details.
+        platformMetadata: { bitrate: 192, codec: "MP3" },
         streamUrl: "https://cdn.radio.example/live.mp3",
       });
     }

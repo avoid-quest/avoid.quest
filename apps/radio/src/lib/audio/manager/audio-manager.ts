@@ -679,7 +679,7 @@ export class AudioManager {
 
   /**
    * Set playback rate for a sound (0.5 to 2.0)
-   * Note: This changes both speed and pitch when the browser transport supports it.
+   * Pitch follows the rate unless key lock (`setKeyLock`) is on.
    */
   setPlaybackRate(soundId: string, rate: number): void {
     const instance = this.sounds.get(soundId);
@@ -701,6 +701,18 @@ export class AudioManager {
 
     const clampedRate = Math.max(0.5, Math.min(2.0, rate));
     instance.playbackSource.setPlaybackRate(clampedRate);
+  }
+
+  /**
+   * Key lock for a sound: on, a speed change keeps the pitch; off, pitch
+   * follows speed like tape. A no-op for live device input.
+   */
+  setKeyLock(soundId: string, keyLock: boolean): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.playbackSource || instance.isDeviceInput) {
+      return;
+    }
+    instance.playbackSource.setPreservesPitch(keyLock);
   }
 
   seekSound(soundId: string, position: number): void {

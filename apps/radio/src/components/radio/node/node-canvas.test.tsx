@@ -300,7 +300,7 @@ describe("NodeCanvas: dragging a cable", () => {
         effect("verb", "cheapReverb"),
         { data: {}, id: "speakers", position: at, type: "speakers" },
       ],
-      version: 1,
+      version: 2,
     });
   }
 
@@ -489,7 +489,7 @@ describe("NodeCanvas: dragging a cable", () => {
           },
           { data: {}, id: "speakers", position: at, type: "speakers" },
         ],
-        version: 1,
+        version: 2,
       })
     );
     await act(async () => {

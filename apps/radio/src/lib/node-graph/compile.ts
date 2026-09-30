@@ -9,6 +9,12 @@
  * become edge gains keyed by the cable id, and key cables become sidechain
  * bindings. Nothing here touches audio; `reconcile.ts` diffs two plans.
  *
+ * Each source's channel strip folds in here too: its trim multiplies into
+ * every exit's gain (as an in-lane Gain would), its pan adds to the lane's
+ * Pan, any solo mutes the exits of every unsoloed lane, and a Track's or
+ * File's speed, key lock, loop and cue listen become the lane's transport.
+ * The fader and mute stay the source's own.
+ *
  * Buses, control and modulation land with the layers that ship them. Until
  * then a node that would start a bus is refused with an issue, never dropped.
  */
@@ -35,10 +41,12 @@ import {
 import {
   type GraphEdge,
   type GraphNode,
+  isMediaSourceType,
   isRadioSourceNode,
   type NodeGraph,
   type NodeType,
   type RadioSourceNode,
+  type SourceStrip,
 } from "./schema";
 import { isLocalFileGone } from "./sources";
 import {
@@ -90,6 +98,16 @@ export type LaneSource =
       echoCancellation: boolean;
     };
 
+/**
+ * A Track's or File's transport, from its strip: seekable media only. Loop
+ * repeats the whole track at its end.
+ */
+export type LaneTransport = {
+  speed: number;
+  keyLock: boolean;
+  loop: boolean;
+};
+
 export type NativeFilterPlan = {
   type: "lowpass" | "highpass";
   frequency: number;
@@ -117,6 +135,7 @@ export type LanePlan = {
   muted: boolean;
   /** Nodes lowered into this lane, source first. */
   nodes: string[];
+  /** The lane's Pan node plus its strip pan, clamped. */
   pan: number;
   filter: NativeFilterPlan | null;
   effects: EffectConfig[];
@@ -124,6 +143,10 @@ export type LanePlan = {
   layoutSignature: string;
   /** null when the lane has no enabled FX and so no effects runtime. */
   backend: LaneBackend | null;
+  /** A Track's or File's transport; null for live radio and inputs. */
+  transport: LaneTransport | null;
+  /** Plays the lane pre-fader on the headphone cue output. */
+  cueListen: boolean;
 };
 
 export type EdgePlan = {
@@ -131,7 +154,7 @@ export type EdgePlan = {
   id: string;
   from: { kind: "lane"; id: string };
   to: { kind: "sink"; id: string };
-  /** Linear, with any in-lane Gain and cable trims folded in. */
+  /** Linear, with the strip trim, in-lane Gain and cable trims folded in. */
   gain: number;
   muted: boolean;
 };
@@ -215,23 +238,48 @@ export function deviceInputRadio(
   };
 }
 
-function laneSourceOf(node: GraphNode): {
+type LiveSource = {
   source: LaneSource;
   radio: StationRadio;
   volume: number;
   muted: boolean;
-} | null {
+  strip: SourceStrip;
+  transport: LaneTransport | null;
+  cueListen: boolean;
+};
+
+function laneSourceOf(node: GraphNode): LiveSource | null {
   if (isRadioSourceLive(node)) {
-    const { muted, radio, volume } = node.data;
-    return { muted, radio, source: { kind: "radio", radio }, volume };
+    const { muted, radio, strip, volume } = node.data;
+    const media = isMediaSourceType(node.type) && "speed" in strip;
+    return {
+      cueListen: media && strip.cueListen,
+      muted,
+      radio,
+      source: { kind: "radio", radio },
+      strip,
+      transport: media
+        ? { keyLock: strip.keyLock, loop: strip.loop, speed: strip.speed }
+        : null,
+      volume,
+    };
   }
   if (isDeviceInLive(node)) {
-    const { channelSelection, deviceId, echoCancellation, muted, volume } =
-      node.data;
+    const {
+      channelSelection,
+      deviceId,
+      echoCancellation,
+      muted,
+      strip,
+      volume,
+    } = node.data;
     return {
+      cueListen: false,
       muted,
       radio: deviceInputRadio(node.id, node.data),
       source: { channelSelection, deviceId, echoCancellation, kind: "device" },
+      strip,
+      transport: null,
       volume,
     };
   }
@@ -1140,12 +1188,19 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   const lanes = new Map<string, LanePlan>();
   const edges = new Map<string, EdgePlan>();
   let monitoringChannels = 0;
+  // An empty Station is a search slot, a hidden one is disabled, and an
+  // Audio input with no device has nothing to capture: no lane, but their
+  // cables survive. Only a source with a lane can solo.
+  const live = new Map(
+    prepared.graph.nodes.flatMap((node) => {
+      const source = laneSourceOf(node);
+      return source ? [[node.id, source] as const] : [];
+    })
+  );
+  const anySolo = [...live.values()].some((source) => source.strip.solo);
   for (const node of prepared.graph.nodes) {
-    // An empty Station is a search slot, a hidden one is disabled, and an
-    // Audio input with no device has nothing to capture: no lane, but
-    // their cables survive.
-    const live = laneSourceOf(node);
-    if (!live) {
+    const source = live.get(node.id);
+    if (!source) {
       continue;
     }
     const lowered = lowerLane(
@@ -1162,20 +1217,30 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     lanes.set(node.id, {
       backend,
       channelId: laneChannelId(node.id),
+      cueListen: source.cueListen,
       effects,
       filter: lowered.lowerer.filter,
       id: node.id,
       layoutSignature: layoutSignature(effects),
-      muted: live.muted,
+      muted: source.muted,
       nodes: lowered.lowerer.nodes,
-      pan: lowered.lowerer.pan,
-      radio: live.radio,
+      pan: clampPan(lowered.lowerer.pan + source.strip.pan),
+      radio: source.radio,
       soundId: laneSoundId(node.id),
-      source: live.source,
-      volume: live.volume,
+      source: source.source,
+      transport: source.transport,
+      volume: source.volume,
     });
+    // Trim and solo act on the exits, downstream of the fader, so the
+    // volume controller keeps the fader.
+    const trim = dbToGain(source.strip.trimDb);
+    const soloMuted = anySolo && !source.strip.solo;
     for (const edge of lowered.exits) {
-      edges.set(edge.id, edge);
+      edges.set(edge.id, {
+        ...edge,
+        gain: edge.gain * trim,
+        muted: edge.muted || soloMuted,
+      });
     }
   }
 

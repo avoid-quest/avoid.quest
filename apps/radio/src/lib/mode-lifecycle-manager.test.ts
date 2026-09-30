@@ -85,7 +85,7 @@ function insertNodeSession() {
           type: "speakers",
         },
       ],
-      version: 1,
+      version: 2,
     }),
     headphoneVolume: 1,
     id: "node",

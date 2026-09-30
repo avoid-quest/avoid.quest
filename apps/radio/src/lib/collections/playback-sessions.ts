@@ -42,6 +42,7 @@ import {
   migrateMultipleSession,
   watchLegacyMultipleWrites,
 } from "./migrations/multiple-to-node";
+import { migrateNodeGraphSession } from "./migrations/node-graph-v2";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -731,6 +732,9 @@ export async function initializePlaybackSessions(): Promise<void> {
     playbackSessionsCollection.state.get("node")?.graph
   );
   migrateMultipleSession(legacyCollections);
+  // Likewise a node session a v1 release stored: its graph is upgraded
+  // before pruneStaleNodeSources or restore update it.
+  migrateNodeGraphSession(playbackSessionsCollection);
   stopWatchingLegacyWrites ??= watchLegacyMultipleWrites({
     ...legacyCollections,
     settings: settingsCollection,

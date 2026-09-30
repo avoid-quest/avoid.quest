@@ -58,7 +58,7 @@ const series: NodeGraph = nodeGraphSchema.parse({
     fx("echo", "delay", 1200),
     { data: {}, id: "speakers", position: { x: 1600, y: 0 }, type: "speakers" },
   ],
-  version: 1,
+  version: 2,
 });
 
 const both = { edges: [], nodes: ["comp", "echo"] };

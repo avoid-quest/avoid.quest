@@ -78,7 +78,7 @@ const graph = nodeGraphSchema.parse({
     effect("echo", "delay"),
     { data: {}, id: "speakers", position: at, type: "speakers" },
   ],
-  version: 1,
+  version: 2,
 });
 
 function plug(

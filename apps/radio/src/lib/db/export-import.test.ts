@@ -864,7 +864,7 @@ describe("Node patch backups", () => {
         },
         speakersInput,
       ],
-      version: 1,
+      version: 2,
       viewport: { x: 12, y: -8, zoom: 0.75 },
     } satisfies NodeGraphInput);
     playbackSessionsCollection.insert(
@@ -892,6 +892,26 @@ describe("Node patch backups", () => {
       ["n:src-kexp", ["room"]],
       ["n:src-nts", []],
     ]);
+  });
+
+  test("a v1 patch imports as v2, with a default strip on every source", () => {
+    seedLocalPatch();
+    const v1 = {
+      edges: [cable("src-kexp", "speakers")],
+      nodes: [
+        { ...stationInput("kexp"), data: { radio: stationRadio("kexp") } },
+        speakersInput,
+      ],
+      version: 1,
+    };
+
+    replaceImportedData(rawBackup({ sessions: { node: { graph: v1 } } }));
+
+    const graph = getPlaybackSession("node")?.graph;
+    expect(graph?.version).toBe(2);
+    expect(
+      graph?.nodes.find((node) => node.id === "src-kexp")?.data
+    ).toMatchObject({ strip: { pan: 0, solo: false, trimDb: 0 } });
   });
 
   test("a patch over the device budgets round-trips", async () => {
@@ -1091,7 +1111,7 @@ describe("Node patch backups", () => {
     ],
     [
       "a patch from a newer version",
-      { edges: [], nodes: [speakersInput], version: 2 },
+      { edges: [], nodes: [speakersInput], version: 3 },
       NEWER_VERSION,
     ],
   ];

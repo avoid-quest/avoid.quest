@@ -9,6 +9,7 @@ import { loadLocalFile, loadSourceUrl } from "@/lib/node-source-loaders";
 import { FileForm } from "../dj/file-form";
 import type { FlowNode, FlowNodeProps } from "./flow-adapter";
 import { useNodeActions } from "./node-actions";
+import { NodeCompactStrip } from "./node-source-strip";
 import {
   EmptySourceFrame,
   SourceOutPort,
@@ -116,6 +117,17 @@ export function FileNode({ id, data, selected }: FlowNodeProps<FileFlowNode>) {
         onVolumeChange={lane.onVolumeChange}
         onVolumeCommit={lane.onVolumeCommit}
         selected={selected}
+        strip={
+          radio ? (
+            <NodeCompactStrip
+              muted={data.muted}
+              nodeId={id}
+              onInspect={() => actions.inspectNode(id)}
+              strip={data.strip}
+              target={radio.name}
+            />
+          ) : null
+        }
         volume={data.volume}
       />
       <SourceOutPort

@@ -95,6 +95,7 @@ const { QueryClient, QueryClientProvider } = await import(
 
 type InspectorModule = typeof import("./node-inspector");
 let NodeInspector: InspectorModule["NodeInspector"];
+let isInspectable: InspectorModule["isInspectable"];
 let useNodeInspector: InspectorModule["useNodeInspector"];
 let NodeRack: typeof import("./node-rack")["NodeRack"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
@@ -107,7 +108,9 @@ let EFFECT_LAYOUTS: typeof import("@/components/audio/effect-params/effect-layou
 let getEffectParamDefs: typeof import("@/lib/audio/dsp/effects/param-traversal")["getEffectParamDefs"];
 
 beforeAll(async () => {
-  ({ NodeInspector, useNodeInspector } = await import("./node-inspector"));
+  ({ NodeInspector, isInspectable, useNodeInspector } = await import(
+    "./node-inspector"
+  ));
   ({ NodeRack } = await import("./node-rack"));
   ({ NodeActionsProvider } = await import("./node-actions"));
   ({ useIsMobile } = await import("@avoid.quest/ui/hooks/use-mobile"));
@@ -171,7 +174,7 @@ function createStore(): NodeStore {
         },
         { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
       ],
-      version: 1,
+      version: 2,
       viewport: { x: 0, y: 0, zoom: 1 },
     })
   );
@@ -268,6 +271,35 @@ function compressorKnobsPastFirstRow(): string[] {
     .filter((key) => sliders.has(key));
 }
 
+describe("isInspectable", () => {
+  test("every source opens its channel strip; a Merge or an output doesn't", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: { radio: null }, id: "station", position, type: "station" },
+        { id: "track", position, type: "platform" },
+        { id: "file", position, type: "file" },
+        { id: "input", position, type: "deviceIn" },
+        { data: {}, id: "merge", position, type: "merge" },
+        { data: {}, id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    expect(
+      Object.fromEntries(
+        graph.nodes.map((node) => [node.id, isInspectable(node)])
+      )
+    ).toEqual({
+      file: true,
+      input: true,
+      merge: false,
+      speakers: false,
+      station: true,
+      track: true,
+    });
+  });
+});
+
 describe("NodeInspector", () => {
   test("selecting an FX node shows its full params", () => {
     const store = createStore();
@@ -289,11 +321,12 @@ describe("NodeInspector", () => {
     expect(targets).toContain("node:comp:dryWet");
     expect(within(panel).getByRole("switch", { name: "Compressor on" }));
 
-    // A Station has nothing to inspect; nor does a multiple selection.
+    // A Station shows its channel strip; a multiple selection nothing.
     act(() => {
       nodeStoreModule.setNodeSelection({ edges: [], nodes: ["kexp"] }, store);
     });
     expect(view.queryByRole("region", { name: "Compressor" })).toBeNull();
+    expect(view.getByRole("region", { name: "KEXP" })).toBeTruthy();
     act(() => {
       nodeStoreModule.setNodeSelection(
         { edges: [], nodes: ["comp", "lp"] },
@@ -494,11 +527,48 @@ describe("NodeInspector: a Track's tracklist", () => {
           },
           { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
         ],
-        version: 1,
+        version: 2,
         viewport: { x: 0, y: 0, zoom: 1 },
       })
     );
   }
+
+  test("a Track's strip has speed with key lock, a seek bar, loop and cue; no stream details", () => {
+    const store = albumStore();
+    nodeStoreModule.setNodeSelection({ edges: [], nodes: ["album"] }, store);
+    const view = renderHarness(store);
+    const panel = view.getByRole("region", { name: "An album" });
+
+    expect(within(panel).getByRole("slider", { name: "Speed An album" }));
+    expect(within(panel).getByRole("button", { name: "Key lock An album" }));
+    expect(within(panel).getByRole("button", { name: "Loop An album" }));
+    expect(within(panel).getByRole("button", { name: "Set cue" }));
+    expect(within(panel).queryByText("Format")).toBeNull();
+
+    act(() => {
+      fireEvent.click(
+        within(panel).getByRole("button", { name: "Loop An album" })
+      );
+    });
+    const album = store.state.graph?.nodes.find((node) => node.id === "album");
+    expect(album?.type === "platform" && album.data.strip.loop).toBe(true);
+  });
+
+  test("a Station's strip shows its stream, not a transport", () => {
+    const store = createStore();
+    nodeStoreModule.setNodeSelection({ edges: [], nodes: ["kexp"] }, store);
+    const view = renderHarness(store);
+    const panel = view.getByRole("region", { name: "KEXP" });
+
+    expect(within(panel).getByRole("slider", { name: "Trim KEXP" }));
+    expect(within(panel).getByRole("slider", { name: "Pan KEXP" }));
+    expect(within(panel).getByRole("button", { name: "Solo KEXP" }));
+    expect(within(panel).getByText("Progressive")).toBeTruthy();
+    expect(within(panel).queryByRole("slider", { name: "Speed KEXP" })).toBe(
+      null
+    );
+    expect(within(panel).queryByText("Set cue")).toBeNull();
+  });
 
   test("the Rack opens an album's tracks in the inspector, the current one marked", () => {
     const view = renderHarness(albumStore());

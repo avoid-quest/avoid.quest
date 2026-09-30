@@ -48,6 +48,7 @@ import {
   type NodeGraph,
   type NodeType,
   RADIO_SOURCE_NODE_TYPES,
+  stripForType,
   TRACK_SEARCH_PLATFORMS,
   type TrackSearchPlatform,
 } from "./schema";
@@ -223,9 +224,17 @@ export function createPaletteNode(
   device: PaletteDevice | null = null,
   searchPlatform?: TrackSearchPlatform
 ): GraphNode | null {
-  if (type === "station" || type === "file") {
+  if (type === "station") {
     return {
-      data: { muted: false, radio, volume: 1 },
+      data: { muted: false, radio, strip: stripForType(type), volume: 1 },
+      id,
+      position,
+      type,
+    };
+  }
+  if (type === "file") {
+    return {
+      data: { muted: false, radio, strip: stripForType(type), volume: 1 },
       id,
       position,
       type,
@@ -233,7 +242,13 @@ export function createPaletteNode(
   }
   if (type === "platform") {
     return {
-      data: { muted: false, radio, searchPlatform, volume: 1 },
+      data: {
+        muted: false,
+        radio,
+        searchPlatform,
+        strip: stripForType(type),
+        volume: 1,
+      },
       id,
       position,
       type,

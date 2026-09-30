@@ -47,7 +47,12 @@ import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { compile } from "@/lib/node-graph/compile";
-import { removeEdges, setEffectParams, setSourceRadio } from "@/lib/node-graph/graph-edits";
+import {
+  removeEdges,
+  setEffectParams,
+  setSourceRadio,
+  setSourceStrip,
+} from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -151,7 +156,7 @@ function patch(stations: NodeInput[]): NodeGraph {
   return nodeGraphSchema.parse({
     edges: stations.map((node) => cable(node.id, "speakers")),
     nodes: [...stations, speakers],
-    version: 1,
+    version: 2,
   });
 }
 
@@ -214,13 +219,16 @@ function createTestContext(): PlaybackActionContext {
           status: "inactive",
         })
       ),
+      getPreFaderNode: mock((soundId: string) => ({ soundId })),
       getTrackProgress: mock((_soundId: string) => null),
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
       setGlobalVolume: mock((_volume: number) => undefined),
+      setKeyLock: mock((_soundId: string, _keyLock: boolean) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
       setPan: mock((_soundId: string, _pan: number) => undefined),
+      setPlaybackRate: mock((_soundId: string, _rate: number) => undefined),
       setSoundOutputConnector: mock(
         (_soundId: string, _connect: SoundOutputConnector | null) => undefined
       ),
@@ -530,7 +538,7 @@ describe("Node Playback", () => {
       nodeGraphSchema.parse({
         edges: [cable("a", "verb"), cable("verb", "speakers")],
         nodes: [station("a"), reverb("verb"), speakers],
-        version: 1,
+        version: 2,
       })
     );
     const harness = createHarness();
@@ -1568,7 +1576,7 @@ describe("Node Playback native strip", () => {
     } else {
       edges.push(cable("a", "pan"));
     }
-    return nodeGraphSchema.parse({ edges, nodes, version: 1 });
+    return nodeGraphSchema.parse({ edges, nodes, version: 2 });
   }
 
   test("a pan back to centre and a removed filter reach a playing sound", async () => {
@@ -1864,7 +1872,7 @@ describe("Node Playback lane outputs", () => {
       nodeGraphSchema.parse({
         edges: [],
         nodes: [station("a"), speakers],
-        version: 1,
+        version: 2,
       })
     );
     const harness = createHarness();
@@ -1893,7 +1901,7 @@ describe("Node Playback lane outputs", () => {
         nodeGraphSchema.parse({
           edges: [cable("a", "verb"), cable("verb", "speakers")],
           nodes: [station("a"), reverb("verb"), speakers],
-          version: 1,
+          version: 2,
         }),
       harness.store
     );
@@ -1935,7 +1943,7 @@ describe("Node Playback lane outputs", () => {
       nodeGraphSchema.parse({
         edges: [cable("a", "verb"), cable("verb", "speakers")],
         nodes: [station("a"), reverb("verb", { dryWet }), speakers],
-        version: 1,
+        version: 2,
       });
     commitNodeGraph(withReverb(0.5), harness.store);
     harness.playback.flush();
@@ -1990,7 +1998,7 @@ describe("Node Playback lane outputs", () => {
             cable("b", "speakers"),
           ],
           nodes: [station("a"), reverb("verb"), station("b"), speakers],
-          version: 1,
+          version: 2,
         }),
       harness.store
     );
@@ -2348,7 +2356,7 @@ describe("Node Playback key cables", () => {
         },
         speakers,
       ],
-      version: 1,
+      version: 2,
     });
   }
 
@@ -2495,7 +2503,7 @@ describe("Node Playback audio inputs and output devices", () => {
         return cable(source, target);
       }),
       nodes,
-      version: 1,
+      version: 2,
     });
   }
 
@@ -2942,7 +2950,7 @@ describe("Node Playback audio inputs and output devices", () => {
           { ...cable("a", "desk"), gain: 1.5 },
         ],
         nodes: [station("a"), output("desk", "usb"), speakers],
-        version: 1,
+        version: 2,
       })
     );
     const { createElement, elements } = fakeElements();
@@ -4304,5 +4312,285 @@ describe("Node Playback: Track and File sources", () => {
     );
     await harness.playback.setPlaying("file", true);
     expect(getPlaybackChannelRuntime(channelOf("file")).isPlaying).toBe(true);
+  });
+});
+
+describe("Node Playback: channel strips", () => {
+  function withStrip(nodeId: string, strip: Record<string, unknown>) {
+    return (graph: NodeGraph): NodeGraph =>
+      setSourceStrip(graph, nodeId, strip);
+  }
+
+  /** Lane outputs whose levels the test can read, per lane and output. */
+  function levelHarness() {
+    let getLevels: ((laneId: string) => ReadonlyMap<string, number>) | null =
+      null;
+    const harness = createHarness({
+      laneOutputs: (options) => {
+        ({ getLevels } = options);
+        return createNodeLaneOutputs(options);
+      },
+    });
+    const levels = (laneId: string) =>
+      Object.fromEntries(getLevels?.(laneId) ?? new Map());
+    return { harness, levels };
+  }
+
+  test("a Station's +6 dB trim doubles its cable level and never writes its fader", async () => {
+    insertNodeSession(patch([station("a", { volume: 0.7 })]));
+    const { harness, levels } = levelHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    await commit(harness, withStrip("a", { trimDb: 6 }));
+
+    expect(levels("a").speakers).toBeCloseTo(1.995, 2);
+    expect(harness.context.channels.setVolume).not.toHaveBeenCalled();
+    expect(
+      harness.context.audioEngine.volume.setChannelVolume
+    ).not.toHaveBeenCalled();
+    expect(getPlaybackChannel("node", channelOf("a"))?.volume).toBe(0.7);
+  });
+
+  test("strip pan adds to a Pan node's pan, clamped, on the playing sound", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [cable("a", "pan"), cable("pan", "speakers")],
+        nodes: [
+          station("a"),
+          {
+            data: { pan: 0.75 },
+            id: "pan",
+            position: { x: 0, y: 0 },
+            type: "pan",
+          },
+          speakers,
+        ],
+        version: 2,
+      })
+    );
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    await commit(harness, withStrip("a", { pan: 0.5 }));
+
+    expect(harness.context.audio.setPan).toHaveBeenLastCalledWith(
+      soundOf("a"),
+      1
+    );
+    expect(getPlaybackChannel("node", channelOf("a"))?.pan).toBe(1);
+  });
+
+  test("soloing one of three Stations silences the other two lanes, not their faders", async () => {
+    insertNodeSession(patch([station("a"), station("b"), station("c")]));
+    const { harness, levels } = levelHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    (harness.context.channels.setVolume as ReturnType<typeof mock>).mockClear();
+    (harness.context.channels.setMuted as ReturnType<typeof mock>).mockClear();
+
+    await commit(harness, withStrip("b", { solo: true }));
+
+    expect([levels("a"), levels("b"), levels("c")]).toEqual([
+      { speakers: 0 },
+      { speakers: 1 },
+      { speakers: 0 },
+    ]);
+    expect(harness.context.channels.setVolume).not.toHaveBeenCalled();
+    expect(harness.context.channels.setMuted).not.toHaveBeenCalled();
+
+    await commit(harness, withStrip("b", { solo: false }));
+
+    expect([levels("a"), levels("b"), levels("c")]).toEqual([
+      { speakers: 1 },
+      { speakers: 1 },
+      { speakers: 1 },
+    ]);
+  });
+
+  test("a Track's speed and key lock reach its sound as it plays and on each change", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await commit(harness, withStrip("video", { keyLock: false, speed: 1.5 }));
+    (
+      harness.context.audio.setPlaybackRate as ReturnType<typeof mock>
+    ).mockClear();
+
+    // A load resets the element's rate, so playing writes it again.
+    await harness.playback.setPlaying("video", true);
+
+    expect(harness.context.audio.setPlaybackRate).toHaveBeenLastCalledWith(
+      soundOf("video"),
+      1.5
+    );
+    expect(harness.context.audio.setKeyLock).toHaveBeenLastCalledWith(
+      soundOf("video"),
+      false
+    );
+    expect(getPlaybackChannel("node", channelOf("video"))?.speed).toBe(1.5);
+
+    await commit(harness, withStrip("video", { speed: 0.5 }));
+
+    expect(harness.context.audio.setPlaybackRate).toHaveBeenLastCalledWith(
+      soundOf("video"),
+      0.5
+    );
+  });
+
+  test("a Station has no transport: no speed reaches its sound", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    await commit(harness, withStrip("a", { speed: 1.5 }));
+
+    expect(harness.context.audio.setPlaybackRate).not.toHaveBeenCalled();
+    expect(
+      harness.store.state.graph?.nodes.find((node) => node.id === "a")?.data
+    ).not.toHaveProperty("strip.speed");
+  });
+
+  test("seek, Set cue and Cue go to the Track's sound", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    harness.context.audio.getTrackProgress = mock(() => ({
+      duration: 180,
+      position: 42.5,
+    }));
+    await harness.playback.activate();
+    await harness.playback.setPlaying("video", true);
+
+    harness.playback.seek("video", 90);
+    expect(harness.context.audioEngine.playback.seek).toHaveBeenLastCalledWith(
+      soundOf("video"),
+      90
+    );
+
+    harness.playback.setCue("video");
+    await harness.playback.whenSettled();
+    const node = harness.store.state.graph?.nodes.find(
+      (entry) => entry.id === "video"
+    );
+    expect(node?.type === "platform" && node.data.strip.cue).toBe(42.5);
+
+    harness.playback.jumpToCue("video");
+    expect(harness.context.audioEngine.playback.seek).toHaveBeenLastCalledWith(
+      soundOf("video"),
+      42.5
+    );
+  });
+
+  test("a looping Track repeats at its end instead of moving on", async () => {
+    insertNodeSession(patch([trackNode("album", album)]));
+    const resolveStream = mock(async () => null);
+    const harness = createHarness({ resolveStream });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await commit(harness, withStrip("album", { loop: true }));
+    await harness.playback.setPlaying("album", true);
+    const plays = (harness.context.audio.playSound as ReturnType<typeof mock>)
+      .mock.calls.length;
+
+    laneWatcher(harness.context, "album")(audioState({ hasEnded: true }));
+    await harness.playback.whenSettled();
+
+    expect(harness.context.audioEngine.playback.seek).toHaveBeenCalledWith(
+      soundOf("album"),
+      0
+    );
+    expect(
+      (harness.context.audio.playSound as ReturnType<typeof mock>).mock.calls
+    ).toHaveLength(plays + 1);
+    // Still on its first track: the loop kept it there.
+    const node = harness.store.state.graph?.nodes.find(
+      (entry) => entry.id === "album"
+    );
+    expect(node?.type === "platform" && node.data.radio?.streamUrl).toBe(
+      album.streamUrl
+    );
+    expect(getPlaybackChannel("node", channelOf("album"))?.repeat).toBe(true);
+  });
+
+  test("cue listen taps the playing Track pre-fader onto the cue bus, and off again", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const registration = {
+      cleanup: mock(() => undefined),
+      enabled: true,
+      replaceTap: mock((_tap: AudioNode | null) => undefined),
+      setEnabled: mock((_enabled: boolean) => undefined),
+    };
+    const registerCueDeck = mock(
+      (_deckId: string, _tap: AudioNode | null, _enabled?: boolean) =>
+        registration
+    );
+    const context = createTestContext();
+    const store = createNodeStore();
+    instantStarts(context);
+    const playback = getNodePlayback({
+      backendBadges: new Store<NodeBackendBadges>({}),
+      ctx: context,
+      cueOutput: () => ({ registerCueDeck }),
+      effects: { change: mock(async () => ({}) as ChannelEffectsResult) },
+      fadeOutSound: mock(async () => undefined),
+      getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
+      sinkStatuses: new Store<NodeSinkStatuses>({}),
+      store,
+    });
+    await playback.activate();
+    await playback.setPlaying("video", true);
+    expect(registerCueDeck).not.toHaveBeenCalled();
+
+    commitNodeGraph(withStrip("video", { cueListen: true }), store);
+    await playback.whenSettled();
+
+    expect(registerCueDeck).toHaveBeenCalledWith(
+      "node:video",
+      { soundId: soundOf("video") } as unknown as AudioNode,
+      true
+    );
+    expect(getPlaybackChannel("node", channelOf("video"))?.cueEnabled).toBe(
+      true
+    );
+
+    commitNodeGraph(withStrip("video", { cueListen: false }), store);
+    await playback.whenSettled();
+
+    expect(registration.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a loaded patch has every Audio input's Monitor off", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [cable("mic", "speakers")],
+        nodes: [
+          {
+            data: { deviceId: "mic", strip: { monitor: true } },
+            id: "mic",
+            position: { x: 0, y: 0 },
+            type: "deviceIn",
+          },
+          speakers,
+        ],
+        version: 2,
+      })
+    );
+    const harness = createHarness();
+
+    await harness.playback.activate();
+
+    const node = harness.store.state.graph?.nodes.find(
+      (entry) => entry.id === "mic"
+    );
+    expect(node?.type === "deviceIn" && node.data.strip.monitor).toBe(false);
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
   });
 });

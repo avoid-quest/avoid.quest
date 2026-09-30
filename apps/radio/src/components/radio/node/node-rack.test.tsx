@@ -146,7 +146,7 @@ function buildGraph(): NodeGraph {
       station("hidden", "Hidden FM", false),
       { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
     ],
-    version: 1,
+    version: 2,
     viewport: { x: 0, y: 0, zoom: 1 },
   } satisfies NodeGraphInput);
 }
@@ -246,7 +246,7 @@ describe("NodeRack", () => {
         },
         { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
       ],
-      version: 1,
+      version: 2,
     } satisfies NodeGraphInput);
     const { controls, view } = renderRack(graph);
 
@@ -294,6 +294,36 @@ describe("NodeRack", () => {
       expect(controls.toggleMute).toHaveBeenLastCalledWith(lane.id);
     }
     expect(controls.setPlaying).toHaveBeenCalledTimes(plan.lanes.size);
+  });
+
+  test("every lane row has its compact strip: meter, M and S, pan, and its full strip a click away", () => {
+    const graph = buildGraph();
+    const plan = compile(graph, ENV);
+    const { controls, view } = renderRack(graph);
+
+    for (const lane of plan.lanes.values()) {
+      const { name } = lane.radio;
+      const row = view
+        .getAllByRole("listitem")
+        .find(
+          (item) =>
+            item
+              .querySelector("[data-node-id]")
+              ?.getAttribute("data-node-id") === lane.id
+        ) as HTMLElement;
+      expect(row.querySelector('[data-slot="strip-meter"]')).toBeTruthy();
+      expect(within(row).getByRole("button", { name: `Solo ${name}` }));
+      expect(within(row).getByRole("slider", { name: `Pan ${name}` }));
+
+      fireEvent.click(
+        within(row).getByRole("button", { name: `Mute channel ${name}` })
+      );
+      expect(controls.toggleMute).toHaveBeenLastCalledWith(lane.id);
+      fireEvent.click(
+        within(row).getByRole("button", { name: `Channel strip of ${name}` })
+      );
+      expect(inspectNode).toHaveBeenLastCalledWith(lane.id);
+    }
   });
 
   test("a lane's FX chip opens the inspector for that effect", () => {
@@ -358,7 +388,7 @@ describe("NodeRack", () => {
       nodeGraphSchema.parse({
         edges: [],
         nodes: [{ data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" }],
-        version: 1,
+        version: 2,
         viewport: { x: 0, y: 0, zoom: 1 },
       } satisfies NodeGraphInput)
     );

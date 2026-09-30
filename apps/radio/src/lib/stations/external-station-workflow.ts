@@ -409,6 +409,11 @@ function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
     name: normalizeRequiredString(station.name),
     placeTitle,
     platformMetadata: {
+      // Kept for the channel strip; a saved radio can't learn them later.
+      ...(station.bitrate > 0 ? { bitrate: station.bitrate } : {}),
+      ...(normalizeOptionalString(station.codec)
+        ? { codec: normalizeOptionalString(station.codec) }
+        : {}),
       hls: station.hls,
       itemType: "station",
       platform: "radio-browser",

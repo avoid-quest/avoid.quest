@@ -161,7 +161,7 @@ function createStore() {
       },
       { data: {}, id: "mix", position, type: "merge" },
     ],
-    version: 1,
+    version: 2,
   });
   return nodeStoreModule.createNodeStore(setBandCount(graph, "bands", 3));
 }

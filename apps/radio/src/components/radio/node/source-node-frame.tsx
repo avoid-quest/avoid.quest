@@ -19,7 +19,8 @@ import { INTERACTIVE, keepControlKeys, NodePort } from "./module-frame";
  *
  * The frame a Station, Track and File share: one card width, a dashed
  * empty slot whose body is how it fills (search, platform search, file
- * form), the play and volume strip, and the one audio out port. They take
+ * form), the play and volume strip with the compact channel strip under
+ * it, and the one audio out port. They take
  * the same place on the canvas, so swapping one for another (a radio link
  * pasted into a Track) keeps the patch's shape.
  */
@@ -91,9 +92,14 @@ export type SourceTransportProps = {
   /** A fader release, where the patch takes an undo step. */
   onVolumeCommit?: () => void;
   onToggleMute: () => void;
+  /** The compact channel strip under play and the fader. */
+  strip?: React.ReactNode;
 };
 
-/** The strip under a filled source: play or pause, and its fader. */
+/**
+ * The strip under a filled source: play or pause, its fader, and its
+ * compact channel strip.
+ */
 export function SourceTransport({
   target,
   isPlaying,
@@ -104,6 +110,7 @@ export function SourceTransport({
   onVolumeChange,
   onVolumeCommit,
   onToggleMute,
+  strip,
 }: SourceTransportProps) {
   const isLive = isPlaying && !isLoading;
   return (
@@ -111,30 +118,33 @@ export function SourceTransport({
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
     <div
       className={cn(
-        "flex items-center gap-2 border-border/50 border-t px-3 py-1.5",
+        "flex flex-col gap-1 border-border/50 border-t px-3 py-1.5",
         INTERACTIVE
       )}
       onKeyDown={keepControlKeys}
     >
-      <PlayPauseButton
-        className="size-7 shrink-0"
-        iconClassName="size-3.5"
-        isLoading={isLoading}
-        isPlaying={isPlaying}
-        label={target}
-        onClick={onTogglePlayPause}
-        size="sm"
-        variant={isLive ? "outline" : "default"}
-      />
-      <VolumeControl
-        className="flex-1"
-        isMuted={muted || volume === 0}
-        onToggleMute={onToggleMute}
-        onVolumeChange={onVolumeChange}
-        onVolumeCommit={onVolumeCommit}
-        target={target}
-        volume={volume}
-      />
+      <div className="flex items-center gap-2">
+        <PlayPauseButton
+          className="size-7 shrink-0"
+          iconClassName="size-3.5"
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          label={target}
+          onClick={onTogglePlayPause}
+          size="sm"
+          variant={isLive ? "outline" : "default"}
+        />
+        <VolumeControl
+          className="flex-1"
+          isMuted={muted || volume === 0}
+          onToggleMute={onToggleMute}
+          onVolumeChange={onVolumeChange}
+          onVolumeCommit={onVolumeCommit}
+          target={target}
+          volume={volume}
+        />
+      </div>
+      {strip}
     </div>
   );
 }

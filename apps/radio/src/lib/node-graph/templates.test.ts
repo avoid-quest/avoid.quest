@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { parsePlaybackSessionRecord } from "@/lib/collections/playback-sessions";
 import { compile } from "./compile";
-import { nodeGraphSchema } from "./schema";
+import { DEFAULT_STATION_STRIP, nodeGraphSchema } from "./schema";
 import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
@@ -37,7 +37,12 @@ describe("starter", () => {
 
     expect(graph.nodes).toEqual([
       expect.objectContaining({
-        data: { muted: false, radio: null, volume: 1 },
+        data: {
+          muted: false,
+          radio: null,
+          strip: DEFAULT_STATION_STRIP,
+          volume: 1,
+        },
         id: STARTER_STATION_ID,
         type: "station",
       }),

@@ -1,10 +1,12 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
+
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { DEFAULT_MEDIA_STRIP } from "@/lib/node-graph/schema";
 import {
   forgetLocalFileUrls,
   keepLocalFileUrl,
@@ -162,7 +164,7 @@ function TrackHarness({ onFill }: { onFill: (radio: Radio) => void }) {
   const [radio, setRadio] = useState<Radio | null>(null);
   return withClient(
     <TrackNodeBody
-      data={{ muted: false, radio, volume: 1 }}
+      data={{ muted: false, radio, strip: DEFAULT_MEDIA_STRIP, volume: 1 }}
       error={null}
       onLoad={(picked) => {
         onFill(picked);
@@ -194,7 +196,12 @@ describe("TrackNodeBody", () => {
     const view = render(
       withClient(
         <TrackNodeBody
-          data={{ muted: false, radio: null, volume: 1 }}
+          data={{
+            muted: false,
+            radio: null,
+            strip: DEFAULT_MEDIA_STRIP,
+            volume: 1,
+          }}
           error={null}
           onLoad={noop}
           onSearchPlatformChange={onSearchPlatformChange}
@@ -222,7 +229,12 @@ describe("TrackNodeBody", () => {
     const view = render(
       withClient(
         <TrackNodeBody
-          data={{ muted: false, radio: null, volume: 1 }}
+          data={{
+            muted: false,
+            radio: null,
+            strip: DEFAULT_MEDIA_STRIP,
+            volume: 1,
+          }}
           error={null}
           onLoad={noop}
           onSearchPlatformChange={noop}
@@ -288,7 +300,7 @@ describe("FileNodeBody", () => {
       onLoadFile,
       view: render(
         <FileNodeBody
-          data={{ muted: false, radio, volume: 1 }}
+          data={{ muted: false, radio, strip: DEFAULT_MEDIA_STRIP, volume: 1 }}
           error={null}
           onLoadFile={onLoadFile}
           onLoadUrl={async () => null}

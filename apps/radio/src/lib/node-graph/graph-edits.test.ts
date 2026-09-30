@@ -27,7 +27,12 @@ import {
 import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
 import { addPaletteNode } from "./palette";
 import { diff } from "./reconcile";
-import type { EffectNodeType, NodeGraph, NodeType } from "./schema";
+import {
+  DEFAULT_INPUT_STRIP,
+  type EffectNodeType,
+  type NodeGraph,
+  type NodeType,
+} from "./schema";
 import { seriesToParallel } from "./series-parallel";
 import {
   buildNodeGraphFromTemplate,
@@ -783,6 +788,7 @@ describe("setDeviceParams", () => {
       deviceLabel: "Desk mic",
       echoCancellation: false,
       muted: false,
+      strip: DEFAULT_INPUT_STRIP,
       volume: 1,
     });
     expect(graph.nodes.find((node) => node.id === "deviceOut")?.data).toEqual({

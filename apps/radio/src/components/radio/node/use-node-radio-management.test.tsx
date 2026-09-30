@@ -1,4 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
+
 import {
   afterEach,
   beforeAll,
@@ -21,6 +22,7 @@ import {
   type NodeStore,
 } from "@/lib/node-graph/node-store";
 import type { GraphNode } from "@/lib/node-graph/schema";
+import { DEFAULT_STATION_STRIP } from "@/lib/node-graph/schema";
 import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
@@ -350,7 +352,12 @@ describe("useNodeRadioManagement", () => {
         nodes: [
           ...graph.nodes,
           {
-            data: { muted: false, radio: kexp, volume: 1 },
+            data: {
+              muted: false,
+              radio: kexp,
+              strip: DEFAULT_STATION_STRIP,
+              volume: 1,
+            },
             id: "src-kexp-2",
             position: { x: 0, y: 320 },
             type: "station",

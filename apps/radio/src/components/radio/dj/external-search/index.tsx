@@ -38,8 +38,12 @@ function ExternalSearchContent({
     "songs"
   );
   const platform = lockedPlatform ?? selectedPlatform;
+  // Links and results resolve independently; only the latest pick may load,
+  // and a new search or filter drops a pending one.
+  const latestPick = useRef<"link" | "result" | null>(null);
 
   const clearResults = () => {
+    latestPick.current = null;
     setError(null);
     setResults([]);
     setHasSearched(false);
@@ -69,10 +73,12 @@ function ExternalSearchContent({
     setHasSearched(true);
   };
 
-  // Links and results resolve independently; only the latest pick may load.
-  const latestPick = useRef<"link" | "result" | null>(null);
   const { mutate: loadLink, isPending: isLoadingLink } = useDjTrackLoad({
-    onError: (message) => setError(message),
+    onError: (message) => {
+      if (latestPick.current === "link") {
+        setError(message);
+      }
+    },
     onLoad: (radio) => {
       if (latestPick.current === "link") {
         onLoad(radio);

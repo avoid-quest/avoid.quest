@@ -192,7 +192,8 @@ export function createDefaultChannel(
   };
 }
 
-function normalizeRadio(value: unknown): Radio | null {
+/** A channel radio as the session schema accepts it, or null. */
+export function normalizeRadio(value: unknown): Radio | null {
   const parsed = radioSchema.safeParse(value);
   return parsed.success ? (parsed.data as Radio | null) : null;
 }

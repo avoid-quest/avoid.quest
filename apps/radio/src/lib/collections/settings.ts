@@ -97,10 +97,16 @@ export function migrateLegacyPlayerMode(): void {
   if (next === mode) {
     return;
   }
-  replacedPlayerMode ??= String(mode);
-  settingsCollection.update(SETTINGS_ID, (draft) => {
-    draft.player.mode = next;
-  });
+  try {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.player.mode = next;
+    });
+    replacedPlayerMode ??= String(mode);
+  } catch (error) {
+    // A record stale elsewhere fails validation on update. Readers normalise
+    // the mode, so startup goes on rather than failing here.
+    console.warn("[settings] Could not rewrite the legacy player mode", error);
+  }
 }
 
 /** The mode `migrateLegacyPlayerMode` first replaced, for the backup. */

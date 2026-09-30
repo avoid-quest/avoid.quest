@@ -22,9 +22,10 @@ import {
   type StationSeed,
 } from "@/lib/node-graph/templates";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
-import type {
-  PlaybackSessionRecord,
-  playbackSessionsCollection,
+import {
+  normalizeRadio,
+  type PlaybackSessionRecord,
+  type playbackSessionsCollection,
 } from "../playback-sessions";
 import type { radiosCollection } from "../radios";
 import type { sessionRadiosCollection } from "../session-radios";
@@ -75,7 +76,12 @@ function clampUnit(value: unknown, fallback: number): number {
     : fallback;
 }
 
-/** A channel radio as stored, or null when it is not a playable station. */
+/**
+ * A channel radio as the session schema accepts it, or null when it is not a
+ * playable station. A snapshot from an older release can hold a field the
+ * schema now rejects (a retired metadata kind, say); the station then keeps
+ * its id, name and stream, so the insert cannot fail on it.
+ */
 function readRadio(value: unknown): Radio | null {
   if (
     !(
@@ -86,7 +92,19 @@ function readRadio(value: unknown): Radio | null {
   ) {
     return null;
   }
-  return value as unknown as Radio;
+  const radio = normalizeRadio(value);
+  if (radio) {
+    return radio;
+  }
+  const id =
+    typeof value.id === "string" || typeof value.id === "number"
+      ? value.id
+      : undefined;
+  return {
+    ...(id === undefined ? {} : { id }),
+    name: value.name,
+    streamUrl: value.streamUrl,
+  };
 }
 
 /**
@@ -214,13 +232,22 @@ export function migrateMultipleSession(
   if (!sessions.state.has("node")) {
     const mode = getReplacedPlayerMode() ?? getSettings()?.player.mode ?? null;
     backupMultipleRecord(multiple, mode, storage);
-    // The insert validates the new record.
-    sessions.insert(
-      buildNodeSessionFromMultipleRecord(
-        multiple,
-        createKeptRadioTest(collections)
-      )
-    );
+    try {
+      // The insert validates the new record.
+      sessions.insert(
+        buildNodeSessionFromMultipleRecord(
+          multiple,
+          createKeptRadioTest(collections)
+        )
+      );
+    } catch (error) {
+      // Never block startup on an old record: the backup holds it, and init
+      // builds Node from "Start from Multiple" when "node" is missing.
+      console.warn(
+        "[multiple-to-node] Could not migrate the Multiple session",
+        error
+      );
+    }
   }
   // Delete does not validate, so a stale record still goes.
   sessions.delete("multiple");

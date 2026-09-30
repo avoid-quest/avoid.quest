@@ -15,6 +15,11 @@ export type RawStorageScenarioOptions = {
   restoreStateOnLoad: boolean;
   /** After init, sync a "multiple" record in the way another tab would. */
   crossTab: boolean;
+  /**
+   * Seed settings that are stale elsewhere too, so any update of them fails
+   * validation. Init must still finish.
+   */
+  staleSettings?: boolean;
 };
 
 export type RawStorageScenarioResult = {
@@ -29,6 +34,9 @@ export type RawStorageScenarioResult = {
   crossTabNodeUnchanged: boolean | null;
   /** Whether the synced "multiple" record reached the collection at all. */
   crossTabMultipleSynced: boolean | null;
+  /** Session ids and mode as written to localStorage, not as held in memory. */
+  storedSessionIds: string[];
+  storedMode: unknown;
 };
 
 const RESULT_PREFIX = "RAW_STORAGE_SCENARIO:";
@@ -98,7 +106,10 @@ const station = (id: string) => ({
   streamUrl: `https://radio.example/${id}.mp3`,
 });
 
-/** A channel as an older release stored it: no `order`, `autoplay` or cue. */
+/**
+ * A channel as an older release stored it: no `order`, `autoplay` or cue, and
+ * KEXP's snapshot holds a metadata kind the current schema no longer knows.
+ */
 function legacyChannel(id: string, volume: number) {
   return {
     channelFilter: 0,
@@ -114,7 +125,10 @@ function legacyChannel(id: string, volume: number) {
     id: `multi:${id}`,
     muted: false,
     pan: 0,
-    radio: station(id),
+    radio:
+      id === "kexp"
+        ? { ...station(id), metadataConfig: { kind: "retired-provider" } }
+        : station(id),
     role: "multiple",
     speed: 1,
     volume,
@@ -142,6 +156,7 @@ async function settle(): Promise<void> {
 async function runScenario({
   crossTab,
   restoreStateOnLoad,
+  staleSettings = false,
 }: RawStorageScenarioOptions): Promise<RawStorageScenarioResult> {
   const localStorage = createMemoryStorage();
   const sessionStorage = createMemoryStorage();
@@ -160,7 +175,11 @@ async function runScenario({
   localStorage.setItem(
     "radio-app-settings",
     storedRecords([
-      { id: "app-settings", player: { mode: "multiple", restoreStateOnLoad } },
+      {
+        id: "app-settings",
+        player: { mode: "multiple", restoreStateOnLoad },
+        ...(staleSettings ? { audio: { delay: { mainDelayMs: 9000 } } } : {}),
+      },
     ])
   );
   localStorage.setItem(
@@ -247,6 +266,10 @@ async function runScenario({
   await settle();
 
   const backup = localStorage.getItem(BACKUP_KEY);
+  const storedSessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) ?? "{}");
+  const storedSettings = JSON.parse(
+    localStorage.getItem("radio-app-settings") ?? "{}"
+  );
   return {
     backup: backup ? JSON.parse(backup) : null,
     crossTabMultipleSynced,
@@ -259,6 +282,10 @@ async function runScenario({
     mode: collections.getSettings()?.player.mode,
     nodeStations,
     sessionIds: [...playbackSessionsCollection.state.keys()].sort(),
+    storedMode: storedSettings["s:app-settings"]?.data?.player?.mode,
+    storedSessionIds: Object.values(storedSessions)
+      .map((entry) => (entry as { data?: { id?: string } }).data?.id ?? "")
+      .sort(),
   };
 }
 

@@ -16,6 +16,7 @@ import { addSessionRadio, sessionRadiosCollection } from "../session-radios";
 import { getSettings, settingsCollection } from "../settings";
 import {
   buildNodeGraphFromMultipleRecord,
+  buildNodeSessionFromMultipleRecord,
   MULTIPLE_BACKUP_STORAGE_KEY,
   type MultipleBackup,
   migrateMultipleSession,
@@ -303,6 +304,57 @@ describe("migrateMultipleSession", () => {
       expect.objectContaining({ type: "speakers" }),
     ]);
   });
+
+  test("keeps a station whose old snapshot the schema now rejects", () => {
+    const stale = {
+      ...radio("kexp"),
+      logoUrl: "https://radio.example/kexp.png",
+      metadataConfig: { kind: "retired-provider" },
+    };
+    const valid: Radio = {
+      ...radio("nts"),
+      metadataConfig: { channel: "1", kind: "nts-live-api" },
+    };
+
+    const session = buildNodeSessionFromMultipleRecord(
+      { channels: [{ radio: stale }, { radio: valid }], id: "multiple" },
+      () => true
+    );
+
+    // The record the migration inserts passes the session schema.
+    expect(() => parsePlaybackSessionRecord(session)).not.toThrow();
+    expect(session.channels.map((channel) => channel.radio)).toEqual([
+      radio("kexp"),
+      valid,
+    ]);
+  });
+
+  test("still deletes multiple when the node insert fails", () => {
+    const warn = mock(() => undefined);
+    const originalWarn = console.warn;
+    console.warn = warn;
+    const deleted: string[] = [];
+    const sessions = {
+      delete: (id: string) => deleted.push(id),
+      insert: () => {
+        throw new Error("SchemaValidationError");
+      },
+      state: new Map([["multiple", { channels: [], id: "multiple" }]]),
+    } as unknown as typeof playbackSessionsCollection;
+    const storage = createMemoryStorage();
+
+    try {
+      expect(() =>
+        migrateMultipleSession({ ...collections, sessions }, storage)
+      ).not.toThrow();
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(deleted).toEqual(["multiple"]);
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("initializePlaybackSessions", () => {
@@ -408,6 +460,10 @@ describe("from raw localStorage", () => {
       expect(result.errors).toEqual([]);
       expect(result.mode).toBe("node");
       expect(result.sessionIds).toEqual(["dj", "node", "single"]);
+      // What reaches storage holds no "multiple" either, so dropping it from
+      // the schemas cannot fail a later load.
+      expect(result.storedMode).toBe("node");
+      expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
       expect(result.backup?.mode).toBe("multiple");
       // Restore keeps the kept stations and the old master; without it,
       // Node is rebuilt from the enabled saved and session stations.
@@ -428,5 +484,19 @@ describe("from raw localStorage", () => {
     expect(result.crossTabMultipleSynced).toBe(true);
     expect(result.crossTabNodeUnchanged).toBe(true);
     expect(result.mode).toBe("node");
+    expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
+  });
+
+  test("settings that fail validation elsewhere do not stop init", async () => {
+    const result = await runRawStorageScenario({
+      crossTab: false,
+      restoreStateOnLoad: true,
+      staleSettings: true,
+    });
+
+    // The mode could not be rewritten, but the sessions still migrated.
+    expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
+    expect(result.nodeStations).toEqual(["src-kexp", "src-rg_live"]);
+    expect(result.backup?.mode).toBe("multiple");
   });
 });

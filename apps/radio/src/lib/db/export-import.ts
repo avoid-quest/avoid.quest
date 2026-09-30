@@ -193,6 +193,7 @@ function applyImportedChanges(
       const collections = [
         radiosCollection,
         settingsCollection,
+        sessionRadiosCollection,
         playbackSessionsCollection,
       ] as const;
       const attempted: (typeof collections)[number][] = [];

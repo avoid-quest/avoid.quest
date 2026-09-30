@@ -246,6 +246,7 @@ function Canvas({
   const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
   const insertTargetRef = useRef<InsertTarget | null>(null);
   const probedRef = useRef<{ node: string; edge: string | null } | null>(null);
+  const insertionCanceledRef = useRef(false);
   const {
     fitView,
     flowToScreenPosition,
@@ -281,6 +282,42 @@ function Canvas({
         ? previous
         : target
     );
+  };
+
+  const cancelInsertion = () => {
+    insertionCanceledRef.current = true;
+    probedRef.current = null;
+    aimInsert(null);
+  };
+
+  const startInsertion = () => {
+    insertionCanceledRef.current = false;
+    probedRef.current = null;
+    aimInsert(null);
+  };
+
+  // React Flow aborts a multi-touch drag without calling onNodeDragStop,
+  // but still emits its final position changes. Cancel before those arrive.
+  const handleTouchMoveCapture = (event: React.TouchEvent) => {
+    if (event.touches.length > 1) {
+      cancelInsertion();
+    }
+  };
+
+  const handleTouchStartCapture = (event: React.TouchEvent) => {
+    if (event.touches.length === 1) {
+      startInsertion();
+    } else {
+      cancelInsertion();
+    }
+  };
+
+  const handleLostPointerCapture = (event: React.PointerEvent) => {
+    // Touch implicitly releases capture after pointerup, before touchend.
+    // That normal release must still allow React Flow to commit the drop.
+    if (event.buttons > 0) {
+      cancelInsertion();
+    }
   };
 
   // React Flow can call onNodesChange and onEdgesChange back to back in one
@@ -319,7 +356,10 @@ function Canvas({
     // that same step.
     if (dropped.size > 0) {
       const aimed: InsertTarget | null = insertTargetRef.current;
-      const insert = aimed && dropped.has(aimed.node) ? aimed : null;
+      const insert =
+        !insertionCanceledRef.current && aimed && dropped.has(aimed.node)
+          ? aimed
+          : null;
       if (insert) {
         aimInsert(null);
         probedRef.current = null;
@@ -486,7 +526,12 @@ function Canvas({
     dragged: readonly { id: string }[]
   ) => {
     const latest = nodeStore.state.graph;
-    if (!latest || dragged.length !== 1 || !isLoose(latest, node.id)) {
+    if (
+      insertionCanceledRef.current ||
+      !latest ||
+      dragged.length !== 1 ||
+      !isLoose(latest, node.id)
+    ) {
       probedRef.current = null;
       aimInsert(null);
       return;
@@ -665,7 +710,16 @@ function Canvas({
   }, [flowToScreenPosition, getInternalNode, getZoom, reveal, setCenter]);
 
   return (
-    <div className="absolute inset-0" ref={wrapperRef}>
+    <div
+      className="absolute inset-0"
+      onLostPointerCapture={handleLostPointerCapture}
+      onMouseDownCapture={startInsertion}
+      onPointerCancelCapture={cancelInsertion}
+      onTouchCancelCapture={cancelInsertion}
+      onTouchMoveCapture={handleTouchMoveCapture}
+      onTouchStartCapture={handleTouchStartCapture}
+      ref={wrapperRef}
+    >
       <ReactFlow
         ariaLabelConfig={NODE_ARIA_LABELS}
         connectionRadius={24}

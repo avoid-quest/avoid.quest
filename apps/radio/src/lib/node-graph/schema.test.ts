@@ -79,7 +79,7 @@ describe("migrateNodeGraph", () => {
   });
 
   test("accepts disconnected nodes beside a single Speakers", () => {
-    const raw = { ...multipleLayout(), edges: [] };
+    const raw = { ...migratedLayout(), edges: [] };
     const result = migrateNodeGraph(raw);
     expect(nodeGraphSchema.safeParse(raw).success).toBe(true);
     expect(result.status).toBe("ok");
@@ -177,6 +177,7 @@ describe("migrateNodeGraph", () => {
       edges: [],
       nodes: [
         { data: { radio: null, strip }, id: "file", position, type: "file" },
+        { id: "speakers", position, type: "speakers" },
       ],
       version: 2,
     });

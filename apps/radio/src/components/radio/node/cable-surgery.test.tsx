@@ -66,7 +66,7 @@ const { insertNodeOnEdge } = await import("@/lib/node-graph/graph-edits");
 const { seriesToParallel } = await import("@/lib/node-graph/series-parallel");
 const { toast } = await import("sonner");
 const { createNodeStore } = await import("@/lib/node-graph/node-store");
-const { addPaletteNode } = await import("@/lib/node-graph/palette");
+const { createPaletteNode } = await import("@/lib/node-graph/palette");
 const { diff } = await import("@/lib/node-graph/reconcile");
 const { buildNodeGraphFromTemplate } = await import(
   "@/lib/node-graph/templates"
@@ -88,13 +88,11 @@ function radio(id: string): Radio {
 }
 
 function withLoose(graph: NodeGraph, type: "compressor" | "delay") {
-  return addPaletteNode(graph, {
-    id: type,
-    kind: "node",
-    name: type,
-    section: "fx",
-    type,
-  }).graph;
+  const node = createPaletteNode(type, type, { x: 240, y: 0 });
+  if (!node) {
+    throw new Error(`Cannot create fixture ${type}`);
+  }
+  return { ...graph, nodes: [...graph.nodes, node] };
 }
 
 /** KEXP → Compressor → Speakers, NTS → Speakers, and a loose Delay. */
@@ -177,7 +175,7 @@ function cables(graph: NodeGraph | null) {
 }
 
 describe("cable surgery shortcuts", () => {
-  test("B bypasses the FX with only setLaneEffects; one Cmd+Z undoes it", () => {
+  test("B bypasses the first FX and rebuilds its pre-mix signal gain; one Cmd+Z undoes it", () => {
     const { start, store } = setup({ nodes: ["compressor"] });
 
     press("b");
@@ -187,7 +185,11 @@ describe("cable surgery shortcuts", () => {
       compile(start, ENV),
       compile(store.state.graph as NodeGraph, ENV)
     );
-    expect(ops.map((op) => op.type)).toEqual(["setLaneEffects"]);
+    expect(ops.map((op) => op.type)).toEqual([
+      "duckLane",
+      "replaceLaneEffects",
+      "unduckLane",
+    ]);
 
     undo();
     expect(store.state.graph).toBe(start);

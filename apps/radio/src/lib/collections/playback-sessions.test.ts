@@ -986,11 +986,11 @@ describe("session persistence and init", () => {
 
     const session = getPlaybackSession("node");
     expect(session?.graph?.nodes.map((node) => node.id)).toEqual([
-      "src-kexp",
+      "src-station",
       "speakers",
     ]);
     expect(session?.masterVolume).toBe(1);
-    expect(session?.channels[0]?.radio?.id).toBe("kexp");
+    expect(session?.channels).toEqual([]);
   });
 
   test("initializePlaybackSessions upgrades a stored v1 node session before any update", async () => {

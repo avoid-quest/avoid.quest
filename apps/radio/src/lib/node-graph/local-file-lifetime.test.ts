@@ -65,7 +65,7 @@ function patch(radio: Radio | null): NodeGraph {
         type: "speakers",
       },
     ],
-    version: 1,
+    version: 2,
   });
 }
 

@@ -1,6 +1,15 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
 
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
@@ -80,31 +89,31 @@ mock.module("@/lib/stations/station-discovery-adapters", () => ({
     }),
 }));
 
-// A pick or pasted link resolves through DJ's track loader; its platform
-// request is the seam. Nothing else imports this module.
+// Spy on the loader while exercising the real TanStack mutation hook.
+// A module mock here leaks into later DJ SearchResults tests in Bun.
 const platformLoads: string[] = [];
 let platformResult: Radio | null = null;
-mock.module("@/lib/hooks/use-platform-query", () => ({
-  platformKeys: { all: ["platform"] },
-  usePlatformItem: () => ({ data: null }),
-  usePlatformLoad: () => ({
-    isPending: false,
-    load: (
-      url: string,
-      callbacks: {
-        onSuccess?: (radio: Radio) => void;
-        onError?: (message: string) => void;
-      } = {}
-    ) => {
-      platformLoads.push(url);
-      if (platformResult) {
-        callbacks.onSuccess?.(platformResult);
-      } else {
-        callbacks.onError?.("Unsupported platform URL");
-      }
-    },
-  }),
-}));
+let platformItemLoader: typeof import("@/lib/platform-item-loader");
+let loadPlatformItem: ReturnType<
+  typeof spyOn<typeof platformItemLoader, "loadPlatformItem">
+>;
+beforeEach(() => {
+  loadPlatformItem = spyOn(
+    platformItemLoader,
+    "loadPlatformItem"
+  ).mockImplementation((url) => {
+    platformLoads.push(url);
+    return Promise.resolve(
+      platformResult
+        ? { radio: platformResult, success: true }
+        : {
+            code: "UNSUPPORTED_PLATFORM_URL",
+            error: "Unsupported platform URL",
+            success: false,
+          }
+    );
+  });
+});
 
 // React DOM checks for input events when it loads, so it loads after the DOM.
 const { cleanup, fireEvent, render, waitFor } = await import(
@@ -113,6 +122,7 @@ const { cleanup, fireEvent, render, waitFor } = await import(
 
 afterEach(() => {
   cleanup();
+  loadPlatformItem.mockRestore();
   platformLoads.length = 0;
   platformResult = null;
   forgetLocalFileUrls();
@@ -123,6 +133,7 @@ let FileNodeBody: typeof import("./file-node")["FileNodeBody"];
 let StationNodeBody: typeof import("./station-node")["StationNodeBody"];
 
 beforeAll(async () => {
+  platformItemLoader = await import("@/lib/platform-item-loader");
   ({ TrackNodeBody } = await import("./track-node"));
   ({ FileNodeBody } = await import("./file-node"));
   ({ StationNodeBody } = await import("./station-node"));

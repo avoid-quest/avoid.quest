@@ -28,13 +28,27 @@ class ResizeObserverStub {
   }
 }
 
+Object.defineProperty(dom.window, "ResizeObserver", {
+  value: ResizeObserverStub,
+});
+Object.defineProperty(dom.window, "matchMedia", {
+  value: (query: string) => ({
+    addEventListener: () => undefined,
+    matches: false,
+    media: query,
+    removeEventListener: () => undefined,
+  }),
+});
+
 for (const [key, value] of Object.entries({
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+  DOMRect: dom.window.DOMRect,
   document: dom.window.document,
   Element: dom.window.Element,
   getComputedStyle: dom.window.getComputedStyle,
   HTMLElement: dom.window.HTMLElement,
   localStorage: dom.window.localStorage,
+  MutationObserver: dom.window.MutationObserver,
   Node: dom.window.Node,
   navigator: dom.window.navigator,
   ResizeObserver: ResizeObserverStub,

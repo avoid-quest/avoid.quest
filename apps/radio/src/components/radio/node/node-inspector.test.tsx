@@ -50,6 +50,7 @@ Object.defineProperty(dom.window.HTMLCanvasElement.prototype, "getContext", {
 });
 
 for (const [key, value] of Object.entries({
+  AudioContext: dom.window.AudioContext,
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DocumentFragment: dom.window.DocumentFragment,
@@ -134,6 +135,7 @@ afterEach(() => {
 const noop = () => undefined;
 const asyncNoop = async () => undefined;
 const position = { x: 0, y: 0 };
+const REPICK_FILE = /Lost\.wav.*Pick the file again/;
 
 /** KEXP through a Compressor and a Filter to Speakers. */
 function createStore(): NodeStore {
@@ -432,7 +434,7 @@ describe("NodeInspector", () => {
       })
     );
     const view = renderHarness(store);
-    fireEvent.click(view.getByRole("button", { name: "Pick Lost.wav again" }));
+    fireEvent.click(view.getByRole("button", { name: REPICK_FILE }));
     expect(view.getByRole("button", { name: "Browse files" })).toBeTruthy();
   });
 

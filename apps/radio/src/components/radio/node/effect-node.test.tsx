@@ -335,6 +335,7 @@ describe("EffectNode on the canvas", () => {
             position: { x: 0, y: 0 },
             type: "compressor",
           },
+          { id: "speakers", position: { x: 400, y: 0 }, type: "speakers" },
         ],
         version: 2,
       })

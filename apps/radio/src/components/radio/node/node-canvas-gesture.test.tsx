@@ -121,7 +121,9 @@ afterEach(() => {
 const noop = () => undefined;
 const asyncNoop = async () => undefined;
 const actions: NodeActions = {
+  fillSource: asyncNoop,
   fillStation: asyncNoop,
+  fillStationFromUrl: async () => null,
   handleDeleteRadio: noop,
   handleEditRadio: noop,
   handleSaveSessionRadio: noop,
@@ -129,6 +131,7 @@ const actions: NodeActions = {
   inspectNode: noop,
   radios: [],
   removeNode: noop,
+  revealNode: noop,
   saveDiscoveredStation: noop,
   selectDiscoveredForStation: noop,
   swapEffect: noop,
@@ -165,7 +168,7 @@ async function renderCanvas() {
         type: "delay",
       },
     ],
-    version: 1,
+    version: 2,
     viewport: { x: 0, y: 0, zoom: 1 },
   });
   loadNodeGraph(graph);

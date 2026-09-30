@@ -668,7 +668,10 @@ describe("NodeCanvas: dragging a cable", () => {
       expect(edges().map((edge) => `${edge.source}->${edge.target}`)).toEqual(
         expect.arrayContaining(["fip->verb"])
       );
-      expect(edges().some((edge) => edge.id === "fip->comp")).toBe(false);
+      expect(edges().find((edge) => edge.id === "fip->comp")).toMatchObject({
+        source: "fip",
+        target: "verb",
+      });
 
       act(() => {
         nodeStoreModule.undoNodeGraph();

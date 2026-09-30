@@ -118,6 +118,7 @@ describe("Source nodes in the patch", () => {
           position: { x: 0, y: 0 },
           type: "file",
         },
+        { id: SPEAKERS_NODE_ID, position: { x: 400, y: 0 }, type: "speakers" },
       ],
       version: 2,
     });
@@ -179,7 +180,10 @@ describe("Source nodes in the patch", () => {
   test("a Track's chip locks its search", () => {
     const graph = nodeGraphSchema.parse({
       edges: [],
-      nodes: [{ id: "track", position: { x: 0, y: 0 }, type: "platform" }],
+      nodes: [
+        { id: "track", position: { x: 0, y: 0 }, type: "platform" },
+        { id: SPEAKERS_NODE_ID, position: { x: 400, y: 0 }, type: "speakers" },
+      ],
       version: 2,
     });
     const locked = setTrackSearchPlatform(graph, "track", "soundcloud");
@@ -228,13 +232,13 @@ describe("palette Sources", () => {
     }
     const { graph, nodeId } = addPaletteNode(patch, entry);
     const added = graph.nodes.find((node) => node.id === nodeId);
-    expect(nodeId).toBe("track");
+    expect(nodeId).toStartWith("platform-");
     expect(added).toMatchObject({
       data: { radio: null, searchPlatform: "bandcamp" },
       type: "platform",
     });
     expect(graph.edges).toEqual([
-      expect.objectContaining({ source: "track", target: SPEAKERS_NODE_ID }),
+      expect.objectContaining({ source: nodeId, target: SPEAKERS_NODE_ID }),
     ]);
     expect(validate(graph)).toEqual([]);
   });

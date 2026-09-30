@@ -44,7 +44,7 @@ function modelGraph(modelId: string): NodeGraph {
         type: "speakers",
       },
     ],
-    version: 1,
+    version: 2,
   });
 }
 

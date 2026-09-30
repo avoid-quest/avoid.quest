@@ -29,7 +29,7 @@ import {
   toggleBypass,
 } from "./graph-edits";
 import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
-import { addPaletteNode } from "./palette";
+import { addPaletteNode, createPaletteNode } from "./palette";
 import { diff } from "./reconcile";
 import {
   DEFAULT_INPUT_STRIP,
@@ -621,13 +621,7 @@ describe("setEffectParams", () => {
 describe("connectNodes: key cables", () => {
   const start = patch(radio("a"), radio("b"));
   const withFx = (type: "vocoder" | "compressor") =>
-    addPaletteNode(start, {
-      id: type,
-      kind: "node",
-      name: type,
-      section: "fx",
-      type,
-    }).graph;
+    withLoose(start, type).graph;
   const keyFrom = (target: string) => ({
     source: "src-b",
     sourceHandle: "out:audio:main",
@@ -692,16 +686,16 @@ describe("setNativeParams", () => {
   });
 });
 
-/** A loose node of `type` added to `graph`, as the palette adds it. */
+/** An authored fixture with a stable id for cable-edit assertions. */
 function withLoose(graph: NodeGraph, type: NodeType) {
-  const added = addPaletteNode(graph, {
-    id: type,
-    kind: "node",
-    name: type,
-    section: "fx",
-    type,
-  });
-  return { graph: added.graph, nodeId: added.nodeId ?? "" };
+  const node = createPaletteNode(type, type, { x: 240, y: 0 });
+  if (!node) {
+    throw new Error(`Cannot create fixture ${type}`);
+  }
+  return {
+    graph: { ...graph, nodes: [...graph.nodes, node] },
+    nodeId: node.id,
+  };
 }
 
 function inserted(graph: NodeGraph, type: NodeType, edgeId: string) {
@@ -1065,18 +1059,22 @@ describe("toggleBypass", () => {
     "src-a->speakers"
   ).graph;
 
-  test("B toggles the FX's on switch and issues only setLaneEffects", () => {
+  test("B toggles the first FX and rebuilds its pre-mix signal gain", () => {
     const bypassed = toggleBypass(start, ["compressor", "src-a"]);
 
     expect(effectIn(bypassed, "compressor").enabled).toBe(false);
     const ops = diff(compile(start, ENV), compile(bypassed, ENV));
-    expect(ops.map((op) => op.type)).toEqual(["setLaneEffects"]);
+    expect(ops.map((op) => op.type)).toEqual([
+      "duckLane",
+      "replaceLaneEffects",
+      "unduckLane",
+    ]);
 
     const back = toggleBypass(bypassed, ["compressor"]);
     expect(effectIn(back, "compressor").enabled).toBe(true);
     expect(
       diff(compile(bypassed, ENV), compile(back, ENV)).map((op) => op.type)
-    ).toEqual(["setLaneEffects"]);
+    ).toEqual(["duckLane", "replaceLaneEffects", "unduckLane"]);
   });
 
   test("a mixed selection bypasses all; nothing to bypass is a no-op", () => {
@@ -1092,22 +1090,8 @@ describe("toggleBypass", () => {
 
 describe("setDeviceParams", () => {
   const withDevices = () =>
-    addPaletteNode(
-      addPaletteNode(patch(radio("a")), {
-        id: "deviceIn",
-        kind: "node",
-        name: "Audio input",
-        section: "sources",
-        type: "deviceIn",
-      }).graph,
-      {
-        id: "deviceOut",
-        kind: "node",
-        name: "Output device",
-        section: "outputs",
-        type: "deviceOut",
-      }
-    ).graph;
+    withLoose(withLoose(patch(radio("a")), "deviceIn").graph, "deviceOut")
+      .graph;
 
   test("sets an Audio input's device and channels, and an Output device's device", () => {
     let graph = setDeviceParams(withDevices(), "deviceIn", {

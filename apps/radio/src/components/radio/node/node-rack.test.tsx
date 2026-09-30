@@ -431,7 +431,7 @@ describe("NodeRack", () => {
     expect(view.getByText("Search to add a station")).toBeTruthy();
   });
 
-  test("a File to pick again after a reload shows its File on the Patch", () => {
+  test("a File to pick again after a reload opens its settings from the Rack", () => {
     forgetLocalFileUrls();
     const { view } = renderRack(
       nodeGraphSchema.parse({
@@ -460,6 +460,6 @@ describe("NodeRack", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: REPICK_ROW }));
-    expect(revealNode.mock.calls).toEqual([["tone"]]);
+    expect(inspectNode.mock.calls).toEqual([["tone"]]);
   });
 });

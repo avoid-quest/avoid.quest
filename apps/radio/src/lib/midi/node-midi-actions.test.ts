@@ -50,6 +50,7 @@ function buildGraph(): NodeGraph {
         type: "compressor",
       },
       { data: {}, id: "lp", position, type: "filter" },
+      { id: "speakers", position, type: "speakers" },
       {
         data: { effect: createNodeEffectConfig("compressor", "comp-2") },
         id: "comp-2",

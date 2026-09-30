@@ -356,6 +356,7 @@ describe("compile: audio inputs and output devices", () => {
         station("a"),
         node("desk", "deviceOut", { deviceId: "usb" }),
         node("booth", "deviceOut", { deviceId: "usb" }),
+        speakers,
       ],
       [audio("a", "desk"), audio("a", "booth")]
     );
@@ -531,10 +532,14 @@ describe("compile: channel strips", () => {
     const soloActive = (nodes: NodeInput[]) =>
       isSoloActive(graph(nodes, []).nodes);
     expect(
-      soloActive([withStrip(station("gone", false), { solo: true })])
+      soloActive([withStrip(station("gone", false), { solo: true }), speakers])
     ).toBe(false);
     expect(
-      soloActive([withStrip(station("a"), { solo: true }), station("b")])
+      soloActive([
+        withStrip(station("a"), { solo: true }),
+        station("b"),
+        speakers,
+      ])
     ).toBe(true);
     expect(soloActive([station("a"), speakers])).toBe(false);
   });

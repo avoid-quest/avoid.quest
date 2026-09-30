@@ -160,6 +160,7 @@ function createStore() {
         type: "crusher",
       },
       { data: {}, id: "mix", position, type: "merge" },
+      { id: "speakers", position, type: "speakers" },
     ],
     version: 2,
   });

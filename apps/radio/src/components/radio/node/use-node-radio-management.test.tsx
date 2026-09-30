@@ -9,7 +9,6 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -51,6 +50,9 @@ for (const [key, value] of Object.entries({
     writable: true,
   });
 }
+
+// React DOM detects browser input support when it first loads.
+const { cleanup, render } = await import("@testing-library/react");
 
 const sessionRadiosState = {
   radios: [] as Radio[],

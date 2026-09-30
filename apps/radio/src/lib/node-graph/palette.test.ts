@@ -851,19 +851,23 @@ describe("cable surgery entries", () => {
       into: "src-a->speakers",
       position: { x: 5, y: 5 },
     });
-    expect(nodeId).toBe("delay");
+    expect(nodeId).toStartWith("delay-");
     expect(graph.edges.map((edge) => `${edge.source}->${edge.target}`)).toEqual(
-      ["src-a->delay", "delay->speakers", "src-b->speakers"]
+      [`src-a->${nodeId}`, `${nodeId}->speakers`, "src-b->speakers"]
     );
     expect(validate(graph)).toEqual([]);
   });
 
   test("a cable after an FX refuses the station's own Filter", () => {
-    const withComp = addPaletteNode(patch, fxEntry("compressor"), {
-      into: "src-a->speakers",
-    }).graph;
+    const { graph: withComp, nodeId } = addPaletteNode(
+      patch,
+      fxEntry("compressor"),
+      {
+        into: "src-a->speakers",
+      }
+    );
 
-    const ids = paletteEntries(withComp, { into: "compressor->speakers" }).map(
+    const ids = paletteEntries(withComp, { into: `${nodeId}->speakers` }).map(
       (entry) => entry.id
     );
 
@@ -872,9 +876,12 @@ describe("cable surgery entries", () => {
   });
 
   test("Swap effect… lists every other plain effect, no splits", () => {
-    const withComp = addPaletteNode(patch, fxEntry("compressor")).graph;
+    const { graph: withComp, nodeId } = addPaletteNode(
+      patch,
+      fxEntry("compressor")
+    );
 
-    const entries = paletteEntries(withComp, { swap: "compressor" });
+    const entries = paletteEntries(withComp, { swap: nodeId ?? "" });
     const ids = entries.map((entry) => entry.id);
 
     expect(entries.every((entry) => entry.section === "fx")).toBe(true);

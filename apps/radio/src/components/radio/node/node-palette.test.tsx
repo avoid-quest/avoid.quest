@@ -279,18 +279,22 @@ describe("NodePalette", () => {
     fireEvent.change(search, { target: { value: "delay" } });
     fireEvent.keyDown(search, { key: "Enter" });
 
+    const delay = store.state.graph?.nodes.find(
+      (node) => node.type === "delay"
+    );
+    expect(delay?.id).toStartWith("delay-");
     expect(
       store.state.graph?.edges.map(
         (edge) => `${edge.id}: ${edge.source} -> ${edge.target}`
       )
     ).toEqual([
-      "src-kexp->speakers: src-kexp -> delay",
-      "delay->speakers: delay -> speakers",
+      `src-kexp->speakers: src-kexp -> ${delay?.id}`,
+      `${delay?.id}->speakers: ${delay?.id} -> speakers`,
     ]);
     act(() => {
       undoNodeGraph(store);
     });
-    expect(store.state.graph?.nodes.some((node) => node.id === "delay")).toBe(
+    expect(store.state.graph?.nodes.some((node) => node.id === delay?.id)).toBe(
       false
     );
   });

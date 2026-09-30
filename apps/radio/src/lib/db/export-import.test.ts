@@ -1208,7 +1208,7 @@ describe("local NAM file backups", () => {
         },
         speakersInput,
       ],
-      version: 1,
+      version: 2,
     });
   }
 

@@ -1245,6 +1245,19 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     return { message, type: "failed" };
   };
 
+  /**
+   * A current load that left the Deck empty failed to activate; commitRadio
+   * already reported it, so only tell the form.
+   */
+  const activationFailed = (
+    deckId: DeckId,
+    loadGeneration: number
+  ): DjDeckSourceResult | null =>
+    isLoadCurrent(deckId, loadGeneration) &&
+    !getPlaybackChannel("dj", deckId)?.radio
+      ? { message: "the deck couldn't play it", type: "failed" }
+      : null;
+
   async function loadFileIntent(
     deckId: DeckId,
     loadGeneration: number,
@@ -1254,19 +1267,21 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     try {
       const metadata = await options.audio.loadFile(file);
       unownedUrl = metadata.objectUrl;
-      if (isLoadCurrent(deckId, loadGeneration)) {
-        await commitRadio(
-          deckId,
-          loadGeneration,
-          createLocalFileRadio(deckId, metadata)
-        );
-        if (
-          getLocalFileUrl(getPlaybackChannel("dj", deckId)?.radio ?? null) ===
-          metadata.objectUrl
-        ) {
-          unownedUrl = null;
-        }
+      if (!isLoadCurrent(deckId, loadGeneration)) {
+        return loaded();
       }
+      await commitRadio(
+        deckId,
+        loadGeneration,
+        createLocalFileRadio(deckId, metadata)
+      );
+      if (
+        getLocalFileUrl(getPlaybackChannel("dj", deckId)?.radio ?? null) ===
+        metadata.objectUrl
+      ) {
+        unownedUrl = null;
+      }
+      return activationFailed(deckId, loadGeneration) ?? loaded();
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
         return fileLoadFailed(
@@ -1336,6 +1351,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         return loaded();
       }
       await commitRadio(deckId, loadGeneration, resolution.radio, "paused");
+      return activationFailed(deckId, loadGeneration) ?? loaded();
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
         return fileLoadFailed(

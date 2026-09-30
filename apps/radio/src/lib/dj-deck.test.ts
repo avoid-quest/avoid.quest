@@ -676,6 +676,44 @@ describe("DjDeckModule", () => {
     );
   });
 
+  test("tells the file form when a parsed file fails to activate", async () => {
+    const audio = createAudioAdapter();
+    audio.loadFile = mock(() =>
+      Promise.resolve({
+        displayName: "Local",
+        duration: 120,
+        fileName: "local.mp3",
+        fileSize: 1024,
+        mimeType: "audio/mpeg",
+        objectUrl: "blob:https://radio.example/local",
+      })
+    );
+    audio.activate = mock(() => {
+      throw new Error("decoder unavailable");
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+
+    const result = await module.deck("deck-a").load({
+      file: new File(["audio"], "local.mp3", { type: "audio/mpeg" }),
+      type: "file",
+    });
+
+    expect(result).toEqual({
+      message: "the deck couldn't play it",
+      type: "failed",
+    });
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/local"
+    );
+  });
+
   test("keeps a resolved remote URL paused when replacing a playing source", async () => {
     const audio = createAudioAdapter();
     const platform = createPlatform();

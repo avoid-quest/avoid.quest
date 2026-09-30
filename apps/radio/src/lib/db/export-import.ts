@@ -26,6 +26,12 @@ import {
   type PlayerMode,
 } from "@/lib/normalize-player-mode";
 import { type DatabaseExport, generateId, type ImportPreview } from "../types";
+import {
+  exportNamModels,
+  hasLocalNamModels,
+  prepareImportedNamModels,
+  validateNamModelBackup,
+} from "./nam-backup";
 
 const EXPORT_VERSION = 2;
 const STORAGE_KEY_LAST_EXPORT = "radioproxy_last_export";
@@ -323,14 +329,17 @@ function exportSessions(): DatabaseExport["sessions"] {
  * The file backup: stations, settings and the Node patch. A share link
  * leaves the patch out.
  */
-export const createDatabaseExport = (): DatabaseExport => {
+export const createDatabaseExport = async (): Promise<DatabaseExport> => {
   const radios = Array.from(radiosCollection.state.values());
   const settings = getSettings();
+  const graph = playbackSessionsCollection.state.get("node")?.graph ?? null;
+  const sessions = exportSessions();
 
   return {
     exportDate: new Date().toISOString(),
+    namModels: await exportNamModels(graph),
     radios: radios as unknown as Radio[],
-    sessions: exportSessions(),
+    sessions,
     settings: (settings || {
       id: SETTINGS_ID,
       player: { mode: "single" },
@@ -342,14 +351,14 @@ export const createDatabaseExport = (): DatabaseExport => {
 /**
  * Export the entire database to a JSON file
  */
-export const exportDatabase = (): void => {
+export const exportDatabase = async (): Promise<void> => {
   // Check if we're in browser environment
   if (typeof window === "undefined") {
     throw new Error("Export can only be used in browser environment");
   }
 
   try {
-    const jsonString = JSON.stringify(createDatabaseExport(), null, 2);
+    const jsonString = JSON.stringify(await createDatabaseExport(), null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
@@ -448,7 +457,7 @@ export const parseImportData = (
     const data: unknown = JSON.parse(dataString);
     return validateImportData(
       source === "share-link" && isRecord(data)
-        ? { ...data, sessions: undefined }
+        ? { ...data, namModels: undefined, sessions: undefined }
         : data
     );
   } catch (error) {
@@ -503,7 +512,8 @@ export const validateImportData = (data: unknown): DatabaseExport => {
     } as DatabaseExport["settings"],
   };
   // Refuse an invalid patch here, before any preview or change.
-  readImportedNodePatch(importData);
+  const graph = readImportedNodePatch(importData);
+  importData.namModels = validateNamModelBackup(exportData.namModels, graph);
   return importData;
 };
 
@@ -607,7 +617,7 @@ export const previewImportChanges = (
 /**
  * Replace all data with imported data
  */
-export const replaceImportedData = (importData: DatabaseExport): void => {
+const replaceImportedDataSync = (importData: DatabaseExport): void => {
   try {
     const validated = validateImportData(importData);
     const graph = readImportedNodePatch(validated);
@@ -655,7 +665,7 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
 /**
  * Merge imported data with existing data
  */
-export const mergeImportedData = (importData: DatabaseExport): void => {
+const mergeImportedDataSync = (importData: DatabaseExport): void => {
   try {
     const validated = validateImportData(importData);
     const graph = readImportedNodePatch(validated);
@@ -773,6 +783,62 @@ export const hasImportDataInUrl = (): boolean => {
   }
   return window.location.hash.startsWith("#data=");
 };
+
+/** Stage local model assets before the synchronous collection transaction. */
+function importWithNamModels(
+  importData: DatabaseExport,
+  apply: (data: DatabaseExport) => void
+): void | Promise<void> {
+  let validated: DatabaseExport;
+  try {
+    validated = validateImportData(importData);
+  } catch (error) {
+    console.error("Import validation failed:", error);
+    toast.error("Couldn't import");
+    throw error;
+  }
+  const graph = readImportedNodePatch(validated);
+  if (!(graph && hasLocalNamModels(graph))) {
+    apply(validated);
+    return;
+  }
+  return prepareImportedNamModels(graph, validated.namModels).then(
+    async (prepared) => {
+      try {
+        apply({
+          ...validated,
+          namModels: undefined,
+          sessions: {
+            ...validated.sessions,
+            node: { ...validated.sessions?.node, graph: prepared.graph },
+          },
+        });
+      } catch (error) {
+        await prepared.rollback();
+        throw error;
+      }
+    },
+    (error: unknown) => {
+      console.error("NAM model import failed:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Couldn't import NAM models"
+      );
+      throw error;
+    }
+  );
+}
+
+/** Replace a backup after all required local NAM assets have been restored. */
+export const replaceImportedData = (
+  importData: DatabaseExport
+): void | Promise<void> =>
+  importWithNamModels(importData, replaceImportedDataSync);
+
+/** Merge the library and replace its patch after restoring local NAM assets. */
+export const mergeImportedData = (
+  importData: DatabaseExport
+): void | Promise<void> =>
+  importWithNamModels(importData, mergeImportedDataSync);
 
 /**
  * Auto-import from URL on page load

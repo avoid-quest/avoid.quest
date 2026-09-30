@@ -29,6 +29,8 @@ export type DatabaseExport = {
   exportDate: string;
   radios: Radio[];
   settings: Settings;
+  /** Local NAM bytes referenced by the file backup's Node patch. */
+  namModels?: Record<string, string>;
   /**
    * Playback sessions a file backup carries: the Node patch, or a Multiple
    * session from a release before Node, which imports as a Node patch. Both

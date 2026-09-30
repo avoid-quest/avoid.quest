@@ -35,6 +35,19 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+function mutateModels(
+  database: IDBDatabase,
+  mutate: (store: IDBObjectStore) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error);
+    transaction.onerror = () => reject(transaction.error);
+    mutate(transaction.objectStore(STORE_NAME));
+  });
+}
+
 export function createLocalNamModelId(): string {
   return `${LOCAL_NAM_PREFIX}${crypto.randomUUID()}`;
 }
@@ -134,22 +147,13 @@ export async function saveNamModel(
   modelId: string,
   modelData: string
 ): Promise<void> {
-  cache.set(modelId, modelData);
   const database = await openDatabase();
-  if (!database) {
-    return;
+  if (database) {
+    await mutateModels(database, (store) => {
+      store.put(modelData, modelId);
+    });
   }
-  try {
-    await requestResult(
-      database
-        .transaction(STORE_NAME, "readwrite")
-        .objectStore(STORE_NAME)
-        .put(modelData, modelId)
-    );
-  } catch (error) {
-    cache.delete(modelId);
-    throw error;
-  }
+  cache.set(modelId, modelData);
 }
 
 export async function deleteNamModel(modelId: string | null): Promise<void> {
@@ -159,11 +163,8 @@ export async function deleteNamModel(modelId: string | null): Promise<void> {
   cache.delete(modelId);
   const database = await openDatabase();
   if (database) {
-    await requestResult(
-      database
-        .transaction(STORE_NAME, "readwrite")
-        .objectStore(STORE_NAME)
-        .delete(modelId)
-    );
+    await mutateModels(database, (store) => {
+      store.delete(modelId);
+    });
   }
 }

@@ -69,4 +69,53 @@ describe("NAM model storage", () => {
     expect(getCachedNamModel(removedId)).toBeNull();
     await deleteNamModel(sharedId);
   });
+
+  test("does not publish model bytes before an IndexedDB transaction commits", async () => {
+    const modulePath = "./nam-model-store.ts?transaction-test";
+    const isolated = (await import(
+      modulePath
+    )) as typeof import("./nam-model-store");
+    const priorIndexedDb = globalThis.indexedDB;
+    const modelId = isolated.createLocalNamModelId();
+    await isolated.saveNamModel(modelId, '{"prior":true}');
+    const transaction = {
+      error: new Error("Storage transaction aborted"),
+      objectStore: () => ({ delete: () => ({}), put: () => ({}) }),
+      onabort: null as (() => void) | null,
+      oncomplete: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+    };
+    const request = {
+      onerror: null as (() => void) | null,
+      onsuccess: null as (() => void) | null,
+      result: { transaction: () => transaction },
+    };
+    globalThis.indexedDB = {
+      open: () => {
+        queueMicrotask(() => request.onsuccess?.());
+        return request;
+      },
+    } as unknown as IDBFactory;
+    try {
+      const pending = isolated.saveNamModel(modelId, '{"new":true}');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(isolated.getCachedNamModel(modelId)).toBe('{"prior":true}');
+      transaction.onabort?.();
+      await expect(pending).rejects.toThrow("Storage transaction aborted");
+      expect(isolated.getCachedNamModel(modelId)).toBe('{"prior":true}');
+      let deletionCommitted = false;
+      const deletion = isolated.deleteNamModel(modelId).then(() => {
+        deletionCommitted = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(deletionCommitted).toBe(false);
+      transaction.oncomplete?.();
+      await deletion;
+      expect(deletionCommitted).toBe(true);
+    } finally {
+      globalThis.indexedDB = priorIndexedDb;
+    }
+  });
 });

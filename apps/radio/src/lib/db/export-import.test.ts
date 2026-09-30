@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import {
   createLocalNamModelId,
+  deleteNamModel,
   getCachedNamModel,
+  getNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
 import {
@@ -813,7 +815,7 @@ describe("Node patch backups", () => {
     }
   );
 
-  test("an exported patch round-trips, FX and viewport included", () => {
+  test("an exported patch round-trips, FX and viewport included", async () => {
     saveRadio(stationRadio("kexp"), 0);
     saveRadio(stationRadio("nts"), 1);
     settingsCollection.insert({
@@ -842,7 +844,7 @@ describe("Node patch backups", () => {
     } satisfies NodeGraphInput);
     playbackSessionsCollection.insert(buildNodeSessionFromGraph(authored));
     const graph = getPlaybackSession("node")?.graph;
-    const json = JSON.stringify(createDatabaseExport());
+    const json = JSON.stringify(await createDatabaseExport());
 
     // The patch moves on after the backup.
     playbackSessionsCollection.delete("node");
@@ -864,7 +866,7 @@ describe("Node patch backups", () => {
     ]);
   });
 
-  test("a patch over the device budgets round-trips", () => {
+  test("a patch over the device budgets round-trips", async () => {
     // Start from Multiple and the search bar add Stations past the budget;
     // the compiler reports the extra ones, so an import must not refuse them.
     const radios = Array.from({ length: 26 }, (_, index) =>
@@ -880,7 +882,7 @@ describe("Node patch backups", () => {
       26
     );
     playbackSessionsCollection.insert(buildNodeSessionFromGraph(graph));
-    const json = JSON.stringify(createDatabaseExport());
+    const json = JSON.stringify(await createDatabaseExport());
     playbackSessionsCollection.delete("node");
     playbackSessionsCollection.insert(
       buildNodeSessionFromGraph(buildNodeGraphFromTemplate("blank"))
@@ -911,6 +913,7 @@ describe("Node patch backups", () => {
     const payload = LZString.compressToBase64(
       JSON.stringify(
         rawBackup({
+          namModels: { invalid: "invalid model" },
           radios: [stationRadio("kexp")],
           sessions: { node: { graph: { version: 1 } } },
         })
@@ -1024,5 +1027,200 @@ describe("Node patch backups", () => {
 
     expect(getPlaybackSession("node")?.graph).toEqual(local);
     expect(getSettings()?.player.mode).toBe("node");
+  });
+});
+
+describe("local NAM file backups", () => {
+  const dataSnapshot = (value: unknown) =>
+    JSON.stringify(value, (key, current) =>
+      key.startsWith("$") ? undefined : current
+    );
+  const bytes = '{"version":"0.5.2","weights":[1,2,3]}';
+  const importers = [
+    ["merge", mergeImportedData],
+    ["replace", replaceImportedData],
+  ] as const;
+
+  function patchWithModel(modelId: string): NodeGraph {
+    return nodeGraphSchema.parse({
+      edges: [cable("src-kexp", "amp"), cable("amp", "speakers")],
+      nodes: [
+        stationInput("kexp"),
+        {
+          data: {
+            effect: {
+              ...createNodeEffectConfig("neuralAmp", "amp"),
+              modelData: null,
+              modelId,
+              modelName: "amp.nam",
+              modelUrl: null,
+            },
+          },
+          id: "amp",
+          position,
+          type: "neuralAmp",
+        },
+        speakersInput,
+      ],
+      version: 1,
+    });
+  }
+
+  test.each(importers)(
+    "%s restores model bytes into a clean store",
+    async (_label, apply) => {
+      seedLocalPatch();
+      const modelId = createLocalNamModelId();
+      await saveNamModel(modelId, bytes);
+      playbackSessionsCollection.update("node", (draft) => {
+        draft.graph = patchWithModel(modelId);
+      });
+      const exported = await createDatabaseExport();
+      expect(exported.namModels).toEqual({ [modelId]: bytes });
+      await resetCollections();
+      await deleteNamModel(modelId);
+
+      await apply(parseImportData(JSON.stringify(exported)));
+
+      const model = getPlaybackSession("node")?.graph?.nodes.find(
+        (node) => node.type === "neuralAmp"
+      );
+      if (
+        model?.type !== "neuralAmp" ||
+        model.data.effect.type !== "neuralAmp"
+      ) {
+        throw new Error("Expected imported NAM effect");
+      }
+      const restoredId = model.data.effect.modelId;
+      expect(restoredId).not.toBe(modelId);
+      expect(model.data.effect.modelData).toBeNull();
+      expect(await getNamModel(restoredId)).toBe(bytes);
+      expect(getPlaybackSession("node")?.channels[0]?.effects[0]?.id).toBe(
+        "amp"
+      );
+      await deleteNamModel(restoredId);
+    }
+  );
+
+  test.each(importers)(
+    "%s rejects malformed model bytes before changing any state",
+    async (_label, apply) => {
+      const local = seedLocalPatch();
+      loadNodeGraph(local);
+      const modelId = createLocalNamModelId();
+      await saveNamModel(modelId, bytes);
+      const library = dataSnapshot([...radiosCollection.state.values()]);
+      const settings = dataSnapshot(getSettings());
+      const session = dataSnapshot(getPlaybackSession("node"));
+      const editor = nodeStore.state;
+      const errors = spyOn(console, "error").mockImplementation(
+        () => undefined
+      );
+      try {
+        expect(() =>
+          apply(
+            rawBackup({
+              namModels: { [modelId]: "[]" },
+              radios: [stationRadio("new")],
+              sessions: { node: { graph: patchWithModel(modelId) } },
+              settings: { player: { mode: "dj" } },
+            })
+          )
+        ).toThrow("NAM model must contain a JSON object");
+        expect(dataSnapshot([...radiosCollection.state.values()])).toBe(
+          library
+        );
+        expect(dataSnapshot(getSettings())).toBe(settings);
+        expect(dataSnapshot(getPlaybackSession("node"))).toBe(session);
+        expect(nodeStore.state).toBe(editor);
+        expect(await getNamModel(modelId)).toBe(bytes);
+      } finally {
+        errors.mockRestore();
+        await deleteNamModel(modelId);
+      }
+    }
+  );
+
+  test.each(importers)(
+    "%s removes staged assets after collection persistence fails",
+    async (_label, apply) => {
+      const local = seedLocalPatch();
+      loadNodeGraph(local);
+      const modelId = createLocalNamModelId();
+      const stagedId = createLocalNamModelId();
+      const uuid = spyOn(crypto, "randomUUID").mockReturnValueOnce(
+        stagedId.slice("local-nam:".length) as ReturnType<
+          typeof crypto.randomUUID
+        >
+      );
+      const library = dataSnapshot([...radiosCollection.state.values()]);
+      const settings = dataSnapshot(getSettings());
+      const session = dataSnapshot(getPlaybackSession("node"));
+      const editor = nodeStore.state;
+      const originalAccept = settingsCollection.utils.acceptMutations;
+      const accept = spyOn(
+        settingsCollection.utils,
+        "acceptMutations"
+      ).mockImplementationOnce((pending) => {
+        originalAccept(pending);
+        throw new Error("model import persistence failed");
+      });
+      const errors = spyOn(console, "error").mockImplementation(
+        () => undefined
+      );
+      try {
+        await expect(
+          Promise.resolve(
+            apply(
+              rawBackup({
+                namModels: { [modelId]: bytes },
+                radios: [stationRadio("new")],
+                sessions: { node: { graph: patchWithModel(modelId) } },
+                settings: { player: { mode: "dj" } },
+              })
+            )
+          )
+        ).rejects.toThrow("model import persistence failed");
+        expect(dataSnapshot([...radiosCollection.state.values()])).toBe(
+          library
+        );
+        expect(dataSnapshot(getSettings())).toBe(settings);
+        expect(dataSnapshot(getPlaybackSession("node"))).toBe(session);
+        expect(nodeStore.state).toBe(editor);
+        expect(await getNamModel(stagedId)).toBeNull();
+        expect(await getNamModel(modelId)).toBeNull();
+      } finally {
+        uuid.mockRestore();
+        accept.mockRestore();
+        errors.mockRestore();
+      }
+    }
+  );
+
+  test("a legacy backup without available model bytes reports the missing model", async () => {
+    const local = seedLocalPatch();
+    loadNodeGraph(local);
+    const missingId = createLocalNamModelId();
+    const errorToast = spyOn(toast, "error");
+    const errors = spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(
+        Promise.resolve(
+          replaceImportedData(
+            rawBackup({
+              sessions: { node: { graph: patchWithModel(missingId) } },
+            })
+          )
+        )
+      ).rejects.toThrow("Missing local NAM model: amp.nam");
+      expect(errorToast).toHaveBeenCalledWith(
+        "Missing local NAM model: amp.nam"
+      );
+      expect(getPlaybackSession("node")?.graph).toEqual(local);
+      expect(nodeStore.state.graph).toEqual(local);
+    } finally {
+      errorToast.mockRestore();
+      errors.mockRestore();
+    }
   });
 });

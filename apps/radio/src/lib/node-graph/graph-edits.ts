@@ -18,7 +18,10 @@
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { UNIVERSAL_EFFECT_PARAM_KEYS } from "@/lib/audio/dsp/effects/universal-params";
-import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
+import {
+  isEffectContainer,
+  isEffectContainerType,
+} from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import {
   createNodeEffectConfig,
@@ -716,11 +719,49 @@ export function toggleBypass(
 export const DUPLICATE_OFFSET_PX = 40;
 
 /**
+ * An FX config under a copy's id. A split's chains (and anything nested in
+ * them) are scoped by its id, as `createDefaultEffectConfig` makes them, so
+ * a copy in the same lane as its original never shares a chain id with it.
+ */
+function effectCopy(effect: EffectConfig, from: string, to: string) {
+  const scoped = (id: string) =>
+    id.startsWith(`${from}:`) ? `${to}${id.slice(from.length)}` : id;
+  const visit = (current: EffectConfig, id: string): EffectConfig =>
+    isEffectContainer(current)
+      ? ({
+          ...current,
+          chains: current.chains.map((chain) => ({
+            ...chain,
+            effects: chain.effects.map((child) =>
+              visit(child, scoped(child.id))
+            ),
+            id: scoped(chain.id),
+          })),
+          id,
+        } as EffectConfig)
+      : ({ ...current, id } as EffectConfig);
+  return visit(effect, to);
+}
+
+/**
+ * A copy has sound to send on: it makes its own (no audio input, like a
+ * Station), or a copied cable feeds it.
+ */
+function isFed(node: GraphNode, inside: readonly GraphEdge[]): boolean {
+  return (
+    !getNodeDefinition(node.type).ports.some(
+      (port) => port.direction === "in" && port.kind === "audio"
+    ) || inside.some((edge) => edge.target === node.id)
+  );
+}
+
+/**
  * `Cmd+D`: copies nodes with new ids, offset down and right. Cables between
- * the copied nodes come along, and so does each cable out of the selection
- * where it still fits: a copied Station comes wired to Speakers like its
- * original (a Doppelgänger), but a copy can't take an FX's only input.
- * Speakers is one per patch and stays. Returns the copies' ids.
+ * the copied nodes come along, and so does each cable out of a copy that
+ * has sound to send, where it still fits: a copied Station comes wired to
+ * Speakers like its original (a Doppelgänger), but a copy can't take an
+ * FX's only input. A lone FX copy comes loose, so it can be dropped into a
+ * cable. Speakers is one per patch and stays. Returns the copies' ids.
  */
 export function duplicateNodes(
   graph: NodeGraph,
@@ -751,7 +792,11 @@ export function duplicateNodes(
       ? ({
           ...node,
           data: {
-            effect: { ...(node.data as { effect: EffectConfig }).effect, id },
+            effect: effectCopy(
+              (node.data as { effect: EffectConfig }).effect,
+              node.id,
+              id
+            ),
           },
           id,
           position,
@@ -769,8 +814,11 @@ export function duplicateNodes(
   const inside = graph.edges.filter(
     (edge) => copyOf.has(edge.source) && copyOf.has(edge.target)
   );
+  const fed = new Set(
+    originals.flatMap((node) => (isFed(node, inside) ? [node.id] : []))
+  );
   const leaving = graph.edges.filter(
-    (edge) => copyOf.has(edge.source) && !copyOf.has(edge.target)
+    (edge) => fed.has(edge.source) && !copyOf.has(edge.target)
   );
   let next: NodeGraph = {
     ...graph,

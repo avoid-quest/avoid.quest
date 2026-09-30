@@ -675,6 +675,56 @@ describe("duplicateNodes", () => {
       nodeIds: [],
     });
   });
+
+  test("a lone FX copy comes loose, so it can go into a cable", () => {
+    const start = inserted(
+      patch(radio("a"), radio("b")),
+      "compressor",
+      "src-a->speakers"
+    ).graph;
+
+    const { graph, nodeIds } = duplicateNodes(start, ["compressor"]);
+
+    expect(nodeIds).toEqual(["compressor-2"]);
+    expect(graph.edges).toEqual(start.edges);
+    const edit = insertNodeOnEdge(graph, "compressor-2", "src-b->speakers");
+    expect(edit.ok).toBe(true);
+  });
+
+  test("a copied split scopes its chains under its own id", () => {
+    const start = inserted(
+      inserted(patch(radio("a")), "compressor", "src-a->speakers").graph,
+      "delay",
+      "compressor->speakers"
+    ).graph;
+    const split = seriesToParallel(start, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const original = split.graph.nodes.find(
+      (node) => node.type === "fxComposite"
+    );
+
+    const { graph, nodeIds } = duplicateNodes(split.graph, [
+      original?.id ?? "",
+    ]);
+
+    const [copyId] = nodeIds;
+    const chains = (effect: Record<string, unknown>) =>
+      (effect.chains as { id: string }[]).map((chain) => chain.id);
+    const originalChains = chains(effectIn(graph, original?.id ?? ""));
+    expect(
+      originalChains.every((id) => id.startsWith(`${original?.id}:`))
+    ).toBe(true);
+    expect(chains(effectIn(graph, copyId ?? ""))).toEqual(
+      originalChains.map(
+        (id) => `${copyId}${id.slice((original?.id ?? "").length)}`
+      )
+    );
+  });
 });
 
 describe("cable surgery undo", () => {

@@ -1,6 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import LZString from "lz-string";
+import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import {
+  createLocalNamModelId,
+  getCachedNamModel,
+  saveNamModel,
+} from "@/lib/audio/dsp/effects/nam-model-store";
 import {
   createDefaultChannel,
   getMultipleChannelId,
@@ -13,6 +19,7 @@ import {
 } from "@/lib/collections";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import {
+  commitNodeGraph,
   loadNodeGraph,
   nodeStore,
   undoNodeGraph,
@@ -143,6 +150,49 @@ function seedLocalPatch(): NodeGraph {
 }
 
 describe("validateImportData", () => {
+  test.each([
+    ["a null station", { radios: [null] }],
+    [
+      "an invalid stream URL",
+      { radios: [{ ...stationRadio("bad"), streamUrl: null }] },
+    ],
+    [
+      "an invalid stream format",
+      { radios: [{ ...stationRadio("bad"), streamFormat: "mp4" }] },
+    ],
+    [
+      "invalid platform metadata",
+      {
+        radios: [
+          { ...stationRadio("bad"), platformMetadata: { platform: "youtube" } },
+        ],
+      },
+    ],
+    [
+      "invalid metadata config",
+      {
+        radios: [
+          {
+            ...stationRadio("bad"),
+            metadataConfig: { kind: "airtime-live-info", urls: null },
+          },
+        ],
+      },
+    ],
+    [
+      "invalid station preferences",
+      { radios: [{ ...stationRadio("bad"), enabled: "yes", order: "first" }] },
+    ],
+    [
+      "an invalid restore preference",
+      { settings: { player: { restoreStateOnLoad: "yes" } } },
+    ],
+    ["an invalid player object", { settings: { player: [] } }],
+    ["an invalid settings object", { settings: [] }],
+  ])("refuses %s before preview", (_label, fields) => {
+    expect(() => validateImportData(rawBackup(fields))).toThrow();
+  });
+
   test("accepts version 1 exports and drops legacy player fields", () => {
     const imported = validateImportData({
       exportDate: "2026-04-16T00:00:00.000Z",
@@ -211,6 +261,255 @@ describe("validateImportData", () => {
     expect(imported.settings.player.mode).toBeUndefined();
     expect(imported.settings.player.restoreStateOnLoad).toBe(false);
   });
+});
+
+describe("failed imports", () => {
+  // TanStack's $synced/$origin bookkeeping can settle during a rollback;
+  // compare the saved document fields, which are the user's data.
+  function recordData(record: object | undefined) {
+    return record
+      ? Object.fromEntries(
+          Object.entries(record).filter(([key]) => !key.startsWith("$"))
+        )
+      : undefined;
+  }
+
+  const importers = [
+    ["merge", mergeImportedData],
+    ["replace", replaceImportedData],
+  ] as const;
+
+  async function seedAuthoredPatch() {
+    const local = seedLocalPatch();
+    const modelId = createLocalNamModelId();
+    await saveNamModel(modelId, '{"saved":true}');
+    const effect = createNodeEffectConfig("neuralAmp", "amp");
+    effect.modelId = modelId;
+    local.nodes.push({
+      data: { effect },
+      id: "amp",
+      position,
+      type: "neuralAmp",
+    });
+    playbackSessionsCollection.update("node", (draft) => {
+      draft.graph = local;
+    });
+    loadNodeGraph(local);
+    commitNodeGraph(
+      (graph) => ({ ...graph, viewport: { x: 12, y: 24, zoom: 1 } }),
+      nodeStore,
+      "snapshot"
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    return modelId;
+  }
+
+  test.each(importers)(
+    "%s rejects invalid stations and settings without changing state or collecting models",
+    async (_label, apply) => {
+      const modelId = await seedAuthoredPatch();
+      const library = [...radiosCollection.state.values()].map(recordData);
+      const settings = recordData(getSettings());
+      const session = recordData(getPlaybackSession("node"));
+      const editor = nodeStore.state;
+      const errors = spyOn(console, "error").mockImplementation(
+        () => undefined
+      );
+      try {
+        for (const fields of [
+          { radios: [{ ...stationRadio("bad"), streamUrl: null }] },
+          { settings: { player: { mode: "dj", restoreStateOnLoad: "yes" } } },
+        ]) {
+          const backup = rawBackup({
+            radios: [
+              {
+                ...stationRadio("kexp"),
+                streamUrl: "https://radio.example/changed",
+              },
+              stationRadio("new"),
+            ],
+            sessions: { node: { graph: buildNodeGraphFromTemplate("blank") } },
+            settings: { player: { mode: "dj", restoreStateOnLoad: false } },
+            ...fields,
+          });
+          // Keep a valid station before the invalid one to catch partial merges.
+          if (fields.radios) {
+            backup.radios.unshift(stationRadio("new"));
+          }
+          expect(() => validateImportData(backup)).toThrow();
+          expect(() => apply(backup)).toThrow();
+          expect([...radiosCollection.state.values()].map(recordData)).toEqual(
+            library
+          );
+          expect(recordData(getSettings())).toEqual(settings);
+          expect(recordData(getPlaybackSession("node"))).toEqual(session);
+          expect(nodeStore.state).toBe(editor);
+          expect(getCachedNamModel(modelId)).toBe('{"saved":true}');
+        }
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(getCachedNamModel(modelId)).toBe('{"saved":true}');
+        expect(undoNodeGraph()).toBe(true);
+      } finally {
+        errors.mockRestore();
+      }
+    }
+  );
+
+  test("replace rejects duplicate station IDs before deleting local data", () => {
+    seedLocalPatch();
+    const library = [...radiosCollection.state.values()].map(recordData);
+    const session = recordData(getPlaybackSession("node"));
+    const settings = recordData(getSettings());
+    const backup = rawBackup({
+      radios: [stationRadio("new"), { ...stationRadio("other"), id: "new" }],
+      sessions: { node: { graph: buildNodeGraphFromTemplate("blank") } },
+      settings: { player: { mode: "dj" } },
+    });
+    const errors = spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(() => replaceImportedData(backup)).toThrow("Duplicate radio IDs");
+      expect([...radiosCollection.state.values()].map(recordData)).toEqual(
+        library
+      );
+      expect(recordData(getPlaybackSession("node"))).toEqual(session);
+      expect(recordData(getSettings())).toEqual(settings);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  test.each(importers)(
+    "%s rolls back an application failure before changing the patch or history",
+    async (_label, apply) => {
+      const modelId = await seedAuthoredPatch();
+      const library = [...radiosCollection.state.values()].map(recordData);
+      const settings = recordData(getSettings());
+      const session = recordData(getPlaybackSession("node"));
+      const editor = nodeStore.state;
+      const originalInsert = radiosCollection.insert;
+      const insert = spyOn(radiosCollection, "insert")
+        .mockImplementationOnce(originalInsert)
+        .mockImplementationOnce(() => {
+          throw new Error("insert failed");
+        });
+      const errors = spyOn(console, "error").mockImplementation(
+        () => undefined
+      );
+      try {
+        expect(() =>
+          apply(
+            rawBackup({
+              radios: [stationRadio("new"), stationRadio("other")],
+              sessions: {
+                node: { graph: buildNodeGraphFromTemplate("blank") },
+              },
+              settings: { player: { mode: "dj" } },
+            })
+          )
+        ).toThrow("insert failed");
+        await Promise.resolve();
+        await Promise.resolve();
+        expect([...radiosCollection.state.values()].map(recordData)).toEqual(
+          library
+        );
+        expect(recordData(getSettings())).toEqual(settings);
+        expect(recordData(getPlaybackSession("node"))).toEqual(session);
+        expect(nodeStore.state).toBe(editor);
+        expect(getCachedNamModel(modelId)).toBe('{"saved":true}');
+      } finally {
+        insert.mockRestore();
+        errors.mockRestore();
+      }
+    }
+  );
+
+  test("a historic replacement with numeric and omitted station IDs imports successfully", () => {
+    seedLocalPatch();
+    replaceImportedData(
+      validateImportData(
+        rawBackup({
+          radios: [
+            { ...stationRadio("numeric"), id: 42 },
+            { name: "No ID", streamUrl: "https://radio.example/no-id" },
+          ],
+          settings: {
+            player: {
+              mode: "multiple",
+              playerType: "custom",
+              restoreStateOnLoad: false,
+            },
+          },
+          version: 1,
+        })
+      )
+    );
+    expect(
+      [...radiosCollection.state.values()].map((radio) => radio.name)
+    ).toEqual(["NUMERIC", "No ID"]);
+    expect(radiosCollection.state.get("42")?.enabled).toBe(true);
+    expect(getSettings()?.player).toEqual({
+      mode: "node",
+      restoreStateOnLoad: false,
+    });
+  });
+
+  for (const collection of [
+    radiosCollection,
+    settingsCollection,
+    playbackSessionsCollection,
+  ]) {
+    test.each(importers)(
+      `%s restores state when ${collection.id} persistence fails`,
+      async (_label, apply) => {
+        const modelId = await seedAuthoredPatch();
+        const library = [...radiosCollection.state.values()].map(recordData);
+        const settings = recordData(getSettings());
+        const session = recordData(getPlaybackSession("node"));
+        const editor = nodeStore.state;
+        const originalAccept = collection.utils.acceptMutations;
+        const accept = spyOn(
+          collection.utils,
+          "acceptMutations"
+        ).mockImplementationOnce((pending) => {
+          originalAccept(pending);
+          throw new Error("persistence failed");
+        });
+        const errors = spyOn(console, "error").mockImplementation(
+          () => undefined
+        );
+        const success = spyOn(toast, "success");
+        try {
+          expect(() =>
+            apply(
+              rawBackup({
+                radios: [stationRadio("new")],
+                sessions: {
+                  node: { graph: buildNodeGraphFromTemplate("blank") },
+                },
+                settings: { player: { mode: "dj", restoreStateOnLoad: false } },
+              })
+            )
+          ).toThrow("persistence failed");
+          await Promise.resolve();
+          await Promise.resolve();
+          expect([...radiosCollection.state.values()].map(recordData)).toEqual(
+            library
+          );
+          expect(recordData(getSettings())).toEqual(settings);
+          expect(recordData(getPlaybackSession("node"))).toEqual(session);
+          expect(nodeStore.state).toBe(editor);
+          expect(getCachedNamModel(modelId)).toBe('{"saved":true}');
+          expect(success).not.toHaveBeenCalled();
+        } finally {
+          accept.mockRestore();
+          errors.mockRestore();
+          success.mockRestore();
+        }
+      }
+    );
+  }
 });
 
 describe("mergeImportedData", () => {

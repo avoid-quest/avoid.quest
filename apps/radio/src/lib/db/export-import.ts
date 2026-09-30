@@ -1,8 +1,10 @@
+import { createTransaction } from "@tanstack/react-db";
 import LZString from "lz-string";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import {
   getSettings,
+  type RadioRecord,
   radiosCollection,
   sessionRadiosCollection,
   settingsCollection,
@@ -13,6 +15,7 @@ import {
 } from "@/lib/collections/migrations/multiple-to-node";
 import {
   playbackSessionsCollection,
+  prepareNodeSessionGraph,
   writeNodeSessionGraph,
 } from "@/lib/collections/playback-sessions";
 import { commitNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
@@ -38,8 +41,25 @@ function normalizeImportedSettings(
   settings: DatabaseExport["settings"] | undefined
 ): ImportedPlayerSettings {
   const importedPlayer = settings?.player;
+  if (importedPlayer !== undefined && !isRecord(importedPlayer)) {
+    throw new Error("Invalid player settings");
+  }
   // Backups from before Node say "multiple"; an unknown mode becomes Single.
   const mode: unknown = importedPlayer?.mode;
+  // Validate the imported fields without filling omitted merge preferences.
+  settingsCollection.validateData(
+    {
+      id: SETTINGS_ID,
+      player: {
+        mode:
+          mode === undefined || mode === null
+            ? undefined
+            : normalizePlayerMode(mode),
+        restoreStateOnLoad: importedPlayer?.restoreStateOnLoad,
+      },
+    },
+    "insert"
+  );
   return {
     mode:
       mode === undefined || mode === null
@@ -125,16 +145,172 @@ function readImportedNodePatch(importData: DatabaseExport): NodeGraph | null {
 }
 
 /**
- * Writes an imported patch to the node session, and into the open patch as
- * an undo step, so a running Node mode plays it instead of writing its old
- * patch back on the next edit.
+ * Applies prevalidated collection changes together, then commits the imported
+ * open patch as an undo step only after synchronous persistence acceptance.
  */
-function applyImportedNodePatch(graph: NodeGraph | null): void {
-  if (!graph) {
-    return;
+function applyImportedChanges(
+  graph: NodeGraph | null,
+  writeData: () => void
+): void {
+  const transaction = createTransaction({
+    mutationFn: ({ transaction: pending }) => {
+      const collections = [
+        radiosCollection,
+        settingsCollection,
+        playbackSessionsCollection,
+      ] as const;
+      const attempted: (typeof collections)[number][] = [];
+      try {
+        for (const collection of collections) {
+          attempted.push(collection);
+          collection.utils.acceptMutations(pending);
+        }
+      } catch (error) {
+        // Adapters can have persisted an earlier collection before one fails.
+        // Restore both their storage caches and synced rows before rollback.
+        const restore = {
+          mutations: pending.mutations.map((mutation) => ({
+            ...mutation,
+            changes: mutation.original,
+            modified: mutation.original,
+            original: mutation.modified,
+            type:
+              mutation.type === "insert"
+                ? ("delete" as const)
+                : ("update" as const),
+          })),
+        };
+        const failures = [error];
+        for (const collection of attempted.reverse()) {
+          try {
+            collection.utils.acceptMutations(restore);
+          } catch (restoreError) {
+            failures.push(restoreError);
+          }
+        }
+        throw failures.length === 1
+          ? error
+          : new AggregateError(
+              failures,
+              "Import failed and could not restore storage"
+            );
+      }
+      // Acceptance is entirely synchronous; no later rejection can change
+      // collections after this helper commits the editor/history or toast.
+      return Promise.resolve();
+    },
+  });
+  // A synchronous mutation failure is rethrown below; consume its rollback
+  // promise too because the public import API is synchronous.
+  transaction.isPersisted.promise.catch((error) => {
+    if (error) {
+      console.error("Import persistence failed:", error);
+    }
+  });
+  let written: NodeGraph | null = null;
+  try {
+    transaction.mutate(() => {
+      writeData();
+      written = graph ? writeNodeSessionGraph(graph) : null;
+    });
+  } catch (error) {
+    transaction.rollback();
+    throw error;
   }
-  const written = writeNodeSessionGraph(graph);
-  commitNodeGraph(() => written, nodeStore, "snapshot");
+  if (transaction.state === "failed") {
+    throw transaction.error?.error;
+  }
+  const importedGraph = written;
+  if (importedGraph) {
+    commitNodeGraph(() => importedGraph, nodeStore, "snapshot");
+  }
+}
+
+function prepareImportedSettings(importData: DatabaseExport) {
+  const existing = getSettings();
+  const player = normalizeImportedSettings(importData.settings);
+  return settingsCollection.validateData(
+    {
+      ...existing,
+      id: SETTINGS_ID,
+      player: {
+        mode: normalizePlayerMode(player.mode ?? existing?.player.mode),
+        restoreStateOnLoad:
+          player.restoreStateOnLoad ??
+          existing?.player.restoreStateOnLoad ??
+          true,
+      },
+    },
+    "insert"
+  );
+}
+
+function applyImportedSettings(
+  settings: ReturnType<typeof prepareImportedSettings>
+) {
+  if (getSettings()) {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.player = settings.player;
+    });
+  } else {
+    settingsCollection.insert(settings);
+  }
+}
+
+function prepareImportedRadio(
+  radio: Radio,
+  id: string,
+  enabled: boolean,
+  order: number
+): RadioRecord {
+  return radiosCollection.validateData(
+    {
+      countryTitle: undefined,
+      description: radio.description,
+      enabled,
+      id,
+      logoUrl: radio.logoUrl,
+      metadataConfig: radio.metadataConfig,
+      name: radio.name,
+      order,
+      placeTitle: undefined,
+      platformMetadata: radio.platformMetadata,
+      streamFormat: radio.streamFormat,
+      streamUrl: radio.streamUrl,
+      websiteUrl: radio.websiteUrl,
+    },
+    "insert"
+  );
+}
+
+function hasRadioImportChanges(
+  existing: RadioRecord,
+  imported: Radio
+): boolean {
+  return (
+    existing.streamUrl !== imported.streamUrl ||
+    (imported.streamFormat !== undefined &&
+      existing.streamFormat !== imported.streamFormat) ||
+    existing.logoUrl !== imported.logoUrl ||
+    existing.description !== imported.description ||
+    existing.websiteUrl !== imported.websiteUrl ||
+    (imported.metadataConfig !== undefined &&
+      JSON.stringify(existing.metadataConfig) !==
+        JSON.stringify(imported.metadataConfig))
+  );
+}
+
+function checkImportedRadioIds(
+  radios: RadioRecord[],
+  existingIds: string[] = []
+): void {
+  const ids = new Set(existingIds);
+  for (const radio of radios) {
+    if (ids.has(radio.id)) {
+      throw new Error("Duplicate radio IDs");
+    }
+    ids.add(radio.id);
+  }
 }
 
 /** The Node patch for a file backup, when the node session holds one. */
@@ -304,8 +480,18 @@ export const validateImportData = (data: unknown): DatabaseExport => {
     throw new Error("Invalid radios data");
   }
 
-  if (!exportData.settings || typeof exportData.settings !== "object") {
+  if (!isRecord(exportData.settings)) {
     throw new Error("Invalid settings data");
+  }
+
+  for (const radio of exportData.radios) {
+    if (!isRecord(radio)) {
+      throw new Error("Invalid radio data");
+    }
+    radiosCollection.validateData(
+      { ...radio, id: radio.id ? String(radio.id) : "" },
+      "insert"
+    );
   }
 
   const importData: DatabaseExport = {
@@ -396,20 +582,7 @@ export const previewImportChanges = (
     const existing = existingRadiosMap.get(importedRadio.name);
 
     if (existing) {
-      const importsMetadataConfig = importedRadio.metadataConfig !== undefined;
-      const importsStreamFormat = importedRadio.streamFormat !== undefined;
-      const hasChanged =
-        existing.streamUrl !== importedRadio.streamUrl ||
-        (importsStreamFormat &&
-          existing.streamFormat !== importedRadio.streamFormat) ||
-        existing.logoUrl !== importedRadio.logoUrl ||
-        existing.description !== importedRadio.description ||
-        existing.websiteUrl !== importedRadio.websiteUrl ||
-        (importsMetadataConfig &&
-          JSON.stringify(existing.metadataConfig) !==
-            JSON.stringify(importedRadio.metadataConfig));
-
-      if (hasChanged) {
+      if (hasRadioImportChanges(existing, importedRadio)) {
         updatedRadios += 1;
       } else {
         unchangedRadios += 1;
@@ -436,53 +609,40 @@ export const previewImportChanges = (
  */
 export const replaceImportedData = (importData: DatabaseExport): void => {
   try {
-    applyImportedNodePatch(readImportedNodePatch(importData));
-
-    // Clear existing radios
-    const existingRadios = Array.from(radiosCollection.state.values());
-    for (const radio of existingRadios) {
-      radiosCollection.delete(radio.id);
+    const validated = validateImportData(importData);
+    const graph = readImportedNodePatch(validated);
+    const settings = prepareImportedSettings(validated);
+    const radios = validated.radios.map((radio) =>
+      prepareImportedRadio(
+        radio,
+        radio.id ? String(radio.id) : generateId(),
+        radio.enabled ?? true,
+        radio.order ?? 0
+      )
+    );
+    checkImportedRadioIds(radios);
+    if (graph) {
+      prepareNodeSessionGraph(graph);
     }
 
-    // Import new radios
-    for (const radio of importData.radios) {
-      const id = radio.id ? String(radio.id) : generateId();
-      radiosCollection.insert({
-        description: radio.description,
-        enabled: radio.enabled ?? true,
-        id,
-        logoUrl: radio.logoUrl,
-        metadataConfig: radio.metadataConfig,
-        name: radio.name,
-        order: radio.order ?? 0,
-        platformMetadata: radio.platformMetadata,
-        streamFormat: radio.streamFormat,
-        streamUrl: radio.streamUrl,
-        websiteUrl: radio.websiteUrl,
-      });
-    }
-
-    // Replace settings
-    const existingSettings = getSettings();
-    const importPlayer = normalizeImportedSettings(importData.settings);
-    if (existingSettings) {
-      settingsCollection.update(SETTINGS_ID, (draft) => {
-        draft.player.mode = normalizePlayerMode(
-          importPlayer.mode ?? existingSettings.player.mode
-        );
-        draft.player.restoreStateOnLoad =
-          importPlayer.restoreStateOnLoad ??
-          existingSettings.player.restoreStateOnLoad;
-      });
-    } else {
-      settingsCollection.insert({
-        id: SETTINGS_ID,
-        player: {
-          mode: importPlayer.mode ?? "single",
-          restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
-        },
-      });
-    }
+    applyImportedChanges(graph, () => {
+      const importedIds = new Set(radios.map((radio) => radio.id));
+      for (const radio of Array.from(radiosCollection.state.values())) {
+        if (!importedIds.has(radio.id)) {
+          radiosCollection.delete(radio.id);
+        }
+      }
+      for (const radio of radios) {
+        if (radiosCollection.state.has(radio.id)) {
+          radiosCollection.update(radio.id, (draft) => {
+            Object.assign(draft, radio);
+          });
+        } else {
+          radiosCollection.insert(radio);
+        }
+      }
+      applyImportedSettings(settings);
+    });
 
     toast.success(`Imported ${importData.radios.length} stations`);
   } catch (error) {
@@ -497,10 +657,13 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
  */
 export const mergeImportedData = (importData: DatabaseExport): void => {
   try {
-    applyImportedNodePatch(readImportedNodePatch(importData));
+    const validated = validateImportData(importData);
+    const graph = readImportedNodePatch(validated);
+    const settings = prepareImportedSettings(validated);
 
     const existingRadios = Array.from(radiosCollection.state.values());
-    const existingSettings = getSettings();
+    const inserts: RadioRecord[] = [];
+    const updates = new Map<string, RadioRecord>();
 
     // Merge radios using similar logic to syncRadioData
     const existingRadiosMap = new Map(
@@ -510,7 +673,7 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
     let newRadiosCount = 0;
     let updatedRadiosCount = 0;
 
-    for (const importedRadio of importData.radios) {
+    for (const importedRadio of validated.radios) {
       const existing = existingRadiosMap.get(importedRadio.name);
 
       if (existing) {
@@ -518,32 +681,28 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
         const importsMetadataConfig =
           importedRadio.metadataConfig !== undefined;
         const importsStreamFormat = importedRadio.streamFormat !== undefined;
-        const hasChanged =
-          existing.streamUrl !== importedRadio.streamUrl ||
-          (importsStreamFormat &&
-            existing.streamFormat !== importedRadio.streamFormat) ||
-          existing.logoUrl !== importedRadio.logoUrl ||
-          existing.description !== importedRadio.description ||
-          existing.websiteUrl !== importedRadio.websiteUrl ||
-          (importsMetadataConfig &&
-            JSON.stringify(existing.metadataConfig) !==
-              JSON.stringify(importedRadio.metadataConfig));
-
-        if (hasChanged) {
-          // Update existing radio with new data, preserving user preferences
-          radiosCollection.update(existing.id, (draft) => {
-            draft.streamUrl = importedRadio.streamUrl;
-            if (importsStreamFormat) {
-              draft.streamFormat = importedRadio.streamFormat;
-            }
-            draft.logoUrl = importedRadio.logoUrl;
-            draft.description = importedRadio.description;
-            draft.websiteUrl = importedRadio.websiteUrl;
-            if (importsMetadataConfig) {
-              draft.metadataConfig = importedRadio.metadataConfig;
-            }
-            // Keep order and enabled status from existing
-          });
+        if (hasRadioImportChanges(existing, importedRadio)) {
+          // Validate the full updated record while preserving preferences and
+          // optional metadata omitted by older backups.
+          updates.set(
+            existing.id,
+            radiosCollection.validateData(
+              {
+                ...(updates.get(existing.id) ?? existing),
+                description: importedRadio.description,
+                logoUrl: importedRadio.logoUrl,
+                ...(importsMetadataConfig
+                  ? { metadataConfig: importedRadio.metadataConfig }
+                  : {}),
+                ...(importsStreamFormat
+                  ? { streamFormat: importedRadio.streamFormat }
+                  : {}),
+                streamUrl: importedRadio.streamUrl,
+                websiteUrl: importedRadio.websiteUrl,
+              },
+              "insert"
+            )
+          );
           updatedRadiosCount += 1;
         }
       } else {
@@ -552,44 +711,36 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
           ...existingRadios.map((r) => r.order || 0),
           0
         );
-        radiosCollection.insert({
-          description: importedRadio.description,
-          enabled: false, // New radios are disabled by default
-          id: generateId(),
-          logoUrl: importedRadio.logoUrl,
-          metadataConfig: importedRadio.metadataConfig,
-          name: importedRadio.name,
-          order: maxOrder + newRadiosCount + 1,
-          streamFormat: importedRadio.streamFormat,
-          streamUrl: importedRadio.streamUrl,
-          websiteUrl: importedRadio.websiteUrl,
-        });
+        inserts.push(
+          prepareImportedRadio(
+            importedRadio,
+            generateId(),
+            false,
+            maxOrder + newRadiosCount + 1
+          )
+        );
         newRadiosCount += 1;
       }
     }
 
-    // Merge settings (be careful not to overwrite volatile data)
-    if (existingSettings) {
-      const importPlayer = normalizeImportedSettings(importData.settings);
-      settingsCollection.update(SETTINGS_ID, (draft) => {
-        // Merge player settings; a stored legacy mode is normalised too
-        draft.player.mode = normalizePlayerMode(
-          importPlayer.mode ?? draft.player.mode
-        );
-        if (importPlayer.restoreStateOnLoad !== undefined) {
-          draft.player.restoreStateOnLoad = importPlayer.restoreStateOnLoad;
-        }
-      });
-    } else {
-      const importPlayer = normalizeImportedSettings(importData.settings);
-      settingsCollection.insert({
-        id: SETTINGS_ID,
-        player: {
-          mode: importPlayer.mode ?? "single",
-          restoreStateOnLoad: importPlayer.restoreStateOnLoad ?? true,
-        },
-      });
+    checkImportedRadioIds(
+      inserts,
+      existingRadios.map((radio) => radio.id)
+    );
+    if (graph) {
+      prepareNodeSessionGraph(graph);
     }
+    applyImportedChanges(graph, () => {
+      for (const radio of updates.values()) {
+        radiosCollection.update(radio.id, (draft) => {
+          Object.assign(draft, radio);
+        });
+      }
+      for (const radio of inserts) {
+        radiosCollection.insert(radio);
+      }
+      applyImportedSettings(settings);
+    });
 
     toast.success(
       `Imported ${newRadiosCount} new (hidden), ${updatedRadiosCount} updated`

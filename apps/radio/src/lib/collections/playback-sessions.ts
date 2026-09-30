@@ -493,33 +493,54 @@ function emptyStaleNodeSources(graph: NodeGraph): NodeGraph {
   };
 }
 
+/** Prepares and validates the entire session without writing or collecting models. */
+export function prepareNodeSessionGraph(
+  graph: NodeGraph
+): PlaybackSessionRecord {
+  const nextGraph = emptyStaleNodeSources(graph);
+  const session = playbackSessionsCollection.state.get("node");
+  if (!session) {
+    return playbackSessionsCollection.validateData(
+      buildNodeSessionFromGraph(nextGraph),
+      "insert"
+    );
+  }
+  const channels = deriveNodeChannels(
+    compile(nextGraph, { crossOriginIsolated: false }),
+    session.channels
+  );
+  return playbackSessionsCollection.validateData(
+    {
+      ...session,
+      activeChannelId: channels.some(
+        (channel) => channel.id === session.activeChannelId
+      )
+        ? session.activeChannelId
+        : null,
+      channels,
+      graph: nextGraph,
+    },
+    "insert"
+  );
+}
+
 /**
  * Writes `graph` as the node session's patch, with its derived lane
  * channels, in one update, or inserts the session when there is none.
  * Stale session Stations are emptied first. Returns the graph written.
  */
 export function writeNodeSessionGraph(graph: NodeGraph): NodeGraph {
-  const nextGraph = emptyStaleNodeSources(graph);
-  const session = playbackSessionsCollection.state.get("node");
-  if (!session) {
-    playbackSessionsCollection.insert(buildNodeSessionFromGraph(nextGraph));
-    return nextGraph;
+  const prepared = prepareNodeSessionGraph(graph);
+  if (playbackSessionsCollection.state.has("node")) {
+    updatePlaybackSession("node", (draft) => {
+      draft.graph = prepared.graph;
+      draft.channels = prepared.channels;
+      draft.activeChannelId = prepared.activeChannelId;
+    });
+  } else {
+    playbackSessionsCollection.insert(prepared);
   }
-  const channels = deriveNodeChannels(
-    compile(nextGraph, { crossOriginIsolated: false }),
-    session.channels
-  );
-  updatePlaybackSession("node", (draft) => {
-    draft.graph = nextGraph;
-    draft.channels = channels;
-    if (
-      draft.activeChannelId &&
-      !channels.some((channel) => channel.id === draft.activeChannelId)
-    ) {
-      draft.activeChannelId = null;
-    }
-  });
-  return nextGraph;
+  return prepared.graph as NodeGraph;
 }
 
 /** Empties the stored patch's Stations whose session radio left this tab. */

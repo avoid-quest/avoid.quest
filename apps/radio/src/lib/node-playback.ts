@@ -600,17 +600,52 @@ function createNodePlayback(
   const replaceTree = (channelId: string, tree: EffectConfig[]) =>
     effects.change({ channelId, sessionId: "node" }, { tree, type: "replace" });
 
-  const changeLaneEffects = (channelId: string, tree: EffectConfig[]) => {
-    track(replaceTree(channelId, tree)).catch(
+  /** Per lane: layout swaps still ducking, whose tree is not replaced yet. */
+  const pendingSwaps = new Map<string, number>();
+
+  const endPendingSwap = (laneId: string) => {
+    const count = (pendingSwaps.get(laneId) ?? 0) - 1;
+    if (count > 0) {
+      pendingSwaps.set(laneId, count);
+    } else {
+      pendingSwaps.delete(laneId);
+    }
+  };
+
+  const changeLaneEffects = (laneId: string, tree: EffectConfig[]) => {
+    // A swap still ducking replaces with the lane's latest tree once silent;
+    // applying this one now would change the layout before the duck.
+    if (pendingSwaps.has(laneId)) {
+      return;
+    }
+    track(replaceTree(laneChannelId(laneId), tree)).catch(
       warn("Could not apply lane effects")
     );
   };
 
-  /** duckLane → replace → await outcome → unduckLane, on laneOut. */
-  const swapLaneEffects = (laneId: string, tree: EffectConfig[]) => {
+  /**
+   * duckLane → replace → await outcome → unduckLane, on laneOut. The tree is
+   * read when the lane is silent, so a commit during the duck is not undone
+   * by this op's older tree, and a lane removed meanwhile is left alone.
+   */
+  const swapLaneEffects = (laneId: string) => {
+    pendingSwaps.set(laneId, (pendingSwaps.get(laneId) ?? 0) + 1);
+    let pending = true;
+    const endSwap = () => {
+      if (pending) {
+        pending = false;
+        endPendingSwap(laneId);
+      }
+    };
     track(
-      laneOutputs.swap(laneId, () => replaceTree(laneChannelId(laneId), tree))
-    ).catch(warn("Could not swap lane effects"));
+      laneOutputs.swap(laneId, async () => {
+        endSwap();
+        const lane = plan.lanes.get(laneId);
+        return lane ? await replaceTree(lane.channelId, lane.effects) : null;
+      })
+    )
+      .catch(warn("Could not swap lane effects"))
+      .finally(endSwap);
   };
 
   /** A removed lane keeps its level through its own fade-out. */
@@ -670,10 +705,10 @@ function createNodePlayback(
         removeLane(op.laneId, laneChannelId(op.laneId));
         break;
       case "setLaneEffects":
-        changeLaneEffects(laneChannelId(op.laneId), op.effects);
+        changeLaneEffects(op.laneId, op.effects);
         break;
       case "replaceLaneEffects":
-        swapLaneEffects(op.laneId, op.effects);
+        swapLaneEffects(op.laneId);
         break;
       // They bracket replaceLaneEffects, whose swap ducks and unducks.
       case "duckLane":

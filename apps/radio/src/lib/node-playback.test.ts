@@ -1803,6 +1803,86 @@ describe("Node Playback lane outputs", () => {
     expect(fader.gain.events).toEqual([]);
   });
 
+  test("an FX param change during the duck waits for the swap, which applies the latest tree", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    connectLane(harness.context, "a");
+
+    const withReverb = (dryWet: number) => () =>
+      nodeGraphSchema.parse({
+        edges: [cable("a", "verb"), cable("verb", "speakers")],
+        nodes: [station("a"), reverb("verb", { dryWet }), speakers],
+        version: 1,
+      });
+    commitNodeGraph(withReverb(0.5), harness.store);
+    harness.playback.flush();
+    // Same layout, new param, while the lane is still ducking.
+    commitNodeGraph(withReverb(0.25), harness.store);
+    harness.playback.flush();
+
+    // The new layout must not be applied before the lane is silent.
+    expect(harness.effectsChange).not.toHaveBeenCalled();
+
+    await harness.playback.whenSettled();
+
+    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
+    expect(harness.effectsChange).toHaveBeenLastCalledWith(
+      { channelId: channelOf("a"), sessionId: "node" },
+      {
+        tree: [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
+        type: "replace",
+      }
+    );
+    expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
+      expect.objectContaining({ dryWet: 0.25, id: "verb" }),
+    ]);
+
+    // Once the swap has replaced, param changes apply at once again.
+    commitNodeGraph(withReverb(0.75), harness.store);
+    await harness.playback.whenSettled();
+    expect(harness.effectsChange).toHaveBeenCalledTimes(2);
+    expect(harness.effectsChange).toHaveBeenLastCalledWith(
+      { channelId: channelOf("a"), sessionId: "node" },
+      {
+        tree: [expect.objectContaining({ dryWet: 0.75, id: "verb" })],
+        type: "replace",
+      }
+    );
+  });
+
+  test("a Station removed during the duck is not given its old tree", async () => {
+    insertNodeSession(patch([station("a"), station("b")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    connectLane(harness.context, "a");
+
+    commitNodeGraph(
+      () =>
+        nodeGraphSchema.parse({
+          edges: [
+            cable("a", "verb"),
+            cable("verb", "speakers"),
+            cable("b", "speakers"),
+          ],
+          nodes: [station("a"), reverb("verb"), station("b"), speakers],
+          version: 1,
+        }),
+      harness.store
+    );
+    harness.playback.flush();
+    commitNodeGraph(() => patch([station("b")]), harness.store);
+    harness.playback.flush();
+
+    await harness.playback.whenSettled();
+
+    expect(harness.effectsChange).not.toHaveBeenCalled();
+  });
+
   test("a removed Station releases its lane output once its channel is gone", async () => {
     insertNodeSession(patch([station("a"), station("b")]));
     const harness = createHarness();

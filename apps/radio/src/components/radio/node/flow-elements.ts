@@ -7,23 +7,38 @@
  * stays testable without the canvas chunk.
  */
 
+import { getNodeDefinition, isShipped } from "@/lib/node-graph/catalogue";
 import { laneChannelId } from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
-import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
+import {
+  EFFECT_NODE_TYPES,
+  type GraphNode,
+  NATIVE_NODE_TYPES,
+  type NodeGraph,
+  type NodeType,
+} from "@/lib/node-graph/schema";
+import { parseHandleId } from "@/lib/node-graph/validate";
 import type { FlowAriaLabelConfig, FlowEdge, FlowNode } from "./flow-adapter";
 
 type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
-/** The node types the canvas draws today. */
-export const DRAWN_NODE_TYPES = ["speakers", "station"] as const;
-type DrawnType = (typeof DRAWN_NODE_TYPES)[number];
+/**
+ * The node types the canvas draws today: Station, Speakers, the native
+ * strip and every shipped effect (all but Werkstatt).
+ */
+export const DRAWN_NODE_TYPES: readonly NodeType[] = [
+  "speakers",
+  "station",
+  ...NATIVE_NODE_TYPES,
+  ...EFFECT_NODE_TYPES.filter((type) =>
+    isShipped(getNodeDefinition(type).ship, "v1")
+  ),
+];
 
-export function isDrawn(
-  node: GraphNode
-): node is GraphNode & { type: DrawnType } {
-  return (DRAWN_NODE_TYPES as readonly string[]).includes(node.type);
+export function isDrawn(node: GraphNode): boolean {
+  return DRAWN_NODE_TYPES.includes(node.type);
 }
 
 /** React Flow's announcements in the app's words. */
@@ -90,6 +105,38 @@ export function toFlowNodes(
   }));
 }
 
+/**
+ * Nodes carrying a playing Station's audio: each live Station, and every
+ * node its audio cables reach through FX, up to the outputs.
+ */
+export function liveNodeIds(
+  graph: Pick<NodeGraph, "nodes" | "edges">,
+  liveLanes: ReadonlySet<string>
+): Set<string> {
+  const live = new Set<string>();
+  const queue = graph.nodes
+    .filter(
+      (node) => node.type === "station" && liveLanes.has(laneChannelId(node.id))
+    )
+    .map((node) => node.id);
+  for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+    if (live.has(id)) {
+      continue;
+    }
+    live.add(id);
+    for (const edge of graph.edges) {
+      if (
+        edge.source === id &&
+        parseHandleId(edge.sourceHandle)?.kind === "audio" &&
+        parseHandleId(edge.targetHandle)?.kind === "audio"
+      ) {
+        queue.push(edge.target);
+      }
+    }
+  }
+  return live;
+}
+
 export function toFlowEdges(
   graph: NodeGraph,
   {
@@ -102,13 +149,17 @@ export function toFlowEdges(
   }
 ): FlowEdge[] {
   const drawn = new Set(graph.nodes.filter(isDrawn).map((node) => node.id));
+  const live = liveNodeIds(graph, liveLanes);
   return graph.edges
     .filter((edge) => drawn.has(edge.source) && drawn.has(edge.target))
     .map((edge) => ({
       ariaLabel: edgeLabel(graph, edge),
-      className: liveLanes.has(laneChannelId(edge.source))
-        ? "node-edge-live"
-        : undefined,
+      // A key cable carries its station's audio as a detector, not on air.
+      className:
+        live.has(edge.source) &&
+        parseHandleId(edge.targetHandle)?.kind === "audio"
+          ? "node-edge-live"
+          : undefined,
       domAttributes: { "aria-roledescription": "cable" },
       id: edge.id,
       selected: selection.edges.includes(edge.id),

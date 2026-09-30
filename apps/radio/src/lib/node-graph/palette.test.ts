@@ -50,11 +50,49 @@ describe("paletteEntries", () => {
       radios: [radio("c"), radio("d", { enabled: false })],
     });
 
-    expect(entries.map((entry) => `${entry.section}:${entry.name}`)).toEqual([
+    expect(
+      entries
+        .filter((entry) => entry.section !== "fx")
+        .map((entry) => `${entry.section}:${entry.name}`)
+    ).toEqual([
       "sources:Station",
       "sources:Station c",
       "templates:Start from Multiple",
       "templates:Blank",
+    ]);
+  });
+
+  test("offers the native strip, then every shipped effect but Werkstatt and the splits", () => {
+    const fx = paletteEntries(patch).filter((entry) => entry.section === "fx");
+
+    expect(fx.map((entry) => entry.id)).toEqual([
+      "filter",
+      "pan",
+      "gain",
+      "revamp",
+      "autotune",
+      "compressor",
+      "crusher",
+      "plateReverb",
+      "delay",
+      "distortion",
+      "fold",
+      "cheapReverb",
+      "gate",
+      "limiter",
+      "maximizer",
+      "pitchShifter",
+      "stereoTool",
+      "tidal",
+      "neuralAmp",
+      "vocoder",
+      "waveshaper",
+    ]);
+    expect(fx.map((entry) => entry.name).slice(0, 4)).toEqual([
+      "Filter",
+      "Pan",
+      "Gain",
+      "7-Band EQ",
     ]);
   });
 
@@ -76,18 +114,22 @@ describe("paletteEntries", () => {
       radios: [radio("c")],
     });
 
-    expect(entries.map((entry) => entry.name)).toEqual([
-      "Station",
-      "Station c",
-    ]);
+    expect(
+      entries
+        .filter((entry) => entry.section !== "fx")
+        .map((entry) => entry.name)
+    ).toEqual(["Station", "Station c"]);
+    expect(entries.some((entry) => entry.id === "compressor")).toBe(true);
+    expect(entries.some((entry) => entry.section === "templates")).toBe(false);
   });
 
-  test("a cable from an output offers nothing that can't take audio", () => {
+  test("a cable from an output offers only what takes audio: the FX", () => {
     const entries = paletteEntries(patch, {
       from: { handle: AUDIO_OUT_HANDLE, node: "src-a", type: "source" },
     });
 
-    expect(entries).toEqual([]);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((entry) => entry.section === "fx")).toBe(true);
   });
 });
 
@@ -127,6 +169,48 @@ describe("addPaletteNode", () => {
         targetHandle: AUDIO_IN_HANDLE,
       }),
     ]);
+  });
+});
+
+describe("addPaletteNode FX", () => {
+  test("an effect comes on, with the node id as its effect id", () => {
+    const { graph, nodeId } = addPaletteNode(
+      patch,
+      {
+        id: "compressor",
+        kind: "node",
+        name: "Compressor",
+        section: "fx",
+        type: "compressor",
+      },
+      { position: { x: 240, y: 0 } }
+    );
+
+    expect(nodeId).toBe("compressor");
+    expect(graph.nodes.find((node) => node.id === nodeId)).toMatchObject({
+      data: { effect: { enabled: true, id: "compressor", type: "compressor" } },
+      position: { x: 240, y: 0 },
+      type: "compressor",
+    });
+    // Unwired until it is cabled in.
+    expect(graph.edges).toEqual(patch.edges);
+  });
+
+  test("a native strip node takes its defaults, wired into a dropped cable", () => {
+    const { graph, nodeId } = addPaletteNode(
+      patch,
+      { id: "pan", kind: "node", name: "Pan", section: "fx", type: "pan" },
+      { from: fromSpeakers }
+    );
+
+    expect(graph.nodes.find((node) => node.id === nodeId)).toMatchObject({
+      data: { pan: 0 },
+      type: "pan",
+    });
+    expect(graph.edges.at(-1)).toMatchObject({
+      source: nodeId,
+      target: SPEAKERS_NODE_ID,
+    });
   });
 });
 

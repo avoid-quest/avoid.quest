@@ -63,6 +63,11 @@
     }
   }
 
+  /* A sidechain (key) input: the Key amber ring. */
+  .react-flow__handle.node-port.node-port-key {
+    border-color: var(--node-key);
+  }
+
   .react-flow__handle.node-port.node-port-live {
     background-color: var(--node-live);
     border-color: var(--node-live);

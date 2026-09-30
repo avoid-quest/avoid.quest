@@ -809,6 +809,11 @@ export class AudioManager {
     return this.effects.reconcile(soundId, desired);
   }
 
+  /** The backend a sound's effects last settled on, e.g. a dry fallback. */
+  getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
+    return this.effects.getRuntimeOutcome(soundId);
+  }
+
   // ============================================
   // Filter Management (using native BiquadFilterNode)
   // ============================================

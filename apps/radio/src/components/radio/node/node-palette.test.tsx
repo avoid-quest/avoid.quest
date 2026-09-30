@@ -215,11 +215,13 @@ describe("NodePalette", () => {
       view.getByRole("dialog", { name: "Add a node to this cable" })
     ).toBeTruthy();
     expect(view.queryByRole("region", { name: "Templates" })).toBeNull();
-    const names = view
-      .getAllByRole("button")
-      .map((button) => button.querySelector("h3")?.textContent)
-      .filter(Boolean);
+    const sources = view.getByRole("region", { name: "Sources" });
+    const names = [...sources.querySelectorAll("[role=button] h3")].map(
+      (heading) => heading.textContent
+    );
     expect(names).toEqual(["Station", "KEXP", "NTS 1"]);
+    // An effect can feed Speakers too, so the FX section is on offer.
+    expect(view.getByRole("region", { name: "FX" })).toBeTruthy();
 
     fireEvent.keyDown(
       view.getByRole("searchbox", { name: "Search nodes and stations" }),

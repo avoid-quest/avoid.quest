@@ -2,14 +2,17 @@
  * Graph Edits
  *
  * Pure edits the canvas commits to the node store: cables in and out, nodes
- * moved or removed, the viewport, and the Station edits behind search. The search bar adds
+ * moved or removed, FX and native strip params, the viewport, and the
+ * Station edits behind search. The search bar adds
  * a Station wired to Speakers, an empty Station slot is filled in place, and
  * saved-station snapshots follow their records (a rename, a new stream, a
  * hide). Each returns the same graph when nothing changes, so a no-op
  * commits nothing.
  */
 
+import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
+import { isEffectNodeType } from "./catalogue";
 import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
 import {
   AUDIO_IN_HANDLE,
@@ -20,8 +23,27 @@ import {
 import type { Connection } from "./validate";
 
 type StationNode = Extract<GraphNode, { type: "station" }>;
+type NativeNode = Extract<GraphNode, { type: "filter" | "pan" | "gain" }>;
 type Position = GraphNode["position"];
 type Viewport = NodeGraph["viewport"];
+
+/** The data a Filter, Pan or Gain node holds, any of its fields. */
+export type NativeParams = Partial<
+  Extract<GraphNode, { type: "filter" }>["data"] &
+    Extract<GraphNode, { type: "pan" }>["data"] &
+    Extract<GraphNode, { type: "gain" }>["data"]
+>;
+
+function isNative(node: GraphNode): node is NativeNode {
+  return node.type === "filter" || node.type === "pan" || node.type === "gain";
+}
+
+/** Shallow: true when every key in `patch` already has that value. */
+function holds(data: object, patch: object): boolean {
+  return Object.entries(patch).every(
+    ([key, value]) => (data as Record<string, unknown>)[key] === value
+  );
+}
 
 /** Where the first Station goes relative to Speakers: one column left. */
 const FIRST_STATION_OFFSET_X = 480;
@@ -313,6 +335,61 @@ export function syncStationSnapshots(
     }
     changed = true;
     return { ...node, data: { ...node.data, radio: live } };
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/**
+ * Merges `patch` into an FX node's effect, e.g. a knob turn or its enable
+ * switch. The effect id stays the node id, so openDAW updates in place.
+ */
+export function setEffectParams(
+  graph: NodeGraph,
+  nodeId: string,
+  patch: Partial<EffectConfig>
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node) => {
+    if (node.id !== nodeId || !isEffectNodeType(node.type)) {
+      return node;
+    }
+    const { effect } = node.data as { effect: EffectConfig };
+    if (holds(effect, patch)) {
+      return node;
+    }
+    changed = true;
+    return {
+      ...node,
+      data: {
+        effect: { ...effect, ...patch, id: nodeId, type: effect.type },
+      },
+    } as GraphNode;
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/**
+ * Merges `patch` into a Filter, Pan or Gain node's data. Fields the node
+ * doesn't have (a cutoff sent to a Pan) are ignored.
+ */
+export function setNativeParams(
+  graph: NodeGraph,
+  nodeId: string,
+  patch: NativeParams
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node) => {
+    if (node.id !== nodeId || !isNative(node)) {
+      return node;
+    }
+    const own = Object.fromEntries(
+      Object.entries(patch).filter(([key]) => key in node.data)
+    );
+    if (holds(node.data, own)) {
+      return node;
+    }
+    changed = true;
+    return { ...node, data: { ...node.data, ...own } } as GraphNode;
   });
   return changed ? { ...graph, nodes } : graph;
 }

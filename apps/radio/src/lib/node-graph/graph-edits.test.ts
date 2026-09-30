@@ -9,6 +9,8 @@ import {
   removeEdges,
   removeNodes,
   removeSelection,
+  setEffectParams,
+  setNativeParams,
   setStationRadio,
   setViewport,
   syncStationSnapshots,
@@ -192,5 +194,58 @@ describe("syncStationSnapshots", () => {
   test("keeps the snapshot of a station whose record is gone", () => {
     const start = patch(radio("a"));
     expect(syncStationSnapshots(start, () => undefined)).toBe(start);
+  });
+});
+
+describe("setEffectParams", () => {
+  const withComp = addPaletteNode(patch(radio("a")), {
+    id: "compressor",
+    kind: "node",
+    name: "Compressor",
+    section: "fx",
+    type: "compressor",
+  }).graph;
+
+  test("merges a param into the effect and keeps its id", () => {
+    const graph = setEffectParams(withComp, "compressor", {
+      id: "other",
+      threshold: -24,
+    } as never);
+
+    expect(graph.nodes.find((node) => node.id === "compressor")).toMatchObject({
+      data: { effect: { id: "compressor", threshold: -24 } },
+    });
+  });
+
+  test("returns the same graph when nothing changes or the node isn't FX", () => {
+    expect(setEffectParams(withComp, "compressor", { enabled: true })).toBe(
+      withComp
+    );
+    expect(setEffectParams(withComp, "src-a", { enabled: false })).toBe(
+      withComp
+    );
+  });
+});
+
+describe("setNativeParams", () => {
+  const withPan = addPaletteNode(patch(radio("a")), {
+    id: "pan",
+    kind: "node",
+    name: "Pan",
+    section: "fx",
+    type: "pan",
+  }).graph;
+
+  test("sets only the fields the node has", () => {
+    const graph = setNativeParams(withPan, "pan", { frequency: 400, pan: -1 });
+
+    expect(graph.nodes.find((node) => node.id === "pan")?.data).toEqual({
+      pan: -1,
+    });
+  });
+
+  test("returns the same graph for a no-op", () => {
+    expect(setNativeParams(withPan, "pan", { pan: 0 })).toBe(withPan);
+    expect(setNativeParams(withPan, "pan", { frequency: 400 })).toBe(withPan);
   });
 });

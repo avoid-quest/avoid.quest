@@ -20,6 +20,7 @@ import {
   StationRowText,
   stationRowClassName,
 } from "../station-row";
+import { BackendBadge } from "./backend-badge";
 import { useNodeActions } from "./node-actions";
 import { type NodeLaneControls, NodeSourceRow } from "./node-source-row";
 
@@ -92,7 +93,10 @@ function RackSection({
   );
 }
 
-/** The FX lowered into a lane, and its backend estimate once it has FX. */
+/**
+ * The FX lowered into a lane, and its backend badge: `compat` or
+ * `bypassed`, nothing while it runs as planned.
+ */
 function LaneChain({
   lane,
   nodesById,
@@ -118,14 +122,7 @@ function LaneChain({
           {getNodeDefinition(node.type).name}
         </Badge>
       ))}
-      {lane.backend ? (
-        <span
-          className="text-[10px] text-muted-foreground"
-          title="Estimated effects backend"
-        >
-          {lane.backend}
-        </span>
-      ) : null}
+      <BackendBadge nodeId={lane.id} />
     </div>
   );
 }

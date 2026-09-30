@@ -2,9 +2,9 @@
  * Node Palette
  *
  * What the add-node palette offers and what picking an entry does, as pure
- * functions over the graph. Sources and Outputs are the shipped node types
- * (a Station can come pre-filled with a station), Templates replace the
- * patch. A cable dropped on empty space narrows the list to nodes with a
+ * functions over the graph. Sources, FX and Outputs are the shipped node
+ * types (a Station can come pre-filled with a station; an effect comes on),
+ * Templates replace the patch. A cable dropped on empty space narrows the list to nodes with a
  * port that takes it and wires the new node in; a cable dropped on a node
  * connects when exactly one of its ports fits. Every check is the same
  * `validateConnection` React Flow runs while dragging.
@@ -12,9 +12,12 @@
 
 import type { Radio } from "@/lib/audio/playback/types";
 import {
+  createNodeEffectConfig,
   getNodeDefinition,
+  isEffectNodeType,
   isShipped,
   NODE_DEFINITIONS,
+  type NodeDefinition,
   type NodePort,
   portHandleId,
 } from "./catalogue";
@@ -28,6 +31,7 @@ import {
 import {
   type GraphNode,
   graphNodeSchema,
+  NATIVE_NODE_TYPES,
   type NodeGraph,
   type NodeType,
 } from "./schema";
@@ -44,13 +48,13 @@ import {
 
 type Position = GraphNode["position"];
 
-export type PaletteSection = "sources" | "outputs" | "templates";
+export type PaletteSection = "sources" | "fx" | "outputs" | "templates";
 
 export type PaletteNodeEntry = {
   kind: "node";
   /** Stable React key; also what a test or a shortcut picks by. */
   id: string;
-  section: "sources" | "outputs";
+  section: "sources" | "fx" | "outputs";
   type: NodeType;
   name: string;
   /** Set on a Station that comes filled with this station. */
@@ -96,9 +100,13 @@ export const PALETTE_TEMPLATES: readonly PaletteTemplateEntry[] = [
 ];
 
 const SECTION_OF = {
+  fx: "fx",
   output: "outputs",
   source: "sources",
 } as const;
+
+/** Section order: what makes sound, what shapes it, where it goes. */
+const SECTION_ORDER = ["sources", "fx", "outputs"] as const;
 
 /** The id a probe node takes while its ports are tried. */
 const PROBE_ID = "palette-probe";
@@ -118,7 +126,11 @@ export function createPaletteNode(
       type,
     };
   }
-  const parsed = graphNodeSchema.safeParse({ data: {}, id, position, type });
+  // An effect placed in a patch is meant to sound, so it starts on.
+  const data = isEffectNodeType(type)
+    ? { effect: { ...createNodeEffectConfig(type, id), enabled: true } }
+    : {};
+  const parsed = graphNodeSchema.safeParse({ data, id, position, type });
   return parsed.success ? parsed.data : null;
 }
 
@@ -173,20 +185,43 @@ function speakersPresent(graph: NodeGraph): boolean {
   return graph.nodes.some((node) => node.type === "speakers");
 }
 
-/** Shipped Sources and Outputs; Speakers only while the patch has none. */
+/**
+ * Shipped Sources, FX and Outputs, in section order; Speakers only while the
+ * patch has none.
+ */
 function nodeTypesOnOffer(
   graph: NodeGraph,
   release: ValidateOptions["release"] = "v1"
 ): NodeType[] {
-  return Object.values(NODE_DEFINITIONS)
-    .filter(
-      (definition) =>
-        (definition.category === "source" ||
-          definition.category === "output") &&
-        isShipped(definition.ship, release) &&
-        !(definition.type === "speakers" && speakersPresent(graph))
-    )
-    .map((definition) => definition.type);
+  const offered = Object.values(NODE_DEFINITIONS).filter(
+    (definition) =>
+      definition.category in SECTION_OF &&
+      isShipped(definition.ship, release) &&
+      !(definition.type === "speakers" && speakersPresent(graph))
+  );
+  return SECTION_ORDER.flatMap((section) =>
+    offered
+      .filter(
+        (definition) =>
+          SECTION_OF[definition.category as keyof typeof SECTION_OF] === section
+      )
+      .sort(byStripThenName)
+      .map((definition) => definition.type)
+  );
+}
+
+/** The native strip (Filter, Pan, Gain) leads FX; effects go by name. */
+function byStripThenName(left: NodeDefinition, right: NodeDefinition) {
+  const strip = (definition: NodeDefinition) =>
+    definition.native
+      ? NATIVE_NODE_TYPES.indexOf(definition.native)
+      : NATIVE_NODE_TYPES.length;
+  return (
+    strip(left) - strip(right) ||
+    (left.category === "fx" && right.category === "fx"
+      ? left.name.localeCompare(right.name)
+      : 0)
+  );
 }
 
 export type PaletteOptions = ValidateOptions & {

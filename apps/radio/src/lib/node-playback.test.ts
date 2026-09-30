@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { Store } from "@tanstack/react-store";
 import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type {
@@ -11,6 +12,7 @@ import {
   type FakeGainNode,
 } from "@/lib/audio/routing/fake-audio-nodes";
 import {
+  createNodeLaneOutputs,
   LANE_DUCK_MS,
   LANE_LEVEL_TIME_CONSTANT_S,
 } from "@/lib/audio/routing/node-lane-outputs";
@@ -24,11 +26,14 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+import { compile } from "@/lib/node-graph/compile";
+import { setEffectParams } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   createNodeStore,
   type NodeStore,
 } from "@/lib/node-graph/node-store";
+import { diff } from "@/lib/node-graph/reconcile";
 import {
   type NodeGraph,
   type NodeGraphInput,
@@ -41,8 +46,18 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
-import type { ChannelEffectsResult } from "./channel-effects";
-import { getNodePlayback, type NodePlayback } from "./node-playback";
+import type {
+  ChannelEffectsResult,
+  EffectsRuntimeOutcome,
+} from "./channel-effects";
+import {
+  type GetNodePlaybackOptions,
+  getNodePlayback,
+  laneBackendBadge,
+  type NodeBackendBadgeStore,
+  type NodeBackendBadges,
+  type NodePlayback,
+} from "./node-playback";
 import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
@@ -161,6 +176,13 @@ function createTestContext(): PlaybackActionContext {
   return {
     audio: {
       cleanupSound: mock((_soundId: string) => undefined),
+      getEffectsRuntimeOutcome: mock(
+        (_soundId: string): EffectsRuntimeOutcome => ({
+          backend: null,
+          ready: false,
+          status: "inactive",
+        })
+      ),
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -241,25 +263,37 @@ type Harness = {
 
 function createHarness(
   options: {
+    backendBadges?: NodeBackendBadgeStore;
     context?: PlaybackActionContext;
+    crossOriginIsolated?: boolean;
+    effectsOutcome?: () => EffectsRuntimeOutcome;
     fadeOutSound?: (soundId: string, durationMs: number) => Promise<void>;
+    laneOutputs?: GetNodePlaybackOptions["laneOutputs"];
     profile?: Profile;
   } = {}
 ): Harness {
   const context = options.context ?? createTestContext();
   const store = createNodeStore();
-  const effectsChange = mock(async () => ({}) as ChannelEffectsResult);
+  const { effectsOutcome } = options;
+  const effectsChange = mock(
+    async () =>
+      (effectsOutcome
+        ? { runtime: effectsOutcome() }
+        : {}) as ChannelEffectsResult
+  );
   const fadeOutSound = mock(
     options.fadeOutSound ?? (async (_soundId: string) => undefined)
   );
   const playback = getNodePlayback({
+    backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
     effects: { change: effectsChange },
     fadeOutSound,
     getEnv: () => ({
-      crossOriginIsolated: false,
+      crossOriginIsolated: options.crossOriginIsolated ?? false,
       profile: options.profile ?? "desktop",
     }),
+    laneOutputs: options.laneOutputs,
     store,
   });
   return { context, effectsChange, fadeOutSound, playback, store };
@@ -1951,5 +1985,162 @@ describe("Node Playback lane outputs", () => {
     expect(registeredConnector(harness.context, "b")).toBeNull();
     expect(a.releaseMain).toHaveBeenCalledTimes(1);
     expect(b.releaseMain).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Node Playback FX lanes", () => {
+  function compressor(id: string): NodeInput {
+    return {
+      data: {
+        effect: { ...createNodeEffectConfig("compressor", id), enabled: true },
+      },
+      id,
+      position: { x: 240, y: 0 },
+      type: "compressor",
+    } as NodeInput;
+  }
+
+  /** Station a → Compressor → Speakers, in place of a's straight cable. */
+  function insertCompressor(graph: NodeGraph): NodeGraph {
+    return nodeGraphSchema.parse({
+      ...graph,
+      edges: [cable("a", "comp"), cable("comp", "speakers")],
+      nodes: [...graph.nodes, compressor("comp")],
+    });
+  }
+
+  function threshold(value: number) {
+    return (graph: NodeGraph) =>
+      setEffectParams(graph, "comp", {
+        threshold: value,
+      } as Partial<EffectConfig>);
+  }
+
+  test("a Compressor inserted between a Station and Speakers joins its lane under its node id, and a knob only sets lane effects", async () => {
+    insertNodeSession(patch([station("a")]));
+    const swaps: string[] = [];
+    const harness = createHarness({
+      laneOutputs: (options) => {
+        const outputs = createNodeLaneOutputs(options);
+        return {
+          ...outputs,
+          swap: (laneId, replace) => {
+            swaps.push(laneId);
+            return outputs.swap(laneId, replace);
+          },
+        };
+      },
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    await commit(harness, insertCompressor);
+
+    const [effect] = getPlaybackChannel("node", channelOf("a"))?.effects ?? [];
+    expect(effect).toMatchObject({ id: "comp", type: "compressor" });
+    expect(swaps).toEqual(["a"]);
+    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
+
+    const before = harness.store.state.graph as NodeGraph;
+    await commit(harness, threshold(-24));
+    const after = harness.store.state.graph as NodeGraph;
+
+    const env = { crossOriginIsolated: false };
+    expect(
+      diff(compile(before, env), compile(after, env)).map((op) => op.type)
+    ).toEqual(["setLaneEffects"]);
+    expect(swaps).toEqual(["a"]);
+    expect(harness.effectsChange).toHaveBeenCalledTimes(2);
+    expect(harness.effectsChange).toHaveBeenLastCalledWith(
+      { channelId: channelOf("a"), sessionId: "node" },
+      {
+        tree: [expect.objectContaining({ id: "comp", threshold: -24 })],
+        type: "replace",
+      }
+    );
+    expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
+    expect(harness.fadeOutSound).not.toHaveBeenCalled();
+  });
+
+  test("the backend badge shows compat when not cross-origin isolated, on the lane and its FX", async () => {
+    insertNodeSession(insertCompressor(patch([station("a")])));
+    const badges = new Store<NodeBackendBadges>({});
+    const harness = createHarness({ backendBadges: badges });
+
+    await harness.playback.activate();
+
+    expect(badges.state).toEqual({ a: "compat", comp: "compat" });
+
+    // With the FX off there is no effects runtime, so no badge.
+    await commit(harness, (graph) =>
+      setEffectParams(graph, "comp", { enabled: false })
+    );
+    expect(badges.state).toEqual({});
+  });
+
+  test("the badge reads bypassed once the controller reports a dry fallback", async () => {
+    insertNodeSession(insertCompressor(patch([station("a")])));
+    const badges = new Store<NodeBackendBadges>({});
+    const harness = createHarness({
+      backendBadges: badges,
+      crossOriginIsolated: true,
+      effectsOutcome: () => ({
+        backend: "bypass",
+        error: new Error("worklet unavailable"),
+        ready: true,
+        status: "failed",
+      }),
+    });
+    await harness.playback.activate();
+
+    // Official is the plan, so nothing shows until the controller reports.
+    expect(badges.state).toEqual({});
+
+    await commit(harness, threshold(-30));
+
+    expect(badges.state).toEqual({ a: "bypassed", comp: "bypassed" });
+  });
+
+  test("a start reads the outcome its effects graph settled on", async () => {
+    insertNodeSession(insertCompressor(patch([station("a")])));
+    const badges = new Store<NodeBackendBadges>({});
+    const context = createTestContext();
+    context.audio.getEffectsRuntimeOutcome = mock(
+      (_soundId: string): EffectsRuntimeOutcome => ({
+        backend: "compatibility",
+        ready: true,
+        status: "ready",
+      })
+    );
+    const harness = createHarness({
+      backendBadges: badges,
+      context,
+      crossOriginIsolated: true,
+    });
+    instantStarts(context);
+    await harness.playback.activate();
+    expect(badges.state).toEqual({});
+
+    // Past the official runtime's cap the controller falls back: compat.
+    await harness.playback.setPlaying("a", true);
+
+    expect(context.audio.getEffectsRuntimeOutcome).toHaveBeenCalledWith(
+      soundOf("a")
+    );
+    expect(badges.state).toEqual({ a: "compat", comp: "compat" });
+
+    await harness.playback.deactivate();
+    expect(badges.state).toEqual({});
+  });
+
+  test("laneBackendBadge trusts the controller over the estimate", () => {
+    expect(laneBackendBadge(null, "bypass")).toBeNull();
+    expect(laneBackendBadge("compat", undefined)).toBe("compat");
+    expect(laneBackendBadge("official", undefined)).toBeNull();
+    expect(laneBackendBadge("compat", "official")).toBeNull();
+    expect(laneBackendBadge("official", "compatibility")).toBe("compat");
+    expect(laneBackendBadge("official", "bypass")).toBe("bypassed");
+    expect(laneBackendBadge("compat", null)).toBe("compat");
   });
 });

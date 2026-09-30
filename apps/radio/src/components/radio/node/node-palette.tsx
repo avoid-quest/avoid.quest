@@ -13,19 +13,15 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@avoid.quest/ui/components/drawer";
-import {
-  LayoutTemplateIcon,
-  type LucideIcon,
-  RadioIcon,
-  SpeakerIcon,
-} from "lucide-react";
+import { LayoutTemplateIcon } from "lucide-react";
 import { useEffect } from "react";
 import {
   type PickerItem,
   PickerList,
   type PickerSection,
 } from "@/components/audio/effect-picker";
-import type { Radio } from "@/lib/audio";
+import { getEffectMetadata, type Radio } from "@/lib/audio";
+import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import {
   commitNodeGraph,
   type NodeStore,
@@ -42,6 +38,7 @@ import type { NodeType } from "@/lib/node-graph/schema";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import type { ValidateOptions } from "@/lib/node-graph/validate";
 import { formatLocation } from "../station-row";
+import { nodeIcon } from "./node-icons";
 
 /** Where the palette was opened from, and so where its pick lands. */
 export type PaletteRequest = {
@@ -108,17 +105,16 @@ export function usePaletteShortcut(onOpen: () => void) {
   }, [onOpen]);
 }
 
-const NODE_ICONS: Partial<Record<NodeType, LucideIcon>> = {
-  speakers: SpeakerIcon,
-  station: RadioIcon,
-};
-
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
+  filter: "The station's own low- or high-pass, right after it",
+  gain: "A level trim on the path, up to +12 dB",
+  pan: "The station's own panner, right after it",
   speakers: "The main output",
   station: "An empty slot; pick its station from its search",
 };
 
 const SECTION_TITLES = {
+  fx: "FX",
   outputs: "Outputs",
   sources: "Sources",
   templates: "Templates",
@@ -136,6 +132,17 @@ function toItem(entry: PaletteEntry): PaletteItem {
       name: entry.name,
     };
   }
+  if (isEffectNodeType(entry.type)) {
+    const metadata = getEffectMetadata(entry.type);
+    return {
+      badge: metadata?.family,
+      description: metadata?.description,
+      entry,
+      icon: nodeIcon(entry.type),
+      id: entry.id,
+      name: entry.name,
+    };
+  }
   return {
     // Where a station is keeps the cards one line; its blurb would not.
     description: entry.radio
@@ -143,7 +150,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
         "Station"
       : NODE_DESCRIPTIONS[entry.type],
     entry,
-    icon: NODE_ICONS[entry.type] ?? RadioIcon,
+    icon: nodeIcon(entry.type),
     id: entry.id,
     name: entry.name,
   };
@@ -152,7 +159,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
 function toSections(
   entries: readonly PaletteEntry[]
 ): PickerSection<PaletteItem>[] {
-  return (["sources", "outputs", "templates"] as const)
+  return (["sources", "fx", "outputs", "templates"] as const)
     .map((section) => ({
       items: entries.filter((entry) => entry.section === section).map(toItem),
       title: SECTION_TITLES[section],
@@ -176,7 +183,7 @@ type NodePaletteProps = {
 };
 
 /**
- * The add-node palette: Sources, Outputs and Templates in the effect
+ * The add-node palette: Sources, FX, Outputs and Templates in the effect
  * picker's search-and-cards body. Picking a node adds it as one undo step,
  * wired into a dropped cable if there was one, else a Station to Speakers.
  */

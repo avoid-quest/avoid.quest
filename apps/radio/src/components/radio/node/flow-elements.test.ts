@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+import { type NodeGraph, nodeGraphSchema } from "@/lib/node-graph/schema";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import {
+  DRAWN_NODE_TYPES,
   dropTargetOf,
   NODE_ARIA_LABELS,
   toFlowEdges,
@@ -101,5 +104,85 @@ describe("flow elements", () => {
     expect(
       dropTargetOf(mouseUp, undefined, { elementFromPoint: () => null })
     ).toBe(port as unknown as Element);
+  });
+
+  test("FX and the native strip are drawn; Werkstatt waits", () => {
+    expect(DRAWN_NODE_TYPES).toContain("compressor");
+    expect(DRAWN_NODE_TYPES).toContain("fxComposite");
+    expect(DRAWN_NODE_TYPES).toContain("pan");
+    expect(DRAWN_NODE_TYPES).not.toContain("werkstatt");
+    expect(DRAWN_NODE_TYPES).not.toContain("merge");
+  });
+
+  test("a playing Station's cables stay live through its FX, key cables don't", () => {
+    const graph: NodeGraph = nodeGraphSchema.parse({
+      ...patch,
+      edges: [
+        {
+          id: "kexp->comp",
+          source: "src-kexp",
+          sourceHandle: "out:audio:main",
+          target: "comp",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "comp->speakers",
+          source: "comp",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "kexp->key",
+          source: "src-kexp",
+          sourceHandle: "out:audio:main",
+          target: "gate",
+          targetHandle: "in:sidechain:key",
+        },
+        {
+          id: "nts->gate",
+          source: "src-nts",
+          sourceHandle: "out:audio:main",
+          target: "gate",
+          targetHandle: "in:audio:main",
+        },
+      ],
+      nodes: [
+        ...patch.nodes,
+        {
+          data: { effect: createNodeEffectConfig("compressor", "comp") },
+          id: "comp",
+          position: { x: 240, y: 0 },
+          type: "compressor",
+        },
+        {
+          data: { effect: createNodeEffectConfig("gate", "gate") },
+          id: "gate",
+          position: { x: 240, y: 200 },
+          type: "gate",
+        },
+      ],
+    });
+
+    const edges = toFlowEdges(graph, {
+      liveLanes: new Set(["n:src-kexp"]),
+      selection,
+    });
+
+    expect(
+      Object.fromEntries(edges.map((edge) => [edge.id, edge.className]))
+    ).toEqual({
+      "comp->speakers": "node-edge-live",
+      "kexp->comp": "node-edge-live",
+      "kexp->key": undefined,
+      "nts->gate": undefined,
+    });
+    expect(
+      toFlowNodes(graph, {
+        measured: new Map(),
+        positions: new Map(),
+        selection,
+      }).find((node) => node.id === "comp")
+    ).toMatchObject({ ariaLabel: "Compressor", type: "compressor" });
   });
 });

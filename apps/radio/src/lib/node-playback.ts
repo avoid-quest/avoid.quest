@@ -22,14 +22,20 @@
  * layout change ducks laneOut around the tree swap. The Station fader stays
  * the volume controller's; nothing here writes it.
  *
+ * Each lane with FX publishes a backend badge for its FX nodes: `compat`
+ * from the compile estimate until the effects controller reports, then from
+ * the controller's outcome, so a dry fallback reads `bypassed`.
+ *
  * Starting and stopping keeps Multiple's rules: start ownership, revisions
  * and cancellation, Play all with at most 3 starts in flight, and a fade-out
  * deactivate that releases every `n:*` channel before the orphan check. A
  * start past the playing-stream budget is refused with a message.
  */
 
+import { Store } from "@tanstack/react-store";
 import { fadeOut } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
 import {
   createNodeLaneOutputs,
   type NodeLaneOutputs,
@@ -43,6 +49,8 @@ import {
 import {
   compile,
   type EnginePlan,
+  type LaneBackend,
+  type LanePlan,
   laneChannelId,
 } from "@/lib/node-graph/compile";
 import {
@@ -62,7 +70,11 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
-import { type ChannelEffects, channelEffects } from "./channel-effects.js";
+import {
+  type ChannelEffects,
+  channelEffects,
+  type EffectsRuntimeOutcome,
+} from "./channel-effects.js";
 import {
   clearManagedPlaybackErrors,
   getReadyManagedPlaybackSession,
@@ -121,7 +133,73 @@ type FadeOutSound = (
   stopAfter: boolean
 ) => Promise<void>;
 
-type GetNodePlaybackOptions = {
+/**
+ * What an FX node's badge says. None while its lane runs as planned or has
+ * no effects runtime; `compat` on the compatibility worklet; `bypassed`
+ * when the controller fell back dry.
+ */
+export type BackendBadge = "compat" | "bypassed";
+
+/** Badges by node id: each lane's, and each enabled FX node's in it. */
+export type NodeBackendBadges = Readonly<Record<string, BackendBadge>>;
+
+export type NodeBackendBadgeStore = Store<NodeBackendBadges>;
+
+export const nodeBackendBadges: NodeBackendBadgeStore =
+  new Store<NodeBackendBadges>({});
+
+type EffectsBackend = EffectsRuntimeOutcome["backend"];
+
+/**
+ * A lane's badge: the controller's outcome once it reported one, else the
+ * compile estimate. The estimate is only displayed; the controller decides,
+ * so an official lane past the runtime cap flips to `compat`.
+ */
+export function laneBackendBadge(
+  estimate: LaneBackend | null,
+  outcome: EffectsBackend | undefined
+): BackendBadge | null {
+  if (estimate === null) {
+    return null;
+  }
+  switch (outcome) {
+    case "bypass":
+      return "bypassed";
+    case "compatibility":
+      return "compat";
+    case "official":
+      return null;
+    default:
+      return estimate === "compat" ? "compat" : null;
+  }
+}
+
+/** Enabled effect ids in a lane's tree, containers' chains included. */
+function enabledEffectIds(effects: readonly EffectConfig[]): string[] {
+  return effects.flatMap((effect) => {
+    if (!effect.enabled) {
+      return [];
+    }
+    return isEffectContainer(effect)
+      ? [
+          effect.id,
+          ...effect.chains.flatMap((chain) => enabledEffectIds(chain.effects)),
+        ]
+      : [effect.id];
+  });
+}
+
+function sameBadges(left: NodeBackendBadges, right: NodeBackendBadges) {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => left[key] === right[key])
+  );
+}
+
+export type GetNodePlaybackOptions = {
+  /** Where lane backend badges are published for the canvas and Rack. */
+  backendBadges?: NodeBackendBadgeStore;
   ctx?: PlaybackActionContext;
   effects?: Pick<ChannelEffects, "change">;
   fadeOutDurationMs?: number;
@@ -215,6 +293,7 @@ function findStation(graph: NodeGraph | null, nodeId: string) {
 function createNodePlayback(
   ctx: PlaybackActionContext,
   {
+    backendBadges,
     effects,
     fadeOutDurationMs,
     fadeOutSound,
@@ -245,6 +324,8 @@ function createNodePlayback(
   /** Lanes removed in this batch, whose cable ops run before the removal. */
   const removingLanes = new Set<string>();
   const laneGenerations = new Map<string, number>();
+  /** Per lane: the backend its effects last settled on, as reported. */
+  const laneOutcomes = new Map<string, EffectsBackend>();
 
   /** A lane's cable level: the gains of its unmuted cables, summed. */
   const laneLevel = (laneId: string) => {
@@ -261,6 +342,46 @@ function createNodePlayback(
     getHost: () => ctx.audio,
     getLevel: laneLevel,
   });
+
+  /** Writes every lane's badge, and its FX nodes', when one changed. */
+  const publishBadges = () => {
+    const badges: Record<string, BackendBadge> = {};
+    for (const lane of plan.lanes.values()) {
+      const badge = laneBackendBadge(lane.backend, laneOutcomes.get(lane.id));
+      if (!badge) {
+        continue;
+      }
+      badges[lane.id] = badge;
+      for (const id of enabledEffectIds(lane.effects)) {
+        badges[id] = badge;
+      }
+    }
+    if (!sameBadges(backendBadges.state, badges)) {
+      backendBadges.setState(() => badges);
+    }
+  };
+
+  /**
+   * Keeps what the controller reported for a lane still in the plan. An
+   * inactive outcome means no effects graph yet, so the estimate shows.
+   */
+  const recordOutcome = (
+    laneId: string,
+    outcome: EffectsRuntimeOutcome | undefined
+  ) => {
+    if (
+      !(outcome && plan.lanes.has(laneId)) ||
+      outcome.status === "superseded"
+    ) {
+      return;
+    }
+    if (outcome.status === "inactive") {
+      laneOutcomes.delete(laneId);
+    } else {
+      laneOutcomes.set(laneId, outcome.backend);
+    }
+    publishBadges();
+  };
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     inFlight.add(promise);
@@ -445,6 +566,17 @@ function createNodePlayback(
     return !pending.cancelled && epoch === startEpoch;
   };
 
+  /**
+   * Once a lane plays: its native strip, and the backend its effects graph
+   * settled on, which the play call awaited while it connected.
+   */
+  const settleStartedLane = (channelId: string, lane: LanePlan | undefined) => {
+    applyLaneStrip(channelId);
+    if (lane) {
+      recordOutcome(lane.id, ctx.audio.getEffectsRuntimeOutcome(lane.soundId));
+    }
+  };
+
   const startChannel = async (channelId: string) => {
     // Without a settling lane this stays synchronous up to the play call,
     // inside the user's gesture.
@@ -481,7 +613,7 @@ function createNodePlayback(
       const started = await starting;
       if (started && ownership.cancellation === null) {
         // Again once it plays, for nodes the start built later.
-        applyLaneStrip(channelId);
+        settleStartedLane(channelId, lane);
       }
     } finally {
       activeChannelStarts.delete(ownership);
@@ -584,6 +716,7 @@ function createNodePlayback(
 
   const removeLane = (laneId: string, channelId: string) => {
     bumpLane(laneId);
+    laneOutcomes.delete(laneId);
     const runtime = getPlaybackChannelRuntime(channelId);
     carriedLanes.set(laneId, runtime.isPlaying || runtime.isLoading);
     cancelChannelStarts("remove", channelId);
@@ -599,8 +732,14 @@ function createNodePlayback(
     });
   };
 
-  const replaceTree = (channelId: string, tree: EffectConfig[]) =>
-    effects.change({ channelId, sessionId: "node" }, { tree, type: "replace" });
+  const replaceTree = async (laneId: string, tree: EffectConfig[]) => {
+    const result = await effects.change(
+      { channelId: laneChannelId(laneId), sessionId: "node" },
+      { tree, type: "replace" }
+    );
+    recordOutcome(laneId, result.runtime);
+    return result;
+  };
 
   /** Per lane: layout swaps still ducking, whose tree is not replaced yet. */
   const pendingSwaps = new Map<string, number>();
@@ -620,7 +759,7 @@ function createNodePlayback(
     if (pendingSwaps.has(laneId)) {
       return;
     }
-    track(replaceTree(laneChannelId(laneId), tree)).catch(
+    track(replaceTree(laneId, tree)).catch(
       warn("Could not apply lane effects")
     );
   };
@@ -643,7 +782,7 @@ function createNodePlayback(
       laneOutputs.swap(laneId, async () => {
         endSwap();
         const lane = plan.lanes.get(laneId);
-        return lane ? await replaceTree(lane.channelId, lane.effects) : null;
+        return lane ? await replaceTree(lane.id, lane.effects) : null;
       })
     )
       .catch(warn("Could not swap lane effects"))
@@ -810,6 +949,7 @@ function createNodePlayback(
       // same Station must not resume it.
       carriedLanes.clear();
       removingLanes.clear();
+      publishBadges();
     }
   };
 
@@ -909,6 +1049,7 @@ function createNodePlayback(
       plan = EMPTY_PLAN;
       settlingLanes.clear();
       carriedLanes.clear();
+      laneOutcomes.clear();
       stopListening();
       loadNodeGraph(
         session.graph ?? buildNodeGraphFromTemplate("blank"),
@@ -978,6 +1119,8 @@ function createNodePlayback(
       }
       laneOutputs.dispose();
       plan = EMPTY_PLAN;
+      laneOutcomes.clear();
+      publishBadges();
       observedGraph = null;
       cleanupOrphanedSounds(soundIds, ctx, "node");
     },
@@ -1041,6 +1184,7 @@ function createNodePlayback(
 }
 
 export function getNodePlayback({
+  backendBadges = nodeBackendBadges,
   ctx = getDefaultPlaybackActionContext(),
   effects = channelEffects,
   fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
@@ -1054,6 +1198,7 @@ export function getNodePlayback({
     return existing;
   }
   const playback = createNodePlayback(ctx, {
+    backendBadges,
     effects,
     fadeOutDurationMs,
     fadeOutSound,

@@ -2,6 +2,7 @@
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
+import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import {
   connectNodes,
   moveNodes,
@@ -26,6 +27,7 @@ import type { NodeGraph } from "@/lib/node-graph/schema";
 import { type Connection, validateConnection } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { EffectNode } from "./effect-node";
 import {
   type FlowConnection,
   type FlowConnectionEnd,
@@ -39,12 +41,14 @@ import {
   useReactFlow,
 } from "./flow-adapter";
 import {
+  DRAWN_NODE_TYPES,
   dropTargetOf,
   NODE_ARIA_LABELS,
   pointerOf,
   toFlowEdges,
   toFlowNodes,
 } from "./flow-elements";
+import { NativeStripNode } from "./native-strip-nodes";
 import {
   isCanvasKey,
   isShortcutIgnored,
@@ -57,6 +61,13 @@ type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 const nodeTypes = {
+  // Every drawn effect shares one node; Station and Speakers come last.
+  ...Object.fromEntries(
+    DRAWN_NODE_TYPES.filter(isEffectNodeType).map((type) => [type, EffectNode])
+  ),
+  filter: NativeStripNode,
+  gain: NativeStripNode,
+  pan: NativeStripNode,
   speakers: SpeakersNode,
   station: StationNode,
 } satisfies FlowNodeTypes;

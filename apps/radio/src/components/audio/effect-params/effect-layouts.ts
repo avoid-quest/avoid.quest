@@ -156,6 +156,22 @@ export const EFFECT_LAYOUTS: Partial<Record<EffectType, EffectLayout>> = {
       { collapsible: true, keys: ["dry", "wet"], title: "Levels" },
     ],
   },
+  /**
+   * EffectParams draws the 7-Band EQ with RevampParams, so only a Node
+   * body reads this row: four of its band gains.
+   */
+  revamp: {
+    bipolar: ["lowShelfGain", "lowBellGain", "midBellGain", "highBellGain"],
+    labels: {
+      highBellGain: "High",
+      lowBellGain: "Low",
+      lowShelfGain: "Low shelf",
+      midBellGain: "Mid",
+    },
+    rows: [
+      { keys: ["lowShelfGain", "lowBellGain", "midBellGain", "highBellGain"] },
+    ],
+  },
   stereoTool: {
     bipolar: ["volume", "stereo", "panning"],
     labels: {

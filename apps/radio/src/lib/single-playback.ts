@@ -57,8 +57,12 @@ export type SinglePlayback = {
   activate: () => Promise<void>;
   deactivate: () => Promise<void>;
   reconcileRouting: () => Promise<void>;
-  /** Points the current Channel at another record of the same Station (e.g. its Saved copy) without restarting it. */
-  rebindStation: (station: Radio) => void;
+  /**
+   * Points the current Channel at the Station's current record: another
+   * record of the same Station (e.g. its Saved copy) without restarting it,
+   * or the same record edited to a new stream, which reconnects to it.
+   */
+  rebindStation: (station: Radio) => Promise<void>;
   /** Stops and deselects the current Station when it no longer exists. */
   releaseStation: (station: Radio) => Promise<void>;
   /**
@@ -308,6 +312,57 @@ async function selectStation(
   }
 }
 
+/** Moves the selected Station's sound to the stream its record now has. */
+async function reconnectEditedStation(
+  station: Radio,
+  selection: SelectionState,
+  ctx: PlaybackActionContext,
+  signal: AbortSignal
+): Promise<void> {
+  const channel = getSelectionChannel();
+  if (
+    !channel?.radio ||
+    channel.radio.id !== station.id ||
+    channel.radio.streamUrl === station.streamUrl
+  ) {
+    return;
+  }
+  validateRadioForMode(station, "single");
+  const { soundId } = getPlaybackChannelRuntime(channel.id);
+  const edited = { ...channel, radio: station };
+  upsertPlaybackChannel("single", edited);
+  if (!soundId) {
+    return;
+  }
+  cleanupManagedChannel(channel.id, ctx);
+  const nextSoundId = createSingleSound(edited, station, soundId, ctx);
+  if (!selection.playbackIntent) {
+    return;
+  }
+  try {
+    await waitForAbortable(
+      playManagedSound(
+        "single",
+        nextSoundId,
+        getChannelPlayVolume(edited),
+        ctx
+      ),
+      signal
+    );
+  } catch (error) {
+    if (signal.aborted) {
+      throw abortReason(signal);
+    }
+    throw reportPlaybackActionError(ctx.reportError, {
+      cause: error,
+      channelId: channel.id,
+      code: "PLAY_ERROR",
+      mode: "single",
+      radio: station,
+    });
+  }
+}
+
 /** Restores the previous Station after a failed switch and reports it. */
 async function fallBackFromFailedSwitch({
   channel,
@@ -480,16 +535,30 @@ function createSinglePlayback(
         cleanupOrphanedSounds(soundIds, ctx, "single");
       });
     },
-    rebindStation(station) {
+    async rebindStation(station) {
       const channel = getSelectionChannel();
-      if (
-        !channel?.radio ||
-        channel.radio.id === station.id ||
-        !isSameStation(channel.radio, station)
-      ) {
+      if (!channel?.radio) {
         return;
       }
-      upsertPlaybackChannel("single", { ...channel, radio: station });
+      if (channel.radio.id !== station.id) {
+        if (isSameStation(channel.radio, station)) {
+          upsertPlaybackChannel("single", { ...channel, radio: station });
+        }
+        return;
+      }
+      if (channel.radio.streamUrl === station.streamUrl) {
+        return;
+      }
+      playingRevision += 1;
+      clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
+      const runtime = getPlaybackChannelRuntime(channel.id);
+      try {
+        await selection.runSelection(runtime.isPlaying, null, (signal, state) =>
+          reconnectEditedStation(station, state, ctx, signal)
+        );
+      } catch (error) {
+        setManagedPlaybackError(channel.id, error, station);
+      }
     },
     async reconcileRouting() {
       try {

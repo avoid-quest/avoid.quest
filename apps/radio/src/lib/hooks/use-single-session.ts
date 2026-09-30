@@ -64,8 +64,11 @@ export function useSingleSession() {
       return;
     }
     if (liveRadio) {
-      // Saving a Session station stores it under a new id.
-      playback.rebindStation(liveRadio);
+      // Saving a Session station stores it under a new id; an edit can
+      // change its stream.
+      playback.rebindStation(liveRadio).catch((rebindError: unknown) => {
+        console.error("[single] Failed to rebind the Station", rebindError);
+      });
       return;
     }
     // Deleted or removed: stop it so another Station can be selected.

@@ -5,8 +5,8 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 ## Features
 
 - **3 Playback Modes**
-  - **Multiple**: several stations simultaneously with independent volume/controls
   - **Single**: focused single-station player with crossfade transitions
+  - **Node**: a patch canvas (React Flow) where Station nodes are cabled into a Speakers node with Play all and master volume; `/` opens the node palette, and edits are undoable. On phones the Stage and Rack tabs list every source with play and volume. Node replaced Multiple: a stored Multiple session, mode or backup becomes a Node patch with the same stations, order and levels
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
 - **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, and Radio Browser/Radio Garden stations
@@ -34,7 +34,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 
 | Route | Description |
 |-------|-------------|
-| `/` | Main player — switches between Multiple / Single / DJ mode |
+| `/` | Main player — switches between Single / Node / DJ mode |
 | `/import` | Batch import radios from a URL or JSON |
 | `/api/feedback` | GitHub issue feedback endpoint |
 | `/api/radio-metadata` | Metadata lookup for configured radio streams |

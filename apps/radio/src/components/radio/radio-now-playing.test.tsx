@@ -75,14 +75,14 @@ afterEach(cleanup);
 
 let RadioNowPlaying: typeof import("./radio-now-playing")["RadioNowPlaying"];
 let NowPlayingPanel: typeof import("./single/single-player-now-playing")["NowPlayingPanel"];
-let MultipleRadioCard: typeof import("./multiple/multiple-radio-card")["MultipleRadioCard"];
+let StationNodeBody: typeof import("./node/station-node")["StationNodeBody"];
 let StationList: typeof import("./single/single-player-station-list")["StationList"];
 let useRadioMetadata: typeof import("@/lib/hooks/use-radio-metadata")["useRadioMetadata"];
 
 beforeAll(async () => {
   ({ RadioNowPlaying } = await import("./radio-now-playing"));
   ({ NowPlayingPanel } = await import("./single/single-player-now-playing"));
-  ({ MultipleRadioCard } = await import("./multiple/multiple-radio-card"));
+  ({ StationNodeBody } = await import("./node/station-node"));
   ({ StationList } = await import("./single/single-player-station-list"));
   ({ useRadioMetadata } = await import("@/lib/hooks/use-radio-metadata"));
 });
@@ -651,7 +651,7 @@ describe("RadioNowPlaying", () => {
     expect(view.getByText("Current show description.")).toBeTruthy();
   });
 
-  test("makes the same show details available from an idle Multiple card", () => {
+  test("makes the same show details available from an idle Station node", () => {
     const client = new QueryClient();
     client.setQueryData(
       radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
@@ -662,20 +662,19 @@ describe("RadioNowPlaying", () => {
     );
     const view = render(
       <QueryClientProvider client={client}>
-        <MultipleRadioCard
+        <StationNodeBody
+          error={null}
+          isLoading={false}
+          isPlaying={false}
+          muted
+          onSelectDiscovered={noop}
+          onSelectLocal={noop}
           onToggleMute={noop}
           onTogglePlayPause={noop}
           onVolumeChange={noop}
-          playerState={{
-            error: null,
-            id: "test-radio",
-            isLoading: false,
-            isMuted: true,
-            isPlaying: false,
-            radio,
-            volume: 0,
-          }}
           radio={radio}
+          radios={[radio]}
+          volume={0}
         />
       </QueryClientProvider>
     );

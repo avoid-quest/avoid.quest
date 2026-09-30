@@ -8,6 +8,10 @@ import {
   sessionRadiosCollection,
   settingsCollection,
 } from "./collections";
+import {
+  LEGACY_MULTIPLE_SESSION_ID,
+  writeLegacyRecord,
+} from "./collections/migrations/legacy-records";
 import { stopLegacyMultipleListeners } from "./collections/playback-sessions";
 import { resetAllSettings } from "./settings";
 
@@ -64,15 +68,27 @@ describe("resetAllSettings", () => {
       id: "app-settings",
       player: { mode: "node", restoreStateOnLoad: true },
     });
-    const sessionIds = ["single", "node", "dj", "multiple"] as const;
-    for (const id of sessionIds) {
+    for (const id of ["single", "node", "dj"] as const) {
       insertStaleSession(id);
     }
+    // A Multiple record as the release before Node left it.
+    writeLegacyRecord(playbackSessionsCollection, {
+      activeChannelId: null,
+      channels: [],
+      id: "multiple",
+      masterVolume: 0.2,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
+    ).toBe(true);
 
     await resetAllSettings();
 
     // Multiple is not rebuilt: Node replaced it.
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(
+      playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
+    ).toBe(false);
     // The rest are rebuilt from defaults, not kept.
     for (const id of ["single", "node", "dj"] as const) {
       const session = getPlaybackSession(id);

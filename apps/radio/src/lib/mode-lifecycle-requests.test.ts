@@ -69,6 +69,8 @@ describe("mode lifecycle requests", () => {
 
     await requests.requestMode("");
     await requests.requestMode("unknown");
+    // Retired with Multiple; callers normalise it to "node" first.
+    await requests.requestMode("multiple");
 
     expect(switchTo).not.toHaveBeenCalled();
   });
@@ -91,9 +93,9 @@ describe("mode lifecycle requests", () => {
       },
     });
 
-    await requests.requestMode("multiple");
+    await requests.requestMode("node");
 
-    expect(switchTo).toHaveBeenCalledWith("multiple");
+    expect(switchTo).toHaveBeenCalledWith("node");
   });
 
   test("does not re-request the mode already being switched to", async () => {
@@ -122,7 +124,7 @@ describe("mode lifecycle requests", () => {
   });
 
   test("cancels stale runtime synchronization after settings change", async () => {
-    insertPlaybackSession("multiple");
+    insertPlaybackSession("node");
     insertSettings("dj");
     const activateInitialMode = mock(
       async (_mode: PlaybackSessionId) => undefined
@@ -142,7 +144,7 @@ describe("mode lifecycle requests", () => {
       },
     });
 
-    await requests.synchronizeMode("multiple");
+    await requests.synchronizeMode("node");
 
     expect(activateInitialMode).not.toHaveBeenCalled();
     expect(switchTo).not.toHaveBeenCalled();

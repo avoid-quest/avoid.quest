@@ -35,6 +35,7 @@ import {
   migrateLegacyPlayerMode,
   type settingsCollection,
 } from "../settings";
+import { LEGACY_MULTIPLE_SESSION_ID } from "./legacy-records";
 
 /** localStorage key holding the pre-migration Multiple record, written once. */
 export const MULTIPLE_BACKUP_STORAGE_KEY = "radio-app-multiple-backup";
@@ -219,7 +220,7 @@ export function migrateMultipleSession(
   storage: BackupStorage | null = getBackupStorage()
 ): void {
   const { sessions } = collections;
-  const multiple: unknown = sessions.state.get("multiple");
+  const multiple: unknown = sessions.state.get(LEGACY_MULTIPLE_SESSION_ID);
   if (multiple === undefined) {
     return;
   }
@@ -247,7 +248,7 @@ export function migrateMultipleSession(
     }
   }
   // Delete does not validate, so a stale record still goes.
-  sessions.delete("multiple");
+  sessions.delete(LEGACY_MULTIPLE_SESSION_ID);
 }
 
 type LegacyWriteListeners = MultipleToNodeCollections & {
@@ -278,7 +279,9 @@ export function watchLegacyMultipleWrites({
     (changes) => {
       if (
         changes.some(
-          (change) => change.key === "multiple" && change.type !== "delete"
+          (change) =>
+            change.key === LEGACY_MULTIPLE_SESSION_ID &&
+            change.type !== "delete"
         )
       ) {
         // Mutating from inside the change callback would re-enter it.

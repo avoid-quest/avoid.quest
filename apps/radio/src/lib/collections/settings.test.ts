@@ -33,13 +33,14 @@ describe("player mode", () => {
     expect(getSettings()?.player.mode).toBe("node");
   });
 
-  test("still accepts multiple", () => {
-    setPlayerMode("multiple");
-    expect(getSettings()?.player.mode).toBe("multiple");
-
-    updatePlayerSettings(() => ({ mode: "node" }));
-    updatePlayerSettings(() => ({ mode: "multiple" }));
-    expect(getSettings()?.player.mode).toBe("multiple");
+  test("refuses multiple, which Node replaced", () => {
+    setPlayerMode("node");
+    expect(() =>
+      settingsCollection.update(SETTINGS_ID, (draft) => {
+        (draft.player as { mode: string }).mode = "multiple";
+      })
+    ).toThrow();
+    expect(getSettings()?.player.mode).toBe("node");
   });
 
   test("refuses an unknown mode", () => {

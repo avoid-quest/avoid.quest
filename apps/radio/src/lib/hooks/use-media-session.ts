@@ -48,7 +48,6 @@ type MediaSessionOptions =
       isPlaying: boolean;
       metadata?: RadioNowPlaying | null;
     }
-  | { mode: "multiple"; radios: Radio[]; playingCount: number }
   | { mode: "node"; radios: Radio[]; playingCount: number }
   | {
       mode: "dj";
@@ -67,11 +66,6 @@ function formatPlayingCount(count: number): string {
 function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "single") {
     return formatRadioDocumentTitle(options);
-  }
-  if (options.mode === "multiple") {
-    return options.playingCount > 0
-      ? `Multiple stations${RADIO_DOCUMENT_TITLE_SUFFIX}`
-      : IDLE_RADIO_DOCUMENT_TITLE;
   }
   if (options.mode === "node") {
     return options.playingCount > 0
@@ -125,9 +119,6 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
     }
     return new MediaMetadata(metadata);
   }
-  if (options.mode === "multiple") {
-    return new MediaMetadata({ title: "Multiple stations" });
-  }
   if (options.mode === "node") {
     return new MediaMetadata(
       options.playingCount > 0
@@ -147,7 +138,7 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
 }
 
 function isAnyPlaying(options: MediaSessionOptions): boolean {
-  if (options.mode === "multiple" || options.mode === "node") {
+  if (options.mode === "node") {
     return options.playingCount > 0;
   }
   return options.isPlaying;

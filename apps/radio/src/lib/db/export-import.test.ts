@@ -11,7 +11,6 @@ import {
 } from "@/lib/audio/dsp/effects/nam-model-store";
 import {
   createDefaultChannel,
-  getMultipleChannelId,
   getPlaybackSession,
   getSettings,
   playbackSessionsCollection,
@@ -19,6 +18,10 @@ import {
   sessionRadiosCollection,
   settingsCollection,
 } from "@/lib/collections";
+import {
+  LEGACY_MULTIPLE_SESSION_ID,
+  writeLegacyRecord,
+} from "@/lib/collections/migrations/legacy-records";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import {
   commitNodeGraph,
@@ -588,13 +591,15 @@ describe("mergeImportedData", () => {
   test("keeps the stored mode, normalised, when the import omits it", async () => {
     await settingsCollection.stateWhenReady();
 
-    settingsCollection.insert({
+    // A mode Node retired, as a release before Node stored it.
+    writeLegacyRecord(settingsCollection, {
       id: SETTINGS_ID,
       player: {
         mode: "multiple",
         restoreStateOnLoad: true,
       },
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     mergeImportedData(
       validateImportData({
@@ -736,35 +741,28 @@ describe("stream format imports", () => {
 });
 
 describe("Node patch backups", () => {
+  /** A channel as Multiple stored it, before Node retired its role. */
+  const multipleChannel = (id: string, order: number) => ({
+    ...createDefaultChannel(`multi:${id}`, "node", order),
+    role: "multiple",
+  });
   const multipleSession = {
     activeChannelId: null,
     channels: [
       {
-        ...createDefaultChannel(
-          getMultipleChannelId(stationRadio("nts")),
-          "multiple",
-          1
-        ),
+        ...multipleChannel("nts", 1),
         muted: true,
         radio: stationRadio("nts"),
         volume: 0.4,
       },
       {
-        ...createDefaultChannel(
-          getMultipleChannelId(stationRadio("kexp")),
-          "multiple",
-          0
-        ),
+        ...multipleChannel("kexp", 0),
         radio: stationRadio("kexp"),
         volume: 0.8,
       },
       // Neither in the backup nor saved here.
       {
-        ...createDefaultChannel(
-          getMultipleChannelId(stationRadio("gone")),
-          "multiple",
-          2
-        ),
+        ...multipleChannel("gone", 2),
         radio: stationRadio("gone"),
       },
     ],
@@ -835,7 +833,9 @@ describe("Node patch backups", () => {
         "n:src-kexp",
         "n:src-nts",
       ]);
-      expect(playbackSessionsCollection.state.has("multiple")).toBe(false);
+      expect(
+        playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
+      ).toBe(false);
       expect(session?.masterVolume).toBe(0.5);
     }
   );

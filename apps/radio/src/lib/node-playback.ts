@@ -481,7 +481,7 @@ function createNodePlayback(
     track(startChannel(channelId)).catch(warn("Could not resume Station"));
   };
 
-  /** Creates the lane's sound paused, as restore does for Multiple. */
+  /** Creates the lane's sound paused, as a session restore does. */
   const createLaneSound = (channelId: string) => {
     // A start still settling for the old sound must not clean this one.
     advanceChannelRevision(channelId);

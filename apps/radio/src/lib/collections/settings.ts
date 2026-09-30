@@ -7,7 +7,7 @@ import { supportsMediaElementVolumeControl } from "../audio/playback/media-eleme
 import { settings as defaultSettings } from "../const";
 import { normalizePlayerMode } from "../normalize-player-mode";
 
-const playerModeSchema = z.enum(["multiple", "node", "single", "dj"]);
+const playerModeSchema = z.enum(["node", "single", "dj"]);
 
 const playerSettingsSchema = z.object({
   mode: playerModeSchema.default("single"),
@@ -158,7 +158,7 @@ export function setRestoreStateOnLoad(restore: boolean): void {
  */
 export function updatePlayerSettings(
   updater: (player: SettingsRecord["player"]) => Partial<{
-    mode: "single" | "multiple" | "node" | "dj";
+    mode: "single" | "node" | "dj";
     restoreStateOnLoad: boolean;
   }>
 ): void {

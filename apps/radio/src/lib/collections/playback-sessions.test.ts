@@ -17,14 +17,16 @@ import {
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
 import type { NodeGraphInput } from "@/lib/node-graph/schema";
-import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
 import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
 } from "@/lib/node-graph/templates";
 import {
+  LEGACY_MULTIPLE_SESSION_ID,
+  writeLegacyRecord,
+} from "./migrations/legacy-records";
+import {
   buildDjSessionFromLegacyState,
-  buildMultipleSessionFromRadios,
   buildSingleSessionFromLegacyState,
   createDefaultChannel,
   DECK_A_CHANNEL_ID,
@@ -576,41 +578,46 @@ describe("effect session migration", () => {
   });
 });
 
-describe("buildMultipleSessionFromRadios", () => {
-  test("creates one multiple-mode channel per enabled radio in order", () => {
-    const session = buildMultipleSessionFromRadios([
-      {
-        enabled: false,
-        id: "radio-2",
-        name: "Disabled",
-        order: 0,
-        streamUrl: "https://radio.example/disabled.mp3",
-      },
-      {
-        enabled: true,
-        id: "radio-3",
-        name: "Second",
-        order: 2,
-        streamUrl: "https://radio.example/second.mp3",
-      },
-      {
-        enabled: true,
-        id: "radio-1",
-        name: "First",
-        order: 1,
-        streamUrl: "https://radio.example/first.mp3",
-      },
-    ]);
+describe("Start from Multiple", () => {
+  test("creates one Station lane per enabled radio in order", () => {
+    const session = buildNodeSessionFromTemplate("start-from-multiple", {
+      saved: [
+        {
+          enabled: false,
+          id: "radio-2",
+          name: "Disabled",
+          order: 0,
+          streamUrl: "https://radio.example/disabled.mp3",
+        },
+        {
+          enabled: true,
+          id: "radio-3",
+          name: "Second",
+          order: 2,
+          streamUrl: "https://radio.example/second.mp3",
+        },
+        {
+          enabled: true,
+          id: "radio-1",
+          name: "First",
+          order: 1,
+          streamUrl: "https://radio.example/first.mp3",
+        },
+      ],
+    });
 
-    expect(session.id).toBe("multiple");
+    expect(session.id).toBe("node");
     expect(session.channels.map((channel) => channel.radio?.name)).toEqual([
       "First",
       "Second",
     ]);
     expect(session.channels.map((channel) => channel.id)).toEqual([
-      "multi:radio-1",
-      "multi:radio-3",
+      "n:src-radio-1",
+      "n:src-radio-3",
     ]);
+    expect(session.channels.every((channel) => channel.role === "node")).toBe(
+      true
+    );
   });
 });
 
@@ -835,23 +842,24 @@ describe("node session persistence", () => {
     ).toThrow();
   });
 
-  test("still validates a multiple session", () => {
-    const session = parsePlaybackSessionRecord({
-      channels: [
-        {
-          ...createDefaultChannel("multi:radio-1", "multiple", 0),
-          radio: KEXP_RADIO,
-        },
-      ],
-      id: "multiple",
-    });
-    expect(session.id).toBe("multiple");
-    expect(session.channels[0]?.role).toBe("multiple");
-    expect(session.graph).toBeUndefined();
+  test("rejects the retired multiple id and channel role", () => {
+    const channel = {
+      ...createDefaultChannel("multi:radio-1", "node", 0),
+      radio: KEXP_RADIO,
+    };
+    expect(() =>
+      parsePlaybackSessionRecord({ channels: [channel], id: "multiple" })
+    ).toThrow();
+    expect(() =>
+      parsePlaybackSessionRecord({
+        channels: [{ ...channel, role: "multiple" }],
+        id: "node",
+      })
+    ).toThrow();
   });
 });
 
-describe("multiple session persistence", () => {
+describe("node session persistence", () => {
   test("updatePlaybackSession updates nested channel state and session fields", async () => {
     await playbackSessionsCollection.stateWhenReady();
 
@@ -859,7 +867,7 @@ describe("multiple session persistence", () => {
       activeChannelId: null,
       channels: [
         {
-          ...createDefaultChannel("multi:radio-1", "multiple", 0),
+          ...createDefaultChannel(getNodeChannelId("src-radio-1"), "node", 0),
           radio: {
             id: "radio-1",
             name: "Radio One",
@@ -869,20 +877,20 @@ describe("multiple session persistence", () => {
       ],
       crossfadePosition: 0.5,
       headphoneVolume: 1,
-      id: "multiple",
+      id: "node",
       masterVolume: 1,
     });
 
-    updatePlaybackSession("multiple", (draft) => {
+    updatePlaybackSession("node", (draft) => {
       const [channel] = draft.channels;
       if (!channel) {
-        throw new Error("Expected seeded multiple channel");
+        throw new Error("Expected seeded node channel");
       }
       channel.volume = 0.25;
       draft.masterVolume = 0.75;
     });
 
-    const session = getPlaybackSession("multiple");
+    const session = getPlaybackSession("node");
     expect(session?.channels[0]?.volume).toBe(0.25);
     expect(session?.masterVolume).toBe(0.75);
   });
@@ -952,7 +960,7 @@ describe("multiple session persistence", () => {
       expect(getCachedNamModel(modelId)).toBe('{"authored":true}');
       expect(getPlaybackSession("single")).toBeDefined();
       expect(getPlaybackSession("dj")).toBeDefined();
-      expect(getPlaybackSession("multiple")).toBeUndefined();
+      expect(playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)).toBe(false);
     });
   }
 
@@ -1080,7 +1088,8 @@ describe("multiple session persistence", () => {
       streamUrl: "https://radio.example/saved.mp3",
     });
 
-    settingsCollection.insert({
+    // Settings and a Multiple record as a release before Node left them.
+    writeLegacyRecord(settingsCollection, {
       id: SETTINGS_ID,
       player: {
         mode: "multiple",
@@ -1123,17 +1132,18 @@ describe("multiple session persistence", () => {
       masterVolume: 0.6,
     });
 
-    playbackSessionsCollection.insert({
+    writeLegacyRecord(playbackSessionsCollection, {
       activeChannelId: null,
       channels: [
         {
-          ...createDefaultChannel("multi:session-only", "multiple", 0),
+          ...createDefaultChannel("multi:session-only", "node", 0),
           muted: true,
           radio: {
             id: "session-only",
             name: "Session Only",
             streamUrl: "https://radio.example/session-only.mp3",
           },
+          role: "multiple",
           volume: 0.11,
         },
       ],
@@ -1171,6 +1181,11 @@ describe("multiple session persistence", () => {
       id: "dj",
       masterVolume: 0.4,
     });
+    // Unvalidated writes land once the inserts above persist.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
+    ).toBe(true);
 
     await initializePlaybackSessions();
 
@@ -1180,7 +1195,9 @@ describe("multiple session persistence", () => {
     expect(singleSession?.channels[0]?.volume).toBe(1);
 
     // The Multiple record migrated, then Node rebuilt from saved stations.
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(
+      playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
+    ).toBe(false);
     const nodeSession = getPlaybackSession("node");
     expect(nodeSession?.masterVolume).toBe(1);
     expect(nodeSession?.channels).toHaveLength(1);

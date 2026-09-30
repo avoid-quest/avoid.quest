@@ -3,12 +3,15 @@ import type { Radio } from "@/lib/audio/playback/types";
 import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
 import {
   getPlaybackSession,
-  parsePlaybackSessionRecord,
   playbackSessionsCollection,
 } from "../playback-sessions";
 import { radiosCollection } from "../radios";
 import { sessionRadiosCollection } from "../session-radios";
 import { getSettings, settingsCollection } from "../settings";
+import {
+  LEGACY_MULTIPLE_SESSION_ID,
+  writeLegacyRecord,
+} from "./legacy-records";
 import {
   buildNodeSessionFromMultipleRecord,
   MULTIPLE_BACKUP_STORAGE_KEY,
@@ -17,6 +20,7 @@ import {
 import {
   buildMultipleSessionFromNodeSession,
   migrateNodeToMultiple,
+  parseMultipleSessionRecord,
   readMultipleBackup,
 } from "./node-to-multiple";
 
@@ -61,6 +65,21 @@ async function reset() {
 beforeEach(reset);
 afterEach(reset);
 
+/** Lets unvalidated writes land; they wait for pending mutations to persist. */
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** The stored `"multiple"` record, which the session schema now rejects. */
+function getMultiple(): unknown {
+  return playbackSessionsCollection.state.get(LEGACY_MULTIPLE_SESSION_ID);
+}
+
+/** A mode the settings schema no longer lists, as another release wrote it. */
+function storedMode(): unknown {
+  return getSettings()?.player.mode;
+}
+
 function insertNodeSession() {
   playbackSessionsCollection.insert(
     buildNodeSessionFromTemplate("start-from-multiple", {
@@ -88,7 +107,7 @@ describe("buildMultipleSessionFromNodeSession", () => {
     }
     node.channels.push({ ...duplicate, id: "n:src-rg_a-2", order: 2 });
 
-    const multiple = parsePlaybackSessionRecord(
+    const multiple = parseMultipleSessionRecord(
       buildMultipleSessionFromNodeSession(node)
     );
 
@@ -106,7 +125,7 @@ describe("buildMultipleSessionFromNodeSession", () => {
 });
 
 describe("migrateNodeToMultiple", () => {
-  test("rebuilds a valid multiple record from Station lanes and rewrites the mode", () => {
+  test("rebuilds a valid multiple record from Station lanes and rewrites the mode", async () => {
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: { mode: "node", restoreStateOnLoad: true },
@@ -118,26 +137,27 @@ describe("migrateNodeToMultiple", () => {
       settings: settingsCollection,
       storage: createMemoryStorage(),
     });
+    await settle();
 
-    const multiple = getPlaybackSession("multiple");
-    expect(() => parsePlaybackSessionRecord(multiple)).not.toThrow();
+    const multiple = parseMultipleSessionRecord(getMultiple());
     expect(
-      multiple?.channels.map(({ id, muted, volume }) => ({ id, muted, volume }))
+      multiple.channels.map(({ id, muted, volume }) => ({ id, muted, volume }))
     ).toEqual([
       { id: "multi:kexp", muted: true, volume: 0.4 },
       { id: "multi:nts", muted: false, volume: 1 },
     ]);
-    expect(multiple?.masterVolume).toBe(0.6);
-    expect(getSettings()?.player.mode).toBe("multiple");
+    expect(multiple.masterVolume).toBe(0.6);
+    expect(storedMode()).toBe("multiple");
     // The patch stays for a later roll-forward.
     expect(getPlaybackSession("node")).toBeDefined();
   });
 
-  test("rebuilds from the backup when the patch has no lanes", () => {
-    settingsCollection.insert({
+  test("rebuilds from the backup when the patch has no lanes", async () => {
+    writeLegacyRecord(settingsCollection, {
       id: SETTINGS_ID,
       player: { mode: "multiple", restoreStateOnLoad: true },
     });
+    await settle();
     radiosCollection.insert({
       ...radio("kexp"),
       enabled: true,
@@ -170,7 +190,8 @@ describe("migrateNodeToMultiple", () => {
       id: "multiple",
       masterVolume: 0.7,
     };
-    playbackSessionsCollection.insert(parsePlaybackSessionRecord(stored));
+    writeLegacyRecord(playbackSessionsCollection, stored);
+    await settle();
     const storage = createMemoryStorage();
     // Forward, then empty the patch, then back.
     migrateMultipleSession(
@@ -187,32 +208,37 @@ describe("migrateNodeToMultiple", () => {
     playbackSessionsCollection.update("node", (draft) => {
       draft.channels = [];
     });
+    // The migration's delete of "multiple" must persist before the write.
+    await settle();
 
     migrateNodeToMultiple({
       sessions: playbackSessionsCollection,
       settings: settingsCollection,
       storage,
     });
+    await settle();
 
-    const multiple = getPlaybackSession("multiple");
-    expect(multiple?.masterVolume).toBe(0.7);
-    expect(
-      multiple?.channels.map(({ id, volume }) => ({ id, volume }))
-    ).toEqual([{ id: "multi:kexp", volume: 0.25 }]);
+    const multiple = parseMultipleSessionRecord(getMultiple());
+    expect(multiple.masterVolume).toBe(0.7);
+    expect(multiple.channels.map(({ id, volume }) => ({ id, volume }))).toEqual(
+      [{ id: "multi:kexp", volume: 0.25 }]
+    );
     expect(readMultipleBackup(storage)?.mode).toBe("multiple");
-    expect(getSettings()?.player.mode).toBe("multiple");
+    expect(storedMode()).toBe("multiple");
   });
 
-  test("round-trips through the forward migration", () => {
+  test("round-trips through the forward migration", async () => {
     insertNodeSession();
     migrateNodeToMultiple({
       sessions: playbackSessionsCollection,
       settings: settingsCollection,
       storage: null,
     });
-    const multiple = getPlaybackSession("multiple");
-
-    const forward = buildNodeSessionFromMultipleRecord(multiple, () => true);
+    await settle();
+    const forward = buildNodeSessionFromMultipleRecord(
+      getMultiple(),
+      () => true
+    );
 
     expect(forward.graph?.nodes.map((node) => node.id)).toEqual([
       "src-kexp",
@@ -228,7 +254,7 @@ describe("migrateNodeToMultiple", () => {
     ]);
   });
 
-  test("leaves an existing multiple record and other modes alone", () => {
+  test("leaves an existing multiple record and other modes alone", async () => {
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: { mode: "dj", restoreStateOnLoad: true },
@@ -239,7 +265,8 @@ describe("migrateNodeToMultiple", () => {
       settings: settingsCollection,
       storage: null,
     });
-    const first = getPlaybackSession("multiple");
+    await settle();
+    const first = getMultiple();
     playbackSessionsCollection.update("node", (draft) => {
       draft.masterVolume = 0.1;
     });
@@ -249,9 +276,10 @@ describe("migrateNodeToMultiple", () => {
       settings: settingsCollection,
       storage: null,
     });
+    await settle();
 
-    expect(getPlaybackSession("multiple")).toEqual(first);
-    expect(getSettings()?.player.mode).toBe("dj");
+    expect(getMultiple()).toEqual(first);
+    expect(storedMode()).toBe("dj");
   });
 
   test("ignores an unreadable backup", () => {

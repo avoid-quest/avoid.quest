@@ -54,12 +54,7 @@ import { settingsCollection } from "./settings";
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
 const SETTINGS_ID = "app-settings";
 
-export const PLAYBACK_SESSION_IDS = [
-  "single",
-  "multiple",
-  "node",
-  "dj",
-] as const;
+export const PLAYBACK_SESSION_IDS = ["single", "node", "dj"] as const;
 export type PlaybackSessionId = (typeof PLAYBACK_SESSION_IDS)[number];
 
 export const SINGLE_ACTIVE_CHANNEL_ID = "single-a";
@@ -112,7 +107,6 @@ const playbackChannelRoleSchema = z.enum([
   "single-secondary",
   "deck-a",
   "deck-b",
-  "multiple",
   "node",
 ]);
 
@@ -416,27 +410,6 @@ function readLegacyDjState(): {
           deckBCueEnabled?: boolean;
         }
       | undefined,
-  };
-}
-
-export function buildMultipleSessionFromRadios(
-  radios: Array<Radio & { enabled?: boolean; order?: number }>
-): PlaybackSessionRecord {
-  const enabledRadios = radios
-    .filter((radio) => radio.enabled)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-  return {
-    activeChannelId: null,
-    channels: enabledRadios.map((radio, index) => ({
-      ...createDefaultChannel(getMultipleChannelId(radio), "multiple", index),
-      radio,
-    })),
-    crossfadePosition: 0.5,
-    headphoneVolume: 1,
-    id: "multiple",
-    masterVolume: 1,
-    tempo: DEFAULT_EFFECT_TEMPO,
   };
 }
 
@@ -921,12 +894,6 @@ export function setPlaybackSessionTempo(
   updatePlaybackSession(sessionId, (draft) => {
     draft.tempo = normalizeTempoBpm(tempo);
   });
-}
-
-export function getMultipleChannelId(
-  radio: Pick<Radio, "id" | "name">
-): string {
-  return `multi:${String(radio.id ?? radio.name)}`;
 }
 
 /**

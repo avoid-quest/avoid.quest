@@ -8,7 +8,7 @@ import {
 
 const position = { x: 0, y: 0 };
 
-function multipleLayout(version: number = NODE_GRAPH_VERSION) {
+function migratedLayout(version: number = NODE_GRAPH_VERSION) {
   return {
     edges: [
       {
@@ -101,7 +101,7 @@ describe("migrateNodeGraph", () => {
   });
 
   test("accepts a v1 graph and fills defaults", () => {
-    const result = migrateNodeGraph(multipleLayout());
+    const result = migrateNodeGraph(migratedLayout());
     expect(result.status).toBe("ok");
     if (result.status !== "ok") {
       return;
@@ -129,7 +129,7 @@ describe("migrateNodeGraph", () => {
   });
 
   test("keeps a pinned flag and the viewport", () => {
-    const raw = multipleLayout();
+    const raw = migratedLayout();
     const result = migrateNodeGraph({
       ...raw,
       nodes: raw.nodes.map((node) => ({ ...node, pinned: true })),
@@ -149,9 +149,9 @@ describe("migrateNodeGraph", () => {
     ["a non-object", "patch"],
     ["null", null],
     ["a missing version", { edges: [], nodes: [] }],
-    ["a string version", { ...multipleLayout(), version: "1" }],
-    ["version 0", multipleLayout(0)],
-    ["a fractional version", multipleLayout(1.5)],
+    ["a string version", { ...migratedLayout(), version: "1" }],
+    ["version 0", migratedLayout(0)],
+    ["a fractional version", migratedLayout(1.5)],
   ])("rejects %s", (_label, raw) => {
     expect(migrateNodeGraph(raw).status).toBe("invalid");
   });
@@ -159,35 +159,35 @@ describe("migrateNodeGraph", () => {
   test.each([
     [
       "an unknown node type",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         nodes: [...raw.nodes, { id: "x", position, type: "theremin" }],
       }),
     ],
     [
       "a missing node list",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         nodes: undefined,
       }),
     ],
     [
       "a duplicate node id",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         nodes: [...raw.nodes, { id: "speakers", position, type: "speakers" }],
       }),
     ],
     [
       "a duplicate edge id",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         edges: [...raw.edges, raw.edges[0]],
       }),
     ],
     [
       "a cable to a missing node",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         edges: [
           ...raw.edges,
@@ -203,7 +203,7 @@ describe("migrateNodeGraph", () => {
     ],
     [
       "a station volume above 1",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         nodes: [
           {
@@ -217,7 +217,7 @@ describe("migrateNodeGraph", () => {
     ],
     [
       "an effect that does not match its node type",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         nodes: [
           {
@@ -231,20 +231,20 @@ describe("migrateNodeGraph", () => {
     ],
     [
       "a cable louder than +12 dB",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         edges: [{ ...raw.edges[0], gain: 1000 }],
       }),
     ],
     [
       "a Loop feedback above 0.95",
-      (raw: ReturnType<typeof multipleLayout>) => ({
+      (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,
         nodes: [{ data: { feedback: 1 }, id: "loop", position, type: "loop" }],
       }),
     ],
   ])("rejects %s", (_label, corrupt) => {
-    const result = migrateNodeGraph(corrupt(multipleLayout()));
+    const result = migrateNodeGraph(corrupt(migratedLayout()));
     expect(result.status).toBe("invalid");
     expect(result.status === "invalid" && result.error.length).toBeGreaterThan(
       0
@@ -252,7 +252,7 @@ describe("migrateNodeGraph", () => {
   });
 
   test("marks an unknown future version read-only", () => {
-    const result = migrateNodeGraph(multipleLayout(NODE_GRAPH_VERSION + 1));
+    const result = migrateNodeGraph(migratedLayout(NODE_GRAPH_VERSION + 1));
     expect(result.status).toBe("read-only");
     if (result.status !== "read-only") {
       return;

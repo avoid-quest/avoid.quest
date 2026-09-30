@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
 import {
-  buildMultipleSessionFromRadios,
   createDefaultChannel,
-  getMultipleChannelId,
   getPlaybackSession,
   initializePlaybackSessions,
   parsePlaybackSessionRecord,
@@ -14,6 +13,10 @@ import {
 import { radiosCollection } from "../radios";
 import { addSessionRadio, sessionRadiosCollection } from "../session-radios";
 import { getSettings, settingsCollection } from "../settings";
+import {
+  LEGACY_MULTIPLE_SESSION_ID,
+  writeLegacyRecord,
+} from "./legacy-records";
 import {
   buildNodeGraphFromMultipleRecord,
   buildNodeSessionFromMultipleRecord,
@@ -55,25 +58,62 @@ function saveRadio(station: Radio, order = 0) {
   });
 }
 
+type MultipleStation = {
+  radio: Radio;
+  volume?: number;
+  muted?: boolean;
+  order?: number;
+};
+
 /** A `"multiple"` record holding `stations` at the given levels, in order. */
-function insertMultiple(
-  stations: Array<{ radio: Radio; volume?: number; muted?: boolean }>,
-  masterVolume = 1
-) {
-  playbackSessionsCollection.insert({
-    ...buildMultipleSessionFromRadios([]),
-    channels: stations.map((station, order) => ({
+function multipleRecord(stations: MultipleStation[], masterVolume = 1) {
+  return {
+    activeChannelId: null,
+    channels: stations.map((station, index) => ({
       ...createDefaultChannel(
-        getMultipleChannelId(station.radio),
-        "multiple",
-        order
+        `multi:${String(station.radio.id)}`,
+        "node",
+        station.order ?? index
       ),
       muted: station.muted ?? false,
       radio: station.radio,
+      role: "multiple",
       volume: station.volume ?? 1,
     })),
+    crossfadePosition: 0.5,
+    headphoneVolume: 1,
+    id: "multiple",
     masterVolume,
+    tempo: DEFAULT_EFFECT_TEMPO,
+  };
+}
+
+/** Lets unvalidated writes land; they wait for pending mutations to persist. */
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Stores a Multiple record the way an older release left it. */
+async function insertMultiple(stations: MultipleStation[], masterVolume = 1) {
+  const record = multipleRecord(stations, masterVolume);
+  // A delete still persisting would clash with the write.
+  await settle();
+  writeLegacyRecord(playbackSessionsCollection, record);
+  await settle();
+  return record;
+}
+
+/** Stores settings whose mode is still "multiple". */
+async function insertMultipleSettings() {
+  writeLegacyRecord(settingsCollection, {
+    id: SETTINGS_ID,
+    player: { mode: "multiple", restoreStateOnLoad: true },
   });
+  await settle();
+}
+
+function hasMultiple(): boolean {
+  return playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID);
 }
 
 async function reset() {
@@ -100,10 +140,10 @@ beforeEach(reset);
 afterEach(reset);
 
 describe("migrateMultipleSession", () => {
-  test("drops a channel whose session radio left sessionStorage", () => {
+  test("drops a channel whose session radio left sessionStorage", async () => {
     saveRadio(radio("kexp"));
     addSessionRadio(radio("rg_live"));
-    insertMultiple([
+    await insertMultiple([
       { radio: radio("kexp") },
       { radio: radio("rg_gone") },
       { radio: radio("rg_live") },
@@ -123,13 +163,13 @@ describe("migrateMultipleSession", () => {
       "n:src-kexp",
       "n:src-rg_live",
     ]);
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(hasMultiple()).toBe(false);
   });
 
-  test("carries masterVolume to Speakers and each channel's level to its Station", () => {
+  test("carries masterVolume to Speakers and each channel's level to its Station", async () => {
     saveRadio(radio("kexp"));
     saveRadio(radio("nts"), 1);
-    insertMultiple(
+    await insertMultiple(
       [
         { muted: true, radio: radio("kexp"), volume: 0.4 },
         { radio: radio("nts"), volume: 0.7 },
@@ -160,25 +200,16 @@ describe("migrateMultipleSession", () => {
     expect(node?.graph?.nodes.at(-1)?.position).toEqual({ x: 480, y: 80 });
   });
 
-  test("keeps Multiple's channel order", () => {
+  test("keeps Multiple's channel order", async () => {
     for (const [order, id] of ["a", "b", "c"].entries()) {
       saveRadio(radio(id), order);
     }
-    insertMultiple([
-      { radio: radio("a") },
-      { radio: radio("b") },
-      { radio: radio("c") },
-    ]);
     // Stored order wins over array order.
-    playbackSessionsCollection.update("multiple", (draft) => {
-      const [first, second, third] = draft.channels;
-      if (!(first && second && third)) {
-        throw new Error("Expected three channels");
-      }
-      first.order = 2;
-      second.order = 0;
-      third.order = 1;
-    });
+    await insertMultiple([
+      { order: 2, radio: radio("a") },
+      { order: 0, radio: radio("b") },
+      { order: 1, radio: radio("c") },
+    ]);
 
     migrateMultipleSession(collections, createMemoryStorage());
 
@@ -195,22 +226,21 @@ describe("migrateMultipleSession", () => {
     ).toEqual([0, 160, 320]);
   });
 
-  test("writes the backup once, with the raw record and the old mode", () => {
+  test("writes the backup once, with the raw record and the old mode", async () => {
     const storage = createMemoryStorage();
-    settingsCollection.insert({
-      id: SETTINGS_ID,
-      player: { mode: "multiple", restoreStateOnLoad: true },
-    });
+    await insertMultipleSettings();
     saveRadio(radio("kexp"));
-    insertMultiple([{ radio: radio("kexp"), volume: 0.5 }], 0.6);
-    const raw = playbackSessionsCollection.state.get("multiple");
+    const raw = await insertMultiple(
+      [{ radio: radio("kexp"), volume: 0.5 }],
+      0.6
+    );
 
     migrateMultipleSession(collections, storage);
     // A later Multiple record, even after Node is gone, keeps the first backup.
-    insertMultiple([{ radio: radio("kexp") }]);
+    await insertMultiple([{ radio: radio("kexp") }]);
     migrateMultipleSession(collections, storage);
     playbackSessionsCollection.delete("node");
-    insertMultiple([{ radio: radio("kexp") }]);
+    await insertMultiple([{ radio: radio("kexp") }]);
     migrateMultipleSession(collections, storage);
 
     expect(storage.setItem).toHaveBeenCalledTimes(1);
@@ -219,21 +249,19 @@ describe("migrateMultipleSession", () => {
     ) as MultipleBackup;
     expect(backup.mode).toBe("multiple");
     // The record as stored, without the collection's virtual `$` fields.
-    expect(backup.session).toEqual(
-      JSON.parse(JSON.stringify(parsePlaybackSessionRecord(raw)))
-    );
+    expect(backup.session).toEqual(raw);
     expect(backup.session).not.toHaveProperty("$synced");
     expect(typeof backup.createdAt).toBe("number");
   });
 
-  test("lays out more than eight Stations in two columns", () => {
+  test("lays out more than eight Stations in two columns", async () => {
     const stations = Array.from({ length: 10 }, (_, index) =>
       radio(`s${index}`)
     );
     for (const [order, station] of stations.entries()) {
       saveRadio(station, order);
     }
-    insertMultiple(stations.map((station) => ({ radio: station })));
+    await insertMultiple(stations.map((station) => ({ radio: station })));
 
     migrateMultipleSession(collections, createMemoryStorage());
 
@@ -251,9 +279,9 @@ describe("migrateMultipleSession", () => {
     });
   });
 
-  test("is idempotent", () => {
+  test("is idempotent", async () => {
     saveRadio(radio("kexp"));
-    insertMultiple([{ radio: radio("kexp"), volume: 0.3 }], 0.5);
+    await insertMultiple([{ radio: radio("kexp"), volume: 0.3 }], 0.5);
     const storage = createMemoryStorage();
 
     migrateMultipleSession(collections, storage);
@@ -261,23 +289,23 @@ describe("migrateMultipleSession", () => {
     migrateMultipleSession(collections, storage);
 
     expect(getPlaybackSession("node")).toEqual(migrated);
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(hasMultiple()).toBe(false);
     expect(storage.setItem).toHaveBeenCalledTimes(1);
   });
 
-  test("only deletes multiple when node already exists", () => {
+  test("only deletes multiple when node already exists", async () => {
     saveRadio(radio("kexp"));
     const existing = buildNodeSessionFromTemplate("blank", {
       masterVolume: 0.9,
     });
     playbackSessionsCollection.insert(existing);
-    insertMultiple([{ radio: radio("kexp") }], 0.1);
+    await insertMultiple([{ radio: radio("kexp") }], 0.1);
     const storage = createMemoryStorage();
 
     migrateMultipleSession(collections, storage);
 
     expect(getPlaybackSession("node")).toMatchObject(existing);
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(hasMultiple()).toBe(false);
     expect(storage.setItem).not.toHaveBeenCalled();
   });
 
@@ -359,16 +387,13 @@ describe("migrateMultipleSession", () => {
 
 describe("initializePlaybackSessions", () => {
   test("migrates before anything updates the session collection", async () => {
-    settingsCollection.insert({
-      id: SETTINGS_ID,
-      player: { mode: "multiple", restoreStateOnLoad: true },
-    });
+    await insertMultipleSettings();
     saveRadio(radio("kexp"));
-    insertMultiple([{ radio: radio("kexp"), volume: 0.25 }], 0.45);
+    await insertMultiple([{ radio: radio("kexp"), volume: 0.25 }], 0.45);
 
     await initializePlaybackSessions();
 
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(hasMultiple()).toBe(false);
     expect(getPlaybackSession("node")?.masterVolume).toBe(0.45);
     expect(getPlaybackSession("node")?.channels[0]?.volume).toBe(0.25);
     expect(getPlaybackSession("single")).toBeDefined();
@@ -387,18 +412,19 @@ describe("initializePlaybackSessions", () => {
       "src-rg_live",
       "speakers",
     ]);
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(hasMultiple()).toBe(false);
   });
 
   test("removes a multiple record another tab writes after init", async () => {
     saveRadio(radio("kexp"));
     await initializePlaybackSessions();
+    await settle();
     const node = getPlaybackSession("node");
 
-    insertMultiple([{ radio: radio("kexp") }], 0.2);
+    await insertMultiple([{ radio: radio("kexp") }], 0.2);
     await Promise.resolve();
 
-    expect(getPlaybackSession("multiple")).toBeUndefined();
+    expect(hasMultiple()).toBe(false);
     expect(getPlaybackSession("node")).toEqual(node);
   });
 });
@@ -416,9 +442,7 @@ describe("watchLegacyMultipleWrites", () => {
       settings: settingsCollection,
     });
 
-    settingsCollection.update(SETTINGS_ID, (draft) => {
-      draft.player.mode = "multiple";
-    });
+    await insertMultipleSettings();
     await Promise.resolve();
     stop();
 
@@ -460,8 +484,8 @@ describe("from raw localStorage", () => {
       expect(result.errors).toEqual([]);
       expect(result.mode).toBe("node");
       expect(result.sessionIds).toEqual(["dj", "node", "single"]);
-      // What reaches storage holds no "multiple" either, so dropping it from
-      // the schemas cannot fail a later load.
+      // What reaches storage holds no "multiple" either, which the schemas
+      // no longer accept, so a later load cannot fail on it.
       expect(result.storedMode).toBe("node");
       expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
       expect(result.backup?.mode).toBe("multiple");

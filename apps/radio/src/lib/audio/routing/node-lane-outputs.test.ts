@@ -278,7 +278,7 @@ describe("createNodeLaneOutputs", () => {
     expect(harness.mainSources.has(send)).toBe(true);
   });
 
-  test("dropSink takes a removed sink's sends off it", () => {
+  test("dropSink fades a removed sink's sends out, then takes them off it", async () => {
     const harness = createHarness();
     const desk = new Set<unknown>();
     harness.routes.set("desk", desk);
@@ -286,8 +286,23 @@ describe("createNodeLaneOutputs", () => {
     harness.outputs.attach("kexp", "node:n:kexp");
     const { laneOut, sendTo } = harness.connectSound("node:n:kexp");
     const send = sendTo("desk");
+    harness.context.currentTime = 4;
 
     harness.outputs.dropSink("desk");
+
+    // Still wired while it fades, so it doesn't click.
+    expect(send?.gain.events.at(-1)).toEqual({
+      time: 4,
+      timeConstant: LANE_LEVEL_TIME_CONSTANT_S,
+      type: "target",
+      value: 0,
+    });
+    expect(desk.size).toBe(1);
+    expect(laneOut.connections.has(send)).toBe(true);
+
+    harness.waits.at(-1)?.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(desk.size).toBe(0);
     expect(laneOut.connections.has(send)).toBe(false);

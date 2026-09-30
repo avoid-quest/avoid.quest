@@ -309,9 +309,13 @@ function endIssue(
   }
   const outOf = definitionOf(source);
   if (outOf.category === "output") {
+    // "at Speakers", but "at an Output device".
+    const where = BARE_OUTPUT_NAMES.has(source.type)
+      ? outOf.name
+      : `${STARTS_WITH_VOWEL.test(outOf.name) ? "an" : "a"} ${outOf.name}`;
     return {
       code: "no-out",
-      message: `The sound ends at ${outOf.name}; it has no output`,
+      message: `The sound ends at ${where}; it has no output`,
     };
   }
   return null;
@@ -319,6 +323,12 @@ function endIssue(
 
 /** "An Audio input", but "A Station". */
 const STARTS_WITH_VOWEL = /^[AEIOU]/;
+
+/** Outputs named like a place, with no article. */
+const BARE_OUTPUT_NAMES: ReadonlySet<GraphNode["type"]> = new Set([
+  "speakers",
+  "headphones",
+]);
 
 /** "A module can't feed itself": the one exception is a Loop's own delay. */
 export const SELF_LOOP_MESSAGE = "A module can't feed itself";

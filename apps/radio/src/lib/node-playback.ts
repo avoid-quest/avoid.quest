@@ -555,7 +555,8 @@ function createNodePlayback(
   /**
    * Goes live on an Audio input: its sound is made now, never on restore,
    * so the mic opens only from a gesture. A lane muted live keeps its
-   * capture open, so going live again only lifts its gain, as on a DJ deck.
+   * capture open, so going live again only lifts its gain, as on a DJ deck,
+   * unless the device was unplugged meanwhile: that capture opens anew.
    */
   const startDeviceLane = async (
     channel: PlaybackChannelRecord,
@@ -571,10 +572,15 @@ function createNodePlayback(
       ctx.channels.setMuted("node", channel.id, channel.muted);
     }
     applySessionMasterVolume("node", ctx);
-    if (ctx.audio.getDeviceSource(soundId)?.isActive) {
+    const capture = ctx.audio.getDeviceSource(soundId);
+    // An unplugged device leaves its capture "active" on an ended track.
+    if (capture?.isActive && capture.getDiagnostics()?.readyState !== "ended") {
       await ctx.audio.playSound(soundId, getChannelPlayVolume(channel));
       return;
     }
+    // A dead capture goes, with its tracks and device listener, before the
+    // new one replaces it.
+    capture?.cleanup();
     await startDeviceInput(deviceInputAudio(ctx), soundId, source);
     // The capture starts at the sound's own volume; put the input's back.
     const latest = getPlaybackChannel("node", channel.id);

@@ -688,7 +688,7 @@ describe("validate: audio inputs and output devices", () => {
     });
     expect(connectionVerdict(io, plug("desk", "speakers"))).toEqual({
       code: "no-out",
-      message: "The sound ends at Output device; it has no output",
+      message: "The sound ends at an Output device; it has no output",
       ok: false,
     });
   });

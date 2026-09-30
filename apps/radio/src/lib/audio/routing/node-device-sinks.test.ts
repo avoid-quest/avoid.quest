@@ -105,6 +105,29 @@ describe("createNodeDeviceSinks", () => {
     expect(harness.context.destinations).toHaveLength(1);
   });
 
+  test("a send from a new AudioContext gets a new graph on it", async () => {
+    const harness = createHarness();
+    harness.sinks.sync(new Map([["desk", "usb"]]));
+    harness.sinks.connect("desk", harness.send());
+    await harness.settle();
+    const [oldElement] = harness.elements;
+    const [oldDestination] = harness.context.destinations;
+
+    const fresh = new FakeAudioContext();
+    const send = fresh.createGain() as unknown as FakeGainNode;
+    const route = harness.sinks.connect("desk", send as unknown as AudioNode);
+    await harness.settle();
+
+    expect(route.to).toBe("device");
+    expect(oldElement?.paused).toBe(true);
+    expect(oldDestination?.stopped).toEqual([true]);
+    const [input] = fresh.gains.slice(-1);
+    const [destination] = fresh.destinations;
+    expect(send.connections.has(input)).toBe(true);
+    expect(input?.connections.has(destination)).toBe(true);
+    expect(harness.elements[1]?.setSinkId).toHaveBeenCalledWith("usb");
+  });
+
   test("an Output device with no device picked plays nowhere", () => {
     const harness = createHarness();
     harness.sinks.sync(new Map([["desk", null]]));

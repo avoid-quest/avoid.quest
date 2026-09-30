@@ -249,6 +249,10 @@ export function createNodeDeviceSinks({
       if (entry.status.state !== "ok") {
         return { to: "speakers" };
       }
+      // A graph from an AudioContext since replaced can't take this send.
+      if (entry.graph && entry.graph.input.context !== send.context) {
+        teardown(entry);
+      }
       const graph =
         entry.graph ?? build(sinkId, entry, entry.deviceId, send.context);
       send.connect(graph.input);

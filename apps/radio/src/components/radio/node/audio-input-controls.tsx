@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
@@ -107,7 +108,7 @@ export function InputLiveButton({
       title={compact ? label : undefined}
       variant={isPlaying ? "outline" : "default"}
     >
-      <Icon />
+      {isLoading ? <Spinner /> : <Icon />}
       {compact ? null : <span>{label}</span>}
     </Button>
   );

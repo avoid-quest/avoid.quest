@@ -67,7 +67,7 @@ export type NodeLaneOutputs = {
    * `route`, e.g. when a device sink fails over to Speakers.
    */
   reroute: (sinkId?: string) => void;
-  /** Takes every lane's send into a removed sink off it. */
+  /** Fades every lane's send into a removed sink out, then takes it off. */
   dropSink: (sinkId: string) => void;
   /** Unregisters the connector and drops laneOut. Its sound is gone. */
   release: (laneId: string) => void;
@@ -146,9 +146,9 @@ export function createNodeLaneOutputs({
       return release ?? (() => undefined);
     });
 
-  const dropSend = (lane: LaneOutput, send: LaneSend) => {
+  const dropSend = (out: GainNode | null, send: LaneSend) => {
     send.release();
-    safeDisconnectFrom(lane.out, send.gain, "NodeLaneOutputs.dropSend");
+    safeDisconnectFrom(out, send.gain, "NodeLaneOutputs.dropSend");
     safeDisconnect(send.gain, "NodeLaneOutputs.dropSend");
   };
 
@@ -179,7 +179,7 @@ export function createNodeLaneOutputs({
 
   const dropOut = (lane: LaneOutput) => {
     for (const send of lane.sends.values()) {
-      dropSend(lane, send);
+      dropSend(lane.out, send);
     }
     lane.sends.clear();
     safeDisconnect(lane.out, "NodeLaneOutputs.release");
@@ -262,10 +262,18 @@ export function createNodeLaneOutputs({
     dropSink(sinkId) {
       for (const lane of lanes.values()) {
         const send = lane.sends.get(sinkId);
-        if (send) {
-          dropSend(lane, send);
-          lane.sends.delete(sinkId);
+        if (!send) {
+          continue;
         }
+        // Off the lane now, so a new cable gets a new send; it fades out
+        // first, so a send still on Speakers doesn't click.
+        lane.sends.delete(sinkId);
+        const { out } = lane;
+        settleSend(send.gain, 0);
+        wait(LANE_DUCK_MS).then(
+          () => dropSend(out, send),
+          () => dropSend(out, send)
+        );
       }
     },
     refresh(laneId) {

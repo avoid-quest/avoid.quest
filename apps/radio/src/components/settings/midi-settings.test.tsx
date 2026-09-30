@@ -38,6 +38,12 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 });
 
 mock.module("@/lib/hooks/use-settings", () => ({
+  // Node mode's Output device reads the main output from here.
+  useAudioSettings: () => ({
+    cueOutputId: null,
+    delay: { cueDelayMs: 0, mainDelayMs: 0 },
+    mainOutputId: "default",
+  }),
   usePlayerMode: () => "single",
 }));
 

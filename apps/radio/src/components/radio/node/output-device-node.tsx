@@ -17,12 +17,13 @@ import {
 } from "lucide-react";
 import type { DeviceSinkStatus } from "@/lib/audio/routing/node-device-sinks";
 import { isSinkIdSupported } from "@/lib/audio/utils";
-import { getAudioSettings } from "@/lib/collections/settings";
+import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { findPort } from "@/lib/node-graph/catalogue";
 import { setDeviceParams } from "@/lib/node-graph/graph-edits";
 import { commitNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
 import { ONE_DEVICE_OUT_MESSAGE } from "@/lib/node-graph/validate";
 import { nodeSinkStatuses } from "@/lib/node-playback";
+import { InlineError } from "../inline-error";
 import { DeviceNote, DeviceSelect } from "./audio-input-controls";
 import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
 import type { OutputDeviceNodeData } from "./flow-elements";
@@ -96,13 +97,11 @@ function OutputState({
   }
   if (status?.state === "failed") {
     return (
-      <p
-        className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-destructive text-xs"
-        role="alert"
-        title={status.message}
-      >
-        Couldn't play here, playing through Speakers
-      </p>
+      <InlineError>
+        <span title={status.message}>
+          Couldn't play here, playing through Speakers
+        </span>
+      </InlineError>
     );
   }
   if (data.deviceId === null) {
@@ -208,7 +207,7 @@ export function OutputDeviceNodeBody({
           <>
             {devices.permissionState === "granted" ? null : (
               <Button
-                className="h-7 w-full text-xs"
+                className="h-auto min-h-7 w-full whitespace-normal text-xs"
                 disabled={devices.isLoading}
                 onClick={() => {
                   devices.requestPermission();
@@ -252,8 +251,8 @@ export function OutputDeviceNode({
 }: FlowNodeProps<OutputDeviceFlowNode>) {
   const actions = useNodeActions();
   const devices = useNodeDevices();
-  // Read on render: the main output changes in Settings, away from here.
-  const { mainOutputId } = getAudioSettings();
+  // Follows Settings, where the main output (Speakers' device) is picked.
+  const { mainOutputId } = useAudioSettings();
   const status = useStore(nodeSinkStatuses, (state) => state[id]);
   const title = (data.deviceId && data.deviceLabel) || OUTPUT_DEVICE_NAME;
   const commit = (patch: Parameters<typeof setDeviceParams>[2]) => {

@@ -35,6 +35,12 @@ let storedMode = "node";
 // Module mocks are process-wide in bun, so this keeps the shape the MIDI
 // settings test mocks, plus the settings the toggle reads.
 mock.module("@/lib/hooks/use-settings", () => ({
+  // Node mode's Output device reads the main output from here.
+  useAudioSettings: () => ({
+    cueOutputId: null,
+    delay: { cueDelayMs: 0, mainDelayMs: 0 },
+    mainOutputId: "default",
+  }),
   usePlayerMode: () => "single",
   useSettings: () => ({
     data: {

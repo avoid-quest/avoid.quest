@@ -2479,9 +2479,24 @@ describe("Node Playback audio inputs and output devices", () => {
   function deviceEngine(context: PlaybackActionContext) {
     const calls: string[] = [];
     const active = new Set<string>();
+    /** Captures whose track ended, as an unplugged device's does. */
+    const ended = new Set<string>();
     Object.assign(context.audio, {
       getDeviceSource: mock((soundId: string) =>
-        active.has(soundId) ? { channelCount: 2, isActive: true } : null
+        active.has(soundId)
+          ? {
+              channelCount: 2,
+              cleanup: () => {
+                calls.push(`cleanup ${soundId}`);
+                active.delete(soundId);
+                ended.delete(soundId);
+              },
+              getDiagnostics: () => ({
+                readyState: ended.has(soundId) ? "ended" : "live",
+              }),
+              isActive: true,
+            }
+          : null
       ),
       playDeviceSound: mock(
         (soundId: string, deviceId: string, constraints?: unknown) => {
@@ -2509,7 +2524,7 @@ describe("Node Playback audio inputs and output devices", () => {
       active.delete(`node:${channelId}`);
       deactivate(channelId);
     });
-    return { active, calls };
+    return { active, calls, ended };
   }
 
   /** An `<audio>` element that records the device it was set to. */
@@ -2637,6 +2652,26 @@ describe("Node Playback audio inputs and output devices", () => {
       soundOf("mic"),
       1
     );
+  });
+
+  test("Go live after an unplug opens the capture anew, not the dead one", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const harness = createHarness();
+    const { calls, ended } = deviceEngine(harness.context);
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("mic", true);
+    await harness.playback.setPlaying("mic", false);
+
+    // Unplugged and back: the old capture's track has ended.
+    ended.add(soundOf("mic"));
+    await harness.playback.setPlaying("mic", true);
+
+    expect(calls.filter((call) => !call.startsWith("setDevice"))).toEqual([
+      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false}`,
+      `cleanup ${soundOf("mic")}`,
+      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false}`,
+    ]);
   });
 
   test("echo cancellation starts a new capture with it on, still live", async () => {
@@ -2905,7 +2940,9 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(elements[0]?.pause).toHaveBeenCalled();
     expect(elements[0]?.srcObject).toBeNull();
     expect(audio.destinations[0]?.stopped).toEqual([true]);
-    expect(sends()).toHaveLength(1);
     expect(statuses.state).toEqual({});
+    // Its send fades out before it comes off the lane.
+    await new Promise((resolve) => setTimeout(resolve, LANE_DUCK_MS + 5));
+    expect(sends()).toHaveLength(1);
   });
 });

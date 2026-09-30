@@ -408,4 +408,40 @@ describe("node MIDI through the MIDI control", () => {
     expect(effectOf(store, "comp").threshold).toBe(0);
     expect(volume).not.toHaveBeenCalled();
   });
+
+  test("learning a knob for a second node param takes it off the first", async () => {
+    const { browser, control } = await connectedControl();
+    control.change({ targetId: "node:comp:threshold", type: "start-learn" });
+    browser.emit([0xb0, 7, 0]);
+    control.change({ targetId: "node:comp-2:threshold", type: "start-learn" });
+    browser.emit([0xb0, 7, 0]);
+
+    const { mappingsByTarget } = control.getSnapshot();
+    expect(mappingsByTarget.has("node:comp:threshold")).toBe(false);
+    expect(mappingsByTarget.get("node:comp-2:threshold")).toMatchObject({
+      control: 7,
+    });
+
+    // Removing the newer mapping leaves the knob unmapped.
+    control.change({
+      targetId: "node:comp-2:threshold",
+      type: "remove-mapping",
+    });
+    expect(control.getSnapshot().mappings).toEqual([]);
+  });
+
+  test("loading a DJ preset keeps learned node params", async () => {
+    const { browser, control } = await connectedControl();
+    control.change({ targetId: "node:comp:threshold", type: "start-learn" });
+    browser.emit([0xb0, 21, 0]);
+
+    control.change({ presetId: "generic-2-deck", type: "load-preset" });
+
+    const { activePresetId, mappingsByTarget } = control.getSnapshot();
+    expect(activePresetId).toBe("generic-2-deck");
+    expect(mappingsByTarget.get("node:comp:threshold")).toMatchObject({
+      control: 21,
+    });
+    expect(mappingsByTarget.has("deck-a:volume")).toBe(true);
+  });
 });

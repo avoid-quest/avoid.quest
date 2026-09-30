@@ -483,14 +483,26 @@ export function createMidiControl({
       return false;
     }
     cancelPendingDispatch();
+    const learned: MidiMapping = {
+      channel: message.channel,
+      control: message.control,
+      targetId: learningTarget,
+      type: message.type,
+    };
+    // One target per control per mode: the control's previous target in
+    // this mode loses it rather than lingering shadowed.
+    const scope = mappingScope(learningTarget);
+    const key = mappingKey(learned);
     mappings = [
-      ...mappings.filter((mapping) => mapping.targetId !== learningTarget),
-      {
-        channel: message.channel,
-        control: message.control,
-        targetId: learningTarget,
-        type: message.type,
-      },
+      ...mappings.filter(
+        (mapping) =>
+          mapping.targetId !== learningTarget &&
+          !(
+            mappingScope(mapping.targetId) === scope &&
+            mappingKey(mapping) === key
+          )
+      ),
+      learned,
     ];
     learningTarget = null;
     persisted.activePresetId = null;
@@ -698,7 +710,13 @@ export function createMidiControl({
             return;
           }
           cancelPendingDispatch();
-          mappings = [...preset.mappings];
+          // A preset is DJ controls only: learned node params stay.
+          mappings = [
+            ...mappings.filter(
+              (mapping) => mappingScope(mapping.targetId) === "node"
+            ),
+            ...preset.mappings,
+          ];
           persisted.activePresetId = preset.id;
           rebuildMappings();
           persist();

@@ -23,6 +23,18 @@ import {
   mergeRoles,
 } from "./compile";
 import {
+  connectNodes,
+  removeEdges,
+  removeNodes,
+  setEffectParams,
+} from "./graph-edits";
+import {
+  commitNodeGraph,
+  createNodeStore,
+  redoNodeGraph,
+  undoNodeGraph,
+} from "./node-store";
+import {
   type GraphEdge,
   type NodeGraph,
   type NodeGraphInput,
@@ -1151,6 +1163,110 @@ describe("compile: series-parallel regions", () => {
 });
 
 describe("compile: key cables", () => {
+  function vocoderPatch(modulatorSource: "self" | "noise-pink" | "external") {
+    return graph(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        fx("voc", "vocoder", {
+          enabled: true,
+          modulatorSource,
+        } as Partial<EffectConfig>),
+        speakers,
+      ],
+      [
+        audio("music", "voc"),
+        audio("voc", "speakers"),
+        audio("talk", "speakers"),
+        audio("news", "speakers"),
+      ]
+    );
+  }
+
+  function vocoderOf(patch: NodeGraph | null) {
+    if (!patch) {
+      throw new Error("No patch loaded");
+    }
+    return lane(compile(patch, ENV), "music").effects[0];
+  }
+
+  test.each(["self", "noise-pink", "external"] as const)(
+    "removing a key restores the authored %s modulator",
+    (modulatorSource) => {
+      const patch = vocoderPatch(modulatorSource);
+      const keyed = connectNodes(patch, key("talk", "voc"));
+      expect(vocoderOf(keyed)).toMatchObject({
+        modulatorSource: "external",
+        sidechain: { channelId: "n:talk" },
+      });
+
+      const keyEdge = keyed.edges.at(-1);
+      if (!keyEdge) {
+        throw new Error("Key was not connected");
+      }
+      const unkeyed = removeEdges(keyed, [keyEdge.id]);
+      expect(vocoderOf(unkeyed)).toMatchObject({ modulatorSource });
+      expect(vocoderOf(unkeyed)?.sidechain).toBeUndefined();
+      expect(keyed.nodes).toBe(patch.nodes);
+    }
+  );
+
+  test("rewiring and deleting a key source derive the mode from the remaining key", () => {
+    const patch = vocoderPatch("noise-pink");
+    const keyed = nodeGraphSchema.parse({
+      ...patch,
+      edges: [...patch.edges, key("talk", "voc")],
+    });
+    const rewired = {
+      ...keyed,
+      edges: keyed.edges.map((edge) =>
+        edge.id === "talk~>voc" ? { ...edge, source: "news" } : edge
+      ),
+    };
+    expect(vocoderOf(rewired)).toMatchObject({
+      modulatorSource: "external",
+      sidechain: { channelId: "n:news" },
+    });
+    expect(vocoderOf(removeNodes(rewired, ["news"]))).toMatchObject({
+      modulatorSource: "noise-pink",
+    });
+    expect(
+      vocoderOf(removeNodes(rewired, ["news"]))?.sidechain
+    ).toBeUndefined();
+  });
+
+  test("editing a keyed Vocoder's authored mode takes effect after removal and undo restores the key", () => {
+    const patch = vocoderPatch("noise-pink");
+    const keyed = nodeGraphSchema.parse({
+      ...patch,
+      edges: [...patch.edges, key("talk", "voc")],
+    });
+    const edited = setEffectParams(keyed, "voc", {
+      modulatorSource: "self",
+    } as Partial<EffectConfig>);
+    const store = createNodeStore(edited);
+    expect(vocoderOf(edited)).toMatchObject({ modulatorSource: "external" });
+
+    commitNodeGraph(
+      (current) => removeEdges(current, ["talk~>voc"]),
+      store,
+      "snapshot"
+    );
+    expect(vocoderOf(store.state.graph)).toMatchObject({
+      modulatorSource: "self",
+    });
+    undoNodeGraph(store);
+    expect(vocoderOf(store.state.graph)).toMatchObject({
+      modulatorSource: "external",
+      sidechain: { channelId: "n:talk" },
+    });
+    redoNodeGraph(store);
+    expect(vocoderOf(store.state.graph)).toMatchObject({
+      modulatorSource: "self",
+    });
+  });
+
   test("a key cable writes sidechain.channelId n:<source>", () => {
     const plan = build(
       [station("music"), station("talk"), fx("comp", "compressor"), speakers],

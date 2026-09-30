@@ -28,7 +28,7 @@ import { settingsCollection } from "@/lib/collections/settings";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { compile } from "@/lib/node-graph/compile";
-import { setEffectParams } from "@/lib/node-graph/graph-edits";
+import { removeEdges, setEffectParams } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -2363,5 +2363,45 @@ describe("Node Playback key cables", () => {
     await settled();
 
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+  });
+
+  test("a Vocoder key overrides its runtime mode and removal restores its authored mode", async () => {
+    const keyedPatch = duckPatch(true);
+    const vocoderPatch = nodeGraphSchema.parse({
+      ...keyedPatch,
+      nodes: keyedPatch.nodes.map((node) =>
+        node.id === "comp"
+          ? {
+              ...node,
+              data: {
+                effect: {
+                  ...createNodeEffectConfig("vocoder", "comp"),
+                  enabled: true,
+                  modulatorSource: "noise-pink",
+                },
+              },
+              type: "vocoder",
+            }
+          : node
+      ),
+    });
+    insertNodeSession(vocoderPatch);
+    const { desired, harness, settled } = withChannelEffects();
+    await harness.playback.activate();
+    await settled();
+    expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
+      modulatorSource: "external",
+      sidechain: { channelId: channelOf("b") },
+      type: "vocoder",
+    });
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+
+    await commit(harness, (graph) => removeEdges(graph, [KEY_EDGE_ID]));
+    await settled();
+    expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
+      modulatorSource: "noise-pink",
+    });
+    expect(desired.get(soundOf("a"))?.tree[0]?.sidechain).toBeUndefined();
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
   });
 });

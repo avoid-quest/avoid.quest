@@ -247,7 +247,7 @@ describe("connectNodes: key cables", () => {
       effect: Record<string, unknown>;
     };
 
-  test("a key into a Vocoder switches its modulator to the sidechain", () => {
+  test("a key into a Vocoder preserves its authored modulator", () => {
     const vocoder = withFx("vocoder");
     expect(effectOf(vocoder, "vocoder").effect.modulatorSource).toBe(
       "noise-pink"
@@ -255,7 +255,10 @@ describe("connectNodes: key cables", () => {
 
     const keyed = connectNodes(vocoder, keyFrom("vocoder"));
 
-    expect(effectOf(keyed, "vocoder").effect.modulatorSource).toBe("external");
+    expect(keyed.nodes).toBe(vocoder.nodes);
+    expect(effectOf(keyed, "vocoder").effect.modulatorSource).toBe(
+      "noise-pink"
+    );
     expect(keyed.edges.at(-1)).toMatchObject({
       source: "src-b",
       targetHandle: "in:sidechain:key",

@@ -777,7 +777,13 @@ function keyEffects(
       let next = effect;
       if (!keyed && channelId !== undefined) {
         keyed = true;
-        next = { ...effect, sidechain: { channelId } } as EffectConfig;
+        // A key overrides the runtime modulator, preserving the authored
+        // choice so removing the cable restores it, including after undo.
+        next = {
+          ...effect,
+          ...(effect.type === "vocoder" ? { modulatorSource: "external" } : {}),
+          sidechain: { channelId },
+        } as EffectConfig;
       }
       return isEffectContainer(next)
         ? ({

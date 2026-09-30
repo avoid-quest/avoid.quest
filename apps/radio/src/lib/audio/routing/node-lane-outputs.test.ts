@@ -142,6 +142,51 @@ describe("createNodeLaneOutputs", () => {
     ]);
   });
 
+  test("refresh holds a ramp in flight with cancelAndHoldAtTime", () => {
+    const harness = createHarness();
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { laneOut } = harness.connectSound("node:n:kexp");
+    const cancelAndHoldAtTime = mock((time: number) => {
+      laneOut.gain.events.push({ time, type: "cancel" });
+    });
+    Object.assign(laneOut.gain, { cancelAndHoldAtTime });
+    harness.context.currentTime = 3;
+
+    harness.outputs.refresh("kexp");
+
+    expect(cancelAndHoldAtTime).toHaveBeenCalledWith(3);
+    expect(laneOut.gain.events.slice(-2)).toEqual([
+      { time: 3, type: "cancel" },
+      {
+        time: 3,
+        timeConstant: LANE_LEVEL_TIME_CONSTANT_S,
+        type: "target",
+        value: 1,
+      },
+    ]);
+  });
+
+  test("without cancelAndHoldAtTime, refresh reads the value before canceling", () => {
+    const harness = createHarness();
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { laneOut } = harness.connectSound("node:n:kexp");
+    const param = laneOut.gain;
+    param.value = 0.4;
+    // Canceling drops the ramp, so the param would read its last set point.
+    const cancel = param.cancelScheduledValues.bind(param);
+    param.cancelScheduledValues = (time) => {
+      cancel(time);
+      param.value = 0;
+    };
+    harness.context.currentTime = 3;
+
+    harness.outputs.refresh("kexp");
+
+    expect(param.events.slice(-2, -1)).toEqual([
+      { time: 3, type: "set", value: 0.4 },
+    ]);
+  });
+
   test("swap ducks over 20 ms, replaces once silent, awaits it, then ramps back", async () => {
     const harness = createHarness(0.7);
     harness.outputs.attach("kexp", "node:n:kexp");

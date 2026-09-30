@@ -1740,6 +1740,31 @@ describe("Node Playback lane outputs", () => {
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
   });
 
+  test("a Station whose stream changes fades the old one out at its old level", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const old = connectLane(harness.context, "a");
+    const eventsBefore = old.laneOut.gain.events.length;
+    const saved = { ...radio("a"), id: "saved-a" };
+
+    await commit(harness, (graph) =>
+      withCable("a->speakers", { muted: true })(
+        withStation("a", { radio: saved })(graph)
+      )
+    );
+
+    expect(harness.fadeOutSound).toHaveBeenCalledWith(soundOf("a"), 150, true);
+    expect(old.laneOut.gain.events).toHaveLength(eventsBefore);
+    expect(levelOf(old.laneOut)).toBe(1);
+    // The new stream's laneOut starts at the new level.
+    const next = connectLane(harness.context, "a");
+    expect(next.laneOut).not.toBe(old.laneOut);
+    expect(levelOf(next.laneOut)).toBe(0);
+  });
+
   test("a Station with no cable to Speakers plays silent", async () => {
     insertNodeSession(
       nodeGraphSchema.parse({

@@ -66,10 +66,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Pins the param where it is now, so a new ramp starts without a jump. */
+/**
+ * Pins the param where it is now, mid-ramp included, so a new ramp starts
+ * without a jump. Without cancelAndHoldAtTime, the value is read before the
+ * cancel drops the ramp it sits on.
+ */
 function hold(param: AudioParam, now: number): void {
+  const cancelAndHoldAtTime = param.cancelAndHoldAtTime?.bind(param);
+  if (cancelAndHoldAtTime) {
+    cancelAndHoldAtTime(now);
+    return;
+  }
+  const held = param.value;
   param.cancelScheduledValues(now);
-  param.setValueAtTime(param.value, now);
+  param.setValueAtTime(held, now);
 }
 
 function rampLinear(out: GainNode, level: number): void {

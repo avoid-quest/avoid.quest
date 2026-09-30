@@ -242,6 +242,8 @@ function createNodePlayback(
   const settlingLanes = new Map<string, Promise<void>>();
   /** Lanes removed in this batch that were playing, for an in-place re-add. */
   const carriedLanes = new Map<string, boolean>();
+  /** Lanes removed in this batch, whose cable ops run before the removal. */
+  const removingLanes = new Set<string>();
   const laneGenerations = new Map<string, number>();
 
   /** A lane's cable level: the gains of its unmuted cables, summed. */
@@ -648,9 +650,18 @@ function createNodePlayback(
       .finally(endSwap);
   };
 
-  /** A removed lane keeps its level through its own fade-out. */
+  /**
+   * A removed or replaced lane keeps its old stream's level through its
+   * fade-out: its cables go before its removeLane, and the new stream's
+   * laneOut reads its level when it connects.
+   */
   const refreshLane = (laneId: string | undefined, next: EnginePlan) => {
-    if (laneId && next.lanes.has(laneId)) {
+    if (
+      laneId &&
+      next.lanes.has(laneId) &&
+      !removingLanes.has(laneId) &&
+      !settlingLanes.has(laneId)
+    ) {
       laneOutputs.refresh(laneId);
     }
   };
@@ -787,12 +798,18 @@ function createNodePlayback(
     const previous = plan;
     const ops = diff(previous, next);
     plan = next;
+    for (const op of ops) {
+      if (op.type === "removeLane") {
+        removingLanes.add(op.laneId);
+      }
+    }
     try {
       applyOps(ops, previous, next, strict);
     } finally {
       // A carry is only "in place" within one batch; a later re-add of the
       // same Station must not resume it.
       carriedLanes.clear();
+      removingLanes.clear();
     }
   };
 

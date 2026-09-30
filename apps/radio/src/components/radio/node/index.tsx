@@ -25,7 +25,7 @@ const NodeCanvas = lazy(() =>
 
 /** Space toggles playback unless the key already activates something else. */
 const SPACE_SHORTCUT_IGNORED_TARGETS =
-  "input, textarea, select, button, a, summary, [role=slider], [role=menuitem], [role=option], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=dialog], [role=menu]";
+  "input, textarea, select, button, a, summary, [role=slider], [role=menuitem], [role=option], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=dialog], [role=menu], .react-flow__node, .react-flow__edge";
 
 export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const graph = useNodeGraph();
@@ -52,8 +52,8 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       }
       const { target } = event;
       if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
+        target instanceof Element &&
+        ((target instanceof HTMLElement && target.isContentEditable) ||
           target.closest(SPACE_SHORTCUT_IGNORED_TARGETS))
       ) {
         return;

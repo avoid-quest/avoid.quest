@@ -63,6 +63,10 @@ deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
 
 ## Architecture
 
+When changing Node Mode graph rules, playback, persistence or editing, read the
+[current v1 contract and source map](src/components/radio/NODE_MODE_PROPOSAL.md).
+It links to historical design and future roadmap material only when those are needed.
+
 ### State layers
 
 ```

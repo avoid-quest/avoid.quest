@@ -9,6 +9,7 @@ import {
 import {
   DRAWN_NODE_TYPES,
   dropTargetOf,
+  edgeUnderPointer,
   NODE_ARIA_LABELS,
   toFlowEdges,
   toFlowNodes,
@@ -108,6 +109,45 @@ describe("flow elements", () => {
     expect(
       dropTargetOf(mouseUp, undefined, { elementFromPoint: () => null })
     ).toBe(port as unknown as Element);
+  });
+
+  test("the cable under a dragged node is found beneath the node", () => {
+    const element = (edgeId: string | null) =>
+      ({
+        closest: (selector: string) =>
+          selector === ".react-flow__edge" && edgeId
+            ? { getAttribute: () => edgeId }
+            : null,
+      }) as unknown as Element;
+    const seen: [number, number][] = [];
+    const doc = {
+      elementsFromPoint: (x: number, y: number) => {
+        seen.push([x, y]);
+        return [element(null), element("src-kexp->speakers")];
+      },
+    };
+
+    expect(edgeUnderPointer({ x: 10, y: 20 }, doc)).toBe("src-kexp->speakers");
+    expect(seen).toEqual([[10, 20]]);
+    expect(
+      edgeUnderPointer({ x: 0, y: 0 }, { elementsFromPoint: () => [] })
+    ).toBeNull();
+    expect(edgeUnderPointer({ x: 0, y: 0 }, {} as Document)).toBeNull();
+  });
+
+  test("the cable a dragged node would go into is marked", () => {
+    const edges = toFlowEdges(patch, {
+      insertTarget: "src-nts->speakers",
+      liveLanes: new Set(["n:src-nts"]),
+      selection,
+    });
+
+    expect(
+      edges.find((edge) => edge.id === "src-nts->speakers")?.className
+    ).toBe("node-edge-live node-edge-insert");
+    expect(
+      edges.find((edge) => edge.id === "src-kexp->speakers")?.className
+    ).toBeUndefined();
   });
 
   test("FX, the splits, Merge and the native strip are drawn; Werkstatt waits", () => {

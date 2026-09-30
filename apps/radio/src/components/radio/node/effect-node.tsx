@@ -198,6 +198,8 @@ export type EffectNodeBodyProps = {
   onRemove: () => void;
   /** Opens every param in the inspector. */
   onInspect?: () => void;
+  /** "Swap effect…": another effect in its place, cables kept. */
+  onSwap?: () => void;
   /**
    * Replaces the first layout row, `columns` wide: a Band Split shows its
    * bands and crossovers instead.
@@ -219,6 +221,7 @@ export function EffectNodeBody({
   onRelease,
   onRemove,
   onInspect,
+  onSwap,
   controls: custom,
 }: EffectNodeBodyProps) {
   const title = getNodeDefinition(effect.type).name;
@@ -242,6 +245,7 @@ export function EffectNodeBody({
         onRemove={onRemove}
         // A reset keeps the effect on or off; only its params go back.
         onReset={() => onStep(resetEffect(effect))}
+        onSwap={onSwap}
         title={title}
       />
       <ModuleControls onRelease={onRelease}>
@@ -287,6 +291,7 @@ export function EffectNode({
         onRelease={() => snapshotNodeGraph()}
         onRemove={() => actions.removeNode(id)}
         onStep={(patch) => commit(patch, true)}
+        onSwap={() => actions.swapEffect(id)}
         selected={selected}
       />
       <ModulePorts

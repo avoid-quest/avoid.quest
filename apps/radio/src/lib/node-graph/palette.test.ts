@@ -537,3 +537,64 @@ describe("resetEffect", () => {
     expect(reset).toEqual({ ...effect, enabled: false });
   });
 });
+
+describe("cable surgery entries", () => {
+  const fxEntry = (type: "compressor" | "filter" | "delay") =>
+    ({
+      id: type,
+      kind: "node",
+      name: type,
+      section: "fx",
+      type,
+    }) satisfies PaletteNodeEntry;
+
+  test("I on a cable offers only what goes into it, then inserts it", () => {
+    const entries = paletteEntries(patch, { into: "src-a->speakers" });
+    const sections = new Set(entries.map((entry) => entry.section));
+
+    expect([...sections]).toEqual(["fx", "routing"]);
+    const ids = entries.map((entry) => entry.id);
+    expect(ids).toContain("filter");
+    // A Merge passes one cable through; a split would leave a lone branch.
+    expect(ids).toContain("merge");
+    expect(ids).not.toContain("fxComposite");
+
+    const { graph, nodeId } = addPaletteNode(patch, fxEntry("delay"), {
+      into: "src-a->speakers",
+      position: { x: 5, y: 5 },
+    });
+    expect(nodeId).toBe("delay");
+    expect(graph.edges.map((edge) => `${edge.source}->${edge.target}`)).toEqual(
+      ["src-a->delay", "delay->speakers", "src-b->speakers"]
+    );
+    expect(validate(graph)).toEqual([]);
+  });
+
+  test("a cable after an FX refuses the station's own Filter", () => {
+    const withComp = addPaletteNode(patch, fxEntry("compressor"), {
+      into: "src-a->speakers",
+    }).graph;
+
+    const ids = paletteEntries(withComp, { into: "compressor->speakers" }).map(
+      (entry) => entry.id
+    );
+
+    expect(ids).toContain("delay");
+    expect(ids).not.toContain("filter");
+  });
+
+  test("Swap effect… lists every other plain effect, no splits", () => {
+    const withComp = addPaletteNode(patch, fxEntry("compressor")).graph;
+
+    const entries = paletteEntries(withComp, { swap: "compressor" });
+    const ids = entries.map((entry) => entry.id);
+
+    expect(entries.every((entry) => entry.section === "fx")).toBe(true);
+    expect(ids).toContain("delay");
+    expect(ids).not.toContain("compressor");
+    expect(ids).not.toContain("fxComposite");
+    expect(ids).not.toContain("filter");
+    expect(ids).not.toContain("werkstatt");
+    expect(paletteEntries(withComp, { swap: "src-a" })).toEqual([]);
+  });
+});

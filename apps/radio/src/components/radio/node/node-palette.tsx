@@ -22,6 +22,7 @@ import {
 } from "@/components/audio/effect-picker";
 import { getEffectMetadata, type Radio } from "@/lib/audio";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
+import { swapEffect } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   type NodeStore,
@@ -54,6 +55,10 @@ export type PaletteRequest = {
    * its width.
    */
   edge?: "left" | "right";
+  /** A cable selected with I: the pick goes into it. */
+  into?: string | null;
+  /** An FX node's "Swap effect…": the pick replaces its effect. */
+  swap?: string | null;
 };
 
 /** A Station's node frame (w-60), and the width of anything not drawn as a module. */
@@ -213,10 +218,46 @@ type NodePaletteProps = {
   store?: NodeStore;
 };
 
+/** The palette's heading, hints and empty text for what it was opened for. */
+function paletteCopy(request: PaletteRequest | null) {
+  if (request?.swap) {
+    return {
+      description: "Cables stay. Enter swaps to the first match.",
+      empty: "No effects found. Try a different search term.",
+      placeholder: "Search effects…",
+      title: "Swap effect",
+    };
+  }
+  if (request?.into) {
+    return {
+      description: "Type to search. Enter inserts the first match.",
+      empty: "Nothing here goes into this cable yet.",
+      placeholder: "Search nodes…",
+      title: "Insert into this cable",
+    };
+  }
+  if (request?.from) {
+    return {
+      description: "Type to search. Enter adds the first match.",
+      empty: "Nothing here takes this cable yet.",
+      placeholder: "Search nodes and stations…",
+      title: "Add a node to this cable",
+    };
+  }
+  return {
+    description: "Type to search. Enter adds the first match.",
+    empty: "No nodes found. Try a different search term.",
+    placeholder: "Search nodes and stations…",
+    title: "Add node",
+  };
+}
+
 /**
  * The add-node palette: Sources, FX, Routing, Outputs and Templates in the effect
  * picker's search-and-cards body. Picking a node adds it as one undo step,
- * wired into a dropped cable if there was one, else a Station to Speakers.
+ * wired into a dropped cable if there was one, inserted into a cable picked
+ * with I, else a Station to Speakers. Opened for "Swap effect…", it lists
+ * the effects an FX can become and swaps it in place.
  */
 export function NodePalette({
   request,
@@ -231,9 +272,19 @@ export function NodePalette({
   const graph = useNodeGraph(store);
   const open = request !== null && graph !== null;
   const from = request?.from ?? null;
+  const into = request?.into ?? null;
+  const swap = request?.swap ?? null;
   const sections =
     open && graph
-      ? toSections(paletteEntries(graph, { ...validateOptions, from, radios }))
+      ? toSections(
+          paletteEntries(graph, {
+            ...validateOptions,
+            from,
+            into,
+            radios,
+            swap,
+          })
+        )
       : [];
 
   const handleSelect = ({ entry }: PaletteItem) => {
@@ -243,6 +294,18 @@ export function NodePalette({
       onLoadTemplate(entry.template);
       return;
     }
+    const { swap: swapped } = current;
+    if (swapped) {
+      const { type } = entry;
+      if (isEffectNodeType(type)) {
+        commitNodeGraph(
+          (latest) => swapEffect(latest, swapped, type),
+          store,
+          "snapshot"
+        );
+      }
+      return;
+    }
     let added: string | null = null;
     commitNodeGraph(
       (latest) => {
@@ -250,6 +313,7 @@ export function NodePalette({
         const result = addPaletteNode(latest, entry, {
           ...validateOptions,
           from: current.from,
+          into: current.into,
           position:
             position && edge === "right"
               ? { ...position, x: position.x - drawnWidth(entry.type) }
@@ -271,17 +335,12 @@ export function NodePalette({
     }
   };
 
-  const title = from ? "Add a node to this cable" : "Add node";
-  const description = "Type to search. Enter adds the first match.";
+  const { description, empty, placeholder, title } = paletteCopy(request);
   const body = (
     <PickerList
-      emptyText={
-        from
-          ? "Nothing here takes this cable yet."
-          : "No nodes found. Try a different search term."
-      }
+      emptyText={empty}
       onSelect={handleSelect}
-      placeholder="Search nodes and stations…"
+      placeholder={placeholder}
       sections={sections}
     />
   );

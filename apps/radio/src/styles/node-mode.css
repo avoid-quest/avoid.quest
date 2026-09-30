@@ -112,6 +112,13 @@
     stroke: var(--foreground);
   }
 
+  /* The cable a dragged node goes into if let go now. */
+  .react-flow__edge.node-edge-insert .react-flow__edge-path {
+    opacity: 1;
+    stroke: var(--foreground);
+    stroke-width: 3;
+  }
+
   .react-flow__attribution a {
     color: var(--muted-foreground);
   }

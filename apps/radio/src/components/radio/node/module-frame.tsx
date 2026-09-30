@@ -20,6 +20,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   type LucideIcon,
   MoreHorizontalIcon,
+  ReplaceIcon,
   RotateCcwIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
@@ -124,6 +125,7 @@ export function ModuleHeader({
   onEnabledChange,
   onInspect,
   onReset,
+  onSwap,
   onRemove,
 }: {
   icon: LucideIcon;
@@ -137,6 +139,8 @@ export function ModuleHeader({
   onInspect?: () => void;
   /** Set when the node has params to put back; a Merge has none. */
   onReset?: () => void;
+  /** Set on an FX that can become another effect, keeping its cables. */
+  onSwap?: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -190,13 +194,19 @@ export function ModuleHeader({
                 All settings
               </DropdownMenuItem>
             ) : null}
+            {onSwap ? (
+              <DropdownMenuItem onClick={onSwap}>
+                <ReplaceIcon />
+                Swap effect…
+              </DropdownMenuItem>
+            ) : null}
             {onReset ? (
               <DropdownMenuItem onClick={onReset}>
                 <RotateCcwIcon />
                 Reset to defaults
               </DropdownMenuItem>
             ) : null}
-            {onInspect || onReset ? <DropdownMenuSeparator /> : null}
+            {onInspect || onSwap || onReset ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onClick={onRemove} variant="destructive">
               <Trash2Icon />
               Remove

@@ -53,14 +53,14 @@ export function isDrawn(node: GraphNode): boolean {
 /** React Flow's announcements in the app's words. */
 export const NODE_ARIA_LABELS: Partial<FlowAriaLabelConfig> = {
   "edge.a11yDescription.default":
-    "Press Enter or Space to select this cable, then Delete to remove it.",
+    "Press Enter or Space to select this cable, then I to insert a node into it or Delete to remove it.",
   "handle.ariaLabel": "Port",
   "node.a11yDescription.ariaLiveMessage": ({ direction, x, y }) =>
     `Moved the module ${direction} to ${Math.round(x)}, ${Math.round(y)}`,
   "node.a11yDescription.default":
-    "Press Enter or Space to select this module, C to connect it, Delete to remove it and Escape to cancel.",
+    "Press Enter or Space to select this module, C to connect it, B to bypass it, Delete to remove it and Escape to cancel.",
   "node.a11yDescription.keyboardDisabled":
-    "Press Enter or Space to select this module, then the arrow keys to move it. C connects it, Delete removes it and Escape cancels.",
+    "Press Enter or Space to select this module, then the arrow keys to move it. C connects it, B bypasses it, Delete removes it and Escape cancels.",
 };
 
 /** Where a mouse or touch gesture ended, in client pixels. */
@@ -85,6 +85,25 @@ export function dropTargetOf(
   }
   const { target } = event;
   return target && "closest" in target ? (target as Element) : null;
+}
+
+/**
+ * The cable under a point, e.g. under a node being dragged: every element
+ * there is checked, so the node on top doesn't hide the cable below it.
+ */
+export function edgeUnderPointer(
+  pointer: Point,
+  doc: Pick<Document, "elementsFromPoint"> | undefined = globalThis.document
+): string | null {
+  // JSDOM and old engines have no elementsFromPoint.
+  const below = doc?.elementsFromPoint?.(pointer.x, pointer.y) ?? [];
+  for (const element of below) {
+    const id = element.closest(".react-flow__edge")?.getAttribute("data-id");
+    if (id) {
+      return id;
+    }
+  }
+  return null;
 }
 
 /** What a Merge node draws: its compiler badge and how many cables it joins. */
@@ -241,12 +260,15 @@ export function toFlowEdges(
     selection,
     liveLanes,
     idleKeys = new Map(),
+    insertTarget = null,
   }: {
     selection: NodeSelection;
     /** Channel ids of the lanes playing now. */
     liveLanes: ReadonlySet<string>;
     /** Key cables that key nothing, with why (`idleKeys` in compile). */
     idleKeys?: ReadonlyMap<string, string>;
+    /** The cable a dragged node would go into if let go now. */
+    insertTarget?: string | null;
   }
 ): FlowEdge[] {
   const drawn = new Map(
@@ -258,7 +280,7 @@ export function toFlowEdges(
     .map((edge) => {
       const kind = parseHandleId(edge.targetHandle)?.kind;
       const label = edgeLabel(graph, edge);
-      return {
+      const flowEdge: FlowEdge = {
         ...branchOf(drawn.get(edge.source), edge),
         ariaLabel: label,
         className:
@@ -276,5 +298,10 @@ export function toFlowEdges(
         target: edge.target,
         targetHandle: edge.targetHandle,
       };
+      if (edge.id === insertTarget) {
+        flowEdge.className =
+          `${flowEdge.className ?? ""} node-edge-insert`.trim();
+      }
+      return flowEdge;
     });
 }

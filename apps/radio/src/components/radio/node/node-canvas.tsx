@@ -8,10 +8,11 @@ import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import { compile, idleKeys, mergeRoles } from "@/lib/node-graph/compile";
 import {
   connectNodes,
+  insertNodeOnEdge,
+  isLoose,
   moveNodes,
   removeEdges,
-  removeNodes,
-  removeSelection,
+  removeNodesHealed,
   setViewport,
 } from "@/lib/node-graph/graph-edits";
 import {
@@ -35,6 +36,7 @@ import { type Connection, validateConnection } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { BranchEdge } from "./branch-edge";
+import { useCableSurgeryShortcuts } from "./cable-surgery";
 import { EffectNode } from "./effect-node";
 import {
   type FlowConnection,
@@ -55,6 +57,7 @@ import {
 import {
   DRAWN_NODE_TYPES,
   dropTargetOf,
+  edgeUnderPointer,
   NODE_ARIA_LABELS,
   pointerOf,
   toFlowEdges,
@@ -111,7 +114,9 @@ const SERIES_PARALLEL_EDITS = {
 /** Station node width, so a node fed from an input lands with its port at the cursor. */
 const STATION_WIDTH = 240;
 const FIT_VIEW_OPTIONS = { maxZoom: 1, padding: 0.2 };
-const DELETE_KEYS = ["Backspace", "Delete"];
+
+/** A loose node dragged over a cable it can go into. */
+type InsertTarget = { node: string; edge: string };
 
 /** The playing channel ids, sorted and space-joined for a cheap compare. */
 function liveChannelKey(
@@ -211,6 +216,11 @@ function Canvas({
   // Read once: React Flow takes its starting viewport only on mount.
   const [initialViewport] = useState(() => graph.viewport);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // The cable a dragged node would go into if let go now: state to
+  // highlight it, a ref for the drop, which reads it in the same event.
+  const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
+  const insertTargetRef = useRef<InsertTarget | null>(null);
+  const probedRef = useRef<{ node: string; edge: string | null } | null>(null);
   const {
     fitView,
     flowToScreenPosition,
@@ -234,9 +244,19 @@ function Canvas({
   });
   const edges = toFlowEdges(graph, {
     idleKeys: idleKeys(graph, plan),
+    insertTarget: insertTarget?.edge ?? null,
     liveLanes,
     selection,
   });
+
+  const aimInsert = (target: InsertTarget | null) => {
+    insertTargetRef.current = target;
+    setInsertTarget((previous) =>
+      previous?.edge === target?.edge && previous?.node === target?.node
+        ? previous
+        : target
+    );
+  };
 
   // React Flow can call onNodesChange and onEdgesChange back to back in one
   // event (select a node, deselect a cable), so each handler reads the
@@ -270,17 +290,30 @@ function Canvas({
       setMeasured((previous) => new Map([...previous, ...sizes]));
     }
     // Positions persist on drag stop, not on every pointer move, and each
-    // drag is one undo step.
+    // drag is one undo step. Let go over a cable, the node goes into it in
+    // that same step.
     if (dropped.size > 0) {
+      const aimed: InsertTarget | null = insertTargetRef.current;
+      const insert = aimed && dropped.has(aimed.node) ? aimed : null;
+      if (insert) {
+        aimInsert(null);
+        probedRef.current = null;
+      }
       commitNodeGraph(
-        (latest) => moveNodes(latest, dropped),
+        (latest) => {
+          const moved = moveNodes(latest, dropped);
+          const edit =
+            insert &&
+            insertNodeOnEdge(moved, insert.node, insert.edge, validateOptions);
+          return edit?.ok ? edit.graph : moved;
+        },
         nodeStore,
         "snapshot"
       );
     }
     if (removed.length > 0) {
       commitNodeGraph(
-        (latest) => removeNodes(latest, removed),
+        (latest) => removeNodesHealed(latest, removed, validateOptions),
         nodeStore,
         "snapshot"
       );
@@ -422,6 +455,37 @@ function Canvas({
     });
   };
 
+  // A lone loose node dragged over a cable it fits into lights that cable;
+  // each cable is checked once per hover, not on every pointer move.
+  const handleNodeDrag = (
+    event: MouseEvent | TouchEvent,
+    node: { id: string },
+    dragged: readonly { id: string }[]
+  ) => {
+    const latest = nodeStore.state.graph;
+    if (!latest || dragged.length !== 1 || !isLoose(latest, node.id)) {
+      probedRef.current = null;
+      aimInsert(null);
+      return;
+    }
+    const edge = edgeUnderPointer(pointerOf(event));
+    const probed = probedRef.current;
+    if (probed?.node === node.id && probed.edge === edge) {
+      return;
+    }
+    probedRef.current = { edge, node: node.id };
+    aimInsert(
+      edge && insertNodeOnEdge(latest, node.id, edge, validateOptions).ok
+        ? { edge, node: node.id }
+        : null
+    );
+  };
+
+  const handleNodeDragStop = () => {
+    probedRef.current = null;
+    aimInsert(null);
+  };
+
   const handleDoubleClick = (event: React.MouseEvent) => {
     if (
       !(event.target instanceof Element) ||
@@ -533,37 +597,14 @@ function Canvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [fitView]);
 
-  // Delete and Backspace remove the selection. React Flow would listen on
-  // the whole document, so a Backspace on a button in the Stage, the Rack
-  // or a dialog deleted the selected Station; only the canvas, or nothing
-  // focused, counts here.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const { target } = event;
-      if (
-        !DELETE_KEYS.includes(event.key) ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.defaultPrevented ||
-        !isCanvasKey(target, wrapperRef.current)
-      ) {
-        return;
-      }
-      const selected = nodeStore.state.selection;
-      if (selected.nodes.length === 0 && selected.edges.length === 0) {
-        return;
-      }
-      event.preventDefault();
-      commitNodeGraph(
-        (latest) => removeSelection(latest, selected),
-        nodeStore,
-        "snapshot"
-      );
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  // Delete heals, B bypasses, I inserts into a cable and Cmd+D duplicates.
+  // React Flow's own delete key would listen on the whole document, so a
+  // Backspace in the Stage, the Rack or a dialog deleted the selection.
+  useCableSurgeryShortcuts({
+    canvasRef: wrapperRef,
+    onInsertInto: onOpenPalette,
+    validateOptions,
+  });
 
   // Pan to a Station added from the search bar when it lands out of view.
   useEffect(() => {
@@ -621,6 +662,8 @@ function Canvas({
         onDoubleClick={handleDoubleClick}
         onEdgesChange={handleEdgesChange}
         onMoveEnd={handleMoveEnd}
+        onNodeDrag={handleNodeDrag}
+        onNodeDragStop={handleNodeDragStop}
         onNodesChange={handleNodesChange}
         panActivationKeyCode={null}
         zoomOnDoubleClick={false}

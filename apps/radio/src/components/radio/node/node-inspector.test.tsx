@@ -197,6 +197,7 @@ function Harness({ store }: { store: NodeStore }) {
     removeNode: noop,
     saveDiscoveredStation: noop,
     selectDiscoveredForStation: noop,
+    swapEffect: noop,
   };
   const controls = {
     setPlaying: asyncNoop,

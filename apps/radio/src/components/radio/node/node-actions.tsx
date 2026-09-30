@@ -18,7 +18,10 @@ export type NodeActions = Pick<
   | "selectDiscoveredForStation"
 > & {
   radios: Radio[];
+  /** Removes a node from its menu, healing the path it sat on. */
   removeNode: (nodeId: string) => void;
+  /** "Swap effect…" on an FX node: pick the effect it becomes. */
+  swapEffect: (nodeId: string) => void;
   /** Opens every param of an FX or native strip node in the inspector. */
   inspectNode: (nodeId: string) => void;
 };

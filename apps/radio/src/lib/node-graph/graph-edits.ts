@@ -8,19 +8,45 @@
  * saved-station snapshots follow their records (a rename, a new stream, a
  * hide). Each returns the same graph when nothing changes, so a no-op
  * commits nothing.
+ *
+ * Cable surgery, Pure Data style: a node dropped on a cable goes into it, a
+ * deleted node heals the path it sat on, an FX swaps its type in place, and
+ * a selection bypasses or duplicates. None of them leaves a patch the
+ * compiler would refuse: a heal or a copied cable that would is left out,
+ * and an insert that would is refused with the reason.
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { UNIVERSAL_EFFECT_PARAM_KEYS } from "@/lib/audio/dsp/effects/universal-params";
+import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
-import { isEffectNodeType } from "./catalogue";
-import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
+import {
+  createNodeEffectConfig,
+  getNodeDefinition,
+  isEffectNodeType,
+  portHandleId,
+} from "./catalogue";
+import { compile } from "./compile";
+import {
+  type EffectNodeType,
+  type GraphEdge,
+  type GraphNode,
+  MAX_EDGE_GAIN,
+  type NodeGraph,
+} from "./schema";
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
   STATION_ROW_HEIGHT,
   stationNodeId,
 } from "./templates";
-import type { Connection } from "./validate";
+import {
+  type Connection,
+  type Issue,
+  parseHandleId,
+  type ValidateOptions,
+  validateConnection,
+} from "./validate";
 
 type StationNode = Extract<GraphNode, { type: "station" }>;
 type NativeNode = Extract<GraphNode, { type: "filter" | "pan" | "gain" }>;
@@ -247,17 +273,20 @@ export function removeEdges(
 }
 
 /**
- * What the delete key removes: the selected cables and nodes, with every
- * cable touching them. Speakers stays, as it can't be deleted.
+ * What the delete key removes: the selected cables, then the selected nodes
+ * with every cable touching them, each healing the path it sat on. A cable
+ * deleted on purpose is gone first, so no heal runs through it. Speakers
+ * stays, as it can't be deleted.
  */
 export function removeSelection(
   graph: NodeGraph,
-  selection: { nodes: readonly string[]; edges: readonly string[] }
+  selection: { nodes: readonly string[]; edges: readonly string[] },
+  options?: ValidateOptions
 ): NodeGraph {
   const nodes = selection.nodes.filter(
     (id) => graph.nodes.find((node) => node.id === id)?.type !== "speakers"
   );
-  return removeEdges(removeNodes(graph, nodes), selection.edges);
+  return removeNodesHealed(removeEdges(graph, selection.edges), nodes, options);
 }
 
 /** Adds a cable at unity gain. Validation happens before, on drag. */
@@ -392,4 +421,364 @@ export function setNativeParams(
     return { ...node, data: { ...node.data, ...own } } as GraphNode;
   });
   return changed ? { ...graph, nodes } : graph;
+}
+
+/** An edit that can be refused, with the reason a toast shows. */
+export type GraphEdit =
+  | { ok: true; graph: NodeGraph }
+  | { ok: false; message: string };
+
+/** A cable's own problem first, then what it would break elsewhere. */
+function firstMessage(issues: readonly Issue[]): string | null {
+  return (
+    (issues.find((issue) => issue.target === "edge") ?? issues[0])?.message ??
+    null
+  );
+}
+
+function issueKey(issue: Issue): string {
+  return `${issue.code}\u0000${issue.target}\u0000${issue.id}`;
+}
+
+/**
+ * The first problem `after` has that `before` hadn't, as the compiler sees
+ * it: the validator's rules plus its own (a Filter only right after the
+ * station, branches joined in a Merge). The backend estimate plays no
+ * part, so any environment will do.
+ */
+function newIssue(
+  before: NodeGraph,
+  after: NodeGraph,
+  options?: ValidateOptions
+): Issue | undefined {
+  const env = { crossOriginIsolated: false, ...options };
+  const known = new Set(compile(before, env).issues.map(issueKey));
+  return compile(after, env).issues.find(
+    (issue) => !known.has(issueKey(issue))
+  );
+}
+
+/** Adds `cable` if it passes validation and the patch still compiles clean. */
+function withCleanCable(
+  graph: NodeGraph,
+  cable: GraphEdge,
+  options?: ValidateOptions
+): NodeGraph {
+  if (validateConnection(graph, cable, options).length > 0) {
+    return graph;
+  }
+  const next = { ...graph, edges: [...graph.edges, cable] };
+  return newIssue(graph, next, options) ? graph : next;
+}
+
+function cableIdsOf(graph: NodeGraph): Set<string> {
+  return new Set(graph.edges.map((edge) => edge.id));
+}
+
+/** True when no cable touches the node, so it can go into a cable. */
+export function isLoose(graph: NodeGraph, nodeId: string): boolean {
+  return !graph.edges.some(
+    (edge) => edge.source === nodeId || edge.target === nodeId
+  );
+}
+
+/**
+ * Puts a loose node into a cable, A → B becoming A → node → B: dropped on
+ * it, or `I` with the cable selected. The cable into the node keeps the old
+ * one's id, gain, mute and branch settings, so a branch stays a branch and
+ * its level holds; the one out starts at unity. The node's first input and
+ * output that fit are used, e.g. a Compressor's main input, not its key.
+ */
+export function insertNodeOnEdge(
+  graph: NodeGraph,
+  nodeId: string,
+  edgeId: string,
+  options?: ValidateOptions
+): GraphEdit {
+  const edge = graph.edges.find((entry) => entry.id === edgeId);
+  const node = graph.nodes.find((entry) => entry.id === nodeId);
+  if (!(edge && node)) {
+    return { message: "That cable or node is gone", ok: false };
+  }
+  if (!isLoose(graph, nodeId)) {
+    return {
+      message: "Only a node with no cables goes into a cable",
+      ok: false,
+    };
+  }
+  const { ports } = getNodeDefinition(node.type);
+  const index = graph.edges.indexOf(edge);
+  const others = graph.edges.filter((entry) => entry !== edge);
+  let refusal: string | null = null;
+  for (const input of ports.filter((port) => port.direction === "in")) {
+    const upstream: GraphEdge = {
+      ...edge,
+      target: nodeId,
+      targetHandle: portHandleId(input),
+    };
+    const cut = { ...graph, edges: others };
+    const upIssues = validateConnection(cut, upstream, options);
+    if (upIssues.length > 0) {
+      refusal ??= firstMessage(upIssues);
+      continue;
+    }
+    const withUpstream = {
+      ...cut,
+      edges: graph.edges.map((entry) => (entry === edge ? upstream : entry)),
+    };
+    for (const output of ports.filter((port) => port.direction === "out")) {
+      const downstream: GraphEdge = {
+        gain: 1,
+        id: uniqueId(`${nodeId}->${edge.target}`, cableIdsOf(graph)),
+        muted: false,
+        source: nodeId,
+        sourceHandle: portHandleId(output),
+        target: edge.target,
+        targetHandle: edge.targetHandle,
+      };
+      const downIssues = validateConnection(withUpstream, downstream, options);
+      if (downIssues.length > 0) {
+        refusal ??= firstMessage(downIssues);
+        continue;
+      }
+      const edges = [...withUpstream.edges];
+      edges.splice(index + 1, 0, downstream);
+      const inserted = { ...graph, edges };
+      // The compiler's reason beats a port's: it is why the fitting pair
+      // failed, e.g. a Filter that must sit right after the station.
+      const issue = newIssue(graph, inserted, options);
+      if (issue) {
+        refusal = issue.message;
+        continue;
+      }
+      return { graph: inserted, ok: true };
+    }
+  }
+  return {
+    message:
+      refusal ??
+      `A ${getNodeDefinition(node.type).name} can't go into this cable`,
+    ok: false,
+  };
+}
+
+/**
+ * Removes one node and heals the path through it: each cable in joins each
+ * cable out when the node's two ports are the same kind, so A → X → B
+ * becomes A → B, but a key into X never turns into audio. The healed cable
+ * keeps the incoming one's id and branch settings, its gain is both
+ * cables' gains, and it is muted if either was. A heal that would not
+ * validate or compile is left out.
+ */
+function removeNodeHealed(
+  graph: NodeGraph,
+  nodeId: string,
+  options?: ValidateOptions
+): NodeGraph {
+  const ins = graph.edges.filter(
+    (edge) => edge.target === nodeId && edge.source !== nodeId
+  );
+  const outs = graph.edges.filter(
+    (edge) => edge.source === nodeId && edge.target !== nodeId
+  );
+  let next = removeNodes(graph, [nodeId]);
+  for (const upstream of ins) {
+    for (const downstream of outs) {
+      const kind = parseHandleId(upstream.targetHandle)?.kind;
+      if (!kind || kind !== parseHandleId(downstream.sourceHandle)?.kind) {
+        continue;
+      }
+      const taken = cableIdsOf(next);
+      next = withCleanCable(
+        next,
+        {
+          ...upstream,
+          gain: Math.min(upstream.gain * downstream.gain, MAX_EDGE_GAIN),
+          id: taken.has(upstream.id)
+            ? uniqueId(`${upstream.source}->${downstream.target}`, taken)
+            : upstream.id,
+          muted: upstream.muted || downstream.muted,
+          target: downstream.target,
+          targetHandle: downstream.targetHandle,
+        },
+        options
+      );
+    }
+  }
+  return next;
+}
+
+/** Removes nodes one by one, each healing the path through it. */
+export function removeNodesHealed(
+  graph: NodeGraph,
+  nodeIds: Iterable<string>,
+  options?: ValidateOptions
+): NodeGraph {
+  let next = graph;
+  for (const nodeId of nodeIds) {
+    next = removeNodeHealed(next, nodeId, options);
+  }
+  return next;
+}
+
+/** An FX a node can swap to or from: any effect but a split. */
+export function isSwappableType(
+  type: GraphNode["type"]
+): type is EffectNodeType {
+  return isEffectNodeType(type) && !isEffectContainerType(type);
+}
+
+/**
+ * Swaps an FX node to another effect in place. The node keeps its id and
+ * position, so MIDI mappings on a param the new effect also has (the
+ * universal Mix, In and Out) keep driving it, and every cable stays with
+ * its id and handles; only one into a port the new effect lacks (a key
+ * into a Delay) goes. The universal wrapper params and the on switch carry
+ * over; the rest start at the new effect's defaults.
+ */
+export function swapEffect(
+  graph: NodeGraph,
+  nodeId: string,
+  type: EffectNodeType
+): NodeGraph {
+  const node = graph.nodes.find((entry) => entry.id === nodeId);
+  if (!(node && isSwappableType(node.type) && isSwappableType(type))) {
+    return graph;
+  }
+  if (node.type === type) {
+    return graph;
+  }
+  const previous = (node.data as { effect: EffectConfig }).effect as Record<
+    string,
+    unknown
+  >;
+  const carried = Object.fromEntries(
+    [...UNIVERSAL_EFFECT_PARAM_KEYS].flatMap((key) =>
+      previous[key] === undefined ? [] : [[key, previous[key]]]
+    )
+  );
+  const handles = new Set(getNodeDefinition(type).ports.map(portHandleId));
+  const edges = graph.edges.filter(
+    (edge) =>
+      !(
+        (edge.target === nodeId && !handles.has(edge.targetHandle)) ||
+        (edge.source === nodeId && !handles.has(edge.sourceHandle))
+      )
+  );
+  const keyed = edges.some(
+    (edge) =>
+      edge.target === nodeId &&
+      parseHandleId(edge.targetHandle)?.kind === "sidechain"
+  );
+  const effect = {
+    ...createNodeEffectConfig(type, nodeId),
+    ...carried,
+    // A kept key into a Vocoder is its modulator, as when it was cabled.
+    ...(type === "vocoder" && keyed ? { modulatorSource: "external" } : {}),
+    id: nodeId,
+    type,
+  } as EffectConfig;
+  const nodes = graph.nodes.map((entry) =>
+    entry.id === nodeId
+      ? ({ ...entry, data: { effect }, type } as GraphNode)
+      : entry
+  );
+  return {
+    ...graph,
+    edges: edges.length === graph.edges.length ? graph.edges : edges,
+    nodes,
+  };
+}
+
+/**
+ * `B`: bypasses the FX among `nodeIds`, or turns them back on when every
+ * one is already off. Only their on switch changes, so playback applies it
+ * in place without a duck.
+ */
+export function toggleBypass(
+  graph: NodeGraph,
+  nodeIds: Iterable<string>
+): NodeGraph {
+  const ids = new Set(nodeIds);
+  const effects = graph.nodes.flatMap((node) =>
+    ids.has(node.id) && isEffectNodeType(node.type)
+      ? [(node.data as { effect: EffectConfig }).effect]
+      : []
+  );
+  const enabled = effects.every((effect) => !effect.enabled);
+  return effects.reduce(
+    (next, effect) => setEffectParams(next, effect.id, { enabled }),
+    graph
+  );
+}
+
+/** How far a copy lands from its original, down and right. */
+export const DUPLICATE_OFFSET_PX = 40;
+
+/**
+ * `Cmd+D`: copies nodes with new ids, offset down and right. Cables between
+ * the copied nodes come along, and so does each cable out of the selection
+ * where it still fits: a copied Station comes wired to Speakers like its
+ * original (a Doppelgänger), but a copy can't take an FX's only input.
+ * Speakers is one per patch and stays. Returns the copies' ids.
+ */
+export function duplicateNodes(
+  graph: NodeGraph,
+  nodeIds: Iterable<string>,
+  options?: ValidateOptions
+): { graph: NodeGraph; nodeIds: string[] } {
+  const ids = new Set(nodeIds);
+  const originals = graph.nodes.filter(
+    (node) => ids.has(node.id) && node.type !== "speakers"
+  );
+  if (originals.length === 0) {
+    return { graph, nodeIds: [] };
+  }
+  const taken = new Set(graph.nodes.map((node) => node.id));
+  const copyOf = new Map<string, string>();
+  const copies = originals.map((node): GraphNode => {
+    const id =
+      node.type === "station" && node.data.radio
+        ? stationNodeId(node.data.radio, taken)
+        : uniqueId(node.type === "station" ? "src-slot" : node.type, taken);
+    taken.add(id);
+    copyOf.set(node.id, id);
+    const position = {
+      x: node.position.x + DUPLICATE_OFFSET_PX,
+      y: node.position.y + DUPLICATE_OFFSET_PX,
+    };
+    return isEffectNodeType(node.type)
+      ? ({
+          ...node,
+          data: {
+            effect: { ...(node.data as { effect: EffectConfig }).effect, id },
+          },
+          id,
+          position,
+        } as GraphNode)
+      : { ...node, id, position };
+  });
+  const cableIds = cableIdsOf(graph);
+  const copyCable = (edge: GraphEdge): GraphEdge => {
+    const source = copyOf.get(edge.source) ?? edge.source;
+    const target = copyOf.get(edge.target) ?? edge.target;
+    const id = uniqueId(`${source}->${target}`, cableIds);
+    cableIds.add(id);
+    return { ...edge, id, source, target };
+  };
+  const inside = graph.edges.filter(
+    (edge) => copyOf.has(edge.source) && copyOf.has(edge.target)
+  );
+  const leaving = graph.edges.filter(
+    (edge) => copyOf.has(edge.source) && !copyOf.has(edge.target)
+  );
+  let next: NodeGraph = {
+    ...graph,
+    edges: [...graph.edges, ...inside.map(copyCable)],
+    nodes: [...graph.nodes, ...copies],
+  };
+  for (const edge of leaving) {
+    next = withCleanCable(next, copyCable(edge), options);
+  }
+  return { graph: next, nodeIds: [...copyOf.values()] };
 }

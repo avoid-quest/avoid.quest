@@ -204,6 +204,33 @@ describe("EffectNodeBody", () => {
     expect(onStep).toHaveBeenCalledWith({ oversample: 8 });
   });
 
+  test("its menu offers Swap effect… when the node can swap", () => {
+    const onSwap = mock(() => undefined);
+    const view = renderBody(createDefaultEffectConfig("delay", "d1", 0), {
+      onSwap,
+    });
+
+    act(() => {
+      fireEvent.keyDown(view.getByRole("button", { name: OPTIONS_BUTTON }), {
+        key: "Enter",
+      });
+    });
+    act(() => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Swap effect…" }));
+    });
+
+    expect(onSwap).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    const plain = renderBody(createDefaultEffectConfig("delay", "d1", 0));
+    act(() => {
+      fireEvent.keyDown(plain.getByRole("button", { name: OPTIONS_BUTTON }), {
+        key: "Enter",
+      });
+    });
+    expect(plain.queryByRole("menuitem", { name: "Swap effect…" })).toBeNull();
+  });
+
   test("shows a backend badge in its header", () => {
     const view = renderBody(createDefaultEffectConfig("limiter", "l1", 0), {
       badge: "compat",
@@ -276,6 +303,7 @@ describe("EffectNode on the canvas", () => {
       removeNode: noop,
       saveDiscoveredStation: noop,
       selectDiscoveredForStation: noop,
+      swapEffect: noop,
     } as unknown as Parameters<typeof NodeActionsProvider>[0]["value"];
 
     function Canvas() {

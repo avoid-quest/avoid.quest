@@ -19,7 +19,10 @@ import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useNodeMidi } from "@/lib/hooks/use-node-midi";
 import { useNodeSession } from "@/lib/hooks/use-node-session";
 import { useAllRadios } from "@/lib/hooks/use-radios";
-import { findStationNode, removeNodes } from "@/lib/node-graph/graph-edits";
+import {
+  findStationNode,
+  removeNodesHealed,
+} from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   nodeStore,
@@ -170,13 +173,14 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     radios: radios ?? [],
     removeNode: (nodeId) => {
       commitNodeGraph(
-        (current) => removeNodes(current, [nodeId]),
+        (current) => removeNodesHealed(current, [nodeId], validateOptions),
         nodeStore,
         "snapshot"
       );
     },
     saveDiscoveredStation: management.saveDiscoveredStation,
     selectDiscoveredForStation: management.selectDiscoveredForStation,
+    swapEffect: (nodeId) => openPalette({ swap: nodeId }),
   };
   const handleSelectLocal = (radio: Radio) => {
     management.addStation(radio);

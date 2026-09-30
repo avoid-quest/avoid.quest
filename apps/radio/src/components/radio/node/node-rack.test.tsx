@@ -164,6 +164,7 @@ const actions: NodeActions = {
   removeNode: noop,
   saveDiscoveredStation: noop,
   selectDiscoveredForStation: noop,
+  swapEffect: noop,
 };
 
 function renderRack(graph: NodeGraph) {

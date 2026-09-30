@@ -7,7 +7,9 @@
  * Templates replace the patch. A cable dropped on empty space narrows the list to nodes with a
  * port that takes it and wires the new node in; a cable dropped on a node
  * connects when exactly one of its ports fits. Every check is the same
- * `validateConnection` React Flow runs while dragging.
+ * `validateConnection` React Flow runs while dragging. `I` on a cable
+ * narrows it to nodes that can go into that cable, and "Swap effect…" to
+ * the effects an FX can become.
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
@@ -26,6 +28,8 @@ import {
 import { endLabel, portName } from "./describe";
 import {
   connectNodes,
+  insertNodeOnEdge,
+  isSwappableType,
   nextStationPosition,
   uniqueId,
   wireToSpeakers,
@@ -300,28 +304,56 @@ export type PaletteOptions = ValidateOptions & {
   /** Stations a Station entry can come filled with; hidden ones are left out. */
   radios?: readonly Radio[];
   from?: PaletteFrom | null;
+  /** A cable to insert the pick into (`I`). */
+  into?: string | null;
+  /** An FX node to swap to the pick ("Swap effect…"). */
+  swap?: string | null;
 };
+
+/** Whether a new node of `type` could take the cable, or go into it. */
+function fits(
+  graph: NodeGraph,
+  type: NodeType,
+  { from, into, ...options }: PaletteOptions
+): boolean {
+  if (!(from || into)) {
+    return true;
+  }
+  const probe = createPaletteNode(type, PROBE_ID, { x: 0, y: 0 });
+  if (!probe) {
+    return false;
+  }
+  const probed = withNode(graph, probe);
+  return from
+    ? validCables(probed, probe, from, options).length > 0
+    : insertNodeOnEdge(probed, PROBE_ID, into ?? "", options).ok;
+}
 
 /**
  * The palette's entries, in section order. With `from`, only nodes that can
- * take the dropped cable, and no templates.
+ * take the dropped cable; with `into`, only nodes that can go into that
+ * cable; with `swap`, only the other effects that FX can become. None of
+ * those lists templates.
  */
 export function paletteEntries(
   graph: NodeGraph,
-  { radios = [], from = null, ...options }: PaletteOptions = {}
+  {
+    radios = [],
+    from = null,
+    into = null,
+    swap = null,
+    ...options
+  }: PaletteOptions = {}
 ): PaletteEntry[] {
+  if (swap) {
+    return swapEntries(graph, swap, options.release);
+  }
   const entries: PaletteEntry[] = [];
   for (const type of nodeTypesOnOffer(graph, options.release)) {
     const definition = getNodeDefinition(type);
     const section = SECTION_OF[definition.category as keyof typeof SECTION_OF];
-    if (from) {
-      const probe = createPaletteNode(type, PROBE_ID, { x: 0, y: 0 });
-      if (
-        !probe ||
-        validCables(withNode(graph, probe), probe, from, options).length === 0
-      ) {
-        continue;
-      }
+    if (!fits(graph, type, { ...options, from, into })) {
+      continue;
     }
     entries.push({
       id: type,
@@ -350,7 +382,30 @@ export function paletteEntries(
       }
     }
   }
-  return from ? entries : [...entries, ...PALETTE_TEMPLATES];
+  return from || into ? entries : [...entries, ...PALETTE_TEMPLATES];
+}
+
+/** The effects an FX node can swap to: every other shipped non-split FX. */
+function swapEntries(
+  graph: NodeGraph,
+  nodeId: string,
+  release: ValidateOptions["release"]
+): PaletteEntry[] {
+  const node = graph.nodes.find((entry) => entry.id === nodeId);
+  if (!(node && isSwappableType(node.type))) {
+    return [];
+  }
+  return nodeTypesOnOffer(graph, release)
+    .filter((type) => isSwappableType(type) && type !== node.type)
+    .map(
+      (type): PaletteNodeEntry => ({
+        id: type,
+        kind: "node",
+        name: getNodeDefinition(type).name,
+        section: "fx",
+        type,
+      })
+    );
 }
 
 /** Right of the rightmost node, for an output with nowhere better to go. */
@@ -376,18 +431,20 @@ export type AddPaletteNodeOptions = ValidateOptions & {
   position?: Position;
   /** A dropped cable the new node is wired into. */
   from?: PaletteFrom | null;
+  /** A cable the new node goes into. */
+  into?: string | null;
 };
 
 /**
  * Adds the node an entry names. A dropped cable is wired into the node's
- * first port that takes it; otherwise a new Station is wired to Speakers,
- * as the search bar does. Returns the same graph when the node can't be
- * built.
+ * first port that takes it, and a cable picked with `I` gets the node
+ * inserted into it; otherwise a new Station is wired to Speakers, as the
+ * search bar does. Returns the same graph when the node can't be built.
  */
 export function addPaletteNode(
   graph: NodeGraph,
   entry: PaletteNodeEntry,
-  { position, from = null, ...options }: AddPaletteNodeOptions = {}
+  { position, from = null, into = null, ...options }: AddPaletteNodeOptions = {}
 ): { graph: NodeGraph; nodeId: string | null } {
   const nodeId = nodeIdFor(graph, entry.type);
   const node = createPaletteNode(
@@ -403,6 +460,10 @@ export function addPaletteNode(
     return { graph, nodeId: null };
   }
   const added = withNode(graph, node);
+  if (into) {
+    const inserted = insertNodeOnEdge(added, nodeId, into, options);
+    return { graph: inserted.ok ? inserted.graph : added, nodeId };
+  }
   if (from) {
     const [cable] = validCables(added, node, from, options);
     return { graph: cable ? connectNodes(added, cable) : added, nodeId };

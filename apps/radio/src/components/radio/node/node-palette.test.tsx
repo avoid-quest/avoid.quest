@@ -67,6 +67,7 @@ let isCanvasKey: typeof import("./node-palette")["isCanvasKey"];
 let createNodeStore: typeof import("@/lib/node-graph/node-store")["createNodeStore"];
 let undoNodeGraph: typeof import("@/lib/node-graph/node-store")["undoNodeGraph"];
 let buildNodeGraphFromTemplate: typeof import("@/lib/node-graph/templates")["buildNodeGraphFromTemplate"];
+let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
 let nativeNodeWidth: typeof import("./native-strip-nodes")["nativeNodeWidth"];
 
 beforeAll(async () => {
@@ -77,6 +78,7 @@ beforeAll(async () => {
     "@/lib/node-graph/node-store"
   ));
   ({ buildNodeGraphFromTemplate } = await import("@/lib/node-graph/templates"));
+  ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
   ({ nativeNodeWidth } = await import("./native-strip-nodes"));
 });
 
@@ -245,6 +247,92 @@ describe("NodePalette", () => {
         targetHandle: "in:audio:main",
       }),
     ]);
+  });
+
+  test("I on a cable offers what goes into it, and inserts the pick", () => {
+    const store = seededStore();
+    const view = render(
+      <PaletteHarness
+        initial={{ into: "src-kexp->speakers", position: { x: 200, y: 0 } }}
+        store={store}
+      />
+    );
+
+    expect(
+      view.getByRole("dialog", { name: "Insert into this cable" })
+    ).toBeTruthy();
+    expect(view.queryByRole("region", { name: "Sources" })).toBeNull();
+    expect(view.queryByRole("region", { name: "Outputs" })).toBeNull();
+    expect(view.queryByRole("region", { name: "Templates" })).toBeNull();
+
+    const search = view.getByRole("searchbox", { name: "Search nodes" });
+    fireEvent.change(search, { target: { value: "delay" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(
+      store.state.graph?.edges.map(
+        (edge) => `${edge.id}: ${edge.source} -> ${edge.target}`
+      )
+    ).toEqual([
+      "src-kexp->speakers: src-kexp -> delay",
+      "delay->speakers: delay -> speakers",
+    ]);
+    act(() => {
+      undoNodeGraph(store);
+    });
+    expect(store.state.graph?.nodes.some((node) => node.id === "delay")).toBe(
+      false
+    );
+  });
+
+  test("Swap effect… lists the other effects and swaps in place", () => {
+    const store = seededStore();
+    act(() => {
+      store.setState((state) => ({
+        ...state,
+        graph: state.graph && {
+          ...state.graph,
+          nodes: [
+            ...state.graph.nodes,
+            {
+              data: {
+                effect: {
+                  ...createNodeEffectConfig("delay", "delay"),
+                  enabled: true,
+                },
+              },
+              id: "delay",
+              position: { x: 0, y: 0 },
+              type: "delay",
+            },
+          ],
+        },
+      }));
+    });
+    const view = render(
+      <PaletteHarness initial={{ swap: "delay" }} store={store} />
+    );
+
+    expect(view.getByRole("dialog", { name: "Swap effect" })).toBeTruthy();
+    const fx = view.getByRole("region", { name: "FX" });
+    const names = [...fx.querySelectorAll("[role=button] h3")].map(
+      (heading) => heading.textContent
+    );
+    expect(names).toContain("Compressor");
+    expect(names).not.toContain("Delay");
+    expect(view.queryByRole("region", { name: "Routing" })).toBeNull();
+
+    const search = view.getByRole("searchbox", { name: "Search effects" });
+    fireEvent.change(search, { target: { value: "crusher" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    const swapped = store.state.graph?.nodes.find(
+      (node) => node.id === "delay"
+    );
+    expect(swapped?.type).toBe("crusher");
+    expect(swapped?.data).toMatchObject({
+      effect: { enabled: true, id: "delay", type: "crusher" },
+    });
   });
 });
 

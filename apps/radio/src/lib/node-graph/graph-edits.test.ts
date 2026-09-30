@@ -4,18 +4,28 @@ import { compile } from "./compile";
 import {
   addStationNode,
   connectNodes,
+  DUPLICATE_OFFSET_PX,
+  duplicateNodes,
   findStationNode,
+  insertNodeOnEdge,
   moveNodes,
   removeEdges,
   removeNodes,
+  removeNodesHealed,
   removeSelection,
   setEffectParams,
   setNativeParams,
   setStationRadio,
   setViewport,
+  swapEffect,
   syncStationSnapshots,
+  toggleBypass,
 } from "./graph-edits";
+import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
 import { addPaletteNode } from "./palette";
+import { diff } from "./reconcile";
+import type { EffectNodeType, NodeGraph, NodeType } from "./schema";
+import { seriesToParallel } from "./series-parallel";
 import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
@@ -298,4 +308,417 @@ describe("setNativeParams", () => {
     expect(setNativeParams(withPan, panId, { pan: 0 })).toBe(withPan);
     expect(setNativeParams(withPan, panId, { frequency: 400 })).toBe(withPan);
   });
+});
+
+/** A loose node of `type` added to `graph`, as the palette adds it. */
+function withLoose(graph: NodeGraph, type: NodeType) {
+  const added = addPaletteNode(graph, {
+    id: type,
+    kind: "node",
+    name: type,
+    section: "fx",
+    type,
+  });
+  return { graph: added.graph, nodeId: added.nodeId ?? "" };
+}
+
+function inserted(graph: NodeGraph, type: NodeType, edgeId: string) {
+  const loose = withLoose(graph, type);
+  const edit = insertNodeOnEdge(loose.graph, loose.nodeId, edgeId);
+  if (!edit.ok) {
+    throw new Error(edit.message);
+  }
+  return { graph: edit.graph, nodeId: loose.nodeId };
+}
+
+function effectIn(graph: NodeGraph, id: string): Record<string, unknown> {
+  const node = graph.nodes.find((entry) => entry.id === id);
+  return (
+    (node?.data as { effect?: Record<string, unknown> } | undefined)?.effect ??
+    {}
+  );
+}
+
+function cables(graph: NodeGraph) {
+  return graph.edges.map(
+    (edge) =>
+      `${edge.id}: ${edge.source} ${edge.sourceHandle} -> ${edge.target} ${edge.targetHandle}`
+  );
+}
+
+describe("insertNodeOnEdge", () => {
+  test("splits one cable into two, the first keeping its id and level", () => {
+    const start = patch(radio("a"));
+    const gained = {
+      ...start,
+      edges: start.edges.map((edge) => ({ ...edge, gain: 0.5 })),
+    };
+    const { graph } = inserted(gained, "compressor", "src-a->speakers");
+
+    expect(graph.edges).toHaveLength(2);
+    expect(graph.edges[0]).toMatchObject({
+      gain: 0.5,
+      id: "src-a->speakers",
+      source: "src-a",
+      target: "compressor",
+      targetHandle: "in:audio:main",
+    });
+    expect(graph.edges[1]).toMatchObject({
+      gain: 1,
+      id: "compressor->speakers",
+      source: "compressor",
+      sourceHandle: "out:audio:main",
+      target: SPEAKERS_NODE_ID,
+      targetHandle: "in:audio:main",
+    });
+    expect(validate(graph)).toEqual([]);
+    const lane = compile(graph, ENV).lanes.get("src-a");
+    expect(lane?.effects.map((effect) => effect.id)).toEqual(["compressor"]);
+  });
+
+  test("a branch cable stays the branch, with its settings", () => {
+    const start = inserted(
+      inserted(patch(radio("a")), "compressor", "src-a->speakers").graph,
+      "delay",
+      "compressor->speakers"
+    ).graph;
+    const split = seriesToParallel(start, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const branch = split.graph.edges.find(
+      (edge) => edge.target === "compressor"
+    );
+    const soloed = {
+      ...split.graph,
+      edges: split.graph.edges.map((edge) =>
+        edge === branch ? { ...edge, pan: -0.5, solo: true } : edge
+      ),
+    };
+    const { graph } = inserted(soloed, "crusher", branch?.id ?? "");
+
+    expect(graph.edges.find((edge) => edge.id === branch?.id)).toMatchObject({
+      pan: -0.5,
+      solo: true,
+      source: branch?.source,
+      sourceHandle: branch?.sourceHandle,
+      target: "crusher",
+    });
+    expect(compile(graph, ENV).issues).toEqual([]);
+  });
+
+  test("refuses a node with cables, a node with no input, and a bad spot", () => {
+    const start = inserted(
+      patch(radio("a"), radio("b")),
+      "compressor",
+      "src-a->speakers"
+    ).graph;
+
+    const wired = insertNodeOnEdge(start, "compressor", "src-b->speakers");
+    expect(wired).toEqual({
+      message: "Only a node with no cables goes into a cable",
+      ok: false,
+    });
+
+    const slot = withLoose(start, "station");
+    expect(
+      insertNodeOnEdge(slot.graph, slot.nodeId, "src-b->speakers").ok
+    ).toBe(false);
+
+    // A Filter belongs right after its station, not after an FX.
+    const filter = withLoose(start, "filter");
+    const late = insertNodeOnEdge(
+      filter.graph,
+      filter.nodeId,
+      "compressor->speakers"
+    );
+    expect(late.ok).toBe(false);
+    // The station's cable into the Compressor keeps its old id.
+    expect(
+      insertNodeOnEdge(filter.graph, filter.nodeId, "src-a->speakers").ok
+    ).toBe(true);
+    expect(
+      insertNodeOnEdge(filter.graph, filter.nodeId, "src-b->speakers").ok
+    ).toBe(true);
+  });
+});
+
+describe("removeNodesHealed", () => {
+  test("deleting A -> X -> B heals into A -> B with the cable in's id", () => {
+    const start = patch(radio("a"));
+    const { graph } = inserted(start, "compressor", "src-a->speakers");
+    const muted = {
+      ...graph,
+      edges: graph.edges.map((edge) =>
+        edge.source === "compressor" ? { ...edge, gain: 2, muted: true } : edge
+      ),
+    };
+
+    const healed = removeNodesHealed(muted, ["compressor"]);
+
+    expect(healed.nodes.map((node) => node.id)).toEqual([
+      "src-a",
+      SPEAKERS_NODE_ID,
+    ]);
+    expect(healed.edges).toEqual([
+      { ...start.edges[0], gain: 2, muted: true } as NodeGraph["edges"][number],
+    ]);
+    expect(validate(healed)).toEqual([]);
+  });
+
+  test("heals through a chain deleted together", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", "compressor->speakers");
+
+    const healed = removeSelection(two.graph, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+
+    expect(cables(healed)).toEqual([
+      "src-a->speakers: src-a out:audio:main -> speakers in:audio:main",
+    ]);
+  });
+
+  test("does not heal a key into audio", () => {
+    const start = removeEdges(patch(radio("a"), radio("b")), [
+      "src-b->speakers",
+    ]);
+    const { graph } = inserted(start, "compressor", "src-a->speakers");
+    const keyed = connectNodes(graph, {
+      source: "src-b",
+      sourceHandle: "out:audio:main",
+      target: "compressor",
+      targetHandle: "in:sidechain:key",
+    });
+    expect(validate(keyed)).toEqual([]);
+
+    const healed = removeNodesHealed(keyed, ["compressor"]);
+
+    expect(cables(healed)).toEqual([
+      "src-a->speakers: src-a out:audio:main -> speakers in:audio:main",
+    ]);
+  });
+
+  test("a cable deleted with the node is not healed through", () => {
+    const { graph } = inserted(
+      patch(radio("a")),
+      "compressor",
+      "src-a->speakers"
+    );
+    const healed = removeSelection(graph, {
+      edges: ["compressor->speakers"],
+      nodes: ["compressor"],
+    });
+    expect(healed.edges).toEqual([]);
+  });
+
+  test("leaves out a heal the compiler would refuse", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", "compressor->speakers");
+    const split = seriesToParallel(two.graph, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const merge = split.graph.nodes.find((node) => node.type === "merge");
+
+    // Branches straight into Speakers would never rejoin in the lane.
+    const healed = removeNodesHealed(split.graph, [merge?.id ?? ""]);
+
+    expect(healed).toEqual(removeNodes(split.graph, [merge?.id ?? ""]));
+  });
+});
+
+describe("swapEffect", () => {
+  const start = inserted(
+    patch(radio("a"), radio("b")),
+    "compressor",
+    "src-a->speakers"
+  ).graph;
+
+  test("keeps the node id, every cable's id and handles, and the mix", () => {
+    const tuned = setEffectParams(start, "compressor", {
+      dryWet: 0.4,
+      enabled: false,
+      threshold: -30,
+    } as never);
+
+    const swapped = swapEffect(tuned, "compressor", "delay");
+
+    expect(swapped.edges).toBe(tuned.edges);
+    const node = swapped.nodes.find((entry) => entry.id === "compressor");
+    expect(node?.type).toBe("delay");
+    expect(effectIn(swapped, "compressor")).toMatchObject({
+      dryWet: 0.4,
+      enabled: false,
+      id: "compressor",
+      type: "delay",
+    });
+    expect(effectIn(swapped, "compressor")).not.toHaveProperty("threshold");
+    expect(validate(swapped)).toEqual([]);
+    const lane = compile(swapped, ENV).lanes.get("src-a");
+    expect(lane?.effects.map((effect) => effect.type)).toEqual(["delay"]);
+  });
+
+  test("drops a key the new effect has no port for, and keeps it where it has", () => {
+    const keyed = connectNodes(removeEdges(start, ["src-b->speakers"]), {
+      source: "src-b",
+      sourceHandle: "out:audio:main",
+      target: "compressor",
+      targetHandle: "in:sidechain:key",
+    });
+
+    const vocoder = swapEffect(keyed, "compressor", "vocoder");
+    expect(vocoder.edges).toBe(keyed.edges);
+    expect(effectIn(vocoder, "compressor").modulatorSource).toBe("external");
+
+    const delay = swapEffect(keyed, "compressor", "delay");
+    expect(cables(delay)).toEqual(
+      cables(keyed).filter((cable) => !cable.includes("sidechain"))
+    );
+  });
+
+  test("returns the same graph for the same type, a split or a Station", () => {
+    expect(swapEffect(start, "compressor", "compressor")).toBe(start);
+    expect(swapEffect(start, "compressor", "fxComposite")).toBe(start);
+    expect(swapEffect(start, "src-a", "delay")).toBe(start);
+  });
+});
+
+describe("toggleBypass", () => {
+  const start = inserted(
+    patch(radio("a")),
+    "compressor",
+    "src-a->speakers"
+  ).graph;
+
+  test("B toggles the FX's on switch and issues only setLaneEffects", () => {
+    const bypassed = toggleBypass(start, ["compressor", "src-a"]);
+
+    expect(effectIn(bypassed, "compressor").enabled).toBe(false);
+    const ops = diff(compile(start, ENV), compile(bypassed, ENV));
+    expect(ops.map((op) => op.type)).toEqual(["setLaneEffects"]);
+
+    const back = toggleBypass(bypassed, ["compressor"]);
+    expect(effectIn(back, "compressor").enabled).toBe(true);
+    expect(
+      diff(compile(bypassed, ENV), compile(back, ENV)).map((op) => op.type)
+    ).toEqual(["setLaneEffects"]);
+  });
+
+  test("a mixed selection bypasses all; nothing to bypass is a no-op", () => {
+    const two = inserted(start, "delay", "compressor->speakers").graph;
+    const mixed = toggleBypass(two, ["delay"]);
+    const all = toggleBypass(mixed, ["compressor", "delay"]);
+    expect(effectIn(all, "compressor").enabled).toBe(false);
+    expect(effectIn(all, "delay").enabled).toBe(false);
+
+    expect(toggleBypass(start, ["src-a", SPEAKERS_NODE_ID])).toBe(start);
+  });
+});
+
+describe("duplicateNodes", () => {
+  test("copies get new ids, offsets, and the cables between them", () => {
+    const start = inserted(
+      patch(radio("a")),
+      "compressor",
+      "src-a->speakers"
+    ).graph;
+
+    const { graph, nodeIds } = duplicateNodes(start, [
+      "src-a",
+      "compressor",
+      SPEAKERS_NODE_ID,
+    ]);
+
+    expect(nodeIds).toEqual(["src-a-2", "compressor-2"]);
+    expect(graph.nodes.slice(0, start.nodes.length)).toEqual(start.nodes);
+    const copy = graph.nodes.find((node) => node.id === "compressor-2");
+    const original = start.nodes.find((node) => node.id === "compressor");
+    expect(copy?.position).toEqual({
+      x: (original?.position.x ?? 0) + DUPLICATE_OFFSET_PX,
+      y: (original?.position.y ?? 0) + DUPLICATE_OFFSET_PX,
+    });
+    expect(effectIn(graph, "compressor-2").id).toBe("compressor-2");
+    expect(cables(graph).slice(start.edges.length)).toEqual([
+      "src-a-2->compressor-2: src-a-2 out:audio:main -> compressor-2 in:audio:main",
+      "compressor-2->speakers: compressor-2 out:audio:main -> speakers in:audio:main",
+    ]);
+    expect(validate(graph)).toEqual([]);
+    expect([...compile(graph, ENV).lanes.keys()]).toEqual(["src-a", "src-a-2"]);
+  });
+
+  test("a copied Station comes wired to Speakers; a copy can't take a full input", () => {
+    const start = inserted(
+      patch(radio("a")),
+      "compressor",
+      "src-a->speakers"
+    ).graph;
+
+    const station = duplicateNodes(patch(radio("a")), ["src-a"]);
+    expect(cables(station.graph).at(-1)).toBe(
+      "src-a-2->speakers: src-a-2 out:audio:main -> speakers in:audio:main"
+    );
+
+    const feeding = duplicateNodes(start, ["src-a"]);
+    expect(feeding.graph.edges).toHaveLength(start.edges.length);
+    expect(feeding.nodeIds).toEqual(["src-a-2"]);
+
+    expect(duplicateNodes(start, [SPEAKERS_NODE_ID])).toEqual({
+      graph: start,
+      nodeIds: [],
+    });
+  });
+});
+
+describe("cable surgery undo", () => {
+  const start = inserted(
+    patch(radio("a"), radio("b")),
+    "compressor",
+    "src-a->speakers"
+  ).graph;
+  const loose = withLoose(start, "delay");
+  const edits: [string, NodeGraph, (graph: NodeGraph) => NodeGraph][] = [
+    [
+      "insert",
+      loose.graph,
+      (graph) => {
+        const edit = insertNodeOnEdge(graph, loose.nodeId, "src-b->speakers");
+        return edit.ok ? edit.graph : graph;
+      },
+    ],
+    [
+      "heal",
+      start,
+      (graph) => removeSelection(graph, { edges: [], nodes: ["compressor"] }),
+    ],
+    [
+      "swap",
+      start,
+      (graph) => swapEffect(graph, "compressor", "delay" as EffectNodeType),
+    ],
+    ["bypass", start, (graph) => toggleBypass(graph, ["compressor"])],
+    [
+      "duplicate",
+      start,
+      (graph) => duplicateNodes(graph, ["src-a", "compressor"]).graph,
+    ],
+  ];
+
+  for (const [name, before, edit] of edits) {
+    test(`one undo takes back the ${name}`, () => {
+      const store = createNodeStore(before);
+      commitNodeGraph(edit, store, "snapshot");
+      expect(store.state.graph).not.toBe(before);
+
+      expect(undoNodeGraph(store)).toBe(true);
+      expect(store.state.graph).toBe(before);
+    });
+  }
 });

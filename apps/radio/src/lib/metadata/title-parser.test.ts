@@ -210,6 +210,19 @@ describe("parseRadioTitleParts", () => {
       title: null,
     });
   });
+
+  test("drops an artist-only placeholder from the artist field", () => {
+    expect(parseRadioTitleParts({ artist: "radio", title: "Song" })).toEqual({
+      artist: null,
+      rawTitle: "Song",
+      title: "Song",
+    });
+    expect(parseRadioTitleParts({ artist: "Host", title: "Radio" })).toEqual({
+      artist: "Host",
+      rawTitle: "Host - Radio",
+      title: "Radio",
+    });
+  });
 });
 
 describe("HTML entity decoding", () => {

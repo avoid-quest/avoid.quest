@@ -255,7 +255,7 @@ export function parseRadioTitleParts(input: {
   title?: string | null;
 }): ParsedRadioTitle {
   return combineParts(
-    titlePart(cleanMetadataText(input.artist)),
+    titlePart(cleanMetadataText(input.artist), "artist"),
     titlePart(cleanMetadataText(input.title))
   );
 }

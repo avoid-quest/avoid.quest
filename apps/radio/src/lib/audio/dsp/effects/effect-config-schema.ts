@@ -11,13 +11,17 @@ import {
   DEFAULT_EFFECT_TEMPO,
   isValidFrequencySplitShape,
 } from "../routing/effect-tree.js";
+import { getEffectParamDefs } from "./param-traversal.js";
+import type { EffectParamDef } from "./param-types.js";
 import { createDefaultEffectConfig } from "./registry.js";
 import {
   EFFECT_TYPES,
   type EffectChainConfig,
   type EffectConfig,
+  type EffectType,
   OPENDAW_TIDAL_FRACTIONS,
 } from "./types.js";
+import { UNIVERSAL_EFFECT_PARAM_DEFS } from "./universal-params.js";
 
 const effectSidechainSchema = z.object({
   channelId: z.string().min(1),
@@ -105,6 +109,51 @@ function migrateLegacyEffectConfig(value: unknown): unknown {
   return migrated;
 }
 
+/** Whether `value` has the type the engine reads for `param`. */
+function isParamValue(param: EffectParamDef, value: unknown): boolean {
+  switch (param.type) {
+    case "checkbox":
+      return typeof value === "boolean" || Number.isFinite(value);
+    case "slider":
+      return Number.isFinite(value);
+    case "select":
+      return param.valueType === "number"
+        ? Number.isFinite(value)
+        : typeof value === "string";
+    case "text":
+      return typeof value === "string";
+    default:
+      return false;
+  }
+}
+
+/** Flags universal params outside their range and mistyped effect params. */
+function checkEffectParams(
+  value: Record<string, unknown> & { type: EffectType },
+  context: z.RefinementCtx
+): void {
+  for (const { key, label, max, min } of UNIVERSAL_EFFECT_PARAM_DEFS) {
+    const current = value[key];
+    if (typeof current === "number" && (current < min || current > max)) {
+      context.addIssue({
+        code: "custom",
+        message: `${label} must be between ${min} and ${max}`,
+        path: [key],
+      });
+    }
+  }
+  for (const param of getEffectParamDefs(value.type)) {
+    const paramValue = value[param.key];
+    if (paramValue !== undefined && !isParamValue(param, paramValue)) {
+      context.addIssue({
+        code: "custom",
+        message: `${param.label} has the wrong type`,
+        path: [param.key],
+      });
+    }
+  }
+}
+
 const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
   z.object({
     effects: z.array(effectConfigSchema),
@@ -136,6 +185,7 @@ export const effectConfigSchema: z.ZodType<EffectConfig> = z.lazy(() =>
       })
       .passthrough()
       .superRefine((value, context) => {
+        checkEffectParams(value, context);
         if (
           (value.type === "fxComposite" ||
             value.type === "stereoSplit" ||

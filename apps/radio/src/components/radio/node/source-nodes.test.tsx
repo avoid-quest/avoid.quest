@@ -213,6 +213,34 @@ describe("TrackNodeBody", () => {
     ).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: "SoundCloud" }));
     expect(onSearchPlatformChange).toHaveBeenCalledWith("soundcloud");
+    // The chips pick the platform; DJ's own select would repeat them.
+    expect(view.queryByRole("combobox", { name: "Platform" })).toBeNull();
+  });
+
+  test("a pasted radio stream link hands off instead of searching", () => {
+    const onStreamLink = mock((_url: string) => undefined);
+    const view = render(
+      withClient(
+        <TrackNodeBody
+          data={{ muted: false, radio: null, volume: 1 }}
+          error={null}
+          onLoad={noop}
+          onSearchPlatformChange={noop}
+          onStreamLink={onStreamLink}
+          {...transport}
+        />
+      )
+    );
+
+    const field = pasteLink(
+      view,
+      "Search or paste a link",
+      "https://stream.example/live"
+    );
+    fireEvent.submit(field.closest("form") as HTMLFormElement);
+
+    expect(onStreamLink).toHaveBeenCalledWith("https://stream.example/live");
+    expect(platformLoads).toEqual([]);
   });
 
   test("a pasted YouTube link loads through DJ's track loader and fills the Track", async () => {

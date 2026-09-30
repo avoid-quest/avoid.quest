@@ -3302,6 +3302,62 @@ describe("Node Playback: Track and File sources", () => {
     );
   });
 
+  test("a refresh for a track the Track has since left never lands on the new one", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    let resolveRenewal: (value: {
+      streamFormat: "progressive";
+      streamUrl: string;
+    }) => void = () => undefined;
+    const resolveStream = mock(
+      () =>
+        new Promise<{ streamFormat: "progressive"; streamUrl: string }>(
+          (resolve) => {
+            resolveRenewal = resolve;
+          }
+        )
+    );
+    const harness = createHarness({ resolveStream });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("video", true);
+
+    laneWatcher(
+      harness.context,
+      "video"
+    )(
+      audioState({
+        error: {
+          code: "STREAM_INTERRUPTED",
+          id: "e1",
+          message: "expired",
+          position: 42,
+          timestamp: Date.now(),
+        },
+      })
+    );
+    // Another track goes into the Track while the old one renews; its
+    // sound keeps the lane's sound id.
+    commitNodeGraph(
+      (graph) => setSourceRadio(graph, "video", youtubeTrack("other")),
+      harness.store
+    );
+    harness.playback.flush();
+    // The old lane fades out and the new one takes over.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(getPlaybackChannel("node", channelOf("video"))?.radio).toMatchObject(
+      { id: "other" }
+    );
+    resolveRenewal({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/renewed-old.m4a",
+    });
+    await harness.playback.whenSettled();
+
+    expect(
+      harness.context.audioEngine.playback.refreshStreamUrl
+    ).not.toHaveBeenCalled();
+  });
+
   test("an album moves to its next track at the end of one, and plays it", async () => {
     insertNodeSession(patch([trackNode("album", album)]));
     const harness = createHarness();

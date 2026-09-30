@@ -434,6 +434,24 @@ describe("NodePalette devices", () => {
     });
   });
 
+  test("a platform's name adds the Track locked to it, not the plain Track", async () => {
+    const { store, view } = await openPalette();
+
+    const search = view.getByRole("searchbox", {
+      name: "Search nodes and stations",
+    });
+    fireEvent.change(search, { target: { value: "youtube" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    const track = store.state.graph?.nodes.find(
+      (node) => node.type === "platform"
+    );
+    expect(track?.data).toMatchObject({
+      radio: null,
+      searchPlatform: "youtube",
+    });
+  });
+
   test("Outputs list one Output device per output, beside Speakers", async () => {
     Object.defineProperty(globalThis, "HTMLMediaElement", {
       configurable: true,

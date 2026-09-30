@@ -15,18 +15,33 @@ type ExternalSearchProps = {
   onLoad: (radio: Radio) => void;
   onCancel?: () => void;
   initialPlatform?: SearchPlatform;
+  /**
+   * Whether the search shows its own platform select. Off where the caller
+   * picks the platform with its own control, e.g. Node's Track chips.
+   */
+  showPlatform?: boolean;
+  /**
+   * An http(s) link that is no platform or audio link, e.g. a radio
+   * stream; without it such a link is searched for.
+   */
+  onOtherLink?: (url: string) => void;
 };
 
-type ExternalSearchContentProps = {
-  onLoad: (radio: Radio) => void;
-  onCancel?: () => void;
+type ExternalSearchContentProps = Omit<
+  ExternalSearchProps,
+  "initialPlatform"
+> & {
   lockedPlatform?: SearchPlatform;
 };
+
+const HTTP_LINK = /^https?:\/\/\S+$/i;
 
 function ExternalSearchContent({
   onLoad,
   onCancel,
   lockedPlatform,
+  showPlatform,
+  onOtherLink,
 }: ExternalSearchContentProps) {
   const [selectedPlatform, setSelectedPlatform] =
     useState<SearchPlatform>("all");
@@ -87,6 +102,12 @@ function ExternalSearchContent({
   });
   const handleDirectLink = (value: string) => {
     if (!detectPlatformFromUrl(value)) {
+      if (onOtherLink && HTTP_LINK.test(value)) {
+        clearResults();
+        latestPick.current = null;
+        onOtherLink(value);
+        return true;
+      }
       return false;
     }
     clearResults();
@@ -124,6 +145,7 @@ function ExternalSearchContent({
         onYoutubeFilterChange={handleYoutubeFilterChange}
         platform={platform}
         searchContextKey={searchContextKey}
+        showPlatform={showPlatform}
         youtubeFilter={youtubeFilter}
       />
 
@@ -168,6 +190,8 @@ export function ExternalSearch(props: ExternalSearchProps) {
       lockedPlatform={lockedPlatform}
       onCancel={props.onCancel}
       onLoad={props.onLoad}
+      onOtherLink={props.onOtherLink}
+      showPlatform={props.showPlatform}
     />
   );
 }

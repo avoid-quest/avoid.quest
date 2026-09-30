@@ -282,6 +282,9 @@ type ChannelStartOwnership = {
   revision: number;
 };
 
+/** A Track or File sound being watched; each remade sound gets a new one. */
+type LaneWatch = { soundId: string };
+
 /** A start waiting for its lane to settle, before it takes ownership. */
 type PendingChannelStart = { cancelled: boolean; channelId: string };
 
@@ -432,8 +435,12 @@ function createNodePlayback(
   const laneGenerations = new Map<string, number>();
   /** Per lane: the backend its effects last settled on, as reported. */
   const laneOutcomes = new Map<string, EffectsBackend>();
-  /** Per Track or File channel: the sound whose state it watches. */
-  const watchedSounds = new Map<string, string>();
+  /**
+   * Per Track or File channel: the watch on its sound. A lane's sound id
+   * never changes, so a sound remade for another track gets a new watch,
+   * and a refresh or next track started for the old one is dropped.
+   */
+  const laneWatches = new Map<string, LaneWatch>();
   /** Channels moving to their next track, so an end is handled once. */
   const advancingLanes = new Set<string>();
 
@@ -880,7 +887,7 @@ function createNodePlayback(
 
   /** Releases a channel's sound, its runtime and its watch. */
   const releaseChannel = (channelId: string) => {
-    watchedSounds.delete(channelId);
+    laneWatches.delete(channelId);
     cleanupManagedChannel(channelId, ctx);
     resetPlaybackChannelRuntime(channelId);
   };
@@ -953,12 +960,12 @@ function createNodePlayback(
    */
   const handleTrackState = (
     channelId: string,
-    soundId: string,
-    watchEpoch: number,
+    watch: LaneWatch,
     state: AudioState
   ) => {
+    const { soundId } = watch;
     const isCurrent = () =>
-      epoch === watchEpoch &&
+      laneWatches.get(channelId) === watch &&
       getPlaybackChannelRuntime(channelId).soundId === soundId;
     const radio = laneOfChannel(channelId)?.radio as Radio | undefined;
     if (!(radio && isCurrent())) {
@@ -999,15 +1006,14 @@ function createNodePlayback(
     const { soundId } = getPlaybackChannelRuntime(channelId);
     if (
       !(soundId && isTrackRadio(radio)) ||
-      watchedSounds.get(channelId) === soundId
+      laneWatches.get(channelId)?.soundId === soundId
     ) {
       return;
     }
-    watchedSounds.set(channelId, soundId);
-    const watchEpoch = epoch;
+    const watch: LaneWatch = { soundId };
+    laneWatches.set(channelId, watch);
     ctx.channels.subscribeRuntime("node", channelId, soundId, {
-      onAudioState: (state) =>
-        handleTrackState(channelId, soundId, watchEpoch, state),
+      onAudioState: (state) => handleTrackState(channelId, watch, state),
     });
   };
 
@@ -1023,7 +1029,7 @@ function createNodePlayback(
     ) {
       return;
     }
-    watchedSounds.delete(channel.id);
+    laneWatches.delete(channel.id);
     createManagedSound("node", channel.id, channel.radio, undefined, ctx);
     ctx.channels.setMuted("node", channel.id, channel.muted);
     watchLane(channel.id);
@@ -1468,7 +1474,7 @@ function createNodePlayback(
       settlingLanes.clear();
       carriedLanes.clear();
       laneOutcomes.clear();
-      watchedSounds.clear();
+      laneWatches.clear();
       advancingLanes.clear();
       stopListening();
       loadNodeGraph(

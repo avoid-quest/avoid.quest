@@ -198,6 +198,8 @@ type TrackNodeBodyProps = Omit<SourceTransportProps, "target"> & {
   selected?: boolean;
   /** A search pick or pasted link, resolved by DJ's track loader. */
   onLoad: (radio: Radio) => void;
+  /** A pasted radio stream link, which makes the Track a Station. */
+  onStreamLink?: (url: string) => void;
   onSearchPlatformChange: (platform: TrackSearchPlatform | undefined) => void;
   onRemove?: () => void;
 };
@@ -207,6 +209,7 @@ export function TrackNodeBody({
   error,
   selected = false,
   onLoad,
+  onStreamLink,
   onSearchPlatformChange,
   onRemove,
   ...transport
@@ -238,9 +241,12 @@ export function TrackNodeBody({
           value={data.searchPlatform}
         />
         <div className="flex max-h-80 flex-col">
+          {/* The chips above pick the platform, so its own select stays off. */}
           <ExternalSearch
             initialPlatform={data.searchPlatform ?? "all"}
             onLoad={onLoad}
+            onOtherLink={onStreamLink}
+            showPlatform={false}
           />
         </div>
         {error?.trim() ? <InlineError>{error}</InlineError> : null}
@@ -269,6 +275,13 @@ export function TrackNode({
     }
     await actions.fillSource(id, loaded.radio);
   };
+  // A radio stream hands off: the Track becomes a Station playing it.
+  const handleStreamLink = async (url: string) => {
+    setLoadError(null);
+    setLoadError(await actions.fillStationFromUrl(id, url));
+  };
+  const reportLoadFailure = (cause: unknown) =>
+    setLoadError(cause instanceof Error ? cause.message : String(cause));
 
   return (
     <>
@@ -279,7 +292,7 @@ export function TrackNode({
         isPlaying={lane.isPlaying}
         muted={data.muted}
         onLoad={(picked) => {
-          handleLoad(picked);
+          handleLoad(picked).catch(reportLoadFailure);
         }}
         onRemove={() => actions.removeNode(id)}
         onSearchPlatformChange={(platform) => {
@@ -288,6 +301,9 @@ export function TrackNode({
             nodeStore,
             "snapshot"
           );
+        }}
+        onStreamLink={(url) => {
+          handleStreamLink(url).catch(reportLoadFailure);
         }}
         onToggleMute={lane.onToggleMute}
         onTogglePlayPause={lane.onTogglePlayPause}

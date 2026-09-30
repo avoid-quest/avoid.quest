@@ -30,6 +30,11 @@ type SearchInputProps = {
   onYoutubeFilterChange: (filter: "songs" | "videos") => void;
   searchContextKey: string;
   locked?: boolean;
+  /**
+   * Whether the platform select (or the locked platform's badge) shows.
+   * Off where the caller picks the platform itself, e.g. Node's chips.
+   */
+  showPlatform?: boolean;
   /** Return true when the query was handled as a direct link. */
   onDirectLink?: (url: string) => boolean;
 };
@@ -82,6 +87,7 @@ export function SearchInput({
   onYoutubeFilterChange,
   searchContextKey,
   locked,
+  showPlatform = true,
   onDirectLink,
 }: SearchInputProps) {
   const [query, setQuery] = useState("");
@@ -134,42 +140,44 @@ export function SearchInput({
   const handleYoutubeFilterChange = (value: string) =>
     onYoutubeFilterChange(value as "songs" | "videos");
 
+  const platformControl = locked ? (
+    <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input px-3 text-xs dark:bg-input/30">
+      <PlatformDot platform={platform} />
+      <span className="truncate">{PLATFORM_LABELS[platform]}</span>
+    </div>
+  ) : (
+    <Select onValueChange={handlePlatformChange} value={platform}>
+      <SelectTrigger
+        aria-label="Platform"
+        className="w-[120px] shrink-0 text-xs"
+        size="sm"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>Search</SelectLabel>
+          <SelectItem value="all">All platforms</SelectItem>
+        </SelectGroup>
+        <SelectGroup>
+          <SelectLabel>One platform</SelectLabel>
+          {PLATFORM_OPTIONS.map((option) => (
+            <SelectItem key={option} value={option}>
+              <span className="flex items-center gap-1.5">
+                <PlatformDot platform={option} />
+                {PLATFORM_LABELS[option]}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
       <div className="flex gap-2">
-        {locked ? (
-          <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input px-3 text-xs dark:bg-input/30">
-            <PlatformDot platform={platform} />
-            <span className="truncate">{PLATFORM_LABELS[platform]}</span>
-          </div>
-        ) : (
-          <Select onValueChange={handlePlatformChange} value={platform}>
-            <SelectTrigger
-              aria-label="Platform"
-              className="w-[120px] shrink-0 text-xs"
-              size="sm"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Search</SelectLabel>
-                <SelectItem value="all">All platforms</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>One platform</SelectLabel>
-                {PLATFORM_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    <span className="flex items-center gap-1.5">
-                      <PlatformDot platform={option} />
-                      {PLATFORM_LABELS[option]}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        )}
+        {showPlatform ? platformControl : null}
 
         <SearchField
           aria-label="Search or paste a link"

@@ -150,7 +150,8 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
   gain: "A level trim on the path, up to +12 dB",
   merge: "Joins a split's branches back into one",
   pan: "The station's own panner, right after it",
-  platform: "Search YouTube, SoundCloud and Bandcamp, or paste a link",
+  // Platform names stay out, so typing one finds its own Track first.
+  platform: "Search every platform, or paste a link",
   speakers: "The main output",
   station: "An empty slot; pick its station from its search",
   stereoSplit: "Left and right down their own branches",

@@ -29,7 +29,7 @@ import {
   isEffectNodeType,
   portHandleId,
 } from "./catalogue";
-import { compile } from "./compile";
+import { compile, isStationLive } from "./compile";
 import {
   type EffectNodeType,
   type GraphEdge,
@@ -613,10 +613,36 @@ function removeNodeHealed(
 }
 
 /**
+ * The patch with every Station playing: an empty or hidden one has no lane,
+ * so its routes are compiled as though it did.
+ */
+function withEveryStationLive(graph: NodeGraph): NodeGraph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) =>
+      isStation(node) && !isStationLive(node)
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              radio: {
+                ...(node.data.radio ?? { name: "", streamUrl: "" }),
+                enabled: true,
+              },
+            },
+          }
+        : node
+    ),
+  };
+}
+
+/**
  * Removes nodes together, each healing the path through it. Refuses the
  * whole edit if an existing source-to-output route is lost while both ends
- * remain. Explicit cable deletions and removal of a source or output are
- * still allowed; a failed heal must not silently disconnect another lane.
+ * remain, an empty or hidden Station's included, so it still plays once
+ * filled or shown. Explicit cable deletions and removal of a source or
+ * output are still allowed; a failed heal must not silently disconnect
+ * another lane.
  */
 export function removeNodesHealed(
   graph: NodeGraph,
@@ -630,8 +656,8 @@ export function removeNodesHealed(
   if (next !== graph) {
     const env = { crossOriginIsolated: false, ...options };
     const remaining = new Set(next.nodes.map((node) => node.id));
-    const before = compile(graph, env);
-    const after = compile(next, env);
+    const before = compile(withEveryStationLive(graph), env);
+    const after = compile(withEveryStationLive(next), env);
     for (const route of before.edges.values()) {
       if (
         remaining.has(route.from.id) &&
@@ -771,15 +797,37 @@ function effectCopy(effect: EffectConfig, from: string, to: string) {
 }
 
 /**
- * A copy has sound to send on: it makes its own (no audio input, like a
- * Station), or a copied cable feeds it.
+ * The copies with sound to send on: each makes its own (no audio input,
+ * like a Station), or a copied cable into its audio input comes from one
+ * that has. A key alone feeds nothing.
  */
-function isFed(node: GraphNode, inside: readonly GraphEdge[]): boolean {
-  return (
-    !getNodeDefinition(node.type).ports.some(
-      (port) => port.direction === "in" && port.kind === "audio"
-    ) || inside.some((edge) => edge.target === node.id)
+function fedCopies(
+  originals: readonly GraphNode[],
+  inside: readonly GraphEdge[]
+): Set<string> {
+  const fed = new Set(
+    originals.flatMap((node) =>
+      getNodeDefinition(node.type).ports.some(
+        (port) => port.direction === "in" && port.kind === "audio"
+      )
+        ? []
+        : [node.id]
+    )
   );
+  const audio = inside.filter(
+    (edge) => parseHandleId(edge.targetHandle)?.kind === "audio"
+  );
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const edge of audio) {
+      if (fed.has(edge.source) && !fed.has(edge.target)) {
+        fed.add(edge.target);
+        grew = true;
+      }
+    }
+  }
+  return fed;
 }
 
 /**
@@ -841,9 +889,7 @@ export function duplicateNodes(
   const inside = graph.edges.filter(
     (edge) => copyOf.has(edge.source) && copyOf.has(edge.target)
   );
-  const fed = new Set(
-    originals.flatMap((node) => (isFed(node, inside) ? [node.id] : []))
-  );
+  const fed = fedCopies(originals, inside);
   const leaving = graph.edges.filter(
     (edge) => fed.has(edge.source) && !copyOf.has(edge.target)
   );

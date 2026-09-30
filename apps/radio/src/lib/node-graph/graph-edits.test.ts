@@ -17,6 +17,7 @@ import {
   setEffectParams,
   setNativeParams,
   setStationRadio,
+  setStationsEnabled,
   setViewport,
   swapEffect,
   syncStationSnapshots,
@@ -595,6 +596,25 @@ describe("removeNodesHealed", () => {
     expect(compile(wholeBranch, ENV).edges.size).toBe(1);
   });
 
+  test("refuses deleting a Merge that would drop a hidden Station's route", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", `${one.nodeId}->speakers`);
+    const split = seriesToParallel(two.graph, {
+      edges: [],
+      nodes: [one.nodeId, two.nodeId],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const merge = split.graph.nodes.find((node) => node.type === "merge");
+    const hidden = setStationsEnabled(split.graph, ["src-a"], false);
+    expect(compile(hidden, ENV).edges.size).toBe(0);
+
+    const edit = removeNodesHealed(hidden, [merge?.id ?? ""]);
+
+    expect(edit.ok).toBe(false);
+  });
+
   test("deleting a loose node or one with no output is allowed", () => {
     const loose = withLoose(patch(radio("a")), "compressor");
     const deleted = accepted(removeNodesHealed(loose.graph, [loose.nodeId]));
@@ -765,6 +785,24 @@ describe("duplicateNodes", () => {
     expect(graph.edges).toEqual(start.edges);
     const edit = insertNodeOnEdge(graph, "compressor-2", "src-b->speakers");
     expect(edit.ok).toBe(true);
+  });
+
+  test("a copy fed only through its key is not wired on", () => {
+    const start = removeEdges(patch(radio("a"), radio("b")), [
+      "src-b->speakers",
+    ]);
+    const { graph, nodeId } = inserted(start, "compressor", "src-a->speakers");
+    const keyed = connectNodes(graph, {
+      source: "src-b",
+      sourceHandle: "out:audio:main",
+      target: nodeId,
+      targetHandle: "in:sidechain:key",
+    });
+
+    const copied = duplicateNodes(keyed, ["src-b", nodeId]);
+
+    const copy = copied.nodeIds[1] ?? "";
+    expect(copied.graph.edges.some((edge) => edge.source === copy)).toBe(false);
   });
 
   test("a copied split scopes its chains under its own id", () => {

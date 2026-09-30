@@ -185,6 +185,7 @@ function Harness({ store }: { store: NodeStore }) {
   const isPhone = useIsMobile();
   const inspector = useNodeInspector({ isPhone, store });
   const graph = nodeStoreModule.useNodeGraph(store);
+  const inspectorShown = !isPhone && inspector.nodeId !== null;
   const actions = {
     fillStation: asyncNoop,
     handleDeleteRadio: noop,
@@ -204,14 +205,15 @@ function Harness({ store }: { store: NodeStore }) {
   };
   return (
     <NodeActionsProvider value={actions}>
-      {!isPhone && inspector.nodeId ? (
+      {/* As in Node mode, the desktop inspector takes the Rack's place. */}
+      {inspectorShown ? (
         <NodeInspector
           nodeId={inspector.nodeId}
           onClose={inspector.close}
           store={store}
         />
       ) : null}
-      {graph ? (
+      {graph && !inspectorShown ? (
         <NodeRack
           controls={controls}
           env={{ crossOriginIsolated: false, profile: "desktop" }}
@@ -223,6 +225,7 @@ function Harness({ store }: { store: NodeStore }) {
           isPhone
           nodeId={inspector.nodeId}
           onClose={inspector.close}
+          open={inspector.open}
           store={store}
         />
       ) : null}
@@ -351,9 +354,69 @@ describe("NodeInspector", () => {
     expect(midiTargets(panel)).toContain("node:comp:threshold");
 
     // A native strip chip opens its knobs.
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Close settings" })
+    );
     fireEvent.click(view.getByRole("button", { name: "Filter settings" }));
     const filter = view.getByRole("region", { name: "Filter" });
     expect(midiTargets(filter)).toEqual(["node:lp:frequency", "node:lp:Q"]);
+  });
+
+  test("a chip moves focus into the inspector, and closing hands it back", () => {
+    const store = createStore();
+    const view = renderHarness(store);
+    const chip = view.getByRole("button", { name: "Compressor settings" });
+    chip.focus();
+
+    fireEvent.click(chip);
+
+    // The chip left with the Rack; the panel holds focus, not the page.
+    const panel = view.getByRole("region", { name: "Compressor" });
+    expect(document.activeElement).toBe(panel);
+
+    const close = within(panel).getByRole("button", { name: "Close settings" });
+    close.focus();
+    fireEvent.click(close);
+
+    expect(document.activeElement).toBe(
+      view.getByRole("button", { name: "Compressor settings" })
+    );
+  });
+
+  test("a canvas selection leaves focus where it is", () => {
+    const store = createStore();
+    const view = renderHarness(store);
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+
+    act(() => {
+      nodeStoreModule.setNodeSelection({ edges: [], nodes: ["comp"] }, store);
+    });
+
+    expect(view.getByRole("region", { name: "Compressor" })).toBeTruthy();
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
+  test("a closing Drawer keeps its node while it slides away", () => {
+    setViewportWidth(390);
+    const store = createStore();
+    let latest: ReturnType<InspectorModule["useNodeInspector"]> | undefined;
+    function Probe() {
+      latest = useNodeInspector({ isPhone: true, store });
+      return null;
+    }
+    render(<Probe />);
+
+    act(() => latest?.inspect("comp"));
+    expect(latest).toMatchObject({ nodeId: "comp", open: true });
+
+    act(() => latest?.close());
+    expect(latest).toMatchObject({ nodeId: "comp", open: false });
+
+    act(() => latest?.inspect("lp"));
+    expect(latest).toMatchObject({ nodeId: "lp", open: true });
   });
 
   test("on a 390 px viewport it opens as a Drawer", () => {

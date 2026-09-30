@@ -68,3 +68,23 @@ test("keeps MIDI settings available outside DJ mode in Chromium", () => {
   expect(view.getAllByText("Play/Pause")).toHaveLength(2);
   expect(view.getByText("Crossfader")).toBeTruthy();
 });
+
+test("lists node params under the node's title", () => {
+  const binding = getMidiControl().bindActions();
+  binding.update([
+    {
+      dispatch: () => undefined,
+      group: "Compressor 2",
+      label: "Threshold",
+      targetId: "node:comp-2:threshold",
+      type: "continuous",
+    },
+  ]);
+
+  const view = render(<MidiSettings />);
+
+  expect(view.getByRole("heading", { name: "Compressor 2" })).toBeTruthy();
+  expect(view.getByText("Threshold")).toBeTruthy();
+  // The DJ groups keep their own titles.
+  expect(view.queryByRole("heading", { name: "deck-a" })).toBeNull();
+});

@@ -252,6 +252,28 @@ describe("NodeRack", () => {
     expect(inspectNode).toHaveBeenCalledWith("nts-delay");
   });
 
+  test("a Merge in a lane is a plain tag, not a settings button", () => {
+    const graph = buildGraph();
+    const { view } = renderRack(
+      nodeGraphSchema.parse({
+        ...graph,
+        edges: [
+          ...graph.edges.filter((edge) => edge.source !== "kexp"),
+          cable("kexp", "mix"),
+          cable("mix", SPEAKERS_NODE_ID),
+        ],
+        nodes: [
+          ...graph.nodes,
+          { data: {}, id: "mix", position, type: "merge" },
+        ],
+      })
+    );
+
+    expect(view.getByText("Merge")).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Merge settings" })).toBeNull();
+    expect(view.getByRole("button", { name: "Delay settings" })).toBeTruthy();
+  });
+
   test("an empty patch points at the search", () => {
     const { view } = renderRack(
       nodeGraphSchema.parse({

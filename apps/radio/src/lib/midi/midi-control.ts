@@ -185,6 +185,32 @@ function mappingKey({
   return `${channel}:${control}:${type}`;
 }
 
+type MidiScope = "dj" | "node";
+
+/** Node targets move node params in Node mode; the rest are DJ controls. */
+function mappingScope(targetId: MidiTargetId): MidiScope {
+  return targetId.startsWith(NODE_TARGET_PREFIX) ? "node" : "dj";
+}
+
+/**
+ * Mappings by mode and control. A control drives one target per mode (the
+ * latest learned), so learning it for a node param leaves its DJ mapping
+ * working in DJ mode.
+ */
+function indexMappingsByKey(
+  mappings: readonly MidiMapping[]
+): Map<string, MidiMapping> {
+  return new Map(
+    mappings.map(
+      (mapping) =>
+        [
+          `${mappingScope(mapping.targetId)}:${mappingKey(mapping)}`,
+          mapping,
+        ] as const
+    )
+  );
+}
+
 function migratePersistedControl(
   stored: PersistedMidiControl
 ): PersistedMidiControl {
@@ -237,9 +263,7 @@ export function createMidiControl({
   let mappingsByTarget = new Map(
     mappings.map((mapping) => [mapping.targetId, mapping] as const)
   );
-  let mappingsByKey = new Map(
-    mappings.map((mapping) => [mappingKey(mapping), mapping] as const)
-  );
+  let mappingsByKey = indexMappingsByKey(mappings);
   const listeners = new Set<() => void>();
   const actions = new Map(
     staticActions.map((action) => [action.targetId, action] as const)
@@ -314,9 +338,7 @@ export function createMidiControl({
     mappingsByTarget = new Map(
       mappings.map((mapping) => [mapping.targetId, mapping] as const)
     );
-    mappingsByKey = new Map(
-      mappings.map((mapping) => [mappingKey(mapping), mapping] as const)
-    );
+    mappingsByKey = indexMappingsByKey(mappings);
   };
 
   const rebuildActions = () => {
@@ -499,20 +521,26 @@ export function createMidiControl({
     return true;
   };
 
-  const handleMessage = (data: Uint8Array) => {
-    const message = parseMidiMessage(data);
-    if (!message || learnFromMessage(message)) {
-      return;
-    }
-    const mapping = mappingsByKey.get(mappingKey(message));
-    // Node targets move node params only while Node mode is up; every other
-    // target is a DJ control.
-    const active = mapping?.targetId.startsWith(NODE_TARGET_PREFIX)
-      ? nodeActive
-      : djActive;
-    if (!(mapping && persisted.enabled && active)) {
-      return;
-    }
+  /**
+   * The mappings a message drives: node targets only while Node mode is up,
+   * every other target only while DJ mode is.
+   */
+  const activeMappings = (message: ParsedMidiMessage): MidiMapping[] => {
+    const key = mappingKey(message);
+    const scopes: MidiScope[] = [
+      ...(djActive ? (["dj"] as const) : []),
+      ...(nodeActive ? (["node"] as const) : []),
+    ];
+    return scopes.flatMap((scope) => {
+      const mapping = mappingsByKey.get(`${scope}:${key}`);
+      return mapping ? [mapping] : [];
+    });
+  };
+
+  const dispatchMapping = (
+    mapping: MidiMapping,
+    message: ParsedMidiMessage
+  ) => {
     const action = actions.get(mapping.targetId);
     if (!action) {
       return;
@@ -526,6 +554,19 @@ export function createMidiControl({
     }
     pendingValues.set(mapping.targetId, value);
     frameId ??= browser.requestFrame(dispatchPending);
+  };
+
+  const handleMessage = (data: Uint8Array) => {
+    const message = parseMidiMessage(data);
+    if (!message || learnFromMessage(message)) {
+      return;
+    }
+    if (!persisted.enabled) {
+      return;
+    }
+    for (const mapping of activeMappings(message)) {
+      dispatchMapping(mapping, message);
+    }
   };
 
   const attachInputs = () => {

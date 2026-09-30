@@ -126,8 +126,11 @@ class FakeBrowser implements MidiBrowserAdapter {
     return true;
   }
 
+  /** Advance it past the 33 ms CC throttle between dispatches. */
+  time = 1000;
+
   now(): number {
-    return 1000;
+    return this.time;
   }
 
   requestAccess(): Promise<MidiBrowserAccess> {
@@ -303,5 +306,43 @@ describe("node MIDI through the MIDI control", () => {
     browser.emit([0xb0, 7, 127]);
     browser.flushFrame();
     expect(volume).toHaveBeenCalledWith(1);
+  });
+
+  test("one knob can drive a DJ control and a node param, each in its mode", async () => {
+    const volume = mock((_value: number) => undefined);
+    const store = createNodeStore(buildGraph());
+    const { browser, control } = await connectedControl([
+      {
+        dispatch: volume,
+        group: "deck-a",
+        label: "Volume",
+        targetId: "deck-a:volume",
+        type: "continuous",
+      },
+    ]);
+    const binding = control.bindActions();
+    binding.update(
+      createNodeMidiActions(store.state.graph as NodeGraph, storeCommit(store))
+    );
+    control.change({ targetId: "deck-a:volume", type: "start-learn" });
+    browser.emit([0xb0, 7, 0]);
+    control.change({ targetId: "node:comp:threshold", type: "start-learn" });
+    browser.emit([0xb0, 7, 0]);
+
+    // Learning it for the node param left the DJ mapping in place.
+    const deactivateDj = control.activateDj();
+    browser.emit([0xb0, 7, 127]);
+    browser.flushFrame();
+    expect(volume).toHaveBeenCalledWith(1);
+    expect(effectOf(store, "comp").threshold).not.toBe(0);
+    deactivateDj();
+
+    volume.mockClear();
+    browser.time += 100;
+    control.activateNode();
+    browser.emit([0xb0, 7, 127]);
+    browser.flushFrame();
+    expect(effectOf(store, "comp").threshold).toBe(0);
+    expect(volume).not.toHaveBeenCalled();
   });
 });

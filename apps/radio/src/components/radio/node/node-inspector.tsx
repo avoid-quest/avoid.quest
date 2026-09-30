@@ -11,7 +11,8 @@ import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useStore } from "@tanstack/react-store";
 import { XIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { EffectParams } from "@/components/audio/effect-params/effect-params";
 import { EffectVisualization } from "@/components/audio/visualizations/effect-visualization";
 import type { EffectConfig } from "@/lib/audio";
@@ -84,7 +85,8 @@ export function selectedInspectable(state: NodeStoreState): string | null {
  * Which node the inspector shows, and how to open or close it. On desktop
  * it is the canvas selection, so opening one selects it. A phone keeps its
  * own: the Drawer opens only when asked (a Rack chip, a node's menu), not
- * on every tap that selects a node while patching.
+ * on every tap that selects a node while patching. A closed Drawer keeps
+ * its node, so its content stays put while it slides away.
  */
 export function useNodeInspector({
   isPhone,
@@ -93,18 +95,20 @@ export function useNodeInspector({
   isPhone: boolean;
   store?: NodeStore;
 }) {
-  const [phoneNodeId, setPhoneNodeId] = useState<string | null>(null);
+  const [phone, setPhone] = useState<{ id: string | null; open: boolean }>({
+    id: null,
+    open: false,
+  });
   const selected = useStore(store, selectedInspectable);
   // A node deleted while open closes its Drawer.
-  const phoneOpen = useStore(store, (state) =>
-    isInspectable(findNode(state, phoneNodeId))
+  const phoneExists = useStore(store, (state) =>
+    isInspectable(findNode(state, phone.id))
   );
-  const phoneShown = phoneOpen ? phoneNodeId : null;
-  const nodeId = isPhone ? phoneShown : selected;
+  const phoneNodeId = phoneExists ? phone.id : null;
   return {
     close: () => {
       if (isPhone) {
-        setPhoneNodeId(null);
+        setPhone((current) => ({ ...current, open: false }));
       } else {
         setNodeSelection({ edges: [], nodes: [] }, store);
       }
@@ -112,10 +116,11 @@ export function useNodeInspector({
     inspect: (id: string) => {
       setNodeSelection({ edges: [], nodes: [id] }, store);
       if (isPhone) {
-        setPhoneNodeId(id);
+        setPhone({ id, open: true });
       }
     },
-    nodeId,
+    nodeId: isPhone ? phoneNodeId : selected,
+    open: isPhone ? phone.open && phoneNodeId !== null : selected !== null,
   };
 }
 
@@ -251,6 +256,11 @@ function InspectorTitle({
 export type NodeInspectorProps = {
   /** null while closed. */
   nodeId: string | null;
+  /**
+   * Whether the phone Drawer is open; it keeps `nodeId` while it closes.
+   * Open whenever `nodeId` is inspectable if unset.
+   */
+  open?: boolean;
   onClose: () => void;
   /** Phones get a bottom Drawer; desktop an inline panel. */
   isPhone?: boolean;
@@ -260,6 +270,7 @@ export type NodeInspectorProps = {
 /** The inspector for `nodeId`: inline on desktop, a Drawer on a phone. */
 export function NodeInspector({
   nodeId,
+  open = true,
   onClose,
   isPhone = false,
   store = nodeStore,
@@ -272,12 +283,12 @@ export function NodeInspector({
     return (
       <Drawer
         handleOnly
-        onOpenChange={(open) => {
-          if (!open) {
+        onOpenChange={(next) => {
+          if (!next) {
             onClose();
           }
         }}
-        open={inspected !== undefined}
+        open={open && inspected !== undefined}
       >
         <DrawerContent>
           <DrawerHeader className="sr-only">
@@ -297,18 +308,61 @@ export function NodeInspector({
     );
   }
 
-  if (!inspected) {
-    return null;
-  }
-  const headingId = `node-inspector-${inspected.id}`;
+  return inspected ? (
+    <InspectorPanel node={inspected} onClose={onClose} store={store} />
+  ) : null;
+}
+
+/** The chip in the Rack that opens `nodeId`, if the Rack shows one. */
+function findRackChip(nodeId: string): HTMLElement | undefined {
+  return [
+    ...document.querySelectorAll<HTMLElement>("[data-inspect-node]"),
+  ].find((chip) => chip.dataset.inspectNode === nodeId);
+}
+
+/**
+ * The desktop panel. It takes the Rack's place, so the Rack chip that
+ * opened it is gone: focus moves into the panel, and closing hands it back
+ * to that chip. A canvas selection keeps focus on the canvas.
+ */
+function InspectorPanel({
+  node,
+  onClose,
+  store,
+}: {
+  node: GraphNode;
+  onClose: () => void;
+  store: NodeStore;
+}) {
+  const panelRef = useRef<HTMLElement>(null);
+  const headingId = `node-inspector-${node.id}`;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focus follows the inspected node
+  useEffect(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      panelRef.current?.focus();
+    }
+  }, [node.id]);
+  const close = () => {
+    const hadFocus = panelRef.current?.contains(document.activeElement);
+    flushSync(onClose);
+    if (hadFocus) {
+      findRackChip(node.id)?.focus();
+    }
+  };
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+    <section
+      aria-labelledby={headingId}
+      className="flex flex-col gap-3 outline-none"
+      ref={panelRef}
+      tabIndex={-1}
+    >
       <div className="flex h-8 items-center gap-1.5 px-2.5">
-        <InspectorTitle headingId={headingId} node={inspected} store={store} />
+        <InspectorTitle headingId={headingId} node={node} store={store} />
         <Button
           aria-label="Close settings"
           className="size-6 text-muted-foreground"
-          onClick={onClose}
+          onClick={close}
           size="icon"
           title="Back to the Rack"
           variant="ghost"
@@ -317,7 +371,7 @@ export function NodeInspector({
         </Button>
       </div>
       <div className="px-2.5">
-        <InspectorParams node={inspected} store={store} />
+        <InspectorParams node={node} store={store} />
       </div>
     </section>
   );

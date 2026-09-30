@@ -23,6 +23,7 @@ import {
 } from "../station-row";
 import { BackendBadge } from "./backend-badge";
 import { useNodeActions } from "./node-actions";
+import { isInspectable } from "./node-inspector";
 import { type NodeLaneControls, NodeSourceRow } from "./node-source-row";
 
 type RackGroup = { key: string; title: string; lanes: LanePlan[] };
@@ -117,6 +118,18 @@ function LaneChain({
     <div className="flex flex-wrap items-center gap-1 pl-9">
       {fx.map((node) => {
         const { name } = getNodeDefinition(node.type);
+        // A Merge has nothing to set, so it stays a plain tag.
+        if (!isInspectable(node)) {
+          return (
+            <Badge
+              className="font-normal text-[10px]"
+              key={node.id}
+              variant="outline"
+            >
+              {name}
+            </Badge>
+          );
+        }
         return (
           <Badge
             asChild
@@ -126,6 +139,7 @@ function LaneChain({
           >
             <button
               aria-label={`${name} settings`}
+              data-inspect-node={node.id}
               onClick={() => actions.inspectNode(node.id)}
               type="button"
             >

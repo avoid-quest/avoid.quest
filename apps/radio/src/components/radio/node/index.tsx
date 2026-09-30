@@ -321,6 +321,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
             isPhone
             nodeId={inspector.nodeId}
             onClose={inspector.close}
+            open={inspector.open}
           />
         ) : null}
 

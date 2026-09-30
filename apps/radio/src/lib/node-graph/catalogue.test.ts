@@ -165,3 +165,45 @@ describe("non-v1 node types", () => {
     }
   );
 });
+
+describe("catalogue invariants", () => {
+  // The connection rules lean on these: a source makes its own sound, the
+  // sound ends at an output, and every port takes at least one cable.
+  test("a source takes no audio or key input", () => {
+    const sources = definitions.filter((definition) => definition.source);
+    expect(sources.length).toBeGreaterThan(0);
+    for (const definition of sources) {
+      expect(
+        definition.ports
+          .filter(
+            (port) =>
+              port.direction === "in" &&
+              (port.kind === "audio" || port.kind === "sidechain")
+          )
+          .map(portHandleId)
+      ).toEqual([]);
+    }
+  });
+
+  test("an output has no output port", () => {
+    const outputs = definitions.filter(
+      (definition) => definition.category === "output"
+    );
+    expect(outputs.map((definition) => definition.type)).toContain("speakers");
+    for (const definition of outputs) {
+      expect(
+        definition.ports
+          .filter((port) => port.direction === "out")
+          .map(portHandleId)
+      ).toEqual([]);
+    }
+  });
+
+  test("every port takes at least one cable", () => {
+    for (const definition of definitions) {
+      for (const port of definition.ports) {
+        expect(port.max).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+});

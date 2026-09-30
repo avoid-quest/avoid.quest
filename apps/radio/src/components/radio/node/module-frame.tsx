@@ -26,6 +26,8 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import {
+  type ComponentType,
+  type CSSProperties,
   createContext,
   type KeyboardEvent,
   type ReactNode,
@@ -37,12 +39,13 @@ import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import {
   getNodeDefinition,
   isShipped,
-  type NodePort,
+  type NodePort as PortDefinition,
   portHandleId,
 } from "@/lib/node-graph/catalogue";
 import { portName } from "@/lib/node-graph/describe";
 import type { NodeType } from "@/lib/node-graph/schema";
-import type { Handle, Position, useUpdateNodeInternals } from "./flow-adapter";
+import type { Verdict } from "@/lib/node-graph/validate";
+import type { Position, useUpdateNodeInternals } from "./flow-adapter";
 
 /**
  * Module Frame
@@ -412,17 +415,61 @@ export function controlName(title: string, label: string): string {
   return `${title} ${label.length > 1 ? label.toLowerCase() : label}`;
 }
 
+export type NodePortProps = {
+  /** The node type the port belongs to, for when it ships. */
+  type: NodeType;
+  port: PortDefinition;
+  /** The native title: "Audio out", "Key input". */
+  label: string;
+  ariaLabel: string;
+  position: Position;
+  style?: CSSProperties;
+  className?: string;
+};
+
 /**
- * React Flow's Handle and Position, handed down by the canvas. Node bodies
- * and their controls also render in the Stage, Rack and inspector, which
- * load without React Flow, so this module only imports its types; ports
- * render on the canvas, inside `FlowPortsProvider`.
+ * What a port's handle takes from its cables and the drag. It starts a
+ * cable if it is an output, or an input with room left under its `max`.
+ * While a cable is dragged (`hint` set), a port the cable may end on lights
+ * up (`node-port-accept`) and every other port locks (`node-port-locked`),
+ * its title saying why.
+ */
+export function nodePortState({
+  type,
+  port,
+  label,
+  cables,
+  hint,
+}: Pick<NodePortProps, "type" | "port" | "label"> & {
+  cables: number;
+  hint: Verdict | undefined;
+}) {
+  const definition = getNodeDefinition(type);
+  const shipped = isShipped(port.ship ?? definition.ship, "v1");
+  const room = cables < port.max;
+  return {
+    className: cn(
+      hint?.ok && "node-port-accept",
+      hint?.ok === false && "node-port-locked"
+    ),
+    isConnectableEnd: hint ? hint.ok : shipped && room,
+    isConnectableStart: shipped && (port.direction === "out" || room),
+    title: hint?.ok === false ? hint.message : label,
+  };
+}
+
+/**
+ * React Flow's Position, and the canvas's port, handed down by the canvas.
+ * Node bodies and their controls also render in the Stage, Rack and
+ * inspector, which load without React Flow, so this module only imports
+ * its types; ports render on the canvas, inside `FlowPortsProvider`.
  */
 export type FlowPorts = {
-  Handle: typeof Handle;
   Position: typeof Position;
   /** Re-measures a node's handles; React Flow does not see new ones itself. */
   updateNodeInternals: ReturnType<typeof useUpdateNodeInternals>;
+  /** `NodePort` on the canvas: a Handle with React Flow's port hooks. */
+  Port: ComponentType<NodePortProps>;
 };
 
 const FlowPortsContext = createContext<FlowPorts | null>(null);
@@ -430,8 +477,24 @@ const FlowPortsContext = createContext<FlowPorts | null>(null);
 export const FlowPortsProvider = FlowPortsContext.Provider;
 
 /**
+ * One port as a React Flow handle, typed by its handle id and `data-kind`,
+ * with `nodePortState` deciding what it takes. Every node draws its ports
+ * through this, Station and Speakers included. Off the canvas it draws
+ * nothing.
+ */
+export function NodePort(props: NodePortProps) {
+  const flow = useContext(FlowPortsContext);
+  if (!flow) {
+    return null;
+  }
+  const { Port } = flow;
+  return <Port {...props} />;
+}
+
+/**
  * A node's shipped ports as React Flow handles: inputs down the left edge,
- * outputs down the right, spread evenly. A key input wears the amber ring.
+ * outputs down the right, spread evenly, each a `NodePort`. A key input
+ * wears the amber ring (`data-kind="sidechain"`).
  * A split shows only the outputs it has in use (`outputIds`),
  * named for its branches (`portLabel`), and re-measures its handles
  * whenever they change so cables land on the moved and new ports.
@@ -448,7 +511,7 @@ export function ModulePorts({
   /** Set with `outputIds`: the node whose handles come and go. */
   nodeId?: string;
   outputIds?: readonly string[];
-  portLabel?: (port: NodePort) => string;
+  portLabel?: (port: PortDefinition) => string;
 }) {
   const flow = useContext(FlowPortsContext);
   const shown = outputIds?.join(" ");
@@ -460,7 +523,7 @@ export function ModulePorts({
   if (!flow) {
     return null;
   }
-  const { Handle: PortHandle, Position: Side } = flow;
+  const { Position: Side } = flow;
   const definition = getNodeDefinition(type);
   const ports = definition.ports.filter(
     (port) =>
@@ -473,22 +536,18 @@ export function ModulePorts({
     side.map((port, index) => {
       const name = portLabel(port);
       return (
-        <PortHandle
-          aria-label={`${title} ${name.toLowerCase()}`}
-          className={cn(
-            "node-port",
-            port.kind === "sidechain" && "node-port-key"
-          )}
-          id={portHandleId(port)}
+        <NodePort
+          ariaLabel={`${title} ${name.toLowerCase()}`}
           key={portHandleId(port)}
+          label={name}
+          port={port}
           position={position}
           style={
             side.length > 1
               ? { top: `${((index + 1) / (side.length + 1)) * 100}%` }
               : undefined
           }
-          title={name}
-          type={port.direction === "in" ? "target" : "source"}
+          type={type}
         />
       );
     });

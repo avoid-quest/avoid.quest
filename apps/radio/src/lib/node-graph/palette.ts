@@ -7,7 +7,7 @@
  * Templates replace the patch. A cable dropped on empty space narrows the list to nodes with a
  * port that takes it and wires the new node in; a cable dropped on a node
  * connects when exactly one of its ports fits. Every check is the same
- * `validateConnection` React Flow runs while dragging. `I` on a cable
+ * `connectionVerdict` React Flow runs while dragging. `I` on a cable
  * narrows it to nodes that can go into that cable, and "Swap effect…" to
  * the effects an FX can become.
  */
@@ -23,6 +23,7 @@ import {
   NODE_DEFINITIONS,
   type NodeDefinition,
   type NodePort,
+  type PortKind,
   portHandleId,
 } from "./catalogue";
 import { endLabel, portName } from "./describe";
@@ -52,11 +53,11 @@ import {
 } from "./templates";
 import {
   type Connection,
-  type Issue,
+  connectionVerdict,
   kindsPatch,
   parseHandleId,
   type ValidateOptions,
-  validateConnection,
+  type Verdict,
 } from "./validate";
 
 type Position = GraphNode["position"];
@@ -286,7 +287,39 @@ function validCables(
   }
   return facingPorts(node, from)
     .map((port) => cableBetween(from, node.id, port))
-    .filter((cable) => validateConnection(graph, cable, options).length === 0);
+    .filter((cable) => connectionVerdict(graph, cable, options).ok);
+}
+
+/** The key a port's verdict goes under: `"<nodeId> <handleId>"`. */
+export function portKey(nodeId: string, handle: string): string {
+  return `${nodeId} ${handle}`;
+}
+
+/**
+ * What a cable dragged from `from` may end on: a verdict for every shipped
+ * port in the patch, keyed by `portKey`. Taken once when a drag starts, so
+ * lighting the ports costs one validation per port facing the drag, not
+ * one per port per pointer move. Ports on the drag's own side are refused
+ * without one.
+ */
+export function connectableHandles(
+  graph: NodeGraph,
+  from: PaletteFrom,
+  options?: ValidateOptions
+): Map<string, Verdict> {
+  const verdicts = new Map<string, Verdict>();
+  for (const node of graph.nodes) {
+    const definition = getNodeDefinition(node.type);
+    for (const port of definition.ports) {
+      if (isShipped(port.ship ?? definition.ship, options?.release ?? "v1")) {
+        verdicts.set(
+          portKey(node.id, portHandleId(port)),
+          connectionVerdict(graph, cableBetween(from, node.id, port), options)
+        );
+      }
+    }
+  }
+  return verdicts;
 }
 
 function speakersPresent(graph: NodeGraph): boolean {
@@ -535,18 +568,16 @@ export function autoConnection(
   return cables.length === 1 ? (cables[0] ?? null) : null;
 }
 
-/** The cable's own problem first, then what it would break elsewhere. */
-function refusalOf(issues: readonly Issue[]): Issue | undefined {
-  return issues.find((issue) => issue.target === "edge") ?? issues[0];
-}
+type Refusal = Extract<Verdict, { ok: false }>;
 
 /**
  * Why a cable dropped on `nodeId`'s body didn't connect, as a toast says
  * it: e.g. a second station into a Merge, or a second key into a lane.
  * Every port the cable's kind may patch into counts, so a key cable (audio
  * into a sidechain) is explained too. A port that is only full gives way to
- * a port with a truer reason. Null when a port would take the cable (the
- * drop was only ambiguous) or the node has none of its kind.
+ * a port with a truer reason. A node with no port of the cable's kind at
+ * all says why when that is the rule, e.g. a Station takes no audio in.
+ * Null when a port would take the cable (the drop was only ambiguous).
  */
 export function dropRefusal(
   graph: NodeGraph,
@@ -559,24 +590,59 @@ export function dropRefusal(
   if (!node || node.id === from.node || !kind) {
     return null;
   }
-  const refusals = facingPorts(node, from)
+  const verdicts = facingPorts(node, from)
     .filter((port) =>
       from.type === "source"
         ? kindsPatch(kind, port.kind)
         : kindsPatch(port.kind, kind)
     )
     .map((port) =>
-      refusalOf(
-        validateConnection(graph, cableBetween(from, node.id, port), options)
-      )
+      connectionVerdict(graph, cableBetween(from, node.id, port), options)
     );
-  if (refusals.includes(undefined)) {
+  if (verdicts.length === 0) {
+    return noPortRefusal(graph, from, node, kind, options);
+  }
+  const refusals = verdicts.filter(
+    (verdict): verdict is Refusal => !verdict.ok
+  );
+  if (refusals.length < verdicts.length) {
     return null;
   }
   return (
-    (refusals.find((issue) => issue?.code !== "port-max") ?? refusals[0])
+    (refusals.find((refusal) => refusal.code !== "port-max") ?? refusals[0])
       ?.message ?? null
   );
+}
+
+/**
+ * A node with no port for the cable: said only when that is a rule of the
+ * node, a source taking no audio in or an output giving none out.
+ */
+function noPortRefusal(
+  graph: NodeGraph,
+  from: PaletteFrom,
+  node: GraphNode,
+  kind: PortKind,
+  options?: ValidateOptions
+): string | null {
+  const facing = from.type === "source" ? "in" : "out";
+  // A key cable leaves an audio output.
+  const facingKind = facing === "out" && kind === "sidechain" ? "audio" : kind;
+  const verdict = connectionVerdict(
+    graph,
+    cableBetween(from, node.id, {
+      direction: facing,
+      id: "main",
+      kind: facingKind,
+      label: "",
+      max: 1,
+    }),
+    options
+  );
+  return !verdict.ok &&
+    (verdict.code === "no-audio-in" || verdict.code === "no-out")
+    ? verdict.message
+    : null;
 }
 
 /** What a cable let go over a node does: connect, or say why it can't. */
@@ -584,11 +650,11 @@ export type DropOutcome = { connect: Connection } | { refuse: string | null };
 
 /**
  * A cable let go on one of `nodeId`'s ports takes that port or is refused
- * with its reason, e.g. "Audio can't drive control; use a Follower". It
- * never lands on another port of the node, so a key dropped on a loose
- * Compressor's key input can't turn into an audio cable. Let go on the
- * body, or on a port that is only full, it takes the one port that fits,
- * else says why none did.
+ * with its reason, e.g. "Audio can't turn a knob". It never lands on
+ * another port of the node, so a key dropped on a loose Compressor's key
+ * input can't turn into an audio cable. Let go on the body, or on a port
+ * that is only full, it takes the one port that fits, else says why none
+ * did.
  */
 export function dropOnNode(
   graph: NodeGraph,
@@ -612,12 +678,12 @@ export function dropOnNode(
             target: from.node,
             targetHandle: from.handle,
           };
-    const refusal = refusalOf(validateConnection(graph, cable, options));
-    if (!refusal) {
+    const verdict = connectionVerdict(graph, cable, options);
+    if (verdict.ok) {
       return { connect: cable };
     }
-    if (refusal.code !== "port-max") {
-      return { refuse: refusal.message };
+    if (verdict.code !== "port-max") {
+      return { refuse: verdict.message };
     }
   }
   const cable = autoConnection(graph, from, nodeId, options);

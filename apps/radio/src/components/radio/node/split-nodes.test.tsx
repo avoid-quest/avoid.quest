@@ -294,8 +294,11 @@ describe("split ports", () => {
     const { FlowPortsProvider, ModulePorts } = moduleFrame;
     const updateNodeInternals = mock((_id: string | string[]) => undefined);
     const ports = {
-      Handle: ({ id, title }: { id?: string | null; title?: string }) => (
-        <span data-handle={id ?? ""} title={title} />
+      Port: ({ port, label }: import("./module-frame").NodePortProps) => (
+        <span
+          data-handle={`${port.direction}:${port.kind}:${port.id}`}
+          title={label}
+        />
       ),
       Position: { Bottom: "bottom", Left: "left", Right: "right", Top: "top" },
       updateNodeInternals,

@@ -345,23 +345,46 @@ chains, with params excluded.
 
 ### 5.4 Validation
 
+- **One rule entry.** `connectionVerdict(graph, connection, options)` in
+  `lib/node-graph/validate.ts` answers "may this cable connect, and if not, why" as
+  `{ ok: true } | { ok: false; code; message }`. The canvas's `isValidConnection`, a drop on
+  a node or port, the palette's narrowed list, the Connect… dialog, insert-on-cable and
+  heal-on-delete all ask it, and it runs the same `validate()` that load and import run.
 - **Port kinds.** Handle ids are `"<dir>:<kind>:<name>"`, e.g. `in:audio:main`,
-  `in:sidechain:key`, `in:control:cutoff`, `out:midi:cc`. One `<ReactFlow isValidConnection>`
-  parses both ends:
+  `in:sidechain:key`, `in:control:cutoff`, `out:midi:cc`. `<ReactFlow
+  connectionMode={ConnectionMode.Strict}>` keeps outputs to inputs; the validator parses
+  both ends:
   - audio→audio
   - audio→sidechain, only if the source resolves to a lane in this session
   - control→control
   - midi→midi
-  - audio→control is refused with the hint "use a Follower".
+  - audio→control is refused with "Audio can't turn a knob", control into a key with "Only
+    audio can key this effect".
 
-  The same function runs on load and import, not only on drag.
-- **Limits.** `max` per port is enforced in `isValidConnection` and mirrored in
-  `isConnectable` via `useNodeConnections` counts. Speakers is unique, and each lane allows at
-  most one Filter, one Pan and one keyed FX.
+  Before the kind check come the rules of a node itself: a module can't feed itself
+  (`self-loop`), a source takes no audio in (`no-audio-in`), and the sound ends at an output
+  (`no-out`). The catalogue test holds these invariants for every definition, and every
+  port's `max` is at least 1.
+- **Limits.** `max` per port is enforced by the validator ("This input takes one cable",
+  "This input is full (8 cables)") and mirrored on each handle: a port counts its cables
+  with `useNodeConnections` and sets `isConnectableStart`/`isConnectableEnd`, which React
+  Flow 12.12 takes as booleans only. Speakers is unique, and each lane allows at most one
+  Filter, one Pan and one keyed FX.
 - **Cycles.** Tarjan SCC over audio edges. Every non-trivial SCC must contain at least one
-  Loop node; otherwise the connection is refused with "Feedback needs a Loop". Web Audio
-  silences delay-free cycles, and the openDAW tree cannot represent one. Control cycles are
-  rejected outright.
+  Loop node; otherwise the connection is refused with "That would feed the sound back into
+  itself" (Loop ships later). Web Audio silences delay-free cycles, and the openDAW tree
+  cannot represent one. Control cycles are rejected outright. A cable into a full port that
+  would also close a loop gets the feedback message, since freeing the port wouldn't help.
+- **While dragging.** `onConnectStart` takes one verdict per port in the patch
+  (`connectableHandles`, cached in `components/radio/node/connection-hints.ts` until
+  `onConnectEnd`): one validation per port facing the drag, none per pointer move. Every
+  port reads the drag's origin through `useConnection(selector)` and its own verdict: a
+  port the cable may end on grows a foreground ring (`node-port-accept`), every other port
+  fades to 0.3 and locks (`node-port-locked`, `isConnectableEnd=false`) with the reason as
+  its native title. `isValidConnection` reads the same cache. A refused drop on a node, a
+  locked port or a port React Flow snapped to shows one toast with the verdict; a drop on
+  empty space opens the palette narrowed to what fits. Budget refusals are patch-wide, so
+  once over budget every port locks with the same message.
 - **Budgets.** Checked at compile time; exceeding a budget is an error on the offending node,
   never a silent drop.
 
@@ -624,7 +647,7 @@ What this design does instead:
     arrows adjust the knob rather than move the node.
   - Keyboard connecting, which React Flow 12 lacks (issue #5620): `C` on a focused node opens
     a "Connect…" dialog with two comboboxes (this node's port, then a target port), filtered
-    by the same `isValidConnection`.
+    by the same `connectionVerdict`.
   - `I` inserts into the selected cable, `B` bypasses, and `Cmd+D` duplicates.
   - `ariaLabelConfig` sets `aria-roledescription="audio module"`, and edges get labels like
     "KEXP audio to Compressor input".

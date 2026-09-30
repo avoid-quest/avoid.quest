@@ -9,23 +9,18 @@ import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
+import { findPort } from "@/lib/node-graph/catalogue";
 import { laneChannelId } from "@/lib/node-graph/compile";
 import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
 import type { GraphNode } from "@/lib/node-graph/schema";
-import { AUDIO_OUT_HANDLE } from "@/lib/node-graph/templates";
 import { getNodePlayback } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { InlineError } from "../inline-error";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioNowPlaying } from "../radio-now-playing";
 import { RadioSearchBar } from "../radio-search-bar";
-import {
-  type FlowNode,
-  type FlowNodeProps,
-  Handle,
-  Position,
-} from "./flow-adapter";
-import { keepControlKeys } from "./module-frame";
+import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
+import { keepControlKeys, NodePort } from "./module-frame";
 import { useNodeActions } from "./node-actions";
 
 type StationData = Extract<GraphNode, { type: "station" }>["data"];
@@ -58,6 +53,8 @@ type StationNodeBodyProps = {
   onToggle?: (radio: Radio, enabled: boolean) => void;
   onSave?: (radio: Radio) => void;
 };
+
+const AUDIO_OUT = findPort("station", "out", "audio", "main");
 
 const NODE_FRAME = "w-60 rounded-md border bg-card text-card-foreground";
 
@@ -299,14 +296,16 @@ export function StationNode({
         selected={selected}
         volume={data.volume}
       />
-      <Handle
-        aria-label={`${radio?.name ?? "Station"} audio out`}
-        className={cn("node-port", isPlaying && !isLoading && "node-port-live")}
-        id={AUDIO_OUT_HANDLE}
-        position={Position.Right}
-        title="Audio out"
-        type="source"
-      />
+      {AUDIO_OUT ? (
+        <NodePort
+          ariaLabel={`${radio?.name ?? "Station"} audio out`}
+          className={cn(isPlaying && !isLoading && "node-port-live")}
+          label="Audio out"
+          port={AUDIO_OUT}
+          position={Position.Right}
+          type="station"
+        />
+      ) : null}
     </>
   );
 }

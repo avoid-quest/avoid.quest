@@ -63,7 +63,7 @@
   }
 
   /* A sidechain (key) input: the Key amber ring. */
-  .react-flow__handle.node-port.node-port-key {
+  .react-flow__handle.node-port[data-kind="sidechain"] {
     border-color: var(--node-key);
   }
 
@@ -75,6 +75,32 @@
   .react-flow__handle.node-port.valid,
   .react-flow__handle.node-port.connectingto {
     border-color: var(--foreground);
+  }
+
+  /* While a cable is dragged, every port it may end on grows a foreground
+     ring, a key keeping its amber, and every other port fades and locks.
+     The port the cable leaves stays as it is. */
+  .react-flow__handle.node-port.node-port-accept {
+    border-color: var(--foreground);
+    box-shadow: 0 0 0 2px
+      color-mix(in oklab, var(--foreground) 25%, transparent);
+    scale: 1.3;
+    transition: scale 120ms ease-out;
+  }
+
+  .react-flow__handle.node-port.node-port-accept[data-kind="sidechain"] {
+    border-color: var(--node-key);
+  }
+
+  .react-flow__handle.node-port.node-port-locked:not(.connectingfrom) {
+    cursor: not-allowed;
+    opacity: 0.3;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .react-flow__handle.node-port.node-port-accept {
+      transition: none;
+    }
   }
 
   .react-flow__node:focus-visible {

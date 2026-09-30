@@ -92,6 +92,9 @@ let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"]
 let Store: typeof import("@tanstack/react-store")["Store"];
 let flow: typeof import("./flow-adapter");
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
+let moduleFrame: typeof import("./module-frame");
+let catalogue: typeof import("@/lib/node-graph/catalogue");
+let nodePort: typeof import("./node-port");
 
 beforeAll(async () => {
   ({ EffectNode, EffectNodeBody, firstLayoutRow } = await import(
@@ -111,6 +114,9 @@ beforeAll(async () => {
   ({ Store } = await import("@tanstack/react-store"));
   flow = await import("./flow-adapter");
   ({ NodeActionsProvider } = await import("./node-actions"));
+  moduleFrame = await import("./module-frame");
+  catalogue = await import("@/lib/node-graph/catalogue");
+  nodePort = await import("./node-port");
 });
 
 const noop = () => undefined;
@@ -523,5 +529,145 @@ describe("NativeNodeBody", () => {
     expect(Number(knob.getAttribute("aria-valuemax"))).toBeGreaterThanOrEqual(
       Number(knob.getAttribute("aria-valuenow"))
     );
+  });
+});
+
+describe("NodePort", () => {
+  /**
+   * A patch on a real canvas whose nodes draw only their ports, so each
+   * port counts its cables with React Flow's `useNodeConnections`.
+   */
+  function renderPorts(
+    nodes: import("./flow-adapter").FlowNode[],
+    edges: import("./flow-adapter").FlowEdge[]
+  ) {
+    const PortsOnly = ({
+      type,
+    }: {
+      type: "merge" | "compressor" | "station";
+    }) => <moduleFrame.ModulePorts title={type} type={type} />;
+    const view = render(
+      <flow.ReactFlowProvider>
+        <nodePort.FlowPortsRoot>
+          <div style={{ height: 600, width: 800 }}>
+            <flow.ReactFlow
+              edges={edges}
+              nodes={nodes}
+              nodeTypes={{
+                compressor: () => <PortsOnly type="compressor" />,
+                merge: () => <PortsOnly type="merge" />,
+                station: () => <PortsOnly type="station" />,
+              }}
+            />
+          </div>
+        </nodePort.FlowPortsRoot>
+      </flow.ReactFlowProvider>
+    );
+    const port = (node: string, handle: string) =>
+      view.container.querySelector(
+        `.react-flow__handle[data-nodeid="${node}"][data-handleid="${handle}"]`
+      ) as HTMLElement;
+    return { port, view };
+  }
+
+  const at = { x: 0, y: 0 };
+  const stations = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      data: {},
+      id: `s${index}`,
+      position: at,
+      type: "station",
+    }));
+  const cablesInto = (
+    target: string,
+    handle: string,
+    count: number,
+    first = 0
+  ) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `s${first + index}->${target}`,
+      source: `s${first + index}`,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: handle,
+    }));
+  const takes = (element: HTMLElement) => ({
+    end: element.classList.contains("connectableend"),
+    start: element.classList.contains("connectablestart"),
+  });
+
+  test("a Merge input holding eight cables takes no ninth", () => {
+    const merge = { data: {}, id: "mix", position: at, type: "merge" };
+    const seven = renderPorts(
+      [...stations(8), merge],
+      cablesInto("mix", "in:audio:main", 7)
+    );
+    expect(takes(seven.port("mix", "in:audio:main"))).toEqual({
+      end: true,
+      start: true,
+    });
+    seven.view.unmount();
+
+    const eight = renderPorts(
+      [...stations(8), merge],
+      cablesInto("mix", "in:audio:main", 8)
+    );
+    expect(takes(eight.port("mix", "in:audio:main"))).toEqual({
+      end: false,
+      start: false,
+    });
+    // An output takes any number.
+    expect(takes(eight.port("mix", "out:audio:main")).start).toBe(true);
+  });
+
+  test("a Compressor key with one cable is locked for a second", () => {
+    const { port } = renderPorts(
+      [
+        ...stations(1),
+        { data: {}, id: "comp", position: at, type: "compressor" },
+      ],
+      cablesInto("comp", "in:sidechain:key", 1)
+    );
+    const key = port("comp", "in:sidechain:key");
+    expect(key.dataset.kind).toBe("sidechain");
+    expect(takes(key)).toEqual({ end: false, start: false });
+    expect(takes(port("comp", "in:audio:main")).end).toBe(true);
+  });
+
+  test("while a cable is dragged, a port lights up or locks by the drag's verdict", () => {
+    const input = catalogue.findPort("compressor", "in", "audio", "main");
+    if (!input) {
+      throw new Error("Expected a Compressor input");
+    }
+    const props = { label: "Input", port: input, type: "compressor" } as const;
+    expect(
+      moduleFrame.nodePortState({ ...props, cables: 0, hint: undefined })
+    ).toEqual({
+      className: "",
+      isConnectableEnd: true,
+      isConnectableStart: true,
+      title: "Input",
+    });
+    expect(
+      moduleFrame.nodePortState({ ...props, cables: 0, hint: { ok: true } })
+    ).toMatchObject({ className: "node-port-accept", isConnectableEnd: true });
+    // A verdict beats the count both ways: a drag may be refused by a
+    // free port, and the count is what it was when the drag started.
+    expect(
+      moduleFrame.nodePortState({
+        ...props,
+        cables: 0,
+        hint: {
+          code: "self-loop",
+          message: "A module can't feed itself",
+          ok: false,
+        },
+      })
+    ).toEqual({
+      className: "node-port-locked",
+      isConnectableEnd: false,
+      isConnectableStart: true,
+      title: "A module can't feed itself",
+    });
   });
 });

@@ -77,7 +77,7 @@ afterEach(resetCollections);
 
 const position = { x: 0, y: 0 };
 const INVALID_PATCH = /Invalid patch/;
-const NEEDS_LOOP = /Feedback needs a Loop/;
+const NEEDS_LOOP = /That would feed the sound back into itself/;
 const NEWER_VERSION = /newer version/;
 
 function stationRadio(id: string): Radio {

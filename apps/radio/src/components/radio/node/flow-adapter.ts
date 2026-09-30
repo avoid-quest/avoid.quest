@@ -6,7 +6,7 @@
  * CSS layers) changes this file and not the canvas. It is reachable only
  * from the lazy client canvas chunk, never from the Worker bundle: modules
  * the Stage, Rack or inspector also load import only its types, and node
- * ports get Handle from the canvas through `FlowPortsProvider`.
+ * ports get their Handle from the canvas through `FlowPortsProvider`.
  */
 
 export type {
@@ -22,16 +22,21 @@ export type {
   NodeChange as FlowNodeChange,
   NodeProps as FlowNodeProps,
   NodeTypes as FlowNodeTypes,
+  OnConnectStart as FlowConnectStart,
   Viewport as FlowViewport,
 } from "@xyflow/react";
 export {
   BaseEdge,
+  ConnectionMode,
   EdgeLabelRenderer,
   getBezierPath,
   Handle,
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useConnection,
+  useNodeConnections,
+  useNodeId,
   useReactFlow,
   useUpdateNodeInternals,
 } from "@xyflow/react";

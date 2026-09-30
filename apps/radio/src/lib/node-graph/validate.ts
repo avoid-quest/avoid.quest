@@ -4,7 +4,8 @@
  * Checks a patch against the port-kind rules, per-port limits, lane rules,
  * the feedback rule and the device budgets. Every problem is an Issue keyed
  * by the node or cable it belongs to; invalid cables never reach the compiler.
- * The same check runs on drag, on load and on import.
+ * The same check runs on drag, on load and on import, and every "can this
+ * cable connect?" question goes through `connectionVerdict`.
  */
 
 import {
@@ -25,8 +26,11 @@ export type IssueCode =
   | "missing-node"
   | "bad-handle"
   | "unknown-port"
+  | "self-loop"
+  | "no-audio-in"
+  | "no-out"
   | "kind-mismatch"
-  | "use-follower"
+  | "audio-to-control"
   | "duplicate-edge"
   | "port-max"
   | "one-speakers"
@@ -242,7 +246,10 @@ function isInactiveBand(node: GraphNode, port: NodePort): boolean {
   return band > effect.crossoverFrequencies.length + 1;
 }
 
-/** audio→audio, audio→sidechain, control→control and midi→midi only. */
+/**
+ * audio→audio, audio→sidechain, control→control and midi→midi only. Each
+ * refusal says what the input takes, in the interface's words.
+ */
 function kindIssue(
   from: PortKind,
   to: PortKind
@@ -254,21 +261,52 @@ function kindIssue(
     return null;
   }
   if (from === "audio" && to === "control") {
-    return {
-      code: "use-follower",
-      message: "Audio can't drive control; use a Follower",
-    };
+    return { code: "audio-to-control", message: "Audio can't turn a knob" };
   }
-  return {
-    code: "kind-mismatch",
-    message: `Can't patch ${from} into ${to}`,
+  const message: Record<PortKind, string> = {
+    audio: "Only sound goes in here",
+    control: "Only a control cable turns this knob",
+    midi: "Only MIDI goes in here",
+    sidechain: "Only audio can key this effect",
   };
+  return { code: "kind-mismatch", message: message[to] };
 }
 
 /** Whether an output of kind `from` may feed an input of kind `to`. */
 export function kindsPatch(from: PortKind, to: PortKind): boolean {
   return kindIssue(from, to) === null;
 }
+
+/**
+ * A cable's end that no port of its node could ever take, said plainly: a
+ * source makes its own sound, and the sound ends at an output. Checked
+ * before the port lookup, so these read better than "missing port".
+ */
+function endIssue(
+  source: GraphNode,
+  target: GraphNode,
+  targetHandle: string
+): { code: IssueCode; message: string } | null {
+  const into = definitionOf(target);
+  const kind = parseHandleId(targetHandle)?.kind;
+  if (into.source && (kind === "audio" || kind === "sidechain")) {
+    return {
+      code: "no-audio-in",
+      message: `A ${into.name} makes its own sound and takes no audio in`,
+    };
+  }
+  const outOf = definitionOf(source);
+  if (outOf.category === "output") {
+    return {
+      code: "no-out",
+      message: `The sound ends at ${outOf.name}; it has no output`,
+    };
+  }
+  return null;
+}
+
+/** "A module can't feed itself": the one exception is a Loop's own delay. */
+export const SELF_LOOP_MESSAGE = "A module can't feed itself";
 
 function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
   const source = context.nodes.get(edge.source);
@@ -281,6 +319,15 @@ function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
   const to = resolvePort(target, edge.targetHandle, "in");
   if (from === "bad-handle" || to === "bad-handle") {
     edgeIssue(context, edge, "bad-handle", "Cable has a malformed port id");
+    return null;
+  }
+  if (source === target && source.type !== "loop") {
+    edgeIssue(context, edge, "self-loop", SELF_LOOP_MESSAGE);
+    return null;
+  }
+  const end = endIssue(source, target, edge.targetHandle);
+  if (end) {
+    edgeIssue(context, edge, end.code, end.message);
     return null;
   }
   if (from === "unknown-port" || to === "unknown-port") {
@@ -307,8 +354,22 @@ function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
   return { edge, from, to };
 }
 
-function checkEdges(context: Context): WiredEdge[] {
+function fullMessage(port: NodePort): string {
+  const side = port.direction === "in" ? "input" : "output";
+  return port.max === 1
+    ? `This ${side} takes one cable`
+    : `This ${side} is full (${port.max} cables)`;
+}
+
+/** Cables past the port checks, and the ones refused only for a full port. */
+type CheckedEdges = {
+  wired: WiredEdge[];
+  full: { wire: WiredEdge; port: NodePort }[];
+};
+
+function checkEdges(context: Context): CheckedEdges {
   const wired: WiredEdge[] = [];
+  const full: CheckedEdges["full"] = [];
   const cables = new Set<string>();
   const portCounts = new Map<string, number>();
   for (const edge of context.graph.edges) {
@@ -318,30 +379,20 @@ function checkEdges(context: Context): WiredEdge[] {
     }
     const cable = `${edge.source}\u0000${edge.sourceHandle}\u0000${edge.target}\u0000${edge.targetHandle}`;
     if (cables.has(cable)) {
-      edgeIssue(
-        context,
-        edge,
-        "duplicate-edge",
-        "These ports are already connected"
-      );
+      edgeIssue(context, edge, "duplicate-edge", "These are already connected");
       continue;
     }
     const ends = [
       { key: `${edge.source}\u0000${edge.sourceHandle}`, port: result.from },
       { key: `${edge.target}\u0000${edge.targetHandle}`, port: result.to },
     ];
-    const full = ends.find(
+    const filled = ends.find(
       ({ key, port }) => (portCounts.get(key) ?? 0) >= port.max
     );
-    if (full) {
-      edgeIssue(
-        context,
-        edge,
-        "port-max",
-        full.port.max === 1
-          ? "Only one cable fits this port"
-          : `Only ${full.port.max} cables fit this port`
-      );
+    if (filled) {
+      // Flagged after the feedback check, which has the truer reason when
+      // the cable would also close a loop.
+      full.push({ port: filled.port, wire: result });
       continue;
     }
     cables.add(cable);
@@ -350,7 +401,7 @@ function checkEdges(context: Context): WiredEdge[] {
     }
     wired.push(result);
   }
-  return wired;
+  return { full, wired };
 }
 
 type TarjanFrame = { id: string; next: number };
@@ -461,26 +512,66 @@ export function findCycles(
   return search.cycles;
 }
 
+const FEEDBACK: Record<"audio" | "control", [IssueCode, string]> = {
+  audio: ["feedback-needs-loop", "That would feed the sound back into itself"],
+  control: ["control-cycle", "That would feed the control back into itself"],
+};
+
+/** Whether `to` can already reach `from` along `edges`. */
+function reaches(
+  edges: readonly WiredEdge[],
+  from: string,
+  to: string
+): boolean {
+  const next = new Map<string, string[]>();
+  for (const { edge } of edges) {
+    next.set(edge.source, [...(next.get(edge.source) ?? []), edge.target]);
+  }
+  const seen = new Set([to]);
+  const queue = [to];
+  for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+    if (id === from) {
+      return true;
+    }
+    for (const target of next.get(id) ?? []) {
+      if (!seen.has(target)) {
+        seen.add(target);
+        queue.push(target);
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Refuses cables until no illegal cycle is left. An audio cycle is legal only
  * when every loop in it passes through a Loop node, whose delay makes it
- * audible; control cycles are never legal. Each round flags the last cable of
- * every remaining cycle, which is the one a drag just added, and repeats in
- * case one strongly connected component held several independent cycles.
+ * audible (Loop ships later, so for now any feedback is refused); control
+ * cycles are never legal. Each round flags the last cable of every remaining
+ * cycle, which is the one a drag just added, and repeats in case one
+ * strongly connected component held several independent cycles. A cable
+ * into a full port that would also close a loop says so, since freeing the
+ * port wouldn't help; the rest say the port is full.
  */
-function checkCycles(context: Context, wired: WiredEdge[]): WiredEdge[] {
+function checkCycles(
+  context: Context,
+  { wired, full }: CheckedEdges
+): WiredEdge[] {
   const rejected = new Set<WiredEdge>();
   const nodeIds = context.graph.nodes.map((node) => node.id);
   const isLoop = (id: string) => context.nodes.get(id)?.type === "loop";
-  for (const kind of ["audio", "control"] as const) {
-    let remaining = wired.filter(
-      ({ edge, from, to }) =>
-        // A key cable taps its lane before the FX, so it closes no cycle.
-        from.kind === kind &&
-        to.kind === kind &&
-        // Taking the Loop nodes out leaves exactly the delay-free cycles.
-        !(kind === "audio" && (isLoop(edge.source) || isLoop(edge.target)))
+  // A key cable taps its lane before the FX, so it closes no cycle; taking
+  // the Loop nodes out leaves exactly the delay-free cycles.
+  const inCycles = (kind: "audio" | "control") => (wire: WiredEdge) =>
+    wire.from.kind === kind &&
+    wire.to.kind === kind &&
+    !(
+      kind === "audio" &&
+      (isLoop(wire.edge.source) || isLoop(wire.edge.target))
     );
+  for (const kind of ["audio", "control"] as const) {
+    const [code, message] = FEEDBACK[kind];
+    let remaining = wired.filter(inCycles(kind));
     let cycles = findCycles(
       nodeIds,
       remaining.map(({ edge }) => edge)
@@ -497,21 +588,7 @@ function checkCycles(context: Context, wired: WiredEdge[]): WiredEdge[] {
           continue;
         }
         rejected.add(closing);
-        if (kind === "audio") {
-          edgeIssue(
-            context,
-            closing.edge,
-            "feedback-needs-loop",
-            "Feedback needs a Loop"
-          );
-        } else {
-          edgeIssue(
-            context,
-            closing.edge,
-            "control-cycle",
-            "Control can't feed back into itself"
-          );
-        }
+        edgeIssue(context, closing.edge, code, message);
       }
       remaining = remaining.filter((wire) => !rejected.has(wire));
       cycles = findCycles(
@@ -520,7 +597,22 @@ function checkCycles(context: Context, wired: WiredEdge[]): WiredEdge[] {
       );
     }
   }
-  return wired.filter((wire) => !rejected.has(wire));
+  const kept = wired.filter((wire) => !rejected.has(wire));
+  for (const { wire, port } of full) {
+    const kind = (["audio", "control"] as const).find((entry) =>
+      inCycles(entry)(wire)
+    );
+    if (
+      kind &&
+      reaches(kept.filter(inCycles(kind)), wire.edge.source, wire.edge.target)
+    ) {
+      const [code, message] = FEEDBACK[kind];
+      edgeIssue(context, wire.edge, code, message);
+    } else {
+      edgeIssue(context, wire.edge, "port-max", fullMessage(port));
+    }
+  }
+  return kept;
 }
 
 /** undefined: not fed by any source; string: that source's lane; null: a bus. */
@@ -997,7 +1089,7 @@ function candidateEdgeId(graph: ValidatableGraph): string {
 
 /**
  * The problems a new cable would introduce; empty means it may connect.
- * Backs React Flow's isValidConnection and the keyboard Connect… dialog.
+ * Ask `connectionVerdict` instead, which picks the one to show.
  */
 export function validateConnection(
   graph: ValidatableGraph,
@@ -1037,17 +1129,34 @@ export function validateConnection(
   );
 }
 
+/** Whether a cable may connect, and if not, why, as a toast says it. */
+export type Verdict =
+  | { ok: true }
+  | { ok: false; code: IssueCode; message: string };
+
+/** Why a cable dragged from an output can't end on another output. */
+export const SAME_SIDE_MESSAGE = "A cable runs from an output to an input";
+
 /**
- * Why a cable can't connect, as a toast says it; null when it can. The
- * cable's own problem comes first, then what it would break elsewhere,
- * e.g. a Merge that would sum two stations.
+ * The one answer to "may this cable connect?": the canvas, a drop on a
+ * node, the Connect… dialog, the palette and cable surgery all ask here.
+ * The cable's own problem comes first, then what it would break elsewhere,
+ * e.g. a Merge that would sum two stations. Two outputs or two inputs are
+ * refused before any validation, so a drag can ask about every port.
  */
-export function connectionRefusal(
+export function connectionVerdict(
   graph: ValidatableGraph,
   connection: Connection,
   options?: ValidateOptions
-): string | null {
+): Verdict {
+  const source = parseHandleId(connection.sourceHandle);
+  const target = parseHandleId(connection.targetHandle);
+  if (source?.direction === "in" || target?.direction === "out") {
+    return { code: "bad-handle", message: SAME_SIDE_MESSAGE, ok: false };
+  }
   const issues = validateConnection(graph, connection, options);
-  const own = issues.find((issue) => issue.target === "edge");
-  return (own ?? issues[0])?.message ?? null;
+  const refusal = issues.find((issue) => issue.target === "edge") ?? issues[0];
+  return refusal
+    ? { code: refusal.code, message: refusal.message, ok: false }
+    : { ok: true };
 }

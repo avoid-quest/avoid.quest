@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
@@ -41,22 +41,26 @@ import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { BranchEdge } from "./branch-edge";
 import { useCableSurgeryShortcuts } from "./cable-surgery";
+import {
+  canConnect,
+  clearConnectionHints,
+  startConnectionHints,
+} from "./connection-hints";
 import { EffectNode } from "./effect-node";
 import {
+  ConnectionMode,
   type FlowConnection,
   type FlowConnectionEnd,
+  type FlowConnectStart,
   type FlowEdge,
   type FlowEdgeChange,
   type FlowEdgeTypes,
   type FlowNodeChange,
   type FlowNodeTypes,
   type FlowViewport,
-  Handle,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
-  useUpdateNodeInternals,
 } from "./flow-adapter";
 import {
   DRAWN_NODE_TYPES,
@@ -69,13 +73,13 @@ import {
 } from "./flow-elements";
 import { KeyEdge } from "./key-edge";
 import { MergeNode } from "./merge-node";
-import { type FlowPorts, FlowPortsProvider } from "./module-frame";
 import { NativeStripNode } from "./native-strip-nodes";
 import {
   isCanvasKey,
   isShortcutIgnored,
   type PaletteRequest,
 } from "./node-palette";
+import { FlowPortsRoot } from "./node-port";
 import { SpeakersNode } from "./speakers-node";
 import { SplitNode } from "./split-nodes";
 import { StationNode } from "./station-node";
@@ -423,8 +427,10 @@ function Canvas({
     }
   };
 
+  // The drag's verdicts, taken when it started; React Flow asks on every
+  // pointer move near a port.
   const isValidConnection = (connection: FlowConnection | FlowEdge) =>
-    validateConnection(
+    canConnect(
       graph,
       {
         source: connection.source,
@@ -433,7 +439,22 @@ function Canvas({
         targetHandle: connection.targetHandle,
       },
       validateOptions
-    ).length === 0;
+    );
+
+  // Every port's verdict on the cable, once per drag: ports light up or
+  // lock by it until the drag ends.
+  const handleConnectStart: FlowConnectStart = (
+    _event,
+    { handleId, handleType, nodeId }
+  ) => {
+    if (handleId && handleType && nodeId) {
+      startConnectionHints(
+        graph,
+        { handle: handleId, node: nodeId, type: handleType },
+        validateOptions
+      );
+    }
+  };
 
   const handleConnect = (connection: Connection) => {
     commitNodeGraph(
@@ -454,25 +475,14 @@ function Canvas({
   };
 
   // Let go on a port, that port decides; on the body, the one port that
-  // fits. A refusal says why, e.g. a Merge that would sum two stations, or
-  // a lane's second key.
+  // fits. A refusal says why in one toast, e.g. a Merge that would sum two
+  // stations, a lane's second key, or a locked port's own reason.
   const dropOnto = (
-    connection: FlowConnectionEnd,
     from: PaletteFrom,
-    onNode: string
+    onNode: string,
+    onPort: string | null
   ) => {
-    const { toHandle, toNode } = connection;
-    const onPort =
-      toHandle?.id && toNode && toHandle.type !== from.type
-        ? { handle: toHandle.id, node: toNode.id }
-        : null;
-    const outcome = dropOnNode(
-      graph,
-      from,
-      onPort?.node ?? onNode,
-      onPort?.handle ?? null,
-      validateOptions
-    );
+    const outcome = dropOnNode(graph, from, onNode, onPort, validateOptions);
     if ("connect" in outcome) {
       handleConnect(outcome.connect);
     } else if (outcome.refuse) {
@@ -480,16 +490,16 @@ function Canvas({
     }
   };
 
-  // A cable dropped on a node connects when exactly one of its ports fits;
-  // dropped on empty space, it opens the palette narrowed to what fits.
+  // A cable dropped on a node connects when exactly one of its ports fits,
+  // and one refused by a port or a node says why; dropped on empty space,
+  // it opens the palette narrowed to what fits.
   const handleConnectEnd = (
     event: MouseEvent | TouchEvent,
     connection: FlowConnectionEnd
   ) => {
-    const { fromHandle, fromNode } = connection;
-    const pointer = pointerOf(event);
-    const dropTarget = dropTargetOf(event, pointer);
-    if (connection.isValid || !(fromHandle?.id && fromNode && dropTarget)) {
+    clearConnectionHints();
+    const { fromHandle, fromNode, toHandle, toNode } = connection;
+    if (connection.isValid || !(fromHandle?.id && fromNode)) {
       return;
     }
     const from: PaletteFrom = {
@@ -497,15 +507,30 @@ function Canvas({
       node: fromNode.id,
       type: fromHandle.type,
     };
-    const onNode = dropTarget
-      .closest(".react-flow__node")
-      ?.getAttribute("data-id");
+    const pointer = pointerOf(event);
+    const dropTarget = dropTargetOf(event, pointer);
+    // The port let go on, or the one React Flow snapped to within reach.
+    const portElement = dropTarget?.closest(".react-flow__handle");
+    const port =
+      toHandle?.id && toNode && toHandle.type !== from.type
+        ? { handle: toHandle.id, node: toNode.id }
+        : {
+            handle: portElement?.getAttribute("data-handleid") ?? null,
+            node: portElement?.getAttribute("data-nodeid") ?? null,
+          };
+    if (port.node === from.node && port.handle === from.handle) {
+      // Let go where it started: nothing to explain.
+      return;
+    }
+    const onNode =
+      port.node ??
+      dropTarget?.closest(".react-flow__node")?.getAttribute("data-id");
     if (onNode) {
-      dropOnto(connection, from, onNode);
+      dropOnto(from, onNode, port.handle);
       return;
     }
     if (
-      !dropTarget.closest(".react-flow__pane") ||
+      !dropTarget?.closest(".react-flow__pane") ||
       paletteEntries(graph, { ...validateOptions, from }).length === 0
     ) {
       return;
@@ -724,6 +749,7 @@ function Canvas({
     >
       <ReactFlow
         ariaLabelConfig={NODE_ARIA_LABELS}
+        connectionMode={ConnectionMode.Strict}
         connectionRadius={24}
         defaultViewport={initialViewport}
         deleteKeyCode={null}
@@ -738,6 +764,7 @@ function Canvas({
         nodeTypes={nodeTypes}
         onConnect={handleConnect}
         onConnectEnd={handleConnectEnd}
+        onConnectStart={handleConnectStart}
         onDoubleClick={handleDoubleClick}
         onEdgesChange={handleEdgesChange}
         onMoveEnd={handleMoveEnd}
@@ -750,13 +777,6 @@ function Canvas({
       />
     </div>
   );
-}
-
-/** What node ports draw with; only the canvas chunk loads React Flow. */
-function FlowPortsRoot({ children }: { children: ReactNode }) {
-  const updateNodeInternals = useUpdateNodeInternals();
-  const ports: FlowPorts = { Handle, Position, updateNodeInternals };
-  return <FlowPortsProvider value={ports}>{children}</FlowPortsProvider>;
 }
 
 /** The patch canvas. Lives in its own client chunk with React Flow. */

@@ -45,10 +45,10 @@ import {
 } from "./templates";
 import {
   type Connection,
+  connectionVerdict,
   type Issue,
   parseHandleId,
   type ValidateOptions,
-  validateConnection,
 } from "./validate";
 
 type StationNode = Extract<GraphNode, { type: "station" }>;
@@ -462,14 +462,6 @@ export type GraphEdit =
   | { ok: true; graph: NodeGraph }
   | { ok: false; message: string };
 
-/** A cable's own problem first, then what it would break elsewhere. */
-function firstMessage(issues: readonly Issue[]): string | null {
-  return (
-    (issues.find((issue) => issue.target === "edge") ?? issues[0])?.message ??
-    null
-  );
-}
-
 function issueKey(issue: Issue): string {
   return `${issue.code}\u0000${issue.target}\u0000${issue.id}`;
 }
@@ -498,7 +490,7 @@ function withCleanCable(
   cable: GraphEdge,
   options?: ValidateOptions
 ): NodeGraph {
-  if (validateConnection(graph, cable, options).length > 0) {
+  if (!connectionVerdict(graph, cable, options).ok) {
     return graph;
   }
   const next = { ...graph, edges: [...graph.edges, cable] };
@@ -551,9 +543,9 @@ export function insertNodeOnEdge(
       targetHandle: portHandleId(input),
     };
     const cut = { ...graph, edges: others };
-    const upIssues = validateConnection(cut, upstream, options);
-    if (upIssues.length > 0) {
-      refusal ??= firstMessage(upIssues);
+    const up = connectionVerdict(cut, upstream, options);
+    if (!up.ok) {
+      refusal ??= up.message;
       continue;
     }
     const withUpstream = {
@@ -570,9 +562,9 @@ export function insertNodeOnEdge(
         target: edge.target,
         targetHandle: edge.targetHandle,
       };
-      const downIssues = validateConnection(withUpstream, downstream, options);
-      if (downIssues.length > 0) {
-        refusal ??= firstMessage(downIssues);
+      const down = connectionVerdict(withUpstream, downstream, options);
+      if (!down.ok) {
+        refusal ??= down.message;
         continue;
       }
       const edges = [...withUpstream.edges];

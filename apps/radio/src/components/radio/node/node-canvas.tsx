@@ -459,6 +459,7 @@ function Canvas({
     if (dropped.size > 0) {
       const aimed: InsertTarget | null = insertTargetRef.current;
       const insert =
+        // biome-ignore lint/suspicious/noUnnecessaryConditions: pointer handlers mutate this ref between React Flow events
         !insertionCanceledRef.current && aimed && dropped.has(aimed.node)
           ? aimed
           : null;

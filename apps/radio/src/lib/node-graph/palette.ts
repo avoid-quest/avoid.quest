@@ -62,7 +62,6 @@ import {
   type NodeTemplateId,
   type NodeTemplateSources,
   SPEAKERS_NODE_ID,
-  stationNodeId,
 } from "./templates";
 import {
   type Connection,

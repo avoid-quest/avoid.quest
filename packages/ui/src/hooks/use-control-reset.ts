@@ -42,8 +42,8 @@ export function useControlReset(reset: (() => void) | undefined) {
       return;
     }
     const previous = lastTap.current;
-    lastTap.current = null;
     if (
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: the previous pointerup records this ref for a later touch event
       previous &&
       event.timeStamp - previous.time <= TAP_INTERVAL_MS &&
       Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <=
@@ -52,6 +52,7 @@ export function useControlReset(reset: (() => void) | undefined) {
       consume(event);
       return;
     }
+    lastTap.current = null;
     activeTap.current = {
       pointerId: event.pointerId,
       time: event.timeStamp,

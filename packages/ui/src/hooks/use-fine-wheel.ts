@@ -124,12 +124,9 @@ export function useFineWheel<T extends HTMLElement>({
 
   useEffect(() => {
     const element = elementRef.current;
-    if (!element) {
-      return;
-    }
     // React's delegated wheel listener is passive; a local listener can stop page scrolling.
-    element.addEventListener("wheel", handleWheel, { passive: false });
-    return () => element.removeEventListener("wheel", handleWheel);
+    element?.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element?.removeEventListener("wheel", handleWheel);
   }, []);
 
   // Read this in input handlers, not while rendering.

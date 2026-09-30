@@ -424,7 +424,7 @@ function createNodePlayback(
     }
     const ownership = beginChannelStart(channelId);
     try {
-      const started = await setChannelPlaying(
+      const starting = setChannelPlaying(
         channelId,
         true,
         ownership.revision,
@@ -432,7 +432,12 @@ function createNodePlayback(
           ownership.cancellation === null &&
           channelStartRevisions.get(channelId) === ownership.revision
       );
+      // The play call builds the sound's nodes and requests the stream
+      // synchronously; write the strip now, before any audio reaches them.
+      applyLaneStrip(channelId);
+      const started = await starting;
       if (started && ownership.cancellation === null) {
+        // Again once it plays, for nodes the start built later.
         applyLaneStrip(channelId);
       }
     } finally {
@@ -669,6 +674,12 @@ function createNodePlayback(
       draft.graph = graph;
       draft.channels = deriveNodeChannels(next, previousChannels);
     });
+    // Undo and template loads change volumes too; mute restores the latest.
+    for (const [laneId, lane] of next.lanes) {
+      if (lane.volume > 0) {
+        unmutedVolumes.set(laneId, lane.volume);
+      }
+    }
     const ops = diff(plan, next);
     plan = next;
     try {
@@ -796,6 +807,19 @@ function createNodePlayback(
       }
     },
     async deactivate() {
+      // A commit still queued in this tick's batch would be dropped once
+      // listening stops; persist it so the next activation loads it.
+      const pendingGraph = store.state.graph;
+      if (active && pendingGraph && pendingGraph !== observedGraph) {
+        const previousChannels = getPlaybackSession("node")?.channels ?? [];
+        updatePlaybackSession("node", (draft) => {
+          draft.graph = pendingGraph;
+          draft.channels = deriveNodeChannels(
+            compile(pendingGraph, getEnv()),
+            previousChannels
+          );
+        });
+      }
       stopListening();
       epoch += 1;
       settlingLanes.clear();

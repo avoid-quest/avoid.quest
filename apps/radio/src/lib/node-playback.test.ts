@@ -529,6 +529,22 @@ describe("Node Playback", () => {
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
   });
 
+  test("keeps a commit queued in the same tick as deactivation", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+
+    commitNodeGraph(() => patch([station("a"), station("b")]), harness.store);
+    await harness.playback.deactivate();
+
+    expect(
+      getPlaybackSession("node")?.graph?.nodes.map((node) => node.id)
+    ).toEqual(["a", "b", "speakers"]);
+    expect(
+      getPlaybackSession("node")?.channels.map((channel) => channel.id)
+    ).toEqual([channelOf("a"), channelOf("b")]);
+  });
+
   test("ignores store commits once deactivated", async () => {
     insertNodeSession(patch([station("a")]));
     const harness = createHarness();
@@ -571,6 +587,20 @@ describe("Node Playback volume and mute", () => {
     expect(getPlaybackSession("node")?.masterVolume).toBe(0);
     harness.playback.toggleMasterMute();
     expect(getPlaybackSession("node")?.masterVolume).toBe(0.8);
+  });
+
+  test("unmuting a zero volume restores the latest volume a commit set", async () => {
+    insertNodeSession(patch([station("a", { volume: 0.35 })]));
+    const harness = createHarness();
+    await harness.playback.activate();
+
+    await commit(harness, withStation("a", { volume: 0.7 }));
+    harness.playback.setVolume("a", 0);
+    await harness.playback.whenSettled();
+    harness.playback.toggleMute("a");
+    await harness.playback.whenSettled();
+
+    expect(stationData(harness.store, "a")?.volume).toBe(0.7);
   });
 
   test("restores a positive Station volume when persisted state starts at zero", async () => {
@@ -1375,6 +1405,26 @@ describe("Node Playback native strip", () => {
       expect.objectContaining({ enabled: false })
     );
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
+  });
+
+  test("the strip reaches a starting sound before its stream plays", async () => {
+    insertNodeSession(strip(0.5, true));
+    const harness = createHarness();
+    const { releases } = heldStarts(harness.context);
+    await harness.playback.activate();
+
+    const start = harness.playback.setPlaying("a", true);
+
+    expect(harness.context.audio.setPan).toHaveBeenCalledWith(
+      soundOf("a"),
+      0.5
+    );
+    expect(harness.context.audio.updateFilter).toHaveBeenCalledWith(
+      soundOf("a"),
+      expect.objectContaining({ enabled: true, type: "lowpass" })
+    );
+    releases[0]?.();
+    await start;
   });
 
   test("a strip change made while paused applies when the Station resumes", async () => {

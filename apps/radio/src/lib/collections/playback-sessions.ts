@@ -476,11 +476,10 @@ export function prepareNodeSessionGraph(
   graph: NodeGraph,
   masterVolume?: number
 ): PlaybackSessionRecord {
-  const nextGraph = graph;
   const session = playbackSessionsCollection.state.get("node");
   if (!session) {
     return playbackSessionsCollection.validateData(
-      buildNodeSessionFromGraph(nextGraph, masterVolume),
+      buildNodeSessionFromGraph(graph, masterVolume),
       "insert"
     );
   }
@@ -497,7 +496,7 @@ export function prepareNodeSessionGraph(
         ? session.activeChannelId
         : null,
       channels,
-      graph: nextGraph,
+      graph,
       masterVolume: masterVolume ?? session.masterVolume,
     },
     "insert"
@@ -507,7 +506,8 @@ export function prepareNodeSessionGraph(
 /**
  * Writes `graph` as the node session's patch, with its derived lane
  * channels, in one update, or inserts the session when there is none.
- * Stale session Stations are emptied first. Returns the graph written.
+ * Session-only sources are registered in this tab. A newer stored patch is
+ * left untouched unless an explicit backup import replaces it.
  */
 export function writeNodeSessionGraph(
   graph: NodeGraph,

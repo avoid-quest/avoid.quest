@@ -156,21 +156,15 @@ export function buildNodeSessionFromMultipleRecord(
 }
 
 /**
- * Keeps a radio that is saved, or a session radio still in this tab's
- * sessionStorage (the test Multiple's prune used).
+ * Keeps a radio that is among `saved`, or a session radio still among
+ * `session`, this tab's sessionStorage (the test Multiple's prune used).
  */
-function createKeptRadioTest({
-  radios,
-  sessionRadios,
-}: Pick<MultipleToNodeCollections, "radios" | "sessionRadios">): (
-  radio: Radio
-) => boolean {
-  const savedIds = new Set(
-    [...radios.state.values()].map((radio) => String(radio.id))
-  );
-  const sessionIds = new Set(
-    [...sessionRadios.state.values()].map((radio) => String(radio.id))
-  );
+export function createKeptRadioTest(
+  saved: Iterable<Pick<Radio, "id">>,
+  session: Iterable<Pick<Radio, "id">>
+): (radio: Radio) => boolean {
+  const savedIds = new Set(Array.from(saved, (radio) => String(radio.id)));
+  const sessionIds = new Set(Array.from(session, (radio) => String(radio.id)));
   return (radio) => {
     if (radio.id === undefined) {
       return false;
@@ -237,7 +231,10 @@ export function migrateMultipleSession(
       sessions.insert(
         buildNodeSessionFromMultipleRecord(
           multiple,
-          createKeptRadioTest(collections)
+          createKeptRadioTest(
+            collections.radios.state.values(),
+            collections.sessionRadios.state.values()
+          )
         )
       );
     } catch (error) {

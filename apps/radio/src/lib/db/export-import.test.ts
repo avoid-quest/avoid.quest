@@ -1,11 +1,35 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Radio } from "@/lib/audio";
 import {
+  createDefaultChannel,
+  getMultipleChannelId,
+  getPlaybackSession,
   getSettings,
+  playbackSessionsCollection,
   radiosCollection,
+  sessionRadiosCollection,
   settingsCollection,
 } from "@/lib/collections";
+import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import {
+  loadNodeGraph,
+  nodeStore,
+  undoNodeGraph,
+} from "@/lib/node-graph/node-store";
+import {
+  type NodeGraph,
+  type NodeGraphInput,
+  nodeGraphSchema,
+} from "@/lib/node-graph/schema";
+import {
+  buildNodeGraphFromTemplate,
+  buildNodeSessionFromGraph,
+} from "@/lib/node-graph/templates";
+import type { DatabaseExport } from "@/lib/types";
+import {
+  createDatabaseExport,
   mergeImportedData,
+  parseImportData,
   previewImportChanges,
   replaceImportedData,
   validateImportData,
@@ -13,29 +37,108 @@ import {
 
 const SETTINGS_ID = "app-settings";
 
-async function resetSettings() {
-  await settingsCollection.stateWhenReady();
-
-  for (const settingsId of Array.from(settingsCollection.state.keys())) {
-    settingsCollection.delete(settingsId);
+async function resetCollections() {
+  await Promise.all([
+    playbackSessionsCollection.stateWhenReady(),
+    radiosCollection.stateWhenReady(),
+    sessionRadiosCollection.stateWhenReady(),
+    settingsCollection.stateWhenReady(),
+  ]);
+  for (const collection of [
+    playbackSessionsCollection,
+    radiosCollection,
+    sessionRadiosCollection,
+    settingsCollection,
+  ] as const) {
+    for (const key of Array.from(collection.state.keys())) {
+      collection.delete(key as never);
+    }
   }
+  loadNodeGraph(null);
 }
 
-async function resetRadios() {
-  await radiosCollection.stateWhenReady();
+beforeEach(resetCollections);
 
-  for (const radioId of Array.from(radiosCollection.state.keys())) {
-    radiosCollection.delete(radioId);
-  }
+afterEach(resetCollections);
+
+const position = { x: 0, y: 0 };
+const INVALID_PATCH = /Invalid patch/;
+const NEEDS_LOOP = /Feedback needs a Loop/;
+const NEWER_VERSION = /newer version/;
+
+function stationRadio(id: string): Radio {
+  return {
+    id,
+    name: id.toUpperCase(),
+    streamUrl: `https://radio.example/${id}.mp3`,
+  };
 }
 
-beforeEach(async () => {
-  await Promise.all([resetSettings(), resetRadios()]);
-});
+function saveRadio(station: Radio, order = 0) {
+  radiosCollection.insert({
+    ...station,
+    enabled: true,
+    id: String(station.id),
+    order,
+  });
+}
 
-afterEach(async () => {
-  await Promise.all([resetSettings(), resetRadios()]);
-});
+type NodeInput = NodeGraphInput["nodes"][number];
+
+function stationInput(id: string): NodeInput {
+  return {
+    data: { radio: stationRadio(id) },
+    id: `src-${id}`,
+    position,
+    type: "station",
+  };
+}
+
+const speakersInput: NodeInput = {
+  data: { muted: false },
+  id: "speakers",
+  position,
+  type: "speakers",
+};
+
+function cable(
+  source: string,
+  target: string,
+  { id = `${source}->${target}`, targetHandle = "in:audio:main" } = {}
+) {
+  return {
+    id,
+    source,
+    sourceHandle: "out:audio:main",
+    target,
+    targetHandle,
+  };
+}
+
+/** A backup as a file holds it, with fields the app types do not allow. */
+function rawBackup(fields: Record<string, unknown>): DatabaseExport {
+  return {
+    exportDate: "2026-09-30T00:00:00.000Z",
+    radios: [],
+    settings: { player: { mode: "single" } },
+    version: 2,
+    ...fields,
+  } as DatabaseExport;
+}
+
+/** A saved station, Node mode, and a stored Start from Multiple patch. */
+function seedLocalPatch(): NodeGraph {
+  saveRadio(stationRadio("kexp"));
+  settingsCollection.insert({
+    id: SETTINGS_ID,
+    player: { mode: "single", restoreStateOnLoad: true },
+  });
+  const graph = buildNodeGraphFromTemplate("start-from-multiple", {
+    saved: [...radiosCollection.state.values()] as Radio[],
+  });
+  playbackSessionsCollection.insert(buildNodeSessionFromGraph(graph));
+  return graph;
+}
 
 describe("validateImportData", () => {
   test("accepts version 1 exports and drops legacy player fields", () => {
@@ -60,6 +163,17 @@ describe("validateImportData", () => {
     });
     expect("playerType" in imported.settings.player).toBe(false);
     expect("single" in imported.settings.player).toBe(false);
+  });
+
+  test.each([
+    ["multiple", "node"],
+    ["party", "single"],
+  ])("normalises the legacy or unknown mode %s to %s", (mode, expected) => {
+    const imported = validateImportData(
+      rawBackup({ settings: { player: { mode } } })
+    );
+
+    expect(imported.settings.player.mode).toBe(expected as "node" | "single");
   });
 
   test("preserves omitted restoreStateOnLoad so merge imports can keep local value", () => {
@@ -167,7 +281,7 @@ describe("mergeImportedData", () => {
     });
   });
 
-  test("does not overwrite mode when the import omits it", async () => {
+  test("keeps the stored mode, normalised, when the import omits it", async () => {
     await settingsCollection.stateWhenReady();
 
     settingsCollection.insert({
@@ -192,7 +306,7 @@ describe("mergeImportedData", () => {
     );
 
     expect(getSettings()?.player).toEqual({
-      mode: "multiple",
+      mode: "node",
       restoreStateOnLoad: false,
     });
   });
@@ -314,5 +428,240 @@ describe("stream format imports", () => {
         version: 2,
       })
     ).toMatchObject({ unchangedRadios: 0, updatedRadios: 1 });
+  });
+});
+
+describe("Node patch backups", () => {
+  const multipleSession = {
+    activeChannelId: null,
+    channels: [
+      {
+        ...createDefaultChannel(
+          getMultipleChannelId(stationRadio("nts")),
+          "multiple",
+          1
+        ),
+        muted: true,
+        radio: stationRadio("nts"),
+        volume: 0.4,
+      },
+      {
+        ...createDefaultChannel(
+          getMultipleChannelId(stationRadio("kexp")),
+          "multiple",
+          0
+        ),
+        radio: stationRadio("kexp"),
+        volume: 0.8,
+      },
+      // Neither in the backup nor saved here.
+      {
+        ...createDefaultChannel(
+          getMultipleChannelId(stationRadio("gone")),
+          "multiple",
+          2
+        ),
+        radio: stationRadio("gone"),
+      },
+    ],
+    id: "multiple",
+    masterVolume: 0.5,
+  };
+
+  test.each([
+    ["merge", mergeImportedData],
+    ["replace", replaceImportedData],
+  ])(
+    "%s imports a Multiple backup as Node with an equivalent patch",
+    (_label, apply) => {
+      settingsCollection.insert({
+        id: SETTINGS_ID,
+        player: { mode: "single", restoreStateOnLoad: true },
+      });
+
+      apply(
+        validateImportData(
+          rawBackup({
+            radios: [stationRadio("kexp"), stationRadio("nts")],
+            sessions: { multiple: multipleSession },
+            settings: { player: { mode: "multiple" } },
+          })
+        )
+      );
+
+      expect(getSettings()?.player.mode).toBe("node");
+      const session = getPlaybackSession("node");
+      const stations = session?.graph?.nodes.flatMap((node) =>
+        node.type === "station" ? [node] : []
+      );
+      // Multiple's order, volumes and mutes, each Station wired to Speakers.
+      expect(
+        stations?.map((node) => [node.id, node.data.volume, node.data.muted])
+      ).toEqual([
+        ["src-kexp", 0.8, false],
+        ["src-nts", 0.4, true],
+      ]);
+      expect(
+        session?.graph?.edges.map((edge) => `${edge.source}->${edge.target}`)
+      ).toEqual(["src-kexp->speakers", "src-nts->speakers"]);
+      expect(session?.channels.map((channel) => channel.id)).toEqual([
+        "n:src-kexp",
+        "n:src-nts",
+      ]);
+      expect(playbackSessionsCollection.state.has("multiple")).toBe(false);
+    }
+  );
+
+  test("an exported patch round-trips, FX and viewport included", () => {
+    saveRadio(stationRadio("kexp"), 0);
+    saveRadio(stationRadio("nts"), 1);
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: { mode: "node", restoreStateOnLoad: true },
+    });
+    const authored = nodeGraphSchema.parse({
+      edges: [
+        cable("src-kexp", "room"),
+        cable("room", "speakers"),
+        { ...cable("src-nts", "speakers"), gain: 0.5, muted: true },
+      ],
+      nodes: [
+        stationInput("kexp"),
+        stationInput("nts"),
+        {
+          data: { effect: createNodeEffectConfig("cheapReverb", "room") },
+          id: "room",
+          position: { x: 240, y: 0 },
+          type: "cheapReverb",
+        },
+        speakersInput,
+      ],
+      version: 1,
+      viewport: { x: 12, y: -8, zoom: 0.75 },
+    } satisfies NodeGraphInput);
+    playbackSessionsCollection.insert(buildNodeSessionFromGraph(authored));
+    const graph = getPlaybackSession("node")?.graph;
+    const json = JSON.stringify(createDatabaseExport());
+
+    // The patch moves on after the backup.
+    playbackSessionsCollection.delete("node");
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromGraph(buildNodeGraphFromTemplate("blank"))
+    );
+    replaceImportedData(parseImportData(json));
+
+    expect(graph?.nodes.map((node) => node.id)).toContain("room");
+    expect(getPlaybackSession("node")?.graph).toEqual(graph);
+    expect(
+      getPlaybackSession("node")?.channels.map((channel) => [
+        channel.id,
+        channel.effects.map((effect) => effect.id),
+      ])
+    ).toEqual([
+      ["n:src-kexp", ["room"]],
+      ["n:src-nts", []],
+    ]);
+  });
+
+  test("an import replaces the open patch as one undo step", () => {
+    const local = seedLocalPatch();
+    loadNodeGraph(local);
+    const imported = buildNodeGraphFromTemplate("blank");
+
+    mergeImportedData(rawBackup({ sessions: { node: { graph: imported } } }));
+
+    expect(nodeStore.state.graph).toEqual(imported);
+    expect(getPlaybackSession("node")?.graph).toEqual(imported);
+    expect(undoNodeGraph()).toBe(true);
+    expect(nodeStore.state.graph).toBe(local);
+  });
+
+  const invalidGraphs: [string, unknown, RegExp][] = [
+    [
+      "a cable into a port of an unknown kind",
+      {
+        edges: [cable("src-a", "speakers", { targetHandle: "in:video:main" })],
+        nodes: [stationInput("a"), speakersInput],
+        version: 1,
+      },
+      INVALID_PATCH,
+    ],
+    [
+      "a delay-free cycle",
+      {
+        edges: [
+          cable("src-a", "mix"),
+          cable("mix", "echo"),
+          cable("echo", "speakers"),
+          cable("echo", "mix", { id: "back" }),
+        ],
+        nodes: [
+          stationInput("a"),
+          { data: {}, id: "mix", position, type: "merge" },
+          {
+            data: { effect: createNodeEffectConfig("delay", "echo") },
+            id: "echo",
+            position,
+            type: "delay",
+          },
+          speakersInput,
+        ],
+        version: 1,
+      },
+      NEEDS_LOOP,
+    ],
+    [
+      "a cable to a missing node",
+      {
+        edges: [cable("src-a", "nowhere")],
+        nodes: [stationInput("a"), speakersInput],
+        version: 1,
+      },
+      INVALID_PATCH,
+    ],
+    [
+      "a patch from a newer version",
+      { edges: [], nodes: [speakersInput], version: 2 },
+      NEWER_VERSION,
+    ],
+  ];
+
+  test.each(invalidGraphs)(
+    "refuses %s and changes nothing",
+    (_label, graph, message) => {
+      const local = seedLocalPatch();
+      const backup = rawBackup({
+        radios: [stationRadio("new")],
+        sessions: { node: { graph } },
+        settings: { player: { mode: "dj", restoreStateOnLoad: false } },
+      });
+
+      expect(() => validateImportData(backup)).toThrow(message);
+      expect(() => mergeImportedData(backup)).toThrow(message);
+      expect(() => replaceImportedData(backup)).toThrow(message);
+
+      expect([...radiosCollection.state.keys()]).toEqual(["kexp"]);
+      expect(getSettings()?.player).toEqual({
+        mode: "single",
+        restoreStateOnLoad: true,
+      });
+      expect(getPlaybackSession("node")?.graph).toEqual(local);
+    }
+  );
+
+  test.each([
+    ["sessions that are not an object", { sessions: "node" }],
+    ["a Multiple session without channels", { sessions: { multiple: {} } }],
+  ])("refuses %s", (_label, fields) => {
+    expect(() => validateImportData(rawBackup(fields))).toThrow();
+  });
+
+  test("a backup without a patch leaves the stored one alone", () => {
+    const local = seedLocalPatch();
+
+    mergeImportedData(rawBackup({ settings: { player: { mode: "node" } } }));
+
+    expect(getPlaybackSession("node")?.graph).toEqual(local);
+    expect(getSettings()?.player.mode).toBe("node");
   });
 });

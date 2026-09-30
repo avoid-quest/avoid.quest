@@ -33,7 +33,10 @@ import {
 } from "@/lib/node-graph/schema";
 import { compile } from "@/lib/node-graph/compile";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
-import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
+import {
+  buildNodeSessionFromGraph,
+  buildNodeSessionFromTemplate,
+} from "@/lib/node-graph/templates";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   migrateMultipleSession,
@@ -465,16 +468,11 @@ function upsertSession(session: PlaybackSessionRecord): void {
 }
 
 /**
- * A Station whose session radio left this tab's sessionStorage becomes an
- * empty slot: its cables stay, and recompiling drops its lane.
+ * `graph` with every Station whose session radio left this tab's
+ * sessionStorage emptied into a slot: its cables stay, and compiling drops
+ * its lane. Returns `graph` itself when no Station is stale.
  */
-function pruneStaleNodeSources(): void {
-  const session = playbackSessionsCollection.state.get("node");
-  const graph = session?.graph;
-  if (!graph) {
-    return;
-  }
-
+function emptyStaleNodeSources(graph: NodeGraph): NodeGraph {
   const sessionRadioIds = readStoredSessionRadioIds();
   const isStale = (radio: Radio | null) =>
     isSessionOnlyRadio(radio) && !sessionRadioIds.has(String(radio?.id));
@@ -483,10 +481,9 @@ function pruneStaleNodeSources(): void {
       (node) => node.type === "station" && isStale(node.data.radio as Radio)
     )
   ) {
-    return;
+    return graph;
   }
-
-  const nextGraph = {
+  return {
     ...graph,
     nodes: graph.nodes.map((node) =>
       node.type === "station" && isStale(node.data.radio as Radio)
@@ -494,6 +491,20 @@ function pruneStaleNodeSources(): void {
         : node
     ),
   };
+}
+
+/**
+ * Writes `graph` as the node session's patch, with its derived lane
+ * channels, in one update, or inserts the session when there is none.
+ * Stale session Stations are emptied first. Returns the graph written.
+ */
+export function writeNodeSessionGraph(graph: NodeGraph): NodeGraph {
+  const nextGraph = emptyStaleNodeSources(graph);
+  const session = playbackSessionsCollection.state.get("node");
+  if (!session) {
+    playbackSessionsCollection.insert(buildNodeSessionFromGraph(nextGraph));
+    return nextGraph;
+  }
   const channels = deriveNodeChannels(
     compile(nextGraph, { crossOriginIsolated: false }),
     session.channels
@@ -508,6 +519,15 @@ function pruneStaleNodeSources(): void {
       draft.activeChannelId = null;
     }
   });
+  return nextGraph;
+}
+
+/** Empties the stored patch's Stations whose session radio left this tab. */
+function pruneStaleNodeSources(): void {
+  const graph = playbackSessionsCollection.state.get("node")?.graph;
+  if (graph && emptyStaleNodeSources(graph) !== graph) {
+    writeNodeSessionGraph(graph);
+  }
 }
 
 export const playbackSessionsCollection = createCollection(

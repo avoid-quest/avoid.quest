@@ -4,9 +4,24 @@ import type { Radio } from "@/lib/audio";
 import {
   getSettings,
   radiosCollection,
-  type SettingsRecord,
+  sessionRadiosCollection,
   settingsCollection,
 } from "@/lib/collections";
+import {
+  buildNodeGraphFromMultipleRecord,
+  createKeptRadioTest,
+} from "@/lib/collections/migrations/multiple-to-node";
+import {
+  playbackSessionsCollection,
+  writeNodeSessionGraph,
+} from "@/lib/collections/playback-sessions";
+import { commitNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
+import { migrateNodeGraph, type NodeGraph } from "@/lib/node-graph/schema";
+import { validate } from "@/lib/node-graph/validate";
+import {
+  normalizePlayerMode,
+  type PlayerMode,
+} from "@/lib/normalize-player-mode";
 import { type DatabaseExport, generateId, type ImportPreview } from "../types";
 
 const EXPORT_VERSION = 2;
@@ -15,19 +30,122 @@ const DATA_FRAGMENT_LENGTH = 6;
 const SETTINGS_ID = "app-settings";
 
 type ImportedPlayerSettings = {
-  mode?: SettingsRecord["player"]["mode"];
+  mode?: PlayerMode;
   restoreStateOnLoad?: DatabaseExport["settings"]["player"]["restoreStateOnLoad"];
 };
 
 function normalizeImportedSettings(
-  settings: DatabaseExport["settings"] | SettingsRecord | undefined
+  settings: DatabaseExport["settings"] | undefined
 ): ImportedPlayerSettings {
   const importedPlayer = settings?.player;
+  // Backups from before Node say "multiple"; an unknown mode becomes Single.
+  const mode: unknown = importedPlayer?.mode;
   return {
-    mode: importedPlayer?.mode,
+    mode:
+      mode === undefined || mode === null
+        ? undefined
+        : normalizePlayerMode(mode),
     restoreStateOnLoad: importedPlayer?.restoreStateOnLoad,
   };
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Parses a backup's Node patch through the same gate as a stored one: Zod,
+ * then `migrateNodeGraph`, then `validate()`. Any problem throws.
+ */
+function parseImportedNodeGraph(session: unknown): NodeGraph {
+  const migration = migrateNodeGraph(
+    isRecord(session) ? session.graph : undefined
+  );
+  if (migration.status === "read-only") {
+    throw new Error("Incompatible patch - it is from a newer version");
+  }
+  if (migration.status === "invalid") {
+    throw new Error(`Invalid patch: ${migration.error}`);
+  }
+  const [issue] = validate(migration.graph);
+  if (issue) {
+    throw new Error(`Invalid patch: ${issue.message}`);
+  }
+  return migration.graph;
+}
+
+/**
+ * The Node patch a backup carries, or null when it carries none. A Multiple
+ * session converts the way the Multiple → Node migration converts a stored
+ * one, keeping stations the backup or this library saved, and session
+ * stations still in this tab. Throws on anything invalid, so an import fails
+ * closed before it changes anything.
+ */
+function readImportedNodePatch(importData: DatabaseExport): NodeGraph | null {
+  const sessions: unknown = importData.sessions;
+  if (sessions === undefined) {
+    return null;
+  }
+  if (!isRecord(sessions)) {
+    throw new Error("Invalid sessions data");
+  }
+  if (sessions.node !== undefined) {
+    return parseImportedNodeGraph(sessions.node);
+  }
+  const { multiple } = sessions;
+  if (multiple === undefined) {
+    return null;
+  }
+  if (!(isRecord(multiple) && Array.isArray(multiple.channels))) {
+    throw new Error("Invalid Multiple session");
+  }
+  return buildNodeGraphFromMultipleRecord(
+    multiple,
+    createKeptRadioTest(
+      [...importData.radios, ...radiosCollection.state.values()],
+      sessionRadiosCollection.state.values()
+    )
+  );
+}
+
+/**
+ * Writes an imported patch to the node session, and into the open patch as
+ * an undo step, so a running Node mode plays it instead of writing its old
+ * patch back on the next edit.
+ */
+function applyImportedNodePatch(graph: NodeGraph | null): void {
+  if (!graph) {
+    return;
+  }
+  const written = writeNodeSessionGraph(graph);
+  commitNodeGraph(() => written, nodeStore, "snapshot");
+}
+
+/** The Node patch for a file backup, when the node session holds one. */
+function exportSessions(): DatabaseExport["sessions"] {
+  const graph = playbackSessionsCollection.state.get("node")?.graph;
+  return graph ? { node: { graph } } : undefined;
+}
+
+/**
+ * The file backup: stations, settings and the Node patch. A share link
+ * leaves the patch out.
+ */
+export const createDatabaseExport = (): DatabaseExport => {
+  const radios = Array.from(radiosCollection.state.values());
+  const settings = getSettings();
+
+  return {
+    exportDate: new Date().toISOString(),
+    radios: radios as unknown as Radio[],
+    sessions: exportSessions(),
+    settings: (settings || {
+      id: SETTINGS_ID,
+      player: { mode: "single" },
+    }) as unknown as DatabaseExport["settings"],
+    version: EXPORT_VERSION,
+  };
+};
 
 /**
  * Export the entire database to a JSON file
@@ -39,20 +157,7 @@ export const exportDatabase = (): void => {
   }
 
   try {
-    const radios = Array.from(radiosCollection.state.values());
-    const settings = getSettings();
-
-    const exportData: DatabaseExport = {
-      exportDate: new Date().toISOString(),
-      radios: radios as unknown as Radio[],
-      settings: (settings || {
-        id: SETTINGS_ID,
-        player: { mode: "single" },
-      }) as unknown as DatabaseExport["settings"],
-      version: EXPORT_VERSION,
-    };
-
-    const jsonString = JSON.stringify(exportData, null, 2);
+    const jsonString = JSON.stringify(createDatabaseExport(), null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
@@ -175,7 +280,7 @@ export const validateImportData = (data: unknown): DatabaseExport => {
     throw new Error("Invalid settings data");
   }
 
-  return {
+  const importData: DatabaseExport = {
     ...(data as DatabaseExport),
     settings: {
       player: normalizeImportedSettings(
@@ -183,6 +288,9 @@ export const validateImportData = (data: unknown): DatabaseExport => {
       ),
     } as DatabaseExport["settings"],
   };
+  // Refuse an invalid patch here, before any preview or change.
+  readImportedNodePatch(importData);
+  return importData;
 };
 
 /**
@@ -300,6 +408,8 @@ export const previewImportChanges = (
  */
 export const replaceImportedData = (importData: DatabaseExport): void => {
   try {
+    applyImportedNodePatch(readImportedNodePatch(importData));
+
     // Clear existing radios
     const existingRadios = Array.from(radiosCollection.state.values());
     for (const radio of existingRadios) {
@@ -329,7 +439,9 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
     const importPlayer = normalizeImportedSettings(importData.settings);
     if (existingSettings) {
       settingsCollection.update(SETTINGS_ID, (draft) => {
-        draft.player.mode = importPlayer.mode ?? existingSettings.player.mode;
+        draft.player.mode = normalizePlayerMode(
+          importPlayer.mode ?? existingSettings.player.mode
+        );
         draft.player.restoreStateOnLoad =
           importPlayer.restoreStateOnLoad ??
           existingSettings.player.restoreStateOnLoad;
@@ -357,6 +469,8 @@ export const replaceImportedData = (importData: DatabaseExport): void => {
  */
 export const mergeImportedData = (importData: DatabaseExport): void => {
   try {
+    applyImportedNodePatch(readImportedNodePatch(importData));
+
     const existingRadios = Array.from(radiosCollection.state.values());
     const existingSettings = getSettings();
 
@@ -430,10 +544,10 @@ export const mergeImportedData = (importData: DatabaseExport): void => {
     if (existingSettings) {
       const importPlayer = normalizeImportedSettings(importData.settings);
       settingsCollection.update(SETTINGS_ID, (draft) => {
-        // Merge player settings
-        if (importPlayer.mode) {
-          draft.player.mode = importPlayer.mode;
-        }
+        // Merge player settings; a stored legacy mode is normalised too
+        draft.player.mode = normalizePlayerMode(
+          importPlayer.mode ?? draft.player.mode
+        );
         if (importPlayer.restoreStateOnLoad !== undefined) {
           draft.player.restoreStateOnLoad = importPlayer.restoreStateOnLoad;
         }

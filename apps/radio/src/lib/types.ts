@@ -29,6 +29,15 @@ export type DatabaseExport = {
   exportDate: string;
   radios: Radio[];
   settings: Settings;
+  /**
+   * Playback sessions a file backup carries: the Node patch, or a Multiple
+   * session from a release before Node, which imports as a Node patch. Both
+   * stay untrusted until the import parses them.
+   */
+  sessions?: {
+    node?: { graph: unknown };
+    multiple?: unknown;
+  };
 };
 
 export type ImportMode = "replace" | "merge";

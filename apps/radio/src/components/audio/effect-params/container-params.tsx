@@ -22,7 +22,10 @@ import {
   type EffectConfig,
   getEffectMetadata,
 } from "@/lib/audio";
-import { getEffectSchema } from "@/lib/audio/dsp/effects/schema";
+import {
+  EFFECT_DEFINITIONS,
+  getEffectSchema,
+} from "@/lib/audio/dsp/effects/schema";
 import {
   isEffectContainer,
   isEffectContainerType,
@@ -283,6 +286,7 @@ function CrossoverSlider({
 
   return (
     <ParamSlider
+      defaultValue={DEFAULT_CROSSOVER_FREQUENCIES[index]}
       formatKey="frequency"
       label={`Crossover ${index + 1}`}
       max={next === undefined ? 20_000 : next - 20}
@@ -374,6 +378,9 @@ function ChainEditor({
     chain.id,
     midiTargetPrefix
   );
+  const defaultChain =
+    EFFECT_DEFINITIONS[effect.type].defaultConfig.chains[chain.order] ??
+    EFFECT_DEFINITIONS[effect.type].defaultConfig.chains[0];
   function updateName(event: ChangeEvent<HTMLInputElement>) {
     updateChain(chain.id, { name: event.target.value });
   }
@@ -424,6 +431,7 @@ function ChainEditor({
   }
   const gainSlider = (
     <ParamSlider
+      defaultValue={defaultChain.gain}
       formatKey="linearGain"
       label="Branch gain"
       max={4}
@@ -435,6 +443,7 @@ function ChainEditor({
   );
   const panSlider = (
     <ParamSlider
+      defaultValue={defaultChain.pan}
       formatKey="pan"
       label="Branch pan"
       max={1}

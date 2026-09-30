@@ -310,6 +310,7 @@ export function SeekableProgress({
         min={0}
         onValueChange={handleDrag}
         onValueCommit={handleCommit}
+        resetValue={[0]}
         step={1}
         value={[shownPosition]}
       />

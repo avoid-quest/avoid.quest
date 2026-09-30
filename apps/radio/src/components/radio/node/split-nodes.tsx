@@ -11,6 +11,7 @@ import {
   branchBaseGain,
   branchCables,
   branchName,
+  DEFAULT_CROSSOVERS,
   MAX_CROSSOVER_HZ,
   MIN_CROSSOVER_HZ,
   type SplitNode as SplitGraphNode,
@@ -93,6 +94,7 @@ export function BandControls({
         const label = `Crossover ${index + 1}`;
         return (
           <ModuleKnob
+            defaultValue={DEFAULT_CROSSOVERS[bandCountOf(effect)][index]}
             description="Where one band hands over to the next"
             format={paramFormatters.frequency}
             // Bands are positional, so a crossover's knob is too.

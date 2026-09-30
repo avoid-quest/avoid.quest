@@ -40,7 +40,7 @@ export const BAND_NAMES: Record<BandCount, readonly string[]> = {
 export const MIN_CROSSOVER_HZ = 20;
 export const MAX_CROSSOVER_HZ = 20_000;
 const CROSSOVER_SPACING_HZ = 20;
-const DEFAULT_CROSSOVERS: Record<BandCount, readonly number[]> = {
+export const DEFAULT_CROSSOVERS: Record<BandCount, readonly number[]> = {
   2: [800],
   3: [250, 2500],
   4: [200, 1000, 5000],

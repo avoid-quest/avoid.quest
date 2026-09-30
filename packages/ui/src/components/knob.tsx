@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
+import { useControlReset } from "@avoid.quest/ui/hooks/use-control-reset";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useRef } from "react";
 
@@ -9,7 +10,7 @@ type KnobProps = {
   min: number;
   max: number;
   step?: number;
-  /** Double-click and snap target. */
+  /** Reset gesture and snap target. */
   defaultValue?: number;
   /** Fill the arc from the default value outward instead of from the minimum. */
   bipolar?: boolean;
@@ -46,7 +47,7 @@ function arc(cx: number, cy: number, r: number, from: number, to: number) {
 
 /**
  * Controlled rotary control. Drag up or down, hold Shift for fine steps,
- * double-click to reset to the default, arrow keys to nudge.
+ * double-click, double-tap or Ctrl-click to reset, arrow keys to nudge.
  */
 function Knob({
   value,
@@ -98,9 +99,20 @@ function Knob({
   const r = c - 3;
   const tip = polar(c, c, r - 4, valueAngle);
   const text = format(value);
+  const reset = useControlReset(
+    disabled || defaultValue === undefined
+      ? undefined
+      : () => onChange(clamp(defaultValue))
+  );
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (disabled || drag.current !== null) {
+    reset.onPointerDown(event);
+    if (
+      disabled ||
+      drag.current !== null ||
+      event.defaultPrevented ||
+      event.button !== 0
+    ) {
       return;
     }
     event.preventDefault();
@@ -113,6 +125,7 @@ function Knob({
     };
   };
   const handlePointerMove = (event: React.PointerEvent) => {
+    reset.onPointerMove(event);
     const { current } = drag;
     if (current === null || current.pointerId !== event.pointerId) {
       return;
@@ -123,13 +136,13 @@ function Knob({
     onChange(snap(fromPosition(current.startValue + delta)));
   };
   const handlePointerEnd = (event: React.PointerEvent) => {
+    if (event.type === "pointerup") {
+      reset.onPointerUp(event);
+    } else {
+      reset.onPointerCancel(event);
+    }
     if (drag.current?.pointerId === event.pointerId) {
       drag.current = null;
-    }
-  };
-  const handleDoubleClick = () => {
-    if (!disabled && defaultValue !== undefined) {
-      onChange(defaultValue);
     }
   };
   const handleKeyDown = (event: React.KeyboardEvent) => {
@@ -171,7 +184,8 @@ function Knob({
         aria-valuenow={value}
         aria-valuetext={text}
         className="cursor-ns-resize touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:p-1"
-        onDoubleClick={handleDoubleClick}
+        onContextMenu={reset.onContextMenu}
+        onDoubleClick={reset.onDoubleClick}
         onKeyDown={handleKeyDown}
         onLostPointerCapture={handlePointerEnd}
         onPointerCancel={handlePointerEnd}

@@ -1,15 +1,23 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
+import { useControlReset } from "@avoid.quest/ui/hooks/use-control-reset";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
-import { type ComponentProps, type CSSProperties, useMemo } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type SyntheticEvent,
+  useState,
+} from "react";
 
 type SliderProps = ComponentProps<typeof Root> & {
   /** "fader" draws a thicker track with a bar thumb, for mixer-style level controls. */
   variant?: "default" | "fader";
   /** "lg" makes a fader cap bigger, for the one control you grab while performing. */
   size?: "default" | "lg";
+  /** Gesture reset target; defaults to the initial defaultValue. */
+  resetValue?: number[];
   defaultMarkerValue?: number;
   rangeOriginValue?: number;
 };
@@ -18,12 +26,10 @@ type SliderOrientation = NonNullable<SliderProps["orientation"]>;
 
 function getSliderValues({
   defaultValue,
-  max,
   min,
   value,
 }: {
   defaultValue: SliderProps["defaultValue"];
-  max: number;
   min: number;
   value: SliderProps["value"];
 }) {
@@ -35,17 +41,7 @@ function getSliderValues({
     return defaultValue;
   }
 
-  return [min, max];
-}
-
-function getDefaultValues(defaultValue: SliderProps["defaultValue"]) {
-  if (Array.isArray(defaultValue)) {
-    return defaultValue;
-  }
-
-  if (defaultValue !== undefined) {
-    return [defaultValue];
-  }
+  return [min];
 }
 
 function getPercent(value: number, min: number, max: number) {
@@ -121,8 +117,16 @@ function getThumbShapeClass(
   return `${dims} rounded-sm ${grip} after:inset-y-1.5 after:left-1/2 after:w-px after:-translate-x-1/2`;
 }
 
-function getThumbIndex(event: React.SyntheticEvent<HTMLElement>) {
-  return Number(event.currentTarget.dataset.index);
+function composeHandlers<Event extends SyntheticEvent>(
+  original: ((event: Event) => void) | undefined,
+  gesture: (event: Event) => void
+) {
+  return (event: Event) => {
+    original?.(event);
+    if (!event.defaultPrevented) {
+      gesture(event);
+    }
+  };
 }
 
 function Slider({
@@ -133,8 +137,11 @@ function Slider({
   min = 0,
   max = 100,
   onValueChange,
+  onValueCommit,
+  disabled = false,
   orientation = "horizontal",
   rangeOriginValue,
+  resetValue,
   variant = "default",
   size = "default",
   "aria-label": ariaLabel,
@@ -143,14 +150,29 @@ function Slider({
 }: SliderProps) {
   const isFader = variant === "fader";
   const thumbShapeClass = getThumbShapeClass(isFader, orientation, size);
-  const values = useMemo(
-    () => getSliderValues({ defaultValue, max, min, value }),
-    [value, defaultValue, min, max]
+  const [internalValue, setInternalValue] = useState(() =>
+    getSliderValues({ defaultValue, min, value })
   );
+  const values = value ?? internalValue;
+  const resetValues = resetValue ?? defaultValue;
 
-  const defaultValues = useMemo(
-    () => getDefaultValues(defaultValue),
-    [defaultValue]
+  function handleValueChange(next: number[]) {
+    if (value === undefined) {
+      setInternalValue(next);
+    }
+    onValueChange?.(next);
+  }
+
+  const reset = useControlReset(
+    disabled || resetValues === undefined
+      ? undefined
+      : () => {
+          const next = resetValues.map((entry) =>
+            Math.max(min, Math.min(max, entry))
+          );
+          handleValueChange(next);
+          onValueCommit?.(next);
+        }
   );
 
   const markerPercent =
@@ -172,25 +194,6 @@ function Slider({
     orientation,
   });
 
-  const handleThumbInteraction = (
-    e: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>
-  ) => {
-    const isModifiedClick =
-      "metaKey" in e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
-    const shouldReset =
-      isModifiedClick || e.detail === 2 || e.type === "dblclick";
-    if (!(onValueChange && defaultValues && shouldReset)) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-    const index = getThumbIndex(e);
-    const newValues = [...values];
-    newValues[index] = defaultValues[index] ?? defaultValues[0] ?? min;
-    onValueChange(newValues);
-  };
-
   return (
     <Root
       className={cn(
@@ -200,12 +203,27 @@ function Slider({
       data-slot="slider"
       data-variant={variant}
       defaultValue={defaultValue}
+      disabled={disabled}
       max={max}
       min={min}
-      onValueChange={onValueChange}
+      onValueChange={handleValueChange}
+      onValueCommit={onValueCommit}
       orientation={orientation}
-      value={value}
+      value={values}
       {...props}
+      onContextMenu={composeHandlers(props.onContextMenu, reset.onContextMenu)}
+      onDoubleClick={composeHandlers(props.onDoubleClick, reset.onDoubleClick)}
+      onLostPointerCapture={composeHandlers(
+        props.onLostPointerCapture,
+        reset.onPointerCancel
+      )}
+      onPointerCancel={composeHandlers(
+        props.onPointerCancel,
+        reset.onPointerCancel
+      )}
+      onPointerDown={composeHandlers(props.onPointerDown, reset.onPointerDown)}
+      onPointerMove={composeHandlers(props.onPointerMove, reset.onPointerMove)}
+      onPointerUp={composeHandlers(props.onPointerUp, reset.onPointerUp)}
     >
       <Track
         className={cn(
@@ -254,9 +272,6 @@ function Slider({
           data-slot="slider-thumb"
           // biome-ignore lint/suspicious/noArrayIndexKey: shadcn
           key={index}
-          onClick={handleThumbInteraction}
-          onDoubleClick={handleThumbInteraction}
-          onTouchEnd={handleThumbInteraction}
         />
       ))}
     </Root>

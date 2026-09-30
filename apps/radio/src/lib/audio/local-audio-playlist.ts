@@ -10,7 +10,7 @@ import {
 export function localAudioUrls(radio: Radio | null | undefined): string[] {
   const metadata = radio?.platformMetadata;
   if (metadata?.platform === "local-file") {
-    return [metadata.objectUrl];
+    return [radio?.streamUrl || metadata.objectUrl];
   }
   if (metadata?.platform !== "static-audio" || !metadata.isLocal) {
     return [];

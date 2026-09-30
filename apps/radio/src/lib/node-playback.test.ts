@@ -443,6 +443,26 @@ describe("Node Playback", () => {
     );
   });
 
+  test("flush applies a pending commit, so a start right after it plays in the same task", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    commitNodeGraph(() => patch([station("a"), station("b")]), harness.store);
+    harness.playback.flush();
+    const started = harness.playback.setPlaying("b", true);
+
+    // No await yet: the play call ran inside the caller's gesture.
+    expect(harness.context.audio.playSound).toHaveBeenCalledWith(
+      soundOf("b"),
+      expect.any(Number)
+    );
+    await started;
+    await harness.playback.whenSettled();
+    expect(harness.context.channels.activate).toHaveBeenCalledTimes(2);
+  });
+
   test("a new Station gets a paused lane", async () => {
     insertNodeSession(patch([station("a")]));
     const harness = createHarness();

@@ -12,6 +12,7 @@ import {
 } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
+  nodeStore,
   setNodeSelection,
   useNodeGraph,
   useNodeSelection,
@@ -47,7 +48,9 @@ const nodeTypes = {
 const STATION_WIDTH = 240;
 const FIT_VIEW_OPTIONS = { maxZoom: 1, padding: 0.2 };
 const DELETE_KEYS = ["Backspace", "Delete"];
-const KEY_IGNORED_TARGETS = "input, textarea, select, [contenteditable=true]";
+/** F is left alone while typing or inside a menu, listbox or dialog. */
+const KEY_IGNORED_TARGETS =
+  "input, textarea, select, [contenteditable=true], [role=menu], [role=listbox], [role=dialog], [role=alertdialog]";
 
 function isDrawn(node: GraphNode): node is GraphNode & {
   type: keyof typeof nodeTypes;
@@ -60,6 +63,16 @@ function nodeLabel(node: GraphNode | undefined): string {
     return node.data.radio?.name ?? "Empty Station";
   }
   return node?.type === "speakers" ? "Speakers" : "node";
+}
+
+/** The playing channel ids, sorted and space-joined for a cheap compare. */
+function liveChannelKey(
+  channels: Record<string, { isPlaying: boolean }>
+): string {
+  return Object.keys(channels)
+    .filter((channelId) => channels[channelId]?.isPlaying)
+    .sort()
+    .join(" ");
 }
 
 function pointerOf(event: MouseEvent | TouchEvent): Point {
@@ -111,6 +124,10 @@ function foldNodeChange(batch: NodeChangeBatch, change: FlowNodeChange) {
   }
 }
 
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id) => right.includes(id));
+}
+
 export type NodeCanvasProps = {
   /** A Station the search bar just added; the view pans to it if hidden. */
   reveal: { nodeId: string } | null;
@@ -118,7 +135,13 @@ export type NodeCanvasProps = {
 
 function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
   const selection = useNodeSelection();
-  const runtimes = useStore(playbackRuntimeStore, (state) => state.channels);
+  // Only which lanes play, as a string: a buffering flag or an error on one
+  // Station must not re-render every cable.
+  const liveLanes = new Set(
+    useStore(playbackRuntimeStore, (state) =>
+      liveChannelKey(state.channels)
+    ).split(" ")
+  );
   const [dragPositions, setDragPositions] = useState<
     ReadonlyMap<string, Point>
   >(new Map());
@@ -154,7 +177,7 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
     .map(
       (edge): FlowEdge => ({
         ariaLabel: `${nodeLabel(byId.get(edge.source))} audio to ${nodeLabel(byId.get(edge.target))}`,
-        className: runtimes[laneChannelId(edge.source)]?.isPlaying
+        className: liveLanes.has(laneChannelId(edge.source))
           ? "node-edge-live"
           : undefined,
         id: edge.id,
@@ -166,35 +189,56 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
       })
     );
 
+  // React Flow can call onNodesChange and onEdgesChange back to back in one
+  // event (select a node, deselect a cable), so each handler reads the
+  // current selection and state instead of this render's copy.
   const handleNodesChange = (changes: FlowNodeChange[]) => {
+    const current = nodeStore.state.selection;
     const batch: NodeChangeBatch = {
-      dragging: new Map(dragPositions),
+      dragging: new Map(),
       dropped: new Map(),
       removed: [],
-      selected: new Set(selection.nodes),
-      sizes: new Map(measured),
+      selected: new Set(current.nodes),
+      sizes: new Map(),
     };
     for (const change of changes) {
       foldNodeChange(batch, change);
     }
     const { dragging, dropped, removed, selected, sizes } = batch;
-    setDragPositions(dragging);
-    setMeasured(sizes);
+    if (dragging.size > 0 || dropped.size > 0) {
+      setDragPositions((previous) => {
+        const next = new Map(previous);
+        for (const id of dropped.keys()) {
+          next.delete(id);
+        }
+        for (const [id, position] of dragging) {
+          next.set(id, position);
+        }
+        return next;
+      });
+    }
+    if (sizes.size > 0) {
+      setMeasured((previous) => new Map([...previous, ...sizes]));
+    }
     // Positions persist on drag stop, not on every pointer move.
     if (dropped.size > 0) {
-      commitNodeGraph((current) => moveNodes(current, dropped));
+      commitNodeGraph((latest) => moveNodes(latest, dropped));
     }
     if (removed.length > 0) {
-      commitNodeGraph((current) => removeNodes(current, removed));
+      commitNodeGraph((latest) => removeNodes(latest, removed));
     }
-    setNodeSelection({
-      edges: selection.edges,
-      nodes: [...selected].filter((id) => !removed.includes(id)),
-    });
+    const selectedNodes = [...selected].filter((id) => !removed.includes(id));
+    if (!sameIds(selectedNodes, current.nodes)) {
+      setNodeSelection({
+        edges: nodeStore.state.selection.edges,
+        nodes: selectedNodes,
+      });
+    }
   };
 
   const handleEdgesChange = (changes: FlowEdgeChange[]) => {
-    const selected = new Set(selection.edges);
+    const current = nodeStore.state.selection;
+    const selected = new Set(current.edges);
     const removed: string[] = [];
     for (const change of changes) {
       if (change.type === "select") {
@@ -208,12 +252,15 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
       }
     }
     if (removed.length > 0) {
-      commitNodeGraph((current) => removeEdges(current, removed));
+      commitNodeGraph((latest) => removeEdges(latest, removed));
     }
-    setNodeSelection({
-      edges: [...selected].filter((id) => !removed.includes(id)),
-      nodes: selection.nodes,
-    });
+    const selectedEdges = [...selected].filter((id) => !removed.includes(id));
+    if (!sameIds(selectedEdges, current.edges)) {
+      setNodeSelection({
+        edges: selectedEdges,
+        nodes: nodeStore.state.selection.nodes,
+      });
+    }
   };
 
   const isValidConnection = (connection: FlowConnection | FlowEdge) =>

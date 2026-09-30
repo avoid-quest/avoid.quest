@@ -11,7 +11,6 @@ import {
 import { laneChannelId } from "@/lib/node-graph/compile";
 import {
   addStationNode,
-  findStationNode,
   findStationNodes,
   removeNodes,
   setStationRadio,
@@ -26,7 +25,7 @@ import { getNodePlayback, type NodePlayback } from "@/lib/node-playback";
 import { findLiveStation } from "@/lib/stations/external-station-workflow";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
-type StationPlayback = Pick<NodePlayback, "setPlaying" | "whenSettled">;
+type StationPlayback = Pick<NodePlayback, "flush" | "setPlaying">;
 
 type UseNodeRadioManagementOptions = {
   /** Every saved station, hidden ones included, so snapshots follow hides. */
@@ -80,8 +79,11 @@ export function useNodeRadioManagement({
     );
   }, [hasGraph, savedRadios, sessionRadios, store]);
 
+  // Applies the edit first, then starts without an await in between, so the
+  // play call stays inside the click's gesture (mobile Safari) and does not
+  // queue behind other Stations still loading.
   const startStation = async (nodeId: string) => {
-    await playback.whenSettled();
+    playback.flush();
     if (!getPlaybackChannelRuntime(laneChannelId(nodeId)).isPlaying) {
       await playback.setPlaying(nodeId, true);
     }
@@ -155,26 +157,40 @@ export function useNodeRadioManagement({
   const handleToggleRadio = async (radio: Radio, enabled: boolean) => {
     // RadioItemActions persists the change; this disables or re-enables the
     // Station without waiting for the snapshot sync.
-    const node = store.state.graph
-      ? findStationNode(store.state.graph, radio)
-      : undefined;
-    if (!node?.data.radio) {
+    // Every Station holding it, so a Doppelgänger patch hides as one.
+    const nodes = store.state.graph
+      ? findStationNodes(store.state.graph, radio)
+      : [];
+    if (nodes.length === 0) {
       return;
     }
-    if (
-      !enabled &&
-      getPlaybackChannelRuntime(laneChannelId(node.id)).isPlaying
-    ) {
-      hiddenWhilePlaying.current.add(node.id);
+    const resume: string[] = [];
+    for (const node of nodes) {
+      if (
+        !enabled &&
+        getPlaybackChannelRuntime(laneChannelId(node.id)).isPlaying
+      ) {
+        hiddenWhilePlaying.current.add(node.id);
+      }
+      if (enabled && hiddenWhilePlaying.current.delete(node.id)) {
+        resume.push(node.id);
+      }
     }
-    const snapshot = { ...node.data.radio, enabled };
     commitNodeGraph(
-      (current) => setStationRadio(current, node.id, snapshot),
+      (current) =>
+        nodes.reduce(
+          (graph, node) =>
+            node.data.radio
+              ? setStationRadio(graph, node.id, {
+                  ...node.data.radio,
+                  enabled,
+                })
+              : graph,
+          current
+        ),
       store
     );
-    if (enabled && hiddenWhilePlaying.current.delete(node.id)) {
-      await startStation(node.id);
-    }
+    await Promise.all(resume.map((nodeId) => startStation(nodeId)));
   };
 
   const confirmDelete = () => {

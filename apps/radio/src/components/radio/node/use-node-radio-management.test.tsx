@@ -15,7 +15,11 @@ import { act } from "react";
 import type { Radio } from "@/lib/audio";
 import { radiosCollection } from "@/lib/collections/radios";
 import { compile, laneChannelId } from "@/lib/node-graph/compile";
-import { createNodeStore, type NodeStore } from "@/lib/node-graph/node-store";
+import {
+  commitNodeGraph,
+  createNodeStore,
+  type NodeStore,
+} from "@/lib/node-graph/node-store";
 import type { GraphNode } from "@/lib/node-graph/schema";
 import {
   buildNodeGraphFromTemplate,
@@ -96,14 +100,15 @@ const discovered = {
 
 let store: NodeStore;
 const playback = {
+  flush: mock(() => undefined),
   setPlaying: mock(async (_nodeId: string, _playing: boolean) => undefined),
-  whenSettled: mock(async () => undefined),
 };
 
 beforeEach(() => {
   sessionRadiosState.radios = [];
   sessionRadiosState.removeSessionRadio.mockClear();
   saveDiscoveredStation.mockClear();
+  playback.flush.mockClear();
   playback.setPlaying.mockClear();
   store = createNodeStore(
     buildNodeGraphFromTemplate("start-from-multiple", { saved: [kexp, nts] })
@@ -295,10 +300,51 @@ describe("useNodeRadioManagement", () => {
     } satisfies Radio;
 
     await act(async () => {
-      await hook.current().addStation(radio3);
+      const added = hook.current().addStation(radio3);
+      // The edit is applied and the start made before any await, inside
+      // the click's gesture.
+      expect(playback.flush).toHaveBeenCalledTimes(1);
+      expect(playback.setPlaying).toHaveBeenCalledWith("src-radio3", true);
+      await added;
     });
     expect(edgeIds()).toContain(`src-radio3->${SPEAKERS_NODE_ID}`);
     expect(onStationAdded).toHaveBeenCalledWith("src-radio3");
-    expect(playback.setPlaying).toHaveBeenCalledWith("src-radio3", true);
+  });
+
+  test("hide disables every Station holding the station", async () => {
+    commitNodeGraph(
+      (graph) => ({
+        ...graph,
+        nodes: [
+          ...graph.nodes,
+          {
+            data: { muted: false, radio: kexp, volume: 1 },
+            id: "src-kexp-2",
+            position: { x: 0, y: 320 },
+            type: "station",
+          },
+        ],
+      }),
+      store
+    );
+    setPlaybackChannelRuntime(laneChannelId("src-kexp-2"), () => ({
+      isPlaying: true,
+    }));
+    const hook = renderManagement();
+
+    await act(async () => {
+      await hook.current().handleToggleRadio(kexp, false);
+    });
+    expect(station("src-kexp")?.data.radio?.enabled).toBe(false);
+    expect(station("src-kexp-2")?.data.radio?.enabled).toBe(false);
+
+    resetPlaybackChannelRuntime(laneChannelId("src-kexp-2"));
+    await act(async () => {
+      await hook.current().handleToggleRadio(kexp, true);
+    });
+    expect(station("src-kexp")?.data.radio?.enabled).toBe(true);
+    expect(station("src-kexp-2")?.data.radio?.enabled).toBe(true);
+    // Only the one that was playing comes back playing.
+    expect(playback.setPlaying.mock.calls).toEqual([["src-kexp-2", true]]);
   });
 });

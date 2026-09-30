@@ -81,6 +81,12 @@ import {
 export type NodePlayback = {
   activate: () => Promise<void>;
   deactivate: () => Promise<void>;
+  /**
+   * Applies a pending commit now instead of in its microtask, so a start
+   * right after an edit (a Station added from search) stays synchronous up
+   * to the play call, inside the user's gesture.
+   */
+  flush: () => void;
   pauseAll: () => void;
   playAll: () => Promise<void>;
   setMasterVolume: (volume: number) => void;
@@ -691,6 +697,18 @@ function createNodePlayback(
     }
   };
 
+  /** Reconciles a commit not yet applied; a no-op once it has been. */
+  const applyPendingCommit = () => {
+    if (!active || store.state.graph === observedGraph) {
+      return;
+    }
+    try {
+      reconcile(false);
+    } catch (error) {
+      warn("Could not apply a patch change")(error);
+    }
+  };
+
   const onStoreChange = () => {
     if (!active || batch || store.state.graph === observedGraph) {
       return;
@@ -698,15 +716,8 @@ function createNodePlayback(
     batch = new Promise<void>((resolve) => {
       queueMicrotask(() => {
         batch = null;
-        try {
-          if (active) {
-            reconcile(false);
-          }
-        } catch (error) {
-          warn("Could not apply a patch change")(error);
-        } finally {
-          resolve();
-        }
+        applyPendingCommit();
+        resolve();
       });
     });
   };
@@ -853,6 +864,7 @@ function createNodePlayback(
       observedGraph = null;
       cleanupOrphanedSounds(soundIds, ctx, "node");
     },
+    flush: applyPendingCommit,
     pauseAll() {
       for (const generation of activePlayAllGenerations) {
         if (generation.cancellation === null) {

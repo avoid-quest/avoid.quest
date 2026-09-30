@@ -1,7 +1,10 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import type { Radio } from "@/lib/audio";
 import type { GraphNode } from "@/lib/node-graph/schema";
-import { isLocalFileGone } from "@/lib/node-graph/sources";
+import {
+  isLocalFileGone,
+  releaseUnusedLocalFileUrls,
+} from "@/lib/node-graph/sources";
 import { loadLocalFile, loadSourceUrl } from "@/lib/node-source-loaders";
 import { FileForm } from "../dj/file-form";
 import type { FlowNode, FlowNodeProps } from "./flow-adapter";
@@ -89,8 +92,12 @@ export function FileNode({ id, data, selected }: FlowNodeProps<FileFlowNode>) {
     if ("error" in loaded) {
       return loaded.error;
     }
-    await actions.fillSource(id, loaded.radio);
-    return null;
+    try {
+      await actions.fillSource(id, loaded.radio);
+      return null;
+    } finally {
+      releaseUnusedLocalFileUrls();
+    }
   };
 
   return (

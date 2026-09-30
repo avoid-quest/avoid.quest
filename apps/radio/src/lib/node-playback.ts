@@ -97,7 +97,7 @@ import {
   type NodeGraph,
 } from "@/lib/node-graph/schema";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
-import { isTrackRadio } from "@/lib/node-graph/sources";
+import { isTrackRadio, retainLocalFileUrl } from "@/lib/node-graph/sources";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { NODE_BUDGETS, type Profile } from "@/lib/node-graph/validate";
 import {
@@ -429,6 +429,7 @@ function createNodePlayback(
   const activePlayAllGenerations = new Set<PlayAllGeneration>();
   const channelStartRevisions = new Map<string, number>();
   const unmutedVolumes = new Map<string, number>();
+  const fileSoundReleases = new Map<string, () => void>();
   let unmutedMasterVolume = 1;
 
   let plan = EMPTY_PLAN;
@@ -923,6 +924,8 @@ function createNodePlayback(
     laneWatches.delete(channelId);
     cleanupManagedChannel(channelId, ctx);
     resetPlaybackChannelRuntime(channelId);
+    fileSoundReleases.get(channelId)?.();
+    fileSoundReleases.delete(channelId);
   };
 
   const reportLaneFailure = (
@@ -1128,7 +1131,15 @@ function createNodePlayback(
       return;
     }
     laneWatches.delete(channel.id);
-    createManagedSound("node", channel.id, channel.radio, undefined, ctx);
+    const releaseFile = retainLocalFileUrl(channel.radio.streamUrl);
+    try {
+      createManagedSound("node", channel.id, channel.radio, undefined, ctx);
+    } catch (error) {
+      releaseFile();
+      throw error;
+    }
+    fileSoundReleases.get(channel.id)?.();
+    fileSoundReleases.set(channel.id, releaseFile);
     ctx.channels.setMuted("node", channel.id, channel.muted);
     watchLane(channel.id);
   };
@@ -1159,6 +1170,16 @@ function createNodePlayback(
     const channel = getPlaybackChannel("node", channelId);
     if (channel) {
       restoreManagedChannels("node", [channel], ctx);
+      const releaseFile =
+        channel.radio && getPlaybackChannelRuntime(channelId).soundId
+          ? retainLocalFileUrl(channel.radio.streamUrl)
+          : null;
+      fileSoundReleases.get(channelId)?.();
+      if (releaseFile) {
+        fileSoundReleases.set(channelId, releaseFile);
+      } else {
+        fileSoundReleases.delete(channelId);
+      }
       watchLane(channelId);
     }
   };

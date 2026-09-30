@@ -18,7 +18,8 @@ import {
   getCurrentTrackIndex,
   isCollection,
 } from "@/lib/external-url/metadata-helpers";
-import type { RadioSourceNodeType } from "./schema";
+import { getRetainedNodeGraphs, nodeStore } from "./node-store";
+import { isRadioSourceNode, type RadioSourceNodeType } from "./schema";
 
 /** Platforms a Track plays; each stream URL expires and must be refreshed. */
 const TRACK_PLATFORMS: ReadonlySet<string> = new Set([
@@ -87,10 +88,74 @@ export function isLocalFileRadio(radio: RadioLike | null | undefined): boolean {
 }
 
 const pickedFileUrls = new Set<string>();
+const soundFileReferences = new Map<string, number>();
+let cleanupQueued = false;
+
+/** Releases only this page's picked files once no graph or sound needs them. */
+export function releaseUnusedLocalFileUrls(): void {
+  const retained = new Set(soundFileReferences.keys());
+  for (const graph of getRetainedNodeGraphs()) {
+    for (const node of graph.nodes) {
+      if (isRadioSourceNode(node) && node.data.radio) {
+        retained.add(node.data.radio.streamUrl);
+      }
+    }
+  }
+  for (const url of pickedFileUrls) {
+    if (!retained.has(url)) {
+      URL.revokeObjectURL(url);
+      pickedFileUrls.delete(url);
+    }
+  }
+}
+
+function scheduleFileCleanup(): void {
+  if (cleanupQueued) {
+    return;
+  }
+  cleanupQueued = true;
+  queueMicrotask(() => {
+    cleanupQueued = false;
+    releaseUnusedLocalFileUrls();
+  });
+}
+
+let observedNodeState = nodeStore.state;
+nodeStore.subscribe((state) => {
+  const previous = observedNodeState;
+  observedNodeState = state;
+  if (previous.graph !== state.graph || previous.history !== state.history) {
+    scheduleFileCleanup();
+  }
+});
+
+/** Keeps a sound's URL alive even while its graph is replaced and it fades. */
+export function retainLocalFileUrl(url: string): () => void {
+  if (!pickedFileUrls.has(url)) {
+    return () => undefined;
+  }
+  soundFileReferences.set(url, (soundFileReferences.get(url) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    const remaining = (soundFileReferences.get(url) ?? 1) - 1;
+    if (remaining > 0) {
+      soundFileReferences.set(url, remaining);
+    } else {
+      soundFileReferences.delete(url);
+    }
+    scheduleFileCleanup();
+  };
+}
 
 /** Keeps a picked file's object URL as playable for this page. */
 export function keepLocalFileUrl(url: string): void {
-  pickedFileUrls.add(url);
+  if (url.startsWith("blob:")) {
+    pickedFileUrls.add(url);
+  }
 }
 
 /**
@@ -104,6 +169,7 @@ export function isLocalFileGone(radio: RadioLike | null | undefined): boolean {
 /** Forgets every picked file, as a reload does; for tests. */
 export function forgetLocalFileUrls(): void {
   pickedFileUrls.clear();
+  soundFileReferences.clear();
 }
 
 /** The radio a File plays for a picked file, shaped like a DJ deck's. */

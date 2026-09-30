@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { Store } from "@tanstack/react-store";
 import type {
   AudioEngineFacade,
@@ -43,6 +51,7 @@ import { removeEdges, setEffectParams, setSourceRadio } from "@/lib/node-graph/g
 import {
   commitNodeGraph,
   createNodeStore,
+  loadNodeGraph,
   type NodeStore,
 } from "@/lib/node-graph/node-store";
 import { diff } from "@/lib/node-graph/reconcile";
@@ -55,6 +64,7 @@ import {
   forgetLocalFileUrls,
   keepLocalFileUrl,
   localFileRadio,
+  releaseUnusedLocalFileUrls,
 } from "@/lib/node-graph/sources";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import type { Profile } from "@/lib/node-graph/validate";
@@ -4066,6 +4076,51 @@ describe("Node Playback: Track and File sources", () => {
       reloaded.store.state.graph?.nodes.find((node) => node.id === "file")
     ).toMatchObject({ data: { radio: { name: "Demo" } }, type: "file" });
     expect(getPlaybackSession("node")?.channels).toEqual([]);
+  });
+
+  test("a local file URL survives a patch reset until its removed sound finishes fading", async () => {
+    const objectUrl = URL.createObjectURL(new File(["audio"], "demo.mp3"));
+    const revokeUrl = spyOn(URL, "revokeObjectURL");
+    const picked = localFileRadio("file", {
+      displayName: "Demo",
+      duration: 10,
+      fileName: "demo.mp3",
+      fileSize: 5,
+      mimeType: "audio/mpeg",
+      objectUrl,
+    });
+    keepLocalFileUrl(objectUrl);
+    insertNodeSession(patch([trackNode("file", picked, "file")]));
+    let finishFade: () => void = () => undefined;
+    const harness = createHarness({
+      fadeOutSound: () =>
+        new Promise<void>((resolve) => {
+          finishFade = resolve;
+        }),
+    });
+    instantStarts(harness.context);
+    try {
+      await harness.playback.activate();
+      await harness.playback.setPlaying("file", true);
+      loadNodeGraph(patch([]), harness.store);
+      harness.playback.flush();
+      await Promise.resolve();
+      releaseUnusedLocalFileUrls();
+      expect(harness.fadeOutSound).toHaveBeenCalled();
+      expect(revokeUrl).not.toHaveBeenCalled();
+
+      finishFade();
+      await harness.playback.whenSettled();
+      await Promise.resolve();
+      expect(harness.context.channels.deactivate).toHaveBeenCalledWith(
+        channelOf("file")
+      );
+      expect(revokeUrl).toHaveBeenCalledTimes(1);
+      expect(revokeUrl).toHaveBeenCalledWith(objectUrl);
+    } finally {
+      revokeUrl.mockRestore();
+      forgetLocalFileUrls();
+    }
   });
 
   test("a static audio URL File survives a reload", async () => {

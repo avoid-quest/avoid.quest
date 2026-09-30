@@ -11,6 +11,8 @@
  * The CUE tap point is now AFTER effects processing, so headphone monitoring
  * includes the effects but is still independent of the channel fader.
  * Main delay is applied after all sound processing, before final output.
+ * A sound with an output connector (Node mode's lane gain) reaches the main
+ * delay through it instead of directly.
  */
 
 import type {
@@ -49,6 +51,7 @@ import {
   type FilterConfig as AudioManagerFilterConfig,
   createAudioNodes,
   type SoundInstance,
+  type SoundOutputConnector,
   type SoundOutputMode,
 } from "./audio-manager-types.js";
 import {
@@ -72,7 +75,11 @@ export function setWorkletProcessorUrl(url: string): void {
   workletProcessorUrl = url;
 }
 
-export type { FilterConfig } from "./audio-manager-types.js";
+export type {
+  FilterConfig,
+  MainOutputConnect,
+  SoundOutputConnector,
+} from "./audio-manager-types.js";
 
 /**
  * Audio Manager singleton
@@ -90,6 +97,7 @@ export class AudioManager {
 
   private readonly soundRegistry = new SoundRegistry();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
+  private readonly outputConnectors = new Map<string, SoundOutputConnector>();
   readonly volume: VolumeController;
   private readonly effects: EffectsController;
   private readonly output: OutputRouting;
@@ -465,7 +473,7 @@ export class AudioManager {
       connectEffectsGraph: (soundId, source, destination, inputChannels) =>
         this.effects.connectGraph(soundId, source, destination, inputChannels),
       connectMainOutput: (source, realtime) =>
-        this.output.connectMain(source, realtime),
+        this.connectMainOutput(instance.sourceId, source, realtime),
       instance,
       notifyListeners: this.notifyListeners,
     });
@@ -473,6 +481,36 @@ export class AudioManager {
       await this.meters.setSoundSource(instance.sourceId, instance.nodes.gain);
     }
     return connected;
+  }
+
+  /**
+   * Route a sound's fader output through `connect` instead of straight to
+   * the main bus, or back to the main bus with `null`. Node mode puts a lane
+   * gain there. It is read the next time the sound's graph connects, so
+   * register it before the sound plays; Single and DJ never register one.
+   */
+  setSoundOutputConnector(
+    soundId: string,
+    connect: SoundOutputConnector | null
+  ): void {
+    if (connect) {
+      this.outputConnectors.set(soundId, connect);
+    } else {
+      this.outputConnectors.delete(soundId);
+    }
+  }
+
+  private connectMainOutput(
+    soundId: string,
+    source: AudioNode,
+    realtime: boolean
+  ): () => void {
+    const connectMain = (node: AudioNode, isRealtime: boolean) =>
+      this.output.connectMain(node, isRealtime);
+    const connect = this.outputConnectors.get(soundId);
+    return connect
+      ? connect(source, realtime, connectMain)
+      : connectMain(source, realtime);
   }
 
   /**
@@ -1011,6 +1049,7 @@ export class AudioManager {
 
     this.soundRegistry.clear();
     this.listeners.clear();
+    this.outputConnectors.clear();
     this.meters.clear();
     this.volume.clear();
 

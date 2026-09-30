@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import type {
+  MainOutputConnect,
+  SoundOutputConnector,
+} from "@/lib/audio/manager/audio-manager-types";
+import {
+  createFakeFader,
+  FakeAudioContext,
+  type FakeGainNode,
+} from "@/lib/audio/routing/fake-audio-nodes";
+import {
+  LANE_DUCK_MS,
+  LANE_LEVEL_TIME_CONSTANT_S,
+} from "@/lib/audio/routing/node-lane-outputs";
 import {
   getPlaybackChannel,
   getPlaybackSession,
@@ -154,6 +167,9 @@ function createTestContext(): PlaybackActionContext {
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
       setPan: mock((_soundId: string, _pan: number) => undefined),
+      setSoundOutputConnector: mock(
+        (_soundId: string, _connect: SoundOutputConnector | null) => undefined
+      ),
       updateFilter: mock((_soundId: string, _config: unknown) => undefined),
     } as unknown as AudioManager,
     audioEngine: {
@@ -1602,5 +1618,233 @@ describe("Node Playback settling lanes", () => {
 
     expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
     expect(getPlaybackChannelRuntime(channelOf("a")).isPlaying).toBe(false);
+  });
+});
+
+describe("Node Playback lane outputs", () => {
+  /** The connector last registered for a lane's sound, if any. */
+  function registeredConnector(
+    context: PlaybackActionContext,
+    nodeId: string
+  ): SoundOutputConnector | null {
+    const register = context.audio.setSoundOutputConnector as ReturnType<
+      typeof mock<
+        (soundId: string, connect: SoundOutputConnector | null) => void
+      >
+    >;
+    const calls = register.mock.calls.filter(
+      ([soundId]) => soundId === soundOf(nodeId)
+    );
+    return calls.at(-1)?.[1] ?? null;
+  }
+
+  /** What AudioManager does when the lane's sound connects its graph. */
+  function connectLane(context: PlaybackActionContext, nodeId: string) {
+    const connect = registeredConnector(context, nodeId);
+    if (!connect) {
+      throw new Error(`no output connector for ${nodeId}`);
+    }
+    const audio = new FakeAudioContext();
+    const { fader, node } = createFakeFader(audio);
+    const releaseMain = mock(() => undefined);
+    const connectMain = mock<MainOutputConnect>(() => releaseMain);
+    connect(node, false, connectMain);
+    const laneOut = audio.gains.at(-1) as FakeGainNode;
+    return { audio, connectMain, fader, laneOut, releaseMain };
+  }
+
+  function levelOf(laneOut: FakeGainNode) {
+    const last = laneOut.gain.events.at(-1);
+    return last?.type === "target" ? last.value : null;
+  }
+
+  function withCable(
+    edgeId: string,
+    update: { gain?: number; muted?: boolean }
+  ) {
+    return (graph: NodeGraph): NodeGraph => ({
+      ...graph,
+      edges: graph.edges.map((edge) =>
+        edge.id === edgeId ? { ...edge, ...update } : edge
+      ),
+    });
+  }
+
+  test("a start registers the lane's connector before its play call", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    const calls: string[] = [];
+    harness.context.audio.setSoundOutputConnector = mock((soundId: string) => {
+      calls.push(`connector ${soundId}`);
+    });
+    harness.context.audio.playSound = mock((soundId: string) => {
+      calls.push(`play ${soundId}`);
+      return Promise.resolve();
+    });
+    await harness.playback.activate();
+
+    // Activation builds the lane paused and leaves the engine alone.
+    expect(calls).toEqual([]);
+
+    const started = harness.playback.setPlaying("a", true);
+
+    // No await yet: the connector is in place inside the gesture.
+    expect(calls).toEqual([
+      `connector ${soundOf("a")}`,
+      `play ${soundOf("a")}`,
+    ]);
+    await started;
+    await harness.playback.setPlaying("a", false);
+    await harness.playback.setPlaying("a", true);
+    expect(calls.filter((call) => call.startsWith("connector"))).toHaveLength(
+      1
+    );
+  });
+
+  test("cable gain, mute and removal ramp laneOut with τ 5 ms and leave the fader alone", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { connectMain, fader, laneOut } = connectLane(harness.context, "a");
+
+    expect(connectMain).toHaveBeenCalledWith(laneOut, false);
+    expect(fader.connections.has(laneOut)).toBe(true);
+    expect(laneOut.gain.value).toBe(0);
+    expect(levelOf(laneOut)).toBe(1);
+
+    await commit(harness, withCable("a->speakers", { muted: true }));
+    expect(laneOut.gain.events.at(-1)).toEqual({
+      time: 0,
+      timeConstant: LANE_LEVEL_TIME_CONSTANT_S,
+      type: "target",
+      value: 0,
+    });
+
+    await commit(
+      harness,
+      withCable("a->speakers", { gain: 0.5, muted: false })
+    );
+    expect(levelOf(laneOut)).toBe(0.5);
+
+    await commit(harness, (graph) => ({ ...graph, edges: [] }));
+    expect(levelOf(laneOut)).toBe(0);
+
+    await commit(harness, () => patch([station("a")]));
+    expect(levelOf(laneOut)).toBe(1);
+
+    expect(fader.gain.events).toEqual([]);
+    expect(fader.gain.value).toBe(0.8);
+    expect(harness.context.channels.setVolume).not.toHaveBeenCalled();
+    expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
+  });
+
+  test("a Station with no cable to Speakers plays silent", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [],
+        nodes: [station("a"), speakers],
+        version: 1,
+      })
+    );
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+
+    const { laneOut } = connectLane(harness.context, "a");
+
+    expect(levelOf(laneOut)).toBe(0);
+  });
+
+  test("an FX layout change ducks laneOut, swaps the tree, then ramps back", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { audio, fader, laneOut } = connectLane(harness.context, "a");
+    audio.currentTime = 2;
+    laneOut.gain.value = 1;
+
+    commitNodeGraph(
+      () =>
+        nodeGraphSchema.parse({
+          edges: [cable("a", "verb"), cable("verb", "speakers")],
+          nodes: [station("a"), reverb("verb"), speakers],
+          version: 1,
+        }),
+      harness.store
+    );
+    harness.playback.flush();
+
+    expect(laneOut.gain.events.at(-1)).toEqual({
+      time: 2 + LANE_DUCK_MS / 1000,
+      type: "linear",
+      value: 0,
+    });
+    expect(harness.effectsChange).not.toHaveBeenCalled();
+
+    laneOut.gain.value = 0;
+    audio.currentTime = 2.1;
+    await harness.playback.whenSettled();
+
+    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
+    expect(harness.effectsChange).toHaveBeenCalledWith(
+      { channelId: channelOf("a"), sessionId: "node" },
+      { tree: [expect.objectContaining({ id: "verb" })], type: "replace" }
+    );
+    expect(laneOut.gain.events.at(-1)).toEqual({
+      time: 2.1 + LANE_DUCK_MS / 1000,
+      type: "linear",
+      value: 1,
+    });
+    expect(fader.gain.events).toEqual([]);
+  });
+
+  test("a removed Station releases its lane output once its channel is gone", async () => {
+    insertNodeSession(patch([station("a"), station("b")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { releaseMain } = connectLane(harness.context, "a");
+    const order: string[] = [];
+    harness.context.channels.deactivate = mock((channelId: string) => {
+      order.push(`deactivate ${channelId}`);
+      resetPlaybackChannelRuntime(channelId);
+    });
+    harness.context.audio.setSoundOutputConnector = mock(
+      (soundId: string, connect: SoundOutputConnector | null) => {
+        order.push(`connector ${soundId} ${connect ? "set" : "cleared"}`);
+      }
+    );
+
+    await commit(harness, () => patch([station("b")]));
+
+    expect(order).toEqual([
+      `deactivate ${channelOf("a")}`,
+      `connector ${soundOf("a")} cleared`,
+    ]);
+    expect(releaseMain).toHaveBeenCalledTimes(1);
+  });
+
+  test("deactivate releases every lane output", async () => {
+    insertNodeSession(patch([station("a"), station("b")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.setPlaying("b", true);
+    const a = connectLane(harness.context, "a");
+    const b = connectLane(harness.context, "b");
+
+    await harness.playback.deactivate();
+
+    expect(registeredConnector(harness.context, "a")).toBeNull();
+    expect(registeredConnector(harness.context, "b")).toBeNull();
+    expect(a.releaseMain).toHaveBeenCalledTimes(1);
+    expect(b.releaseMain).toHaveBeenCalledTimes(1);
   });
 });

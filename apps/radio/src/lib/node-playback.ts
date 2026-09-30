@@ -13,8 +13,14 @@
  *
  * `session.channels` is written as the derived cache (`n:<nodeId>`, role
  * "node") in the same update as the graph, and master volume is the Speakers
- * gain. Lanes still reach the main bus directly, so cable ops and the lane
- * duck have no audio of their own until lane outputs land.
+ * gain.
+ *
+ * Each lane reaches the main bus through its own `laneOut` gain
+ * (node-lane-outputs), registered as the sound's output connector before it
+ * first plays. Cable gain and mute ramp laneOut to the sum of the lane's
+ * unmuted cables, so a Station with no cable to Speakers plays silent. An FX
+ * layout change ducks laneOut around the tree swap. The Station fader stays
+ * the volume controller's; nothing here writes it.
  *
  * Starting and stopping keeps Multiple's rules: start ownership, revisions
  * and cancellation, Play all with at most 3 starts in flight, and a fade-out
@@ -24,6 +30,11 @@
 
 import { fadeOut } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import {
+  createNodeLaneOutputs,
+  type NodeLaneOutputs,
+  type NodeLaneOutputsOptions,
+} from "@/lib/audio/routing/node-lane-outputs";
 import {
   getPlaybackChannel,
   getPlaybackSession,
@@ -116,6 +127,7 @@ type GetNodePlaybackOptions = {
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
   getEnv?: () => NodePlaybackEnv;
+  laneOutputs?: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
   store?: NodeStore;
 };
 
@@ -207,6 +219,7 @@ function createNodePlayback(
     fadeOutDurationMs,
     fadeOutSound,
     getEnv,
+    laneOutputs: createLaneOutputs,
     store,
   }: Required<Omit<GetNodePlaybackOptions, "ctx">>
 ): NodePlayback {
@@ -230,6 +243,22 @@ function createNodePlayback(
   /** Lanes removed in this batch that were playing, for an in-place re-add. */
   const carriedLanes = new Map<string, boolean>();
   const laneGenerations = new Map<string, number>();
+
+  /** A lane's cable level: the gains of its unmuted cables, summed. */
+  const laneLevel = (laneId: string) => {
+    let level = 0;
+    for (const edge of plan.edges.values()) {
+      if (edge.from.id === laneId && !edge.muted) {
+        level += edge.gain;
+      }
+    }
+    return level;
+  };
+
+  const laneOutputs = createLaneOutputs({
+    getHost: () => ctx.audio,
+    getLevel: laneLevel,
+  });
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     inFlight.add(promise);
@@ -428,6 +457,12 @@ function createNodePlayback(
       setManagedPlaybackError(channelId, budgetError(limit, channelId));
       return;
     }
+    const nodeId = channelId.slice(NODE_CHANNEL_PREFIX.length);
+    const lane = plan.lanes.get(nodeId);
+    if (lane) {
+      // Before the play call: the sound's graph connects inside it.
+      laneOutputs.attach(nodeId, lane.soundId);
+    }
     const ownership = beginChannelStart(channelId);
     try {
       const starting = setChannelPlaying(
@@ -541,6 +576,7 @@ function createNodePlayback(
     if (epoch === startEpoch) {
       cleanupManagedChannel(channelId, ctx);
       resetPlaybackChannelRuntime(channelId);
+      laneOutputs.release(channelId.slice(NODE_CHANNEL_PREFIX.length));
     }
   };
 
@@ -561,13 +597,27 @@ function createNodePlayback(
     });
   };
 
+  const replaceTree = (channelId: string, tree: EffectConfig[]) =>
+    effects.change({ channelId, sessionId: "node" }, { tree, type: "replace" });
+
   const changeLaneEffects = (channelId: string, tree: EffectConfig[]) => {
+    track(replaceTree(channelId, tree)).catch(
+      warn("Could not apply lane effects")
+    );
+  };
+
+  /** duckLane → replace → await outcome → unduckLane, on laneOut. */
+  const swapLaneEffects = (laneId: string, tree: EffectConfig[]) => {
     track(
-      effects.change(
-        { channelId, sessionId: "node" },
-        { tree, type: "replace" }
-      )
-    ).catch(warn("Could not apply lane effects"));
+      laneOutputs.swap(laneId, () => replaceTree(laneChannelId(laneId), tree))
+    ).catch(warn("Could not swap lane effects"));
+  };
+
+  /** A removed lane keeps its level through its own fade-out. */
+  const refreshLane = (laneId: string | undefined, next: EnginePlan) => {
+    if (laneId && next.lanes.has(laneId)) {
+      laneOutputs.refresh(laneId);
+    }
   };
 
   const applyParam = (
@@ -575,7 +625,7 @@ function createNodePlayback(
     next: EnginePlan
   ) => {
     if (op.target === "edge") {
-      // Cables carry no audio of their own until lane outputs land.
+      refreshLane(next.edges.get(op.id)?.from.id, next);
       return;
     }
     const lane = next.lanes.get(op.id);
@@ -611,7 +661,7 @@ function createNodePlayback(
     }
   };
 
-  const applyOp = (op: Op, next: EnginePlan) => {
+  const applyOp = (op: Op, previous: EnginePlan, next: EnginePlan) => {
     switch (op.type) {
       case "addLane":
         addLane(op.lane.id, op.lane.channelId);
@@ -620,19 +670,27 @@ function createNodePlayback(
         removeLane(op.laneId, laneChannelId(op.laneId));
         break;
       case "setLaneEffects":
-      case "replaceLaneEffects":
         changeLaneEffects(laneChannelId(op.laneId), op.effects);
+        break;
+      case "replaceLaneEffects":
+        swapLaneEffects(op.laneId, op.effects);
+        break;
+      // They bracket replaceLaneEffects, whose swap ducks and unducks.
+      case "duckLane":
+      case "unduckLane":
         break;
       case "setParam":
         applyParam(op, next);
         break;
-      // Lanes reach the main bus directly until lane outputs land, so the
-      // layout duck and cable ops have nothing to act on yet.
-      case "duckLane":
-      case "unduckLane":
       case "addEdge":
+        refreshLane(op.edge.from.id, next);
+        break;
       case "removeEdge":
+        refreshLane(previous.edges.get(op.edgeId)?.from.id, next);
+        break;
       case "rewireEdge":
+        refreshLane(op.previous.from.id, next);
+        refreshLane(op.edge.from.id, next);
         break;
       default: {
         const exhaustive: never = op;
@@ -645,14 +703,19 @@ function createNodePlayback(
    * `strict` rethrows the first op failure; otherwise a failing lane is
    * marked and the rest run.
    */
-  const applyOps = (ops: readonly Op[], next: EnginePlan, strict: boolean) => {
+  const applyOps = (
+    ops: readonly Op[],
+    previous: EnginePlan,
+    next: EnginePlan,
+    strict: boolean
+  ) => {
     for (const op of ops) {
       if (strict) {
-        applyOp(op, next);
+        applyOp(op, previous, next);
         continue;
       }
       try {
-        applyOp(op, next);
+        applyOp(op, previous, next);
       } catch (error) {
         if (op.type === "addLane") {
           reportLaneError(op.lane.channelId, error);
@@ -686,10 +749,11 @@ function createNodePlayback(
         unmutedVolumes.set(laneId, lane.volume);
       }
     }
-    const ops = diff(plan, next);
+    const previous = plan;
+    const ops = diff(previous, next);
     plan = next;
     try {
-      applyOps(ops, next, strict);
+      applyOps(ops, previous, next, strict);
     } finally {
       // A carry is only "in place" within one batch; a later re-add of the
       // same Station must not resume it.
@@ -860,6 +924,7 @@ function createNodePlayback(
         cleanupManagedChannel(channelId, ctx);
         resetPlaybackChannelRuntime(channelId);
       }
+      laneOutputs.dispose();
       plan = EMPTY_PLAN;
       observedGraph = null;
       cleanupOrphanedSounds(soundIds, ctx, "node");
@@ -929,6 +994,7 @@ export function getNodePlayback({
   fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
   getEnv = detectNodePlaybackEnv,
+  laneOutputs = createNodeLaneOutputs,
   store = nodeStore,
 }: GetNodePlaybackOptions = {}): NodePlayback {
   const existing = instances.get(ctx);
@@ -940,6 +1006,7 @@ export function getNodePlayback({
     fadeOutDurationMs,
     fadeOutSound,
     getEnv,
+    laneOutputs,
     store,
   });
   instances.set(ctx, playback);

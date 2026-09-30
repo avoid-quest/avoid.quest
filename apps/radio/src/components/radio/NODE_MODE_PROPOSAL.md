@@ -112,6 +112,11 @@ end of a selected cable, preserving its identity and branch settings.
 Canvas selection keys act on the focused module or cable; global Space playback
 is reserved for focus outside those graph elements and ordinary controls.
 
+Shared knobs and sliders reset on double-click, double-tap or Ctrl + primary
+click. Wheel input changes continuous values by 0.01 parameter units; discrete
+parameters retain valid whole steps. Immediate control input accumulates before
+throttled graph or engine writes.
+
 ## Source map
 
 | Change | Start here |
@@ -122,13 +127,14 @@ is reserved for focus outside those graph elements and ordinary controls.
 | Lane lowering, branch shape and sidechains | [`compile.ts`](../../lib/node-graph/compile.ts) |
 | Parameter versus structural engine changes | [`reconcile.ts`](../../lib/node-graph/reconcile.ts) |
 | Pure graph edits, templates, undo/history | [`graph-edits.ts`](../../lib/node-graph/graph-edits.ts), [`templates.ts`](../../lib/node-graph/templates.ts), [`node-store.ts`](../../lib/node-graph/node-store.ts) |
-| Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts) |
+| Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts), [`pending-channel-starts.ts`](../../lib/pending-channel-starts.ts) |
 | Output sends and physical device sinks | [`node-lane-outputs.ts`](../../lib/audio/routing/node-lane-outputs.ts), [`node-device-sinks.ts`](../../lib/audio/routing/node-device-sinks.ts) |
 | External source loading and local file lifetime | [`node-source-loaders.ts`](../../lib/node-source-loaders.ts), [`sources.ts`](../../lib/node-graph/sources.ts) |
 | Persistence, migration and local NAM retention | [`playback-sessions.ts`](../../lib/collections/playback-sessions.ts), [`migrations/`](../../lib/collections/migrations/) |
 | Backup validation, preview and application | [`export-import.ts`](../../lib/db/export-import.ts), [`nam-backup.ts`](../../lib/db/nam-backup.ts) |
 | Canvas, palette and cable editing | [`node-canvas.tsx`](node/node-canvas.tsx), [`node-palette.tsx`](node/node-palette.tsx), [`connect-dialog.tsx`](node/connect-dialog.tsx), [`rewire-dialog.tsx`](node/rewire-dialog.tsx) |
 | Stage, Rack, inspector and shared source forms | [`node-stage.tsx`](node/node-stage.tsx), [`node-rack.tsx`](node/node-rack.tsx), [`node-inspector.tsx`](node/node-inspector.tsx); source/device `*-content.tsx` files beside them |
+| Shared knobs, sliders and control gestures | [`knob.tsx`](../../../../../packages/ui/src/components/knob.tsx), [`slider.tsx`](../../../../../packages/ui/src/components/slider.tsx) |
 | Node MIDI identities and actions | [`node-midi-actions.ts`](../../lib/midi/node-midi-actions.ts), [`use-node-midi.ts`](../../lib/hooks/use-node-midi.ts) |
 
 ## Verification boundary

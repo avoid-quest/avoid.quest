@@ -811,6 +811,7 @@ function Canvas({
   ) => {
     const latest = nodeStore.state.graph;
     if (
+      // biome-ignore lint/suspicious/noUnnecessaryConditions: pointer handlers mutate this ref between React Flow events
       insertionCanceledRef.current ||
       !latest ||
       dragged.length !== 1 ||

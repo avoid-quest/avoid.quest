@@ -300,8 +300,12 @@ export type GetNodePlaybackOptions = {
   /** Where Output device sink statuses are published for their bodies. */
   sinkStatuses?: NodeSinkStatusStore;
   store?: NodeStore;
-  /** The headphone cue bus a Track's or File's cue listen taps into. */
-  cueOutput?: () => Pick<OutputRouting, "registerCueDeck">;
+  /**
+   * The headphone cue bus a Track's or File's cue listen taps into. Its
+   * settings are applied as a tap goes on, as a DJ deck's CUE does, since
+   * Node mode alone never builds the cue output.
+   */
+  cueOutput?: () => Pick<OutputRouting, "applySettings" | "registerCueDeck">;
 };
 
 type PlaybackCancellation = "deactivate" | "pause" | "remove";
@@ -914,10 +918,14 @@ function createNodePlayback(
       return;
     }
     current?.registration.cleanup();
+    const output = cueOutput();
     cueTaps.set(channelId, {
-      registration: cueOutput().registerCueDeck(`node:${lane.id}`, tap, true),
+      registration: output.registerCueDeck(`node:${lane.id}`, tap, true),
       soundId,
     });
+    // The cue sink exists only once the stored cue output is applied; the
+    // tap connects to it then.
+    output.applySettings().catch(warn("Could not open the cue output"));
   };
 
   /**

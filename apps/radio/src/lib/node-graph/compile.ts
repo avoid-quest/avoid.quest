@@ -43,6 +43,7 @@ import {
   type GraphNode,
   isMediaSourceType,
   isRadioSourceNode,
+  isStripSource,
   type NodeGraph,
   type NodeType,
   type RadioSourceNode,
@@ -208,6 +209,16 @@ export function isDeviceInLive(
  */
 export function isSourceLive(node: GraphNode): boolean {
   return isRadioSourceLive(node) || isDeviceInLive(node);
+}
+
+/**
+ * Whether any source with a lane is soloed: then every unsoloed lane's
+ * exits are muted. A soloed empty slot has no lane, so it silences nothing.
+ */
+export function isSoloActive(nodes: readonly GraphNode[]): boolean {
+  return nodes.some(
+    (node) => isStripSource(node) && isSourceLive(node) && node.data.strip.solo
+  );
 }
 
 /**
@@ -1197,7 +1208,7 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       return source ? [[node.id, source] as const] : [];
     })
   );
-  const anySolo = [...live.values()].some((source) => source.strip.solo);
+  const anySolo = isSoloActive(prepared.graph.nodes);
   for (const node of prepared.graph.nodes) {
     const source = live.get(node.id);
     if (!source) {

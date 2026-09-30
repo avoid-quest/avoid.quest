@@ -363,6 +363,25 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   });
 
+  test("sets older WebKit's prefixed key lock too", () => {
+    const browser = installBrowser();
+    try {
+      const source = new MediaElementPlaybackSource(null, "native");
+      const audio = browser.audio() as FakeAudioElement & {
+        webkitPreservesPitch?: boolean;
+      };
+      audio.webkitPreservesPitch = true;
+
+      source.setPreservesPitch(false);
+
+      expect(audio.preservesPitch).toBe(false);
+      expect(audio.webkitPreservesPitch).toBe(false);
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
   test("aborts a pending attachment when stopped", async () => {
     const browser = installBrowser();
 

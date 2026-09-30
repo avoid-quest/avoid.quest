@@ -100,6 +100,8 @@ export function hasStripControl(
 
 const METER_HINT = "Level after the fader";
 const SOLO_HINT = "Solo: only soloed sources play";
+/** The meter taps before solo, so it still moves while solo silences it. */
+const SOLOED_OUT_HINT = "Silenced: another source is soloed";
 
 function formatTrim(db: number): string {
   const rounded = Math.round(db * 10) / 10;
@@ -111,18 +113,22 @@ export function StripMeter({
   soundId,
   className,
   title = METER_HINT,
+  soloedOut = false,
 }: {
   soundId: string | null;
   className?: string;
   title?: string;
+  /** Another source is soloed, so this one is silent past its meter. */
+  soloedOut?: boolean;
 }) {
   const level = usePeakLevel(soundId);
   return (
     <div
       aria-hidden="true"
-      className={cn("min-w-0", className)}
+      className={cn("min-w-0", soloedOut && "opacity-40", className)}
       data-slot="strip-meter"
-      title={title}
+      data-soloed-out={soloedOut || undefined}
+      title={soloedOut ? SOLOED_OUT_HINT : title}
     >
       <PeakMeter
         compact
@@ -142,12 +148,15 @@ export function StripMuteSolo({
   target,
   muted,
   solo,
+  soloedOut = false,
   onToggleMute,
   onToggleSolo,
 }: {
   target: string;
   muted: boolean;
   solo: boolean;
+  /** Another source is soloed: this S shows it's silenced, unpressed. */
+  soloedOut?: boolean;
   onToggleMute: () => void;
   onToggleSolo: () => void;
 }) {
@@ -166,11 +175,16 @@ export function StripMuteSolo({
       </Toggle>
       <Toggle
         aria-label={`Solo ${target}`}
-        className={cn(STRIP_TOGGLE, "data-[state=on]:bg-amber-500/20")}
+        className={cn(
+          STRIP_TOGGLE,
+          "data-[state=on]:bg-amber-500/20",
+          soloedOut && "ring-1 ring-amber-500/40 ring-inset"
+        )}
+        data-soloed-out={soloedOut || undefined}
         onPressedChange={onToggleSolo}
         pressed={solo}
         size="sm"
-        title={SOLO_HINT}
+        title={soloedOut ? SOLOED_OUT_HINT : SOLO_HINT}
       >
         S
       </Toggle>
@@ -225,6 +239,8 @@ export type CompactSourceStripProps = {
   soundId: string | null;
   muted: boolean;
   solo: boolean;
+  /** Another source is soloed, so this one is silenced. */
+  soloedOut?: boolean;
   pan: number;
   onToggleMute: () => void;
   onToggleSolo: () => void;
@@ -238,6 +254,7 @@ export function CompactSourceStrip({
   soundId,
   muted,
   solo,
+  soloedOut = false,
   pan,
   onToggleMute,
   onToggleSolo,
@@ -250,12 +267,13 @@ export function CompactSourceStrip({
       className={cn("flex min-w-0 items-center gap-1.5", className)}
       data-slot="compact-source-strip"
     >
-      <StripMeter className="flex-1" soundId={soundId} />
+      <StripMeter className="flex-1" soloedOut={soloedOut} soundId={soundId} />
       <StripMuteSolo
         muted={muted}
         onToggleMute={onToggleMute}
         onToggleSolo={onToggleSolo}
         solo={solo}
+        soloedOut={soloedOut}
         target={target}
       />
       <Knob
@@ -487,6 +505,8 @@ export type SourceStripProps = {
   soundId: string | null;
   strip: SourceStripData;
   muted: boolean;
+  /** Another source is soloed, so this one is silenced. */
+  soloedOut?: boolean;
   onToggleMute: () => void;
   /** A knob turn or toggle; the inspector takes the undo step on release. */
   onStripChange: (patch: Partial<MediaStrip & InputStrip>) => void;
@@ -505,6 +525,7 @@ export function SourceStrip({
   soundId,
   strip,
   muted,
+  soloedOut = false,
   onToggleMute,
   onStripChange,
   media,
@@ -522,6 +543,7 @@ export function SourceStrip({
         </span>
         <StripMeter
           className="flex-1"
+          soloedOut={soloedOut}
           soundId={soundId}
           title={
             kind === "deviceIn" ? "Input level, after its fader" : METER_HINT
@@ -532,6 +554,7 @@ export function SourceStrip({
           onToggleMute={onToggleMute}
           onToggleSolo={() => onStripChange({ solo: !strip.solo })}
           solo={strip.solo}
+          soloedOut={soloedOut}
           target={target}
         />
       </div>

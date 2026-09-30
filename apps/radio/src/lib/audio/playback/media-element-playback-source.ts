@@ -300,9 +300,16 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.audio.playbackRate = clampedRate;
   }
 
-  /** Key lock. The element keeps it across loads. */
+  /**
+   * Key lock. The element keeps it across loads. Older WebKit (Safari
+   * before 17) only reads the prefixed property.
+   */
   setPreservesPitch(preservesPitch: boolean): void {
     this.audio.preservesPitch = preservesPitch;
+    const webkit = this.audio as { webkitPreservesPitch?: boolean };
+    if ("webkitPreservesPitch" in webkit) {
+      webkit.webkitPreservesPitch = preservesPitch;
+    }
   }
 
   getPlaybackRate(): number {

@@ -7,7 +7,7 @@ import type { Radio } from "@/lib/audio";
 import { isSinkIdSupported } from "@/lib/audio/utils";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
-import { laneChannelId } from "@/lib/node-graph/compile";
+import { isSoloActive, laneChannelId } from "@/lib/node-graph/compile";
 import {
   type StripParams,
   setDeviceParams,
@@ -43,6 +43,17 @@ import { isUnplugged, useNodeDevices } from "./use-node-devices";
  * and the meter, buffering and position follow the lane's sound by its
  * channel in the runtime store.
  */
+
+/**
+ * Whether another source's solo silences this one: its meter taps before
+ * solo, so the strip says so instead.
+ */
+function useSoloedOut(solo: boolean, store: NodeStore): boolean {
+  return useStore(
+    store,
+    (state) => !solo && state.graph !== null && isSoloActive(state.graph.nodes)
+  );
+}
 
 /** The lane's runtime by source node id: its sound and play state. */
 export function useLaneRuntime(nodeId: string) {
@@ -97,6 +108,7 @@ export function NodeCompactStrip({
   store?: NodeStore;
 }) {
   const runtime = useLaneRuntime(nodeId);
+  const soloedOut = useSoloedOut(strip.solo, store);
   const release = releaseStep(store);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: listens for releases; each control is focusable itself
@@ -119,6 +131,7 @@ export function NodeCompactStrip({
         }
         pan={strip.pan}
         solo={strip.solo}
+        soloedOut={soloedOut}
         soundId={runtime?.soundId ?? null}
         target={target}
       />
@@ -178,6 +191,7 @@ export function NodeSourceStripPanel({
 }) {
   const playback = getNodePlayback();
   const runtime = useLaneRuntime(node.id);
+  const soloedOut = useSoloedOut(node.data.strip.solo, store);
   const audioSettings = useAudioSettings();
   const devices = useNodeDevices({ enabled: node.type === "deviceIn" });
   const radio =
@@ -245,6 +259,7 @@ export function NodeSourceStripPanel({
         playback.toggleMute(node.id);
         snapshotNodeGraph(store);
       }}
+      soloedOut={soloedOut}
       soundId={soundId}
       station={station}
       strip={node.data.strip}

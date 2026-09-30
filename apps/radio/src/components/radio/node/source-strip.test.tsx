@@ -338,4 +338,30 @@ describe("CompactSourceStrip", () => {
     );
     expect(view.getByTitle("Level after the fader")).toBeTruthy();
   });
+
+  test("another source's solo shows this one silenced, S still unpressed", () => {
+    const view = render(
+      <CompactSourceStrip
+        muted={false}
+        onPanChange={noop}
+        onToggleMute={noop}
+        onToggleSolo={noop}
+        pan={0}
+        solo={false}
+        soloedOut
+        soundId="node:n:kexp"
+        target="KEXP"
+      />
+    );
+    const solo = view.getByRole("button", { name: "Solo KEXP" });
+    expect(solo.getAttribute("aria-pressed")).toBe("false");
+    expect(solo.getAttribute("title")).toBe(
+      "Silenced: another source is soloed"
+    );
+    expect(
+      view.container
+        .querySelector('[data-slot="strip-meter"]')
+        ?.getAttribute("data-soloed-out")
+    ).toBe("true");
+  });
 });

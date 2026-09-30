@@ -17,6 +17,7 @@ import {
   compile,
   type EnginePlan,
   idleKeys,
+  isSoloActive,
   isSourceLive,
   type LanePlan,
   layoutSignature,
@@ -524,6 +525,18 @@ describe("compile: channel strips", () => {
       [audio("gone", "speakers"), audio("b", "speakers")]
     );
     expect(plan.edges.get("b->speakers")?.muted).toBe(false);
+  });
+
+  test("isSoloActive counts only soloed sources with a lane, as compile does", () => {
+    const soloActive = (nodes: NodeInput[]) =>
+      isSoloActive(graph(nodes, []).nodes);
+    expect(
+      soloActive([withStrip(station("gone", false), { solo: true })])
+    ).toBe(false);
+    expect(
+      soloActive([withStrip(station("a"), { solo: true }), station("b")])
+    ).toBe(true);
+    expect(soloActive([station("a"), speakers])).toBe(false);
   });
 
   test("a Track or File carries its transport; a Station and an input don't", () => {

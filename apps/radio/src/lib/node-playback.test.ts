@@ -94,7 +94,7 @@ import {
   type NodePlayback,
   type NodeSinkStatuses,
 } from "./node-playback";
-import type { OutputRouting } from "./output-routing";
+import type { OutputRouting, OutputRoutingSnapshot } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 type NodeInput = NodeGraphInput["nodes"][number];
@@ -4532,13 +4532,15 @@ describe("Node Playback: channel strips", () => {
       (_deckId: string, _tap: AudioNode | null, _enabled?: boolean) =>
         registration
     );
+    // Node mode alone never builds the cue output: the tap applies it.
+    const applySettings = mock(async () => ({}) as OutputRoutingSnapshot);
     const context = createTestContext();
     const store = createNodeStore();
     instantStarts(context);
     const playback = getNodePlayback({
       backendBadges: new Store<NodeBackendBadges>({}),
       ctx: context,
-      cueOutput: () => ({ registerCueDeck }),
+      cueOutput: () => ({ applySettings, registerCueDeck }),
       effects: { change: mock(async () => ({}) as ChannelEffectsResult) },
       fadeOutSound: mock(async () => undefined),
       getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
@@ -4548,9 +4550,12 @@ describe("Node Playback: channel strips", () => {
     await playback.activate();
     await playback.setPlaying("video", true);
     expect(registerCueDeck).not.toHaveBeenCalled();
+    expect(applySettings).not.toHaveBeenCalled();
 
     commitNodeGraph(withStrip("video", { cueListen: true }), store);
     await playback.whenSettled();
+
+    expect(applySettings).toHaveBeenCalledTimes(1);
 
     expect(registerCueDeck).toHaveBeenCalledWith(
       "node:video",

@@ -78,4 +78,22 @@ describe("changelog on first visit", () => {
       Reflect.deleteProperty(globalThis, "localStorage");
     }
   });
+
+  test("a reset keeps the mark it finds", async () => {
+    const seenAt = "2026-01-01T00:00:00.000Z";
+    const stored = new Map([[CHANGELOG_STORAGE_KEY, seenAt]]);
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+      },
+    });
+    try {
+      await initializeSettings();
+      expect(getChangelogSeenAt(CHANGELOG_STORAGE_KEY)).toBe(seenAt);
+    } finally {
+      Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  });
 });

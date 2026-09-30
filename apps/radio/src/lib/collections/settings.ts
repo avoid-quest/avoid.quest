@@ -1,4 +1,7 @@
-import { markChangelogSeen } from "@avoid.quest/ui/lib/changelog";
+import {
+  getChangelogSeenAt,
+  markChangelogSeen,
+} from "@avoid.quest/ui/lib/changelog";
 import {
   createCollection,
   localStorageCollectionOptions,
@@ -69,8 +72,11 @@ export async function initializeSettings(): Promise<void> {
 
   if (existing.size === 0) {
     // A first visit has nothing new to catch up on. Marked before the insert
-    // so anything waiting for settings already sees the mark.
-    markChangelogSeen(CHANGELOG_STORAGE_KEY);
+    // so anything waiting for settings already sees the mark. A reset keeps
+    // the mark it finds, so unread changes stay unread.
+    if (getChangelogSeenAt(CHANGELOG_STORAGE_KEY) === null) {
+      markChangelogSeen(CHANGELOG_STORAGE_KEY);
+    }
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: {

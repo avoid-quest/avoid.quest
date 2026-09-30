@@ -74,6 +74,8 @@ export type BaseEffectConfig = {
   dryWet: number; // 0.0 = fully dry, 1.0 = fully wet
   inputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
   outputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
+  /** Compiler-only trim before both dry and wet paths; never stored in a node. */
+  signalGain?: number;
   sidechain?: EffectSidechainConfig;
 };
 

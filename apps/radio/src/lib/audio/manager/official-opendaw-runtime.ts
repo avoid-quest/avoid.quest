@@ -512,7 +512,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
           this.adapterContext(),
           effect,
           unit.rack.wet.audioEffects,
-          index * 2
+          index * 3
         )
       );
       this.bindSidechains();
@@ -817,6 +817,8 @@ function hasStableEffectLayout(
         before.id !== after.id ||
         before.type !== after.type ||
         before.order !== after.order ||
+        (before.signalGain === undefined) !==
+          (after.signalGain === undefined) ||
         usesDirectOfficialEffectLayout(before) !==
           usesDirectOfficialEffectLayout(after)
       ) {

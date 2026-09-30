@@ -119,10 +119,21 @@ describe("diff", () => {
     ]);
   });
 
-  test("toggling an effect is a param change too", () => {
+  test("bypassing the first FX moves the signal trim to the next FX", () => {
     expect(types(diff(base(), base({ verb: { enabled: false } })))).toEqual([
-      "setLaneEffects",
+      "duckLane",
+      "replaceLaneEffects",
+      "unduckLane",
     ]);
+  });
+
+  test("leading cable trim changes keep the same native layout", () => {
+    const withTrim = (gain: number) =>
+      plan(
+        [station("a"), fx("verb", "cheapReverb", { enabled: true }), speakers],
+        [audio("a", "verb", { gain }), audio("verb", "speakers")]
+      );
+    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual(["setLaneEffects"]);
   });
 
   test.each([

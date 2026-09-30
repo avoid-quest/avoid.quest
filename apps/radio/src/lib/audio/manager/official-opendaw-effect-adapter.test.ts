@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type {
+  AudioEffectCompositeBox,
+  StereoToolDeviceBox,
+} from "@opendaw/studio-boxes";
 import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import {
@@ -152,6 +156,11 @@ describe("official openDAW BoxGraph adapter", () => {
             `effect-${index}`,
             index
           );
+          if (config.type === "cheapReverb") {
+            config.enabled = true;
+            config.dryWet = 0.5;
+            config.signalGain = 0.5;
+          }
           if (config.type === "crusher") {
             config.autoGain = false;
             config.boost = 20;
@@ -169,7 +178,7 @@ describe("official openDAW BoxGraph adapter", () => {
             { boxes, bpm: 120, core, project },
             config,
             rack.wet.audioEffects,
-            index * 2
+            index * 3
           );
         });
       })
@@ -226,6 +235,43 @@ describe("official openDAW BoxGraph adapter", () => {
         inputGain: 0.5,
       })
     ).toBe(false);
+    const reverb = groups.find((group) => group.config.type === "cheapReverb");
+    if (
+      !(
+        reverb?.signalTrim &&
+        reverb.wrapper &&
+        reverb.inputTrim &&
+        reverb.outputTrim
+      )
+    ) {
+      throw new Error("Missing reverb signal trim");
+    }
+    const signalTrim = reverb.signalTrim as unknown as StereoToolDeviceBox;
+    const wrapper = reverb.wrapper as unknown as AudioEffectCompositeBox;
+    const wetTrim = reverb.inputTrim as unknown as StereoToolDeviceBox;
+    const outputTrim = reverb.outputTrim as unknown as StereoToolDeviceBox;
+    // The published BoxGraph places gain before the point where dry and wet split.
+    expect(signalTrim.host.targetVertex.unwrap()).toBe(
+      wrapper.host.targetVertex.unwrap()
+    );
+    expect(wetTrim.host.targetVertex.unwrap()).not.toBe(
+      wrapper.host.targetVertex.unwrap()
+    );
+    expect(signalTrim.index.getValue()).toBeLessThan(wrapper.index.getValue());
+    expect(wrapper.index.getValue()).toBeLessThan(outputTrim.index.getValue());
+    expect(signalTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+    expect(signalTrim.panningMixing.getValue()).toBe(0);
+    expect(wetTrim.volume.getValue()).toBe(0);
+    const created = reverb.created.length;
+    project.editing.modify(() =>
+      updateOfficialEffectGroup(
+        reverb,
+        { ...reverb.config, signalGain: 1 },
+        120
+      )
+    );
+    expect(signalTrim.volume.getValue()).toBe(0);
+    expect(reverb.created).toHaveLength(created);
     project.terminate();
   });
 });

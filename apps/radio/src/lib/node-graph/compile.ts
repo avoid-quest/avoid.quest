@@ -178,14 +178,7 @@ function lastEnabledIndex(effects: readonly EffectConfig[]): number {
   return -1;
 }
 
-/**
- * Places the trim pending in front of `effect`, which is about to join
- * `effects`, and returns what is still pending after it. A bypassed effect
- * passes the trim on untouched. Otherwise the trim goes on the previous
- * enabled effect's post trim, which is exact, or else on this effect's pre
- * trim. The pre trim only reaches the wet path, so below 100% mix a mute
- * also zeroes the post trim; a level change there stays wet-only.
- */
+/** Places pending trim before the whole FX signal, including its dry path. */
 function placeTrim(
   effects: EffectConfig[],
   effect: EffectConfig,
@@ -195,9 +188,6 @@ function placeTrim(
     return { effect, trim };
   }
   const level = trimLevel(trim);
-  if (level === 1) {
-    return { effect, trim: UNITY };
-  }
   const previousIndex = lastEnabledIndex(effects);
   const previous = effects[previousIndex];
   if (previous) {
@@ -210,8 +200,8 @@ function placeTrim(
   return {
     effect: {
       ...effect,
-      inputGain: effect.inputGain * level,
       outputGain: level === 0 && effect.dryWet < 1 ? 0 : effect.outputGain,
+      signalGain: level,
     } as EffectConfig,
     trim: UNITY,
   };
@@ -715,6 +705,7 @@ function layoutOf(effects: readonly EffectConfig[]): unknown[] {
     effect.type,
     effect.order,
     isDirectLayout(effect),
+    effect.signalGain !== undefined,
     isEffectContainer(effect)
       ? effect.chains.map((chain) => [
           chain.id,

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { convertEffectConfigToEngine } from "@/lib/audio/dsp/effects/engine-conversion";
 import type {
   EffectConfig,
   EffectType,
   FrequencySplitConfig,
 } from "@/lib/audio/dsp/effects/types";
+import { EffectSource } from "@/lib/audio/dsp/processor-source";
 import {
   normalizeEffectTree,
   visitEffectTree,
@@ -158,6 +160,34 @@ function effectIds(effects: readonly EffectConfig[]): string[] {
   return ids;
 }
 
+/** Runs the compiler's actual compatibility-backend payload. */
+function render(effects: readonly EffectConfig[]): number {
+  const source = new EffectSource("test", 48_000);
+  for (const effect of effects) {
+    expect(
+      source.addEffect(
+        effect.id,
+        effect.type,
+        convertEffectConfigToEngine(effect),
+        effect.order
+      )
+    ).toBe(true);
+  }
+  const outputL = new Float32Array(128);
+  const outputR = new Float32Array(128);
+  source.start();
+  source.process(
+    new Float32Array(128).fill(0.2),
+    new Float32Array(128).fill(0.2),
+    outputL,
+    outputR,
+    0,
+    128
+  );
+  expect(outputR[0]).toBeCloseTo(outputL[0] ?? 0);
+  return outputL[0] ?? 0;
+}
+
 describe("compile: the migrated Multiple layout", () => {
   test("gives one lane per station and a cable per edge", () => {
     const plan = build(
@@ -267,7 +297,7 @@ describe("compile: lanes in series", () => {
     expect(plan.edges.size).toBe(0);
   });
 
-  test("Gain nodes and cable trims fold into the next input gain or the exit", () => {
+  test("Gain nodes and cable trims fold into whole-signal trim or the exit", () => {
     const plan = build(
       [
         station("a"),
@@ -284,7 +314,8 @@ describe("compile: lanes in series", () => {
       ]
     );
     const [verb] = lane(plan, "a").effects;
-    expect(verb?.inputGain).toBeCloseTo(0.5 * 10 ** (-6 / 20));
+    expect(verb?.signalGain).toBeCloseTo(0.5 * 10 ** (-6 / 20));
+    expect(verb?.inputGain).toBe(1);
     expect(plan.edges.get("out->speakers")?.gain).toBeCloseTo(
       2 * 10 ** (6 / 20)
     );
@@ -295,7 +326,7 @@ describe("compile: lanes in series", () => {
       [station("a"), fx("verb", "cheapReverb", { enabled: true }), speakers],
       [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
     );
-    expect(lane(plan, "a").effects[0]?.inputGain).toBe(0);
+    expect(lane(plan, "a").effects[0]?.signalGain).toBe(0);
     expect(plan.edges.get("verb->speakers")?.muted).toBe(false);
   });
 
@@ -353,9 +384,88 @@ describe("compile: lanes in series", () => {
       [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
     );
     const [verb] = lane(plan, "a").effects;
-    expect(verb?.inputGain).toBe(0);
+    expect(verb?.signalGain).toBe(0);
+    expect(verb?.inputGain).toBe(1);
     expect(verb?.outputGain).toBe(0);
   });
+
+  test.each([0, 0.5, 1])(
+    "leading Gain and cable trim affect dry and wet audio at mix %p",
+    (dryWet) => {
+      const plan = build(
+        [
+          station("a"),
+          node("trim", "gain", { gainDb: -6 }),
+          fx("tool", "stereoTool", {
+            dryWet,
+            enabled: true,
+            panLaw: "linear",
+            volume: 6,
+          }),
+          speakers,
+        ],
+        [
+          audio("a", "trim", { gain: 0.5 }),
+          audio("trim", "tool"),
+          audio("tool", "speakers"),
+        ]
+      );
+      const lowered = lane(plan, "a");
+      const output = render(lowered.effects);
+      const level = 0.5 * 10 ** (-6 / 20);
+      expect(output).toBeCloseTo(
+        0.2 * level * (1 - dryWet + 10 ** (6 / 20) * dryWet)
+      );
+      expect(lowered.layoutSignature).toBe(
+        layoutSignature(
+          lowered.effects.map((effect) => ({ ...effect, signalGain: 1 }))
+        )
+      );
+    }
+  );
+
+  test.each([0, 0.5, 1])(
+    "leading trim inside a branch affects both paths at mix %p",
+    (dryWet) => {
+      const plan = build(
+        [
+          station("a"),
+          fx("split", "fxComposite", { enabled: true }),
+          node("trim", "gain", { gainDb: -6 }),
+          fx("tool", "stereoTool", {
+            dryWet,
+            enabled: true,
+            panLaw: "linear",
+            volume: 6,
+          }),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "trim", { from: "branch-1" }),
+          audio("trim", "tool", { gain: 0.5 }),
+          audio("tool", "merge"),
+          audio("merge", "speakers"),
+        ]
+      );
+      expect(plan.issues).toEqual([]);
+      const { effects } = lane(plan, "a");
+      const [split] = effects;
+      if (split?.type !== "fxComposite") {
+        throw new Error("Missing compiled Split");
+      }
+      const branchGain = split.chains[0]?.gain ?? 0;
+      const level = 0.5 * 10 ** (-6 / 20);
+      expect(render(effects)).toBeCloseTo(
+        0.2 *
+          branchGain *
+          Math.SQRT1_2 *
+          level *
+          (1 - dryWet + 10 ** (6 / 20) * dryWet)
+      );
+    }
+  );
 
   test("a dangling FX is skipped until it reaches an output", () => {
     const plan = build(

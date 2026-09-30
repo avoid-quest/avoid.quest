@@ -33,6 +33,7 @@ describe("EffectSource realtime allocations", () => {
       inputGain: 1,
       outputGain: 1,
       raw: { sidechainEnabled: 1 },
+      signalGain: 1,
     });
     const inputL = new Float32Array(128);
     const inputR = new Float32Array(128);

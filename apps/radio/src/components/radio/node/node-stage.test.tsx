@@ -115,6 +115,8 @@ const nts = {
   streamUrl: "https://radio.example/nts.mp3",
 };
 
+const REPICK_ROW = /Pick the file again/;
+
 function renderStage() {
   const controls = {
     setPlaying: mock(async (_nodeId: string, _playing: boolean) => undefined),
@@ -240,6 +242,76 @@ describe("NodeStage", () => {
       expect(view.getByText("Search to add a station")).toBeTruthy()
     );
     expect(view.getByRole("button", { name: "Play all (0)" })).toBeTruthy();
+  });
+
+  test("a File to pick again after a reload shows, and opens its File", async () => {
+    const { NodeActionsProvider } = await import("./node-actions");
+    const { buildNodeSessionFromGraph } = await import(
+      "@/lib/node-graph/templates"
+    );
+    const { forgetLocalFileUrls, localFileRadio } = await import(
+      "@/lib/node-graph/sources"
+    );
+    const radio = localFileRadio("tone", {
+      displayName: "tone",
+      duration: 10,
+      fileName: "tone.wav",
+      fileSize: 100,
+      mimeType: "audio/wav",
+      objectUrl: "blob:https://radio.test/tone",
+    });
+    forgetLocalFileUrls();
+    const position = { x: 0, y: 0 };
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromGraph(
+        nodeGraphSchema.parse({
+          edges: [],
+          nodes: [
+            { data: { radio }, id: "tone", position, type: "file" },
+            { data: {}, id: "speakers", position, type: "speakers" },
+          ],
+          version: 2,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        })
+      )
+    );
+    const revealNode = mock((_nodeId: string) => undefined);
+    const noop = () => undefined;
+    const asyncNoop = async () => undefined;
+    const client = new QueryClient({
+      defaultOptions: { queries: { enabled: false, retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <NodeActionsProvider
+          value={{
+            fillSource: asyncNoop,
+            fillStation: asyncNoop,
+            fillStationFromUrl: async () => null,
+            handleDeleteRadio: noop,
+            handleEditRadio: noop,
+            handleSaveSessionRadio: noop,
+            handleToggleRadio: asyncNoop,
+            inspectNode: noop,
+            radios: [],
+            removeNode: noop,
+            revealNode,
+            saveDiscoveredStation: noop,
+            selectDiscoveredForStation: noop,
+            swapEffect: noop,
+          }}
+        >
+          <NodeStage />
+        </NodeActionsProvider>
+      </QueryClientProvider>
+    );
+
+    const row = await waitFor(() =>
+      view.getByRole("button", { name: REPICK_ROW })
+    );
+    expect(view.queryByText("Search to add a station")).toBeNull();
+    fireEvent.click(row);
+    expect(revealNode.mock.calls).toEqual([["tone"]]);
   });
 
   test("the Starter patch's empty slot still points at the search", async () => {

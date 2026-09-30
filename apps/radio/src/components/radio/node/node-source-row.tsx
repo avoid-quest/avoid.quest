@@ -16,7 +16,12 @@ import {
   nodeStore,
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
-import { isTrackRadio, trackSubtitle } from "@/lib/node-graph/sources";
+import type { NodeGraph } from "@/lib/node-graph/schema";
+import {
+  isLocalFileGone,
+  isTrackRadio,
+  trackSubtitle,
+} from "@/lib/node-graph/sources";
 import type { NodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
@@ -26,6 +31,7 @@ import {
   StationRowSubtitle,
   StationRowText,
   stationFallbackSubtitle,
+  stationRowButtonOnlyClassName,
   stationRowClassName,
 } from "../station-row";
 import {
@@ -34,6 +40,7 @@ import {
   InputLiveButton,
   useUnpluggedPause,
 } from "./audio-input-controls";
+import { useNodeActions } from "./node-actions";
 import { isUnplugged, useNodeDevices } from "./use-node-devices";
 
 /** What a Stage or Rack row drives on its lane. */
@@ -286,5 +293,49 @@ function StationSourceRow({
       {children}
       {error ? <InlineError>{error}</InlineError> : null}
     </div>
+  );
+}
+
+/** Files from an earlier page whose picked file is gone until picked again. */
+export function repickFiles(
+  graph: NodeGraph | null
+): { id: string; radio: Radio }[] {
+  return (graph?.nodes ?? []).flatMap((node) =>
+    node.type === "file" && node.data.radio && isLocalFileGone(node.data.radio)
+      ? [{ id: node.id, radio: node.data.radio }]
+      : []
+  );
+}
+
+/**
+ * A local file from an earlier page has no lane until it is picked again:
+ * the row shows its File on the Patch, where the file form is.
+ */
+export function RepickFileRow({
+  nodeId,
+  radio,
+  inspect = false,
+}: {
+  nodeId: string;
+  radio: Radio;
+  inspect?: boolean;
+}) {
+  const actions = useNodeActions();
+  return (
+    <li>
+      <button
+        className={cn(stationRowButtonOnlyClassName, "opacity-60")}
+        onClick={() =>
+          inspect ? actions.inspectNode(nodeId) : actions.revealNode(nodeId)
+        }
+        type="button"
+      >
+        <StationRowText title={radio.name}>
+          <StationRowSubtitle>
+            Pick the file again on its File.
+          </StationRowSubtitle>
+        </StationRowText>
+      </button>
+    </li>
   );
 }

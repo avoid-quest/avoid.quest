@@ -20,7 +20,7 @@ import {
   isStripSource,
   type NodeGraph,
 } from "@/lib/node-graph/schema";
-import { isLocalFileGone, isTrackRadio } from "@/lib/node-graph/sources";
+import { isTrackRadio } from "@/lib/node-graph/sources";
 import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { EmptyHint } from "../empty-hint";
@@ -29,14 +29,18 @@ import { RadioItemActions } from "../radio-item-actions";
 import {
   StationRowSubtitle,
   StationRowText,
-  stationRowButtonOnlyClassName,
   stationRowClassName,
 } from "../station-row";
 import { BackendBadge } from "./backend-badge";
 import { inputFeedback } from "./flow-elements";
 import { useNodeActions } from "./node-actions";
 import { isInspectable, sourceTracklist } from "./node-inspector";
-import { type NodeLaneControls, NodeSourceRow } from "./node-source-row";
+import {
+  type NodeLaneControls,
+  NodeSourceRow,
+  RepickFileRow,
+  repickFiles,
+} from "./node-source-row";
 import { NodeCompactStrip } from "./node-source-strip";
 
 type RackGroup = { key: string; title: string; lanes: LanePlan[] };
@@ -187,29 +191,6 @@ function LaneChain({
   );
 }
 
-/** A local file from an earlier page has no lane until it is picked again. */
-function RepickFileRow({ radio, nodeId }: { radio: Radio; nodeId: string }) {
-  const actions = useNodeActions();
-  return (
-    <li className={cn(stationRowClassName, "opacity-60")}>
-      <StationRowText title={radio.name}>
-        <StationRowSubtitle>
-          Pick the file again on its File.
-        </StationRowSubtitle>
-      </StationRowText>
-      <Button
-        aria-label={`Pick ${radio.name} again`}
-        data-inspect-node={nodeId}
-        onClick={() => actions.inspectNode(nodeId)}
-        size="sm"
-        variant="outline"
-      >
-        Pick again
-      </Button>
-    </li>
-  );
-}
-
 /** A Track's or File's tracklist opens in the inspector. */
 function TracksButton({ nodeId, name }: { nodeId: string; name: string }) {
   const actions = useNodeActions();
@@ -290,11 +271,7 @@ export function NodeRack({
       ? [{ id: node.id, radio: node.data.radio as Radio }]
       : []
   );
-  const repick = graph.nodes.flatMap((node) =>
-    node.type === "file" && isLocalFileGone(node.data.radio)
-      ? [{ id: node.id, radio: node.data.radio as Radio }]
-      : []
-  );
+  const repick = repickFiles(graph);
 
   const listed = new Set([
     ...[...plan.lanes.values()].flatMap((lane) => lane.nodes),
@@ -375,7 +352,12 @@ export function NodeRack({
       {repick.length > 0 ? (
         <RackSection title="Pick again">
           {repick.map((file) => (
-            <RepickFileRow key={file.id} nodeId={file.id} radio={file.radio} />
+            <RepickFileRow
+              inspect
+              key={file.id}
+              nodeId={file.id}
+              radio={file.radio}
+            />
           ))}
         </RackSection>
       ) : null}

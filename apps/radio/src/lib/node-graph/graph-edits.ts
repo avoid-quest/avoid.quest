@@ -178,10 +178,14 @@ const EMPTY_SOURCE_ROW_HEIGHT = {
 const AUDIO_INPUT_ROW_HEIGHT = 340;
 /** A Station card's width, for what shares the source column. */
 const SOURCE_COLUMN_WIDTH = 240;
-/** A new FX's gap from the source column: a cable's length, as in Duck. */
-const FX_GAP_X = 120;
-/** The widest FX body (a Compressor, three knobs) plus a cable's length. */
-const FX_COLUMN_WIDTH = 224 + 120;
+/**
+ * A new FX's gap from the source column, and from its column to Speakers:
+ * a short cable, so a three-column patch stays as narrow as it can on a
+ * phone, where the fit stops at a readable zoom.
+ */
+const FX_GAP_X = 40;
+/** The widest FX body (a Compressor, three knobs) plus that gap. */
+const FX_COLUMN_WIDTH = 224 + FX_GAP_X;
 
 /**
  * The height a node's row takes. A File whose picked file is gone after a
@@ -231,18 +235,28 @@ function speakersOf(graph: NodeGraph): GraphNode | undefined {
   return graph.nodes.find((node) => node.type === "speakers");
 }
 
-/** The source column's left edge: the first source's, else Speakers'. */
-function sourceColumnX(graph: NodeGraph, speakers: GraphNode): number {
-  const first = graph.nodes.find(isStripSource);
-  return first
-    ? first.position.x
-    : speakers.position.x - FIRST_STATION_OFFSET_X;
+/**
+ * The source columns' right edge: past the rightmost source left of
+ * Speakers (a big patch lays its Stations out in two columns), else where
+ * a first source would end.
+ */
+function sourceColumnsRight(graph: NodeGraph, speakers: GraphNode): number {
+  const lefts = graph.nodes
+    .filter(
+      (node) => isStripSource(node) && node.position.x < speakers.position.x
+    )
+    .map((node) => node.position.x);
+  const left =
+    lefts.length > 0
+      ? Math.max(...lefts)
+      : speakers.position.x - FIRST_STATION_OFFSET_X;
+  return left + SOURCE_COLUMN_WIDTH;
 }
 
 /**
  * A column of its own between the sources and Speakers, below everything,
  * so the cables of an FX wired Input → FX → Speakers run forward and none
- * runs behind a source. `null` without Speakers.
+ * runs behind a source, in either source column. `null` without Speakers.
  */
 export function nextFxPosition(graph: NodeGraph): Position | null {
   const speakers = speakersOf(graph);
@@ -250,7 +264,7 @@ export function nextFxPosition(graph: NodeGraph): Position | null {
     return null;
   }
   return {
-    x: sourceColumnX(graph, speakers) + SOURCE_COLUMN_WIDTH + FX_GAP_X,
+    x: sourceColumnsRight(graph, speakers) + FX_GAP_X,
     y: bottomOf(graph.nodes),
   };
 }

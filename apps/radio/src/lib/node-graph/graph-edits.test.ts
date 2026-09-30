@@ -209,10 +209,28 @@ describe("where a new node lands", () => {
 
     const position = positionOf(graph, nodeId);
     expect(position).toEqual(nextFxPosition(start) ?? undefined);
-    // Clear of the 240-wide source column, a cable's length right of it.
-    expect(position?.x).toBe(240 + 120);
+    // Clear of the 240-wide source column, a short cable right of it.
+    expect(position?.x).toBe(240 + 40);
     expect(position?.x).toBeLessThan(speakers?.position.x ?? 0);
     expect(position?.y).toBe(2 * STATION_ROW_HEIGHT);
+  });
+
+  test("an FX clears both source columns of a big patch", () => {
+    const start = patch(
+      ...Array.from({ length: 9 }, (_, index) => radio(String(index)))
+    );
+    const secondColumnX = Math.max(
+      ...start.nodes
+        .filter((node) => node.type === "station")
+        .map((node) => node.position.x)
+    );
+    expect(secondColumnX).toBeGreaterThan(0);
+    const { graph, nodeId } = addPaletteNode(start, gainEntry);
+
+    expect(positionOf(graph, nodeId)?.x).toBe(secondColumnX + 240 + 40);
+    expect(positionOf(graph, "speakers")?.x).toBeGreaterThanOrEqual(
+      secondColumnX + 240 + 40 + 224 + 40
+    );
   });
 
   test("Speakers, and what is beside it, move right to make room for the FX column", () => {
@@ -230,8 +248,8 @@ describe("where a new node lands", () => {
 
     const fxX = positionOf(fx.graph, fx.nodeId)?.x ?? 0;
     const speakersX = positionOf(fx.graph, "speakers")?.x ?? 0;
-    expect(fxX).toBe(240 + 120);
-    expect(speakersX).toBe(fxX + 224 + 120);
+    expect(fxX).toBe(240 + 40);
+    expect(speakersX).toBe(fxX + 224 + 40);
     // The Output device keeps to the Speakers column.
     expect(positionOf(fx.graph, withOutput.nodeId)?.x).toBe(speakersX);
     // The source stays; a Station added next lands below it, not the FX.

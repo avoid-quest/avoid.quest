@@ -215,7 +215,11 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   // shows on neither, so the Patch opens on it for its search, form or
   // cables.
   const handlePaletteAdded = (nodeId: string, request: PaletteRequest) => {
-    if (isPhone && !isFilledSource(nodeStore.state.graph, nodeId)) {
+    if (
+      isPhone &&
+      phoneView !== "patch" &&
+      !isFilledSource(nodeStore.state.graph, nodeId)
+    ) {
       setPhoneView("patch");
       setReveal({ nodeId });
       return;

@@ -859,7 +859,7 @@ describe("node session persistence", () => {
   });
 });
 
-describe("node session persistence", () => {
+describe("session persistence and init", () => {
   test("updatePlaybackSession updates nested channel state and session fields", async () => {
     await playbackSessionsCollection.stateWhenReady();
 

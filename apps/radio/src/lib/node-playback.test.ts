@@ -1059,6 +1059,50 @@ describe("Node Playback starts", () => {
     expect(harness.context.reportError).not.toHaveBeenCalled();
   });
 
+  test("removing a Station cleans an older superseded start completion", async () => {
+    insertNodeSession(patch([station("a")]));
+    const channelId = channelOf("a");
+    let resolveStaleStart: () => void = () => undefined;
+    let attempt = 0;
+    const harness = createHarness();
+    harness.context.audio.playSound = mock(
+      (soundId: string) =>
+        new Promise<void>((resolve) => {
+          attempt += 1;
+          const start = () => {
+            setPlaybackChannelRuntime(channelId, () => ({
+              isPlaying: true,
+              soundId,
+            }));
+            resolve();
+          };
+          if (attempt === 1) {
+            resolveStaleStart = start;
+            return;
+          }
+          start();
+        })
+    );
+    await harness.playback.activate();
+
+    const staleStart = harness.playback.playAll();
+    await Promise.resolve();
+    await Promise.resolve();
+    await harness.playback.setPlaying("a", true);
+    await commit(harness, () => patch([]));
+    resolveStaleStart();
+    await staleStart;
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackSession("node")?.channels).toEqual([]);
+    expect(getPlaybackChannelRuntime(channelId)).toMatchObject({
+      error: null,
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
   test("keeps play-all failures local to their lane and reports them as node", async () => {
     insertNodeSession(patch([station("good"), station("bad")]));
     const harness = createHarness();

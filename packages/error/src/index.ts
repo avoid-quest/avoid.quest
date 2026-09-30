@@ -510,7 +510,7 @@ export function hostFromUrl(url?: string): string {
   }
 }
 
-type PlaybackMode = "single" | "multiple" | "dj";
+type PlaybackMode = "single" | "node" | "dj";
 type RetryPhase = "initial" | "fallback-no-cors" | "fallback-proxy" | "none";
 
 export type PlaybackTelemetryPayload = {

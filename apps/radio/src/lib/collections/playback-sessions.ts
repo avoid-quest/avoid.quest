@@ -863,21 +863,6 @@ export function removePlaybackChannel(
   });
 }
 
-export function replacePlaybackChannels(
-  sessionId: PlaybackSessionId,
-  channels: PlaybackChannelRecord[]
-): void {
-  updatePlaybackSession(sessionId, (draft) => {
-    draft.channels = channels;
-    if (
-      draft.activeChannelId &&
-      !channels.some((channel) => channel.id === draft.activeChannelId)
-    ) {
-      draft.activeChannelId = null;
-    }
-  });
-}
-
 export function setPlaybackSessionActiveChannel(
   sessionId: PlaybackSessionId,
   channelId: string | null

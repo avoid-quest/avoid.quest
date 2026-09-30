@@ -16,7 +16,6 @@ export {
   type PlaybackSessionRecord,
   playbackSessionsCollection,
   removePlaybackChannel,
-  replacePlaybackChannels,
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
   setPlaybackSessionActiveChannel,

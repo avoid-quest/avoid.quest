@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { compile } from "./compile";
 import {
-  addEmptyStationNode,
   addStationNode,
   connectNodes,
   findStationNode,
@@ -13,6 +12,7 @@ import {
   setViewport,
   syncStationSnapshots,
 } from "./graph-edits";
+import { addPaletteNode } from "./palette";
 import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
@@ -76,11 +76,26 @@ describe("addStationNode", () => {
 describe("empty Station slots", () => {
   test("a slot dropped from Speakers is wired in and has no lane until filled", () => {
     const start = buildNodeGraphFromTemplate("blank");
-    const { graph, nodeId } = addEmptyStationNode(
+    const added = addPaletteNode(
       start,
-      { x: 10, y: 20 },
-      { handle: "in:audio:main", node: SPEAKERS_NODE_ID }
+      {
+        id: "station",
+        kind: "node",
+        name: "Station",
+        section: "sources",
+        type: "station",
+      },
+      {
+        from: {
+          handle: "in:audio:main",
+          node: SPEAKERS_NODE_ID,
+          type: "target",
+        },
+        position: { x: 10, y: 20 },
+      }
     );
+    const { graph } = added;
+    const nodeId = added.nodeId ?? "";
 
     expect(graph.edges).toHaveLength(1);
     expect(compile(graph, ENV).lanes.size).toBe(0);

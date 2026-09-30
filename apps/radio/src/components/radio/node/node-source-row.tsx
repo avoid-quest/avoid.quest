@@ -10,6 +10,7 @@ import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { laneChannelId } from "@/lib/node-graph/compile";
+import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
 import type { NodePlayback } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { InlineError } from "../inline-error";
@@ -119,8 +120,12 @@ export function NodeSourceRow({
         <VolumeControl
           className="w-28 shrink-0"
           isMuted={muted || volume === 0}
-          onToggleMute={() => controls.toggleMute(nodeId)}
+          onToggleMute={() => {
+            controls.toggleMute(nodeId);
+            snapshotNodeGraph();
+          }}
           onVolumeChange={(next) => controls.setVolume(nodeId, next)}
+          onVolumeCommit={() => snapshotNodeGraph()}
           target={radio.name}
           volume={volume}
         />

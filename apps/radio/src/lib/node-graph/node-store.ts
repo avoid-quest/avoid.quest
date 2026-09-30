@@ -1,10 +1,11 @@
 /**
  * Node Store
  *
- * The patch being edited: the graph document and the canvas selection, in a
- * TanStack Store like the playback runtime store. React Flow is controlled
- * from it, and node playback compiles each graph commit onto the engine.
- * Meter-rate levels never pass through here.
+ * The patch being edited: the graph document, the canvas selection and the
+ * undo stack, in a TanStack Store like the playback runtime store. React
+ * Flow is controlled from it, and node playback compiles each graph commit
+ * onto the engine, so an undo is just another diff. Meter-rate levels never
+ * pass through here.
  */
 
 import { Store, useStore } from "@tanstack/react-store";
@@ -15,18 +16,49 @@ export type NodeSelection = {
   edges: readonly string[];
 };
 
+/**
+ * Snapshots of the document. `present` is the graph as of the last
+ * snapshot; commits since then (a fader mid-drag) fold into the next step.
+ */
+export type NodeHistory = {
+  past: readonly NodeGraph[];
+  present: NodeGraph | null;
+  future: readonly NodeGraph[];
+};
+
 export type NodeStoreState = {
   /** null until a node session is loaded. */
   graph: NodeGraph | null;
   selection: NodeSelection;
+  history: NodeHistory;
 };
 
 export type NodeStore = Store<NodeStoreState>;
 
+/**
+ * How a commit meets the undo stack:
+ * - "snapshot": an undo step of its own (connect, delete, add, template);
+ * - "rebase": applied to every snapshot too, for edits that follow live
+ *   records (a rename, a hide), so no undo brings a stale record back;
+ * - default: folds into the next snapshot (a fader mid-drag).
+ */
+export type NodeCommitHistory = "snapshot" | "rebase";
+
+/** Snapshots kept for undo. */
+export const NODE_HISTORY_LIMIT = 100;
+
 const EMPTY_SELECTION: NodeSelection = { edges: [], nodes: [] };
 
+function freshHistory(graph: NodeGraph | null): NodeHistory {
+  return { future: [], past: [], present: graph };
+}
+
 export function createNodeStore(graph: NodeGraph | null = null): NodeStore {
-  return new Store<NodeStoreState>({ graph, selection: EMPTY_SELECTION });
+  return new Store<NodeStoreState>({
+    graph,
+    history: freshHistory(graph),
+    selection: EMPTY_SELECTION,
+  });
 }
 
 export const nodeStore = createNodeStore();
@@ -46,12 +78,30 @@ function pruneSelection(
     : { edges, nodes };
 }
 
+/** Makes the current graph an undo step if it moved since the last one. */
+function checkpoint(state: NodeStoreState): NodeHistory {
+  const { history, graph } = state;
+  if (graph === history.present) {
+    return history;
+  }
+  const past = history.present ? [...history.past, history.present] : [];
+  return {
+    future: [],
+    past: past.slice(-NODE_HISTORY_LIMIT),
+    present: graph,
+  };
+}
+
 /** Replaces the document, e.g. when the node session activates. */
 export function loadNodeGraph(
   graph: NodeGraph | null,
   store: NodeStore = nodeStore
 ): void {
-  store.setState(() => ({ graph, selection: EMPTY_SELECTION }));
+  store.setState(() => ({
+    graph,
+    history: freshHistory(graph),
+    selection: EMPTY_SELECTION,
+  }));
 }
 
 /**
@@ -60,7 +110,8 @@ export function loadNodeGraph(
  */
 export function commitNodeGraph(
   update: (graph: NodeGraph) => NodeGraph,
-  store: NodeStore = nodeStore
+  store: NodeStore = nodeStore,
+  history?: NodeCommitHistory
 ): boolean {
   const current = store.state.graph;
   if (!current) {
@@ -70,9 +121,71 @@ export function commitNodeGraph(
   if (graph === current) {
     return true;
   }
+  store.setState((state) => {
+    const next = { ...state, graph };
+    if (history === "snapshot") {
+      // Anything uncommitted before the edit is its own step first.
+      const before = checkpoint(state);
+      next.history = checkpoint({ ...state, graph, history: before });
+    } else if (history === "rebase") {
+      // The current graph maps to the committed one, so a rebased edit alone
+      // never looks like an undo step.
+      const rebase = (entry: NodeGraph) =>
+        entry === current ? graph : update(entry);
+      next.history = {
+        future: state.history.future.map(rebase),
+        past: state.history.past.map(rebase),
+        present: state.history.present && rebase(state.history.present),
+      };
+    }
+    return { ...next, selection: pruneSelection(state.selection, graph) };
+  });
+  return true;
+}
+
+/** Makes the edits since the last snapshot one undo step (a knob release). */
+export function snapshotNodeGraph(store: NodeStore = nodeStore): void {
+  if (store.state.graph === store.state.history.present) {
+    return;
+  }
+  store.setState((state) => ({ ...state, history: checkpoint(state) }));
+}
+
+/** Steps back one snapshot. Returns false when there is nothing to undo. */
+export function undoNodeGraph(store: NodeStore = nodeStore): boolean {
+  const history = checkpoint(store.state);
+  const previous = history.past.at(-1);
+  if (!(previous && history.present)) {
+    return false;
+  }
+  const { present } = history;
   store.setState((state) => ({
-    graph,
-    selection: pruneSelection(state.selection, graph),
+    graph: previous,
+    history: {
+      future: [present, ...history.future],
+      past: history.past.slice(0, -1),
+      present: previous,
+    },
+    selection: pruneSelection(state.selection, previous),
+  }));
+  return true;
+}
+
+/** Steps forward one undone snapshot, unless the patch changed since. */
+export function redoNodeGraph(store: NodeStore = nodeStore): boolean {
+  const { graph, history } = store.state;
+  const [next, ...future] = history.future;
+  if (!(next && graph) || graph !== history.present) {
+    return false;
+  }
+  store.setState((state) => ({
+    graph: next,
+    history: {
+      future,
+      past: [...history.past, graph].slice(-NODE_HISTORY_LIMIT),
+      present: next,
+    },
+    selection: pruneSelection(state.selection, next),
   }));
   return true;
 }
@@ -90,4 +203,23 @@ export function useNodeGraph(store: NodeStore = nodeStore): NodeGraph | null {
 
 export function useNodeSelection(store: NodeStore = nodeStore): NodeSelection {
   return useStore(store, (state) => state.selection);
+}
+
+/** Whether Undo and Redo have anything to do, for their buttons. */
+export function useNodeHistory(store: NodeStore = nodeStore): {
+  canUndo: boolean;
+  canRedo: boolean;
+} {
+  const canUndo = useStore(
+    store,
+    ({ graph, history }) =>
+      history.past.length > 0 ||
+      (graph !== history.present && history.present !== null)
+  );
+  const canRedo = useStore(
+    store,
+    ({ graph, history }) =>
+      history.future.length > 0 && graph === history.present
+  );
+  return { canRedo, canUndo };
 }

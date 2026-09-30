@@ -8,6 +8,7 @@
  */
 
 export type {
+  AriaLabelConfig as FlowAriaLabelConfig,
   Connection as FlowConnection,
   Edge as FlowEdge,
   EdgeChange as FlowEdgeChange,

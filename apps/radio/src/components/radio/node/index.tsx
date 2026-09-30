@@ -18,15 +18,31 @@ import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useNodeSession } from "@/lib/hooks/use-node-session";
 import { useAllRadios } from "@/lib/hooks/use-radios";
-import { removeNodes } from "@/lib/node-graph/graph-edits";
-import { commitNodeGraph, useNodeGraph } from "@/lib/node-graph/node-store";
+import { findStationNode, removeNodes } from "@/lib/node-graph/graph-edits";
+import {
+  commitNodeGraph,
+  nodeStore,
+  useNodeGraph,
+} from "@/lib/node-graph/node-store";
+import {
+  buildNodeGraphFromTemplate,
+  type NodeTemplateId,
+} from "@/lib/node-graph/templates";
+import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
 import { NodeCanvasSkeleton } from "../radio-loading-skeleton";
 import { RadioSearchBar } from "../radio-search-bar";
+import { ConnectDialog } from "./connect-dialog";
 import { type NodeActions, NodeActionsProvider } from "./node-actions";
+import {
+  NodePalette,
+  type PaletteRequest,
+  usePaletteShortcut,
+} from "./node-palette";
 import { NodeRack } from "./node-rack";
 import { NodeStage } from "./node-stage";
+import { NodeToolbar, useUndoShortcuts } from "./node-toolbar";
 import { useNodeRadioManagement } from "./use-node-radio-management";
 
 /**
@@ -57,11 +73,44 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const { pauseAll, playAll, playingCount, sources } = useNodeSession();
   const [reveal, setReveal] = useState<{ nodeId: string } | null>(null);
   const [phoneView, setPhoneView] = useState<PhoneView>("stage");
+  const [palette, setPalette] = useState<PaletteRequest | null>(null);
+  const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
+  const [fitRequest, setFitRequest] = useState(0);
   const isPhone = useIsMobile();
   const management = useNodeRadioManagement({
     onStationAdded: (nodeId) => setReveal({ nodeId }),
     savedRadios: savedRadios.isReady ? savedRadios.data : undefined,
   });
+
+  const validateOptions = { profile: detectNodePlaybackEnv().profile };
+  const openPalette = (request: PaletteRequest = {}) => setPalette(request);
+  usePaletteShortcut(openPalette);
+  useUndoShortcuts();
+
+  /** Replaces the patch with a template, as one undo step, then fits it. */
+  const loadTemplate = (template: NodeTemplateId) => {
+    const saved = savedRadios.isReady ? savedRadios.data : [];
+    commitNodeGraph(
+      (current) => ({
+        ...buildNodeGraphFromTemplate(template, {
+          // A station already in the patch keeps its level.
+          levels: (radio) => {
+            const station = findStationNode(current, radio);
+            return station
+              ? { muted: station.data.muted, volume: station.data.volume }
+              : undefined;
+          },
+          saved,
+          session: management.sessionRadios,
+        }),
+        viewport: current.viewport,
+      }),
+      nodeStore,
+      "snapshot"
+    );
+    setReveal(null);
+    setFitRequest((count) => count + 1);
+  };
 
   const isAnyPlaying = playingCount > 0;
   const hasSources = sources.length > 0;
@@ -109,7 +158,11 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     handleToggleRadio: management.handleToggleRadio,
     radios: radios ?? [],
     removeNode: (nodeId) => {
-      commitNodeGraph((current) => removeNodes(current, [nodeId]));
+      commitNodeGraph(
+        (current) => removeNodes(current, [nodeId]),
+        nodeStore,
+        "snapshot"
+      );
     },
     saveDiscoveredStation: management.saveDiscoveredStation,
     selectDiscoveredForStation: management.selectDiscoveredForStation,
@@ -118,6 +171,13 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     management.addStation(radio);
   };
   const handleCancelDelete = () => management.setDeleteConfirm(null);
+  // A node placed where the user pointed is in view already; one placed in
+  // a free spot may not be.
+  const handlePaletteAdded = (nodeId: string, request: PaletteRequest) => {
+    if (!request.position) {
+      setReveal({ nodeId });
+    }
+  };
   const handlePhoneViewChange = (value: string) => {
     if (isPhoneView(value)) {
       setPhoneView(value);
@@ -132,7 +192,12 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       {graph ? (
         <ClientOnly fallback={<NodeCanvasSkeleton />}>
           <Suspense fallback={<NodeCanvasSkeleton />}>
-            <NodeCanvas reveal={reveal} />
+            <NodeCanvas
+              fitRequest={fitRequest}
+              onOpenConnect={setConnectNodeId}
+              onOpenPalette={openPalette}
+              reveal={reveal}
+            />
           </Suspense>
         </ClientOnly>
       ) : (
@@ -148,14 +213,18 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   return (
     <NodeActionsProvider value={actions}>
       <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="px-3 pt-3 pb-2">
+        <div className="flex items-center gap-2 px-3 pt-3 pb-2">
           <RadioSearchBar
-            className="w-full max-w-md"
+            className="w-full min-w-0 max-w-md"
             onSaveDiscovered={management.saveDiscoveredStation}
             onSelectDiscovered={management.selectDiscoveredStation}
             onSelectLocal={handleSelectLocal}
             placeholder="Search to add a station"
             radios={radios ?? []}
+          />
+          <NodeToolbar
+            onAdd={() => openPalette()}
+            onLoadTemplate={loadTemplate}
           />
         </div>
         {isPhone ? (
@@ -215,6 +284,22 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
             </ResizablePanel>
           </ResizablePanelGroup>
         )}
+
+        <NodePalette
+          isPhone={isPhone}
+          onAdded={handlePaletteAdded}
+          onClose={() => setPalette(null)}
+          onLoadTemplate={loadTemplate}
+          radios={[...(radios ?? []), ...management.sessionRadios]}
+          request={palette}
+          validateOptions={validateOptions}
+        />
+
+        <ConnectDialog
+          nodeId={connectNodeId}
+          onClose={() => setConnectNodeId(null)}
+          validateOptions={validateOptions}
+        />
 
         <RadioDialog
           mode={management.dialogMode}

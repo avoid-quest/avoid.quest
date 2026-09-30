@@ -25,13 +25,13 @@ type Viewport = NodeGraph["viewport"];
 
 /** Where the first Station goes relative to Speakers: one column left. */
 const FIRST_STATION_OFFSET_X = 480;
-const EMPTY_STATION_ID = "src-slot";
 
 function isStation(node: GraphNode): node is StationNode {
   return node.type === "station";
 }
 
-function uniqueId(base: string, taken: ReadonlySet<string>): string {
+/** `base`, suffixed until no id in `taken` has it. */
+export function uniqueId(base: string, taken: ReadonlySet<string>): string {
   let id = base;
   for (let suffix = 2; taken.has(id); suffix += 1) {
     id = `${base}-${suffix}`;
@@ -81,7 +81,7 @@ export function findStationNode(
   return findStationNodes(graph, radio)[0];
 }
 
-function wireToSpeakers(graph: NodeGraph, source: string): GraphEdge[] {
+export function wireToSpeakers(graph: NodeGraph, source: string): GraphEdge[] {
   const speakers = graph.nodes.find((node) => node.type === "speakers");
   if (!speakers) {
     return graph.edges;
@@ -102,7 +102,7 @@ function wireToSpeakers(graph: NodeGraph, source: string): GraphEdge[] {
 }
 
 /** Below the lowest Station, or one column left of Speakers in a new patch. */
-function nextStationPosition(graph: NodeGraph): Position {
+export function nextStationPosition(graph: NodeGraph): Position {
   const stations = graph.nodes.filter(isStation);
   const [first] = stations;
   if (first) {
@@ -153,42 +153,6 @@ export function addStationNode(
   };
 }
 
-/**
- * Adds an empty Station slot at `position`, its search open, optionally
- * wired into `target` (a cable dropped from an input on empty space).
- */
-export function addEmptyStationNode(
-  graph: NodeGraph,
-  position: Position,
-  target?: { node: string; handle: string }
-): { graph: NodeGraph; nodeId: string } {
-  const nodeId = uniqueId(
-    EMPTY_STATION_ID,
-    new Set(graph.nodes.map((node) => node.id))
-  );
-  const nodes: GraphNode[] = [
-    ...graph.nodes,
-    {
-      data: { muted: false, radio: null, volume: 1 },
-      id: nodeId,
-      position,
-      type: "station",
-    },
-  ];
-  const edges = target
-    ? connectNodes(
-        { ...graph, nodes },
-        {
-          source: nodeId,
-          sourceHandle: AUDIO_OUT_HANDLE,
-          target: target.node,
-          targetHandle: target.handle,
-        }
-      ).edges
-    : graph.edges;
-  return { graph: { ...graph, edges, nodes }, nodeId };
-}
-
 /** Puts `radio` into a Station, e.g. an empty slot picked from its search. */
 export function setStationRadio(
   graph: NodeGraph,
@@ -202,6 +166,33 @@ export function setStationRadio(
     }
     changed = true;
     return { ...node, data: { ...node.data, radio } };
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/**
+ * Shows or hides the radio in these Stations, as its saved record does.
+ * Only `enabled` changes, so it applies to older snapshots of the patch too.
+ */
+export function setStationsEnabled(
+  graph: NodeGraph,
+  nodeIds: Iterable<string>,
+  enabled: boolean
+): NodeGraph {
+  const ids = new Set(nodeIds);
+  let changed = false;
+  const nodes = graph.nodes.map((node) => {
+    if (
+      !(ids.has(node.id) && isStation(node) && node.data.radio) ||
+      node.data.radio.enabled === enabled
+    ) {
+      return node;
+    }
+    changed = true;
+    return {
+      ...node,
+      data: { ...node.data, radio: { ...node.data.radio, enabled } },
+    };
   });
   return changed ? { ...graph, nodes } : graph;
 }

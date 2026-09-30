@@ -14,6 +14,7 @@ import {
   findStationNodes,
   removeNodes,
   setStationRadio,
+  setStationsEnabled,
   syncStationSnapshots,
 } from "@/lib/node-graph/graph-edits";
 import {
@@ -72,10 +73,13 @@ export function useNodeRadioManagement({
       return;
     }
     const live = [...savedRadios, ...sessionRadios];
+    // Applied to every undo snapshot too, so an undo never brings a stale
+    // record back.
     commitNodeGraph(
       (current) =>
         syncStationSnapshots(current, (radio) => findLiveStation(live, radio)),
-      store
+      store,
+      "rebase"
     );
   }, [hasGraph, savedRadios, sessionRadios, store]);
 
@@ -92,11 +96,15 @@ export function useNodeRadioManagement({
   /** Adds a Station for `radio` wired to Speakers, and starts it. */
   const addStation = async (radio: Radio) => {
     let nodeId: string | null = null;
-    commitNodeGraph((current) => {
-      const { graph, nodeId: added } = addStationNode(current, radio);
-      nodeId = added;
-      return graph;
-    }, store);
+    commitNodeGraph(
+      (current) => {
+        const { graph, nodeId: added } = addStationNode(current, radio);
+        nodeId = added;
+        return graph;
+      },
+      store,
+      "snapshot"
+    );
     if (nodeId) {
       onStationAdded?.(nodeId);
       await startStation(nodeId);
@@ -108,7 +116,8 @@ export function useNodeRadioManagement({
   const fillStation = async (nodeId: string, radio: Radio) => {
     const committed = commitNodeGraph(
       (current) => setStationRadio(current, nodeId, radio),
-      store
+      store,
+      "snapshot"
     );
     if (committed) {
       await startStation(nodeId);
@@ -129,7 +138,11 @@ export function useNodeRadioManagement({
       ? findStationNodes(store.state.graph, radio).map((node) => node.id)
       : [];
     if (ids.length > 0) {
-      commitNodeGraph((current) => removeNodes(current, ids), store);
+      commitNodeGraph(
+        (current) => removeNodes(current, ids),
+        store,
+        "snapshot"
+      );
     }
   };
 
@@ -176,19 +189,16 @@ export function useNodeRadioManagement({
         resume.push(node.id);
       }
     }
+    // The saved record changed too, so every undo snapshot follows it.
     commitNodeGraph(
       (current) =>
-        nodes.reduce(
-          (graph, node) =>
-            node.data.radio
-              ? setStationRadio(graph, node.id, {
-                  ...node.data.radio,
-                  enabled,
-                })
-              : graph,
-          current
+        setStationsEnabled(
+          current,
+          nodes.map((node) => node.id),
+          enabled
         ),
-      store
+      store,
+      "rebase"
     );
     await Promise.all(resume.map((nodeId) => startStation(nodeId)));
   };

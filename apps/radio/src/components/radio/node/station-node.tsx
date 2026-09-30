@@ -10,6 +10,7 @@ import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { laneChannelId } from "@/lib/node-graph/compile";
+import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
 import type { GraphNode } from "@/lib/node-graph/schema";
 import { AUDIO_OUT_HANDLE } from "@/lib/node-graph/templates";
 import { getNodePlayback } from "@/lib/node-playback";
@@ -44,6 +45,8 @@ type StationNodeBodyProps = {
   radios: Radio[];
   onTogglePlayPause: () => void;
   onVolumeChange: (volume: number) => void;
+  /** A fader release, where the patch takes an undo step. */
+  onVolumeCommit?: () => void;
   onToggleMute: () => void;
   onSelectLocal: (radio: Radio) => void;
   onSelectDiscovered: (radio: Radio) => void;
@@ -128,6 +131,7 @@ export function StationNodeBody({
   radios,
   onTogglePlayPause,
   onVolumeChange,
+  onVolumeCommit,
   onToggleMute,
   onSelectLocal,
   onSelectDiscovered,
@@ -224,6 +228,7 @@ export function StationNodeBody({
             isMuted={muted || volume === 0}
             onToggleMute={onToggleMute}
             onVolumeChange={onVolumeChange}
+            onVolumeCommit={onVolumeCommit}
             target={radio.name}
             volume={volume}
           />
@@ -268,11 +273,15 @@ export function StationNode({
           actions.fillStation(id, picked);
         }}
         onToggle={actions.handleToggleRadio}
-        onToggleMute={() => playback.toggleMute(id)}
+        onToggleMute={() => {
+          playback.toggleMute(id);
+          snapshotNodeGraph();
+        }}
         onTogglePlayPause={() => {
           playback.setPlaying(id, !isPlaying);
         }}
         onVolumeChange={(volume) => playback.setVolume(id, volume)}
+        onVolumeCommit={() => snapshotNodeGraph()}
         radio={radio}
         radios={actions.radios}
         selected={selected}

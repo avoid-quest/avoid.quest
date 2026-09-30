@@ -12,6 +12,8 @@ export type VolumeControlProps = {
   isMuted: boolean;
   onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
+  /** The drag or key press ended, e.g. to take an undo step. */
+  onVolumeCommit?: () => void;
   /** Names what the control affects, e.g. "all" reads "Mute all". */
   target?: string;
   className?: string;
@@ -30,6 +32,7 @@ export function VolumeControl({
   isMuted,
   onToggleMute,
   onVolumeChange,
+  onVolumeCommit,
   target,
   className,
 }: VolumeControlProps) {
@@ -56,6 +59,7 @@ export function VolumeControl({
         max={1}
         min={0}
         onValueChange={handleValueChange}
+        onValueCommit={onVolumeCommit}
         step={0.01}
         value={[isMuted ? 0 : volume]}
       />

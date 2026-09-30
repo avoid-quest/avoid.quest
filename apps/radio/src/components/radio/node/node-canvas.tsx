@@ -2,9 +2,7 @@
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
-import { laneChannelId } from "@/lib/node-graph/compile";
 import {
-  addEmptyStationNode,
   connectNodes,
   moveNodes,
   removeEdges,
@@ -18,8 +16,13 @@ import {
   useNodeGraph,
   useNodeSelection,
 } from "@/lib/node-graph/node-store";
-import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
-import { validateConnection } from "@/lib/node-graph/validate";
+import {
+  autoConnection,
+  type PaletteFrom,
+  paletteEntries,
+} from "@/lib/node-graph/palette";
+import type { NodeGraph } from "@/lib/node-graph/schema";
+import { type Connection, validateConnection } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import {
@@ -27,7 +30,6 @@ import {
   type FlowConnectionEnd,
   type FlowEdge,
   type FlowEdgeChange,
-  type FlowNode,
   type FlowNodeChange,
   type FlowNodeTypes,
   type FlowViewport,
@@ -35,6 +37,8 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "./flow-adapter";
+import { NODE_ARIA_LABELS, toFlowEdges, toFlowNodes } from "./flow-elements";
+import { isShortcutIgnored, type PaletteRequest } from "./node-palette";
 import { SpeakersNode } from "./speakers-node";
 import { StationNode } from "./station-node";
 
@@ -46,26 +50,10 @@ const nodeTypes = {
   station: StationNode,
 } satisfies FlowNodeTypes;
 
-/** Station node width, so a dropped slot lands with its port at the cursor. */
+/** Station node width, so a node fed from an input lands with its port at the cursor. */
 const STATION_WIDTH = 240;
 const FIT_VIEW_OPTIONS = { maxZoom: 1, padding: 0.2 };
 const DELETE_KEYS = ["Backspace", "Delete"];
-/** F is left alone while typing or inside a menu, listbox or dialog. */
-const KEY_IGNORED_TARGETS =
-  "input, textarea, select, [contenteditable=true], [role=menu], [role=listbox], [role=dialog], [role=alertdialog]";
-
-function isDrawn(node: GraphNode): node is GraphNode & {
-  type: keyof typeof nodeTypes;
-} {
-  return node.type in nodeTypes;
-}
-
-function nodeLabel(node: GraphNode | undefined): string {
-  if (node?.type === "station") {
-    return node.data.radio?.name ?? "Empty Station";
-  }
-  return node?.type === "speakers" ? "Speakers" : "node";
-}
 
 /** The playing channel ids, sorted and space-joined for a cheap compare. */
 function liveChannelKey(
@@ -138,9 +126,21 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
 export type NodeCanvasProps = {
   /** A Station the search bar just added; the view pans to it if hidden. */
   reveal: { nodeId: string } | null;
+  /** Bumped to fit the patch in view, e.g. after a template loads. */
+  fitRequest: number;
+  /** Opens the add-node palette: double-click, or a cable dropped in space. */
+  onOpenPalette: (request: PaletteRequest) => void;
+  /** C on a focused node opens the keyboard Connect… dialog for it. */
+  onOpenConnect: (nodeId: string) => void;
 };
 
-function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
+function Canvas({
+  graph,
+  reveal,
+  fitRequest,
+  onOpenPalette,
+  onOpenConnect,
+}: NodeCanvasProps & { graph: NodeGraph }) {
   const selection = useNodeSelection();
   // Only which lanes play, as a string: a buffering flag or an error on one
   // Station must not re-render every cable.
@@ -166,37 +166,14 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
     screenToFlowPosition,
     setCenter,
   } = useReactFlow();
+  const validateOptions = { profile: detectNodePlaybackEnv().profile };
 
-  const drawn = graph.nodes.filter(isDrawn);
-  const byId = new Map(drawn.map((node) => [node.id, node]));
-  const nodes = drawn.map(
-    (node): FlowNode => ({
-      data: node.data,
-      deletable: node.type !== "speakers",
-      domAttributes: { "aria-roledescription": "audio module" },
-      id: node.id,
-      measured: measured.get(node.id),
-      position: dragPositions.get(node.id) ?? node.position,
-      selected: selection.nodes.includes(node.id),
-      type: node.type,
-    })
-  );
-  const edges = graph.edges
-    .filter((edge) => byId.has(edge.source) && byId.has(edge.target))
-    .map(
-      (edge): FlowEdge => ({
-        ariaLabel: `${nodeLabel(byId.get(edge.source))} audio to ${nodeLabel(byId.get(edge.target))}`,
-        className: liveLanes.has(laneChannelId(edge.source))
-          ? "node-edge-live"
-          : undefined,
-        id: edge.id,
-        selected: selection.edges.includes(edge.id),
-        source: edge.source,
-        sourceHandle: edge.sourceHandle,
-        target: edge.target,
-        targetHandle: edge.targetHandle,
-      })
-    );
+  const nodes = toFlowNodes(graph, {
+    measured,
+    positions: dragPositions,
+    selection,
+  });
+  const edges = toFlowEdges(graph, { liveLanes, selection });
 
   // React Flow can call onNodesChange and onEdgesChange back to back in one
   // event (select a node, deselect a cable), so each handler reads the
@@ -229,12 +206,21 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
     if (sizes.size > 0) {
       setMeasured((previous) => new Map([...previous, ...sizes]));
     }
-    // Positions persist on drag stop, not on every pointer move.
+    // Positions persist on drag stop, not on every pointer move, and each
+    // drag is one undo step.
     if (dropped.size > 0) {
-      commitNodeGraph((latest) => moveNodes(latest, dropped));
+      commitNodeGraph(
+        (latest) => moveNodes(latest, dropped),
+        nodeStore,
+        "snapshot"
+      );
     }
     if (removed.length > 0) {
-      commitNodeGraph((latest) => removeNodes(latest, removed));
+      commitNodeGraph(
+        (latest) => removeNodes(latest, removed),
+        nodeStore,
+        "snapshot"
+      );
     }
     const selectedNodes = [...selected].filter((id) => !removed.includes(id));
     if (!sameIds(selectedNodes, current.nodes)) {
@@ -261,7 +247,11 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
       }
     }
     if (removed.length > 0) {
-      commitNodeGraph((latest) => removeEdges(latest, removed));
+      commitNodeGraph(
+        (latest) => removeEdges(latest, removed),
+        nodeStore,
+        "snapshot"
+      );
     }
     const selectedEdges = [...selected].filter((id) => !removed.includes(id));
     if (!sameIds(selectedEdges, current.edges)) {
@@ -281,48 +271,126 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
         target: connection.target,
         targetHandle: connection.targetHandle,
       },
-      { profile: detectNodePlaybackEnv().profile }
+      validateOptions
     ).length === 0;
 
-  const handleConnect = (connection: FlowConnection) => {
-    commitNodeGraph((current) => connectNodes(current, connection));
+  const handleConnect = (connection: Connection) => {
+    commitNodeGraph(
+      (current) => connectNodes(current, connection),
+      nodeStore,
+      "snapshot"
+    );
   };
 
-  // The viewport persists when a pan, zoom or fit settles.
+  // The viewport persists when a pan, zoom or fit settles; it is never an
+  // undo step of its own.
   const handleMoveEnd = (_event: unknown, viewport: FlowViewport) => {
-    commitNodeGraph((current) => setViewport(current, viewport));
+    commitNodeGraph(
+      (current) => setViewport(current, viewport),
+      nodeStore,
+      "rebase"
+    );
   };
 
-  // A cable dropped from an audio input onto empty space brings a Station
-  // slot to feed it; the palette for every other kind comes later.
+  // A cable dropped on a node connects when exactly one of its ports fits;
+  // dropped on empty space, it opens the palette narrowed to what fits.
   const handleConnectEnd = (
     event: MouseEvent | TouchEvent,
     connection: FlowConnectionEnd
   ) => {
     const { fromHandle, fromNode } = connection;
     const dropTarget = event.target instanceof Element ? event.target : null;
+    if (connection.isValid || !(fromHandle?.id && fromNode && dropTarget)) {
+      return;
+    }
+    const from: PaletteFrom = {
+      handle: fromHandle.id,
+      node: fromNode.id,
+      type: fromHandle.type,
+    };
+    const onNode = dropTarget
+      .closest(".react-flow__node")
+      ?.getAttribute("data-id");
+    if (onNode) {
+      const cable = autoConnection(graph, from, onNode, validateOptions);
+      if (cable) {
+        handleConnect(cable);
+      }
+      return;
+    }
     if (
-      connection.isValid ||
-      !(fromHandle?.id && fromNode) ||
-      fromHandle.type !== "target" ||
-      !fromHandle.id.startsWith("in:audio:") ||
-      !dropTarget?.closest(".react-flow__pane")
+      !dropTarget.closest(".react-flow__pane") ||
+      paletteEntries(graph, { ...validateOptions, from }).length === 0
     ) {
       return;
     }
     const drop = screenToFlowPosition(pointerOf(event));
-    const handle = fromHandle.id;
-    commitNodeGraph(
-      (current) =>
-        addEmptyStationNode(
-          current,
-          { x: drop.x - STATION_WIDTH, y: drop.y - 20 },
-          { handle, node: fromNode.id }
-        ).graph
-    );
+    // A node feeding an input sits left of the cursor, one fed by an output
+    // right of it, so its port lands where the cable was let go.
+    onOpenPalette({
+      from,
+      position: {
+        x: from.type === "target" ? drop.x - STATION_WIDTH : drop.x,
+        y: drop.y - 20,
+      },
+    });
   };
 
-  // F fits the patch in view, unless typing.
+  const handleDoubleClick = (event: React.MouseEvent) => {
+    if (
+      !(event.target instanceof Element) ||
+      event.target.closest(".react-flow__node, .react-flow__edge") ||
+      !event.target.closest(".react-flow__pane")
+    ) {
+      return;
+    }
+    onOpenPalette({
+      position: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+    });
+  };
+
+  // C on a focused node opens the Connect… dialog; with none focused, the
+  // one selected node.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== "c" ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.defaultPrevented ||
+        isShortcutIgnored(event.target)
+      ) {
+        return;
+      }
+      const focused =
+        event.target instanceof Element
+          ? event.target.closest(".react-flow__node")?.getAttribute("data-id")
+          : null;
+      const { nodes: selected } = nodeStore.state.selection;
+      const nodeId = focused ?? (selected.length === 1 ? selected[0] : null);
+      if (!nodeId) {
+        return;
+      }
+      event.preventDefault();
+      onOpenConnect(nodeId);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onOpenConnect]);
+
+  // A template load or undo can move everything; fit it back in view.
+  useEffect(() => {
+    if (fitRequest === 0) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      fitView({ ...FIT_VIEW_OPTIONS, duration: 200 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fitRequest, fitView]);
+
+  // F fits the patch in view, unless typing or inside a menu or dialog.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
@@ -334,11 +402,7 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
       ) {
         return;
       }
-      const { target } = event;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.closest(KEY_IGNORED_TARGETS))
-      ) {
+      if (isShortcutIgnored(event.target)) {
         return;
       }
       event.preventDefault();
@@ -386,6 +450,7 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
   return (
     <div className="absolute inset-0" ref={wrapperRef}>
       <ReactFlow
+        ariaLabelConfig={NODE_ARIA_LABELS}
         connectionRadius={24}
         defaultViewport={initialViewport}
         deleteKeyCode={DELETE_KEYS}
@@ -399,24 +464,26 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
         nodeTypes={nodeTypes}
         onConnect={handleConnect}
         onConnectEnd={handleConnectEnd}
+        onDoubleClick={handleDoubleClick}
         onEdgesChange={handleEdgesChange}
         onMoveEnd={handleMoveEnd}
         onNodesChange={handleNodesChange}
         panActivationKeyCode={null}
+        zoomOnDoubleClick={false}
       />
     </div>
   );
 }
 
 /** The patch canvas. Lives in its own client chunk with React Flow. */
-export default function NodeCanvas({ reveal }: NodeCanvasProps) {
+export default function NodeCanvas(props: NodeCanvasProps) {
   const graph = useNodeGraph();
   if (!graph) {
     return null;
   }
   return (
     <ReactFlowProvider>
-      <Canvas graph={graph} reveal={reveal} />
+      <Canvas graph={graph} {...props} />
     </ReactFlowProvider>
   );
 }

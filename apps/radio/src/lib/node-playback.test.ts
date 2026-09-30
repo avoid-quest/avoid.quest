@@ -3002,6 +3002,93 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(mainSources.has(sends()[0])).toBe(true);
   });
 
+  test("Retry keeps failed output sends on Speakers until an explicit retry succeeds", async () => {
+    insertNodeSession(
+      wired([station("a"), output("desk", "usb"), speakers], ["a>desk"])
+    );
+    const { createElement, elements } = fakeElements();
+    let rejection: string | null = "Output not allowed";
+    const createOutput = () => {
+      const element = createElement();
+      element.setSinkId = mock((deviceId: string) =>
+        rejection
+          ? Promise.reject(new Error(rejection))
+          : Promise.resolve().then(() => {
+              (element as unknown as { sinkId: string }).sinkId = deviceId;
+            })
+      );
+      return element;
+    };
+    const statuses = new Store<NodeSinkStatuses>({});
+    const harness = createHarness({
+      deviceSinks: sinksWith({ createElement: createOutput }),
+      sinkStatuses: statuses,
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { mainSources, sends } = connectLane(harness.context, "a");
+    await settle();
+
+    expect(mainSources.has(sends()[0])).toBe(true);
+    rejection = "Permission still blocked";
+    harness.playback.retryOutputDevice("desk");
+    await settle();
+    expect(statuses.state.desk).toEqual({
+      message: rejection,
+      state: "failed",
+    });
+    expect(mainSources.has(sends()[0])).toBe(true);
+    await settle();
+    expect(elements).toHaveLength(2);
+
+    rejection = null;
+    harness.playback.retryOutputDevice("desk");
+    await settle();
+    expect(mainSources.has(sends()[0])).toBe(false);
+    expect(elements[2]?.sinkId).toBe("usb");
+    expect(statuses.state.desk).toEqual({ state: "ok" });
+    await harness.playback.deactivate();
+    harness.playback.retryOutputDevice("desk");
+    expect(elements).toHaveLength(3);
+  });
+
+  test("deactivating during a pending output retry prevents its audio element from playing", async () => {
+    insertNodeSession(
+      wired([station("a"), output("desk", "usb"), speakers], ["a>desk"])
+    );
+    const { createElement, elements } = fakeElements();
+    const attempt = Promise.withResolvers<void>();
+    const fade = Promise.withResolvers<void>();
+    const createOutput = () => {
+      const element = createElement();
+      element.setSinkId = mock(() =>
+        elements.length === 1
+          ? Promise.reject(new Error("Output not allowed"))
+          : attempt.promise
+      );
+      return element;
+    };
+    const harness = createHarness({
+      deviceSinks: sinksWith({ createElement: createOutput }),
+      fadeOutSound: mock(() => fade.promise),
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    connectLane(harness.context, "a");
+    await settle();
+    harness.playback.retryOutputDevice("desk");
+    const retried = elements[1] as unknown as HTMLAudioElement;
+    const deactivation = harness.playback.deactivate();
+    attempt.resolve();
+    await settle();
+    expect(retried.play).not.toHaveBeenCalled();
+    fade.resolve();
+    await deactivation;
+    expect(retried.srcObject).toBeNull();
+  });
+
   test("removing an Output device disposes its <audio> and takes its sends away", async () => {
     insertNodeSession(
       wired(

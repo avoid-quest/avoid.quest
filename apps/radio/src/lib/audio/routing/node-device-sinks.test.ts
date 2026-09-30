@@ -205,6 +205,52 @@ describe("createNodeDeviceSinks", () => {
     expect(harness.sinks.connect("desk", harness.send()).to).toBe("device");
   });
 
+  test.each(["remove", "replace", "dispose"] as const)(
+    "a pending retry cannot play after %s invalidates its output",
+    async (action) => {
+      const harness = createHarness();
+      const attempt = Promise.withResolvers<void>();
+      const elements: FakeAudioElement[] = [];
+      const sinks = createNodeDeviceSinks({
+        createElement: () => {
+          const element = new FakeAudioElement();
+          if (elements.length === 0) {
+            element.rejectSink = new Error("Permission denied");
+          } else if (elements.length === 1) {
+            element.setSinkId = mock(() => attempt.promise);
+          }
+          elements.push(element);
+          return element as unknown as HTMLAudioElement;
+        },
+        isSupported: () => true,
+        listOutputDeviceIds: async () => ["default", "usb", "hdmi"],
+        watchDevices: () => () => undefined,
+      });
+      sinks.sync(new Map([["desk", "usb"]]));
+      sinks.connect("desk", harness.send());
+      await harness.settle();
+      sinks.retry("desk");
+      sinks.connect("desk", harness.send());
+
+      if (action === "dispose") {
+        sinks.dispose();
+      } else {
+        sinks.sync(new Map(action === "replace" ? [["desk", "hdmi"]] : []));
+      }
+      attempt.resolve();
+      await harness.settle();
+
+      expect(elements[1]?.play).not.toHaveBeenCalled();
+      expect(elements[1]?.srcObject).toBeNull();
+      expect(harness.context.destinations[1]?.stopped).toEqual([true]);
+      expect(sinks.status("desk")).toEqual(
+        action === "replace" ? { state: "ok" } : undefined
+      );
+      sinks.retry("desk");
+      expect(elements).toHaveLength(2);
+    }
+  );
+
   test("a device list without ids (no permission yet) unplugs nothing", async () => {
     const harness = createHarness({ ids: ["", ""] });
     harness.sinks.sync(new Map([["desk", "usb"]]));

@@ -135,6 +135,7 @@ export type NodePlayback = {
   pauseAll: () => void;
   /** Plays every Station; an Audio input goes live only from its own Go live. */
   playAll: () => Promise<void>;
+  retryOutputDevice: (nodeId: string) => void;
   setMasterVolume: (volume: number) => void;
   /** Starts or stops a source's lane: a Station plays, an Audio input goes live. */
   setPlaying: (nodeId: string, playing: boolean) => Promise<void>;
@@ -434,6 +435,7 @@ function createNodePlayback(
   });
 
   const deviceSinks = createDeviceSinks({
+    getPlaybackEpoch: () => epoch,
     onReroute: (sinkId) => laneOutputs.reroute(sinkId),
     onStatus: () => publishSinkStatuses(),
   });
@@ -1370,6 +1372,12 @@ function createNodePlayback(
         );
       } finally {
         activePlayAllGenerations.delete(generation);
+      }
+    },
+    retryOutputDevice(nodeId) {
+      applyPendingCommit();
+      if (active && plan.sinks.get(nodeId)?.type === "deviceOut") {
+        deviceSinks.retry(nodeId);
       }
     },
     setMasterVolume,

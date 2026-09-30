@@ -22,7 +22,7 @@ import { findPort } from "@/lib/node-graph/catalogue";
 import { setDeviceParams } from "@/lib/node-graph/graph-edits";
 import { commitNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
 import { ONE_DEVICE_OUT_MESSAGE } from "@/lib/node-graph/validate";
-import { nodeSinkStatuses } from "@/lib/node-playback";
+import { getNodePlayback, nodeSinkStatuses } from "@/lib/node-playback";
 import { InlineError } from "../inline-error";
 import { DeviceNote, DeviceSelect } from "./audio-input-controls";
 import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
@@ -68,6 +68,7 @@ type OutputDeviceBodyProps = {
   onPickDevice: (device: NodeDevice) => void;
   onToggleMute: () => void;
   onRemove: () => void;
+  onRetry: () => void;
 };
 
 /** What the body says about where its cables play, if anything. */
@@ -77,6 +78,7 @@ function OutputState({
   status,
   mainOutputId,
   supported,
+  onRetry,
 }: Omit<OutputDeviceBodyProps, "onPickDevice" | "onToggleMute" | "onRemove">) {
   if (!supported || status?.state === "unsupported") {
     return (
@@ -98,9 +100,18 @@ function OutputState({
   if (status?.state === "failed") {
     return (
       <InlineError>
-        <span title={status.message}>
-          Couldn't play here, playing through Speakers
+        <span>
+          Couldn't play here, playing through Speakers: {status.message}
         </span>
+        <Button
+          aria-label="Retry output device"
+          className="mt-1 h-7 w-full text-xs"
+          onClick={onRetry}
+          size="sm"
+          variant="outline"
+        >
+          Retry
+        </Button>
       </InlineError>
     );
   }
@@ -123,6 +134,7 @@ export function OutputDeviceNodeBody({
   onPickDevice,
   onToggleMute,
   onRemove,
+  onRetry,
 }: OutputDeviceBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || OUTPUT_DEVICE_NAME;
   const MuteIcon = data.muted ? VolumeXIcon : Volume2Icon;
@@ -200,6 +212,7 @@ export function OutputDeviceNodeBody({
           data={data}
           devices={devices}
           mainOutputId={mainOutputId}
+          onRetry={onRetry}
           status={status}
           supported={supported}
         />
@@ -282,6 +295,7 @@ export function OutputDeviceNode({
           commit({ deviceId: device.deviceId, deviceLabel: device.label })
         }
         onRemove={() => actions.removeNode(id)}
+        onRetry={() => getNodePlayback().retryOutputDevice(id)}
         onToggleMute={() => commit({ muted: !data.muted })}
         selected={selected}
         status={status}

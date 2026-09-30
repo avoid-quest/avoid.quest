@@ -407,11 +407,13 @@ function OutputHarness({
   status,
   supported = true,
   mainOutputId = "default",
+  onRetry = noop,
 }: {
   data: OutputData;
   status?: Parameters<typeof OutputDeviceNodeBody>[0]["status"];
   supported?: boolean;
   mainOutputId?: string;
+  onRetry?: () => void;
 }) {
   const devices = useNodeDevices();
   return (
@@ -421,6 +423,7 @@ function OutputHarness({
       mainOutputId={mainOutputId}
       onPickDevice={noop}
       onRemove={noop}
+      onRetry={onRetry}
       onToggleMute={noop}
       status={status}
       supported={supported}
@@ -459,17 +462,23 @@ describe("Output device node", () => {
 
   test("a rejected sink says so and plays through Speakers", async () => {
     media.permission = "granted";
+    const retry = mock(() => undefined);
     const view = render(
       <OutputHarness
         data={usbOut}
+        onRetry={retry}
         status={{ message: "Permission denied", state: "failed" }}
       />
     );
     await flush();
 
     expect(
-      view.getByText("Couldn't play here, playing through Speakers")
+      view.getByText(
+        "Couldn't play here, playing through Speakers: Permission denied"
+      )
     ).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Retry output device" }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   test("an unplugged output says it plays through Speakers", async () => {

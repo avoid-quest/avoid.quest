@@ -48,6 +48,8 @@ export type NodeDeviceSinksOptions = {
   listOutputDeviceIds?: () => Promise<string[]>;
   /** Calls `onChange` on hot-plug; returns the unsubscribe. */
   watchDevices?: (onChange: () => void) => () => void;
+  /** Changes when playback activates or starts deactivating. */
+  getPlaybackEpoch?: () => number;
   /** A sink's sends must be routed again, e.g. it failed over to Speakers. */
   onReroute?: (sinkId: string) => void;
   /** Any sink's status changed. */
@@ -59,6 +61,8 @@ export type NodeDeviceSinks = {
   sync: (sinks: ReadonlyMap<string, string | null>) => void;
   /** Routes one lane send into `sinkId`. */
   connect: (sinkId: string, send: AudioNode) => DeviceSinkRoute;
+  /** Tries a failed sink again from an explicit user action. */
+  retry: (sinkId: string) => void;
   status: (sinkId: string) => DeviceSinkStatus | undefined;
   statuses: () => Record<string, DeviceSinkStatus>;
   /** Re-reads the device list now, as a hot-plug does. */
@@ -134,6 +138,7 @@ export function createNodeDeviceSinks({
   createElement = () => new Audio(),
   listOutputDeviceIds: listIds = listOutputDeviceIds,
   watchDevices: watch = watchDevices,
+  getPlaybackEpoch = () => 0,
   onReroute,
   onStatus,
 }: NodeDeviceSinksOptions = {}): NodeDeviceSinks {
@@ -185,11 +190,14 @@ export function createNodeDeviceSinks({
     const graph = { destination, element, input };
     entry.graph = graph;
     const { generation } = entry;
+    const playbackEpoch = getPlaybackEpoch();
     const current = () =>
-      entries.get(sinkId) === entry && entry.generation === generation;
+      entries.get(sinkId) === entry &&
+      entry.generation === generation &&
+      getPlaybackEpoch() === playbackEpoch;
     element
       .setSinkId(deviceId)
-      .then(() => element.play())
+      .then(() => (current() ? element.play() : undefined))
       .catch((error: unknown) => {
         if (!current()) {
           return;
@@ -269,6 +277,12 @@ export function createNodeDeviceSinks({
       }
       entries.clear();
       ensureWatching();
+    },
+    retry(sinkId) {
+      const entry = entries.get(sinkId);
+      if (entry?.status.state === "failed") {
+        setStatus(sinkId, entry, restingStatus(entry.deviceId));
+      }
     },
     status: (sinkId) => entries.get(sinkId)?.status,
     statuses: () =>

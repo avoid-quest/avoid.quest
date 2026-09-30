@@ -768,6 +768,27 @@ describe("Single Playback", () => {
     );
   });
 
+  test("unmuting after dragging the volume to zero restores the last level", () => {
+    insertSingleSession(station("current"));
+    const context = createTestContext();
+    context.channels.setVolume = mock((sessionId, channelId, volume) => {
+      updatePlaybackChannel(sessionId, channelId, (draft) => {
+        draft.volume = volume;
+      });
+    });
+    const playback = getSinglePlayback({ ctx: context });
+
+    playback.setVolume(0.3);
+    playback.setVolume(0);
+    playback.toggleMute();
+
+    expect(context.channels.setVolume).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      0.3
+    );
+  });
+
   test("raising the volume unmutes the Single Channel", () => {
     insertSingleSession(station("current"));
     updatePlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID, (draft) => {

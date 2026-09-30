@@ -407,6 +407,8 @@ function createSinglePlayback(
 ): SinglePlayback {
   const selection = new SelectionCoordinator();
   let playingRevision = 0;
+  // What Unmute restores after the volume slider was dragged down to zero.
+  let unmutedVolume = 1;
 
   const setPlaying = async (playing: boolean) => {
     playingRevision += 1;
@@ -548,6 +550,10 @@ function createSinglePlayback(
     setVolume(volume) {
       const channel = getSelectionChannel();
       const channelId = channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID;
+      const audibleVolume = volume > 0 ? volume : channel?.volume;
+      if (audibleVolume && audibleVolume > 0) {
+        unmutedVolume = audibleVolume;
+      }
       if (volume > 0 && channel?.muted) {
         ctx.channels.setMuted("single", channelId, false);
       }
@@ -558,8 +564,9 @@ function createSinglePlayback(
       if (!channel) {
         return;
       }
-      // Sessions muted before the flag existed stored volume 0 instead.
-      const volume = channel.volume > 0 ? channel.volume : 1;
+      // A slider dragged to zero, or a session muted before the flag
+      // existed, stored volume 0 instead.
+      const volume = channel.volume > 0 ? channel.volume : unmutedVolume;
       if (channel.muted || channel.volume === 0) {
         setMuted(channel.id, false, volume);
         return;

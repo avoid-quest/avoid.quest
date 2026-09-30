@@ -60,6 +60,15 @@ beforeAll(() => {
   const reverted = commit("feat(radio): add crossfade curves");
   git(["revert", "--no-edit", reverted], nextCommitDate());
   commit("feat(web): new landing page", "web");
+  const restored = commit("feat(radio): add sleep timer");
+  git(["revert", "--no-edit", restored], nextCommitDate());
+  git(["revert", "--no-edit", "HEAD"], nextCommitDate());
+  commit(
+    "feat(radio): add station search (#340)\n\n* feat(radio): add search index\n\nChangelog: skip\n\n* feat(radio): add station search"
+  );
+  commit(
+    "feat(radio): refactor the player (#341)\n\nChangelog: skip\n\n* feat(radio): split the player\n\nChangelog: A faster player"
+  );
   commit("feat(ui)!: add HKCR preset");
 });
 
@@ -73,11 +82,16 @@ describe("readGitChangelog", () => {
 
     expect(entries.map(({ text }) => text)).toEqual([
       "Add HKCR preset",
+      "Add station search",
+      "Add sleep timer",
       "Stations come back after a reset",
       "Preview metadata before playback",
     ]);
     expect(entries[0]?.id).toBe(git(["rev-parse", "HEAD"]));
-    expect(entries[0]?.date).toBe("2026-09-09T12:00:00Z");
+    // Git spells UTC as `Z` or `+00:00`, depending on its version.
+    expect(Date.parse(entries[0]?.date ?? "")).toBe(
+      Date.parse("2026-09-14T12:00:00Z")
+    );
   });
 
   test("stops at the limit", () => {

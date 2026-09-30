@@ -16,6 +16,8 @@ const CONVENTIONAL_SUBJECT = /^(\w+)(?:\([^)]*\))?!?:\s*(.+)$/;
 const PULL_REQUEST_SUFFIX = /\s*\(#\d+\)$/;
 const CHANGELOG_LINE = /^changelog:[ \t]*(.*)$/im;
 const REVERTED_COMMIT = /This reverts commit ([0-9a-f]{40})/g;
+// Where a squash merge starts listing the commits it squashed.
+const SQUASHED_COMMITS = /^\* /m;
 const HIDDEN_VALUES = new Set(["-", "no", "none", "skip"]);
 
 export type GitChangelogOptions = {
@@ -28,6 +30,40 @@ function capitalize(text: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+type Commit = { body: string; date: string; hash: string; subject: string };
+
+/**
+ * Hashes of commits undone by a revert that is itself still in effect, so a
+ * reverted revert restores what it had removed. `commits` is newest first,
+ * and a revert is always newer than what it reverts.
+ */
+function findRevertedCommits(commits: Commit[]) {
+  const reverted = new Set<string>();
+  for (const { body, hash } of commits) {
+    if (reverted.has(hash)) {
+      continue;
+    }
+    for (const match of body.matchAll(REVERTED_COMMIT)) {
+      if (match[1]) {
+        reverted.add(match[1]);
+      }
+    }
+  }
+  return reverted;
+}
+
+/**
+ * The commit's `Changelog:` line. In a squash merge (a subject ending in
+ * `(#123)`), lines inside the list of squashed commits belong to those
+ * commits, so only the lines above that list count.
+ */
+function readChangelogLine({ body, subject }: Commit) {
+  const own = PULL_REQUEST_SUFFIX.test(subject)
+    ? body.split(SQUASHED_COMMITS, 1)[0]
+    : body;
+  return CHANGELOG_LINE.exec(own ?? "")?.[1]?.trim();
+}
+
 /**
  * Newest first. `feat` commits are listed by their subject. A `Changelog:`
  * line in a commit message rewords it (and lists any type), and
@@ -37,7 +73,7 @@ function parseGitChangelog(
   log: string,
   { types = ["feat"], limit = 12 }: GitChangelogOptions = {}
 ): ChangelogEntry[] {
-  const commits = log
+  const commits: Commit[] = log
     .split(RECORD_SEPARATOR)
     .map((record) => record.trim())
     .filter(Boolean)
@@ -46,11 +82,7 @@ function parseGitChangelog(
         record.split(FIELD_SEPARATOR);
       return { body, date, hash, subject };
     });
-  const reverted = new Set(
-    commits.flatMap(({ body }) =>
-      Array.from(body.matchAll(REVERTED_COMMIT), (match) => match[1])
-    )
-  );
+  const reverted = findRevertedCommits(commits);
   const entries: ChangelogEntry[] = [];
   const texts = new Set<string>();
 
@@ -61,7 +93,7 @@ function parseGitChangelog(
     if (reverted.has(commit.hash)) {
       continue;
     }
-    const override = CHANGELOG_LINE.exec(commit.body)?.[1]?.trim();
+    const override = readChangelogLine(commit);
     if (override && HIDDEN_VALUES.has(override.toLowerCase())) {
       continue;
     }

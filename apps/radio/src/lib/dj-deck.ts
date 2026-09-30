@@ -29,7 +29,10 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings } from "@/lib/collections/settings";
-import { startDeviceInput as startDeviceCapture } from "@/lib/device-input-playback";
+import {
+  type DeviceInputAudio,
+  startDeviceInput as startDeviceCapture,
+} from "@/lib/device-input-playback";
 import {
   captureDjError,
   clearDjErrorSurface,
@@ -144,7 +147,7 @@ export type DjDeckAudioAdapter = {
     soundId: string,
     selection: ChannelSelection
   ) => void;
-  startDevice: (soundId: string, deviceId: string) => Promise<void>;
+  startDevice: DeviceInputAudio["startDevice"];
   transport: (
     soundId: string,
     intent:
@@ -412,8 +415,13 @@ function createBrowserAudioAdapter(
     resume: context.resumeAudioContext,
     setDeviceChannelSelection: (soundId, selection) =>
       context.audio.setDeviceChannelSelection(soundId, selection),
-    startDevice: (soundId, deviceId) =>
-      context.audio.playDeviceSound(soundId, deviceId),
+    startDevice: (soundId, deviceId, constraints, channelSelection) =>
+      context.audio.playDeviceSound(
+        soundId,
+        deviceId,
+        constraints,
+        channelSelection
+      ),
     async transport(soundId, intent) {
       switch (intent.type) {
         case "pause":
@@ -727,6 +735,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       { platform: "device-input" }
     >
   ): Promise<void> => {
+    // Seed the fader before the capture can reach the output.
+    applyCrossfade();
     // The same start Node mode's Audio input lanes use.
     const channelCount = await startDeviceCapture(
       options.audio,

@@ -8,9 +8,6 @@ function createAudio(channelCount: number | null = 2) {
   const calls: string[] = [];
   const audio: DeviceInputAudio = {
     getDeviceChannelCount: mock(() => channelCount),
-    setDeviceChannelSelection: mock((soundId, selection) => {
-      calls.push(`select ${soundId} ${selection.left}:${selection.right}`);
-    }),
     startDevice: mock((soundId, deviceId, ...rest) => {
       calls.push(`start ${soundId} ${deviceId} ${JSON.stringify(rest)}`);
       return Promise.resolve();
@@ -20,7 +17,7 @@ function createAudio(channelCount: number | null = 2) {
 }
 
 describe("startDeviceInput", () => {
-  test("opens the capture, then selects its channels, and reports the count", async () => {
+  test("passes the selected channels into capture start, and reports the count", async () => {
     const { audio, calls } = createAudio(4);
 
     const count = await startDeviceInput(audio, "deck", {
@@ -29,7 +26,7 @@ describe("startDeviceInput", () => {
     });
 
     expect(count).toBe(4);
-    expect(calls).toEqual(["start deck interface []", "select deck 2:3"]);
+    expect(calls).toEqual(['start deck interface [null,{"left":2,"right":3}]']);
   });
 
   test("asks for echo cancellation only when it is set", async () => {
@@ -41,10 +38,12 @@ describe("startDeviceInput", () => {
       echoCancellation: true,
     });
 
-    expect(calls[0]).toBe('start node:n:mic mic [{"echoCancellation":true}]');
+    expect(calls[0]).toBe(
+      'start node:n:mic mic [{"echoCancellation":true},{"left":0,"right":1}]'
+    );
   });
 
-  test("a start gone stale while the capture opened selects nothing", async () => {
+  test("a start gone stale while the capture opened reports no channel count", async () => {
     const { audio, calls } = createAudio();
 
     const count = await startDeviceInput(
@@ -55,6 +54,6 @@ describe("startDeviceInput", () => {
     );
 
     expect(count).toBeNull();
-    expect(calls).toEqual(["start deck interface []"]);
+    expect(calls).toEqual(['start deck interface [null,{"left":0,"right":1}]']);
   });
 });

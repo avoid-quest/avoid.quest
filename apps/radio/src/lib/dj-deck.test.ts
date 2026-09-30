@@ -535,12 +535,42 @@ describe("DjDeckModule", () => {
     });
     expect(audio.startDevice).toHaveBeenCalledWith(
       "left_device-input-left:1",
-      "interface-1"
-    );
-    expect(audio.setDeviceChannelSelection).toHaveBeenCalledWith(
-      "left_device-input-left:1",
+      "interface-1",
+      undefined,
       { left: 0, right: 1 }
     );
+    expect(audio.setDeviceChannelSelection).not.toHaveBeenCalled();
+  });
+
+  test("seeds a crossfaded input fader before opening capture", async () => {
+    updatePlaybackSession("dj", (draft) => {
+      draft.crossfadePosition = 1;
+    });
+    const audio = createAudioAdapter();
+    let faderBeforeCapture: unknown = null;
+    audio.startDevice = mock(() => {
+      faderBeforeCapture = (
+        audio.change as ReturnType<typeof mock>
+      ).mock.calls.at(-1);
+      return Promise.resolve();
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    await module.deck("deck-a").load({
+      deviceId: "interface-1",
+      deviceLabel: "Interface",
+      type: "device-input",
+    });
+    expect(audio.startDevice).toHaveBeenCalledTimes(1);
+    expect(faderBeforeCapture).toEqual([
+      "left_device-input-left:1",
+      { type: "volume", volume: calculateDjCrossfadeVolumes(1, 1, 1)[0] },
+    ]);
   });
 
   test("ignores a stale device completion after a newer source owns the Deck", async () => {

@@ -373,7 +373,8 @@ export class AudioManager {
   async playDeviceSound(
     soundId: string,
     deviceId: string,
-    constraints?: DeviceAudioConstraints
+    constraints?: DeviceAudioConstraints,
+    channelSelection?: ChannelSelection
   ): Promise<void> {
     const instance = this.sounds.get(soundId);
     if (!instance) {
@@ -430,6 +431,10 @@ export class AudioManager {
       })
     );
     instance.deviceSource = deviceSource;
+
+    if (channelSelection) {
+      deviceSource.setChannelSelection(channelSelection);
+    }
 
     // Start capture (onActive callback fires when stream is ready)
     await deviceSource.start(deviceId, constraints);

@@ -335,10 +335,13 @@ function deviceInputAudio(ctx: PlaybackActionContext): DeviceInputAudio {
   return {
     getDeviceChannelCount: (soundId) =>
       ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
-    setDeviceChannelSelection: (soundId, selection) =>
-      ctx.audio.setDeviceChannelSelection(soundId, selection),
-    startDevice: (soundId, deviceId, constraints) =>
-      ctx.audio.playDeviceSound(soundId, deviceId, constraints),
+    startDevice: (soundId, deviceId, constraints, channelSelection) =>
+      ctx.audio.playDeviceSound(
+        soundId,
+        deviceId,
+        constraints,
+        channelSelection
+      ),
   };
 }
 
@@ -581,8 +584,12 @@ function createNodePlayback(
     // A dead capture goes, with its tracks and device listener, before the
     // new one replaces it.
     capture?.cleanup();
+    ctx.audioEngine.volume.setChannelVolume(
+      soundId,
+      getChannelPlayVolume(channel)
+    );
     await startDeviceInput(deviceInputAudio(ctx), soundId, source);
-    // The capture starts at the sound's own volume; put the input's back.
+    // A fader changed during the permission prompt keeps its latest value.
     const latest = getPlaybackChannel("node", channel.id);
     if (latest && !latest.muted) {
       ctx.channels.setVolume("node", channel.id, latest.volume);

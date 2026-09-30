@@ -2,7 +2,7 @@
  * Device Input Playback
  *
  * Starting a live input (a mic or line-in) on a sound that already exists:
- * open the capture, then route the chosen channels. DJ decks and Node mode's
+ * set its channels before opening the capture. DJ decks and Node mode's
  * Audio input lanes both start their device here, so the two can't drift.
  */
 
@@ -13,12 +13,9 @@ export type DeviceInputAudio = {
   startDevice: (
     soundId: string,
     deviceId: string,
-    constraints?: DeviceAudioConstraints
+    constraints?: DeviceAudioConstraints,
+    channelSelection?: ChannelSelection
   ) => Promise<void>;
-  setDeviceChannelSelection: (
-    soundId: string,
-    selection: ChannelSelection
-  ) => void;
   getDeviceChannelCount: (soundId: string) => number | null;
 };
 
@@ -33,7 +30,7 @@ export type DeviceInputTarget = {
 };
 
 /**
- * Opens `target`'s capture on `soundId`, then selects its channels.
+ * Opens `target`'s capture on `soundId` with its channels already selected.
  * Resolves with the device's channel count, or null when it is unknown or
  * the start went stale (`isCurrent` turned false while the capture opened).
  */
@@ -43,14 +40,14 @@ export async function startDeviceInput(
   { channelSelection, deviceId, echoCancellation }: DeviceInputTarget,
   isCurrent: () => boolean = () => true
 ): Promise<number | null> {
-  if (echoCancellation === undefined) {
-    await audio.startDevice(soundId, deviceId);
-  } else {
-    await audio.startDevice(soundId, deviceId, { echoCancellation });
-  }
+  await audio.startDevice(
+    soundId,
+    deviceId,
+    echoCancellation === undefined ? undefined : { echoCancellation },
+    channelSelection
+  );
   if (!isCurrent()) {
     return null;
   }
-  audio.setDeviceChannelSelection(soundId, channelSelection);
   return audio.getDeviceChannelCount(soundId);
 }

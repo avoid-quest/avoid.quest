@@ -2503,9 +2503,14 @@ describe("Node Playback audio inputs and output devices", () => {
           : null
       ),
       playDeviceSound: mock(
-        (soundId: string, deviceId: string, constraints?: unknown) => {
+        (
+          soundId: string,
+          deviceId: string,
+          constraints?: unknown,
+          channelSelection?: { left: number; right: number }
+        ) => {
           calls.push(
-            `playDeviceSound ${soundId} ${deviceId} ${JSON.stringify(constraints)}`
+            `playDeviceSound ${soundId} ${deviceId} ${JSON.stringify(constraints)} ${JSON.stringify(channelSelection)}`
           );
           active.add(soundId);
           setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
@@ -2661,7 +2666,7 @@ describe("Node Playback audio inputs and output devices", () => {
     }
   );
 
-  test("Go live opens the device with its echo cancellation, then selects its channels", async () => {
+  test("Go live opens the device with its echo cancellation and selected channels", async () => {
     insertNodeSession(
       wired(
         [mic("mic", { channelSelection: { left: 1, right: 1 } }), speakers],
@@ -2679,14 +2684,39 @@ describe("Node Playback audio inputs and output devices", () => {
     await harness.playback.setPlaying("mic", true);
 
     expect(calls).toEqual([
-      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false}`,
-      `setDeviceChannelSelection ${soundOf("mic")} 1:1`,
+      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false} {"left":1,"right":1}`,
     ]);
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     expect(getPlaybackChannel("node", channelOf("mic"))?.radio).toMatchObject({
       platformMetadata: { deviceId: "usb-mic", platform: "device-input" },
     });
   });
+
+  test.each([0, 0.2])(
+    "Go live seeds the saved fader %s before capture",
+    async (volume) => {
+      insertNodeSession(
+        wired([mic("mic", { volume }), speakers], ["mic>speakers"])
+      );
+      const harness = createHarness();
+      deviceEngine(harness.context);
+      const startCapture = harness.context.audio.playDeviceSound;
+      let volumeBeforeCapture: unknown = null;
+      harness.context.audio.playDeviceSound = mock(
+        (...args: Parameters<typeof startCapture>) => {
+          volumeBeforeCapture = (
+            harness.context.audioEngine.volume.setChannelVolume as ReturnType<
+              typeof mock
+            >
+          ).mock.calls.at(-1);
+          return startCapture(...args);
+        }
+      );
+      await harness.playback.activate();
+      await harness.playback.setPlaying("mic", true);
+      expect(volumeBeforeCapture).toEqual([soundOf("mic"), volume]);
+    }
+  );
 
   test("Mute keeps the capture open, and Go live again only lifts its gain", async () => {
     insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
@@ -2725,9 +2755,9 @@ describe("Node Playback audio inputs and output devices", () => {
     await harness.playback.setPlaying("mic", true);
 
     expect(calls.filter((call) => !call.startsWith("setDevice"))).toEqual([
-      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false}`,
+      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false} {"left":0,"right":1}`,
       `cleanup ${soundOf("mic")}`,
-      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false}`,
+      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":false} {"left":0,"right":1}`,
     ]);
   });
 
@@ -2747,8 +2777,8 @@ describe("Node Playback audio inputs and output devices", () => {
       ),
     }));
 
-    expect(calls.at(-2)).toBe(
-      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":true}`
+    expect(calls.at(-1)).toBe(
+      `playDeviceSound ${soundOf("mic")} usb-mic {"echoCancellation":true} {"left":0,"right":1}`
     );
   });
 

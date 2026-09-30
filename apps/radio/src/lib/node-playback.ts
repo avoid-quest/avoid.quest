@@ -71,6 +71,7 @@ import {
   type NodeLaneOutputsOptions,
 } from "@/lib/audio/routing/node-lane-outputs";
 import {
+  getNodeSessionReadOnlyVersion,
   getPlaybackChannel,
   getPlaybackSession,
   type PlaybackChannelRecord,
@@ -98,7 +99,7 @@ import {
 } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
-  loadNodeGraph,
+  loadNodeGraphMigration,
   type NodeStore,
   nodeStore,
 } from "@/lib/node-graph/node-store";
@@ -106,6 +107,7 @@ import { diff, type Op } from "@/lib/node-graph/reconcile";
 import {
   type GraphNode,
   isRadioSourceNode,
+  migrateNodeGraph,
   type NodeGraph,
 } from "@/lib/node-graph/schema";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
@@ -470,6 +472,9 @@ function createNodePlayback(
 
   let plan = EMPTY_PLAN;
   let active = false;
+  const isReadOnly = () =>
+    store.state.readOnlyVersion !== null ||
+    getNodeSessionReadOnlyVersion() !== null;
   /** Bumped by activate and deactivate; stale async work checks it. */
   let epoch = 0;
   let observedGraph: NodeGraph | null = null;
@@ -964,7 +969,10 @@ function createNodePlayback(
     }
   };
 
-  const startChannel = async (channelId: string, isCurrent = () => true) => {
+  const startWritableChannel = async (
+    channelId: string,
+    isCurrent = () => true
+  ) => {
     // Without a settling lane this stays synchronous up to the play call,
     // inside the user's gesture.
     if (
@@ -1019,6 +1027,11 @@ function createNodePlayback(
       }
     }
   };
+
+  const startChannel = (channelId: string, isCurrent = () => true) =>
+    isReadOnly()
+      ? Promise.resolve()
+      : startWritableChannel(channelId, isCurrent);
 
   /** Releases a channel's sound, its runtime, its watch and its cue tap. */
   const releaseChannel = (channelId: string) => {
@@ -1620,7 +1633,7 @@ function createNodePlayback(
   const reconcile = (strict: boolean) => {
     const { graph } = store.state;
     observedGraph = graph;
-    if (!graph) {
+    if (!graph || isReadOnly()) {
       return;
     }
     const next = compile(graph, getEnv());
@@ -1734,6 +1747,9 @@ function createNodePlayback(
   };
 
   const setMasterVolume = (volume: number) => {
+    if (isReadOnly()) {
+      return;
+    }
     if (volume > 0) {
       unmutedMasterVolume = volume;
     }
@@ -1773,13 +1789,21 @@ function createNodePlayback(
       laneWatches.clear();
       advancingLanes.clear();
       stopListening();
-      loadNodeGraph(
-        withMonitorsOff(session.graph ?? buildNodeGraphFromTemplate("starter")),
+      const migration = migrateNodeGraph(
+        session.graph ?? buildNodeGraphFromTemplate("starter")
+      );
+      loadNodeGraphMigration(
+        migration.status === "ok"
+          ? { ...migration, graph: withMonitorsOff(migration.graph) }
+          : migration,
         store
       );
       observedGraph = store.state.graph;
       active = true;
       subscription = store.subscribe(onStoreChange);
+      if (migration.status !== "ok") {
+        return;
+      }
       try {
         reconcile(true);
       } catch (error) {
@@ -1896,12 +1920,6 @@ function createNodePlayback(
         activePlayAllGenerations.delete(generation);
       }
     },
-    retryOutputDevice(nodeId) {
-      applyPendingCommit();
-      if (active && plan.sinks.get(nodeId)?.type === "deviceOut") {
-        deviceSinks.retry(nodeId);
-      }
-    },
     async playTrack(nodeId, streamUrl) {
       const lane = plan.lanes.get(nodeId);
       const source = findSource(store.state.graph, nodeId);
@@ -1951,6 +1969,12 @@ function createNodePlayback(
         await playLaneTrack(nodeId, radio, () => hasSource(radio));
       } else {
         reportLaneFailure(lane.channelId, "Couldn't load this track");
+      }
+    },
+    retryOutputDevice(nodeId) {
+      applyPendingCommit();
+      if (active && plan.sinks.get(nodeId)?.type === "deviceOut") {
+        deviceSinks.retry(nodeId);
       }
     },
     seek(nodeId, position) {

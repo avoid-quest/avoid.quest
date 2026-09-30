@@ -42,6 +42,7 @@ import {
   stopLegacyMultipleListeners,
   updatePlaybackChannel,
   updatePlaybackSession,
+  writeNodeSessionGraph,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
 import { addSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -1030,6 +1031,58 @@ describe("session persistence and init", () => {
       })
     ).not.toThrow();
   });
+
+  for (const restoreStateOnLoad of [true, false]) {
+    for (const compatible of [true, false]) {
+      test(`initialization preserves a ${compatible ? "compatible" : "unknown-shape"} future patch with restore=${restoreStateOnLoad}`, async () => {
+        settingsCollection.insert({
+          id: SETTINGS_ID,
+          player: { mode: "node", restoreStateOnLoad },
+        });
+        const session = buildNodeSessionFromTemplate("starter");
+        const graph = compatible
+          ? { ...createDuckGraph(), futureField: "keep me", version: 3 }
+          : { futureDocument: { tracks: ["keep me"] }, version: 3 };
+        const effect = createDefaultEffectConfig("neuralAmp", "future", 0);
+        effect.modelData = '{"preserve":true}';
+        const channels = [
+          { ...createDefaultChannel("n:future", "node"), effects: [effect] },
+        ];
+        writeLegacyRecord(playbackSessionsCollection, {
+          ...session,
+          channels,
+          graph,
+          masterVolume: 0.37,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const before = JSON.stringify(getPlaybackSession("node")?.graph);
+
+        await initializePlaybackSessions();
+
+        expect(JSON.stringify(getPlaybackSession("node")?.graph)).toBe(before);
+        expect(getPlaybackSession("node")?.channels).toEqual(channels);
+        expect(getPlaybackSession("node")?.masterVolume).toBe(0.37);
+        expect(() =>
+          updatePlaybackSession("node", (draft) => {
+            draft.masterVolume = 0.5;
+          })
+        ).not.toThrow();
+        expect(
+          writeNodeSessionGraph(buildNodeGraphFromTemplate("blank"))
+        ).toBeNull();
+        expect(JSON.stringify(getPlaybackSession("node")?.graph)).toBe(before);
+        expect(getPlaybackSession("node")?.masterVolume).toBe(0.37);
+        updatePlaybackSession("single", (draft) => {
+          draft.masterVolume = 0.4;
+        });
+        updatePlaybackSession("dj", (draft) => {
+          draft.masterVolume = 0.6;
+        });
+        expect(getPlaybackSession("single")?.masterVolume).toBe(0.4);
+        expect(getPlaybackSession("dj")?.masterVolume).toBe(0.6);
+      });
+    }
+  }
 
   test("initializePlaybackSessions starts a new node session from the Starter patch", async () => {
     await Promise.all([

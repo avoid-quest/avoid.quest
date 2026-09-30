@@ -26,10 +26,12 @@ import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import {
   commitNodeGraph,
   loadNodeGraph,
+  loadNodeGraphMigration,
   nodeStore,
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
 import {
+  migrateNodeGraph,
   type NodeGraph,
   type NodeGraphInput,
   nodeGraphSchema,
@@ -1064,6 +1066,24 @@ describe("Node patch backups", () => {
       ).nodePatch
     ).toEqual({ masterVolume: 0, replacesNewerVersion: false });
     expect(previewImportChanges(rawBackup({})).nodePatch).toBeUndefined();
+  });
+
+  test("an explicit backup import can replace a future read-only patch", async () => {
+    const session = buildNodeSessionFromGraph(
+      buildNodeGraphFromTemplate("starter")
+    );
+    const graph = { ...session.graph, futureField: "keep me", version: 3 };
+    writeLegacyRecord(playbackSessionsCollection, { ...session, graph });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    loadNodeGraphMigration(migrateNodeGraph(graph));
+    const imported = buildNodeGraphFromTemplate("blank");
+
+    mergeImportedData(rawBackup({ sessions: { node: { graph: imported } } }));
+
+    expect(getPlaybackSession("node")?.graph).toEqual(imported);
+    expect(nodeStore.state.graph).toEqual(imported);
+    expect(nodeStore.state.readOnlyVersion).toBeNull();
+    expect(undoNodeGraph()).toBe(false);
   });
 
   const invalidGraphs: [string, unknown, RegExp][] = [

@@ -34,6 +34,7 @@ import {
   LANE_DUCK_MS,
   LANE_LEVEL_TIME_CONSTANT_S,
 } from "@/lib/audio/routing/node-lane-outputs";
+import { writeLegacyRecord } from "@/lib/collections/migrations/legacy-records";
 import {
   getPlaybackChannel,
   getPlaybackSession,
@@ -71,7 +72,10 @@ import {
   localFileRadio,
   releaseUnusedLocalFileUrls,
 } from "@/lib/node-graph/sources";
-import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
+import {
+  buildNodeGraphFromTemplate,
+  buildNodeSessionFromGraph,
+} from "@/lib/node-graph/templates";
 import type { Profile } from "@/lib/node-graph/validate";
 import {
   getPlaybackChannelRuntime,
@@ -494,6 +498,45 @@ describe("Node Playback", () => {
       buildNodeGraphFromTemplate("starter")
     );
     expect(harness.context.channels.activate).not.toHaveBeenCalled();
+  });
+
+  test("a future patch cannot compile, edit, or play its cached channels", async () => {
+    const session = buildNodeSessionFromGraph(patch([station("a")]));
+    const graph = { ...session.graph, futureField: "keep me", version: 3 };
+    writeLegacyRecord(playbackSessionsCollection, { ...session, graph });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const harness = createHarness();
+
+    await harness.playback.activate();
+
+    expect(harness.store.state.graph).toBeNull();
+    expect(harness.store.state.readOnlyVersion).toBe(3);
+    expect(
+      commitNodeGraph(
+        (current) => ({
+          ...current,
+          viewport: { ...current.viewport, x: 123 },
+        }),
+        harness.store,
+        "snapshot"
+      )
+    ).toBe(false);
+    await harness.playback.playAll();
+    await harness.playback.setPlaying("a", true);
+    harness.playback.setVolume("a", 0.3);
+    harness.playback.setMasterVolume(0.4);
+    harness.playback.toggleMasterMute();
+    harness.playback.flush();
+    await harness.playback.whenSettled();
+
+    expect(harness.context.channels.activate).not.toHaveBeenCalled();
+    expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+    expect(harness.context.audio.setGlobalVolume).not.toHaveBeenCalled();
+    expect(JSON.stringify(getPlaybackSession("node")?.graph)).toBe(
+      JSON.stringify(graph)
+    );
+    expect(getPlaybackSession("node")?.masterVolume).toBe(session.masterVolume);
+    await harness.playback.deactivate();
   });
 
   test("an empty Station slot has no lane", async () => {

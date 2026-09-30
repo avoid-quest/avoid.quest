@@ -21,6 +21,7 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
+import { compile } from "@/lib/node-graph/compile";
 import {
   getRetainedNodeGraphs,
   type NodeStoreState,
@@ -28,10 +29,10 @@ import {
 } from "@/lib/node-graph/node-store";
 import {
   EFFECT_NODE_TYPES,
+  getNodeGraphReadOnlyVersion,
   type NodeGraph,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
-import { compile } from "@/lib/node-graph/compile";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
 import {
   buildNodeSessionFromGraph,
@@ -428,6 +429,9 @@ function buildDefaultNodeSession(): PlaybackSessionRecord {
 }
 
 function upsertSession(session: PlaybackSessionRecord): void {
+  if (session.id === "node" && getNodeSessionReadOnlyVersion() !== null) {
+    return;
+  }
   const existing = playbackSessionsCollection.state.get(session.id);
   if (existing) {
     playbackSessionsCollection.update(session.id, (draft) => {
@@ -504,16 +508,24 @@ export function prepareNodeSessionGraph(
  */
 export function writeNodeSessionGraph(
   graph: NodeGraph,
-  masterVolume?: number
-): NodeGraph {
+  masterVolume?: number,
+  { replaceReadOnly = false }: { replaceReadOnly?: boolean } = {}
+): NodeGraph | null {
+  if (!replaceReadOnly && getNodeSessionReadOnlyVersion() !== null) {
+    return null;
+  }
   const prepared = prepareNodeSessionGraph(graph, masterVolume);
   if (playbackSessionsCollection.state.has("node")) {
-    updatePlaybackSession("node", (draft) => {
+    const previousModelIds = collectSessionNamModelIds(
+      playbackSessionsCollection.state.get("node")
+    );
+    updatePlaybackSessionRecord("node", (draft) => {
       draft.graph = prepared.graph;
       draft.channels = prepared.channels;
       draft.activeChannelId = prepared.activeChannelId;
       draft.masterVolume = prepared.masterVolume;
     });
+    scheduleNamModelCleanup(previousModelIds);
   } else {
     playbackSessionsCollection.insert(prepared);
   }
@@ -522,6 +534,9 @@ export function writeNodeSessionGraph(
 
 /** Empties the stored patch's Stations whose session radio left this tab. */
 function pruneStaleNodeSources(): void {
+  if (getNodeSessionReadOnlyVersion() !== null) {
+    return;
+  }
   const graph = playbackSessionsCollection.state.get("node")?.graph;
   if (graph && emptyStaleNodeSources(graph) !== graph) {
     writeNodeSessionGraph(graph);
@@ -563,6 +578,9 @@ function updatePlaybackSessionRecord(
 function collectGraphEffects(
   graph: NodeGraph | null | undefined
 ): EffectConfig[] {
+  if (getNodeGraphReadOnlyVersion(graph) !== null) {
+    return [];
+  }
   return (
     graph?.nodes.flatMap((node) =>
       EFFECT_NODE_TYPES.some((type) => type === node.type) &&
@@ -609,6 +627,10 @@ function scheduleNamModelCleanup(candidates: Iterable<string>): void {
     return;
   }
   queueMicrotask(() => {
+    // This release cannot determine all references in a future graph.
+    if (getNodeSessionReadOnlyVersion() !== null) {
+      return;
+    }
     deleteUnreferencedNamModels(pending, collectReferencedNamModelIds()).catch(
       (error) =>
         console.warn(
@@ -683,10 +705,12 @@ async function externalizeChannelNamModels(
 async function externalizeStoredNamModels(): Promise<void> {
   const channels = [...playbackSessionsCollection.state.values()].flatMap(
     (session) =>
-      session.channels.map((channel) => ({
-        channel,
-        sessionId: session.id,
-      }))
+      getNodeGraphReadOnlyVersion(session.graph) === null
+        ? session.channels.map((channel) => ({
+            channel,
+            sessionId: session.id,
+          }))
+        : []
   );
   const updates = await Promise.all(
     channels.map(async ({ channel, sessionId }) => {
@@ -778,7 +802,7 @@ export async function initializePlaybackSessions(): Promise<void> {
   const activeMode = normalizePlayerMode(settings?.player.mode);
   const activeSession = playbackSessionsCollection.state.get(activeMode);
   if (activeSession) {
-    playbackSessionsCollection.update(activeMode, (draft) => {
+    updatePlaybackSession(activeMode, (draft) => {
       draft.masterVolume = draft.masterVolume ?? 1;
     });
   }
@@ -790,12 +814,20 @@ export function getPlaybackSession(
   return playbackSessionsCollection.state.get(id);
 }
 
+/** Stored graphs load without schema validation, including future versions. */
+export function getNodeSessionReadOnlyVersion(): number | null {
+  return getNodeGraphReadOnlyVersion(getPlaybackSession("node")?.graph);
+}
+
 export function updatePlaybackSession(
   id: PlaybackSessionId,
   updater: PlaybackSessionUpdater
 ): void {
   const existing = getPlaybackSession(id);
-  if (existing) {
+  if (
+    existing &&
+    !(id === "node" && getNodeSessionReadOnlyVersion() !== null)
+  ) {
     const previousModelIds = collectSessionNamModelIds(existing);
     updatePlaybackSessionRecord(id, updater);
     scheduleNamModelCleanup(previousModelIds);

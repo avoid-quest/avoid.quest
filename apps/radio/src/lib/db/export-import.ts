@@ -18,7 +18,11 @@ import {
   prepareNodeSessionGraph,
   writeNodeSessionGraph,
 } from "@/lib/collections/playback-sessions";
-import { commitNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
+import {
+  commitNodeGraph,
+  loadNodeGraph,
+  nodeStore,
+} from "@/lib/node-graph/node-store";
 import { migrateNodeGraph, type NodeGraph } from "@/lib/node-graph/schema";
 import { type Issue, validate } from "@/lib/node-graph/validate";
 import {
@@ -243,7 +247,9 @@ function applyImportedChanges(
   try {
     transaction.mutate(() => {
       writeData();
-      written = graph ? writeNodeSessionGraph(graph, masterVolume) : null;
+      written = graph
+        ? writeNodeSessionGraph(graph, masterVolume, { replaceReadOnly: true })
+        : null;
     });
   } catch (error) {
     transaction.rollback();
@@ -254,7 +260,11 @@ function applyImportedChanges(
   }
   const importedGraph = written;
   if (importedGraph) {
-    commitNodeGraph(() => importedGraph, nodeStore, "snapshot");
+    if (nodeStore.state.readOnlyVersion === null) {
+      commitNodeGraph(() => importedGraph, nodeStore, "snapshot");
+    } else {
+      loadNodeGraph(importedGraph);
+    }
   }
 }
 

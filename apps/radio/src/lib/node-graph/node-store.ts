@@ -9,7 +9,11 @@
  */
 
 import { Store, useStore } from "@tanstack/react-store";
-import type { NodeGraph } from "./schema";
+import {
+  getNodeGraphReadOnlyVersion,
+  type NodeGraph,
+  type NodeGraphMigration,
+} from "./schema";
 
 export type NodeSelection = {
   nodes: readonly string[];
@@ -29,6 +33,8 @@ export type NodeHistory = {
 export type NodeStoreState = {
   /** null until a node session is loaded. */
   graph: NodeGraph | null;
+  /** A newer stored patch is preserved, with no editable or playable graph. */
+  readOnlyVersion: number | null;
   selection: NodeSelection;
   history: NodeHistory;
 };
@@ -54,9 +60,12 @@ function freshHistory(graph: NodeGraph | null): NodeHistory {
 }
 
 export function createNodeStore(graph: NodeGraph | null = null): NodeStore {
+  const readOnlyVersion = getNodeGraphReadOnlyVersion(graph);
+  const editableGraph = readOnlyVersion === null ? graph : null;
   return new Store<NodeStoreState>({
-    graph,
-    history: freshHistory(graph),
+    graph: editableGraph,
+    history: freshHistory(editableGraph),
+    readOnlyVersion,
     selection: EMPTY_SELECTION,
   });
 }
@@ -109,13 +118,28 @@ function checkpoint(state: NodeStoreState): NodeHistory {
 /** Replaces the document, e.g. when the node session activates. */
 export function loadNodeGraph(
   graph: NodeGraph | null,
-  store: NodeStore = nodeStore
+  store: NodeStore = nodeStore,
+  readOnlyVersion: number | null = getNodeGraphReadOnlyVersion(graph)
 ): void {
+  const editableGraph = readOnlyVersion === null ? graph : null;
   store.setState(() => ({
-    graph,
-    history: freshHistory(graph),
+    graph: editableGraph,
+    history: freshHistory(editableGraph),
+    readOnlyVersion,
     selection: EMPTY_SELECTION,
   }));
+}
+
+/** Carries the storage migration's read-only result through to the editor. */
+export function loadNodeGraphMigration(
+  migration: NodeGraphMigration,
+  store: NodeStore = nodeStore
+): void {
+  loadNodeGraph(
+    migration.status === "ok" ? migration.graph : null,
+    store,
+    migration.status === "read-only" ? migration.version : null
+  );
 }
 
 /**
@@ -128,7 +152,7 @@ export function commitNodeGraph(
   history?: NodeCommitHistory
 ): boolean {
   const current = store.state.graph;
-  if (!current) {
+  if (!current || store.state.readOnlyVersion !== null) {
     return false;
   }
   const graph = update(current);
@@ -197,6 +221,9 @@ export function snapshotNodeGraph(store: NodeStore = nodeStore): void {
 
 /** Steps back one snapshot. Returns false when there is nothing to undo. */
 export function undoNodeGraph(store: NodeStore = nodeStore): boolean {
+  if (store.state.readOnlyVersion !== null) {
+    return false;
+  }
   const history = checkpoint(store.state);
   const previous = history.past.at(-1);
   if (!(previous && history.present)) {
@@ -204,6 +231,7 @@ export function undoNodeGraph(store: NodeStore = nodeStore): boolean {
   }
   const { present } = history;
   store.setState((state) => ({
+    ...state,
     graph: previous,
     history: {
       future: [present, ...history.future],
@@ -217,12 +245,16 @@ export function undoNodeGraph(store: NodeStore = nodeStore): boolean {
 
 /** Steps forward one undone snapshot, unless the patch changed since. */
 export function redoNodeGraph(store: NodeStore = nodeStore): boolean {
+  if (store.state.readOnlyVersion !== null) {
+    return false;
+  }
   const { graph, history } = store.state;
   const [next, ...future] = history.future;
   if (!(next && graph) || graph !== history.present) {
     return false;
   }
   store.setState((state) => ({
+    ...state,
     graph: next,
     history: {
       future,
@@ -243,6 +275,12 @@ export function setNodeSelection(
 
 export function useNodeGraph(store: NodeStore = nodeStore): NodeGraph | null {
   return useStore(store, (state) => state.graph);
+}
+
+export function useNodeReadOnlyVersion(
+  store: NodeStore = nodeStore
+): number | null {
+  return useStore(store, (state) => state.readOnlyVersion);
 }
 
 export function useNodeSelection(store: NodeStore = nodeStore): NodeSelection {

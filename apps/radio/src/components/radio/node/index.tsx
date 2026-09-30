@@ -25,6 +25,7 @@ import {
   commitNodeGraph,
   nodeStore,
   useNodeGraph,
+  useNodeReadOnlyVersion,
 } from "@/lib/node-graph/node-store";
 import { templatePatch } from "@/lib/node-graph/palette";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
@@ -71,6 +72,7 @@ function isPhoneView(value: string): value is PhoneView {
 
 export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const graph = useNodeGraph();
+  const readOnlyVersion = useNodeReadOnlyVersion();
   const savedRadios = useAllRadios();
   const { pauseAll, playAll, playingCount, sources } = useNodeSession();
   const [reveal, setReveal] = useState<{ nodeId: string } | null>(null);
@@ -217,6 +219,21 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     </div>
   );
   const rack = graph ? <NodeRack graph={graph} /> : null;
+
+  if (readOnlyVersion !== null) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-md space-y-2" role="status">
+          <h2 className="font-semibold">This patch is read-only</h2>
+          <p className="text-muted-foreground text-sm">
+            This patch uses a newer format (version {readOnlyVersion}). It is
+            preserved on this device, but this app cannot edit or play it. Open
+            it in the newer app, or use Single or DJ mode to keep listening.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <NodeActionsProvider value={actions}>

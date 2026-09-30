@@ -577,6 +577,12 @@ function readVersion(raw: unknown): number | null {
     : null;
 }
 
+/** A newer document must remain untouched, even if its shape is unknown. */
+export function getNodeGraphReadOnlyVersion(raw: unknown): number | null {
+  const version = readVersion(raw);
+  return version !== null && version > NODE_GRAPH_VERSION ? version : null;
+}
+
 const STRIP_SOURCE_TYPES: ReadonlySet<string> = new Set([
   ...RADIO_SOURCE_NODE_TYPES,
   "deviceIn",

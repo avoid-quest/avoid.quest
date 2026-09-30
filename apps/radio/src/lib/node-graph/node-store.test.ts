@@ -10,6 +10,7 @@ import {
   createNodeStore,
   getRetainedNodeGraphs,
   loadNodeGraph,
+  loadNodeGraphMigration,
   NODE_HISTORY_LIMIT,
   type NodeStore,
   redoNodeGraph,
@@ -17,7 +18,7 @@ import {
   snapshotNodeGraph,
   undoNodeGraph,
 } from "./node-store";
-import type { NodeGraph } from "./schema";
+import { migrateNodeGraph, type NodeGraph } from "./schema";
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
@@ -47,6 +48,49 @@ describe("node store", () => {
     loadNodeGraph(graph, store);
 
     expect(store.state.selection).toEqual({ edges: [], nodes: [] });
+  });
+
+  test("loading a future migration clears editable history until a current patch is loaded", () => {
+    const store = createNodeStore(graph);
+    commitNodeGraph(
+      (current) => removeNodes(current, ["src-a"]),
+      store,
+      "snapshot"
+    );
+    const migration = migrateNodeGraph({ ...graph, version: 3 });
+    expect(migration.status).toBe("read-only");
+    if (migration.status === "read-only") {
+      expect(migration.graph).not.toBeNull();
+    }
+
+    loadNodeGraphMigration(migration, store);
+
+    expect(store.state.graph).toBeNull();
+    expect(store.state.readOnlyVersion).toBe(3);
+    const edit = mock((current: NodeGraph) => current);
+    expect(commitNodeGraph(edit, store, "snapshot")).toBe(false);
+    expect(edit).not.toHaveBeenCalled();
+    expect(undoNodeGraph(store)).toBe(false);
+    expect(redoNodeGraph(store)).toBe(false);
+    loadNodeGraphMigration(
+      migrateNodeGraph({ nextSchema: {}, version: 4 }),
+      store
+    );
+    expect(store.state.graph).toBeNull();
+    expect(store.state.readOnlyVersion).toBe(4);
+
+    loadNodeGraph(graph, store);
+
+    expect(store.state.readOnlyVersion).toBeNull();
+    expect(
+      commitNodeGraph(
+        (current) => removeNodes(current, ["src-a"]),
+        store,
+        "snapshot"
+      )
+    ).toBe(true);
+    expect(undoNodeGraph(store)).toBe(true);
+    expect(store.state.graph).toBe(graph);
   });
 
   test("a commit drops selected nodes and cables that are gone", () => {

@@ -98,6 +98,7 @@ export class AudioManager {
   private readonly soundRegistry = new SoundRegistry();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
   private readonly outputConnectors = new Map<string, SoundOutputConnector>();
+  private readonly deviceStarts = new Map<string, symbol>();
   readonly volume: VolumeController;
   private readonly effects: EffectsController;
   private readonly output: OutputRouting;
@@ -379,8 +380,22 @@ export class AudioManager {
       throw new Error(`Sound with id ${soundId} not found`);
     }
 
+    const request = Symbol("device start");
+    this.deviceStarts.set(soundId, request);
+    const isCurrent = () =>
+      this.sounds.get(soundId) === instance &&
+      this.deviceStarts.get(soundId) === request;
+    instance.deviceSource?.cleanup();
+    instance.deviceSource = null;
+
     await this.init();
+    if (!isCurrent()) {
+      return;
+    }
     await resumeAudioContext();
+    if (!isCurrent()) {
+      return;
+    }
 
     const context = getAudioContext();
     if (!context) {
@@ -405,7 +420,7 @@ export class AudioManager {
     }
 
     // Create device source
-    instance.deviceSource = createDeviceSource(
+    const deviceSource = createDeviceSource(
       context,
       soundId,
       createDeviceSourceCallbacks({
@@ -414,12 +429,19 @@ export class AudioManager {
         soundId,
       })
     );
+    instance.deviceSource = deviceSource;
 
     // Start capture (onActive callback fires when stream is ready)
-    await instance.deviceSource.start(deviceId, constraints);
+    await deviceSource.start(deviceId, constraints);
+    if (!(isCurrent() && deviceSource.isActive)) {
+      return;
+    }
 
     // Connect through the full audio graph (after start so output node exists)
     const graphConnected = await this.connectAudioGraph(instance);
+    if (!isCurrent()) {
+      return;
+    }
     if (!graphConnected) {
       console.warn(
         `[AudioManager] Audio graph connection failed for device ${soundId}`
@@ -550,12 +572,14 @@ export class AudioManager {
    * Stop a sound
    */
   stopSound(soundId: string): void {
+    this.deviceStarts.delete(soundId);
     const instance = this.sounds.get(soundId);
     if (!instance) {
       return;
     }
 
     instance.playing = false;
+    instance.loading = false;
     instance.playbackSource?.stop();
     instance.deviceSource?.stop();
     this.effects.stopSource(soundId);

@@ -7,6 +7,10 @@ import type {
   SoundInstance,
   SoundOutputConnector,
 } from "./audio-manager-types";
+import {
+  capturedStream,
+  createDeviceCaptureHarness,
+} from "./device-capture-test-harness";
 import type { SoundRegistry } from "./sound-registry";
 
 // Other test files replace this module with mock.module, which leaks across
@@ -88,6 +92,115 @@ afterEach(() => {
 });
 
 describe("AudioManager", () => {
+  test.each(["stopSound", "cleanupSound", "cleanup"] as const)(
+    "%s cancels pending capture before callbacks or graph connection",
+    async (cancel) => {
+      const capture = createDeviceCaptureHarness();
+      try {
+        const { manager } = capture;
+        const soundId = manager.createSound(station, "node:n:mic");
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const start = manager.playDeviceSound(soundId, "usb-mic");
+        const request = await capture.request();
+
+        manager[cancel](soundId);
+        const stateCount = states.length;
+        const { stream, tracks } = capturedStream();
+        request.resolve(stream);
+        await start;
+
+        expect(tracks.every((track) => track.readyState === "ended")).toBe(
+          true
+        );
+        expect(states).toHaveLength(stateCount);
+        expect(states.at(-1)).toMatchObject({
+          isLoading: false,
+          isPlaying: false,
+        });
+        expect(capture.context.createMediaStreamSource).not.toHaveBeenCalled();
+        expect(capture.connectMain).not.toHaveBeenCalled();
+        expect(manager.getDeviceSource(soundId)?.isActive ?? false).toBe(false);
+      } finally {
+        capture.restore();
+      }
+    }
+  );
+
+  test.each(["stopSound", "cleanupSound"] as const)(
+    "%s cancels capture while audio initialization is pending",
+    async (cancel) => {
+      const capture = createDeviceCaptureHarness();
+      try {
+        const { manager } = capture;
+        const pending = Promise.withResolvers<void>();
+        manager.init = () => pending.promise;
+        const soundId = manager.createSound(station, "node:n:mic");
+        const start = manager.playDeviceSound(soundId, "usb-mic");
+
+        manager[cancel](soundId);
+        pending.resolve();
+        await start;
+
+        expect(capture.requests).toHaveLength(0);
+        expect(manager.getDeviceSource(soundId)).toBeNull();
+        expect(capture.connectMain).not.toHaveBeenCalled();
+      } finally {
+        capture.restore();
+      }
+    }
+  );
+
+  test.each(["resolve", "reject"] as const)(
+    "a superseded capture's late %s leaves its replacement playing",
+    async (settle) => {
+      const capture = createDeviceCaptureHarness();
+      try {
+        const { manager } = capture;
+        const soundId = manager.createSound(station, "dj:deck-a");
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const oldStart = manager.playDeviceSound(soundId, "old-mic");
+        const oldRequest = await capture.request();
+        const newStart = manager.playDeviceSound(soundId, "new-mic");
+        const newRequest = await capture.request(1);
+        const current = capturedStream("new-mic");
+        newRequest.resolve(current.stream);
+        await newStart;
+        const stateCount = states.length;
+
+        const old = capturedStream("old-mic");
+        if (settle === "resolve") {
+          oldRequest.resolve(old.stream);
+        } else {
+          oldRequest.reject(new DOMException("denied", "NotAllowedError"));
+        }
+        await oldStart;
+
+        if (settle === "resolve") {
+          expect(
+            old.tracks.every((track) => track.readyState === "ended")
+          ).toBe(true);
+        }
+        expect(
+          current.tracks.every((track) => track.readyState === "live")
+        ).toBe(true);
+        expect(manager.getDeviceSource(soundId)?.currentDeviceId).toBe(
+          "new-mic"
+        );
+        expect(manager.getDeviceSource(soundId)?.isActive).toBe(true);
+        expect(states).toHaveLength(stateCount);
+        expect(states.at(-1)).toMatchObject({ error: null, isPlaying: true });
+        expect(capture.connectMain).toHaveBeenCalledTimes(1);
+        expect(capture.context.createMediaStreamSource).toHaveBeenCalledTimes(
+          1
+        );
+      } finally {
+        capture.restore();
+      }
+    }
+  );
+
   test("pausing a sound that is still connecting settles its loading state", async () => {
     const manager = AudioManager.getInstance();
     const soundId = manager.createSound(

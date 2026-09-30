@@ -7,6 +7,10 @@ import type {
   SoundOutputConnector,
 } from "@/lib/audio/manager/audio-manager-types";
 import {
+  capturedStream,
+  createDeviceCaptureHarness,
+} from "@/lib/audio/manager/device-capture-test-harness";
+import {
   createFakeFader,
   FakeAudioContext,
   type FakeGainNode,
@@ -2603,6 +2607,59 @@ describe("Node Playback audio inputs and output devices", () => {
   }
 
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test.each(["remove", "deactivate"] as const)(
+    "%s while Go live requests permission stops the late real capture",
+    async (cancel) => {
+      insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+      const capture = createDeviceCaptureHarness();
+      try {
+        const context = createTestContext();
+        context.audio = capture.manager;
+        const { activate, deactivate } = context.channels;
+        context.channels.activate = (...args) => {
+          const soundId = activate(...args);
+          capture.manager.createSound(args[2], soundId);
+          return soundId;
+        };
+        context.channels.deactivate = (channelId) => {
+          const { soundId } = getPlaybackChannelRuntime(channelId);
+          if (soundId) {
+            capture.manager.cleanupSound(soundId);
+          }
+          deactivate(channelId);
+        };
+        const harness = createHarness({ context });
+        await harness.playback.activate();
+        const start = harness.playback.setPlaying("mic", true);
+        const request = await capture.request();
+
+        if (cancel === "remove") {
+          await commit(harness, () => wired([speakers], []));
+        } else {
+          await harness.playback.deactivate();
+        }
+        const { stream, tracks } = capturedStream();
+        request.resolve(stream);
+        await start;
+
+        expect(tracks.every((track) => track.readyState === "ended")).toBe(
+          true
+        );
+        expect(capture.manager.hasSound(soundOf("mic"))).toBe(false);
+        expect(capture.context.createMediaStreamSource).not.toHaveBeenCalled();
+        expect(capture.connectMain).not.toHaveBeenCalled();
+        expect(getPlaybackChannelRuntime(channelOf("mic"))).toMatchObject({
+          error: null,
+          isPlaying: false,
+          soundId: null,
+        });
+        expect(context.reportError).not.toHaveBeenCalled();
+      } finally {
+        capture.restore();
+      }
+    }
+  );
 
   test("Go live opens the device with its echo cancellation, then selects its channels", async () => {
     insertNodeSession(

@@ -123,6 +123,7 @@ export class DeviceSource {
   private _permissionState: DevicePermissionState = "prompt";
   private _currentDeviceId: string | null = null;
   private deviceChangeHandler: (() => void) | null = null;
+  private startRevision = 0;
 
   // Channel routing
   private _channelSelection: ChannelSelection = { left: 0, right: 1 };
@@ -406,14 +407,13 @@ export class DeviceSource {
     deviceId?: string,
     constraints: DeviceAudioConstraints = {}
   ): Promise<void> {
-    if (this._isActive) {
-      // If already active with same device, do nothing
-      if (deviceId === this._currentDeviceId) {
-        return;
-      }
-      // Otherwise stop current and restart with new device
-      this.stop();
+    if (this._isActive && deviceId === this._currentDeviceId) {
+      return;
     }
+    // Release the previous capture, including an acquisition still pending.
+    this.stop();
+    this.startRevision += 1;
+    const revision = this.startRevision;
 
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
     const supportsLatency = Boolean(
@@ -445,11 +445,20 @@ export class DeviceSource {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: initialRequest,
       });
+      if (revision !== this.startRevision) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
       const { audioTrack, capabilities, settings } = getCaptureState(stream);
       this.stream = stream;
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
+      if (revision !== this.startRevision) {
+        return;
+      }
 
       // Get actual device ID and channel count from track settings.
       // Match openDAW's capture policy: request at most stereo and use the
@@ -480,6 +489,10 @@ export class DeviceSource {
       this._isActive = true;
       this.callbacks.onActive?.();
     } catch (error) {
+      if (revision !== this.startRevision) {
+        return;
+      }
+      this.stop();
       this.handleStartError(error);
       throw error;
     }
@@ -529,11 +542,10 @@ export class DeviceSource {
    * Stop capturing and release resources
    */
   stop(): void {
+    this.startRevision += 1;
     this.diagnostics = null;
     this.diagnosticsTrack = null;
-    if (!this._isActive) {
-      return;
-    }
+    const wasActive = this._isActive;
 
     // Stop all tracks in the stream
     if (this.stream) {
@@ -555,7 +567,9 @@ export class DeviceSource {
 
     this._isActive = false;
     this._currentDeviceId = null;
-    this.callbacks.onInactive?.();
+    if (wasActive) {
+      this.callbacks.onInactive?.();
+    }
   }
 
   /**

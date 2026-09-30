@@ -930,6 +930,9 @@ function createNodePlayback(
     if (!(lane && radio && next) || advancingLanes.has(channelId)) {
       return;
     }
+    const pending: PendingChannelStart = { cancelled: false, channelId };
+    const canAdvance = () => !pending.cancelled && isCurrent();
+    pendingChannelStarts.add(pending);
     advancingLanes.add(channelId);
     try {
       const nextRadio = await radioOnTrack(
@@ -937,19 +940,21 @@ function createNodePlayback(
         next.streamUrl,
         resolveStream
       );
-      if (!isCurrent()) {
+      if (!canAdvance()) {
         return;
       }
+      pendingChannelStarts.delete(pending);
       if (nextRadio) {
         await playLaneTrack(lane.id, nextRadio);
       } else {
         reportLaneFailure(channelId, "Couldn't load the next track");
       }
     } catch (error) {
-      if (isCurrent()) {
+      if (canAdvance()) {
         reportLaneFailure(channelId, "Couldn't load the next track", error);
       }
     } finally {
+      pendingChannelStarts.delete(pending);
       advancingLanes.delete(channelId);
     }
   };

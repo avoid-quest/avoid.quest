@@ -3171,6 +3171,25 @@ const album: Radio = {
   streamUrl: "https://media.example/one.mp3",
 } as Radio;
 
+const youtubePlaylist: Radio = {
+  id: "playlist",
+  name: "A playlist",
+  platformMetadata: {
+    itemType: "playlist",
+    platform: "youtube",
+    tracks: [
+      {
+        name: "One",
+        streamUrl: "https://media.example/one.m4a",
+        videoId: "one",
+      },
+      { name: "Two", streamUrl: "yt:two", videoId: "two" },
+    ],
+    url: "https://www.youtube.com/playlist?list=x",
+  },
+  streamUrl: "https://media.example/one.m4a",
+};
+
 /** The state listener a Track or File lane's sound was watched with. */
 function laneWatcher(context: PlaybackActionContext, nodeId: string) {
   const calls = (
@@ -3391,6 +3410,71 @@ describe("Node Playback: Track and File sources", () => {
     await harness.playback.whenSettled();
     expect(harness.context.audio.playSound).toHaveBeenCalledTimes(2);
   });
+
+  test.each([
+    ["source", "resolved"],
+    ["all", "resolved"],
+    ["none", "resolved"],
+    ["source", "rejected"],
+    ["all", "rejected"],
+  ] as const)(
+    "next-track resolution respects %s pause (%s)",
+    async (pause, outcome) => {
+      insertNodeSession(patch([trackNode("playlist", youtubePlaylist)]));
+      const renewal = Promise.withResolvers<{
+        streamFormat: "progressive";
+        streamUrl: string;
+      }>();
+      const resolveStream = mock(() => renewal.promise);
+      const harness = createHarness({ resolveStream });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("playlist", true);
+
+      setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+        isPlaying: false,
+      }));
+      laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+      expect(resolveStream).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "playlist-next", videoId: "two" })
+      );
+      const endedGraph = harness.store.state.graph;
+      if (pause === "all") {
+        harness.playback.pauseAll();
+      } else if (pause === "source") {
+        await harness.playback.setPlaying("playlist", false);
+      }
+      if (outcome === "rejected") {
+        renewal.reject(new Error("failure after pause"));
+      } else {
+        renewal.resolve({
+          streamFormat: "progressive",
+          streamUrl: "https://media.example/two.m4a",
+        });
+      }
+      await harness.playback.whenSettled();
+
+      if (pause === "none") {
+        expect(
+          getPlaybackChannel("node", channelOf("playlist"))?.radio
+        ).toMatchObject({ streamUrl: "https://media.example/two.m4a" });
+        expect(harness.context.audio.playSound).toHaveBeenCalledTimes(2);
+        expect(getPlaybackChannelRuntime(channelOf("playlist")).isPlaying).toBe(
+          true
+        );
+      } else {
+        expect(harness.store.state.graph).toBe(endedGraph);
+        expect(
+          getPlaybackChannel("node", channelOf("playlist"))?.radio
+        ).toMatchObject({ streamUrl: youtubePlaylist.streamUrl });
+        expect(harness.context.audio.playSound).toHaveBeenCalledTimes(1);
+        expect(getPlaybackChannelRuntime(channelOf("playlist")).isPlaying).toBe(
+          false
+        );
+      }
+      expect(harness.context.reportError).not.toHaveBeenCalled();
+    }
+  );
 
   test("a third playing Track past the mobile budget is refused with its message", async () => {
     insertNodeSession(

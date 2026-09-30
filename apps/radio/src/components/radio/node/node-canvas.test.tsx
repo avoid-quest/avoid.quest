@@ -467,4 +467,60 @@ describe("NodeCanvas: dragging a cable", () => {
       toast.mockRestore();
     }
   });
+  test("a drop on a port on the cable's own side takes the node's one fitting port", async () => {
+    const { port } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    try {
+      fireEvent.mouseDown(port("kexp", "out:audio:main"), {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+      });
+      const reverbOut = port("verb", "out:audio:main");
+      move(-5000, reverbOut);
+      release(reverbOut);
+      expect(toast).not.toHaveBeenCalled();
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toContainEqual(
+        expect.objectContaining({
+          source: "kexp",
+          target: "verb",
+          targetHandle: "in:audio:main",
+        })
+      );
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
+  test("tap-then-tap lights the ports after the first tap and explains a refused second tap", async () => {
+    const { port } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    const tap = (element: HTMLElement) => {
+      elementUnderPointer = element;
+      fireEvent.click(element);
+    };
+    try {
+      tap(port("kexp", "out:audio:main"));
+      expect(
+        port("verb", "in:audio:main").classList.contains("node-port-accept")
+      ).toBe(true);
+      const key = port("comp", "in:sidechain:key");
+      expect(key.classList.contains("node-port-locked")).toBe(true);
+      expect(key.title).toBe("This input takes one cable");
+
+      tap(key);
+      expect(toast.mock.calls).toEqual([["This input takes one cable"]]);
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
+      expect(
+        port("verb", "in:audio:main").classList.contains("node-port-accept")
+      ).toBe(false);
+
+      tap(port("kexp", "out:audio:main"));
+      tap(port("verb", "in:audio:main"));
+      expect(toast).toHaveBeenCalledTimes(1);
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(5);
+    } finally {
+      toast.mockRestore();
+    }
+  });
 });

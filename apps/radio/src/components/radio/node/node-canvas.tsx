@@ -66,6 +66,7 @@ import {
   DRAWN_NODE_TYPES,
   dropTargetOf,
   edgeUnderPointer,
+  facingPort,
   NODE_ARIA_LABELS,
   pointerOf,
   toFlowEdges,
@@ -511,17 +512,17 @@ function Canvas({
     const dropTarget = dropTargetOf(event, pointer);
     // The port let go on, or the one React Flow snapped to within reach.
     const portElement = dropTarget?.closest(".react-flow__handle");
-    const port =
-      toHandle?.id && toNode && toHandle.type !== from.type
-        ? { handle: toHandle.id, node: toNode.id }
-        : {
-            handle: portElement?.getAttribute("data-handleid") ?? null,
-            node: portElement?.getAttribute("data-nodeid") ?? null,
-          };
-    if (port.node === from.node && port.handle === from.handle) {
+    if (
+      portElement?.getAttribute("data-nodeid") === from.node &&
+      portElement?.getAttribute("data-handleid") === from.handle
+    ) {
       // Let go where it started: nothing to explain.
       return;
     }
+    const port =
+      toHandle?.id && toNode && toHandle.type !== from.type
+        ? { handle: toHandle.id, node: toNode.id }
+        : facingPort(portElement, from);
     const onNode =
       port.node ??
       dropTarget?.closest(".react-flow__node")?.getAttribute("data-id");
@@ -543,6 +544,46 @@ function Canvas({
       from,
       position: { x: drop.x, y: drop.y - 20 },
     });
+  };
+
+  // Tap-then-tap: the first tap lights the ports as a drag does. React
+  // Flow connects a second tap the ports allow; one they refuse is let go
+  // on that port, so it says why or takes the node's one fitting port.
+  const handleClickConnectEnd = (event: MouseEvent | TouchEvent) => {
+    const hints = clearConnectionHints();
+    const { target } = event;
+    const portElement =
+      target instanceof Element ? target.closest(".react-flow__handle") : null;
+    const onNode = portElement?.getAttribute("data-nodeid");
+    const onHandle = portElement?.getAttribute("data-handleid");
+    if (!(hints && onNode && onHandle)) {
+      return;
+    }
+    const { from } = hints;
+    if (onNode === from.node && onHandle === from.handle) {
+      // The first port tapped again: the tap is taken back.
+      return;
+    }
+    const port = facingPort(portElement, from);
+    const cable: Connection =
+      from.type === "source"
+        ? {
+            source: from.node,
+            sourceHandle: from.handle,
+            target: onNode,
+            targetHandle: onHandle,
+          }
+        : {
+            source: onNode,
+            sourceHandle: onHandle,
+            target: from.node,
+            targetHandle: from.handle,
+          };
+    if (port.handle && canConnect(graph, cable, validateOptions)) {
+      // React Flow has connected it already.
+      return;
+    }
+    dropOnto(from, onNode, port.handle);
   };
 
   // A lone loose node dragged over a cable it fits into lights that cable;
@@ -659,6 +700,14 @@ function Canvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // A canvas that goes mid-drag leaves no ports lit behind it.
+  useEffect(
+    () => () => {
+      clearConnectionHints();
+    },
+    []
+  );
+
   // A template load can move everything; fit it back in view.
   useEffect(() => {
     if (fitRequest === 0) {
@@ -762,6 +811,8 @@ function Canvas({
         minZoom={0.25}
         nodes={nodes}
         nodeTypes={nodeTypes}
+        onClickConnectEnd={handleClickConnectEnd}
+        onClickConnectStart={handleConnectStart}
         onConnect={handleConnect}
         onConnectEnd={handleConnectEnd}
         onConnectStart={handleConnectStart}

@@ -88,6 +88,25 @@ export function dropTargetOf(
 }
 
 /**
+ * The port a cable from `from` was let go or tapped on, when it faces the
+ * cable: an input for a cable leaving an output, and the reverse. A port on
+ * the cable's own side counts as its node's body, so the drop still takes
+ * the node's one fitting port.
+ */
+export function facingPort(
+  portElement: Element | null | undefined,
+  from: { type: "source" | "target" }
+): { handle: string | null; node: string | null } {
+  const facing = from.type === "source" ? "target" : "source";
+  return portElement?.classList.contains(facing)
+    ? {
+        handle: portElement.getAttribute("data-handleid"),
+        node: portElement.getAttribute("data-nodeid"),
+      }
+    : { handle: null, node: null };
+}
+
+/**
  * The cable under a point, e.g. under a node being dragged: every element
  * there is checked, so the node on top doesn't hide the cable below it.
  */

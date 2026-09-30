@@ -383,8 +383,13 @@ chains, with params excluded.
   fades to 0.3 and locks (`node-port-locked`, `isConnectableEnd=false`) with the reason as
   its native title. `isValidConnection` reads the same cache. A refused drop on a node, a
   locked port or a port React Flow snapped to shows one toast with the verdict; a drop on
-  empty space opens the palette narrowed to what fits. Budget refusals are patch-wide, so
-  once over budget every port locks with the same message.
+  empty space opens the palette narrowed to what fits. A drop on a port on the cable's own
+  side counts as a drop on its node's body. Tap-then-tap works the same way:
+  `onClickConnectStart` takes the verdicts, ports read the first tap from React Flow's
+  `connectionClickStartHandle`, and a refused second tap toasts its verdict. Every port
+  takes the pointer (React Flow's base CSS gives it only to connectable ones), so a locked
+  or full port still shows its title and can be let go or tapped on. Budget refusals are
+  patch-wide, so once over budget every port locks with the same message.
 - **Budgets.** Checked at compile time; exceeding a budget is an error on the offending node,
   never a silent drop.
 

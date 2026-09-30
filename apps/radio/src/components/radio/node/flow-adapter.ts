@@ -38,5 +38,6 @@ export {
   useNodeConnections,
   useNodeId,
   useReactFlow,
+  useStore as useFlowStore,
   useUpdateNodeInternals,
 } from "@xyflow/react";

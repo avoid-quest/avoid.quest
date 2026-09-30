@@ -7,6 +7,7 @@ import {
   Handle,
   Position,
   useConnection,
+  useFlowStore,
   useNodeConnections,
   useNodeId,
   useUpdateNodeInternals,
@@ -22,9 +23,10 @@ import {
  * Canvas Port
  *
  * `NodePort` as the canvas draws it, in the React Flow chunk: its cables
- * come from `useNodeConnections`, and the drag from `useConnection`, read
- * only for where it started, so a pointer move re-renders no port. The
- * drag's verdicts come from `connectionHints`, taken once when it started.
+ * come from `useNodeConnections`, and the drag from `useConnection` (or
+ * the first tap of a tap-then-tap), read only for where it started, so a
+ * pointer move re-renders no port. The drag's verdicts come from
+ * `connectionHints`, taken once when it started.
  */
 export function CanvasPort({
   type,
@@ -44,7 +46,12 @@ export function CanvasPort({
       ? portKey(connection.fromNode.id, connection.fromHandle.id ?? "")
       : null
   );
-  const hint = usePortHint(dragFrom, portKey(nodeId, handle));
+  // Tap-then-tap (connectOnClick) keeps its first port outside the
+  // connection state.
+  const tapFrom = useFlowStore(({ connectionClickStartHandle: tapped }) =>
+    tapped ? portKey(tapped.nodeId, tapped.id ?? "") : null
+  );
+  const hint = usePortHint(dragFrom ?? tapFrom, portKey(nodeId, handle));
   const state = nodePortState({
     cables: cables.length,
     hint,

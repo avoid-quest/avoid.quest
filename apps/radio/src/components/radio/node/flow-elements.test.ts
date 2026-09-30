@@ -10,6 +10,7 @@ import {
   DRAWN_NODE_TYPES,
   dropTargetOf,
   edgeUnderPointer,
+  facingPort,
   NODE_ARIA_LABELS,
   toFlowEdges,
   toFlowNodes,
@@ -109,6 +110,32 @@ describe("flow elements", () => {
     expect(
       dropTargetOf(mouseUp, undefined, { elementFromPoint: () => null })
     ).toBe(port as unknown as Element);
+  });
+
+  test("only a port facing the cable counts as the port let go on", () => {
+    const port = (side: "source" | "target") =>
+      ({
+        classList: { contains: (name: string) => name === side },
+        getAttribute: (name: string) =>
+          name === "data-nodeid" ? "verb" : `${side}-handle`,
+      }) as unknown as Element;
+
+    expect(facingPort(port("target"), { type: "source" })).toEqual({
+      handle: "target-handle",
+      node: "verb",
+    });
+    expect(facingPort(port("source"), { type: "source" })).toEqual({
+      handle: null,
+      node: null,
+    });
+    expect(facingPort(port("source"), { type: "target" })).toEqual({
+      handle: "source-handle",
+      node: "verb",
+    });
+    expect(facingPort(null, { type: "target" })).toEqual({
+      handle: null,
+      node: null,
+    });
   });
 
   test("the cable under a dragged node is found beneath the node", () => {

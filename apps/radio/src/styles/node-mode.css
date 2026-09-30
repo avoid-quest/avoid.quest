@@ -41,10 +41,14 @@
 @layer components {
   /* Ports: a 10 px dot on the node edge with a 20 px hit target (28 px on
      touch). The dot is border-box, so the target insets from its 6 px
-     padding box. Labels come from the native title on hover. */
+     padding box. Labels come from the native title on hover. React Flow
+     lets a port take the pointer only while it can start or end a cable;
+     every port takes it here, so a full or locked port still shows its
+     title, and a cable let go or tapped on it says why it was refused. */
   .react-flow__handle.node-port {
     width: 10px;
     height: 10px;
+    pointer-events: all;
     border: 2px solid var(--node-wire);
     border-radius: 9999px;
   }

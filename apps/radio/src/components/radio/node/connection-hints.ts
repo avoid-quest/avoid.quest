@@ -48,10 +48,13 @@ export function startConnectionHints(
   }));
 }
 
+/** Drops the drag's verdicts, handing back the ones it had. */
 export function clearConnectionHints(
   store: ConnectionHintStore = connectionHints
-): void {
+): ConnectionHints | null {
+  const hints = store.state;
   store.setState(() => null);
+  return hints;
 }
 
 /** The drag's verdict on `connection`, when it is the drag's cable. */
@@ -106,7 +109,7 @@ export function readPortHint(
 }
 
 /**
- * A port's verdict while a cable is dragged from `dragFrom`
+ * A port's verdict while a cable is dragged, or tapped out, from `dragFrom`
  * (`"<nodeId> <handleId>"`, from React Flow's connection state); undefined
  * when nothing is dragged, or the hints belong to another drag.
  */

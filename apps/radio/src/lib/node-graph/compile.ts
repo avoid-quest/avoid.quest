@@ -78,6 +78,12 @@ export type LanePlan = {
   /** Managed sound id: `node:n:<id>`. */
   soundId: string;
   radio: StationRadio;
+  /**
+   * The Station's own fader and mute, owned by the lane's volume control.
+   * Cable levels never fold in here; they act downstream of the fader.
+   */
+  volume: number;
+  muted: boolean;
   /** Nodes lowered into this lane, source first. */
   nodes: string[];
   pan: number;
@@ -1003,10 +1009,12 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       filter: lowered.lowerer.filter,
       id: node.id,
       layoutSignature: layoutSignature(effects),
+      muted: node.data.muted,
       nodes: lowered.lowerer.nodes,
       pan: lowered.lowerer.pan,
       radio: node.data.radio,
       soundId: laneSoundId(node.id),
+      volume: node.data.volume,
     });
     for (const edge of lowered.exits) {
       edges.set(edge.id, edge);

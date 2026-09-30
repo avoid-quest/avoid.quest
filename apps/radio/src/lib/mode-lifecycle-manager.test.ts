@@ -8,6 +8,7 @@ import {
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
+import { nodeGraphSchema } from "@/lib/node-graph/schema";
 import {
   getPlaybackChannelRuntime,
   resetAllPlaybackRuntime,
@@ -44,6 +45,50 @@ function insertPlaybackSession(id: PlaybackSessionId) {
     crossfadePosition: 0.5,
     headphoneVolume: 1,
     id,
+    masterVolume: 1,
+  });
+}
+
+/** A node session with one Station wired to Speakers. */
+function insertNodeSession() {
+  playbackSessionsCollection.insert({
+    activeChannelId: null,
+    channels: [],
+    crossfadePosition: 0.5,
+    graph: nodeGraphSchema.parse({
+      edges: [
+        {
+          id: "station-1->speakers",
+          source: "station-1",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+      ],
+      nodes: [
+        {
+          data: {
+            radio: {
+              id: "station-1",
+              name: "Station 1",
+              streamUrl: "https://radio.example/station.mp3",
+            },
+          },
+          id: "station-1",
+          position: { x: 0, y: 0 },
+          type: "station",
+        },
+        {
+          data: {},
+          id: "speakers",
+          position: { x: 480, y: 0 },
+          type: "speakers",
+        },
+      ],
+      version: 1,
+    }),
+    headphoneVolume: 1,
+    id: "node",
     masterVolume: 1,
   });
 }
@@ -168,24 +213,132 @@ describe("mode lifecycle manager", () => {
     expect(switchTo).not.toHaveBeenCalled();
   });
 
-  test("refuses node until its playback lands, without committing it", async () => {
+  test("switching to node activates its lanes and commits the mode", async () => {
+    insertPlaybackSession("single");
+    insertNodeSession();
+    const context = createModeLifecycleTestContext();
     const commitMode = mock((_mode: PlaybackSessionId) => undefined);
     const manager = createModeManager({
       commitMode,
+      initialMode: "single",
+      lifecycles: createModeLifecycleRegistry({ ctx: context }),
+    });
+
+    await manager.switchTo("node");
+
+    expect(context.channels.activate).toHaveBeenCalledWith(
+      "node",
+      "n:station-1",
+      expect.objectContaining({ id: "station-1" }),
+      "node:n:station-1"
+    );
+    expect(context.audio.playSound).not.toHaveBeenCalled();
+    expect(commitMode).toHaveBeenCalledWith("node");
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "node",
+      phase: "active",
+    });
+  });
+
+  test("a thrown node activation rolls back to the previous mode", async () => {
+    insertPlaybackSession("single");
+    insertNodeSession();
+    const context = createModeLifecycleTestContext();
+    context.channels.activate = mock((_sessionId, channelId) => {
+      setPlaybackChannelRuntime(channelId, () => ({
+        isLoading: true,
+        soundId: "node:n:station-1",
+      }));
+      throw new Error("node activation failed midway");
+    });
+    const commitMode = mock((_mode: PlaybackSessionId) => undefined);
+    const manager = createModeManager({
+      commitMode,
+      initialMode: "single",
+      lifecycles: createModeLifecycleRegistry({ ctx: context }),
+    });
+
+    await expect(manager.switchTo("node")).rejects.toThrow(
+      "node activation failed midway"
+    );
+
+    expect(commitMode).not.toHaveBeenCalled();
+    expect(context.channels.deactivate).toHaveBeenCalledWith("n:station-1");
+    expect(getPlaybackChannelRuntime("n:station-1").soundId).toBeNull();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+      requestedMode: null,
+    });
+  });
+
+  test("a node session that is not ready rolls back without committing", async () => {
+    insertPlaybackSession("single");
+    const commitMode = mock((_mode: PlaybackSessionId) => undefined);
+    const manager = createModeManager({
+      commitMode,
+      initialMode: "single",
       lifecycles: createModeLifecycleRegistry({
         ctx: createModeLifecycleTestContext(),
       }),
     });
 
     await expect(manager.switchTo("node")).rejects.toThrow(
-      "Node mode is not available yet"
+      "Node playback session is not ready"
     );
 
     expect(commitMode).not.toHaveBeenCalled();
     expect(manager.getSnapshot()).toMatchObject({
-      currentMode: null,
-      phase: "inactive",
-      requestedMode: null,
+      currentMode: "single",
+      phase: "active",
+    });
+  });
+
+  test("switching out of node leaves no n:* sound behind", async () => {
+    insertPlaybackSession("single");
+    insertNodeSession();
+    const context = createModeLifecycleTestContext();
+    const liveSoundIds = new Set<string>();
+    context.channels.activate = mock(
+      (_sessionId, channelId, _radio, soundId) => {
+        const id = String(soundId);
+        liveSoundIds.add(id);
+        setPlaybackChannelRuntime(channelId, () => ({ soundId: id }));
+        return id;
+      }
+    );
+    context.audio.hasSound = mock((soundId: string) =>
+      liveSoundIds.has(soundId)
+    );
+    context.audio.cleanupSound = mock((soundId: string) => {
+      liveSoundIds.delete(soundId);
+    });
+    const fadeOut = mock((_soundId: string, _durationMs: number) =>
+      Promise.resolve()
+    );
+    const manager = createModeManager({
+      commitMode: mock(() => undefined),
+      lifecycles: createModeLifecycleRegistry({
+        ctx: context,
+        fadeOutSound: fadeOut,
+      }),
+    });
+    await manager.activateInitialMode("node");
+    setPlaybackChannelRuntime("n:station-1", () => ({ isPlaying: true }));
+
+    await manager.switchTo("single");
+
+    expect(fadeOut).toHaveBeenCalledWith("node:n:station-1", 150, true);
+    expect([...liveSoundIds].filter((id) => id.startsWith("node:"))).toEqual(
+      []
+    );
+    expect(getPlaybackChannelRuntime("n:station-1")).toMatchObject({
+      isPlaying: false,
+      soundId: null,
+    });
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
     });
   });
 

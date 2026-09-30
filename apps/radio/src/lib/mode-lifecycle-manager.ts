@@ -11,6 +11,7 @@ import {
 } from "@/lib/playback-action-context";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
 import { getMultiplePlayback } from "./multiple-playback.js";
+import { getNodePlayback } from "./node-playback.js";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
 
@@ -152,18 +153,18 @@ export function createModeLifecycleRegistry({
     fadeOutDurationMs,
     fadeOutSound,
   });
+  const node = getNodePlayback({
+    ctx,
+    fadeOutDurationMs,
+    fadeOutSound,
+  });
   return {
     dj: createLifecycle(
       () => djWorkflow.activate(),
       () => djWorkflow.deactivate()
     ),
     multiple: createLifecycle(multiple.activate, multiple.deactivate),
-    // Node playback lands in its own layer. Until then nothing requests
-    // "node", and a stray request rolls back instead of half-starting.
-    node: createLifecycle(
-      () => Promise.reject(new Error("Node mode is not available yet")),
-      () => Promise.resolve()
-    ),
+    node: createLifecycle(node.activate, node.deactivate),
     single: createLifecycle(single.activate, single.deactivate),
   };
 }

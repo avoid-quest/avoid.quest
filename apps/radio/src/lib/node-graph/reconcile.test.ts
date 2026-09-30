@@ -177,6 +177,42 @@ describe("diff", () => {
     ]);
   });
 
+  test("a Station volume or mute change is a setParam, volume first", () => {
+    const level = (volume: number, muted: boolean) =>
+      plan(
+        [
+          { ...station("a"), data: { ...station("a").data, muted, volume } },
+          speakers,
+        ],
+        [audio("a", "speakers")]
+      );
+    expect(diff(level(1, false), level(0.4, false))).toEqual([
+      {
+        id: "a",
+        param: "volume",
+        target: "lane",
+        type: "setParam",
+        value: 0.4,
+      },
+    ]);
+    expect(diff(level(1, true), level(0.4, false))).toEqual([
+      {
+        id: "a",
+        param: "volume",
+        target: "lane",
+        type: "setParam",
+        value: 0.4,
+      },
+      {
+        id: "a",
+        param: "muted",
+        target: "lane",
+        type: "setParam",
+        value: false,
+      },
+    ]);
+  });
+
   test("a cable level or mute change is a setParam", () => {
     const cable = (gain: number, muted: boolean) =>
       plan([station("a"), speakers], [audio("a", "speakers", { gain, muted })]);

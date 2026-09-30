@@ -36,6 +36,7 @@ import { reportPlaybackActionError } from "./playback-action-errors.js";
 import {
   applySessionMasterVolume,
   cleanupManagedChannel,
+  runWithConcurrency,
 } from "./playback-actions-shared.js";
 
 export type MultiplePlayback = {
@@ -79,38 +80,6 @@ type ChannelStartOwnership = {
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
 const PLAY_ALL_CONCURRENCY = 3;
 const instances = new WeakMap<PlaybackActionContext, MultiplePlayback>();
-
-function yieldToBrowser(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-async function runWithConcurrency<T>(
-  items: readonly T[],
-  limit: number,
-  task: (item: T) => Promise<void>,
-  shouldContinue: () => boolean = () => true
-): Promise<void> {
-  let index = 0;
-  const runNext = async (): Promise<void> => {
-    if (!shouldContinue()) {
-      return;
-    }
-    const item = items[index];
-    index += 1;
-    if (item === undefined) {
-      return;
-    }
-    await task(item);
-    if (!shouldContinue()) {
-      return;
-    }
-    await yieldToBrowser();
-    return runNext();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, runNext)
-  );
-}
 
 type CarriedChannel = {
   from: PlaybackChannelRecord;

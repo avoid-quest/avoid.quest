@@ -9,7 +9,8 @@
  *   effects controller no-ops when identical and openDAW updates in place;
  * - FX added, removed or reordered: `duckLane` → `replaceLaneEffects` →
  *   `unduckLane`, a short dip instead of a click;
- * - native pan, filter and cable levels: `setParam`, ramped by the engine;
+ * - native pan, filter and cable levels, and a Station's volume and mute:
+ *   `setParam`, ramped by the engine;
  * - cables: `addEdge` fades in, `removeEdge` fades out, and `rewireEdge`
  *   (same cable id, new ends) crossfades equal-power;
  * - lanes: `addLane` builds the sound paused, `removeLane` fades it out.
@@ -45,6 +46,20 @@ export type Op =
       id: string;
       param: "filter";
       value: NativeFilterPlan | null;
+    }
+  | {
+      type: "setParam";
+      target: "lane";
+      id: string;
+      param: "volume";
+      value: number;
+    }
+  | {
+      type: "setParam";
+      target: "lane";
+      id: string;
+      param: "muted";
+      value: boolean;
     }
   | {
       type: "setParam";
@@ -115,6 +130,25 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
       target: "lane",
       type: "setParam",
       value: next.filter,
+    });
+  }
+  // Volume before mute: unmuting re-applies the volume that is current.
+  if (previous.volume !== next.volume) {
+    ops.push({
+      id: laneId,
+      param: "volume",
+      target: "lane",
+      type: "setParam",
+      value: next.volume,
+    });
+  }
+  if (previous.muted !== next.muted) {
+    ops.push({
+      id: laneId,
+      param: "muted",
+      target: "lane",
+      type: "setParam",
+      value: next.muted,
     });
   }
   return ops;

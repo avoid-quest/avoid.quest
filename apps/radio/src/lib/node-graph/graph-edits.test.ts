@@ -10,6 +10,9 @@ import {
   type GraphEdit,
   insertNodeOnEdge,
   moveNodes,
+  nextFxPosition,
+  nextStationPosition,
+  reconnectEdge,
   removeEdges,
   removeNodes,
   removeNodesHealed,
@@ -34,6 +37,7 @@ import {
   type NodeType,
 } from "./schema";
 import { seriesToParallel } from "./series-parallel";
+import { forgetLocalFileUrls, localFileRadio } from "./sources";
 import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
@@ -123,6 +127,191 @@ describe("addStationNode", () => {
       x: (speakers?.position.x ?? 0) - 480,
       y: speakers?.position.y ?? 0,
     });
+  });
+});
+
+describe("where a new node lands", () => {
+  const audioInput = {
+    device: { deviceId: "mic", label: "Desk mic" },
+    id: "deviceIn:mic",
+    kind: "node",
+    name: "Desk mic",
+    section: "sources",
+    type: "deviceIn",
+  } as const;
+  const stationSlot = {
+    id: "station",
+    kind: "node",
+    name: "Station",
+    section: "sources",
+    type: "station",
+  } as const;
+  const positionOf = (graph: NodeGraph, nodeId: string | null) =>
+    graph.nodes.find((node) => node.id === nodeId)?.position;
+
+  test("an Audio input stacks below the others, and a Station below it", () => {
+    const start = patch(radio("a"));
+    const first = addPaletteNode(start, audioInput);
+    const second = addPaletteNode(first.graph, audioInput);
+    const station = addPaletteNode(second.graph, stationSlot);
+
+    const ys = [first, second, station].map(
+      ({ graph, nodeId }) => positionOf(graph, nodeId)?.y
+    );
+    expect(ys).toEqual([
+      STATION_ROW_HEIGHT,
+      STATION_ROW_HEIGHT + 200,
+      STATION_ROW_HEIGHT + 400,
+    ]);
+  });
+
+  test("a File whose file is gone after a reload takes a file form's row", () => {
+    forgetLocalFileUrls();
+    const file = {
+      data: {
+        muted: false,
+        radio: localFileRadio("file", {
+          displayName: "Demo",
+          duration: 10,
+          fileName: "demo.mp3",
+          fileSize: 100,
+          mimeType: "audio/mpeg",
+          objectUrl: "blob:https://radio.example/demo",
+        }),
+        volume: 1,
+      },
+      id: "file",
+      position: { x: 0, y: STATION_ROW_HEIGHT },
+      type: "file",
+    } as const;
+    const start = patch(radio("a"));
+    const graph = { ...start, nodes: [...start.nodes, file] } as NodeGraph;
+
+    expect(nextStationPosition(graph)).toEqual({
+      x: 0,
+      y: STATION_ROW_HEIGHT + 240,
+    });
+  });
+
+  test("an FX goes between the sources and Speakers, below everything", () => {
+    const start = patch(radio("a"), radio("b"));
+    const speakers = start.nodes.find((node) => node.type === "speakers");
+    const { graph, nodeId } = addPaletteNode(start, {
+      id: "gain",
+      kind: "node",
+      name: "Gain",
+      section: "fx",
+      type: "gain",
+    });
+
+    const position = positionOf(graph, nodeId);
+    expect(position).toEqual(nextFxPosition(start) ?? undefined);
+    expect(position?.x).toBeLessThan(speakers?.position.x ?? 0);
+    expect(position?.y).toBe(2 * STATION_ROW_HEIGHT);
+  });
+
+  test("a Station added after an FX in the source column lands below it", () => {
+    // The Starter's Speakers sit close, so its FX column overlaps the slot's.
+    const start = buildNodeGraphFromTemplate("starter");
+    const fx = addPaletteNode(start, {
+      id: "gain",
+      kind: "node",
+      name: "Gain",
+      section: "fx",
+      type: "gain",
+    });
+    const fxY = positionOf(fx.graph, fx.nodeId)?.y ?? 0;
+
+    expect(fxY).toBe(STATION_ROW_HEIGHT);
+    expect(nextStationPosition(fx.graph).y).toBe(fxY + STATION_ROW_HEIGHT);
+  });
+});
+
+describe("reconnectEdge", () => {
+  test("moves a cable end in one edit, keeping its level and mute", () => {
+    const start = patch(radio("a"), radio("b"));
+    const [cable] = start.edges;
+    const leveled = {
+      ...start,
+      edges: start.edges.map((edge) =>
+        edge.id === cable?.id ? { ...edge, gain: 0.5, muted: true } : edge
+      ),
+    };
+    const withGain = addPaletteNode(leveled, {
+      id: "gain",
+      kind: "node",
+      name: "Gain",
+      section: "fx",
+      type: "gain",
+    });
+    const edit = reconnectEdge(withGain.graph, cable?.id ?? "", {
+      source: "src-a",
+      sourceHandle: "out:audio:main",
+      target: withGain.nodeId ?? "",
+      targetHandle: "in:audio:main",
+    });
+
+    expect(edit.ok).toBe(true);
+    if (!edit.ok) {
+      return;
+    }
+    expect(edit.graph.edges.some((edge) => edge.id === cable?.id)).toBe(false);
+    expect(edit.graph.edges.at(-1)).toMatchObject({
+      gain: 0.5,
+      muted: true,
+      source: "src-a",
+      target: withGain.nodeId,
+    });
+  });
+
+  test("takes a one-cable input its own cable filled; refuses one another cable fills", () => {
+    const start = patch(radio("a"), radio("b"));
+    const withGain = addPaletteNode(start, {
+      id: "gain",
+      kind: "node",
+      name: "Gain",
+      section: "fx",
+      type: "gain",
+    });
+    const gain = withGain.nodeId ?? "";
+    const wired = connectNodes(withGain.graph, {
+      source: "src-a",
+      sourceHandle: "out:audio:main",
+      target: gain,
+      targetHandle: "in:audio:main",
+    });
+    const intoGain = wired.edges.at(-1)?.id ?? "";
+
+    // Its own end, from Station A to Station B: the input it frees takes it.
+    const moved = reconnectEdge(wired, intoGain, {
+      source: "src-b",
+      sourceHandle: "out:audio:main",
+      target: gain,
+      targetHandle: "in:audio:main",
+    });
+    expect(moved.ok).toBe(true);
+
+    // Station B's cable to Speakers onto the Gain's input Station A holds.
+    const toSpeakers = wired.edges.find((edge) => edge.source === "src-b");
+    const refused = reconnectEdge(wired, toSpeakers?.id ?? "", {
+      source: "src-b",
+      sourceHandle: "out:audio:main",
+      target: gain,
+      targetHandle: "in:audio:main",
+    });
+    expect(refused.ok).toBe(false);
+  });
+
+  test("the same ends are a no-op", () => {
+    const start = patch(radio("a"));
+    const [cable] = start.edges;
+    const edit = reconnectEdge(start, cable?.id ?? "", {
+      source: cable?.source ?? "",
+      sourceHandle: cable?.sourceHandle,
+      target: cable?.target ?? "",
+      targetHandle: cable?.targetHandle,
+    });
+    expect(edit).toEqual({ graph: start, ok: true });
   });
 });
 

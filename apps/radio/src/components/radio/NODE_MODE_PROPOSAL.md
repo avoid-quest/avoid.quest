@@ -425,6 +425,11 @@ chains, with params excluded.
   takes the pointer (React Flow's base CSS gives it only to connectable ones), so a locked
   or full port still shows its title and can be let go or tapped on. Budget refusals are
   patch-wide, so once over budget every port locks with the same message.
+- **Rewire.** Either end of a cable drags off its port (`onReconnect`). The drag's
+  verdicts are taken on the patch without that cable, so the one-cable input it filled
+  takes it back, and a drop commits `reconnectEdge` as one undo step: the old cable goes,
+  the new one comes, with the old level, mute and colour. A refused drop toasts its verdict
+  as a new cable's would, and a cable end let go on empty space unplugs the cable.
 - **Budgets.** Checked at compile time; exceeding a budget is an error on the offending node,
   never a silent drop.
 
@@ -488,7 +493,7 @@ Play state, error and now-playing come from `playbackRuntimeStore`
 | Node | Failure | Behaviour |
 |---|---|---|
 | Station, File, Platform | play error or CORS silence | InlineError on the node and `PLAY_ERROR` reported with mode `"node"` (`multiple-playback.ts:282-293`). The lane stays connected but silent, and the rest of the patch plays on |
-| Station | its session radio vanished at init | The node becomes an empty Station slot (the SearchField state). Its lane is released, **its cables survive**, and picking a station refills it |
+| Station | its session radio is not in this tab (a pick from search, never saved, reopened in a new tab) | The patch stores the whole radio, so init registers it back as a session radio (`registerNodeSessionRadios`). The Station keeps its lane, so a new tab plays what a reload does |
 | Audio input | permission prompt, denied, or device gone | "Allow microphone" (a user gesture, `getUserMedia`); "Microphone blocked. Allow it in your browser settings." with no Go live; or "Unplugged: plug it back in or pick another" when `devicechange` drops the device, and the lane pauses. Plugged back in, the device is offered again |
 | FX (lane) | worklet unavailable | The existing dry fallback filter→dest (`audio-manager-graph.ts:148-187`), plus a `bypassed` badge |
 | FX (lane) | official runtime cap exceeded | The controller falls back to compatibility, and the badge flips to `compat` |
@@ -597,6 +602,16 @@ drives, so the performance surface never hides the routing (the Max Presentation
 border-border/50 bg-card`, no shadow. Widths are fixed: station 240 px, FX 64 px per knob
 column + gap-x-2 (max 4 columns), output 200 px.
 
+**Where a new node lands.** A Station, Track, File or Audio input from the palette stacks
+below the lowest node in the source column, by row: 160 px for a filled source, 240 px for
+an empty File (or one whose file is gone after a reload), 320 px for an empty Track, 200 px
+for an Audio input. An FX, Gain or Merge goes between the sources and Speakers
+(`Speakers.x - 180`), below everything, so a cable wired Input → FX → Speakers runs forward;
+an output goes right of everything. A reveal after an add waits for the new node's measured
+size and keeps it clear of the canvas hint. On a phone, an empty Station, Track or File added
+from the Stage or Rack opens the Patch on it, as neither lists an empty slot. Selecting an
+empty slot keeps the Rack: it has no strip to inspect until it holds something.
+
 ```
         ┌──────────────────────────────────────┐
  in ○───┤ [icon] Compressor   compat   ⏻   ⋯  │  header h-7: icon tile size-6,
@@ -650,7 +665,9 @@ What this design does instead:
 
 - No grid, or at most an optional `border/30` 24 px dot at zoom ≥ 1.
 - Category comes from the lucide icon tile and the port shape, not header colour.
-- No minimap in v1; fit-view is on `F`.
+- No minimap in v1; fit-view is on `F`, and on a phone on tapping the open Patch tab again.
+  A phone fit stops at zoom 0.6, where text reads and ports take a tap, and the patch pans
+  instead of shrinking past it.
 - Nodes are flat `bg-card` with the app's `border-border/50`.
 - Motion exists only where signal exists (Live), and reduced motion is honoured through the
   global clamp.
@@ -876,7 +893,7 @@ runs **before** any mutation of either collection. It is idempotent.
 | `playback-sessions.ts:249-255` | Channel role `"multiple"` → `"node"` |
 | `playback-sessions.ts:257-292` | Session schema adds `graph` (optional) |
 | `playback-sessions.ts:558-593` (`buildMultipleSessionFromRadios`, `buildMultipleSessionFromEnabledRadios` at :587) | Replaced by `buildNodeSessionFromTemplate("start-from-multiple", radios)` |
-| `playback-sessions.ts:606-626` (`pruneStaleMultipleSessionChannels`) | Replaced by `pruneStaleNodeSources`, which turns a Station whose session radio is gone into an empty slot, keeps its cables and drops its lane |
+| `playback-sessions.ts:606-626` (`pruneStaleMultipleSessionChannels`) | Replaced by `restoreNodeSessionRadios`, which registers a Station's session radio back in a new tab rather than dropping its lane |
 | `playback-sessions.ts:764-811` (`initializePlaybackSessions`) | Migration first, before the `shouldRestore` branch, then the node build at the three sites (:783, :788, :795) |
 | `playback-sessions.ts:926-930` (`getMultipleChannelId`) | Replaced by `getNodeChannelId(nodeId) = "n:" + nodeId` |
 | `apps/radio/src/lib/collections/index.ts:10` | Re-export `getNodeChannelId` |

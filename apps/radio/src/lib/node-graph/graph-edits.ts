@@ -162,34 +162,54 @@ export function wireToSpeakers(graph: NodeGraph, source: string): GraphEdge[] {
 
 /**
  * The rows an empty Track and File take: their bodies are a platform
- * search and a file form, taller than a Station card.
+ * search and a file form, taller than a Station card. An Audio input's
+ * device picker and Go live button take more than a Station too.
  */
 const EMPTY_SOURCE_ROW_HEIGHT = {
   file: 240,
   platform: 320,
   station: STATION_ROW_HEIGHT,
 } as const;
+const AUDIO_INPUT_ROW_HEIGHT = 200;
+/** A Station card's width, for what shares the source column. */
+const SOURCE_COLUMN_WIDTH = 240;
+/** Where a new FX goes relative to Speakers: between it and the sources. */
+const FX_OFFSET_X = 180;
 
-function rowHeight(node: GraphNode): number {
-  return isRadioSourceNode(node) && node.data.radio === null
-    ? EMPTY_SOURCE_ROW_HEIGHT[node.type]
-    : STATION_ROW_HEIGHT;
+/**
+ * The height a node's row takes. A File whose picked file is gone after a
+ * reload shows the file form again, so it counts as empty.
+ */
+export function rowHeight(node: GraphNode): number {
+  if (node.type === "deviceIn") {
+    return AUDIO_INPUT_ROW_HEIGHT;
+  }
+  if (!isRadioSourceNode(node)) {
+    return STATION_ROW_HEIGHT;
+  }
+  const { radio } = node.data;
+  const empty =
+    radio === null || (node.type === "file" && isLocalFileGone(radio));
+  return empty ? EMPTY_SOURCE_ROW_HEIGHT[node.type] : STATION_ROW_HEIGHT;
+}
+
+function bottomOf(nodes: readonly GraphNode[]): number {
+  return Math.max(...nodes.map((node) => node.position.y + rowHeight(node)));
 }
 
 /**
- * Below the lowest Station, Track or File, or one column left of Speakers
- * in a new patch.
+ * Below the lowest Station, Track, File or Audio input (or anything else
+ * placed in their column), or one column left of Speakers in a new patch.
  */
 export function nextStationPosition(graph: NodeGraph): Position {
-  const stations = graph.nodes.filter(isRadioSourceNode);
-  const [first] = stations;
+  const [first] = graph.nodes.filter(isStripSource);
   if (first) {
-    return {
-      x: first.position.x,
-      y: Math.max(
-        ...stations.map((station) => station.position.y + rowHeight(station))
-      ),
-    };
+    const column = graph.nodes.filter(
+      (node) =>
+        isStripSource(node) ||
+        Math.abs(node.position.x - first.position.x) < SOURCE_COLUMN_WIDTH
+    );
+    return { x: first.position.x, y: bottomOf(column) };
   }
   const speakers = graph.nodes.find((node) => node.type === "speakers");
   return speakers
@@ -198,6 +218,21 @@ export function nextStationPosition(graph: NodeGraph): Position {
         y: speakers.position.y,
       }
     : { x: 0, y: 0 };
+}
+
+/**
+ * Between the sources and Speakers, below everything, so the cables of an
+ * FX wired Input → FX → Speakers run forward. `null` without Speakers.
+ */
+export function nextFxPosition(graph: NodeGraph): Position | null {
+  const speakers = graph.nodes.find((node) => node.type === "speakers");
+  if (!speakers) {
+    return null;
+  }
+  return {
+    x: speakers.position.x - FX_OFFSET_X,
+    y: bottomOf(graph.nodes),
+  };
 }
 
 /**
@@ -430,6 +465,53 @@ export function connectNodes(
         targetHandle,
       },
     ],
+  };
+}
+
+/**
+ * Rewires cable `edgeId` to `connection`, as dragging a cable end does: the
+ * old cable goes and the new one comes in one edit, checked against the
+ * patch without the old one, so an input it filled takes the new cable.
+ * The cable keeps its level, mute and colour.
+ */
+export function reconnectEdge(
+  graph: NodeGraph,
+  edgeId: string,
+  connection: Connection,
+  options?: ValidateOptions
+): GraphEdit {
+  const old = graph.edges.find((edge) => edge.id === edgeId);
+  if (!old) {
+    return { message: "That cable is gone", ok: false };
+  }
+  if (
+    old.source === connection.source &&
+    old.sourceHandle === connection.sourceHandle &&
+    old.target === connection.target &&
+    old.targetHandle === connection.targetHandle
+  ) {
+    return { graph, ok: true };
+  }
+  const without = removeEdges(graph, [edgeId]);
+  const verdict = connectionVerdict(without, connection, options);
+  if (!verdict.ok) {
+    return { message: verdict.message, ok: false };
+  }
+  const connected = connectNodes(without, connection);
+  const added = connected.edges.at(-1);
+  if (connected === without || !added) {
+    return { message: "That cable can't go there", ok: false };
+  }
+  const { color, gain, muted } = old;
+  return {
+    graph: {
+      ...connected,
+      edges: [
+        ...connected.edges.slice(0, -1),
+        { ...added, ...(color === undefined ? {} : { color }), gain, muted },
+      ],
+    },
+    ok: true,
   };
 }
 

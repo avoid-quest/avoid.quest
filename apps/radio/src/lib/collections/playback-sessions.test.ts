@@ -1142,7 +1142,7 @@ describe("session persistence and init", () => {
     expect(JSON.stringify(graph)).toBe(before);
   });
 
-  test("initializePlaybackSessions empties a Station whose session radio is gone", async () => {
+  test("initializePlaybackSessions keeps a Station whose session radio left this tab, and registers it back", async () => {
     await Promise.all([
       playbackSessionsCollection.stateWhenReady(),
       settingsCollection.stateWhenReady(),
@@ -1156,42 +1156,47 @@ describe("session persistence and init", () => {
       },
     });
 
-    const hidden = {
-      id: "rg_hidden",
-      name: "Hidden Session Radio",
-      streamUrl: "https://radio.example/hidden.mp3",
+    // A station picked from search in another tab and never saved: the
+    // patch holds it, this tab's session radios don't.
+    const picked = {
+      id: "rg_picked",
+      name: "Picked Session Radio",
+      streamUrl: "https://radio.example/picked.mp3",
     };
     playbackSessionsCollection.insert(
       buildNodeSessionFromTemplate("start-from-multiple", {
         levels: (radio) =>
-          radio.id === hidden.id ? { muted: false, volume: 0.5 } : undefined,
+          radio.id === picked.id ? { muted: false, volume: 0.5 } : undefined,
         masterVolume: 0.4,
         saved: [{ ...KEXP_RADIO, enabled: true, order: 0 }],
-        session: [hidden],
+        session: [picked],
       })
     );
     updatePlaybackSession("node", (draft) => {
-      draft.activeChannelId = getNodeChannelId("src-rg_hidden");
+      draft.activeChannelId = getNodeChannelId("src-rg_picked");
     });
+    const before = getPlaybackSession("node");
 
     await initializePlaybackSessions();
 
     const nodeSession = getPlaybackSession("node");
+    expect(nodeSession?.graph).toEqual(before?.graph);
     const station = nodeSession?.graph?.nodes.find(
-      (node) => node.id === "src-rg_hidden"
+      (node) => node.id === "src-rg_picked"
     );
-    expect(station?.type).toBe("station");
-    expect(station?.data).toMatchObject({ radio: null, volume: 0.5 });
-    // The cable survives, so refilling the slot plays through it again.
-    expect(nodeSession?.graph?.edges.map((edge) => edge.id)).toEqual([
-      "src-kexp->speakers",
-      "src-rg_hidden->speakers",
-    ]);
+    expect(station?.data).toMatchObject({ radio: picked, volume: 0.5 });
+    // Its lane stays, so Play all and the Stage have it.
     expect(nodeSession?.channels.map((channel) => channel.id)).toEqual([
       "n:src-kexp",
+      "n:src-rg_picked",
     ]);
-    expect(nodeSession?.activeChannelId).toBeNull();
+    expect(nodeSession?.activeChannelId).toBe(
+      getNodeChannelId("src-rg_picked")
+    );
     expect(nodeSession?.masterVolume).toBe(0.4);
+    expect(sessionRadiosCollection.state.get("rg_picked")).toMatchObject(
+      picked
+    );
   });
 
   test("initializePlaybackSessions keeps a Station whose session radio is still stored", async () => {

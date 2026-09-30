@@ -30,6 +30,7 @@ import {
 import {
   EFFECT_NODE_TYPES,
   getNodeGraphReadOnlyVersion,
+  isRadioSourceNode,
   type NodeGraph,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
@@ -46,7 +47,11 @@ import {
 import { migrateNodeGraphSession } from "./migrations/node-graph-v2";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
-import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
+import {
+  addSessionRadio,
+  isSessionRadio,
+  sessionRadiosCollection,
+} from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -443,29 +448,25 @@ function upsertSession(session: PlaybackSessionRecord): void {
 }
 
 /**
- * `graph` with every Station whose session radio left this tab's
- * sessionStorage emptied into a slot: its cables stay, and compiling drops
- * its lane. Returns `graph` itself when no Station is stale.
+ * Registers every session radio a Station in `graph` holds back into this
+ * tab's session radios. The patch stores the whole radio, so a station
+ * picked from search and never saved keeps playing in a new tab, as it
+ * does after a reload; without this its Station stayed filled with no
+ * lane behind it.
  */
-function emptyStaleNodeSources(graph: NodeGraph): NodeGraph {
+function registerNodeSessionRadios(graph: NodeGraph): void {
   const sessionRadioIds = readStoredSessionRadioIds();
-  const isStale = (radio: Radio | null) =>
-    isSessionOnlyRadio(radio) && !sessionRadioIds.has(String(radio?.id));
-  if (
-    !graph.nodes.some(
-      (node) => node.type === "station" && isStale(node.data.radio as Radio)
-    )
-  ) {
-    return graph;
+  for (const node of graph.nodes) {
+    const radio = isRadioSourceNode(node) ? (node.data.radio as Radio) : null;
+    if (
+      radio &&
+      isSessionOnlyRadio(radio) &&
+      !sessionRadioIds.has(String(radio.id))
+    ) {
+      addSessionRadio(radio);
+      sessionRadioIds.add(String(radio.id));
+    }
   }
-  return {
-    ...graph,
-    nodes: graph.nodes.map((node) =>
-      node.type === "station" && isStale(node.data.radio as Radio)
-        ? { ...node, data: { ...node.data, radio: null } }
-        : node
-    ),
-  };
 }
 
 /** Prepares and validates the entire session without writing or collecting models. */
@@ -473,7 +474,7 @@ export function prepareNodeSessionGraph(
   graph: NodeGraph,
   masterVolume?: number
 ): PlaybackSessionRecord {
-  const nextGraph = emptyStaleNodeSources(graph);
+  const nextGraph = graph;
   const session = playbackSessionsCollection.state.get("node");
   if (!session) {
     return playbackSessionsCollection.validateData(
@@ -482,7 +483,7 @@ export function prepareNodeSessionGraph(
     );
   }
   const channels = deriveNodeChannels(
-    compile(nextGraph, { crossOriginIsolated: false }),
+    compile(graph, { crossOriginIsolated: false }),
     session.channels
   );
   return playbackSessionsCollection.validateData(
@@ -515,6 +516,7 @@ export function writeNodeSessionGraph(
     return null;
   }
   const prepared = prepareNodeSessionGraph(graph, masterVolume);
+  registerNodeSessionRadios(graph);
   if (playbackSessionsCollection.state.has("node")) {
     const previousModelIds = collectSessionNamModelIds(
       playbackSessionsCollection.state.get("node")
@@ -532,14 +534,14 @@ export function writeNodeSessionGraph(
   return prepared.graph as NodeGraph;
 }
 
-/** Empties the stored patch's Stations whose session radio left this tab. */
-function pruneStaleNodeSources(): void {
+/** Registers the stored patch's session radios in this tab. */
+function restoreNodeSessionRadios(): void {
   if (getNodeSessionReadOnlyVersion() !== null) {
     return;
   }
   const graph = playbackSessionsCollection.state.get("node")?.graph;
-  if (graph && emptyStaleNodeSources(graph) !== graph) {
-    writeNodeSessionGraph(graph);
+  if (graph) {
+    registerNodeSessionRadios(graph);
   }
 }
 
@@ -757,7 +759,7 @@ export async function initializePlaybackSessions(): Promise<void> {
   );
   migrateMultipleSession(legacyCollections);
   // Likewise a node session a v1 release stored: its graph is upgraded
-  // before pruneStaleNodeSources or restore update it.
+  // before restoreNodeSessionRadios or restore update it.
   migrateNodeGraphSession(playbackSessionsCollection);
   stopWatchingLegacyWrites ??= watchLegacyMultipleWrites({
     ...legacyCollections,
@@ -797,7 +799,7 @@ export async function initializePlaybackSessions(): Promise<void> {
     }
   }
 
-  pruneStaleNodeSources();
+  restoreNodeSessionRadios();
 
   const activeMode = normalizePlayerMode(settings?.player.mode);
   const activeSession = playbackSessionsCollection.state.get(activeMode);

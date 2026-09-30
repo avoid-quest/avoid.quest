@@ -35,6 +35,7 @@ import {
   findStationNode,
   insertNodeOnEdge,
   isSwappableType,
+  nextFxPosition,
   nextStationPosition,
   uniqueId,
   wireToSpeakers,
@@ -47,6 +48,7 @@ import {
   NATIVE_NODE_TYPES,
   type NodeGraph,
   type NodeType,
+  OUTPUT_NODE_TYPES,
   RADIO_SOURCE_NODE_TYPES,
   stripForType,
   TRACK_SEARCH_PLATFORMS,
@@ -657,6 +659,25 @@ function besideEverything(graph: NodeGraph): Position {
   };
 }
 
+/**
+ * A source stacks in the source column, an output goes beside everything,
+ * and anything in between (an FX, a Gain, a Merge) between the sources and
+ * Speakers, so its cables run forward.
+ */
+function defaultPosition(graph: NodeGraph, type: NodeType): Position {
+  if (isRadioSourceType(type) || type === "deviceIn") {
+    return nextStationPosition(graph);
+  }
+  if (isOutputType(type)) {
+    return besideEverything(graph);
+  }
+  return nextFxPosition(graph) ?? besideEverything(graph);
+}
+
+function isOutputType(type: NodeType): boolean {
+  return (OUTPUT_NODE_TYPES as readonly string[]).includes(type);
+}
+
 function isRadioSourceType(type: NodeType): boolean {
   return (RADIO_SOURCE_NODE_TYPES as readonly string[]).includes(type);
 }
@@ -694,10 +715,7 @@ export function addPaletteNode(
   const node = createPaletteNode(
     entry.type,
     nodeId,
-    position ??
-      (isRadioSourceType(entry.type) || entry.type === "deviceIn"
-        ? nextStationPosition(graph)
-        : besideEverything(graph)),
+    position ?? defaultPosition(graph, entry.type),
     entry.radio ?? null,
     entry.device ?? null,
     entry.searchPlatform

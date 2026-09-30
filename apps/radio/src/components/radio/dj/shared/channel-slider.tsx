@@ -36,7 +36,14 @@ export function ChannelSlider({
 }: ChannelSliderProps) {
   const handleChange = (nextValue: number) => {
     onChange(
-      snapChannelSliderValue({ defaultValue, max, min, value: nextValue })
+      snapChannelSliderValue({
+        defaultValue,
+        max,
+        min,
+        previousValue: value,
+        step,
+        value: nextValue,
+      })
     );
   };
 
@@ -64,10 +71,17 @@ export function ChannelSlider({
   return <MidiControlWrapper targetId={targetId}>{knob}</MidiControlWrapper>;
 }
 
+/**
+ * Snaps a value near `defaultValue` onto it, so a drag finds the centre.
+ * A move of one `step` or less from `previousValue` (an arrow key) is left
+ * alone, or a keyboard could never leave the default.
+ */
 export function snapChannelSliderValue({
   defaultValue,
   max,
   min,
+  previousValue,
+  step,
   thresholdRatio = DEFAULT_SNAP_THRESHOLD_RATIO,
   value,
 }: {
@@ -75,9 +89,18 @@ export function snapChannelSliderValue({
   defaultValue?: number;
   min: number;
   max: number;
+  previousValue?: number;
+  step?: number;
   thresholdRatio?: number;
 }) {
   if (defaultValue === undefined) {
+    return value;
+  }
+  if (
+    previousValue !== undefined &&
+    step !== undefined &&
+    Math.abs(value - previousValue) <= step + Number.EPSILON * 16
+  ) {
     return value;
   }
 

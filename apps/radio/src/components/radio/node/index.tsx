@@ -29,6 +29,7 @@ import {
   useNodeReadOnlyVersion,
 } from "@/lib/node-graph/node-store";
 import { templatePatch } from "@/lib/node-graph/palette";
+import { isRadioSourceNode, type NodeGraph } from "@/lib/node-graph/schema";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { RadioDialog } from "../../settings/radio-dialog";
@@ -71,6 +72,12 @@ function isPhoneView(value: string): value is PhoneView {
   return (PHONE_VIEWS as readonly string[]).includes(value);
 }
 
+/** A Station, Track or File with nothing in it yet. */
+function isEmptySource(graph: NodeGraph | null, nodeId: string): boolean {
+  const node = graph?.nodes.find((entry) => entry.id === nodeId);
+  return isRadioSourceNode(node) && node.data.radio === null;
+}
+
 export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const graph = useNodeGraph();
   const readOnlyVersion = useNodeReadOnlyVersion();
@@ -81,6 +88,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const [palette, setPalette] = useState<PaletteRequest | null>(null);
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
+  const patchWasOpenRef = useRef(false);
   const isPhone = useIsMobile();
   const inspectorPanel = useRef<ResizablePanelHandle>(null);
   const inspector = useNodeInspector({
@@ -190,9 +198,28 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const handleCancelDelete = () => management.setDeleteConfirm(null);
   // A node placed where the user pointed is in view already; one placed in
   // a free spot may not be.
+  // On a phone, an empty Station, Track or File added from the Stage or
+  // Rack shows on neither, so the Patch opens on it for its search or form.
   const handlePaletteAdded = (nodeId: string, request: PaletteRequest) => {
+    if (isPhone && isEmptySource(nodeStore.state.graph, nodeId)) {
+      setPhoneView("patch");
+      setReveal({ nodeId });
+      return;
+    }
     if (!request.position) {
       setReveal({ nodeId });
+    }
+  };
+  // Tapping Patch again fits the patch back in view, as F does. The tab
+  // switches on mouse down, so the press reads which tab was open before.
+  const handlePatchTabPointerDown = () => {
+    patchWasOpenRef.current = phoneView === "patch";
+  };
+  const handlePatchTabClick = () => {
+    const wasOpen: boolean = patchWasOpenRef.current;
+    if (wasOpen) {
+      setReveal(null);
+      setFitRequest((count) => count + 1);
     }
   };
   const handlePhoneViewChange = (value: string) => {
@@ -211,6 +238,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
           <Suspense fallback={<NodeCanvasSkeleton />}>
             <NodeCanvas
               fitRequest={fitRequest}
+              isPhone={isPhone}
               onOpenConnect={setConnectNodeId}
               onOpenPalette={openPalette}
               reveal={reveal}
@@ -271,7 +299,13 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
                 <TabsTrigger className="text-xs" value="rack">
                   Rack
                 </TabsTrigger>
-                <TabsTrigger className="text-xs" value="patch">
+                <TabsTrigger
+                  className="text-xs"
+                  onClick={handlePatchTabClick}
+                  onPointerDown={handlePatchTabPointerDown}
+                  title="Tap again to fit the patch"
+                  value="patch"
+                >
                   Patch
                 </TabsTrigger>
               </TabsList>

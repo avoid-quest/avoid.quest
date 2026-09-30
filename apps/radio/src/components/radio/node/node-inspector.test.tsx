@@ -282,9 +282,27 @@ describe("isInspectable", () => {
     const graph = nodeGraphSchema.parse({
       edges: [],
       nodes: [
-        { data: { radio: null }, id: "station", position, type: "station" },
-        { id: "track", position, type: "platform" },
-        { id: "file", position, type: "file" },
+        {
+          data: { radio: radio("station") },
+          id: "station",
+          position,
+          type: "station",
+        },
+        {
+          data: { radio: radio("track") },
+          id: "track",
+          position,
+          type: "platform",
+        },
+        { data: { radio: radio("file") }, id: "file", position, type: "file" },
+        {
+          data: { radio: null },
+          id: "empty-station",
+          position,
+          type: "station",
+        },
+        { id: "empty-track", position, type: "platform" },
+        { id: "empty-file", position, type: "file" },
         { id: "input", position, type: "deviceIn" },
         { data: {}, id: "merge", position, type: "merge" },
         { data: {}, id: "speakers", position, type: "speakers" },
@@ -296,6 +314,9 @@ describe("isInspectable", () => {
         graph.nodes.map((node) => [node.id, isInspectable(node)])
       )
     ).toEqual({
+      "empty-file": false,
+      "empty-station": false,
+      "empty-track": false,
       file: true,
       input: true,
       merge: false,

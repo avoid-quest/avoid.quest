@@ -11,6 +11,7 @@ import {
   insertNodeOnEdge,
   isLoose,
   moveNodes,
+  reconnectEdge,
   removeEdges,
   removeNodesHealed,
   setViewport,
@@ -32,6 +33,7 @@ import {
   parallelToSeries,
   seriesToParallel,
 } from "@/lib/node-graph/series-parallel";
+import { STATION_ROW_HEIGHT } from "@/lib/node-graph/templates";
 import {
   type Connection,
   type ValidateOptions,
@@ -131,6 +133,15 @@ const SERIES_PARALLEL_EDITS = {
 /** Station node width, so a node fed from an input lands with its port at the cursor. */
 const STATION_WIDTH = 240;
 const FIT_VIEW_OPTIONS = { maxZoom: 1, padding: 0.2 };
+/**
+ * On a phone the fit stops at a zoom where text reads and ports take a
+ * tap, and the patch pans instead of shrinking past it.
+ */
+const PHONE_FIT_VIEW_OPTIONS = { ...FIT_VIEW_OPTIONS, minZoom: 0.6 };
+/** The canvas hint's strip along the bottom, kept clear by a reveal. */
+const HINT_CLEARANCE = 32;
+/** Frames a reveal waits for a new node's measured size. */
+const REVEAL_MEASURE_FRAMES = 10;
 /** No React Flow attribution in the canvas corner. */
 const PRO_OPTIONS = { hideAttribution: true };
 
@@ -230,6 +241,8 @@ export type NodeCanvasProps = {
   onOpenPalette: (request: PaletteRequest) => void;
   /** C on a focused node opens the keyboard Connect… dialog for it. */
   onOpenConnect: (nodeId: string) => void;
+  /** A phone fits the patch no smaller than a readable zoom. */
+  isPhone?: boolean;
 };
 
 function Canvas({
@@ -238,7 +251,9 @@ function Canvas({
   fitRequest,
   onOpenPalette,
   onOpenConnect,
+  isPhone = false,
 }: NodeCanvasProps & { graph: NodeGraph }) {
+  const fitViewOptions = isPhone ? PHONE_FIT_VIEW_OPTIONS : FIT_VIEW_OPTIONS;
   const selection = useNodeSelection();
   // Only which lanes play, as a string: a buffering flag or an error on one
   // Station must not re-render every cable.
@@ -262,6 +277,12 @@ function Canvas({
   const insertTargetRef = useRef<InsertTarget | null>(null);
   const probedRef = useRef<{ node: string; edge: string | null } | null>(null);
   const insertionCanceledRef = useRef(false);
+  // A cable end being dragged to rewire it: the cable, and the patch
+  // without it, which that drag's verdicts and drop are taken on.
+  const rewireRef = useRef<{ edge: string; graph: NodeGraph } | null>(null);
+  const rewiring = (): { edge: string; graph: NodeGraph } | null =>
+    rewireRef.current;
+  const dragGraph = () => rewiring()?.graph ?? graph;
   const {
     fitView,
     flowToScreenPosition,
@@ -440,7 +461,7 @@ function Canvas({
   // pointer move near a port.
   const isValidConnection = (connection: FlowConnection | FlowEdge) =>
     canConnect(
-      graph,
+      dragGraph(),
       {
         source: connection.source,
         sourceHandle: connection.sourceHandle,
@@ -458,7 +479,7 @@ function Canvas({
   ) => {
     if (handleId && handleType && nodeId) {
       startConnectionHints(
-        graph,
+        dragGraph(),
         { handle: handleId, node: nodeId, type: handleType },
         validateOptions
       );
@@ -483,6 +504,54 @@ function Canvas({
     );
   };
 
+  // Rewire: drag either end of a cable onto another port. The old cable
+  // goes and the new one comes in one undo step; a port that refuses says
+  // why, as a new cable's would.
+  const handleReconnectStart = (_event: unknown, edge: FlowEdge) => {
+    rewireRef.current = { edge: edge.id, graph: removeEdges(graph, [edge.id]) };
+  };
+
+  const rewire = (edgeId: string, connection: Connection) => {
+    const edit = reconnectEdge(graph, edgeId, connection, validateOptions);
+    if (!edit.ok) {
+      toast(edit.message);
+      return;
+    }
+    commitNodeGraph(
+      (current) => {
+        const latest = reconnectEdge(
+          current,
+          edgeId,
+          connection,
+          validateOptions
+        );
+        return latest.ok ? latest.graph : current;
+      },
+      nodeStore,
+      "snapshot"
+    );
+  };
+
+  const handleReconnect = (edge: FlowEdge, connection: FlowConnection) => {
+    rewire(edge.id, connection);
+  };
+
+  // A cable end let go in space unplugs the cable, as in Pure Data.
+  const unplugInSpace = (dropTarget: Element | null | undefined) => {
+    const rewired = rewiring();
+    if (rewired && dropTarget?.closest(".react-flow__pane")) {
+      commitNodeGraph(
+        (current) => removeEdges(current, [rewired.edge]),
+        nodeStore,
+        "snapshot"
+      );
+    }
+  };
+
+  const handleReconnectEnd = () => {
+    rewireRef.current = null;
+  };
+
   // Let go on a port, that port decides; on the body, the one port that
   // fits. A refusal says why in one toast, e.g. a Merge that would sum two
   // stations, a lane's second key, or a locked port's own reason.
@@ -491,9 +560,20 @@ function Canvas({
     onNode: string,
     onPort: string | null
   ) => {
-    const outcome = dropOnNode(graph, from, onNode, onPort, validateOptions);
+    const rewired = rewiring();
+    const outcome = dropOnNode(
+      dragGraph(),
+      from,
+      onNode,
+      onPort,
+      validateOptions
+    );
     if ("connect" in outcome) {
-      handleConnect(outcome.connect);
+      if (rewired) {
+        rewire(rewired.edge, outcome.connect);
+      } else {
+        handleConnect(outcome.connect);
+      }
     } else if (outcome.refuse) {
       toast(outcome.refuse);
     }
@@ -536,6 +616,10 @@ function Canvas({
       dropTarget?.closest(".react-flow__node")?.getAttribute("data-id");
     if (onNode) {
       dropOnto(from, onNode, port.handle);
+      return;
+    }
+    if (rewiring()) {
+      unplugInSpace(dropTarget);
       return;
     }
     if (
@@ -722,10 +806,10 @@ function Canvas({
       return;
     }
     const frame = requestAnimationFrame(() => {
-      fitView({ ...FIT_VIEW_OPTIONS, duration: 200 });
+      fitView({ ...fitViewOptions, duration: 200 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitRequest, fitView]);
+  }, [fitRequest, fitView, fitViewOptions]);
 
   // F fits the patch in view, unless typing or inside a menu or dialog.
   useEffect(() => {
@@ -743,11 +827,11 @@ function Canvas({
         return;
       }
       event.preventDefault();
-      fitView({ ...FIT_VIEW_OPTIONS, duration: 200 });
+      fitView({ ...fitViewOptions, duration: 200 });
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [fitView]);
+  }, [fitView, fitViewOptions]);
 
   // Delete heals, B bypasses, I inserts into a cable and Cmd+D duplicates.
   // React Flow's own delete key would listen on the whole document, so a
@@ -759,19 +843,28 @@ function Canvas({
   });
 
   // Pan to a Station added from the search bar when it lands out of view.
+  // A node not measured yet is waited for a few frames, then taken as one
+  // Station row, so a tall new node is not judged in view by its top edge.
   useEffect(() => {
     if (!reveal) {
       return;
     }
-    const frame = requestAnimationFrame(() => {
+    let frame = 0;
+    let framesLeft = REVEAL_MEASURE_FRAMES;
+    const panTo = () => {
       const node = getInternalNode(reveal.nodeId);
       const bounds = wrapperRef.current?.getBoundingClientRect();
       if (!(node && bounds)) {
         return;
       }
+      if (node.measured.height === undefined && framesLeft > 0) {
+        framesLeft -= 1;
+        frame = requestAnimationFrame(panTo);
+        return;
+      }
       const { x, y } = node.internals.positionAbsolute;
       const width = node.measured.width ?? STATION_WIDTH;
-      const height = node.measured.height ?? 0;
+      const height = node.measured.height ?? STATION_ROW_HEIGHT;
       const topLeft = flowToScreenPosition({ x, y });
       const bottomRight = flowToScreenPosition({
         x: x + width,
@@ -781,7 +874,7 @@ function Canvas({
         topLeft.x >= bounds.left &&
         topLeft.y >= bounds.top &&
         bottomRight.x <= bounds.right &&
-        bottomRight.y <= bounds.bottom
+        bottomRight.y <= bounds.bottom - HINT_CLEARANCE
       ) {
         return;
       }
@@ -789,7 +882,8 @@ function Canvas({
         duration: 250,
         zoom: getZoom(),
       });
-    });
+    };
+    frame = requestAnimationFrame(panTo);
     return () => cancelAnimationFrame(frame);
   }, [flowToScreenPosition, getInternalNode, getZoom, reveal, setCenter]);
 
@@ -813,7 +907,7 @@ function Canvas({
         edges={edges}
         edgeTypes={edgeTypes}
         fitView={isUntouchedViewport(initialViewport)}
-        fitViewOptions={FIT_VIEW_OPTIONS}
+        fitViewOptions={fitViewOptions}
         isValidConnection={isValidConnection}
         maxZoom={1.5}
         minZoom={0.25}
@@ -830,6 +924,9 @@ function Canvas({
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onNodesChange={handleNodesChange}
+        onReconnect={handleReconnect}
+        onReconnectEnd={handleReconnectEnd}
+        onReconnectStart={handleReconnectStart}
         panActivationKeyCode={null}
         proOptions={PRO_OPTIONS}
         zoomOnDoubleClick={false}

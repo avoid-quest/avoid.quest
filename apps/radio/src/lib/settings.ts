@@ -32,7 +32,9 @@ export const resetAllSettings = async (): Promise<void> => {
     settingsCollection.delete(SETTINGS_ID);
   }
 
-  for (const sessionId of ["single", "multiple", "dj"] as const) {
+  // "multiple" goes too, so a record left by the pre-Node mode cannot survive
+  // a reset.
+  for (const sessionId of ["single", "node", "dj", "multiple"] as const) {
     deletePlaybackSession(sessionId);
   }
 

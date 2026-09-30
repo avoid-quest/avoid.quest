@@ -168,6 +168,27 @@ describe("mode lifecycle manager", () => {
     expect(switchTo).not.toHaveBeenCalled();
   });
 
+  test("refuses node until its playback lands, without committing it", async () => {
+    const commitMode = mock((_mode: PlaybackSessionId) => undefined);
+    const manager = createModeManager({
+      commitMode,
+      lifecycles: createModeLifecycleRegistry({
+        ctx: createModeLifecycleTestContext(),
+      }),
+    });
+
+    await expect(manager.switchTo("node")).rejects.toThrow(
+      "Node mode is not available yet"
+    );
+
+    expect(commitMode).not.toHaveBeenCalled();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: null,
+      phase: "inactive",
+      requestedMode: null,
+    });
+  });
+
   test("coalesces duplicate startup synchronization for the same mode", async () => {
     insertPlaybackSession("multiple");
     const releaseActivation = Promise.withResolvers<void>();
@@ -183,6 +204,11 @@ describe("mode lifecycle manager", () => {
         },
         multiple: {
           activate: activateMultiple,
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        node: {
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -298,6 +324,11 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
+        node: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
         single: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
@@ -348,6 +379,11 @@ describe("mode lifecycle manager", () => {
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
+        node: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
         single: {
           activate: singleActivate,
           deactivate: mock(async () => undefined),
@@ -386,6 +422,11 @@ describe("mode lifecycle manager", () => {
         multiple: {
           activate: mock(async () => undefined),
           deactivate: multipleDeactivate,
+          getPhase: () => "inactive",
+        },
+        node: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
         single: {
@@ -430,6 +471,11 @@ describe("mode lifecycle manager", () => {
           deactivate: multipleDeactivate,
           getPhase: () => "inactive",
         },
+        node: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
         single: {
           activate: singleActivate,
           deactivate: mock(async () => undefined),
@@ -469,6 +515,11 @@ describe("mode lifecycle manager", () => {
               )
             )
           ),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        node: {
+          activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",
         },
@@ -730,6 +781,11 @@ describe("mode lifecycle manager", () => {
           getPhase: () => "inactive",
         },
         multiple: {
+          activate: mock(async () => undefined),
+          deactivate: mock(async () => undefined),
+          getPhase: () => "inactive",
+        },
+        node: {
           activate: mock(async () => undefined),
           deactivate: mock(async () => undefined),
           getPhase: () => "inactive",

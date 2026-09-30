@@ -30,6 +30,7 @@ export type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
 const PLAYBACK_MODE_LABELS = {
   multiple: "Multiple",
+  node: "Node",
   single: "Single",
 } satisfies Record<ManagedPlaybackSessionId, string>;
 

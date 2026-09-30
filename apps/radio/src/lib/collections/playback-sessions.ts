@@ -21,6 +21,7 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
+import { nodeGraphSchema } from "@/lib/node-graph/schema";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -29,7 +30,12 @@ import { settingsCollection } from "./settings";
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
 const SETTINGS_ID = "app-settings";
 
-export const PLAYBACK_SESSION_IDS = ["single", "multiple", "dj"] as const;
+export const PLAYBACK_SESSION_IDS = [
+  "single",
+  "multiple",
+  "node",
+  "dj",
+] as const;
 export type PlaybackSessionId = (typeof PLAYBACK_SESSION_IDS)[number];
 
 export const SINGLE_ACTIVE_CHANNEL_ID = "single-a";
@@ -83,6 +89,7 @@ const playbackChannelRoleSchema = z.enum([
   "deck-a",
   "deck-b",
   "multiple",
+  "node",
 ]);
 
 const playbackChannelSchema = z.object({
@@ -108,6 +115,7 @@ const playbackSessionSchema = z
     activeChannelId: z.string().nullable().default(null),
     channels: z.array(playbackChannelSchema),
     crossfadePosition: z.number().default(0.5),
+    graph: nodeGraphSchema.optional(),
     headphoneVolume: z.number().default(1),
     id: z.enum(PLAYBACK_SESSION_IDS),
     masterVolume: z.number().default(1),
@@ -758,4 +766,12 @@ export function getMultipleChannelId(
   radio: Pick<Radio, "id" | "name">
 ): string {
   return `multi:${String(radio.id ?? radio.name)}`;
+}
+
+/**
+ * Channel id of the lane a Node-mode source node plays on. The managed sound
+ * id is then `node:n:<nodeId>`, which the graph compiler also emits.
+ */
+export function getNodeChannelId(nodeId: string): string {
+  return `n:${nodeId}`;
 }

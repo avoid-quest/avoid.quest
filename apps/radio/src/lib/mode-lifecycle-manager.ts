@@ -158,6 +158,12 @@ export function createModeLifecycleRegistry({
       () => djWorkflow.deactivate()
     ),
     multiple: createLifecycle(multiple.activate, multiple.deactivate),
+    // Node playback lands in its own layer. Until then nothing requests
+    // "node", and a stray request rolls back instead of half-starting.
+    node: createLifecycle(
+      () => Promise.reject(new Error("Node mode is not available yet")),
+      () => Promise.resolve()
+    ),
     single: createLifecycle(single.activate, single.deactivate),
   };
 }

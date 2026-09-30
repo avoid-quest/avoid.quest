@@ -1,7 +1,7 @@
 import type { Radio } from "@/lib/audio";
-import type { Settings } from "@/lib/types";
+import type { SettingsRecord } from "@/lib/collections/settings";
 
-type RadioMode = Settings["player"]["mode"];
+type PlayerMode = SettingsRecord["player"]["mode"];
 type ModeComponentProps = { radios?: Radio[] };
 
 let singlePromise: Promise<{
@@ -45,7 +45,11 @@ export function loadDjPlayer() {
   return djPromise;
 }
 
-export function preloadRadioMode(mode: RadioMode) {
+export function preloadRadioMode(mode: PlayerMode) {
+  // Node has no UI yet, and `Radios` renders a mode it lacks as Single.
+  if (mode === "node") {
+    return loadSingleRadio();
+  }
   return {
     dj: loadDjPlayer,
     multiple: loadMultipleRadios,

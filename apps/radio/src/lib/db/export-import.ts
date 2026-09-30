@@ -15,7 +15,7 @@ const DATA_FRAGMENT_LENGTH = 6;
 const SETTINGS_ID = "app-settings";
 
 type ImportedPlayerSettings = {
-  mode?: DatabaseExport["settings"]["player"]["mode"];
+  mode?: SettingsRecord["player"]["mode"];
   restoreStateOnLoad?: DatabaseExport["settings"]["player"]["restoreStateOnLoad"];
 };
 

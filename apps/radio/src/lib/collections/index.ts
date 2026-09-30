@@ -8,6 +8,7 @@ export {
   DECK_B_CHANNEL_ID,
   deletePlaybackSession,
   getMultipleChannelId,
+  getNodeChannelId,
   getPlaybackChannel,
   getPlaybackSession,
   initializePlaybackSessions,

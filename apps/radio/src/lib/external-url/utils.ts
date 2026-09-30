@@ -1,4 +1,5 @@
 import type { Radio } from "@/lib/audio";
+import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
 import type { PlatformMetadata } from "@/lib/platform-types";
 
 function getBandcampDescription(
@@ -221,12 +222,12 @@ export class PlatformModeError extends Error {
 /**
  * Validate that a radio can be played in the given mode
  * @param radio The radio to validate
- * @param mode Current player mode ("single", "multiple", or "dj")
+ * @param mode Playback session the radio would play in
  * @throws PlatformModeError if the radio is a platform track and mode is not "dj"
  */
 export function validateRadioForMode(
   radio: Radio | null,
-  mode: "single" | "multiple" | "dj"
+  mode: PlaybackSessionId
 ): void {
   if (!radio) {
     return;

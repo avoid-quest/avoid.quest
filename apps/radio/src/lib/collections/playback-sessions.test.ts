@@ -5,6 +5,9 @@ import {
   getCachedNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
+import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+import { laneChannelId, laneSoundId } from "@/lib/node-graph/compile";
+import type { NodeGraphInput } from "@/lib/node-graph/schema";
 import {
   buildDjSessionFromLegacyState,
   buildMultipleSessionFromRadios,
@@ -13,6 +16,7 @@ import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
   deletePlaybackSession,
+  getNodeChannelId,
   getPlaybackSession,
   initializePlaybackSessions,
   parsePlaybackSessionRecord,
@@ -449,6 +453,199 @@ describe("buildMultipleSessionFromRadios", () => {
       "multi:radio-1",
       "multi:radio-3",
     ]);
+  });
+});
+
+const KEXP_RADIO = {
+  id: "kexp",
+  name: "KEXP",
+  streamUrl: "https://radio.example/kexp.mp3",
+};
+const TALK_RADIO = {
+  id: "talk",
+  name: "Talk FM",
+  streamUrl: "https://radio.example/talk.mp3",
+};
+
+/** KEXP through a Compressor keyed by Talk FM, both into Speakers. */
+function createDuckGraph(): NodeGraphInput {
+  return {
+    edges: [
+      {
+        id: "kexp->comp",
+        source: "src-kexp",
+        sourceHandle: "out:audio:main",
+        target: "comp",
+        targetHandle: "in:audio:main",
+      },
+      {
+        id: "talk->comp",
+        source: "src-talk",
+        sourceHandle: "out:audio:main",
+        target: "comp",
+        targetHandle: "in:sidechain:key",
+      },
+      {
+        id: "comp->speakers",
+        source: "comp",
+        sourceHandle: "out:audio:main",
+        target: "speakers",
+        targetHandle: "in:audio:main",
+      },
+      {
+        gain: 0.5,
+        id: "talk->speakers",
+        source: "src-talk",
+        sourceHandle: "out:audio:main",
+        target: "speakers",
+        targetHandle: "in:audio:main",
+      },
+    ],
+    nodes: [
+      {
+        data: { radio: KEXP_RADIO, volume: 0.8 },
+        id: "src-kexp",
+        position: { x: 0, y: 0 },
+        type: "station",
+      },
+      {
+        data: { radio: TALK_RADIO },
+        id: "src-talk",
+        position: { x: 0, y: 112 },
+        type: "station",
+      },
+      {
+        data: { effect: createNodeEffectConfig("compressor", "comp") },
+        id: "comp",
+        position: { x: 240, y: 0 },
+        type: "compressor",
+      },
+      { id: "speakers", position: { x: 480, y: 56 }, type: "speakers" },
+    ],
+    version: 1,
+  };
+}
+
+/** The derived channel cache: one `n:*` lane per station node. */
+function createDuckChannels() {
+  const compressor = createNodeEffectConfig("compressor", "comp");
+  compressor.sidechain = { channelId: getNodeChannelId("src-talk") };
+  return [
+    {
+      ...createDefaultChannel(getNodeChannelId("src-kexp"), "node", 0),
+      effects: [compressor],
+      radio: KEXP_RADIO,
+      volume: 0.8,
+    },
+    {
+      ...createDefaultChannel(getNodeChannelId("src-talk"), "node", 1),
+      radio: TALK_RADIO,
+    },
+  ];
+}
+
+describe("node session persistence", () => {
+  test("names lanes the way the graph compiler does", () => {
+    expect(getNodeChannelId("src-kexp")).toBe("n:src-kexp");
+    expect(getNodeChannelId("src-kexp")).toBe(laneChannelId("src-kexp"));
+    expect(laneSoundId("src-kexp")).toBe(
+      `node:${getNodeChannelId("src-kexp")}`
+    );
+  });
+
+  test("inserts a node session with a graph and later updates it", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: createDuckChannels(),
+      crossfadePosition: 0.5,
+      graph: createDuckGraph(),
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 0.9,
+    });
+
+    const inserted = getPlaybackSession("node");
+    expect(inserted?.graph?.nodes.map((node) => node.id)).toEqual([
+      "src-kexp",
+      "src-talk",
+      "comp",
+      "speakers",
+    ]);
+    expect(inserted?.graph?.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    expect(inserted?.channels.map((channel) => channel.role)).toEqual([
+      "node",
+      "node",
+    ]);
+    expect(inserted?.channels[0]?.effects[0]?.sidechain).toEqual({
+      channelId: "n:src-talk",
+    });
+
+    // Every update re-validates the merged record, graph included.
+    expect(() =>
+      updatePlaybackSession("node", (draft) => {
+        const [lane] = draft.channels;
+        const station = draft.graph?.nodes.find(
+          (node) => node.id === "src-kexp"
+        );
+        if (!(lane && station)) {
+          throw new Error("Expected seeded node lane and station");
+        }
+        lane.volume = 0.3;
+        station.position = { x: 24, y: 48 };
+        draft.masterVolume = 0.5;
+      })
+    ).not.toThrow();
+    expect(() =>
+      updatePlaybackChannel("node", "n:src-talk", (draft) => {
+        draft.muted = true;
+      })
+    ).not.toThrow();
+
+    const updated = getPlaybackSession("node");
+    expect(updated?.channels[0]?.volume).toBe(0.3);
+    expect(updated?.channels[1]?.muted).toBe(true);
+    expect(updated?.masterVolume).toBe(0.5);
+    expect(updated?.graph?.nodes[0]?.position).toEqual({ x: 24, y: 48 });
+    expect(updated?.graph?.edges).toHaveLength(4);
+  });
+
+  test("keeps a node session without a graph valid", () => {
+    const session = parsePlaybackSessionRecord({
+      channels: [],
+      id: "node",
+    });
+    expect(session.graph).toBeUndefined();
+  });
+
+  test("refuses a node session whose graph is malformed", () => {
+    const graph = createDuckGraph();
+    graph.edges.push({
+      id: "ghost->speakers",
+      source: "ghost",
+      sourceHandle: "out:audio:main",
+      target: "speakers",
+      targetHandle: "in:audio:main",
+    });
+    expect(() =>
+      parsePlaybackSessionRecord({ channels: [], graph, id: "node" })
+    ).toThrow();
+  });
+
+  test("still validates a multiple session", () => {
+    const session = parsePlaybackSessionRecord({
+      channels: [
+        {
+          ...createDefaultChannel("multi:radio-1", "multiple", 0),
+          radio: KEXP_RADIO,
+        },
+      ],
+      id: "multiple",
+    });
+    expect(session.id).toBe("multiple");
+    expect(session.channels[0]?.role).toBe("multiple");
+    expect(session.graph).toBeUndefined();
   });
 });
 

@@ -1,7 +1,7 @@
 import type { AudioError, AudioErrorCode, Radio } from "@/lib/audio";
 import { generateErrorId } from "@/lib/audio/playback";
 
-export type PlaybackActionMode = "single" | "multiple" | "dj";
+export type PlaybackActionMode = "single" | "multiple" | "node" | "dj";
 
 export type PlaybackActionError = {
   mode: PlaybackActionMode;

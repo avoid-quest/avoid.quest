@@ -209,4 +209,42 @@ describe("handleFeedbackRequest", () => {
     expect(formatted?.body).toContain("<summary>Details</summary>");
     expect(formatted?.body).toContain("- App version: v");
   });
+
+  test("labels node and treats multiple or garbage modes as Unknown", async () => {
+    const request = new Request("https://radio.test/api/feedback", {
+      headers: {
+        "cf-connecting-ip": "203.0.113.10",
+      },
+      method: "POST",
+    });
+
+    await handleFeedbackRequest(request, {
+      GIT_FEEDBACK_GITHUB_TOKEN: "token",
+      "proxy-rate-limit": { limit: async () => ({ success: true }) },
+    });
+
+    const endpointOptions = createFeedbackEndpointMock.mock.calls[0]?.[0] as {
+      issue?: {
+        formatter?: (item: {
+          body: string;
+          untrustedMetadata?: Record<string, string>;
+        }) => { body?: string };
+      };
+    };
+    const modeRow = (mode?: string) =>
+      endpointOptions.issue
+        ?.formatter?.({
+          body: "Feedback",
+          untrustedMetadata: mode === undefined ? {} : { mode },
+        })
+        .body?.split("\n")
+        .find((line) => line.startsWith("| Mode |"));
+
+    expect(modeRow("node")).toBe("| Mode | Node |");
+    expect(modeRow("single")).toBe("| Mode | Single |");
+    expect(modeRow("multiple")).toBe("| Mode | Unknown |");
+    expect(modeRow("<script>|x")).toBe("| Mode | Unknown |");
+    expect(modeRow("toString")).toBe("| Mode | Unknown |");
+    expect(modeRow()).toBe("| Mode | Not provided |");
+  });
 });

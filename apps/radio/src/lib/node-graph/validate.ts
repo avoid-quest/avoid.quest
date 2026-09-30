@@ -46,8 +46,8 @@ export type IssueCode =
   | "budget-tape-warp-time"
   | "budget-lfos"
   | "budget-edges"
-  // Raised by the compiler, where the patch's shape is known.
   | "native-position"
+  // Raised by the compiler, where the patch's shape is known.
   | "lane-branches"
   | "split-depth"
   | "split-branches"
@@ -548,6 +548,85 @@ function audioInputs(wired: readonly WiredEdge[]): Map<string, string[]> {
   return inputs;
 }
 
+/** Nodes that reach an output; dangling paths remain available for editing. */
+export function liveAudioNodes(
+  exits: readonly WiredEdge[],
+  inner: readonly WiredEdge[]
+): Set<string> {
+  const inputs = audioInputs(inner);
+  const live = new Set<string>();
+  const queue = exits.map(({ edge }) => edge.source);
+  for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+    if (live.has(id)) {
+      continue;
+    }
+    live.add(id);
+    queue.push(...(inputs.get(id) ?? []));
+  }
+  return live;
+}
+
+/** Filter and Pan must be on the leading series, before any FX or branch. */
+export function nativePlacementIssues(
+  graph: ValidatableGraph,
+  wired: readonly WiredEdge[],
+  lanes: ReadonlyMap<string, Lane>
+): Issue[] {
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  const sinks = new Set(
+    graph.nodes
+      .filter((node) => definitionOf(node).category === "output")
+      .map((node) => node.id)
+  );
+  const audio = wired.filter(({ edge, from, to }) => {
+    const lane = lanes.get(edge.source);
+    return (
+      from.kind === "audio" &&
+      to.kind === "audio" &&
+      typeof lane === "string" &&
+      (sinks.has(edge.target) || lanes.get(edge.target) === lane)
+    );
+  });
+  const live = liveAudioNodes(
+    audio.filter(({ edge }) => sinks.has(edge.target)),
+    audio.filter(({ edge }) => !sinks.has(edge.target))
+  );
+  const outs = new Map<string, string[]>();
+  for (const { edge } of audio) {
+    if (live.has(edge.target) || sinks.has(edge.target)) {
+      outs.set(edge.source, [...(outs.get(edge.source) ?? []), edge.target]);
+    }
+  }
+  const leading = new Set<string>();
+  for (const source of graph.nodes.filter(
+    (node) => definitionOf(node).source
+  )) {
+    let node: GraphNode | undefined = source;
+    while (node && live.has(node.id) && !leading.has(node.id)) {
+      leading.add(node.id);
+      const next: readonly string[] = outs.get(node.id) ?? [];
+      if (definitionOf(node).effectType || next.length !== 1) {
+        break;
+      }
+      node = next[0] ? nodes.get(next[0]) : undefined;
+    }
+  }
+  return graph.nodes.flatMap((node): Issue[] =>
+    (node.type === "filter" || node.type === "pan") &&
+    live.has(node.id) &&
+    !leading.has(node.id)
+      ? [
+          {
+            code: "native-position",
+            id: node.id,
+            message: `${definitionOf(node).name} must come right after the station`,
+            target: "node",
+          },
+        ]
+      : []
+  );
+}
+
 /**
  * Labels each node with the lane it belongs to, or as a bus when it sums
  * more than one lane. A monotone fixpoint, so audio cycles settle too.
@@ -867,7 +946,8 @@ export function validate(
   graph: ValidatableGraph,
   options?: ValidateOptions
 ): Issue[] {
-  return analyseGraph(graph, options).issues;
+  const { issues, topology, wired } = analyseGraph(graph, options);
+  return [...issues, ...nativePlacementIssues(graph, wired, topology.lanes)];
 }
 
 function issueKey(issue: Issue): string {

@@ -18,11 +18,13 @@ import {
   MONITORING_CHANNEL_CAP,
 } from "./compile";
 import {
+  type GraphEdge,
   type NodeGraph,
   type NodeGraphInput,
   type NodeType,
   nodeGraphSchema,
 } from "./schema";
+import { validate, validateConnection } from "./validate";
 
 type NodeInput = NodeGraphInput["nodes"][number];
 type EdgeInput = NodeGraphInput["edges"][number];
@@ -107,6 +109,14 @@ function key(source: string, target: string): EdgeInput {
 
 function graph(nodes: NodeInput[], edges: EdgeInput[] = []): NodeGraph {
   return nodeGraphSchema.parse({ edges, nodes, version: 1 });
+}
+
+function lastEdge(patch: NodeGraph): GraphEdge {
+  const edge = patch.edges.at(-1);
+  if (!edge) {
+    throw new Error("No cable in test patch");
+  }
+  return edge;
 }
 
 const ENV: CompileEnv = { crossOriginIsolated: true };
@@ -355,6 +365,185 @@ describe("compile: lanes in series", () => {
     expect(plan.issues).toEqual([]);
     expect(lane(plan, "a").effects).toEqual([]);
     expect(plan.edges.size).toBe(0);
+  });
+});
+
+describe("native placement: connection and compile agree", () => {
+  test.each(["filter", "pan"] as const)(
+    "refuses completing a %s after FX, whichever cable is connected last",
+    (type) => {
+      const patch = graph(
+        [station("a"), fx("crush", "crusher"), node("native", type), speakers],
+        [
+          audio("a", "crush"),
+          audio("crush", "native"),
+          audio("native", "speakers"),
+        ]
+      );
+      for (const connection of patch.edges) {
+        expect(
+          validateConnection(
+            {
+              ...patch,
+              edges: patch.edges.filter((edge) => edge !== connection),
+            },
+            connection
+          )
+        ).toMatchObject([{ code: "native-position", id: "native" }]);
+      }
+      const plan = compile(patch, ENV);
+      expect(plan.issues).toEqual(validate(patch));
+      expect(codes(plan)).toEqual(["native-position@native"]);
+      expect(plan.edges.size).toBe(0);
+    }
+  );
+
+  test.each(["filter", "pan"] as const)(
+    "refuses a %s inside a Split branch",
+    (type) => {
+      const patch = graph(
+        [
+          station("a"),
+          fx("split", "fxComposite"),
+          node("native", type),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "native", { from: "branch-1" }),
+          audio("split", "merge", { from: "branch-2" }),
+          audio("native", "merge"),
+          audio("merge", "speakers"),
+        ]
+      );
+      const connection = lastEdge(patch);
+      expect(
+        validateConnection(
+          { ...patch, edges: patch.edges.slice(0, -1) },
+          connection
+        )
+      ).toMatchObject([{ code: "native-position", id: "native" }]);
+      const plan = compile(patch, ENV);
+      expect(plan.issues).toEqual(validate(patch));
+      expect(plan.edges.size).toBe(0);
+    }
+  );
+
+  test.each(["filter", "pan"] as const)(
+    "refuses a %s inside an implicit branch",
+    (type) => {
+      const patch = graph(
+        [station("a"), node("native", type), node("merge", "merge"), speakers],
+        [
+          audio("a", "native"),
+          audio("a", "merge"),
+          audio("native", "merge"),
+          audio("merge", "speakers"),
+        ]
+      );
+      const connection = lastEdge(patch);
+      expect(
+        validateConnection(
+          { ...patch, edges: patch.edges.slice(0, -1) },
+          connection
+        )
+      ).toMatchObject([{ code: "native-position", id: "native" }]);
+      const plan = compile(patch, ENV);
+      expect(plan.issues).toEqual(validate(patch));
+      expect(plan.edges.size).toBe(0);
+    }
+  );
+
+  test("allows building a dangling native path while another path plays", () => {
+    const patch = graph(
+      [station("a"), fx("crush", "crusher"), node("cut", "filter"), speakers],
+      [audio("a", "speakers"), audio("a", "crush")]
+    );
+    const connection = lastEdge(graph(patch.nodes, [audio("crush", "cut")]));
+    expect(validateConnection(patch, connection)).toEqual([]);
+    const complete = { ...patch, edges: [...patch.edges, connection] };
+    const plan = compile(complete, ENV);
+    expect(plan.issues).toEqual(validate(complete));
+    expect(plan.issues).toEqual([]);
+    expect([...plan.edges.keys()]).toEqual(["a->speakers"]);
+  });
+
+  test.each([
+    ["filter", "pan"],
+    ["pan", "filter"],
+  ] as const)("allows leading native order %s then %s", (first, second) => {
+    const patch = graph(
+      [
+        station("a"),
+        node("trim", "gain"),
+        node("first", first),
+        node("second", second),
+        fx("crush", "crusher"),
+        speakers,
+      ],
+      [
+        audio("a", "trim"),
+        audio("trim", "first"),
+        audio("first", "second"),
+        audio("second", "crush"),
+        audio("crush", "speakers"),
+      ]
+    );
+    for (const connection of patch.edges) {
+      expect(
+        validateConnection(
+          {
+            ...patch,
+            edges: patch.edges.filter((edge) => edge !== connection),
+          },
+          connection
+        )
+      ).toEqual([]);
+    }
+    const plan = compile(patch, ENV);
+    expect(plan.issues).toEqual(validate(patch));
+    expect(plan.issues).toEqual([]);
+    expect(plan.edges.size).toBe(1);
+    expect(lane(plan, "a").filter).not.toBeNull();
+  });
+
+  test("a dangling branch does not move a leading native node into a branch", () => {
+    const patch = graph(
+      [station("a"), node("cut", "filter"), fx("crush", "crusher"), speakers],
+      [audio("a", "cut"), audio("cut", "speakers")]
+    );
+    const connection = lastEdge(graph(patch.nodes, [audio("a", "crush")]));
+    expect(validateConnection(patch, connection)).toEqual([]);
+    const complete = { ...patch, edges: [...patch.edges, connection] };
+    const plan = compile(complete, ENV);
+    expect(plan.issues).toEqual(validate(complete));
+    expect(plan.issues).toEqual([]);
+    expect(plan.edges.size).toBe(1);
+    expect(lane(plan, "a").filter).not.toBeNull();
+  });
+
+  test("invalid placement silences every exit of its lane and keeps other lanes", () => {
+    const patch = graph(
+      [station("a"), station("b"), node("cut", "filter"), speakers],
+      [
+        audio("a", "speakers"),
+        audio("b", "speakers"),
+        audio("a", "cut"),
+        audio("cut", "speakers"),
+      ]
+    );
+    const connection = lastEdge(patch);
+    expect(
+      validateConnection(
+        { ...patch, edges: patch.edges.slice(0, -1) },
+        connection
+      )
+    ).toMatchObject([{ code: "native-position", id: "cut" }]);
+    const plan = compile(patch, ENV);
+    expect(plan.issues).toEqual(validate(patch));
+    expect([...plan.edges.keys()]).toEqual(["b->speakers"]);
+    expect(lane(plan, "a").effects).toEqual([]);
   });
 });
 

@@ -450,7 +450,7 @@ describe("validate: one of a kind", () => {
           audio("join", "speakers"),
         ]
       )
-    ).toEqual(["lane-filter@f2"]);
+    ).toEqual(["lane-filter@f2", "native-position@f1", "native-position@f2"]);
   });
 
   test("a Filter in each lane is fine", () => {
@@ -490,7 +490,7 @@ describe("validate: one of a kind", () => {
           audio("p2", "speakers"),
         ]
       )
-    ).toEqual(["lane-pan@p2"]);
+    ).toEqual(["lane-pan@p2", "native-position@p2"]);
   });
 
   test("one key per lane", () => {
@@ -881,7 +881,7 @@ describe("validateConnection", () => {
           targetHandle: "in:audio:main",
         })
       )
-    ).toEqual(["lane-filter@f2"]);
+    ).toEqual(["lane-filter@f2", "native-position@f2"]);
   });
 });
 

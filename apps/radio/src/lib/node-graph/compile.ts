@@ -35,6 +35,8 @@ import {
   type Issue,
   type IssueCode,
   type Lane,
+  liveAudioNodes,
+  nativePlacementIssues,
   type Topology,
   type ValidateOptions,
   type WiredEdge,
@@ -271,7 +273,7 @@ class LaneLowerer {
       ({ edge, from, to }) =>
         from.kind === "audio" && to.kind === "audio" && members.has(edge.source)
     );
-    const live = liveNodes(
+    const live = liveAudioNodes(
       audio.filter(({ edge }) => sinks.has(edge.target)),
       audio.filter(({ edge }) => members.has(edge.target))
     );
@@ -376,7 +378,7 @@ class LaneLowerer {
     level: number
   ): SeriesResult | null {
     const { current, effects } = walk;
-    walk.trim = this.lowerNode(current, walk.trim, effects, level, walk.closed);
+    walk.trim = this.lowerNode(current, walk.trim, effects, walk.closed);
     walk.closed = false;
     const outs = this.outsOf(current);
     const effect = effectOf(this.node(current));
@@ -424,7 +426,6 @@ class LaneLowerer {
     id: string,
     trim: Trim,
     effects: EffectConfig[],
-    level: number,
     closed: boolean
   ): Trim {
     const node = this.node(id);
@@ -445,7 +446,7 @@ class LaneLowerer {
         return trim;
       case "filter":
       case "pan":
-        this.lowerNative(node, level, effects);
+        this.lowerNative(node);
         return trim;
       default:
         break;
@@ -468,18 +469,8 @@ class LaneLowerer {
 
   /** Filter and Pan map onto the native strip, before any lane FX. */
   private lowerNative(
-    node: Extract<GraphNode, { type: "filter" | "pan" }>,
-    level: number,
-    effects: readonly EffectConfig[]
+    node: Extract<GraphNode, { type: "filter" | "pan" }>
   ): void {
-    const { name } = getNodeDefinition(node.type);
-    if (level > 0 || effects.length > 0) {
-      throw new LoweringError(
-        node.id,
-        "native-position",
-        `${name} must come right after the station`
-      );
-    }
     if (node.type === "filter") {
       const { Q, frequency, type } = node.data;
       this.filter = { frequency, Q, type };
@@ -654,27 +645,6 @@ function push<T>(map: Map<string, T[]>, key: string, value: T): void {
   map.set(key, list);
 }
 
-/** Nodes with a path to an output: backwards from every exit cable. */
-function liveNodes(
-  exits: readonly WiredEdge[],
-  inner: readonly WiredEdge[]
-): Set<string> {
-  const into = new Map<string, string[]>();
-  for (const { edge } of inner) {
-    push(into, edge.target, edge.source);
-  }
-  const live = new Set<string>();
-  const queue = exits.map(({ edge }) => edge.source);
-  for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
-    if (live.has(id)) {
-      continue;
-    }
-    live.add(id);
-    queue.push(...(into.get(id) ?? []));
-  }
-  return live;
-}
-
 function portName(handle: string): string {
   return handle.split(":").at(-1) ?? handle;
 }
@@ -793,6 +763,7 @@ type Prepared = {
   issues: Issue[];
   wired: WiredEdge[];
   labels: ReadonlyMap<string, Lane>;
+  nativeIssues: Issue[];
   /** Keyed FX the validator flagged as a lane's second key. */
   extraKeys: ReadonlySet<string>;
 };
@@ -865,6 +836,11 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
         graph: kept,
         issues: [...issues, ...advisory],
         labels: analysis.topology.lanes,
+        nativeIssues: nativePlacementIssues(
+          kept,
+          analysis.wired,
+          analysis.topology.lanes
+        ),
         wired: analysis.wired,
       };
     }
@@ -943,6 +919,13 @@ function lowerLane(
     prepared.wired,
     sinks
   );
+  const nativeIssues = prepared.nativeIssues.filter((issue) =>
+    members.has(issue.id)
+  );
+  if (nativeIssues.length > 0) {
+    prepared.issues.push(...nativeIssues);
+    return { effects: [], exits: [], lowerer };
+  }
   try {
     const series = lowerer.lowerSeries(station.id, UNITY, null, 0);
     const exits = lowerer.exitsOf(series.end).map(({ edge }): EdgePlan => {

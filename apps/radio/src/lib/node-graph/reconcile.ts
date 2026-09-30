@@ -16,6 +16,8 @@
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
+import type { Radio } from "@/lib/audio/playback/types";
 import type {
   EdgePlan,
   EnginePlan,
@@ -70,10 +72,15 @@ function same(left: unknown, right: unknown): boolean {
 
 /**
  * The part of a lane that needs a new sound when it changes. Renaming a
- * saved station keeps playing; a new stream starts over.
+ * saved station keeps playing; a new stream, or a new stream format or
+ * platform that changes how it loads, starts over.
  */
 function sourceKey({ radio }: LanePlan): string {
-  return JSON.stringify([radio.id ?? null, radio.streamUrl]);
+  return JSON.stringify([
+    radio.id ?? null,
+    radio.streamUrl,
+    toPlaybackInput(radio as Radio),
+  ]);
 }
 
 function sameEnds(left: EdgePlan, right: EdgePlan): boolean {

@@ -261,6 +261,35 @@ describe("diff", () => {
     ]);
   });
 
+  test("a corrected stream format on the same stream replaces the lane", () => {
+    const formatted = (streamFormat?: string) =>
+      plan(
+        [
+          {
+            ...station("a"),
+            data: {
+              radio: {
+                id: "a",
+                name: "a",
+                streamFormat,
+                streamUrl: "https://example.com/a",
+              },
+            },
+          },
+          speakers,
+        ],
+        [audio("a", "speakers")]
+      );
+    const next = formatted("hls");
+    expect(diff(formatted(), next)).toEqual([
+      { edgeId: "a->speakers", type: "removeEdge" },
+      { laneId: "a", soundId: "node:n:a", type: "removeLane" },
+      { lane: next.lanes.get("a"), type: "addLane" } as Op,
+      { edge: next.edges.get("a->speakers"), type: "addEdge" } as Op,
+    ]);
+    expect(diff(next, formatted("hls"))).toEqual([]);
+  });
+
   test("a cable moved off a lane that goes away is removed, not rewired", () => {
     const previous = plan(
       [station("a"), station("b"), speakers],

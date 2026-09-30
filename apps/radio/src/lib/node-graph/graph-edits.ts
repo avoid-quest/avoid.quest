@@ -11,9 +11,9 @@
  *
  * Cable surgery, Pure Data style: a node dropped on a cable goes into it, a
  * deleted node heals the path it sat on, an FX swaps its type in place, and
- * a selection bypasses or duplicates. None of them leaves a patch the
- * compiler would refuse: a heal or a copied cable that would is left out,
- * and an insert that would is refused with the reason.
+ * a selection bypasses or duplicates. A copied cable that would not compile
+ * is left out; an insert that would not compile, or a deletion that would
+ * disconnect an existing audio path, is refused with the reason.
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
@@ -279,13 +279,14 @@ export function removeEdges(
  * What the delete key removes: the selected cables, then the selected nodes
  * with every cable touching them, each healing the path it sat on. A cable
  * deleted on purpose is gone first, so no heal runs through it. Speakers
- * stays, as it can't be deleted.
+ * stays, as it can't be deleted. A refused node deletion also keeps the
+ * selected cables, so the whole edit is atomic.
  */
 export function removeSelection(
   graph: NodeGraph,
   selection: { nodes: readonly string[]; edges: readonly string[] },
   options?: ValidateOptions
-): NodeGraph {
+): GraphEdit {
   const nodes = selection.nodes.filter(
     (id) => graph.nodes.find((node) => node.id === id)?.type !== "speakers"
   );
@@ -611,17 +612,43 @@ function removeNodeHealed(
   return next;
 }
 
-/** Removes nodes one by one, each healing the path through it. */
+/**
+ * Removes nodes together, each healing the path through it. Refuses the
+ * whole edit if an existing source-to-output route is lost while both ends
+ * remain. Explicit cable deletions and removal of a source or output are
+ * still allowed; a failed heal must not silently disconnect another lane.
+ */
 export function removeNodesHealed(
   graph: NodeGraph,
   nodeIds: Iterable<string>,
   options?: ValidateOptions
-): NodeGraph {
+): GraphEdit {
   let next = graph;
   for (const nodeId of nodeIds) {
     next = removeNodeHealed(next, nodeId, options);
   }
-  return next;
+  if (next !== graph) {
+    const env = { crossOriginIsolated: false, ...options };
+    const remaining = new Set(next.nodes.map((node) => node.id));
+    const before = compile(graph, env);
+    const after = compile(next, env);
+    for (const route of before.edges.values()) {
+      if (
+        remaining.has(route.from.id) &&
+        remaining.has(route.to.id) &&
+        ![...after.edges.values()].some(
+          (edge) => edge.from.id === route.from.id && edge.to.id === route.to.id
+        )
+      ) {
+        return {
+          message:
+            "Those nodes can't be removed without disconnecting a source from its output. Remove the cables or the whole branch first.",
+          ok: false,
+        };
+      }
+    }
+  }
+  return { graph: next, ok: true };
 }
 
 /** An FX a node can swap to or from: any effect but a split. */

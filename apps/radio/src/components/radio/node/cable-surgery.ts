@@ -85,16 +85,17 @@ type Surgery = {
 type SurgeryKey = (event: KeyboardEvent, surgery: Surgery) => void;
 
 const remove: SurgeryKey = (event, { store, validateOptions }) => {
-  const selected = store.state.selection;
-  if (selected.nodes.length === 0 && selected.edges.length === 0) {
+  const { graph, selection: selected } = store.state;
+  if (!graph || (selected.nodes.length === 0 && selected.edges.length === 0)) {
     return;
   }
   event.preventDefault();
-  commitNodeGraph(
-    (latest) => removeSelection(latest, selected, validateOptions),
-    store,
-    "snapshot"
-  );
+  const edit = removeSelection(graph, selected, validateOptions);
+  if (!edit.ok) {
+    toast(edit.message);
+    return;
+  }
+  commitNodeGraph(() => edit.graph, store, "snapshot");
 };
 
 const bypass: SurgeryKey = (event, { store }) => {

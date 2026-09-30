@@ -63,6 +63,8 @@ const { useCableSurgeryShortcuts } = await import("./cable-surgery");
 const { useUndoShortcuts } = await import("./node-toolbar");
 const { compile } = await import("@/lib/node-graph/compile");
 const { insertNodeOnEdge } = await import("@/lib/node-graph/graph-edits");
+const { seriesToParallel } = await import("@/lib/node-graph/series-parallel");
+const { toast } = await import("sonner");
 const { createNodeStore } = await import("@/lib/node-graph/node-store");
 const { addPaletteNode } = await import("@/lib/node-graph/palette");
 const { diff } = await import("@/lib/node-graph/reconcile");
@@ -202,6 +204,40 @@ describe("cable surgery shortcuts", () => {
     ]);
     undo();
     expect(store.state.graph).toBe(start);
+  });
+
+  test("Delete refuses an unhealable Merge with a reason and keeps the whole selection", () => {
+    const serial = insertNodeOnEdge(patch(), "delay", "compressor->speakers");
+    if (!serial.ok) {
+      throw new Error(serial.message);
+    }
+    const parallel = seriesToParallel(serial.graph, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!parallel.ok) {
+      throw new Error(parallel.message);
+    }
+    const merge = parallel.graph.nodes.find((node) => node.type === "merge");
+    const store = createNodeStore(parallel.graph);
+    store.setState((state) => ({
+      ...state,
+      selection: { edges: ["src-nts->speakers"], nodes: [merge?.id ?? ""] },
+    }));
+    const before = store.state;
+    const notifications = toast.getHistory().length;
+    render(<Harness onInsertInto={mock()} store={store} />);
+
+    press("Delete");
+
+    expect(store.state).toBe(before);
+    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(2);
+    const last = toast.getHistory().slice(notifications).at(-1);
+    expect(last && "title" in last ? last.title : null).toContain(
+      "disconnecting a source from its output"
+    );
+    undo();
+    expect(store.state).toBe(before);
   });
 
   test("Cmd+D duplicates and selects the copies; one Cmd+Z undoes it", () => {

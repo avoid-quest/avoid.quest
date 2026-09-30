@@ -13,6 +13,7 @@ import {
 } from "@avoid.quest/ui/components/tabs";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { ClientOnly } from "@/components/client-only";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
@@ -172,11 +173,16 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     inspectNode: inspector.inspect,
     radios: radios ?? [],
     removeNode: (nodeId) => {
-      commitNodeGraph(
-        (current) => removeNodesHealed(current, [nodeId], validateOptions),
-        nodeStore,
-        "snapshot"
-      );
+      const current = nodeStore.state.graph;
+      if (!current) {
+        return;
+      }
+      const edit = removeNodesHealed(current, [nodeId], validateOptions);
+      if (!edit.ok) {
+        toast(edit.message);
+        return;
+      }
+      commitNodeGraph(() => edit.graph, nodeStore, "snapshot");
     },
     saveDiscoveredStation: management.saveDiscoveredStation,
     selectDiscoveredForStation: management.selectDiscoveredForStation,

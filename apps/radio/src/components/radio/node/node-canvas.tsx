@@ -32,7 +32,11 @@ import {
   parallelToSeries,
   seriesToParallel,
 } from "@/lib/node-graph/series-parallel";
-import { type Connection, validateConnection } from "@/lib/node-graph/validate";
+import {
+  type Connection,
+  type ValidateOptions,
+  validateConnection,
+} from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { BranchEdge } from "./branch-edge";
@@ -143,6 +147,27 @@ type NodeChangeBatch = {
   selected: Set<string>;
   sizes: Map<string, Size>;
 };
+
+/** A refused React Flow removal keeps the controlled graph and selection. */
+function removeCanvasNodes(
+  nodeIds: string[],
+  options: ValidateOptions
+): boolean {
+  if (nodeIds.length === 0) {
+    return true;
+  }
+  const { graph } = nodeStore.state;
+  if (!graph) {
+    return false;
+  }
+  const edit = removeNodesHealed(graph, nodeIds, options);
+  if (!edit.ok) {
+    toast(edit.message);
+    return false;
+  }
+  commitNodeGraph(() => edit.graph, nodeStore, "snapshot");
+  return true;
+}
 
 function foldNodeChange(batch: NodeChangeBatch, change: FlowNodeChange) {
   switch (change.type) {
@@ -311,14 +336,12 @@ function Canvas({
         "snapshot"
       );
     }
-    if (removed.length > 0) {
-      commitNodeGraph(
-        (latest) => removeNodesHealed(latest, removed, validateOptions),
-        nodeStore,
-        "snapshot"
-      );
-    }
-    const selectedNodes = [...selected].filter((id) => !removed.includes(id));
+    const removalAccepted = removeCanvasNodes(removed, validateOptions);
+    const selectedNodes = (
+      removalAccepted ? [...selected] : [...current.nodes]
+    ).filter((id) =>
+      nodeStore.state.graph?.nodes.some((node) => node.id === id)
+    );
     if (!sameIds(selectedNodes, current.nodes)) {
       setNodeSelection({
         edges: nodeStore.state.selection.edges,

@@ -7,6 +7,7 @@ import {
   DUPLICATE_OFFSET_PX,
   duplicateNodes,
   findStationNode,
+  type GraphEdit,
   insertNodeOnEdge,
   moveNodes,
   removeEdges,
@@ -48,6 +49,13 @@ function patch(...radios: Radio[]) {
 }
 
 const ENV = { crossOriginIsolated: false };
+
+function accepted(edit: GraphEdit): NodeGraph {
+  if (!edit.ok) {
+    throw new Error(edit.message);
+  }
+  return edit.graph;
+}
 
 describe("addStationNode", () => {
   test("adds a Station below the others, wired to Speakers", () => {
@@ -134,10 +142,12 @@ describe("removeNodes and removeEdges", () => {
 
   test("the delete key removes the selection but keeps Speakers", () => {
     const start = patch(radio("a"), radio("b"), radio("c"));
-    const graph = removeSelection(start, {
-      edges: ["src-c->speakers"],
-      nodes: ["src-a", SPEAKERS_NODE_ID],
-    });
+    const graph = accepted(
+      removeSelection(start, {
+        edges: ["src-c->speakers"],
+        nodes: ["src-a", SPEAKERS_NODE_ID],
+      })
+    );
 
     expect(graph.nodes.map((node) => node.id)).toEqual([
       "src-b",
@@ -146,7 +156,7 @@ describe("removeNodes and removeEdges", () => {
     ]);
     expect(graph.edges.map((edge) => edge.id)).toEqual(["src-b->speakers"]);
     expect(
-      removeSelection(start, { edges: [], nodes: [SPEAKERS_NODE_ID] })
+      accepted(removeSelection(start, { edges: [], nodes: [SPEAKERS_NODE_ID] }))
     ).toBe(start);
   });
 
@@ -457,7 +467,7 @@ describe("removeNodesHealed", () => {
       ),
     };
 
-    const healed = removeNodesHealed(muted, ["compressor"]);
+    const healed = accepted(removeNodesHealed(muted, ["compressor"]));
 
     expect(healed.nodes.map((node) => node.id)).toEqual([
       "src-a",
@@ -473,10 +483,12 @@ describe("removeNodesHealed", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", "compressor->speakers");
 
-    const healed = removeSelection(two.graph, {
-      edges: [],
-      nodes: ["compressor", "delay"],
-    });
+    const healed = accepted(
+      removeSelection(two.graph, {
+        edges: [],
+        nodes: ["compressor", "delay"],
+      })
+    );
 
     expect(cables(healed)).toEqual([
       "src-a->speakers: src-a out:audio:main -> speakers in:audio:main",
@@ -496,7 +508,7 @@ describe("removeNodesHealed", () => {
     });
     expect(validate(keyed)).toEqual([]);
 
-    const healed = removeNodesHealed(keyed, ["compressor"]);
+    const healed = accepted(removeNodesHealed(keyed, ["compressor"]));
 
     expect(cables(healed)).toEqual([
       "src-a->speakers: src-a out:audio:main -> speakers in:audio:main",
@@ -509,14 +521,16 @@ describe("removeNodesHealed", () => {
       "compressor",
       "src-a->speakers"
     );
-    const healed = removeSelection(graph, {
-      edges: ["compressor->speakers"],
-      nodes: ["compressor"],
-    });
+    const healed = accepted(
+      removeSelection(graph, {
+        edges: ["compressor->speakers"],
+        nodes: ["compressor"],
+      })
+    );
     expect(healed.edges).toEqual([]);
   });
 
-  test("leaves out a heal the compiler would refuse", () => {
+  test("refuses deleting a Merge when its branches cannot heal to Speakers", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", "compressor->speakers");
     const split = seriesToParallel(two.graph, {
@@ -528,10 +542,72 @@ describe("removeNodesHealed", () => {
     }
     const merge = split.graph.nodes.find((node) => node.type === "merge");
 
-    // Branches straight into Speakers would never rejoin in the lane.
-    const healed = removeNodesHealed(split.graph, [merge?.id ?? ""]);
+    const before = compile(split.graph, ENV);
+    expect(before.lanes.size).toBe(1);
+    expect(before.edges.size).toBe(1);
+    expect(before.issues).toEqual([]);
 
-    expect(healed).toEqual(removeNodes(split.graph, [merge?.id ?? ""]));
+    // Branches straight into Speakers would never rejoin in the lane.
+    const edit = removeNodesHealed(split.graph, [merge?.id ?? ""]);
+
+    expect(edit.ok).toBe(false);
+    if (edit.ok) {
+      throw new Error("A failed heal must refuse the whole deletion");
+    }
+    expect(edit.message).toContain("disconnecting a source from its output");
+
+    const store = createNodeStore(split.graph);
+    const { state } = store;
+    commitNodeGraph(
+      (current) => {
+        const deletion = removeNodesHealed(current, [merge?.id ?? ""]);
+        return deletion.ok ? deletion.graph : current;
+      },
+      store,
+      "snapshot"
+    );
+    expect(store.state).toBe(state);
+    expect(undoNodeGraph(store)).toBe(false);
+    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(1);
+
+    // Explicitly deleting the branch's source makes the disconnection deliberate.
+    const deleted = accepted(
+      removeSelection(split.graph, {
+        edges: [],
+        nodes: [merge?.id ?? "", "src-a"],
+      })
+    );
+    expect(deleted.nodes.some((node) => node.id === "src-a")).toBe(false);
+    expect(deleted.nodes.some((node) => node.type === "merge")).toBe(false);
+
+    const wholeBranch = accepted(
+      removeSelection(split.graph, {
+        edges: [],
+        nodes: split.graph.nodes
+          .filter((node) => node.type !== "station" && node.type !== "speakers")
+          .map((node) => node.id),
+      })
+    );
+    expect(wholeBranch.nodes.map((node) => node.id)).toEqual([
+      "src-a",
+      "speakers",
+    ]);
+    expect(compile(wholeBranch, ENV).edges.size).toBe(1);
+  });
+
+  test("deleting a loose node or one with no output is allowed", () => {
+    const loose = withLoose(patch(radio("a")), "compressor");
+    const deleted = accepted(removeNodesHealed(loose.graph, [loose.nodeId]));
+    expect(deleted.nodes.some((node) => node.id === loose.nodeId)).toBe(false);
+    expect(compile(deleted, ENV).edges.size).toBe(1);
+
+    const insertedNode = inserted(
+      patch(radio("a")),
+      "delay",
+      "src-a->speakers"
+    );
+    const dangling = removeEdges(insertedNode.graph, ["delay->speakers"]);
+    expect(accepted(removeNodesHealed(dangling, ["delay"])).edges).toEqual([]);
   });
 });
 
@@ -746,7 +822,8 @@ describe("cable surgery undo", () => {
     [
       "heal",
       start,
-      (graph) => removeSelection(graph, { edges: [], nodes: ["compressor"] }),
+      (graph) =>
+        accepted(removeSelection(graph, { edges: [], nodes: ["compressor"] })),
     ],
     [
       "swap",

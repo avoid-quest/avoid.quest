@@ -68,12 +68,19 @@ export function FileForm({
       return;
     }
 
+    // A playlist load filters the selection itself, so an unsupported first
+    // file must not reject the playable ones after it.
+    if (files.length > 1 && onLoadFiles) {
+      load(onLoadFiles(files));
+      return;
+    }
+
     if (!isAudioFile(file)) {
       setError("Unsupported audio format");
       return;
     }
 
-    load(files.length > 1 && onLoadFiles ? onLoadFiles(files) : onLoad(file));
+    load(onLoad(file));
   };
 
   const handleBrowse = () => {

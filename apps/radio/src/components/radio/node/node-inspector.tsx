@@ -89,9 +89,11 @@ export function sourceTracklist(
     ? (node.data.radio as Radio | null)
     : null;
   const metadata = radio?.platformMetadata;
+  // A folder picked on an earlier page has no playable tracks until repicked.
   if (
     !(
       radio &&
+      !isLocalFileGone(radio) &&
       metadata &&
       calculateHasTracklist(metadata) &&
       isStreamingMetadata(metadata)

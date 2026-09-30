@@ -438,6 +438,47 @@ describe("NodeInspector", () => {
     expect(view.getByRole("button", { name: "Browse files" })).toBeTruthy();
   });
 
+  test("a restored local folder hides its dead tracklist until picked again", () => {
+    const store = nodeStoreModule.createNodeStore(
+      nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          {
+            data: {
+              radio: {
+                enabled: true,
+                id: "lost-folder",
+                name: "Lost.wav",
+                platformMetadata: {
+                  isLocal: true,
+                  itemType: "playlist",
+                  platform: "static-audio",
+                  streamUrl: "blob:https://radio.test/one",
+                  tracks: [
+                    { streamUrl: "blob:https://radio.test/one", title: "One" },
+                    { streamUrl: "blob:https://radio.test/two", title: "Two" },
+                  ],
+                  url: "",
+                },
+                streamUrl: "blob:https://radio.test/one",
+              },
+            },
+            id: "file",
+            position,
+            type: "file",
+          },
+          { id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      })
+    );
+    const view = renderHarness(store);
+    fireEvent.click(view.getByRole("button", { name: REPICK_FILE }));
+    expect(view.getByRole("button", { name: "Browse files" })).toBeTruthy();
+    expect(view.queryByLabelText("Current track")).toBeNull();
+    expect(view.queryByText("Two")).toBeNull();
+  });
+
   test("a queued strip edit cannot follow the selection into another source", async () => {
     const store = createStore();
     nodeStoreModule.commitNodeGraph(

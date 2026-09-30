@@ -1,5 +1,6 @@
 import type { Radio } from "@/lib/audio";
 import type { StaticAudioMetadata } from "@/lib/platform-types";
+import { generateId } from "@/lib/types";
 import {
   extractFileMetadata,
   type FileAudioMetadata,
@@ -72,7 +73,7 @@ export async function loadLocalAudioPlaylist(
   return {
     description: `${loaded.length} tracks · ${files.length - loaded.length} skipped`,
     enabled: true,
-    id: `local-playlist-${crypto.randomUUID()}`,
+    id: `local-playlist-${generateId()}`,
     name,
     platformMetadata: metadata,
     streamUrl: first.objectUrl,

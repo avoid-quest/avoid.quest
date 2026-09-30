@@ -153,6 +153,9 @@ function buildGraph(): NodeGraph {
 
 const inspectNode = mock((_nodeId: string) => undefined);
 
+/** A saved station's menu button, "Options for KEXP". */
+const STATION_MENU = /^Options for/;
+
 const actions: NodeActions = {
   fillStation: asyncNoop,
   handleDeleteRadio: noop,
@@ -216,6 +219,52 @@ describe("NodeRack", () => {
     const hidden = view.getByRole("list", { name: "Hidden" });
     expect(within(hidden).getByText("Hidden FM")).toBeTruthy();
     expect(view.queryByRole("button", { name: "Play Hidden FM" })).toBeNull();
+  });
+
+  test("lists an Audio input lane next to the Stations, grouped by its outputs", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        cable("kexp", SPEAKERS_NODE_ID),
+        cable("mic", SPEAKERS_NODE_ID),
+        cable("mic", "desk"),
+      ],
+      nodes: [
+        station("kexp", "KEXP"),
+        {
+          data: { deviceId: "mic", deviceLabel: "Desk mic" },
+          id: "mic",
+          position,
+          type: "deviceIn",
+        },
+        {
+          data: { deviceId: "usb", deviceLabel: "USB interface" },
+          id: "desk",
+          position,
+          type: "deviceOut",
+        },
+        { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+      ],
+      version: 1,
+    } satisfies NodeGraphInput);
+    const { controls, view } = renderRack(graph);
+
+    const both = view.getByRole("list", {
+      name: "Direct to USB interface and Speakers",
+    });
+    fireEvent.click(
+      within(both).getByRole("button", { name: "Go live Desk mic" })
+    );
+    expect(controls.setPlaying).toHaveBeenLastCalledWith("mic", true);
+    fireEvent.keyDown(
+      within(both).getByRole("slider", { name: "Volume Desk mic" }),
+      { key: "ArrowLeft" }
+    );
+    expect(controls.setVolume).toHaveBeenLastCalledWith("mic", 0.99);
+    // An input is no saved station: no station menu on its row.
+    expect(
+      within(both).queryByRole("button", { name: STATION_MENU })
+    ).toBeNull();
+    expect(view.getByRole("list", { name: "Direct to Speakers" })).toBeTruthy();
   });
 
   test("every Station's play and volume are reachable by role", () => {

@@ -226,7 +226,7 @@ describe("NodePalette", () => {
     const names = [...sources.querySelectorAll("[role=button] h3")].map(
       (heading) => heading.textContent
     );
-    expect(names).toEqual(["Station", "KEXP", "NTS 1"]);
+    expect(names).toEqual(["Station", "Audio input", "KEXP", "NTS 1"]);
     // An effect can feed Speakers too, so the FX section is on offer.
     expect(view.getByRole("region", { name: "FX" })).toBeTruthy();
 
@@ -333,6 +333,110 @@ describe("NodePalette", () => {
     expect(swapped?.data).toMatchObject({
       effect: { enabled: true, id: "delay", type: "crusher" },
     });
+  });
+});
+
+describe("NodePalette devices", () => {
+  const devices = [
+    { deviceId: "default", kind: "audioinput", label: "Default - Desk mic" },
+    { deviceId: "mic", kind: "audioinput", label: "Desk mic" },
+    { deviceId: "default", kind: "audiooutput", label: "Default - Speakers" },
+    { deviceId: "usb", kind: "audiooutput", label: "USB interface" },
+    { deviceId: "hdmi", kind: "audiooutput", label: "Monitor" },
+  ];
+  const enumerateDevices = mock(async () => devices);
+
+  class FakeAudioContext {
+    setSinkId() {
+      return Promise.resolve();
+    }
+  }
+
+  beforeAll(() => {
+    Object.defineProperty(dom.window.navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        addEventListener: () => undefined,
+        enumerateDevices,
+        getUserMedia: mock(async () => ({ getTracks: () => [] })),
+        removeEventListener: () => undefined,
+      },
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, "AudioContext");
+  });
+
+  function sectionNames(
+    view: ReturnType<typeof render>,
+    name: string
+  ): string[] {
+    const section = view.getByRole("region", { name });
+    return [...section.querySelectorAll("[role=button] h3")].map(
+      (heading) => heading.textContent ?? ""
+    );
+  }
+
+  async function openPalette() {
+    const store = createNodeStore(
+      buildNodeGraphFromTemplate("starter", { saved: [] })
+    );
+    const view = render(<PaletteHarness initial={{}} store={store} />);
+    // The device list loads after the palette opens.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    return { store, view };
+  }
+
+  test("Sources list Audio input and each input the browser lists", async () => {
+    const { store, view } = await openPalette();
+
+    expect(sectionNames(view, "Sources")).toEqual([
+      "Station",
+      "Audio input",
+      "Default - Desk mic",
+      "Desk mic",
+      "KEXP",
+      "NTS 1",
+    ]);
+
+    const search = view.getByRole("searchbox", {
+      name: "Search nodes and stations",
+    });
+    fireEvent.change(search, { target: { value: "desk mic" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    const input = store.state.graph?.nodes.find(
+      (node) => node.type === "deviceIn"
+    );
+    expect(input?.data).toMatchObject({
+      deviceId: "default",
+      deviceLabel: "Default - Desk mic",
+    });
+  });
+
+  test("Outputs list one Output device per output, beside Speakers", async () => {
+    Object.defineProperty(globalThis, "AudioContext", {
+      configurable: true,
+      value: FakeAudioContext,
+      writable: true,
+    });
+    const { view } = await openPalette();
+
+    expect(sectionNames(view, "Outputs")).toEqual(["USB interface", "Monitor"]);
+  });
+
+  test("without setSinkId the palette offers no Output device", async () => {
+    Object.defineProperty(globalThis, "AudioContext", {
+      configurable: true,
+      value: class {},
+      writable: true,
+    });
+    const { view } = await openPalette();
+
+    expect(view.queryByRole("region", { name: "Outputs" })).toBeNull();
   });
 });
 

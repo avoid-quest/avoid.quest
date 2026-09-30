@@ -10,8 +10,14 @@ import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { laneChannelId } from "@/lib/node-graph/compile";
-import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
+import { setDeviceParams } from "@/lib/node-graph/graph-edits";
+import {
+  commitNodeGraph,
+  nodeStore,
+  snapshotNodeGraph,
+} from "@/lib/node-graph/node-store";
 import type { NodePlayback } from "@/lib/node-playback";
+import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { InlineError } from "../inline-error";
 import { RadioListItemMetadata } from "../radio-list-item-metadata";
@@ -21,6 +27,13 @@ import {
   stationFallbackSubtitle,
   stationRowClassName,
 } from "../station-row";
+import {
+  FeedbackGuard,
+  InputLiveBadge,
+  InputLiveButton,
+  useUnpluggedPause,
+} from "./audio-input-controls";
+import { isUnplugged, useNodeDevices } from "./use-node-devices";
 
 /** What a Stage or Rack row drives on its lane. */
 export type NodeLaneControls = Pick<
@@ -28,13 +41,148 @@ export type NodeLaneControls = Pick<
   "setPlaying" | "setVolume" | "toggleMute"
 >;
 
+type NodeSourceRowProps = {
+  nodeId: string;
+  /** The lane's channel radio: a station, or an Audio input's device. */
+  radio: Radio;
+  volume: number;
+  muted: boolean;
+  controls: NodeLaneControls;
+  /**
+   * Set on an Audio input whose audio reaches an output: the feedback
+   * guard shows, with its echo cancellation.
+   */
+  feedback?: { echoCancellation: boolean } | null;
+  /** Trailing controls, e.g. the station menu. */
+  actions?: ReactNode;
+  /** Shown under the row, e.g. the lane's FX. */
+  children?: ReactNode;
+};
+
 /**
- * One Station lane as a station row: play, name and now playing, volume,
- * plus whatever the view adds (a menu, FX chips). Live state comes from the
- * runtime store by lane channel, as on the canvas node; metadata polls only
+ * One source lane as a station row, plus whatever the view adds (a menu,
+ * FX chips): a Station with play, name, now playing and volume, or an Audio
+ * input with Go live, its device, Off / Live and volume. Live state comes
+ * from the runtime store by lane channel, as on the canvas node.
+ */
+export function NodeSourceRow(props: NodeSourceRowProps) {
+  return isDeviceInputMetadata(props.radio.platformMetadata) ? (
+    <InputSourceRow {...props} />
+  ) : (
+    <StationSourceRow {...props} />
+  );
+}
+
+/** What an Audio input row says under its name. */
+function inputSubtitle(
+  permission: string,
+  unplugged: boolean,
+  isLive: boolean
+): string {
+  if (permission === "denied") {
+    return "Microphone blocked. Allow it in your browser settings.";
+  }
+  if (unplugged) {
+    return "Unplugged: plug it back in or pick another";
+  }
+  return isLive ? "Audio input, live" : "Audio input";
+}
+
+/** An Audio input lane: Go live or Mute, its device, Off / Live, volume. */
+function InputSourceRow({
+  nodeId,
+  radio,
+  volume,
+  muted,
+  controls,
+  feedback,
+  actions,
+  children,
+}: NodeSourceRowProps) {
+  const runtime = useStore(
+    playbackRuntimeStore,
+    (state) => state.channels[laneChannelId(nodeId)]
+  );
+  const devices = useNodeDevices();
+  const isPlaying = runtime?.isPlaying ?? false;
+  const isLoading = runtime?.isLoading ?? false;
+  const error = runtime?.error?.message?.trim();
+  const isLive = isPlaying && !isLoading;
+  const metadata = radio.platformMetadata;
+  const deviceId = isDeviceInputMetadata(metadata) ? metadata.deviceId : null;
+  const unplugged = isUnplugged(deviceId, devices.inputs, devices.inputsListed);
+  const denied = devices.permissionState === "denied";
+  useUnpluggedPause(unplugged, isPlaying, () => {
+    controls.setPlaying(nodeId, false);
+  });
+
+  return (
+    <div
+      className={cn(
+        stationRowClassName,
+        "flex-col items-stretch gap-1.5",
+        isLive && "bg-muted/40"
+      )}
+      data-node-id={nodeId}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <InputLiveButton
+          compact
+          disabled={!isPlaying && (denied || unplugged)}
+          isLoading={isLoading}
+          isPlaying={isPlaying}
+          onToggle={() => {
+            controls.setPlaying(nodeId, !isPlaying);
+          }}
+          target={radio.name}
+        />
+        <div className="flex min-w-0 flex-1 overflow-hidden">
+          <StationRowText
+            indicator={<InputLiveBadge isLive={isLive} />}
+            title={radio.name}
+          >
+            <StationRowSubtitle>
+              {inputSubtitle(devices.permissionState, unplugged, isLive)}
+            </StationRowSubtitle>
+          </StationRowText>
+        </div>
+        <VolumeControl
+          className="w-28 shrink-0"
+          isMuted={muted || volume === 0}
+          onToggleMute={() => {
+            controls.toggleMute(nodeId);
+            snapshotNodeGraph();
+          }}
+          onVolumeChange={(next) => controls.setVolume(nodeId, next)}
+          onVolumeCommit={() => snapshotNodeGraph()}
+          target={radio.name}
+          volume={volume}
+        />
+        {actions}
+      </div>
+      {feedback ? (
+        <FeedbackGuard
+          echoCancellation={feedback.echoCancellation}
+          onEchoCancellationChange={(echoCancellation) => {
+            commitNodeGraph(
+              (graph) => setDeviceParams(graph, nodeId, { echoCancellation }),
+              nodeStore,
+              "snapshot"
+            );
+          }}
+        />
+      ) : null}
+      {children}
+      {error ? <InlineError>{error}</InlineError> : null}
+    </div>
+  );
+}
+
+/**
+ * A Station lane: play, name and now playing, volume. Metadata polls only
  * while the lane plays.
  */
-export function NodeSourceRow({
+function StationSourceRow({
   nodeId,
   radio,
   volume,
@@ -42,17 +190,7 @@ export function NodeSourceRow({
   controls,
   actions,
   children,
-}: {
-  nodeId: string;
-  radio: Radio;
-  volume: number;
-  muted: boolean;
-  controls: NodeLaneControls;
-  /** Trailing controls, e.g. the station menu. */
-  actions?: ReactNode;
-  /** Shown under the row, e.g. the lane's FX. */
-  children?: ReactNode;
-}) {
+}: NodeSourceRowProps) {
   const runtime = useStore(
     playbackRuntimeStore,
     (state) => state.channels[laneChannelId(nodeId)]

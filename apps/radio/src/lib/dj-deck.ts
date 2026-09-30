@@ -29,6 +29,7 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings } from "@/lib/collections/settings";
+import { startDeviceInput as startDeviceCapture } from "@/lib/device-input-playback";
 import {
   captureDjError,
   clearDjErrorSurface,
@@ -726,12 +727,13 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       { platform: "device-input" }
     >
   ): Promise<void> => {
-    await options.audio.startDevice(soundId, metadata.deviceId);
-    if (!isCurrent(deckId, generation)) {
-      return;
-    }
-    options.audio.setDeviceChannelSelection(soundId, metadata.channelSelection);
-    const channelCount = options.audio.getDeviceChannelCount(soundId);
+    // The same start Node mode's Audio input lanes use.
+    const channelCount = await startDeviceCapture(
+      options.audio,
+      soundId,
+      metadata,
+      () => isCurrent(deckId, generation)
+    );
     if (channelCount === null) {
       return;
     }

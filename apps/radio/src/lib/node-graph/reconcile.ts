@@ -9,8 +9,8 @@
  *   effects controller no-ops when identical and openDAW updates in place;
  * - FX added, removed or reordered: `duckLane` → `replaceLaneEffects` →
  *   `unduckLane`, a short dip instead of a click;
- * - native pan, filter and cable levels, and a Station's volume and mute:
- *   `setParam`, ramped by the engine;
+ * - native pan, filter and cable levels, a source's volume and mute, and
+ *   an Audio input's channels: `setParam`, ramped by the engine;
  * - cables: `addEdge` fades in, `removeEdge` fades out, and `rewireEdge`
  *   (same cable id, new ends) crossfades equal-power;
  * - lanes: `addLane` builds the sound paused, `removeLane` fades it out.
@@ -20,6 +20,7 @@ import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
 import type { Radio } from "@/lib/audio/playback/types";
 import type {
+  ChannelSelectionPlan,
   EdgePlan,
   EnginePlan,
   LanePlan,
@@ -63,6 +64,13 @@ export type Op =
     }
   | {
       type: "setParam";
+      target: "lane";
+      id: string;
+      param: "channelSelection";
+      value: ChannelSelectionPlan;
+    }
+  | {
+      type: "setParam";
       target: "edge";
       id: string;
       param: "gain";
@@ -88,14 +96,23 @@ function same(left: unknown, right: unknown): boolean {
 /**
  * The part of a lane that needs a new sound when it changes. Renaming a
  * saved station keeps playing; a new stream, or a new stream format or
- * platform that changes how it loads, starts over.
+ * platform that changes how it loads, starts over. An Audio input starts
+ * over on a new device or echo cancellation, which are capture
+ * constraints; its channels switch live.
  */
-function sourceKey({ radio }: LanePlan): string {
+function sourceKey({ radio, source }: LanePlan): string {
+  if (source.kind === "device") {
+    return JSON.stringify(["device", source.deviceId, source.echoCancellation]);
+  }
   return JSON.stringify([
     radio.id ?? null,
     radio.streamUrl,
     toPlaybackInput(radio as Radio),
   ]);
+}
+
+function channelsOf({ source }: LanePlan): ChannelSelectionPlan | null {
+  return source.kind === "device" ? source.channelSelection : null;
 }
 
 function sameEnds(left: EdgePlan, right: EdgePlan): boolean {
@@ -149,6 +166,16 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
       target: "lane",
       type: "setParam",
       value: next.muted,
+    });
+  }
+  const channels = channelsOf(next);
+  if (channels && !same(channelsOf(previous), channels)) {
+    ops.push({
+      id: laneId,
+      param: "channelSelection",
+      target: "lane",
+      type: "setParam",
+      value: channels,
     });
   }
   return ops;

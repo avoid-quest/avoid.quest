@@ -63,6 +63,8 @@ export function NodeMasterControls({ className }: { className?: string }) {
   } = useNodeSession();
   const contextState = useAudioContextState();
   const isAnyPlaying = playingCount > 0;
+  // Play all plays the Stations; a mic goes live only from its own Go live.
+  const stations = sources.filter((source) => source.kind === "station");
   const needsResume =
     contextState === "interrupted" ||
     (contextState === "suspended" && isAnyPlaying);
@@ -76,7 +78,7 @@ export function NodeMasterControls({ className }: { className?: string }) {
     <div className={cn("flex flex-col gap-2", className)}>
       <Button
         className="w-full text-xs"
-        disabled={sources.length === 0}
+        disabled={!isAnyPlaying && stations.length === 0}
         onClick={isAnyPlaying ? pauseAll : playAll}
         size="sm"
         variant="outline"
@@ -89,7 +91,7 @@ export function NodeMasterControls({ className }: { className?: string }) {
         ) : (
           <>
             <PlayIcon className="size-3.5" />
-            Play all ({sources.length})
+            Play all ({stations.length})
           </>
         )}
       </Button>

@@ -267,6 +267,101 @@ describe("compile: the migrated Multiple layout", () => {
   });
 });
 
+describe("compile: audio inputs and output devices", () => {
+  const mic = (deviceId: string | null = "usb-mic") =>
+    node("mic", "deviceIn", {
+      channelSelection: { left: 1, right: 1 },
+      deviceId,
+      deviceLabel: "Desk mic",
+      echoCancellation: true,
+      volume: 0.6,
+    });
+
+  test("an Audio input is a lane of its own, with its device as the source", () => {
+    const plan = build(
+      [mic(), node("pan", "pan", { pan: -0.5 }), speakers],
+      [audio("mic", "pan"), audio("pan", "speakers")]
+    );
+
+    expect(codes(plan)).toEqual([]);
+    expect(lane(plan, "mic")).toMatchObject({
+      channelId: "n:mic",
+      muted: false,
+      nodes: ["mic", "pan"],
+      pan: -0.5,
+      soundId: "node:n:mic",
+      source: {
+        channelSelection: { left: 1, right: 1 },
+        deviceId: "usb-mic",
+        echoCancellation: true,
+        kind: "device",
+      },
+      volume: 0.6,
+    });
+    // The channel carries DJ's device-input radio, so restore knows it.
+    expect(lane(plan, "mic").radio).toMatchObject({
+      name: "Desk mic",
+      platformMetadata: {
+        channelSelection: { left: 1, right: 1 },
+        deviceId: "usb-mic",
+        platform: "device-input",
+      },
+      streamUrl: "",
+    });
+  });
+
+  test("a Station's lane names its stream as the source", () => {
+    const plan = build([station("a"), speakers], [audio("a", "speakers")]);
+
+    expect(lane(plan, "a").source).toEqual({
+      kind: "radio",
+      radio: { id: "a", name: "a", streamUrl: "https://example.com/a.mp3" },
+    });
+  });
+
+  test("an Audio input with no device has no lane, like an empty Station", () => {
+    const plan = build([mic(null), speakers], [audio("mic", "speakers")]);
+
+    expect(plan.lanes.size).toBe(0);
+    expect(codes(plan)).toEqual([]);
+  });
+
+  test("an Output device is a sink with its device and mute", () => {
+    const plan = build(
+      [
+        station("a"),
+        node("desk", "deviceOut", { deviceId: "usb", muted: true }),
+        speakers,
+      ],
+      [audio("a", "desk"), audio("a", "speakers")]
+    );
+
+    expect(plan.sinks.get("desk")).toEqual({
+      deviceId: "usb",
+      id: "desk",
+      muted: true,
+      type: "deviceOut",
+    });
+    expect(
+      [...plan.edges.values()].map((edge) => `${edge.from.id}>${edge.to.id}`)
+    ).toEqual(["a>desk", "a>speakers"]);
+  });
+
+  test("a second Output device on the same device is left out, and says why", () => {
+    const plan = build(
+      [
+        station("a"),
+        node("desk", "deviceOut", { deviceId: "usb" }),
+        node("booth", "deviceOut", { deviceId: "usb" }),
+      ],
+      [audio("a", "desk"), audio("a", "booth")]
+    );
+
+    expect(codes(plan)).toEqual(["one-device-out@booth"]);
+    expect(plan.sinks.has("booth")).toBe(false);
+  });
+});
+
 describe("compile: lanes in series", () => {
   test("FX become EffectConfig entries whose id is the node id", () => {
     const plan = build(

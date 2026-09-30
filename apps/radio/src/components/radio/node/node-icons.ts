@@ -4,6 +4,8 @@ import {
   FilterIcon,
   type LucideIcon,
   MergeIcon,
+  MicIcon,
+  MonitorSpeakerIcon,
   MoveHorizontalIcon,
   RadioIcon,
   SpeakerIcon,
@@ -21,6 +23,8 @@ import type { NodeType } from "@/lib/node-graph/schema";
  * as routing; category reads from the tile, never from a header colour.
  */
 const NODE_ICONS: Partial<Record<NodeType, LucideIcon>> = {
+  deviceIn: MicIcon,
+  deviceOut: MonitorSpeakerIcon,
   filter: FilterIcon,
   frequencySplit: AudioLinesIcon,
   fxComposite: SplitIcon,

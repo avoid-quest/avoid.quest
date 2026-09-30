@@ -73,11 +73,23 @@ export async function getReadyManagedPlaybackSession(
   return session;
 }
 
+/**
+ * Platforms restore never prepares: a local file's blob URL died with the
+ * page, and a device input would open the mic without a gesture.
+ */
+const UNRESTORED_PLATFORMS: ReadonlySet<string> = new Set([
+  "local-file",
+  "device-input",
+]);
+
 function isRestorableRadio(
   radio: Radio | null,
   sessionId: ManagedPlaybackSessionId
 ): radio is Radio {
-  if (!radio || radio.platformMetadata?.platform === "local-file") {
+  if (
+    !radio ||
+    UNRESTORED_PLATFORMS.has(radio.platformMetadata?.platform ?? "")
+  ) {
     return false;
   }
   try {

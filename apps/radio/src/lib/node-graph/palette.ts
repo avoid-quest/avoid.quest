@@ -3,7 +3,8 @@
  *
  * What the add-node palette offers and what picking an entry does, as pure
  * functions over the graph. Sources, FX, Routing and Outputs are the shipped
- * node types (a Station can come pre-filled with a station; an effect comes on),
+ * node types (a Station can come pre-filled with a station, an Audio input
+ * or an Output device with a device the browser lists; an effect comes on),
  * Templates replace the patch. A cable dropped on empty space narrows the list to nodes with a
  * port that takes it and wires the new node in; a cable dropped on a node
  * connects when exactly one of its ports fits. Every check is the same
@@ -54,6 +55,7 @@ import {
 import {
   type Connection,
   connectionVerdict,
+  deviceOutVerdict,
   kindsPatch,
   parseHandleId,
   type ValidateOptions,
@@ -69,6 +71,9 @@ export type PaletteSection =
   | "outputs"
   | "templates";
 
+/** An audio device as the palette offers it. */
+export type PaletteDevice = { deviceId: string; label: string };
+
 export type PaletteNodeEntry = {
   kind: "node";
   /** Stable React key; also what a test or a shortcut picks by. */
@@ -78,6 +83,8 @@ export type PaletteNodeEntry = {
   name: string;
   /** Set on a Station that comes filled with this station. */
   radio?: Radio;
+  /** Set on an Audio input or Output device that comes set to this device. */
+  device?: PaletteDevice;
 };
 
 export type PaletteTemplateEntry = {
@@ -172,13 +179,24 @@ const SECTION_OF = {
  */
 const SECTION_ORDER = ["sources", "fx", "routing", "outputs"] as const;
 
-/** Splits first, then the Merge that closes them. */
-const ROUTING_ORDER: readonly NodeType[] = [
+/**
+ * Within a section: Station before Audio input (saved stations follow
+ * both), splits before the Merge that closes them, Speakers before Output
+ * devices.
+ */
+const PLACE_ORDER: readonly NodeType[] = [
+  "station",
+  "deviceIn",
   "fxComposite",
   "stereoSplit",
   "frequencySplit",
   "merge",
+  "speakers",
+  "deviceOut",
 ];
+
+/** The main output's own id: Speakers already play there. */
+const DEFAULT_OUTPUT_ID = "default";
 
 /** A new Band Split starts at low, mid and high. */
 const NEW_BAND_COUNT = 3;
@@ -191,7 +209,8 @@ export function createPaletteNode(
   type: NodeType,
   id: string,
   position: Position,
-  radio: Radio | null = null
+  radio: Radio | null = null,
+  device: PaletteDevice | null = null
 ): GraphNode | null {
   if (type === "station") {
     return {
@@ -202,9 +221,12 @@ export function createPaletteNode(
     };
   }
   // An effect placed in a patch is meant to sound, so it starts on.
-  const data = isEffectNodeType(type)
-    ? { effect: { ...createEffect(type, id), enabled: true } }
-    : {};
+  let data: Record<string, unknown> = {};
+  if (isEffectNodeType(type)) {
+    data = { effect: { ...createEffect(type, id), enabled: true } };
+  } else if (device && (type === "deviceIn" || type === "deviceOut")) {
+    data = { deviceId: device.deviceId, deviceLabel: device.label };
+  }
   const parsed = graphNodeSchema.safeParse({ data, id, position, type });
   return parsed.success ? parsed.data : null;
 }
@@ -353,20 +375,20 @@ function nodeTypesOnOffer(
 
 /**
  * The native strip (Filter, Pan, Gain) leads FX; effects go by name.
- * Routing lists splits before the Merge that closes them.
+ * Other sections keep `PLACE_ORDER`.
  */
 function byStripThenName(left: NodeDefinition, right: NodeDefinition) {
   const strip = (definition: NodeDefinition) =>
     definition.native
       ? NATIVE_NODE_TYPES.indexOf(definition.native)
       : NATIVE_NODE_TYPES.length;
-  const routing = (definition: NodeDefinition) =>
-    ROUTING_ORDER.includes(definition.type)
-      ? ROUTING_ORDER.indexOf(definition.type)
-      : ROUTING_ORDER.length;
+  const place = (definition: NodeDefinition) =>
+    PLACE_ORDER.includes(definition.type)
+      ? PLACE_ORDER.indexOf(definition.type)
+      : PLACE_ORDER.length;
   return (
     strip(left) - strip(right) ||
-    routing(left) - routing(right) ||
+    place(left) - place(right) ||
     (left.category === "fx" && right.category === "fx"
       ? left.name.localeCompare(right.name)
       : 0)
@@ -376,6 +398,16 @@ function byStripThenName(left: NodeDefinition, right: NodeDefinition) {
 export type PaletteOptions = ValidateOptions & {
   /** Stations a Station entry can come filled with; hidden ones are left out. */
   radios?: readonly Radio[];
+  /** Audio devices the browser lists; each gets an entry set to it. */
+  devices?: {
+    inputs: readonly PaletteDevice[];
+    outputs: readonly PaletteDevice[];
+  };
+  /**
+   * Whether the browser can choose an output (`setSinkId`). Without it,
+   * as on Safari, no Output device is offered.
+   */
+  sinkSelection?: boolean;
   from?: PaletteFrom | null;
   /** A cable to insert the pick into (`I`). */
   into?: string | null;
@@ -412,6 +444,8 @@ export function paletteEntries(
   graph: NodeGraph,
   {
     radios = [],
+    devices = { inputs: [], outputs: [] },
+    sinkSelection = false,
     from = null,
     into = null,
     swap = null,
@@ -425,37 +459,102 @@ export function paletteEntries(
   for (const type of nodeTypesOnOffer(graph, options.release)) {
     const definition = getNodeDefinition(type);
     const section = SECTION_OF[definition.category as keyof typeof SECTION_OF];
-    if (!fits(graph, type, { ...options, from, into })) {
+    if (
+      (type === "deviceOut" && !sinkSelection) ||
+      !fits(graph, type, { ...options, from, into })
+    ) {
       continue;
     }
-    entries.push({
-      id: type,
-      kind: "node",
-      name: definition.name,
-      section,
-      type,
-    });
-    if (type === "station") {
-      // A session station saved under the same id is listed once.
-      const listed = new Set<string>();
-      for (const radio of radios) {
-        const id = `station:${String(radio.id ?? radio.streamUrl)}`;
-        if (radio.enabled === false || listed.has(id)) {
-          continue;
-        }
-        listed.add(id);
-        entries.push({
-          id,
-          kind: "node",
-          name: radio.name,
-          radio,
-          section,
-          type,
-        });
-      }
+    if (type === "deviceOut") {
+      entries.push(...outputDeviceEntries(graph, devices.outputs));
+      continue;
     }
+    entries.push(
+      { id: type, kind: "node", name: definition.name, section, type },
+      ...(type === "deviceIn" ? inputDeviceEntries(devices.inputs) : [])
+    );
+  }
+  // Saved stations close Sources, so a long list can't bury the inputs.
+  const station = entries.findIndex((entry) => entry.id === "station");
+  if (station !== -1) {
+    const sources = entries.filter((entry) => entry.section === "sources");
+    entries.splice(station + sources.length, 0, ...stationEntries(radios));
   }
   return from || into ? entries : [...entries, ...PALETTE_TEMPLATES];
+}
+
+/** A Station per saved station, filled with it; hidden ones left out. */
+function stationEntries(radios: readonly Radio[]): PaletteNodeEntry[] {
+  // A session station saved under the same id is listed once.
+  const listed = new Set<string>();
+  const entries: PaletteNodeEntry[] = [];
+  for (const radio of radios) {
+    const id = `station:${String(radio.id ?? radio.streamUrl)}`;
+    if (radio.enabled === false || listed.has(id)) {
+      continue;
+    }
+    listed.add(id);
+    entries.push({
+      id,
+      kind: "node",
+      name: radio.name,
+      radio,
+      section: "sources",
+      type: "station",
+    });
+  }
+  return entries;
+}
+
+/** An Audio input per input the browser lists, set to it. */
+function inputDeviceEntries(
+  inputs: readonly PaletteDevice[]
+): PaletteNodeEntry[] {
+  return inputs.map((device) => ({
+    device,
+    id: `deviceIn:${device.deviceId}`,
+    kind: "node",
+    name: device.label,
+    section: "sources",
+    type: "deviceIn",
+  }));
+}
+
+/**
+ * One Output device per output the browser lists, set to it, leaving out
+ * the main output Speakers already play on and any device an Output device
+ * already has. With none listed yet, one to set up in its body.
+ */
+function outputDeviceEntries(
+  graph: NodeGraph,
+  outputs: readonly PaletteDevice[]
+): PaletteNodeEntry[] {
+  const { name } = getNodeDefinition("deviceOut");
+  if (outputs.length === 0) {
+    return [
+      {
+        id: "deviceOut",
+        kind: "node",
+        name,
+        section: "outputs",
+        type: "deviceOut",
+      },
+    ];
+  }
+  return outputs
+    .filter(
+      (device) =>
+        device.deviceId !== DEFAULT_OUTPUT_ID &&
+        deviceOutVerdict(graph, device.deviceId).ok
+    )
+    .map((device) => ({
+      device,
+      id: `deviceOut:${device.deviceId}`,
+      kind: "node",
+      name: device.label,
+      section: "outputs",
+      type: "deviceOut",
+    }));
 }
 
 /** The effects an FX node can swap to: every other shipped non-split FX. */
@@ -512,7 +611,9 @@ export type AddPaletteNodeOptions = ValidateOptions & {
  * Adds the node an entry names. A dropped cable is wired into the node's
  * first port that takes it, and a cable picked with `I` gets the node
  * inserted into it; otherwise a new Station is wired to Speakers, as the
- * search bar does. Returns the same graph when the node can't be built.
+ * search bar does. An Audio input is never wired on its own: a mic into
+ * speakers can howl, so that cable is the user's to make. Returns the
+ * same graph when the node can't be built.
  */
 export function addPaletteNode(
   graph: NodeGraph,
@@ -524,10 +625,11 @@ export function addPaletteNode(
     entry.type,
     nodeId,
     position ??
-      (entry.type === "station"
+      (entry.type === "station" || entry.type === "deviceIn"
         ? nextStationPosition(graph)
         : besideEverything(graph)),
-    entry.radio ?? null
+    entry.radio ?? null,
+    entry.device ?? null
   );
   if (!node) {
     return { graph, nodeId: null };

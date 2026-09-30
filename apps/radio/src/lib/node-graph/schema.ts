@@ -77,7 +77,9 @@ export type EffectNodeType = (typeof EFFECT_NODE_TYPES)[number];
 /** Node types whose data is typed today; the rest stay loose until they ship. */
 const TYPED_NODE_TYPES = [
   "station",
+  "deviceIn",
   "speakers",
+  "deviceOut",
   ...NATIVE_NODE_TYPES,
   ...EFFECT_NODE_TYPES,
   "merge",
@@ -122,6 +124,50 @@ const stationNodeSchema = z.object({
     volume: unitSchema.default(1),
   }),
   type: z.literal("station"),
+});
+
+/** A device's 0-based input channels feeding left and right. */
+const channelSelectionSchema = z.object({
+  left: z.number().int().min(0),
+  right: z.number().int().min(0),
+});
+
+const deviceInNodeSchema = z.object({
+  ...nodeBase,
+  data: z
+    .object({
+      channelSelection: channelSelectionSchema.default({ left: 0, right: 1 }),
+      /** `null` until a device is picked; an empty input has no lane. */
+      deviceId: z.string().nullable().default(null),
+      /** The label when picked, so the node still reads when unplugged. */
+      deviceLabel: z.string().default(""),
+      /** Off by default, like DJ's inputs; on is the feedback guard. */
+      echoCancellation: z.boolean().default(false),
+      muted: z.boolean().default(false),
+      volume: unitSchema.default(1),
+    })
+    .default({
+      channelSelection: { left: 0, right: 1 },
+      deviceId: null,
+      deviceLabel: "",
+      echoCancellation: false,
+      muted: false,
+      volume: 1,
+    }),
+  type: z.literal("deviceIn"),
+});
+
+const deviceOutNodeSchema = z.object({
+  ...nodeBase,
+  data: z
+    .object({
+      /** `null` until a device is picked; its cables stay silent till then. */
+      deviceId: z.string().nullable().default(null),
+      deviceLabel: z.string().default(""),
+      muted: z.boolean().default(false),
+    })
+    .default({ deviceId: null, deviceLabel: "", muted: false }),
+  type: z.literal("deviceOut"),
 });
 
 const speakersNodeSchema = z.object({
@@ -210,7 +256,9 @@ const looseNodeSchema = z.object({
 
 export const graphNodeSchema = z.discriminatedUnion("type", [
   stationNodeSchema,
+  deviceInNodeSchema,
   speakersNodeSchema,
+  deviceOutNodeSchema,
   filterNodeSchema,
   panNodeSchema,
   gainNodeSchema,

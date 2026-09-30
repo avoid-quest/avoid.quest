@@ -64,6 +64,7 @@ describe("paletteEntries", () => {
         .map((entry) => `${entry.section}:${entry.name}`)
     ).toEqual([
       "sources:Station",
+      "sources:Audio input",
       "sources:Station c",
       "routing:Split",
       "routing:Stereo Split",
@@ -134,6 +135,7 @@ describe("paletteEntries", () => {
         .map((entry) => entry.name)
     ).toEqual([
       "Station",
+      "Audio input",
       "Station c",
       "Split",
       "Stereo Split",
@@ -191,6 +193,121 @@ describe("paletteEntries", () => {
         ? node.data.effect.crossoverFrequencies
         : null
     ).toEqual([250, 2500]);
+  });
+});
+
+describe("paletteEntries: audio inputs and output devices", () => {
+  const devices = {
+    inputs: [
+      { deviceId: "mic", label: "Desk mic" },
+      { deviceId: "line", label: "Line in" },
+    ],
+    outputs: [
+      { deviceId: "default", label: "Default - Speakers" },
+      { deviceId: "usb", label: "USB interface" },
+      { deviceId: "hdmi", label: "Monitor" },
+    ],
+  };
+
+  function names(
+    entries: ReturnType<typeof paletteEntries>,
+    section: string
+  ): string[] {
+    return entries
+      .filter((entry) => entry.section === section)
+      .map((entry) => entry.name);
+  }
+
+  test("Sources list Audio input and one entry per input, set to it", () => {
+    const entries = paletteEntries(patch, { devices });
+
+    expect(names(entries, "sources")).toEqual([
+      "Station",
+      "Audio input",
+      "Desk mic",
+      "Line in",
+    ]);
+    expect(entries.find((entry) => entry.id === "deviceIn:line")).toMatchObject(
+      { device: { deviceId: "line", label: "Line in" }, type: "deviceIn" }
+    );
+  });
+
+  test("Outputs list Speakers and one Output device per output, not the main one", () => {
+    const entries = paletteEntries(
+      { ...patch, edges: [], nodes: [] },
+      { devices, sinkSelection: true }
+    );
+
+    expect(names(entries, "outputs")).toEqual([
+      "Speakers",
+      "USB interface",
+      "Monitor",
+    ]);
+  });
+
+  test("with no output listed yet, one Output device to set up", () => {
+    const entries = paletteEntries(patch, { sinkSelection: true });
+
+    expect(names(entries, "outputs")).toEqual(["Output device"]);
+  });
+
+  test("a browser that can't choose an output is offered no Output device", () => {
+    const entries = paletteEntries(patch, { devices, sinkSelection: false });
+
+    expect(entries.some((entry) => entry.id.startsWith("deviceOut"))).toBe(
+      false
+    );
+  });
+
+  test("an output that already has an Output device isn't offered again", () => {
+    const added = addPaletteNode(patch, {
+      device: { deviceId: "usb", label: "USB interface" },
+      id: "deviceOut:usb",
+      kind: "node",
+      name: "USB interface",
+      section: "outputs",
+      type: "deviceOut",
+    });
+
+    expect(
+      names(
+        paletteEntries(added.graph, { devices, sinkSelection: true }),
+        "outputs"
+      )
+    ).toEqual(["Monitor"]);
+  });
+
+  test("an Audio input comes set to its device, with only an audio out, and no cable", () => {
+    const { graph, nodeId } = addPaletteNode(patch, {
+      device: { deviceId: "mic", label: "Desk mic" },
+      id: "deviceIn:mic",
+      kind: "node",
+      name: "Desk mic",
+      section: "sources",
+      type: "deviceIn",
+    });
+
+    const node = graph.nodes.find((entry) => entry.id === nodeId);
+    expect(node).toMatchObject({
+      data: {
+        channelSelection: { left: 0, right: 1 },
+        deviceId: "mic",
+        deviceLabel: "Desk mic",
+        echoCancellation: false,
+        muted: false,
+        volume: 1,
+      },
+      type: "deviceIn",
+    });
+    // A mic into speakers can howl: the cable is the user's to make.
+    expect(graph.edges).toEqual(patch.edges);
+    expect(validate(graph)).toEqual([]);
+  });
+
+  test("an Audio input can feed a cable dropped from Speakers' input", () => {
+    const entries = paletteEntries(patch, { devices, from: fromSpeakers });
+
+    expect(names(entries, "sources")).toContain("Desk mic");
   });
 });
 

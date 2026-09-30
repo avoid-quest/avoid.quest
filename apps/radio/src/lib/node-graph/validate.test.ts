@@ -13,6 +13,7 @@ import {
   BUS_MERGE_MESSAGE,
   type Connection,
   connectionVerdict,
+  deviceOutVerdict,
   findCycles,
   type Issue,
   type IssueCode,
@@ -126,6 +127,14 @@ function check(
   options?: ValidateOptions
 ): string[] {
   return codes(validate(graph(nodes, edges), options));
+}
+
+function plug(
+  source: string,
+  target: string,
+  { from = "out:audio:main", to = "in:audio:main" } = {}
+): Connection {
+  return { source, sourceHandle: from, target, targetHandle: to };
 }
 
 function range(count: number): number[] {
@@ -659,6 +668,61 @@ describe("validate: one of a kind", () => {
   });
 });
 
+describe("validate: audio inputs and output devices", () => {
+  const mic = node("mic", "deviceIn", { deviceId: "usb-mic" });
+  const desk = node("desk", "deviceOut", { deviceId: "usb" });
+  const io = graph(
+    [mic, station("a"), desk, speakers],
+    [audio("mic", "speakers"), audio("a", "desk")]
+  );
+
+  test("both ship in v1 and take their cables", () => {
+    expect(validate(io)).toEqual([]);
+  });
+
+  test("an Audio input takes no cable in, and an Output device gives none out", () => {
+    expect(connectionVerdict(io, plug("a", "mic"))).toEqual({
+      code: "no-audio-in",
+      message: "An Audio input makes its own sound and takes no audio in",
+      ok: false,
+    });
+    expect(connectionVerdict(io, plug("desk", "speakers"))).toEqual({
+      code: "no-out",
+      message: "The sound ends at Output device; it has no output",
+      ok: false,
+    });
+  });
+
+  test("an Output device takes any number of cables", () => {
+    const more = graph(
+      [station("a"), station("b"), station("c"), desk],
+      [audio("a", "desk"), audio("b", "desk")]
+    );
+    expect(connectionVerdict(more, plug("c", "desk"))).toEqual({ ok: true });
+  });
+
+  test("a second Output device on the same device is refused", () => {
+    const twice = graph([
+      desk,
+      node("booth", "deviceOut", { deviceId: "usb" }),
+    ]);
+    expect(check(twice.nodes)).toEqual(["one-device-out@booth"]);
+    expect(deviceOutVerdict(io, "usb")).toEqual({
+      code: "one-device-out",
+      message: "This output already has a module",
+      ok: false,
+    });
+    expect(deviceOutVerdict(io, "usb", "desk")).toEqual({ ok: true });
+    expect(deviceOutVerdict(io, "hdmi")).toEqual({ ok: true });
+  });
+
+  test("Output devices with no device picked yet don't clash", () => {
+    expect(check([node("one", "deviceOut"), node("two", "deviceOut")])).toEqual(
+      []
+    );
+  });
+});
+
 describe("validate: releases", () => {
   test("an in-lane Merge ships in v1, a bus Merge waits for v2", () => {
     const inLane = [
@@ -1153,17 +1217,6 @@ describe("connectionVerdict", () => {
     ],
     [audio("a", "comp"), audio("comp", "speakers")]
   );
-  const plug = (
-    source: string,
-    target: string,
-    { from = "out:audio:main", to = "in:audio:main" } = {}
-  ): Connection => ({
-    source,
-    sourceHandle: from,
-    target,
-    targetHandle: to,
-  });
-
   test("allows a cable that fits", () => {
     expect(connectionVerdict(chain, plug("a", "speakers"))).toEqual({
       ok: true,
@@ -1438,16 +1491,32 @@ describe("validate: messages", () => {
       graph([
         ...range(5).map((index) => node(`loop${index}`, "loop")),
         ...range(3).map((index) => node(`warp${index}`, "tapeWarp")),
-        node("long", "tapeWarp", { time: 60 }),
         ...range(9).map((index) => node(`lfo${index}`, "lfo")),
       ]),
       v2
     ),
     validate(
       graph(
+        [station("a"), station("b"), node("mix", "merge"), speakers],
+        [audio("a", "mix"), audio("b", "mix"), audio("mix", "speakers")]
+      )
+    ),
+    // The schema caps a Tape Warp at 30 s, so only a phone's cap can bite.
+    validate(graph([node("long", "tapeWarp", { time: 20 })]), {
+      ...v2,
+      profile: "mobile",
+    }),
+    validate(
+      graph(
         [station("a"), ...range(65).map((index) => node(`g${index}`, "gain"))],
         range(65).map((index) => audio("a", `g${index}`, { id: `e${index}` }))
       )
+    ),
+    validate(
+      graph([
+        node("desk", "deviceOut", { deviceId: "usb" }),
+        node("booth", "deviceOut", { deviceId: "usb" }),
+      ])
     ),
   ];
   const messages: Partial<Record<IssueCode, string[]>> = {};
@@ -1470,7 +1539,7 @@ describe("validate: messages", () => {
       "budget-playing": ["Up to 6 streams can play at once"],
       "budget-sources": ["Up to 24 sources per patch"],
       "budget-tape-warp": ["Up to 2 Tape Warp per patch"],
-      "budget-tape-warp-time": ["Tape Warp is limited to 30 s here"],
+      "budget-tape-warp-time": ["Tape Warp is limited to 10 s here"],
       "control-cycle": ["That would feed the control back into itself"],
       "duplicate-edge": ["These are already connected"],
       "feedback-needs-loop": ["That would feed the sound back into itself"],
@@ -1486,6 +1555,7 @@ describe("validate: messages", () => {
       "missing-node": ["Cable points at a missing node"],
       "no-audio-in": ["A Station makes its own sound and takes no audio in"],
       "no-out": ["The sound ends at Speakers; it has no output"],
+      "one-device-out": ["This output already has a module"],
       "one-speakers": ["A patch has one Speakers"],
       "port-max": [
         "This input takes one cable",

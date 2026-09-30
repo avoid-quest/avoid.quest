@@ -6,12 +6,15 @@ import {
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
 import { getNodePlayback } from "@/lib/node-playback";
+import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 
-/** A Station lane as the Speakers, Stage and Rack views render it. */
+/** A source lane as the Speakers, Stage and Rack views render it. */
 export type NodeSourceState = {
-  /** The Station node id. */
+  /** The Station or Audio input node id. */
   id: string;
+  /** A Station's stream, or an Audio input's live capture. */
+  kind: "station" | "input";
   channelId: string;
   radio: Radio;
   isPlaying: boolean;
@@ -57,6 +60,9 @@ export function useNodeSession() {
         isLoading: runtime?.isLoading ?? false,
         isMuted: channel.muted || channel.volume === 0,
         isPlaying: runtime?.isPlaying ?? false,
+        kind: isDeviceInputMetadata(channel.radio.platformMetadata)
+          ? ("input" as const)
+          : ("station" as const),
         radio: channel.radio,
         volume: channel.volume,
       };

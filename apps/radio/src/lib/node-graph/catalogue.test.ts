@@ -59,7 +59,7 @@ describe("NODE_DEFINITIONS", () => {
     expect(NODE_DEFINITIONS.frequencySplit.name).toBe("Band Split");
   });
 
-  test("the v1 subset is Station, Speakers, the native strip, FX and in-lane Merge", () => {
+  test("the v1 subset is Station, Audio input, Speakers, Output device, the native strip, FX and in-lane Merge", () => {
     const v1 = definitions
       .filter(
         (definition) => definition.ship === "v1" && !definition.effectType
@@ -67,6 +67,8 @@ describe("NODE_DEFINITIONS", () => {
       .map((definition) => definition.type)
       .sort();
     expect(v1).toEqual([
+      "deviceIn",
+      "deviceOut",
       "filter",
       "gain",
       "merge",

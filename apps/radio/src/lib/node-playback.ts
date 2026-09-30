@@ -15,12 +15,19 @@
  * "node") in the same update as the graph, and master volume is the Speakers
  * gain.
  *
- * Each lane reaches the main bus through its own `laneOut` gain
+ * Each lane reaches its outputs through its own `laneOut` gain
  * (node-lane-outputs), registered as the sound's output connector before it
- * first plays. Cable gain and mute ramp laneOut to the sum of the lane's
- * unmuted cables, so a Station with no cable to Speakers plays silent. An FX
- * layout change ducks laneOut around the tree swap. The Station fader stays
- * the volume controller's; nothing here writes it.
+ * first plays, which fans out into one send per output. Cable gain and mute
+ * ramp each send to the sum of the lane's unmuted cables into that output,
+ * so a Station with no cable to Speakers plays silent. Speakers sends go to
+ * the main bus; an Output device's go to its device sink
+ * (node-device-sinks), or to the main bus while that sink can't play. An FX
+ * layout change ducks laneOut around the tree swap. The source's fader
+ * stays the volume controller's; nothing here writes it.
+ *
+ * An Audio input's lane is a live capture started through the device-input
+ * start DJ decks use. Restore never opens a mic: its sound is only made
+ * when the user goes live.
  *
  * Each lane with FX publishes a backend badge for its FX nodes: `compat`
  * from the compile estimate until the effects controller reports, then from
@@ -29,7 +36,7 @@
  * Starting and stopping keeps Multiple's rules: start ownership, revisions
  * and cancellation, Play all with at most 3 starts in flight, and a fade-out
  * deactivate that releases every `n:*` channel before the orphan check. A
- * start past the playing-stream budget is refused with a message.
+ * stream start past the playing-stream budget is refused with a message.
  */
 
 import { Store } from "@tanstack/react-store";
@@ -37,20 +44,33 @@ import { fadeOut } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
 import {
+  createNodeDeviceSinks,
+  type DeviceSinkStatus,
+  type NodeDeviceSinks,
+  type NodeDeviceSinksOptions,
+} from "@/lib/audio/routing/node-device-sinks";
+import {
   createNodeLaneOutputs,
+  type LaneSinkRoute,
   type NodeLaneOutputs,
   type NodeLaneOutputsOptions,
 } from "@/lib/audio/routing/node-lane-outputs";
 import {
   getPlaybackChannel,
   getPlaybackSession,
+  type PlaybackChannelRecord,
   updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
+import {
+  type DeviceInputAudio,
+  startDeviceInput,
+} from "@/lib/device-input-playback";
 import {
   compile,
   type EnginePlan,
   type LaneBackend,
   type LanePlan,
+  type LaneSource,
   laneChannelId,
 } from "@/lib/node-graph/compile";
 import {
@@ -60,7 +80,7 @@ import {
   nodeStore,
 } from "@/lib/node-graph/node-store";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
-import type { NodeGraph } from "@/lib/node-graph/schema";
+import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { NODE_BUDGETS, type Profile } from "@/lib/node-graph/validate";
@@ -77,6 +97,7 @@ import {
 } from "./channel-effects.js";
 import {
   clearManagedPlaybackErrors,
+  getChannelPlayVolume,
   getReadyManagedPlaybackSession,
   restoreManagedChannels,
   setManagedChannelPlaying,
@@ -98,6 +119,7 @@ import {
 import {
   applySessionMasterVolume,
   cleanupManagedChannel,
+  createManagedSound,
   runWithConcurrency,
 } from "./playback-actions-shared.js";
 
@@ -111,9 +133,10 @@ export type NodePlayback = {
    */
   flush: () => void;
   pauseAll: () => void;
+  /** Plays every Station; an Audio input goes live only from its own Go live. */
   playAll: () => Promise<void>;
   setMasterVolume: (volume: number) => void;
-  /** Starts or stops a Station node's lane. */
+  /** Starts or stops a source's lane: a Station plays, an Audio input goes live. */
   setPlaying: (nodeId: string, playing: boolean) => Promise<void>;
   setVolume: (nodeId: string, volume: number) => void;
   toggleMasterMute: () => void;
@@ -147,6 +170,14 @@ export type NodeBackendBadgeStore = Store<NodeBackendBadges>;
 
 export const nodeBackendBadges: NodeBackendBadgeStore =
   new Store<NodeBackendBadges>({});
+
+/** Each Output device node's sink status, by node id, for its body. */
+export type NodeSinkStatuses = Readonly<Record<string, DeviceSinkStatus>>;
+
+export type NodeSinkStatusStore = Store<NodeSinkStatuses>;
+
+export const nodeSinkStatuses: NodeSinkStatusStore =
+  new Store<NodeSinkStatuses>({});
 
 type EffectsBackend = EffectsRuntimeOutcome["backend"];
 
@@ -201,11 +232,14 @@ export type GetNodePlaybackOptions = {
   /** Where lane backend badges are published for the canvas and Rack. */
   backendBadges?: NodeBackendBadgeStore;
   ctx?: PlaybackActionContext;
+  deviceSinks?: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
   effects?: Pick<ChannelEffects, "change">;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
   getEnv?: () => NodePlaybackEnv;
   laneOutputs?: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
+  /** Where Output device sink statuses are published for their bodies. */
+  sinkStatuses?: NodeSinkStatusStore;
   store?: NodeStore;
 };
 
@@ -223,7 +257,10 @@ type ChannelStartOwnership = {
 /** A start waiting for its lane to settle, before it takes ownership. */
 type PendingChannelStart = { cancelled: boolean; channelId: string };
 
-type StationData = { volume: number; muted: boolean };
+/** A source's own level: a Station's or an Audio input's. */
+type SourceData = { volume: number; muted: boolean };
+
+type DeviceLaneSource = Extract<LaneSource, { kind: "device" }>;
 
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
 const PLAY_ALL_CONCURRENCY = 3;
@@ -285,20 +322,37 @@ function budgetError(limit: number, channelId: string): PlaybackActionError {
   };
 }
 
-function findStation(graph: NodeGraph | null, nodeId: string) {
+/** A node whose data holds a source level: a Station or an Audio input. */
+function findSource(graph: NodeGraph | null, nodeId: string) {
   const node = graph?.nodes.find((entry) => entry.id === nodeId);
-  return node?.type === "station" ? node : undefined;
+  return node?.type === "station" || node?.type === "deviceIn"
+    ? node
+    : undefined;
+}
+
+/** A device start through AudioManager, as DJ decks make it. */
+function deviceInputAudio(ctx: PlaybackActionContext): DeviceInputAudio {
+  return {
+    getDeviceChannelCount: (soundId) =>
+      ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
+    setDeviceChannelSelection: (soundId, selection) =>
+      ctx.audio.setDeviceChannelSelection(soundId, selection),
+    startDevice: (soundId, deviceId, constraints) =>
+      ctx.audio.playDeviceSound(soundId, deviceId, constraints),
+  };
 }
 
 function createNodePlayback(
   ctx: PlaybackActionContext,
   {
     backendBadges,
+    deviceSinks: createDeviceSinks,
     effects,
     fadeOutDurationMs,
     fadeOutSound,
     getEnv,
     laneOutputs: createLaneOutputs,
+    sinkStatuses,
     store,
   }: Required<Omit<GetNodePlaybackOptions, "ctx">>
 ): NodePlayback {
@@ -327,21 +381,97 @@ function createNodePlayback(
   /** Per lane: the backend its effects last settled on, as reported. */
   const laneOutcomes = new Map<string, EffectsBackend>();
 
-  /** A lane's cable level: the gains of its unmuted cables, summed. */
-  const laneLevel = (laneId: string) => {
-    let level = 0;
+  /**
+   * A lane's level per output: the gains of its unmuted cables into it,
+   * summed. A muted Output device takes nothing.
+   */
+  const laneLevels = (laneId: string) => {
+    const levels = new Map<string, number>();
     for (const edge of plan.edges.values()) {
-      if (edge.from.id === laneId && !edge.muted) {
-        level += edge.gain;
+      if (edge.from.id !== laneId) {
+        continue;
       }
+      const sinkId = edge.to.id;
+      const silenced = edge.muted || plan.sinks.get(sinkId)?.muted === true;
+      levels.set(
+        sinkId,
+        (levels.get(sinkId) ?? 0) + (silenced ? 0 : edge.gain)
+      );
     }
-    return level;
+    return levels;
+  };
+
+  /**
+   * Speakers are the main bus. An Output device plays on its sink, or on
+   * the main bus while that sink can't; with no device picked, nowhere.
+   */
+  const routeSink: LaneSinkRoute = (sinkId, send, connectMain) => {
+    const sink = plan.sinks.get(sinkId);
+    if (sink?.type === "speakers") {
+      return connectMain();
+    }
+    if (sink?.type !== "deviceOut") {
+      return () => undefined;
+    }
+    const routed = deviceSinks.connect(sinkId, send);
+    switch (routed.to) {
+      case "device":
+        return routed.release;
+      case "speakers":
+        return connectMain();
+      default:
+        return () => undefined;
+    }
   };
 
   const laneOutputs = createLaneOutputs({
     getHost: () => ctx.audio,
-    getLevel: laneLevel,
+    getLevels: laneLevels,
+    route: routeSink,
   });
+
+  const deviceSinks = createDeviceSinks({
+    onReroute: (sinkId) => laneOutputs.reroute(sinkId),
+    onStatus: () => publishSinkStatuses(),
+  });
+
+  const publishSinkStatuses = () => {
+    sinkStatuses.setState(() => deviceSinks.statuses());
+  };
+
+  /**
+   * Matches the device sinks to the plan's Output devices. A removed output
+   * takes its sends with it; a mute on one changes every lane's levels.
+   */
+  const syncSinks = (previous: EnginePlan, next: EnginePlan) => {
+    const devices = new Map<string, string | null>();
+    for (const sink of next.sinks.values()) {
+      if (sink.type === "deviceOut") {
+        devices.set(sink.id, sink.deviceId ?? null);
+      }
+    }
+    deviceSinks.sync(devices);
+    let levelsChanged = false;
+    for (const [id, sink] of previous.sinks) {
+      const kept = next.sinks.get(id);
+      if (!kept) {
+        laneOutputs.dropSink(id);
+      } else if (kept.muted !== sink.muted) {
+        levelsChanged = true;
+      }
+    }
+    if (levelsChanged) {
+      for (const laneId of next.lanes.keys()) {
+        laneOutputs.refresh(laneId);
+      }
+    }
+  };
+
+  const laneOfChannel = (channelId: string) =>
+    plan.lanes.get(channelId.slice(NODE_CHANNEL_PREFIX.length));
+
+  const isDeviceChannel = (channelId: string) =>
+    laneOfChannel(channelId)?.source.kind === "device";
 
   /** Writes every lane's badge, and its FX nodes', when one changed. */
   const publishBadges = () => {
@@ -422,6 +552,37 @@ function createNodePlayback(
     return ownership;
   };
 
+  /**
+   * Goes live on an Audio input: its sound is made now, never on restore,
+   * so the mic opens only from a gesture. A lane muted live keeps its
+   * capture open, so going live again only lifts its gain, as on a DJ deck.
+   */
+  const startDeviceLane = async (
+    channel: PlaybackChannelRecord,
+    source: DeviceLaneSource
+  ) => {
+    const { radio } = channel;
+    if (!radio) {
+      return;
+    }
+    let { soundId } = getPlaybackChannelRuntime(channel.id);
+    if (!soundId) {
+      soundId = createManagedSound("node", channel.id, radio, undefined, ctx);
+      ctx.channels.setMuted("node", channel.id, channel.muted);
+    }
+    applySessionMasterVolume("node", ctx);
+    if (ctx.audio.getDeviceSource(soundId)?.isActive) {
+      await ctx.audio.playSound(soundId, getChannelPlayVolume(channel));
+      return;
+    }
+    await startDeviceInput(deviceInputAudio(ctx), soundId, source);
+    // The capture starts at the sound's own volume; put the input's back.
+    const latest = getPlaybackChannel("node", channel.id);
+    if (latest && !latest.muted) {
+      ctx.channels.setVolume("node", channel.id, latest.volume);
+    }
+  };
+
   const setChannelPlaying = async (
     channelId: string,
     playing: boolean,
@@ -430,8 +591,13 @@ function createNodePlayback(
   ) => {
     clearManagedPlaybackErrors([channelId]);
     const channel = getPlaybackChannel("node", channelId);
+    const source = laneOfChannel(channelId)?.source;
     try {
-      await setManagedChannelPlaying("node", channel, playing, ctx);
+      if (playing && channel && source?.kind === "device") {
+        await startDeviceLane(channel, source);
+      } else {
+        await setManagedChannelPlaying("node", channel, playing, ctx);
+      }
       return true;
     } catch (error) {
       if (shouldReportError()) {
@@ -510,11 +676,14 @@ function createNodePlayback(
       ])
     );
 
-  /** Streams playing, loading or starting, other than `channelId`. */
+  /**
+   * Streams playing, loading or starting, other than `channelId`. A live
+   * input is no stream, so it doesn't count.
+   */
   const countBusyStreams = (channelId: string) => {
     const busy = new Set(
       getPlaybackRuntimeChannelIds().filter((id) => {
-        if (!isNodeChannelId(id)) {
+        if (!isNodeChannelId(id) || isDeviceChannel(id)) {
           return false;
         }
         const runtime = getPlaybackChannelRuntime(id);
@@ -522,7 +691,10 @@ function createNodePlayback(
       })
     );
     for (const ownership of activeChannelStarts) {
-      if (ownership.cancellation === null) {
+      if (
+        ownership.cancellation === null &&
+        !isDeviceChannel(ownership.channelId)
+      ) {
         busy.add(ownership.channelId);
       }
     }
@@ -593,7 +765,7 @@ function createNodePlayback(
       return;
     }
     const limit = NODE_BUDGETS[getEnv().profile].playingStreams;
-    if (countBusyStreams(channelId) >= limit) {
+    if (!isDeviceChannel(channelId) && countBusyStreams(channelId) >= limit) {
       setManagedPlaybackError(channelId, budgetError(limit, channelId));
       return;
     }
@@ -845,6 +1017,14 @@ function createNodePlayback(
           applyLaneStrip(channelId);
         }
         break;
+      case "channelSelection": {
+        // Channels switch live on an open capture; a new one opens with them.
+        const { soundId } = getPlaybackChannelRuntime(channelId);
+        if (soundId && ctx.audio.getDeviceSource(soundId)) {
+          ctx.audio.setDeviceChannelSelection(soundId, op.value);
+        }
+        break;
+      }
       default: {
         const exhaustive: never = op;
         return exhaustive;
@@ -949,6 +1129,7 @@ function createNodePlayback(
       }
     }
     try {
+      syncSinks(previous, next);
       applyOps(ops, previous, next, strict);
     } finally {
       // A carry is only "in place" within one batch; a later re-add of the
@@ -1000,18 +1181,25 @@ function createNodePlayback(
     subscription = null;
   };
 
-  const updateStation = (
+  const updateSource = (
     nodeId: string,
-    update: (data: StationData) => Partial<StationData>
+    update: (data: SourceData) => Partial<SourceData>
   ) => {
     commitNodeGraph(
       (graph) => ({
         ...graph,
-        nodes: graph.nodes.map((node) =>
-          node.id === nodeId && node.type === "station"
-            ? { ...node, data: { ...node.data, ...update(node.data) } }
-            : node
-        ),
+        nodes: graph.nodes.map((node): GraphNode => {
+          if (node.id !== nodeId) {
+            return node;
+          }
+          if (node.type === "station") {
+            return { ...node, data: { ...node.data, ...update(node.data) } };
+          }
+          if (node.type === "deviceIn") {
+            return { ...node, data: { ...node.data, ...update(node.data) } };
+          }
+          return node;
+        }),
       }),
       store
     );
@@ -1021,7 +1209,7 @@ function createNodePlayback(
     if (volume > 0) {
       unmutedVolumes.set(nodeId, volume);
     }
-    updateStation(nodeId, ({ muted }) => ({
+    updateSource(nodeId, ({ muted }) => ({
       muted: volume > 0 ? false : muted,
       volume,
     }));
@@ -1075,7 +1263,10 @@ function createNodePlayback(
         unmutedMasterVolume = session.masterVolume;
       }
       for (const node of store.state.graph?.nodes ?? []) {
-        if (node.type === "station" && node.data.volume > 0) {
+        if (
+          (node.type === "station" || node.type === "deviceIn") &&
+          node.data.volume > 0
+        ) {
           unmutedVolumes.set(node.id, node.data.volume);
         }
       }
@@ -1124,6 +1315,8 @@ function createNodePlayback(
         resetPlaybackChannelRuntime(channelId);
       }
       laneOutputs.dispose();
+      deviceSinks.dispose();
+      publishSinkStatuses();
       plan = EMPTY_PLAN;
       laneOutcomes.clear();
       publishBadges();
@@ -1145,8 +1338,13 @@ function createNodePlayback(
     async playAll() {
       const generation: PlayAllGeneration = { cancellation: null };
       activePlayAllGenerations.add(generation);
+      // Stations only: a mic goes live from its own Go live, never in bulk.
       const channels = (getPlaybackSession("node")?.channels ?? []).filter(
-        (channel) => !getPlaybackChannelRuntime(channel.id).isPlaying
+        (channel) =>
+          !(
+            getPlaybackChannelRuntime(channel.id).isPlaying ||
+            isDeviceChannel(channel.id)
+          )
       );
       try {
         await runWithConcurrency(
@@ -1174,16 +1372,16 @@ function createNodePlayback(
       setMasterVolume(unmutedMasterVolume);
     },
     toggleMute(nodeId) {
-      const station = findStation(store.state.graph, nodeId);
-      if (!station) {
+      const source = findSource(store.state.graph, nodeId);
+      if (!source) {
         return;
       }
-      const { muted, volume } = station.data;
+      const { muted, volume } = source.data;
       if (volume === 0) {
         setVolume(nodeId, unmutedVolumes.get(nodeId) ?? 1);
         return;
       }
-      updateStation(nodeId, () => ({ muted: !muted }));
+      updateSource(nodeId, () => ({ muted: !muted }));
     },
     whenSettled,
   };
@@ -1192,11 +1390,13 @@ function createNodePlayback(
 export function getNodePlayback({
   backendBadges = nodeBackendBadges,
   ctx = getDefaultPlaybackActionContext(),
+  deviceSinks = createNodeDeviceSinks,
   effects = channelEffects,
   fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
   getEnv = detectNodePlaybackEnv,
   laneOutputs = createNodeLaneOutputs,
+  sinkStatuses = nodeSinkStatuses,
   store = nodeStore,
 }: GetNodePlaybackOptions = {}): NodePlayback {
   const existing = instances.get(ctx);
@@ -1205,11 +1405,13 @@ export function getNodePlayback({
   }
   const playback = createNodePlayback(ctx, {
     backendBadges,
+    deviceSinks,
     effects,
     fadeOutDurationMs,
     fadeOutSound,
     getEnv,
     laneOutputs,
+    sinkStatuses,
     store,
   });
   instances.set(ctx, playback);

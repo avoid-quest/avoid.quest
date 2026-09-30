@@ -66,6 +66,9 @@ const { cleanup, fireEvent, render, waitFor, within } = await import(
 );
 
 let NodeStage: typeof import("./node-stage")["NodeStage"];
+let compile: typeof import("@/lib/node-graph/compile")["compile"];
+let deriveNodeChannels: typeof import("@/lib/node-graph/session-channels")["deriveNodeChannels"];
+let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
 let buildNodeSessionFromTemplate: typeof import("@/lib/node-graph/templates")["buildNodeSessionFromTemplate"];
 let playbackSessionsCollection: typeof import("@/lib/collections/playback-sessions")["playbackSessionsCollection"];
 let resetAllPlaybackRuntime: typeof import("@/lib/stores/playback-runtime-store")["resetAllPlaybackRuntime"];
@@ -73,6 +76,9 @@ let setPlaybackChannelRuntime: typeof import("@/lib/stores/playback-runtime-stor
 
 beforeAll(async () => {
   ({ NodeStage } = await import("./node-stage"));
+  ({ compile } = await import("@/lib/node-graph/compile"));
+  ({ deriveNodeChannels } = await import("@/lib/node-graph/session-channels"));
+  ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ buildNodeSessionFromTemplate } = await import(
     "@/lib/node-graph/templates"
   ));
@@ -171,6 +177,60 @@ describe("NodeStage", () => {
     );
     fireEvent.click(view.getByRole("button", { name: "Pause NTS 1" }));
     expect(controls.setPlaying).toHaveBeenLastCalledWith("src-nts", false);
+  });
+
+  test("lists an Audio input next to the Stations, with Go live and volume", async () => {
+    const session = buildNodeSessionFromTemplate("start-from-multiple", {
+      session: [kexp],
+    });
+    const graph = nodeGraphSchema.parse({
+      ...session.graph,
+      edges: [
+        ...(session.graph?.edges ?? []),
+        {
+          id: "mic->speakers",
+          source: "mic",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+      ],
+      nodes: [
+        ...(session.graph?.nodes ?? []),
+        {
+          data: { deviceId: "mic", deviceLabel: "Desk mic" },
+          id: "mic",
+          position: { x: 0, y: 200 },
+          type: "deviceIn",
+        },
+      ],
+    });
+    playbackSessionsCollection.insert({
+      ...session,
+      channels: deriveNodeChannels(
+        compile(graph, { crossOriginIsolated: false })
+      ),
+      graph,
+    });
+    const { controls, view } = renderStage();
+
+    const sources = await waitFor(() =>
+      view.getByRole("list", { name: "Sources" })
+    );
+    expect(within(sources).getAllByRole("listitem")).toHaveLength(2);
+    fireEvent.click(
+      within(sources).getByRole("button", { name: "Go live Desk mic" })
+    );
+    expect(controls.setPlaying).toHaveBeenLastCalledWith("mic", true);
+    fireEvent.keyDown(
+      within(sources).getByRole("slider", { name: "Volume Desk mic" }),
+      { key: "ArrowLeft" }
+    );
+    expect(controls.setVolume).toHaveBeenLastCalledWith("mic", 0.99);
+    // Cabled to Speakers, the phone says what the canvas says.
+    expect(
+      within(sources).getByText("Use headphones: a mic into speakers can howl")
+    ).toBeTruthy();
   });
 
   test("an empty patch points at the search", async () => {

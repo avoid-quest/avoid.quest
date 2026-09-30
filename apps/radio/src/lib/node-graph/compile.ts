@@ -2,7 +2,8 @@
  * Node Graph Compiler
  *
  * Lowers a validated patch onto what the engine already runs: one managed
- * sound per station lane, a leading Filter and Pan on its native strip, and
+ * sound per live source (a Station's stream or an Audio input's capture),
+ * a leading Filter and Pan on its native strip, and
  * its FX as one series-parallel EffectConfig tree. Cables leaving a lane
  * become edge gains keyed by the cable id, and key cables become sidechain
  * bindings. Nothing here touches audio; `reconcile.ts` diffs two plans.
@@ -66,6 +67,20 @@ export type StationRadio = NonNullable<
   Extract<GraphNode, { type: "station" }>["data"]["radio"]
 >;
 
+type DeviceInNode = Extract<GraphNode, { type: "deviceIn" }>;
+
+export type ChannelSelectionPlan = DeviceInNode["data"]["channelSelection"];
+
+/** What a lane plays: a station's stream, or a device's live capture. */
+export type LaneSource =
+  | { kind: "radio"; radio: StationRadio }
+  | {
+      kind: "device";
+      deviceId: string;
+      channelSelection: ChannelSelectionPlan;
+      echoCancellation: boolean;
+    };
+
 export type NativeFilterPlan = {
   type: "lowpass" | "highpass";
   frequency: number;
@@ -79,9 +94,14 @@ export type LanePlan = {
   channelId: string;
   /** Managed sound id: `node:n:<id>`. */
   soundId: string;
+  source: LaneSource;
+  /**
+   * The channel's radio: the station, or for an Audio input the
+   * device-input radio DJ decks use, so the session channel cache holds it.
+   */
   radio: StationRadio;
   /**
-   * The Station's own fader and mute, owned by the lane's volume control.
+   * The source's own fader and mute, owned by the lane's volume control.
    * Cable levels never fold in here; they act downstream of the fader.
    */
   volume: number;
@@ -110,6 +130,10 @@ export type EdgePlan = {
 export type SinkPlan = {
   id: string;
   type: GraphNode["type"];
+  /** Output device nodes: the device picked, or null while none is. */
+  deviceId?: string | null;
+  /** Output device nodes: their mute silences every cable into them. */
+  muted?: boolean;
 };
 
 export type EnginePlan = {
@@ -138,6 +162,69 @@ export function isStationLive(node: GraphNode): node is Extract<
   );
 }
 
+/** An Audio input plays once it has a device; an empty one has no lane. */
+export function isDeviceInLive(
+  node: GraphNode
+): node is DeviceInNode & { data: { deviceId: string } } {
+  return node.type === "deviceIn" && node.data.deviceId !== null;
+}
+
+/** A source that has a lane: a live Station or an Audio input with a device. */
+export function isSourceLive(node: GraphNode): boolean {
+  return isStationLive(node) || isDeviceInLive(node);
+}
+
+/**
+ * The radio an Audio input's channel carries: the device-input shape DJ
+ * decks load (dj-library-sources.ts), so restore and the channel cache
+ * know it for a live capture. Browsers give at most 2 channels a device.
+ */
+export function deviceInputRadio(
+  nodeId: string,
+  data: Pick<DeviceInNode["data"], "channelSelection" | "deviceLabel"> & {
+    deviceId: string;
+  }
+): StationRadio {
+  return {
+    enabled: true,
+    id: `device-input:${nodeId}`,
+    name: data.deviceLabel || "Audio input",
+    platformMetadata: {
+      channelCount: 2,
+      channelSelection: data.channelSelection,
+      deviceId: data.deviceId,
+      deviceLabel: data.deviceLabel,
+      itemType: "track",
+      platform: "device-input",
+      url: "",
+    },
+    streamUrl: "",
+  };
+}
+
+function laneSourceOf(node: GraphNode): {
+  source: LaneSource;
+  radio: StationRadio;
+  volume: number;
+  muted: boolean;
+} | null {
+  if (isStationLive(node)) {
+    const { muted, radio, volume } = node.data;
+    return { muted, radio, source: { kind: "radio", radio }, volume };
+  }
+  if (isDeviceInLive(node)) {
+    const { channelSelection, deviceId, echoCancellation, muted, volume } =
+      node.data;
+    return {
+      muted,
+      radio: deviceInputRadio(node.id, node.data),
+      source: { channelSelection, deviceId, echoCancellation, kind: "device" },
+      volume,
+    };
+  }
+  return null;
+}
+
 export function laneChannelId(nodeId: string): string {
   return `n:${nodeId}`;
 }
@@ -149,11 +236,13 @@ export function laneSoundId(nodeId: string): string {
 /** Node types this compiler lowers; later layers add theirs. */
 const COMPILED_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   "station",
+  "deviceIn",
   "filter",
   "pan",
   "gain",
   "merge",
   "speakers",
+  "deviceOut",
 ]);
 
 function isCompiled(type: NodeType): boolean {
@@ -451,6 +540,7 @@ class LaneLowerer {
     this.nodes.push(id);
     switch (node.type) {
       case "station":
+      case "deviceIn":
         return trim;
       case "gain":
         return { ...trim, gain: trim.gain * dbToGain(node.data.gainDb) };
@@ -909,7 +999,7 @@ function planKeys({
     if (
       to.kind !== "sidechain" ||
       typeof lane !== "string" ||
-      !(station && isStationLive(station)) ||
+      !(station && isSourceLive(station)) ||
       // The key the validator flagged stays unkeyed, so the badge is honest.
       extraKeys.has(edge.target) ||
       !(target && isKeyable(target))
@@ -947,7 +1037,7 @@ type LoweredLane = {
   exits: EdgePlan[];
 };
 
-/** Lowers one station lane; a lowering error silences it and is reported. */
+/** Lowers one source's lane; a lowering error silences it and is reported. */
 function lowerLane(
   station: GraphNode,
   prepared: Prepared,
@@ -1019,7 +1109,10 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   const prepared = prepare(graph, env);
   const sinks = new Map<string, SinkPlan>();
   for (const node of prepared.graph.nodes) {
-    if (getNodeDefinition(node.type).category === "output") {
+    if (node.type === "deviceOut") {
+      const { deviceId, muted } = node.data;
+      sinks.set(node.id, { deviceId, id: node.id, muted, type: node.type });
+    } else if (getNodeDefinition(node.type).category === "output") {
       sinks.set(node.id, { id: node.id, type: node.type });
     }
   }
@@ -1031,9 +1124,11 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   const edges = new Map<string, EdgePlan>();
   let monitoringChannels = 0;
   for (const node of prepared.graph.nodes) {
-    // An empty Station is a search slot and a hidden one is disabled: no
-    // lane, but their cables survive.
-    if (!isStationLive(node)) {
+    // An empty Station is a search slot, a hidden one is disabled, and an
+    // Audio input with no device has nothing to capture: no lane, but
+    // their cables survive.
+    const live = laneSourceOf(node);
+    if (!live) {
       continue;
     }
     const lowered = lowerLane(
@@ -1054,12 +1149,13 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       filter: lowered.lowerer.filter,
       id: node.id,
       layoutSignature: layoutSignature(effects),
-      muted: node.data.muted,
+      muted: live.muted,
       nodes: lowered.lowerer.nodes,
       pan: lowered.lowerer.pan,
-      radio: node.data.radio,
+      radio: live.radio,
       soundId: laneSoundId(node.id),
-      volume: node.data.volume,
+      source: live.source,
+      volume: live.volume,
     });
     for (const edge of lowered.exits) {
       edges.set(edge.id, edge);
@@ -1123,8 +1219,11 @@ function effectsById(
   return into;
 }
 
-/** Why a Station has no lane to key from, or null when it has one. */
+/** Why a source has no lane to key from, or null when it has one. */
 function silentStation(node: GraphNode | undefined): string | null {
+  if (node?.type === "deviceIn" && !isDeviceInLive(node)) {
+    return "Pick the input's device first";
+  }
   if (node?.type !== "station" || isStationLive(node)) {
     return null;
   }

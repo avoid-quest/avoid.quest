@@ -370,3 +370,45 @@ describe("diff", () => {
     expect(types(diff(keyed(false), keyed(true)))).toEqual(["setLaneEffects"]);
   });
 });
+
+describe("diff: audio inputs", () => {
+  function mic(data: Record<string, unknown> = {}) {
+    return plan(
+      [node("mic", "deviceIn", { deviceId: "usb-mic", ...data }), speakers],
+      [audio("mic", "speakers")]
+    );
+  }
+
+  test("new channels switch live, without a new sound", () => {
+    const ops = diff(mic(), mic({ channelSelection: { left: 1, right: 1 } }));
+
+    expect(ops).toEqual([
+      {
+        id: "mic",
+        param: "channelSelection",
+        target: "lane",
+        type: "setParam",
+        value: { left: 1, right: 1 },
+      },
+    ]);
+  });
+
+  test("a new device or echo cancellation starts a new capture", () => {
+    expect(types(diff(mic(), mic({ deviceId: "line-in" })))).toEqual([
+      "removeEdge",
+      "removeLane",
+      "addLane",
+      "addEdge",
+    ]);
+    expect(types(diff(mic(), mic({ echoCancellation: true })))).toEqual([
+      "removeEdge",
+      "removeLane",
+      "addLane",
+      "addEdge",
+    ]);
+  });
+
+  test("a relabelled device keeps its capture", () => {
+    expect(diff(mic(), mic({ deviceLabel: "Desk mic" }))).toEqual([]);
+  });
+});

@@ -467,6 +467,66 @@ describe("NodeCanvas: dragging a cable", () => {
       toast.mockRestore();
     }
   });
+  test("an Audio input draws only an audio out, an Output device only an audio in, and neither takes the wrong cable", async () => {
+    const view = mountGraph(
+      schema.nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          station("kexp"),
+          {
+            data: { deviceId: "mic", deviceLabel: "Desk mic" },
+            id: "mic",
+            position: at,
+            type: "deviceIn",
+          },
+          {
+            data: { deviceId: "usb", deviceLabel: "USB interface" },
+            id: "desk",
+            position: at,
+            type: "deviceOut",
+          },
+          { data: {}, id: "speakers", position: at, type: "speakers" },
+        ],
+        version: 1,
+      })
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const handles = (node: string) =>
+      [
+        ...view.container.querySelectorAll(
+          `.react-flow__handle[data-nodeid="${node}"]`
+        ),
+      ].map((element) => element.getAttribute("data-handleid"));
+
+    expect(handles("mic")).toEqual(["out:audio:main"]);
+    expect(handles("desk")).toEqual(["in:audio:main"]);
+    expect(
+      view.container.querySelector('.react-flow__node[data-id="mic"]')
+        ?.textContent
+    ).toContain("Desk mic");
+
+    const toast = spyOn(sonner, "toast");
+    try {
+      const out = view.container.querySelector(
+        '.react-flow__handle[data-nodeid="kexp"][data-handleid="out:audio:main"]'
+      ) as HTMLElement;
+      fireEvent.mouseDown(out, { button: 0, clientX: 0, clientY: 0 });
+      const mic = view.container.querySelector(
+        '.react-flow__node[data-id="mic"]'
+      );
+      move(-5000, mic);
+      release(mic);
+      expect(toast.mock.calls).toEqual([
+        ["An Audio input makes its own sound and takes no audio in"],
+      ]);
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
   test("a drop on a port on the cable's own side takes the node's one fitting port", async () => {
     const { port } = await mountPatch();
     const toast = spyOn(sonner, "toast");

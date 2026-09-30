@@ -74,7 +74,7 @@ carries the four universal wrapper params: enabled, dryWet, inputGain and output
 |---|---|---|---|---|---|---|
 | Source | Station | control: volume, pan, station | audio; control: song-change (pulse), title-hash (v2) | radio ref (snapshot), volume, muted, play | A saved or session station as a lane: one managed sound through `createManagedSound` (`apps/radio/src/lib/playback-actions-shared.ts:85-104`). **Its empty state is the search**: with no station, the body is an inline `SearchField`, and the chosen result fills the slot (a session radio keeps the green `#00d084/40` stripe; session radios are tab-scoped, `apps/radio/src/lib/collections/session-radios.ts:14-37`). There is no separate Search node | v1 |
 | Source | File | control: volume | audio | file picker, loop | Local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`). Restore skips local files (`apps/radio/src/lib/managed-playback-internals.ts:77-110`), so after a reload the node shows "Re-pick file" | v2 |
-| Source | Mic / Device in | none | audio | device, channel select (1 or 2), monitor on or off | `createDeviceSource` (`apps/radio/src/lib/audio/playback/device-source.ts:581`) via `AudioManager.playDeviceSound` (`audio-manager.ts:364`), getUserMedia → splitter/merger (`device-source.ts:257-308,445-476`). Realtime path, so it skips the main delay (`apps/radio/src/lib/audio/routing/browser-output-adapter.ts:13-42`) | v2 |
+| Source | Audio input (`deviceIn`, DJ's word) | none | audio | device, channel pair of the first 2 channels, echo cancellation, volume, mute, Go live | `createDeviceSource` (`apps/radio/src/lib/audio/playback/device-source.ts:581`) via `AudioManager.playDeviceSound`, getUserMedia → splitter/merger. The start is DJ's own, shared as `apps/radio/src/lib/device-input-playback.ts` (`startDeviceInput`: `playDeviceSound(soundId, deviceId, { echoCancellation })`, then `setDeviceChannelSelection`). An input with no device has no lane, like an empty Station. Its channel carries DJ's device-input radio (`dj-library-sources.ts`), and restore skips it (`isRestorableRadio`), so a reload never opens the mic: only Go live does. Realtime path, so it skips the main delay (`apps/radio/src/lib/audio/routing/browser-output-adapter.ts:39-42`). Not a stream, so the playing budget ignores it. Its body: Allow microphone (a gesture), "Microphone blocked…", the device select with Refresh, the channel select, "Unplugged: plug it back in or pick another" (the lane pauses), Off / Live with Go live and Mute, and while it reaches an output an amber "Use headphones: a mic into speakers can howl" with an Echo cancellation switch. It is never wired on its own when added | v1 |
 | Source | Platform track | control: volume | audio | URL (YouTube, SoundCloud or Bandcamp), loop or stop at end | Resolved to an HTMLAudioElement through `apps/radio/src/lib/dj-platform-stream-port.ts`. Today `validateRadioForMode` blocks these outside DJ (`apps/radio/src/lib/external-url/utils.ts:224-250`); needs an owner decision (§12) | later |
 | Source | Static | control: level | audio | colour (white or pink), bandwidth | Looping noise `AudioBufferSourceNode` → Biquad bandpass. Native and cheap on Safari. Used by the Dial and the roulette bridge | v2 |
 
@@ -152,7 +152,7 @@ the lane's `EffectConfig` tree. Type ids come from
 | Speakers | audio ×N | none | Play all / Pause all (N), master volume and mute, meter | Main bus through `OutputRouting.connectMain` (`apps/radio/src/lib/output-routing.ts:610-624`). Its gain is session `masterVolume`, applied as the global volume (`applySessionMasterVolume`, `apps/radio/src/lib/playback-actions-shared.ts:71-76`). Exactly one per graph | v1 |
 | Scope | audio | none | mode (level, spectrum), freeze | MeterService tap on any bus or lane (`apps/radio/src/lib/audio/manager/meter-service.ts:44-82`). Spectrum can later read the compatibility `ANALYSIS_DATA` (`processor.ts:333`), which nothing consumes today | v2 |
 | Headphones (CUE) | audio | none | level | `registerCueDeck("node:<id>", tap)` (`apps/radio/src/lib/output-routing.ts:592-608`). Hidden where setSinkId is missing | v2 |
-| Device out | audio | none | device | MediaStreamDestination + `<audio>.setSinkId`, the same pattern as the CUE sink (`apps/radio/src/lib/audio/routing/browser-output-adapter.ts:141-150`). Hidden unless `'setSinkId' in AudioContext.prototype` (`apps/radio/src/lib/audio/utils.ts:11-16`) | v2 |
+| Output device (`deviceOut`) | audio ×N | none | device, mute | One more output beside Speakers: `apps/radio/src/lib/audio/routing/node-device-sinks.ts` builds one GainNode → MediaStreamDestination → `<audio>.setSinkId(deviceId)` per node, the CUE sink's pattern (`browser-output-adapter.ts:129-156`), when a send first connects (inside a play). Not sample-aligned with Speakers, and the main delay does not apply. One node a device: a second on the same device is refused ("This output already has a module"). With no device picked its cables stay silent. Where it can't play, its cables play through Speakers and its body says so: "This browser can't choose an output, playing through Speakers" (no `setSinkId`), "Unplugged, playing through Speakers", or the `setSinkId` error. "Same device as Speakers" when it names the main output setting. The palette offers one per listed output, none where `isSinkIdSupported()` is false | v1 |
 | Recorder | audio | none | arm, format (webm/opus, or mp4 on Safari), max minutes | MediaStreamDestination → MediaRecorder → download. New code: nothing in `src` uses MediaRecorder today | v2 |
 
 ## 4. Wacky features
@@ -278,7 +278,11 @@ There are two engine changes, both additive:
    `this.output.connectMain`. The node engine registers a connector per lane that wires
    `nodes.gain` → the lane's stable `laneOut` GainNode inside `NodeBusGraph`. That connection
    happens once per sound. After it, every topology change happens downstream in
-   `NodeBusGraph`, so the audio-manager, DJ and Single paths are untouched.
+   `NodeBusGraph`, so the audio-manager, DJ and Single paths are untouched. As built
+   (`node-lane-outputs.ts`), laneOut carries only the layout duck and fans out into one send
+   GainNode per output the lane reaches: each send's gain is the sum of the lane's unmuted
+   cables into that output. The Speakers send goes to `connectMain`, an Output device's to
+   its device sink, or to `connectMain` while that sink can't play.
 2. **Bus effects (PR 5).** Bus FX cannot go through `channelEffects`: its `desiredState`
    throws when no playback channel exists (`apps/radio/src/lib/channel-effects.ts:131-136`),
    and a bus is not a channel. `EffectsController.connectGraph` is soundId-keyed and accepts a
@@ -368,8 +372,10 @@ chains, with params excluded.
 - **Limits.** `max` per port is enforced by the validator ("This input takes one cable",
   "This input is full (8 cables)") and mirrored on each handle: a port counts its cables
   with `useNodeConnections` and sets `isConnectableStart`/`isConnectableEnd`, which React
-  Flow 12.12 takes as booleans only. Speakers is unique, and each lane allows at most one
-  Filter, one Pan and one keyed FX.
+  Flow 12.12 takes as booleans only. Speakers is unique, an Output device is unique per
+  device ("This output already has a module", `deviceOutVerdict`, which the palette and the
+  node's device select also ask), and each lane allows at most one Filter, one Pan and one
+  keyed FX.
 - **Cycles.** Tarjan SCC over audio edges. Every non-trivial SCC must contain at least one
   Loop node; otherwise the connection is refused with "That would feed the sound back into
   itself" (Loop ships later). Web Audio silences delay-free cycles, and the openDAW tree
@@ -404,7 +410,8 @@ chains, with params excluded.
   | Native LFOs | 8 | 8 |
   | Edges | 64 | 64 |
 
-  Playing sources are the ones that cost a decoder, hls.js and a worklet. Play all keeps
+  Playing sources are the ones that cost a decoder, hls.js and a worklet; a live Audio input
+  is none of those, so it doesn't count. Play all keeps
   Multiple's at-most-3-concurrent starts (`apps/radio/src/lib/multiple-playback.ts:80,87-113`).
 
 ### 5.5 Incremental reconciliation
@@ -420,7 +427,7 @@ microtask batch per store commit:
 | Edge add | `connect(gain = 0)` then ramp up | 20 ms fade-in |
 | Edge remove | ramp to 0, then `disconnect` when a `ConstantSourceNode` ends | The same teardown pattern as `apps/radio/src/lib/audio/manager/effects-backend-router.ts:1-90` |
 | Rewire (drag a cable end) | new edge fades in while the old fades out, equal-power | Cable swaps are inaudible |
-| Lane add or remove | `createManagedSound` paused / `cleanupManagedChannel` after a 150 ms fade | Same as Multiple (`multiple-playback.ts:434-461`) |
+| Lane add or remove | `createManagedSound` paused / `cleanupManagedChannel` after a 150 ms fade | Same as Multiple (`multiple-playback.ts:434-461`). An Audio input's sound is made only at Go live, and a new device or echo cancellation is a new capture (remove, then add, still live); its channel pair switches live (`setParam channelSelection`) |
 | Bus add or remove | build silent, then ramp; the reverse to remove | Bus FX go through the router lane crossfade |
 | Undo or template load | a plain diff against the current plan | Same ops, so no rebuild |
 
@@ -453,12 +460,13 @@ Play state, error and now-playing come from `playbackRuntimeStore`
 |---|---|---|
 | Station, File, Platform | play error or CORS silence | InlineError on the node and `PLAY_ERROR` reported with mode `"node"` (`multiple-playback.ts:282-293`). The lane stays connected but silent, and the rest of the patch plays on |
 | Station | its session radio vanished at init | The node becomes an empty Station slot (the SearchField state). Its lane is released, **its cables survive**, and picking a station refills it |
-| Mic | permission denied or device gone | Node shows an "Allow mic" button (a user gesture), and its downstream edges stay silent |
+| Audio input | permission prompt, denied, or device gone | "Allow microphone" (a user gesture, `getUserMedia`); "Microphone blocked. Allow it in your browser settings." with no Go live; or "Unplugged: plug it back in or pick another" when `devicechange` drops the device, and the lane pauses. Plugged back in, the device is offered again |
 | FX (lane) | worklet unavailable | The existing dry fallback filter→dest (`audio-manager-graph.ts:148-187`), plus a `bypassed` badge |
 | FX (lane) | official runtime cap exceeded | The controller falls back to compatibility, and the badge flips to `compat` |
 | Bus FX | same | Bus switches to its router bypass lane, and the badge shows |
 | Loop | runaway feedback | Feedback is clamped to ≤ 0.95, with a DC-block highpass and soft-clip `WaveShaperNode` inside the loop. If loop RMS stays above -1 dBFS for 2 s, the guard ramps feedback to 0.5 and flashes the node in `--destructive` |
-| Device out, CUE | `setSinkId` rejects | Node shows the error, and its input edge is also routed to Speakers so nothing goes silent unexpectedly |
+| Output device | no `setSinkId`, `setSinkId` rejects, or device unplugged | The node shows why, and its sends reroute to Speakers (`connectMain`) so nothing goes silent unexpectedly. A device back after hot-plug is tried again |
+| CUE | `setSinkId` rejects | Node shows the error, and its input edge is also routed to Speakers |
 | Recorder | MediaRecorder error | Stops and offers the partial blob. An unsupported mime type means the node is not offered |
 | LFO, param stream | target removed | Modulation edge auto-removed, with an undoable toast |
 | Control engine | throws | Bindings freeze at their last value; audio keeps playing |
@@ -470,7 +478,8 @@ Play state, error and now-playing come from `playbackRuntimeStore`
 - Treat the official openDAW runtime as unavailable. The COEP-credentialless support is an
   unverified assumption, so every FX lane or bus is one AudioWorkletNode, and that is what the
   mobile budget accounts for.
-- Device out and Headphones are hidden where setSinkId is missing.
+- Output device and Headphones are hidden where setSinkId is missing. A stored Output device
+  says so and plays through Speakers.
 - Context state `interrupted` shows a Resume button on Speakers.
 - Play all uses Multiple's proven path unchanged in the first Node PR.
 - Node mode always uses `audio-graph` output. Native output is Single-only
@@ -917,8 +926,9 @@ isolation).
    the Dial (Dial template becomes the new-user default). Station song-change and title-hash
    outputs with the Title trigger. Station roulette and Radio Dérive through Static. Weather
    front. Stage pinned macros and the desktop Stage strip with its cable overlay.
-7. **More sources and outputs.** Mic/Device in (with a realtime-bus rule, a badge and the
-   Talk-over template), File, Recorder, Device out, Headphones (CUE), node-patches collection,
+7. **More sources and outputs.** Audio input and Output device shipped early, in the
+   io-nodes layer (see §3). Still here: the Talk-over template, File, Recorder, Headphones
+   (CUE), node-patches collection,
    export/import, and share URL.
 8. **Later.**
    - A new `EffectsController` method for dip-free structural swaps: a `graph` lane in

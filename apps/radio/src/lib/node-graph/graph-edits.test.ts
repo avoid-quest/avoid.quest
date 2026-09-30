@@ -14,6 +14,7 @@ import {
   removeNodes,
   removeNodesHealed,
   removeSelection,
+  setDeviceParams,
   setEffectParams,
   setNativeParams,
   setStationRadio,
@@ -741,6 +742,68 @@ describe("toggleBypass", () => {
     expect(effectIn(all, "delay").enabled).toBe(false);
 
     expect(toggleBypass(start, ["src-a", SPEAKERS_NODE_ID])).toBe(start);
+  });
+});
+
+describe("setDeviceParams", () => {
+  const withDevices = () =>
+    addPaletteNode(
+      addPaletteNode(patch(radio("a")), {
+        id: "deviceIn",
+        kind: "node",
+        name: "Audio input",
+        section: "sources",
+        type: "deviceIn",
+      }).graph,
+      {
+        id: "deviceOut",
+        kind: "node",
+        name: "Output device",
+        section: "outputs",
+        type: "deviceOut",
+      }
+    ).graph;
+
+  test("sets an Audio input's device and channels, and an Output device's device", () => {
+    let graph = setDeviceParams(withDevices(), "deviceIn", {
+      channelSelection: { left: 1, right: 1 },
+      deviceId: "mic",
+      deviceLabel: "Desk mic",
+    });
+    graph = setDeviceParams(graph, "deviceOut", {
+      // An Output device has no channels: ignored.
+      channelSelection: { left: 0, right: 0 },
+      deviceId: "usb",
+      deviceLabel: "USB interface",
+    });
+
+    expect(graph.nodes.find((node) => node.id === "deviceIn")?.data).toEqual({
+      channelSelection: { left: 1, right: 1 },
+      deviceId: "mic",
+      deviceLabel: "Desk mic",
+      echoCancellation: false,
+      muted: false,
+      volume: 1,
+    });
+    expect(graph.nodes.find((node) => node.id === "deviceOut")?.data).toEqual({
+      deviceId: "usb",
+      deviceLabel: "USB interface",
+      muted: false,
+    });
+  });
+
+  test("a copied Output device picks its own device", () => {
+    const start = setDeviceParams(withDevices(), "deviceOut", {
+      deviceId: "usb",
+      deviceLabel: "USB interface",
+    });
+
+    const { graph, nodeIds } = duplicateNodes(start, ["deviceOut"]);
+
+    expect(
+      graph.nodes.find((node) => node.id === nodeIds[0])?.data
+    ).toMatchObject({ deviceId: null, deviceLabel: "" });
+    expect(validate(graph)).toEqual([]);
   });
 });
 

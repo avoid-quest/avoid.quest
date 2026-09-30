@@ -39,6 +39,7 @@ import {
 } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { AudioInputNode } from "./audio-input-node";
 import { BranchEdge } from "./branch-edge";
 import { useCableSurgeryShortcuts } from "./cable-surgery";
 import {
@@ -81,6 +82,7 @@ import {
   type PaletteRequest,
 } from "./node-palette";
 import { FlowPortsRoot } from "./node-port";
+import { OutputDeviceNode } from "./output-device-node";
 import { SpeakersNode } from "./speakers-node";
 import { SplitNode } from "./split-nodes";
 import { StationNode } from "./station-node";
@@ -89,14 +91,16 @@ type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 const nodeTypes = {
-  // Every drawn effect shares one node, and every split another; Station
-  // and Speakers come last.
+  // Every drawn effect shares one node, and every split another; sources
+  // and outputs come last.
   ...Object.fromEntries(
     DRAWN_NODE_TYPES.filter(isEffectNodeType).map((type) => [
       type,
       isEffectContainerType(type) ? SplitNode : EffectNode,
     ])
   ),
+  deviceIn: AudioInputNode,
+  deviceOut: OutputDeviceNode,
   filter: NativeStripNode,
   gain: NativeStripNode,
   merge: MergeNode,

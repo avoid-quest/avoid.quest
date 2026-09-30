@@ -59,14 +59,29 @@ export class FakeGainNode {
   }
 }
 
+/** A MediaStreamDestination: a node with a stream whose tracks stop. */
+export class FakeMediaStreamDestination extends FakeGainNode {
+  readonly stopped: boolean[] = [];
+  readonly stream = {
+    getTracks: () => [{ stop: () => this.stopped.push(true) }],
+  };
+}
+
 export class FakeAudioContext {
   currentTime = 0;
   readonly gains: FakeGainNode[] = [];
+  readonly destinations: FakeMediaStreamDestination[] = [];
 
   createGain(): GainNode {
     const gain = new FakeGainNode(this);
     this.gains.push(gain);
     return gain as unknown as GainNode;
+  }
+
+  createMediaStreamDestination(): MediaStreamAudioDestinationNode {
+    const destination = new FakeMediaStreamDestination(this);
+    this.destinations.push(destination);
+    return destination as unknown as MediaStreamAudioDestinationNode;
   }
 }
 

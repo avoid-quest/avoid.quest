@@ -157,18 +157,20 @@ const OTHER_DEFINITIONS: Record<
     ],
     ship: "v2",
   },
+  // DJ's word for a mic or line-in; its lane is a live capture, not a stream.
   deviceIn: {
     category: "source",
-    name: "Mic",
+    name: "Audio input",
     ports: [audioOut()],
-    ship: "v2",
+    ship: "v1",
     source: true,
   },
+  // One more place a lane can play, beside Speakers, through setSinkId.
   deviceOut: {
     category: "output",
-    name: "Device out",
-    ports: [audioIn()],
-    ship: "v2",
+    name: "Output device",
+    ports: [audioIn("main", "In", UNLIMITED)],
+    ship: "v1",
   },
   dial: {
     category: "routing",

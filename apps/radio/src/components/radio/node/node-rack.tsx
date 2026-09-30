@@ -13,8 +13,10 @@ import {
   type EnginePlan,
   type LanePlan,
 } from "@/lib/node-graph/compile";
+import { nodeLabel } from "@/lib/node-graph/describe";
 import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
 import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
+import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { EmptyHint } from "../empty-hint";
 import { InlineError } from "../inline-error";
 import { RadioItemActions } from "../radio-item-actions";
@@ -24,6 +26,7 @@ import {
   stationRowClassName,
 } from "../station-row";
 import { BackendBadge } from "./backend-badge";
+import { inputFeedback } from "./flow-elements";
 import { useNodeActions } from "./node-actions";
 import { isInspectable } from "./node-inspector";
 import { type NodeLaneControls, NodeSourceRow } from "./node-source-row";
@@ -34,10 +37,14 @@ const UNWIRED_GROUP = "unwired";
 
 /**
  * Lanes grouped by where their audio goes, one row per lane: every lane
- * that reaches the same outputs shares a group, and a lane with no cable
- * out is listed as not connected (it plays silent).
+ * that reaches the same outputs shares a group, named for them (Speakers,
+ * an Output device by its device), and a lane with no cable out is listed
+ * as not connected (it plays silent).
  */
-function groupLanes(plan: EnginePlan): RackGroup[] {
+function groupLanes(
+  plan: EnginePlan,
+  nodesById: ReadonlyMap<string, GraphNode>
+): RackGroup[] {
   const groups = new Map<string, RackGroup>();
   for (const lane of plan.lanes.values()) {
     const sinkIds = [
@@ -50,7 +57,7 @@ function groupLanes(plan: EnginePlan): RackGroup[] {
     const key = sinkIds.length > 0 ? sinkIds.join(" ") : UNWIRED_GROUP;
     const names = sinkIds.map((id) => {
       const sink = plan.sinks.get(id);
-      return sink ? getNodeDefinition(sink.type).name : id;
+      return sink ? nodeLabel(nodesById.get(id)) : id;
     });
     const group = groups.get(key) ?? {
       key,
@@ -215,8 +222,8 @@ export function NodeRack({
   const actions = useNodeActions();
   const [detectedEnv] = useState(detectNodePlaybackEnv);
   const plan = compile(graph, env ?? detectedEnv);
-  const groups = groupLanes(plan);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const groups = groupLanes(plan, nodesById);
   const laneNames = new Map(
     [...plan.lanes.values()].map((lane) => [lane.channelId, lane.radio.name])
   );
@@ -240,19 +247,24 @@ export function NodeRack({
         >
           {group.lanes.map((lane) => {
             const radio = lane.radio as Radio;
+            // An Audio input is no saved station: it has no station menu.
+            const isInput = isDeviceInputMetadata(radio.platformMetadata);
             return (
               <li key={lane.id}>
                 <NodeSourceRow
                   actions={
-                    <RadioItemActions
-                      onDelete={actions.handleDeleteRadio}
-                      onEdit={actions.handleEditRadio}
-                      onSave={actions.handleSaveSessionRadio}
-                      onToggle={actions.handleToggleRadio}
-                      radio={radio}
-                    />
+                    isInput ? null : (
+                      <RadioItemActions
+                        onDelete={actions.handleDeleteRadio}
+                        onEdit={actions.handleEditRadio}
+                        onSave={actions.handleSaveSessionRadio}
+                        onToggle={actions.handleToggleRadio}
+                        radio={radio}
+                      />
+                    )
                   }
                   controls={controls}
+                  feedback={inputFeedback(graph, lane.id)}
                   muted={lane.muted}
                   nodeId={lane.id}
                   radio={radio}

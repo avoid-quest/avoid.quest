@@ -34,6 +34,7 @@ export type IssueCode =
   | "duplicate-edge"
   | "port-max"
   | "one-speakers"
+  | "one-device-out"
   | "sidechain-source"
   | "sidechain-target"
   | "lane-filter"
@@ -191,8 +192,12 @@ function definitionOf(node: GraphNode): NodeDefinition {
   return getNodeDefinition(node.type);
 }
 
+/** Why a second Output device can't play to a device one already does. */
+export const ONE_DEVICE_OUT_MESSAGE = "This output already has a module";
+
 function checkNodes(context: Context): void {
   let speakers = 0;
+  const devices = new Set<string>();
   for (const node of context.graph.nodes) {
     const definition = definitionOf(node);
     if (!isShipped(definition.ship, context.release)) {
@@ -208,6 +213,12 @@ function checkNodes(context: Context): void {
       if (speakers > 1) {
         nodeIssue(context, node, "one-speakers", "A patch has one Speakers");
       }
+    }
+    if (node.type === "deviceOut" && node.data.deviceId !== null) {
+      if (devices.has(node.data.deviceId)) {
+        nodeIssue(context, node, "one-device-out", ONE_DEVICE_OUT_MESSAGE);
+      }
+      devices.add(node.data.deviceId);
     }
   }
 }
@@ -290,9 +301,10 @@ function endIssue(
   const into = definitionOf(target);
   const kind = parseHandleId(targetHandle)?.kind;
   if (into.source && (kind === "audio" || kind === "sidechain")) {
+    const article = STARTS_WITH_VOWEL.test(into.name) ? "An" : "A";
     return {
       code: "no-audio-in",
-      message: `A ${into.name} makes its own sound and takes no audio in`,
+      message: `${article} ${into.name} makes its own sound and takes no audio in`,
     };
   }
   const outOf = definitionOf(source);
@@ -304,6 +316,9 @@ function endIssue(
   }
   return null;
 }
+
+/** "An Audio input", but "A Station". */
+const STARTS_WITH_VOWEL = /^[AEIOU]/;
 
 /** "A module can't feed itself": the one exception is a Loop's own delay. */
 export const SELF_LOOP_MESSAGE = "A module can't feed itself";
@@ -1133,6 +1148,27 @@ export function validateConnection(
 export type Verdict =
   | { ok: true }
   | { ok: false; code: IssueCode; message: string };
+
+/**
+ * Whether Output device `nodeId` (or a new one) may play to `deviceId`:
+ * refused when another Output device already does. The palette and the
+ * node's device select ask here, as the validator would.
+ */
+export function deviceOutVerdict(
+  graph: Pick<NodeGraph, "nodes">,
+  deviceId: string,
+  nodeId: string | null = null
+): Verdict {
+  const taken = graph.nodes.some(
+    (node) =>
+      node.type === "deviceOut" &&
+      node.id !== nodeId &&
+      node.data.deviceId === deviceId
+  );
+  return taken
+    ? { code: "one-device-out", message: ONE_DEVICE_OUT_MESSAGE, ok: false }
+    : { ok: true };
+}
 
 /** Why a cable dragged from an output can't end on another output. */
 export const SAME_SIDE_MESSAGE = "A cable runs from an output to an input";

@@ -21,6 +21,7 @@ import {
   type PickerSection,
 } from "@/components/audio/effect-picker";
 import { getEffectMetadata, type Radio } from "@/lib/audio";
+import { isSinkIdSupported } from "@/lib/audio/utils";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import { swapEffect } from "@/lib/node-graph/graph-edits";
 import {
@@ -42,6 +43,7 @@ import { formatLocation } from "../station-row";
 import { effectNodeWidth } from "./effect-node";
 import { type NativeNodeType, nativeNodeWidth } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
+import { useNodeDevices } from "./use-node-devices";
 
 /** Where the palette was opened from, and so where its pick lands. */
 export type PaletteRequest = {
@@ -136,6 +138,8 @@ export function usePaletteShortcut(onOpen: () => void) {
 }
 
 const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
+  deviceIn: "A mic or line-in; pick its device on it",
+  deviceOut: "Another output beside Speakers; pick its device on it",
   filter: "The station's own low- or high-pass, right after it",
   frequencySplit: "Lows, mids and highs down their own branches",
   fxComposite:
@@ -179,12 +183,17 @@ function toItem(entry: PaletteEntry): PaletteItem {
       name: entry.name,
     };
   }
-  return {
+  let description = NODE_DESCRIPTIONS[entry.type];
+  if (entry.radio) {
     // Where a station is keeps the cards one line; its blurb would not.
-    description: entry.radio
-      ? formatLocation(entry.radio.placeTitle, entry.radio.countryTitle) ||
-        "Station"
-      : NODE_DESCRIPTIONS[entry.type],
+    description =
+      formatLocation(entry.radio.placeTitle, entry.radio.countryTitle) ||
+      "Station";
+  } else if (entry.device) {
+    description = entry.type === "deviceIn" ? "Audio input" : "Output device";
+  }
+  return {
+    description,
     entry,
     icon: nodeIcon(entry.type),
     id: entry.id,
@@ -254,7 +263,9 @@ function paletteCopy(request: PaletteRequest | null) {
 
 /**
  * The add-node palette: Sources, FX, Routing, Outputs and Templates in the effect
- * picker's search-and-cards body. Picking a node adds it as one undo step,
+ * picker's search-and-cards body. Sources list each audio input and Outputs
+ * each output device the browser lists, the latter only where it can
+ * choose an output. Picking a node adds it as one undo step,
  * wired into a dropped cable if there was one, inserted into a cable picked
  * with I, else a Station to Speakers. Opened for "Swap effect…", it lists
  * the effects an FX can become and swaps it in place.
@@ -271,6 +282,8 @@ export function NodePalette({
 }: NodePaletteProps) {
   const graph = useNodeGraph(store);
   const open = request !== null && graph !== null;
+  // Each input and output the browser lists gets its own entry.
+  const devices = useNodeDevices({ enabled: open });
   const from = request?.from ?? null;
   const into = request?.into ?? null;
   const swap = request?.swap ?? null;
@@ -279,9 +292,11 @@ export function NodePalette({
       ? toSections(
           paletteEntries(graph, {
             ...validateOptions,
+            devices: { inputs: devices.inputs, outputs: devices.outputs },
             from,
             into,
             radios,
+            sinkSelection: isSinkIdSupported(),
             swap,
           })
         )

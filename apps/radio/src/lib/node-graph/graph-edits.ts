@@ -457,6 +457,43 @@ export function setNativeParams(
   return changed ? { ...graph, nodes } : graph;
 }
 
+type DeviceInData = Extract<GraphNode, { type: "deviceIn" }>["data"];
+type DeviceOutData = Extract<GraphNode, { type: "deviceOut" }>["data"];
+
+/** What an Audio input or Output device body can change. */
+export type DeviceParams = Partial<
+  Omit<DeviceInData, "muted" | "volume"> & DeviceOutData
+>;
+
+/**
+ * Merges `patch` into an Audio input's or Output device's data, e.g. the
+ * device picked or its channels. Fields the node doesn't have are ignored.
+ */
+export function setDeviceParams(
+  graph: NodeGraph,
+  nodeId: string,
+  patch: DeviceParams
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node) => {
+    if (
+      node.id !== nodeId ||
+      !(node.type === "deviceIn" || node.type === "deviceOut")
+    ) {
+      return node;
+    }
+    const own = Object.fromEntries(
+      Object.entries(patch).filter(([key]) => key in node.data)
+    );
+    if (holds(node.data, own)) {
+      return node;
+    }
+    changed = true;
+    return { ...node, data: { ...node.data, ...own } } as GraphNode;
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
 /** An edit that can be refused, with the reason a toast shows. */
 export type GraphEdit =
   | { ok: true; graph: NodeGraph }
@@ -885,6 +922,15 @@ export function duplicateNodes(
       x: node.position.x + DUPLICATE_OFFSET_PX,
       y: node.position.y + DUPLICATE_OFFSET_PX,
     };
+    if (node.type === "deviceOut") {
+      // One Output device a device: the copy picks its own.
+      return {
+        ...node,
+        data: { ...node.data, deviceId: null, deviceLabel: "" },
+        id,
+        position,
+      };
+    }
     return isEffectNodeType(node.type)
       ? ({
           ...node,

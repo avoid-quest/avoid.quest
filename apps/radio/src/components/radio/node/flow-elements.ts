@@ -32,13 +32,15 @@ type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 /**
- * The node types the canvas draws today: Station, Speakers, the native
- * strip, every shipped effect (all but Werkstatt) with the splits, and the
- * Merge that closes them.
+ * The node types the canvas draws today: Station and Audio input,
+ * Speakers and Output device, the native strip, every shipped effect (all
+ * but Werkstatt) with the splits, and the Merge that closes them.
  */
 export const DRAWN_NODE_TYPES: readonly NodeType[] = [
   "speakers",
+  "deviceOut",
   "station",
+  "deviceIn",
   "merge",
   ...NATIVE_NODE_TYPES,
   ...EFFECT_NODE_TYPES.filter((type) =>
@@ -125,6 +127,77 @@ export function edgeUnderPointer(
   return null;
 }
 
+/**
+ * Whether `nodeId`'s audio reaches an output (Speakers or an Output
+ * device) along its audio cables: an Audio input that does can howl.
+ */
+export function feedsOutput(
+  graph: Pick<NodeGraph, "nodes" | "edges">,
+  nodeId: string
+): boolean {
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const seen = new Set<string>();
+  const queue = [nodeId];
+  for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    for (const edge of graph.edges) {
+      if (
+        edge.source !== id ||
+        edge.muted ||
+        parseHandleId(edge.targetHandle)?.kind !== "audio"
+      ) {
+        continue;
+      }
+      const target = byId.get(edge.target);
+      if (target && getNodeDefinition(target.type).category === "output") {
+        return true;
+      }
+      queue.push(edge.target);
+    }
+  }
+  return false;
+}
+
+/**
+ * An Audio input's feedback guard for a Stage or Rack row: set while its
+ * audio reaches an output, null otherwise or for any other node.
+ */
+export function inputFeedback(
+  graph: Pick<NodeGraph, "nodes" | "edges"> | null,
+  nodeId: string
+): { echoCancellation: boolean } | null {
+  const node = graph?.nodes.find((entry) => entry.id === nodeId);
+  return graph && node?.type === "deviceIn" && feedsOutput(graph, nodeId)
+    ? { echoCancellation: node.data.echoCancellation }
+    : null;
+}
+
+/** What an Audio input draws: its data, and whether it can howl. */
+export type AudioInputNodeData = Extract<
+  GraphNode,
+  { type: "deviceIn" }
+>["data"] & { feedsOutput: boolean };
+
+/**
+ * What an Output device draws: its data, and the devices other Output
+ * devices already play to, which its select can't pick.
+ */
+export type OutputDeviceNodeData = Extract<
+  GraphNode,
+  { type: "deviceOut" }
+>["data"] & { taken: string[] };
+
+function takenDevices(graph: NodeGraph, nodeId: string): string[] {
+  return graph.nodes.flatMap((node) =>
+    node.type === "deviceOut" && node.id !== nodeId && node.data.deviceId
+      ? [node.data.deviceId]
+      : []
+  );
+}
+
 /** What a Merge node draws: its compiler badge and how many cables it joins. */
 export type MergeNodeData = { role: MergeRole | null; inputs: number };
 
@@ -173,11 +246,30 @@ export function toFlowNodes(
     mergeRoles?: ReadonlyMap<string, MergeRole>;
   }
 ): FlowNode[] {
+  const dataOf = (node: GraphNode) => {
+    if (node.type === "merge") {
+      return mergeData(graph, node, mergeRoles);
+    }
+    if (node.type === "deviceIn") {
+      const data: AudioInputNodeData = {
+        ...node.data,
+        feedsOutput: feedsOutput(graph, node.id),
+      };
+      return data;
+    }
+    if (node.type === "deviceOut") {
+      const data: OutputDeviceNodeData = {
+        ...node.data,
+        taken: takenDevices(graph, node.id),
+      };
+      return data;
+    }
+    return node.data;
+  };
   return graph.nodes.filter(isDrawn).map((node) => ({
     // Named like its cables, so "KEXP, audio module" rather than a bare role.
     ariaLabel: nodeLabel(node),
-    data:
-      node.type === "merge" ? mergeData(graph, node, mergeRoles) : node.data,
+    data: dataOf(node),
     deletable: node.type !== "speakers",
     domAttributes: { "aria-roledescription": "audio module" },
     id: node.id,
@@ -189,8 +281,9 @@ export function toFlowNodes(
 }
 
 /**
- * Nodes carrying a playing Station's audio: each live Station, and every
- * node its audio cables reach through FX, up to the outputs.
+ * Nodes carrying a playing source's audio: each live Station or Audio
+ * input, and every node its audio cables reach through FX, up to the
+ * outputs.
  */
 export function liveNodeIds(
   graph: Pick<NodeGraph, "nodes" | "edges">,
@@ -199,7 +292,9 @@ export function liveNodeIds(
   const live = new Set<string>();
   const queue = graph.nodes
     .filter(
-      (node) => node.type === "station" && liveLanes.has(laneChannelId(node.id))
+      (node) =>
+        (node.type === "station" || node.type === "deviceIn") &&
+        liveLanes.has(laneChannelId(node.id))
     )
     .map((node) => node.id);
   for (let id = queue.pop(); id !== undefined; id = queue.pop()) {

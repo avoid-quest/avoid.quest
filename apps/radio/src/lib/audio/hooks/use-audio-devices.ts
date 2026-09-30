@@ -14,6 +14,11 @@ type PermissionState = "prompt" | "granted" | "denied" | "error";
 type UseAudioDevicesOptions = {
   /** Only load devices when this is true (e.g., when a dialog is open) */
   enabled?: boolean;
+  /**
+   * Also ask the Permissions API where the mic stands, so a blocked mic
+   * reads as denied before anything is requested, and follow its changes.
+   */
+  queryPermission?: boolean;
 };
 
 type UseAudioDevicesReturn = {
@@ -28,7 +33,7 @@ type UseAudioDevicesReturn = {
 export function useAudioDevices(
   options: UseAudioDevicesOptions = {}
 ): UseAudioDevicesReturn {
-  const { enabled = true } = options;
+  const { enabled = true, queryPermission = false } = options;
 
   const [inputDevices, setInputDevices] = useState<AudioDeviceInfo[]>([]);
   const [outputDevices, setOutputDevices] = useState<AudioDeviceInfo[]>([]);
@@ -87,6 +92,44 @@ export function useAudioDevices(
       loadDevices();
     }
   }, [enabled, loadDevices]);
+
+  // Where the mic permission stands, and when the user changes it
+  useEffect(() => {
+    if (!(enabled && queryPermission)) {
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) {
+      return;
+    }
+    let status: PermissionStatus | null = null;
+    let cancelled = false;
+    const apply = () => {
+      if (!status || cancelled) {
+        return;
+      }
+      const { state } = status;
+      if (state === "denied" || state === "granted") {
+        setPermissionState(state);
+      }
+      if (state === "granted") {
+        loadDevices();
+      }
+    };
+    navigator.permissions
+      .query({ name: "microphone" as PermissionName })
+      .then((result) => {
+        status = result;
+        result.addEventListener("change", apply);
+        apply();
+      })
+      .catch(() => {
+        // Some browsers can't query the microphone permission.
+      });
+    return () => {
+      cancelled = true;
+      status?.removeEventListener("change", apply);
+    };
+  }, [enabled, queryPermission, loadDevices]);
 
   // Listen for device changes (hot-plug)
   useEffect(() => {

@@ -495,13 +495,14 @@ function emptyStaleNodeSources(graph: NodeGraph): NodeGraph {
 
 /** Prepares and validates the entire session without writing or collecting models. */
 export function prepareNodeSessionGraph(
-  graph: NodeGraph
+  graph: NodeGraph,
+  masterVolume?: number
 ): PlaybackSessionRecord {
   const nextGraph = emptyStaleNodeSources(graph);
   const session = playbackSessionsCollection.state.get("node");
   if (!session) {
     return playbackSessionsCollection.validateData(
-      buildNodeSessionFromGraph(nextGraph),
+      buildNodeSessionFromGraph(nextGraph, masterVolume),
       "insert"
     );
   }
@@ -519,6 +520,7 @@ export function prepareNodeSessionGraph(
         : null,
       channels,
       graph: nextGraph,
+      masterVolume: masterVolume ?? session.masterVolume,
     },
     "insert"
   );
@@ -529,13 +531,17 @@ export function prepareNodeSessionGraph(
  * channels, in one update, or inserts the session when there is none.
  * Stale session Stations are emptied first. Returns the graph written.
  */
-export function writeNodeSessionGraph(graph: NodeGraph): NodeGraph {
-  const prepared = prepareNodeSessionGraph(graph);
+export function writeNodeSessionGraph(
+  graph: NodeGraph,
+  masterVolume?: number
+): NodeGraph {
+  const prepared = prepareNodeSessionGraph(graph, masterVolume);
   if (playbackSessionsCollection.state.has("node")) {
     updatePlaybackSession("node", (draft) => {
       draft.graph = prepared.graph;
       draft.channels = prepared.channels;
       draft.activeChannelId = prepared.activeChannelId;
+      draft.masterVolume = prepared.masterVolume;
     });
   } else {
     playbackSessionsCollection.insert(prepared);

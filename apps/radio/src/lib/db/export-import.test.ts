@@ -295,6 +295,7 @@ describe("failed imports", () => {
     });
     playbackSessionsCollection.update("node", (draft) => {
       draft.graph = local;
+      draft.masterVolume = 0.2;
     });
     loadNodeGraph(local);
     commitNodeGraph(
@@ -775,6 +776,29 @@ describe("Node patch backups", () => {
     ["merge", mergeImportedData],
     ["replace", replaceImportedData],
   ])(
+    "%s restores the authored master level, including mute",
+    (_label, apply) => {
+      seedLocalPatch();
+      for (const masterVolume of [0, 0.42, 1]) {
+        apply(
+          rawBackup({
+            sessions: {
+              node: {
+                graph: buildNodeGraphFromTemplate("blank"),
+                masterVolume,
+              },
+            },
+          })
+        );
+        expect(getPlaybackSession("node")?.masterVolume).toBe(masterVolume);
+      }
+    }
+  );
+
+  test.each([
+    ["merge", mergeImportedData],
+    ["replace", replaceImportedData],
+  ])(
     "%s imports a Multiple backup as Node with an equivalent patch",
     (_label, apply) => {
       settingsCollection.insert({
@@ -812,6 +836,7 @@ describe("Node patch backups", () => {
         "n:src-nts",
       ]);
       expect(playbackSessionsCollection.state.has("multiple")).toBe(false);
+      expect(session?.masterVolume).toBe(0.5);
     }
   );
 
@@ -842,7 +867,9 @@ describe("Node patch backups", () => {
       version: 1,
       viewport: { x: 12, y: -8, zoom: 0.75 },
     } satisfies NodeGraphInput);
-    playbackSessionsCollection.insert(buildNodeSessionFromGraph(authored));
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromGraph(authored, 0.23)
+    );
     const graph = getPlaybackSession("node")?.graph;
     const json = JSON.stringify(await createDatabaseExport());
 
@@ -855,6 +882,7 @@ describe("Node patch backups", () => {
 
     expect(graph?.nodes.map((node) => node.id)).toContain("room");
     expect(getPlaybackSession("node")?.graph).toEqual(graph);
+    expect(getPlaybackSession("node")?.masterVolume).toBe(0.23);
     expect(
       getPlaybackSession("node")?.channels.map((channel) => [
         channel.id,
@@ -938,6 +966,84 @@ describe("Node patch backups", () => {
     expect(getPlaybackSession("node")?.graph).toEqual(imported);
     expect(undoNodeGraph()).toBe(true);
     expect(nodeStore.state.graph).toBe(local);
+  });
+
+  test.each([
+    ["merge", mergeImportedData],
+    ["replace", replaceImportedData],
+  ])(
+    "%s restores the default level for a legacy graph-only backup",
+    (_label, apply) => {
+      seedLocalPatch();
+      playbackSessionsCollection.update("node", (draft) => {
+        draft.masterVolume = 0.2;
+      });
+
+      apply(
+        rawBackup({
+          sessions: { node: { graph: buildNodeGraphFromTemplate("blank") } },
+        })
+      );
+
+      expect(getPlaybackSession("node")?.masterVolume).toBe(1);
+    }
+  );
+
+  test.each([-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY, "0.3", null])(
+    "an invalid master level %p fails before changing the library, patch or history",
+    (masterVolume) => {
+      const local = seedLocalPatch();
+      loadNodeGraph(local);
+      const { history } = nodeStore.state;
+      const backup = rawBackup({
+        radios: [stationRadio("new")],
+        sessions: {
+          node: { graph: buildNodeGraphFromTemplate("blank"), masterVolume },
+        },
+        settings: { player: { mode: "dj", restoreStateOnLoad: false } },
+      });
+      const log = spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        expect(() => validateImportData(backup)).toThrow(
+          "Invalid Node master volume"
+        );
+        expect(() => mergeImportedData(backup)).toThrow(
+          "Invalid Node master volume"
+        );
+        expect(() => replaceImportedData(backup)).toThrow(
+          "Invalid Node master volume"
+        );
+      } finally {
+        log.mockRestore();
+      }
+
+      expect([...radiosCollection.state.keys()]).toEqual(["kexp"]);
+      expect(getSettings()?.player).toEqual({
+        mode: "single",
+        restoreStateOnLoad: true,
+      });
+      expect(getPlaybackSession("node")?.graph).toEqual(local);
+      expect(getPlaybackSession("node")?.masterVolume).toBe(1);
+      expect(nodeStore.state.graph).toBe(local);
+      expect(nodeStore.state.history).toBe(history);
+    }
+  );
+
+  test("preview identifies patch and Speakers level replacement", () => {
+    seedLocalPatch();
+    expect(
+      previewImportChanges(
+        rawBackup({
+          sessions: {
+            node: {
+              graph: buildNodeGraphFromTemplate("blank"),
+              masterVolume: 0,
+            },
+          },
+        })
+      ).nodePatch
+    ).toEqual({ masterVolume: 0, replacesNewerVersion: false });
+    expect(previewImportChanges(rawBackup({})).nodePatch).toBeUndefined();
   });
 
   const invalidGraphs: [string, unknown, RegExp][] = [

@@ -37,7 +37,7 @@ export type DatabaseExport = {
    * stay untrusted until the import parses them.
    */
   sessions?: {
-    node?: { graph: unknown };
+    node?: { graph: unknown; masterVolume?: number };
     multiple?: unknown;
   };
 };
@@ -59,6 +59,10 @@ export function generateId(): string {
 }
 
 export type ImportPreview = {
+  nodePatch?: {
+    masterVolume: number;
+    replacesNewerVersion: boolean;
+  };
   newRadios: number;
   updatedRadios: number;
   unchangedRadios: number;

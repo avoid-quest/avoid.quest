@@ -12,6 +12,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { HomeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
   autoImportFromUrl,
   hasImportDataInUrl,
@@ -155,6 +156,7 @@ export function ImportPage() {
               </span>
             </div>
           </div>
+          <ImportPatchPreview patch={importPreview.nodePatch} />
         </div>
       </Card>
 

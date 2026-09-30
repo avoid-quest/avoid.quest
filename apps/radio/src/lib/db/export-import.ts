@@ -150,13 +150,39 @@ function readImportedNodePatch(importData: DatabaseExport): NodeGraph | null {
   );
 }
 
+/** Graph-only backups omit the Speakers level, so imports default to 1. */
+function readImportedMasterVolume(
+  importData: DatabaseExport
+): number | undefined {
+  const session = importData.sessions?.node ?? importData.sessions?.multiple;
+  if (session === undefined) {
+    return undefined;
+  }
+  const value = isRecord(session) ? session.masterVolume : undefined;
+  if (value === undefined) {
+    return 1;
+  }
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 1
+  ) {
+    throw new Error(
+      "Invalid Node master volume: expected a number from 0 to 1"
+    );
+  }
+  return value;
+}
+
 /**
  * Applies prevalidated collection changes together, then commits the imported
  * open patch as an undo step only after synchronous persistence acceptance.
  */
 function applyImportedChanges(
   graph: NodeGraph | null,
-  writeData: () => void
+  writeData: () => void,
+  masterVolume?: number
 ): void {
   const transaction = createTransaction({
     mutationFn: ({ transaction: pending }) => {
@@ -217,7 +243,7 @@ function applyImportedChanges(
   try {
     transaction.mutate(() => {
       writeData();
-      written = graph ? writeNodeSessionGraph(graph) : null;
+      written = graph ? writeNodeSessionGraph(graph, masterVolume) : null;
     });
   } catch (error) {
     transaction.rollback();
@@ -321,8 +347,10 @@ function checkImportedRadioIds(
 
 /** The Node patch for a file backup, when the node session holds one. */
 function exportSessions(): DatabaseExport["sessions"] {
-  const graph = playbackSessionsCollection.state.get("node")?.graph;
-  return graph ? { node: { graph } } : undefined;
+  const session = playbackSessionsCollection.state.get("node");
+  return session?.graph
+    ? { node: { graph: session.graph, masterVolume: session.masterVolume } }
+    : undefined;
 }
 
 /**
@@ -514,6 +542,7 @@ export const validateImportData = (data: unknown): DatabaseExport => {
   // Refuse an invalid patch here, before any preview or change.
   const graph = readImportedNodePatch(importData);
   importData.namModels = validateNamModelBackup(exportData.namModels, graph);
+  readImportedMasterVolume(importData);
   return importData;
 };
 
@@ -605,9 +634,20 @@ export const previewImportChanges = (
   const settingsChanged =
     existingSettings !== undefined &&
     JSON.stringify(existingSettings) !== JSON.stringify(importData.settings);
+  const masterVolume = readImportedMasterVolume(importData);
+  const storedGraph = playbackSessionsCollection.state.get("node")?.graph;
 
   return {
     newRadios,
+    nodePatch:
+      masterVolume === undefined
+        ? undefined
+        : {
+            masterVolume,
+            replacesNewerVersion:
+              storedGraph !== undefined &&
+              migrateNodeGraph(storedGraph).status === "read-only",
+          },
     settingsChanged,
     unchangedRadios,
     updatedRadios,
@@ -621,6 +661,7 @@ const replaceImportedDataSync = (importData: DatabaseExport): void => {
   try {
     const validated = validateImportData(importData);
     const graph = readImportedNodePatch(validated);
+    const masterVolume = readImportedMasterVolume(validated);
     const settings = prepareImportedSettings(validated);
     const radios = validated.radios.map((radio) =>
       prepareImportedRadio(
@@ -632,27 +673,31 @@ const replaceImportedDataSync = (importData: DatabaseExport): void => {
     );
     checkImportedRadioIds(radios);
     if (graph) {
-      prepareNodeSessionGraph(graph);
+      prepareNodeSessionGraph(graph, masterVolume);
     }
 
-    applyImportedChanges(graph, () => {
-      const importedIds = new Set(radios.map((radio) => radio.id));
-      for (const radio of Array.from(radiosCollection.state.values())) {
-        if (!importedIds.has(radio.id)) {
-          radiosCollection.delete(radio.id);
+    applyImportedChanges(
+      graph,
+      () => {
+        const importedIds = new Set(radios.map((radio) => radio.id));
+        for (const radio of Array.from(radiosCollection.state.values())) {
+          if (!importedIds.has(radio.id)) {
+            radiosCollection.delete(radio.id);
+          }
         }
-      }
-      for (const radio of radios) {
-        if (radiosCollection.state.has(radio.id)) {
-          radiosCollection.update(radio.id, (draft) => {
-            Object.assign(draft, radio);
-          });
-        } else {
-          radiosCollection.insert(radio);
+        for (const radio of radios) {
+          if (radiosCollection.state.has(radio.id)) {
+            radiosCollection.update(radio.id, (draft) => {
+              Object.assign(draft, radio);
+            });
+          } else {
+            radiosCollection.insert(radio);
+          }
         }
-      }
-      applyImportedSettings(settings);
-    });
+        applyImportedSettings(settings);
+      },
+      masterVolume
+    );
 
     toast.success(`Imported ${importData.radios.length} stations`);
   } catch (error) {
@@ -669,6 +714,7 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
   try {
     const validated = validateImportData(importData);
     const graph = readImportedNodePatch(validated);
+    const masterVolume = readImportedMasterVolume(validated);
     const settings = prepareImportedSettings(validated);
 
     const existingRadios = Array.from(radiosCollection.state.values());
@@ -738,19 +784,23 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
       existingRadios.map((radio) => radio.id)
     );
     if (graph) {
-      prepareNodeSessionGraph(graph);
+      prepareNodeSessionGraph(graph, masterVolume);
     }
-    applyImportedChanges(graph, () => {
-      for (const radio of updates.values()) {
-        radiosCollection.update(radio.id, (draft) => {
-          Object.assign(draft, radio);
-        });
-      }
-      for (const radio of inserts) {
-        radiosCollection.insert(radio);
-      }
-      applyImportedSettings(settings);
-    });
+    applyImportedChanges(
+      graph,
+      () => {
+        for (const radio of updates.values()) {
+          radiosCollection.update(radio.id, (draft) => {
+            Object.assign(draft, radio);
+          });
+        }
+        for (const radio of inserts) {
+          radiosCollection.insert(radio);
+        }
+        applyImportedSettings(settings);
+      },
+      masterVolume
+    );
 
     toast.success(
       `Imported ${newRadiosCount} new (hidden), ${updatedRadiosCount} updated`

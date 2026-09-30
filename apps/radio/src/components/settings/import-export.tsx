@@ -8,6 +8,7 @@ import {
 } from "@avoid.quest/ui/components/radio-group";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
+import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
   copyShareUrlToClipboard,
   exportDatabase,
@@ -287,6 +288,8 @@ export function ImportExport({
                     </span>
                   </div>
                 </div>
+
+                <ImportPatchPreview patch={importPreview.nodePatch} />
 
                 <div className="space-y-2">
                   <Label id="import-mode-label">Mode</Label>

@@ -63,6 +63,21 @@ export function isShortcutIgnored(target: EventTarget | null): boolean {
   );
 }
 
+/**
+ * Canvas keys (C, Delete) act from the canvas, or with nothing focused;
+ * not from a field, a dialog, the Stage or the Rack.
+ */
+export function isCanvasKey(
+  target: EventTarget | null,
+  canvas: HTMLElement | null
+): boolean {
+  return (
+    !isShortcutIgnored(target) &&
+    (target === document.body ||
+      (target instanceof Node && canvas?.contains(target) === true))
+  );
+}
+
 /** `/` opens the palette, unless typing or inside a menu or dialog. */
 export function usePaletteShortcut(onOpen: () => void) {
   useEffect(() => {

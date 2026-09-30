@@ -8,7 +8,7 @@
  */
 
 import { laneChannelId } from "@/lib/node-graph/compile";
-import { edgeLabel } from "@/lib/node-graph/describe";
+import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
 import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
 import type { FlowAriaLabelConfig, FlowEdge, FlowNode } from "./flow-adapter";
@@ -39,6 +39,30 @@ export const NODE_ARIA_LABELS: Partial<FlowAriaLabelConfig> = {
     "Press Enter or Space to select this module, then the arrow keys to move it. C connects it, Delete removes it and Escape cancels.",
 };
 
+/** Where a mouse or touch gesture ended, in client pixels. */
+export function pointerOf(event: MouseEvent | TouchEvent): Point {
+  const point = "changedTouches" in event ? event.changedTouches[0] : event;
+  return { x: point?.clientX ?? 0, y: point?.clientY ?? 0 };
+}
+
+/**
+ * The element under the point where a cable was let go. A touch event's
+ * target is where the touch began (the port the cable left), so the drop
+ * is found by position instead.
+ */
+export function dropTargetOf(
+  event: MouseEvent | TouchEvent,
+  pointer: Point = pointerOf(event),
+  doc: Pick<Document, "elementFromPoint"> | undefined = globalThis.document
+): Element | null {
+  const below = doc?.elementFromPoint(pointer.x, pointer.y);
+  if (below) {
+    return below;
+  }
+  const { target } = event;
+  return target && "closest" in target ? (target as Element) : null;
+}
+
 export function toFlowNodes(
   graph: NodeGraph,
   {
@@ -53,6 +77,8 @@ export function toFlowNodes(
   }
 ): FlowNode[] {
   return graph.nodes.filter(isDrawn).map((node) => ({
+    // Named like its cables, so "KEXP, audio module" rather than a bare role.
+    ariaLabel: nodeLabel(node),
     data: node.data,
     deletable: node.type !== "speakers",
     domAttributes: { "aria-roledescription": "audio module" },

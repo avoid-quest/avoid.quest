@@ -58,6 +58,12 @@ describe("paletteEntries", () => {
     ]);
   });
 
+  test("lists a station saved from the session once", () => {
+    const entries = paletteEntries(patch, { radios: [radio("c"), radio("c")] });
+
+    expect(entries.filter((entry) => entry.id === "station:c")).toHaveLength(1);
+  });
+
   test("offers Speakers to a patch without one", () => {
     const entries = paletteEntries({ ...patch, edges: [], nodes: [] });
 

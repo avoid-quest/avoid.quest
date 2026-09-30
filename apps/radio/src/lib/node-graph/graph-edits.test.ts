@@ -8,6 +8,7 @@ import {
   moveNodes,
   removeEdges,
   removeNodes,
+  removeSelection,
   setStationRadio,
   setViewport,
   syncStationSnapshots,
@@ -117,6 +118,24 @@ describe("removeNodes and removeEdges", () => {
     ]);
     expect(graph.edges.map((edge) => edge.id)).toEqual(["src-b->speakers"]);
     expect(removeNodes(graph, ["missing"])).toBe(graph);
+  });
+
+  test("the delete key removes the selection but keeps Speakers", () => {
+    const start = patch(radio("a"), radio("b"), radio("c"));
+    const graph = removeSelection(start, {
+      edges: ["src-c->speakers"],
+      nodes: ["src-a", SPEAKERS_NODE_ID],
+    });
+
+    expect(graph.nodes.map((node) => node.id)).toEqual([
+      "src-b",
+      "src-c",
+      SPEAKERS_NODE_ID,
+    ]);
+    expect(graph.edges.map((edge) => edge.id)).toEqual(["src-b->speakers"]);
+    expect(
+      removeSelection(start, { edges: [], nodes: [SPEAKERS_NODE_ID] })
+    ).toBe(start);
   });
 
   test("a removed cable can be connected again", () => {

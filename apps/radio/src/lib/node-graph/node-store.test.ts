@@ -248,6 +248,32 @@ describe("node store undo", () => {
     expect(hidden(store.state.graph)).toBe(false);
   });
 
+  test("a rebased edit reaches a deleted Station that undo brings back", () => {
+    const store = createNodeStore(graph);
+    commitNodeGraph(
+      (current) => removeNodes(current, ["src-a"]),
+      store,
+      "snapshot"
+    );
+    const deleted = store.state.graph;
+
+    // The station is hidden while its Station is gone from the patch.
+    commitNodeGraph(
+      (current) => setStationsEnabled(current, ["src-a"], false),
+      store,
+      "rebase"
+    );
+    expect(store.state.graph).toBe(deleted);
+
+    undoNodeGraph(store);
+    const restored = store.state.graph?.nodes.find(
+      (node) => node.id === "src-a"
+    );
+    expect(
+      restored?.type === "station" ? restored.data.radio?.enabled : undefined
+    ).toBe(false);
+  });
+
   test("keeps the last 100 steps", () => {
     const store = createNodeStore(graph);
     for (let step = 1; step <= NODE_HISTORY_LIMIT + 20; step += 1) {

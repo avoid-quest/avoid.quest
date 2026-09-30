@@ -224,6 +224,20 @@ export function removeEdges(
   return edges.length === graph.edges.length ? graph : { ...graph, edges };
 }
 
+/**
+ * What the delete key removes: the selected cables and nodes, with every
+ * cable touching them. Speakers stays, as it can't be deleted.
+ */
+export function removeSelection(
+  graph: NodeGraph,
+  selection: { nodes: readonly string[]; edges: readonly string[] }
+): NodeGraph {
+  const nodes = selection.nodes.filter(
+    (id) => graph.nodes.find((node) => node.id === id)?.type !== "speakers"
+  );
+  return removeEdges(removeNodes(graph, nodes), selection.edges);
+}
+
 /** Adds a cable at unity gain. Validation happens before, on drag. */
 export function connectNodes(
   graph: NodeGraph,

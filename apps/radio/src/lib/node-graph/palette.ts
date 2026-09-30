@@ -224,12 +224,16 @@ export function paletteEntries(
       type,
     });
     if (type === "station") {
+      // A session station saved under the same id is listed once.
+      const listed = new Set<string>();
       for (const radio of radios) {
-        if (radio.enabled === false) {
+        const id = `station:${String(radio.id ?? radio.streamUrl)}`;
+        if (radio.enabled === false || listed.has(id)) {
           continue;
         }
+        listed.add(id);
         entries.push({
-          id: `station:${String(radio.id ?? radio.streamUrl)}`,
+          id,
           kind: "node",
           name: radio.name,
           radio,

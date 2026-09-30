@@ -63,12 +63,15 @@ afterEach(cleanup);
 
 let NodePalette: typeof import("./node-palette")["NodePalette"];
 let usePaletteShortcut: typeof import("./node-palette")["usePaletteShortcut"];
+let isCanvasKey: typeof import("./node-palette")["isCanvasKey"];
 let createNodeStore: typeof import("@/lib/node-graph/node-store")["createNodeStore"];
 let undoNodeGraph: typeof import("@/lib/node-graph/node-store")["undoNodeGraph"];
 let buildNodeGraphFromTemplate: typeof import("@/lib/node-graph/templates")["buildNodeGraphFromTemplate"];
 
 beforeAll(async () => {
-  ({ NodePalette, usePaletteShortcut } = await import("./node-palette"));
+  ({ NodePalette, isCanvasKey, usePaletteShortcut } = await import(
+    "./node-palette"
+  ));
   ({ createNodeStore, undoNodeGraph } = await import(
     "@/lib/node-graph/node-store"
   ));
@@ -235,5 +238,34 @@ describe("NodePalette", () => {
         targetHandle: "in:audio:main",
       }),
     ]);
+  });
+});
+
+describe("isCanvasKey", () => {
+  test("canvas keys act from the canvas or nothing focused, not elsewhere", () => {
+    const canvas = document.createElement("div");
+    const node = document.createElement("div");
+    const slot = document.createElement("input");
+    canvas.appendChild(node);
+    canvas.appendChild(slot);
+    const stageButton = document.createElement("button");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const dialogButton = document.createElement("button");
+    dialog.appendChild(dialogButton);
+    for (const element of [canvas, stageButton, dialog]) {
+      document.body.appendChild(element);
+    }
+
+    expect(isCanvasKey(node, canvas)).toBe(true);
+    expect(isCanvasKey(document.body, canvas)).toBe(true);
+    expect(isCanvasKey(slot, canvas)).toBe(false);
+    expect(isCanvasKey(stageButton, canvas)).toBe(false);
+    expect(isCanvasKey(dialogButton, canvas)).toBe(false);
+    expect(isCanvasKey(node, null)).toBe(false);
+
+    canvas.remove();
+    stageButton.remove();
+    dialog.remove();
   });
 });

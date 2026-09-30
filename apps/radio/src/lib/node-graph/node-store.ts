@@ -119,6 +119,19 @@ export function commitNodeGraph(
   }
   const graph = update(current);
   if (graph === current) {
+    // A rebased edit can still reach snapshots, e.g. a hide for a Station
+    // that was deleted and could come back on undo.
+    if (history === "rebase") {
+      const rebased = rebaseHistory(
+        store.state.history,
+        update,
+        current,
+        graph
+      );
+      if (rebased !== store.state.history) {
+        store.setState((state) => ({ ...state, history: rebased }));
+      }
+    }
     return true;
   }
   store.setState((state) => {
@@ -128,19 +141,36 @@ export function commitNodeGraph(
       const before = checkpoint(state);
       next.history = checkpoint({ ...state, graph, history: before });
     } else if (history === "rebase") {
-      // The current graph maps to the committed one, so a rebased edit alone
-      // never looks like an undo step.
-      const rebase = (entry: NodeGraph) =>
-        entry === current ? graph : update(entry);
-      next.history = {
-        future: state.history.future.map(rebase),
-        past: state.history.past.map(rebase),
-        present: state.history.present && rebase(state.history.present),
-      };
+      next.history = rebaseHistory(state.history, update, current, graph);
     }
     return { ...next, selection: pruneSelection(state.selection, graph) };
   });
   return true;
+}
+
+/**
+ * Applies `update` to every snapshot. The current graph maps to the
+ * committed one, so a rebased edit alone never looks like an undo step.
+ * Returns the same history when no snapshot changed.
+ */
+function rebaseHistory(
+  history: NodeHistory,
+  update: (graph: NodeGraph) => NodeGraph,
+  current: NodeGraph,
+  graph: NodeGraph
+): NodeHistory {
+  let changed = false;
+  const rebase = (entry: NodeGraph) => {
+    const next = entry === current ? graph : update(entry);
+    changed ||= next !== entry;
+    return next;
+  };
+  const rebased: NodeHistory = {
+    future: history.future.map(rebase),
+    past: history.past.map(rebase),
+    present: history.present && rebase(history.present),
+  };
+  return changed ? rebased : history;
 }
 
 /** Makes the edits since the last snapshot one undo step (a knob release). */

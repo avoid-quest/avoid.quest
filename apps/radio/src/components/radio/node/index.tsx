@@ -83,7 +83,13 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   });
 
   const validateOptions = { profile: detectNodePlaybackEnv().profile };
-  const openPalette = (request: PaletteRequest = {}) => setPalette(request);
+  // Before the patch loads there is nothing to add to, and a request kept
+  // until then would pop the palette open on its own.
+  const openPalette = (request: PaletteRequest = {}) => {
+    if (nodeStore.state.graph) {
+      setPalette(request);
+    }
+  };
   usePaletteShortcut(openPalette);
   useUndoShortcuts();
 

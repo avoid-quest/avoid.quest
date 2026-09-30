@@ -7,6 +7,7 @@ import {
   moveNodes,
   removeEdges,
   removeNodes,
+  removeSelection,
   setViewport,
 } from "@/lib/node-graph/graph-edits";
 import {
@@ -37,8 +38,18 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "./flow-adapter";
-import { NODE_ARIA_LABELS, toFlowEdges, toFlowNodes } from "./flow-elements";
-import { isShortcutIgnored, type PaletteRequest } from "./node-palette";
+import {
+  dropTargetOf,
+  NODE_ARIA_LABELS,
+  pointerOf,
+  toFlowEdges,
+  toFlowNodes,
+} from "./flow-elements";
+import {
+  isCanvasKey,
+  isShortcutIgnored,
+  type PaletteRequest,
+} from "./node-palette";
 import { SpeakersNode } from "./speakers-node";
 import { StationNode } from "./station-node";
 
@@ -68,11 +79,6 @@ function liveChannelKey(
 /** A patch never panned or zoomed still has the template's viewport. */
 function isUntouchedViewport({ x, y, zoom }: FlowViewport): boolean {
   return x === 0 && y === 0 && zoom === 1;
-}
-
-function pointerOf(event: MouseEvent | TouchEvent): Point {
-  const point = "changedTouches" in event ? event.changedTouches[0] : event;
-  return { x: point?.clientX ?? 0, y: point?.clientY ?? 0 };
 }
 
 /** React Flow's node changes, folded into what the canvas keeps or commits. */
@@ -299,7 +305,8 @@ function Canvas({
     connection: FlowConnectionEnd
   ) => {
     const { fromHandle, fromNode } = connection;
-    const dropTarget = event.target instanceof Element ? event.target : null;
+    const pointer = pointerOf(event);
+    const dropTarget = dropTargetOf(event, pointer);
     if (connection.isValid || !(fromHandle?.id && fromNode && dropTarget)) {
       return;
     }
@@ -324,7 +331,7 @@ function Canvas({
     ) {
       return;
     }
-    const drop = screenToFlowPosition(pointerOf(event));
+    const drop = screenToFlowPosition(pointer);
     // A node feeding an input sits left of the cursor, one fed by an output
     // right of it, so its port lands where the cable was let go.
     onOpenPalette({
@@ -359,7 +366,7 @@ function Canvas({
         event.ctrlKey ||
         event.altKey ||
         event.defaultPrevented ||
-        isShortcutIgnored(event.target)
+        !isCanvasKey(event.target, wrapperRef.current)
       ) {
         return;
       }
@@ -379,7 +386,7 @@ function Canvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onOpenConnect]);
 
-  // A template load or undo can move everything; fit it back in view.
+  // A template load can move everything; fit it back in view.
   useEffect(() => {
     if (fitRequest === 0) {
       return;
@@ -411,6 +418,38 @@ function Canvas({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [fitView]);
+
+  // Delete and Backspace remove the selection. React Flow would listen on
+  // the whole document, so a Backspace on a button in the Stage, the Rack
+  // or a dialog deleted the selected Station; only the canvas, or nothing
+  // focused, counts here.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const { target } = event;
+      if (
+        !DELETE_KEYS.includes(event.key) ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.defaultPrevented ||
+        !isCanvasKey(target, wrapperRef.current)
+      ) {
+        return;
+      }
+      const selected = nodeStore.state.selection;
+      if (selected.nodes.length === 0 && selected.edges.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      commitNodeGraph(
+        (latest) => removeSelection(latest, selected),
+        nodeStore,
+        "snapshot"
+      );
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Pan to a Station added from the search bar when it lands out of view.
   useEffect(() => {
@@ -453,7 +492,7 @@ function Canvas({
         ariaLabelConfig={NODE_ARIA_LABELS}
         connectionRadius={24}
         defaultViewport={initialViewport}
-        deleteKeyCode={DELETE_KEYS}
+        deleteKeyCode={null}
         edges={edges}
         fitView={isUntouchedViewport(initialViewport)}
         fitViewOptions={FIT_VIEW_OPTIONS}

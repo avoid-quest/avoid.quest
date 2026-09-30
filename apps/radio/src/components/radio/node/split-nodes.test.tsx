@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 
@@ -83,22 +83,24 @@ const { act, cleanup, fireEvent, render, within } = await import(
 
 let MergeNodeBody: typeof import("./merge-node")["MergeNodeBody"];
 let SplitInspectorParams: typeof import("./split-nodes")["SplitInspectorParams"];
-let branchSummary: typeof import("./branch-edge")["branchSummary"];
+let branchSummary: typeof import("./branch-controls")["branchSummary"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
 let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
 let setBandCount: typeof import("@/lib/node-graph/branches")["setBandCount"];
 let BUS_MERGE_MESSAGE: string;
+let moduleFrame: typeof import("./module-frame");
 
 beforeAll(async () => {
   ({ MergeNodeBody } = await import("./merge-node"));
   ({ SplitInspectorParams } = await import("./split-nodes"));
-  ({ branchSummary } = await import("./branch-edge"));
+  ({ branchSummary } = await import("./branch-controls"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
   ({ setBandCount } = await import("@/lib/node-graph/branches"));
   ({ BUS_MERGE_MESSAGE } = await import("@/lib/node-graph/validate"));
+  moduleFrame = await import("./module-frame");
 });
 
 afterEach(cleanup);
@@ -253,5 +255,64 @@ describe("branch tag", () => {
     expect(
       branchSummary({ ...data, gain: 0.5, muted: true, pan: -0.4, solo: true })
     ).toEqual(["-6.0 dB", "L40", "M", "S"]);
+  });
+});
+
+describe("split ports", () => {
+  test("draw only on the canvas, and re-measure when a branch port comes or goes", () => {
+    const { FlowPortsProvider, ModulePorts } = moduleFrame;
+    const updateNodeInternals = mock((_id: string | string[]) => undefined);
+    const ports = {
+      Handle: ({ id, title }: { id?: string | null; title?: string }) => (
+        <span data-handle={id ?? ""} title={title} />
+      ),
+      Position: { Bottom: "bottom", Left: "left", Right: "right", Top: "top" },
+      updateNodeInternals,
+    } as unknown as import("./module-frame").FlowPorts;
+    const split = (outputIds: string[]) => (
+      <ModulePorts
+        nodeId="split"
+        outputIds={outputIds}
+        title="Split"
+        type="fxComposite"
+      />
+    );
+
+    // The Stage, Rack and inspector have no React Flow, so no ports.
+    const bare = render(split(["branch-1", "branch-2"]));
+    expect(bare.container.querySelector("[data-handle]")).toBeNull();
+    bare.unmount();
+
+    const view = render(
+      <FlowPortsProvider value={ports}>
+        {split(["branch-1", "branch-2"])}
+      </FlowPortsProvider>
+    );
+    const handles = () =>
+      [...view.container.querySelectorAll("[data-handle]")].map((handle) =>
+        handle.getAttribute("data-handle")
+      );
+    expect(handles()).toEqual([
+      "in:audio:main",
+      "out:audio:branch-1",
+      "out:audio:branch-2",
+    ]);
+    const measured = updateNodeInternals.mock.calls.length;
+
+    view.rerender(
+      <FlowPortsProvider value={ports}>
+        {split(["branch-1", "branch-2", "branch-3"])}
+      </FlowPortsProvider>
+    );
+    expect(handles()).toContain("out:audio:branch-3");
+    expect(updateNodeInternals.mock.calls.slice(measured)).toEqual([["split"]]);
+
+    // Nothing changed, so nothing to re-measure.
+    view.rerender(
+      <FlowPortsProvider value={ports}>
+        {split(["branch-1", "branch-2", "branch-3"])}
+      </FlowPortsProvider>
+    );
+    expect(updateNodeInternals.mock.calls.length).toBe(measured + 1);
   });
 });

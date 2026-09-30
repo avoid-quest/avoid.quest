@@ -557,7 +557,7 @@ class LaneLowerer {
       const cables = outs.filter(({ edge }) => edge.sourceHandle === port);
       const chain: EffectChainConfig = configChains[index] ?? {
         effects: [],
-        gain: 1,
+        gain: defaultChainGain(base.type),
         id: `${split}:${portName(port)}`,
         muted: false,
         name: `Branch ${index + 1}`,
@@ -671,6 +671,15 @@ function portName(handle: string): string {
 }
 
 /** The out handles of a container, one per chain, or null for a bad shape. */
+/**
+ * A Split's branches mix at −3 dB each, as its first two chains come from
+ * the registry, so a third or fourth branch matches them. Stereo and band
+ * splits divide the signal, so theirs stay at unity.
+ */
+function defaultChainGain(type: EffectConfig["type"]): number {
+  return type === "fxComposite" ? Math.SQRT1_2 : 1;
+}
+
 function splitPorts(effect: EffectConfig): string[] | null {
   switch (effect.type) {
     case "fxComposite":

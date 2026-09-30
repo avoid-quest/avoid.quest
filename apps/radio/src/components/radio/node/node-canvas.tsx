@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
@@ -23,6 +23,7 @@ import {
 } from "@/lib/node-graph/node-store";
 import {
   autoConnection,
+  dropRefusal,
   type PaletteFrom,
   paletteEntries,
 } from "@/lib/node-graph/palette";
@@ -49,9 +50,12 @@ import {
   type FlowNodeChange,
   type FlowNodeTypes,
   type FlowViewport,
+  Handle,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useUpdateNodeInternals,
 } from "./flow-adapter";
 import {
   DRAWN_NODE_TYPES,
@@ -62,6 +66,7 @@ import {
   toFlowNodes,
 } from "./flow-elements";
 import { MergeNode } from "./merge-node";
+import { type FlowPorts, FlowPortsProvider } from "./module-frame";
 import { NativeStripNode } from "./native-strip-nodes";
 import {
   isCanvasKey,
@@ -342,33 +347,38 @@ function Canvas({
     );
   };
 
-  // A cable dropped on a port that refused it says why, e.g. a Merge that
-  // would sum two stations.
-  const explainRefusal = (connection: FlowConnectionEnd) => {
-    const { fromHandle, fromNode, toHandle, toNode } = connection;
-    if (!(fromHandle?.id && fromNode && toHandle?.id && toNode)) {
-      return;
+  // A cable dropped on a node that refused it says why, e.g. a Merge that
+  // would sum two stations: the port it landed on, else the node's port of
+  // the cable's kind.
+  const explainRefusal = (
+    connection: FlowConnectionEnd,
+    from: PaletteFrom,
+    onNode: string
+  ) => {
+    const { toHandle, toNode } = connection;
+    const onPort =
+      toHandle?.id && toNode && toHandle.type !== from.type
+        ? { handle: toHandle.id, node: toNode.id }
+        : null;
+    let message: string | null;
+    if (onPort) {
+      const [source, target] =
+        from.type === "source"
+          ? [{ handle: from.handle, node: from.node }, onPort]
+          : [onPort, { handle: from.handle, node: from.node }];
+      message = connectionRefusal(
+        graph,
+        {
+          source: source.node,
+          sourceHandle: source.handle,
+          target: target.node,
+          targetHandle: target.handle,
+        },
+        validateOptions
+      );
+    } else {
+      message = dropRefusal(graph, from, onNode, validateOptions);
     }
-    const [source, target] =
-      fromHandle.type === "source"
-        ? [
-            { handle: fromHandle.id, node: fromNode.id },
-            { handle: toHandle.id, node: toNode.id },
-          ]
-        : [
-            { handle: toHandle.id, node: toNode.id },
-            { handle: fromHandle.id, node: fromNode.id },
-          ];
-    const message = connectionRefusal(
-      graph,
-      {
-        source: source.node,
-        sourceHandle: source.handle,
-        target: target.node,
-        targetHandle: target.handle,
-      },
-      validateOptions
-    );
     if (message) {
       toast(message);
     }
@@ -399,7 +409,7 @@ function Canvas({
       if (cable) {
         handleConnect(cable);
       } else {
-        explainRefusal(connection);
+        explainRefusal(connection, from, onNode);
       }
       return;
     }
@@ -469,6 +479,8 @@ function Canvas({
       const key = event.key.toLowerCase();
       if (
         !(key === "p" || key === "s") ||
+        // A held key would flip the pair back or toast a refusal per repeat.
+        event.repeat ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
@@ -624,6 +636,13 @@ function Canvas({
   );
 }
 
+/** What node ports draw with; only the canvas chunk loads React Flow. */
+function FlowPortsRoot({ children }: { children: ReactNode }) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  const ports: FlowPorts = { Handle, Position, updateNodeInternals };
+  return <FlowPortsProvider value={ports}>{children}</FlowPortsProvider>;
+}
+
 /** The patch canvas. Lives in its own client chunk with React Flow. */
 export default function NodeCanvas(props: NodeCanvasProps) {
   const graph = useNodeGraph();
@@ -632,7 +651,9 @@ export default function NodeCanvas(props: NodeCanvasProps) {
   }
   return (
     <ReactFlowProvider>
-      <Canvas graph={graph} {...props} />
+      <FlowPortsRoot>
+        <Canvas graph={graph} {...props} />
+      </FlowPortsRoot>
     </ReactFlowProvider>
   );
 }

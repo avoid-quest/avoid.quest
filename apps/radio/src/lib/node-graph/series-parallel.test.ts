@@ -161,6 +161,35 @@ describe("parallelToSeries (S)", () => {
     }
   });
 
+  test("the A → B cable rides B's branch and comes back with its id, level and mute", () => {
+    const quiet = nodeGraphSchema.parse({
+      ...series,
+      edges: series.edges.map((edge) =>
+        edge.id === "comp->echo" ? { ...edge, gain: 0.4, muted: true } : edge
+      ),
+    });
+    const p = seriesToParallel(quiet, both);
+    if (!p.ok) {
+      throw new Error(p.message);
+    }
+    expect(
+      p.graph.edges.find((edge) => edge.id === "comp->echo")
+    ).toMatchObject({
+      gain: 0.4,
+      muted: true,
+      source: "fxComposite",
+      sourceHandle: "out:audio:branch-2",
+      target: "echo",
+    });
+
+    const s = parallelToSeries(p.graph, both);
+    if (!s.ok) {
+      throw new Error(s.message);
+    }
+    expect(s.graph.nodes).toEqual(quiet.nodes);
+    expect(byId(s.graph.edges)).toEqual(byId(quiet.edges));
+  });
+
   test("refuses a Split whose branches are not one FX each", () => {
     expect(parallelToSeries(series, both).ok).toBe(false);
   });

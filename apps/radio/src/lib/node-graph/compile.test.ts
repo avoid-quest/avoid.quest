@@ -865,6 +865,34 @@ describe("compile: series-parallel regions", () => {
     ]);
   });
 
+  test("a Split's third branch mixes at the same level as its first two", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("split", "fxComposite", { enabled: true }),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        audio("split", "merge", { from: "branch-1", id: "one" }),
+        audio("split", "merge", { from: "branch-2", id: "two" }),
+        audio("split", "merge", { from: "branch-3", id: "three" }),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "fxComposite") {
+      throw new Error("Expected a split");
+    }
+    expect(split.chains.map((chain) => chain.gain)).toEqual([
+      Math.SQRT1_2,
+      Math.SQRT1_2,
+      Math.SQRT1_2,
+    ]);
+  });
+
   test("a Merge summing two stations is a refused bus, not in-lane", () => {
     const merged = graph(
       [station("a"), station("b"), node("merge", "merge"), speakers],

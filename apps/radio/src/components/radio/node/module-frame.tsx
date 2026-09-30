@@ -24,7 +24,13 @@ import {
   SlidersHorizontalIcon,
   Trash2Icon,
 } from "lucide-react";
-import type { KeyboardEvent, ReactNode } from "react";
+import {
+  createContext,
+  type KeyboardEvent,
+  type ReactNode,
+  useContext,
+  useEffect,
+} from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import {
@@ -35,7 +41,7 @@ import {
 } from "@/lib/node-graph/catalogue";
 import { portName } from "@/lib/node-graph/describe";
 import type { NodeType } from "@/lib/node-graph/schema";
-import { Handle, Position } from "./flow-adapter";
+import type { Handle, Position, useUpdateNodeInternals } from "./flow-adapter";
 
 /**
  * Module Frame
@@ -397,22 +403,54 @@ export function controlName(title: string, label: string): string {
 }
 
 /**
+ * React Flow's Handle and Position, handed down by the canvas. Node bodies
+ * and their controls also render in the Stage, Rack and inspector, which
+ * load without React Flow, so this module only imports its types; ports
+ * render on the canvas, inside `FlowPortsProvider`.
+ */
+export type FlowPorts = {
+  Handle: typeof Handle;
+  Position: typeof Position;
+  /** Re-measures a node's handles; React Flow does not see new ones itself. */
+  updateNodeInternals: ReturnType<typeof useUpdateNodeInternals>;
+};
+
+const FlowPortsContext = createContext<FlowPorts | null>(null);
+
+export const FlowPortsProvider = FlowPortsContext.Provider;
+
+/**
  * A node's shipped ports as React Flow handles: inputs down the left edge,
  * outputs down the right, spread evenly. A key input wears the amber ring.
  * A split shows only the outputs it has in use (`outputIds`),
- * named for its branches (`portLabel`).
+ * named for its branches (`portLabel`), and re-measures its handles
+ * whenever they change so cables land on the moved and new ports.
  */
 export function ModulePorts({
   type,
   title,
+  nodeId,
   outputIds,
   portLabel = portName,
 }: {
   type: NodeType;
   title: string;
+  /** Set with `outputIds`: the node whose handles come and go. */
+  nodeId?: string;
   outputIds?: readonly string[];
   portLabel?: (port: NodePort) => string;
 }) {
+  const flow = useContext(FlowPortsContext);
+  const shown = outputIds?.join(" ");
+  useEffect(() => {
+    if (flow && nodeId && shown !== undefined) {
+      flow.updateNodeInternals(nodeId);
+    }
+  }, [flow, nodeId, shown]);
+  if (!flow) {
+    return null;
+  }
+  const { Handle: PortHandle, Position: Side } = flow;
   const definition = getNodeDefinition(type);
   const ports = definition.ports.filter(
     (port) =>
@@ -425,7 +463,7 @@ export function ModulePorts({
     side.map((port, index) => {
       const name = portLabel(port);
       return (
-        <Handle
+        <PortHandle
           aria-label={`${title} ${name.toLowerCase()}`}
           className={cn(
             "node-port",
@@ -446,8 +484,8 @@ export function ModulePorts({
     });
   return (
     <>
-      {handles(inputs, Position.Left)}
-      {handles(outputs, Position.Right)}
+      {handles(inputs, Side.Left)}
+      {handles(outputs, Side.Right)}
     </>
   );
 }

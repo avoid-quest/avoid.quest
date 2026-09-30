@@ -6,7 +6,7 @@
  * cable into A now feeding the Split and B's cables now leaving the Merge.
  * `S` undoes that shape: a Split whose two branches are one FX each, meeting
  * in one Merge, goes back to A → B. Cables keep their ids, gains and mutes
- * where they survive, and the layout is chosen so `S` puts A and B back
+ * where they survive (the A → B cable rides B's branch and comes back), and the layout is chosen so `S` puts A and B back
  * where `P` found them. Both are pure; the canvas commits each as one undo
  * step.
  */
@@ -164,9 +164,18 @@ export function seriesToParallel(
     }
     return [edge];
   });
+  // The A → B cable fed B, so B's branch takes its id, level and mute, and
+  // S hands them back.
+  const { pan: _pan, solo: _solo, ...linkKept } = link;
   edges.push(
     cable(edgeIds, splitId, branchHandle(1), first.id),
-    cable(edgeIds, splitId, branchHandle(2), second.id),
+    {
+      ...linkKept,
+      source: splitId,
+      sourceHandle: branchHandle(2),
+      target: second.id,
+      targetHandle: AUDIO_IN_HANDLE,
+    },
     cable(edgeIds, first.id, AUDIO_OUT_HANDLE, mergeId),
     cable(edgeIds, second.id, AUDIO_OUT_HANDLE, mergeId)
   );
@@ -193,6 +202,8 @@ type ParallelRegion = {
   /** The branch FX in port order: the first runs first in series. */
   first: GraphNode;
   second: GraphNode;
+  /** The Split → B cable: it becomes the A → B cable again. */
+  secondBranch: GraphEdge;
   /** Every cable inside the region: two out of the Split, two into the Merge. */
   inner: Set<GraphEdge>;
 };
@@ -238,6 +249,7 @@ function regionOf(
     inner: new Set([one, two, firstExit, secondExit]),
     merge,
     second,
+    secondBranch: two,
     split,
   };
 }
@@ -279,10 +291,7 @@ export function parallelToSeries(
   if (!region) {
     return { message: NEEDS_PARALLEL, ok: false };
   }
-  const { first, inner, merge, second, split } = region;
-  const edgeIds = new Set(
-    graph.edges.filter((edge) => !inner.has(edge)).map((edge) => edge.id)
-  );
+  const { first, inner, merge, second, secondBranch, split } = region;
   const edges = graph.edges.flatMap((edge): GraphEdge[] => {
     if (inner.has(edge)) {
       return [];
@@ -304,7 +313,15 @@ export function parallelToSeries(
     }
     return [edge];
   });
-  edges.push(cable(edgeIds, first.id, AUDIO_OUT_HANDLE, second.id));
+  // B's branch cable becomes A → B again, with its id, level and mute.
+  const { pan: _pan, solo: _solo, ...kept } = secondBranch;
+  edges.push({
+    ...kept,
+    source: first.id,
+    sourceHandle: AUDIO_OUT_HANDLE,
+    target: second.id,
+    targetHandle: AUDIO_IN_HANDLE,
+  });
 
   const nodes = graph.nodes.flatMap((node): GraphNode[] => {
     if (node.id === split.id || node.id === merge.id) {

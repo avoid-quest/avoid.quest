@@ -27,7 +27,7 @@ import {
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
 import { nodeBackendBadges } from "@/lib/node-playback";
-import { BranchControls } from "./branch-edge";
+import { BranchControls } from "./branch-controls";
 import type { EffectFlowNode } from "./effect-node";
 import { EffectNodeBody } from "./effect-node";
 import type { FlowNodeProps } from "./flow-adapter";
@@ -173,6 +173,7 @@ export function SplitNode({
         selected={selected}
       />
       <ModulePorts
+        nodeId={id}
         outputIds={outputs}
         portLabel={(port) => branchName(node, portHandleId(port))}
         title={getNodeDefinition(type).name}

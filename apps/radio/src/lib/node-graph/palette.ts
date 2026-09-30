@@ -41,6 +41,8 @@ import {
 import { type NodeTemplateId, SPEAKERS_NODE_ID } from "./templates";
 import {
   type Connection,
+  connectionRefusal,
+  parseHandleId,
   type ValidateOptions,
   validateConnection,
 } from "./validate";
@@ -155,6 +157,16 @@ export function createPaletteNode(
 
 function createEffect(type: EffectNodeType, id: string): EffectConfig {
   const effect = createNodeEffectConfig(type, id);
+  if (effect.type === "fxComposite") {
+    // Named as the canvas names its branches, so MIDI lists "Branch 1 gain".
+    return {
+      ...effect,
+      chains: effect.chains.map((chain, index) => ({
+        ...chain,
+        name: `Branch ${index + 1}`,
+      })),
+    };
+  }
   // Band crossovers start from the defaults for three bands.
   return effect.type === "frequencySplit"
     ? withBandCount({ ...effect, crossoverFrequencies: [] }, NEW_BAND_COUNT)
@@ -395,6 +407,30 @@ export function autoConnection(
   }
   const cables = validCables(graph, node, from, options);
   return cables.length === 1 ? (cables[0] ?? null) : null;
+}
+
+/**
+ * Why a cable dropped on `nodeId`'s body didn't connect, as a toast says
+ * it: e.g. a second station into a Merge. Null when a port of the cable's
+ * kind would take it (the drop was only ambiguous) or the node has none.
+ */
+export function dropRefusal(
+  graph: NodeGraph,
+  from: PaletteFrom,
+  nodeId: string,
+  options?: ValidateOptions
+): string | null {
+  const node = graph.nodes.find((entry) => entry.id === nodeId);
+  const kind = parseHandleId(from.handle)?.kind;
+  if (!node || node.id === from.node || !kind) {
+    return null;
+  }
+  const refusals = facingPorts(node, from)
+    .filter((port) => port.kind === kind)
+    .map((port) =>
+      connectionRefusal(graph, cableBetween(from, node.id, port), options)
+    );
+  return refusals.includes(null) ? null : (refusals[0] ?? null);
 }
 
 export type ConnectTarget = {

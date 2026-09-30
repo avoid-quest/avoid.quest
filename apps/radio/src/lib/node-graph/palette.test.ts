@@ -4,6 +4,8 @@ import {
   addPaletteNode,
   autoConnection,
   connectPorts,
+  createPaletteNode,
+  dropRefusal,
   type PaletteFrom,
   type PaletteNodeEntry,
   paletteEntries,
@@ -14,7 +16,7 @@ import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
 } from "./templates";
-import { validate } from "./validate";
+import { BUS_MERGE_MESSAGE, validate } from "./validate";
 
 function radio(id: string, extra: Partial<Radio> = {}): Radio {
   return {
@@ -145,6 +147,23 @@ describe("paletteEntries", () => {
         (entry) => entry.section === "fx" || entry.section === "routing"
       )
     ).toBe(true);
+  });
+
+  test("a new Split names its chains as the canvas names its branches", () => {
+    const { graph, nodeId } = addPaletteNode(patch, {
+      id: "fxComposite",
+      kind: "node",
+      name: "Split",
+      section: "routing",
+      type: "fxComposite",
+    });
+    const node = graph.nodes.find((entry) => entry.id === nodeId);
+
+    expect(
+      node?.type === "fxComposite" && node.data.effect.type === "fxComposite"
+        ? node.data.effect.chains.map((chain) => chain.name)
+        : null
+    ).toEqual(["Branch 1", "Branch 2"]);
   });
 
   test("a new Band Split starts with three bands", () => {
@@ -282,6 +301,44 @@ describe("autoConnection", () => {
         SPEAKERS_NODE_ID
       )
     ).toBeNull();
+  });
+});
+
+describe("dropRefusal", () => {
+  const mix = createPaletteNode("merge", "mix", { x: 400, y: 0 });
+  if (!mix) {
+    throw new Error("Expected a Merge");
+  }
+  const merged = {
+    ...patch,
+    edges: [
+      ...patch.edges.filter((edge) => edge.source !== "src-a"),
+      { ...patch.edges[0], id: "a-mix", source: "src-a", target: "mix" },
+      {
+        ...patch.edges[0],
+        id: "mix-out",
+        source: "mix",
+        target: SPEAKERS_NODE_ID,
+      },
+    ],
+    nodes: [...patch.nodes, mix],
+  } as typeof patch;
+  const fromB: PaletteFrom = {
+    handle: AUDIO_OUT_HANDLE,
+    node: "src-b",
+    type: "source",
+  };
+
+  test("a second station dropped on a Merge's body says why it was refused", () => {
+    expect(validate(merged)).toEqual([]);
+    expect(autoConnection(merged, fromB, "mix")).toBeNull();
+    expect(dropRefusal(merged, fromB, "mix")).toBe(BUS_MERGE_MESSAGE);
+  });
+
+  test("says nothing when a port would take the cable", () => {
+    const loose = { ...patch, edges: [] };
+    expect(dropRefusal(loose, fromB, SPEAKERS_NODE_ID)).toBeNull();
+    expect(dropRefusal(merged, fromB, "src-b")).toBeNull();
   });
 });
 

@@ -139,6 +139,10 @@ throttled graph or engine writes.
 
 ## Verification boundary
 
+Before release or browser/device acceptance work, read the
+[acceptance matrix](node/docs/acceptance.md) for recorded UI checks and pending
+physical-device gates.
+
 Use the repository's [validation contract](../../../../../AGENTS.md) for code
 changes and the adjacent regression tests for the affected seam. A passing mock
 proves the modeled ownership, routing or persistence rule; audible behavior and

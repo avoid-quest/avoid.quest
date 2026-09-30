@@ -228,13 +228,22 @@ describe("where a new node lands", () => {
 });
 
 describe("reconnectEdge", () => {
-  test("moves a cable end in one edit, keeping its level and mute", () => {
+  test("moves a cable end in one edit, keeping its identity and settings", () => {
     const start = patch(radio("a"), radio("b"));
     const [cable] = start.edges;
     const leveled = {
       ...start,
       edges: start.edges.map((edge) =>
-        edge.id === cable?.id ? { ...edge, gain: 0.5, muted: true } : edge
+        edge.id === cable?.id
+          ? {
+              ...edge,
+              color: "#abc123",
+              depth: 0.25,
+              gain: 0.5,
+              muted: true,
+              transform: { max: 0.8, min: 0.2 },
+            }
+          : edge
       ),
     };
     const withGain = addPaletteNode(leveled, {
@@ -245,6 +254,7 @@ describe("reconnectEdge", () => {
       type: "gain",
     });
     const edit = reconnectEdge(withGain.graph, cable?.id ?? "", {
+      id: "replacement-id",
       source: "src-a",
       sourceHandle: "out:audio:main",
       target: withGain.nodeId ?? "",
@@ -255,12 +265,83 @@ describe("reconnectEdge", () => {
     if (!edit.ok) {
       return;
     }
-    expect(edit.graph.edges.some((edge) => edge.id === cable?.id)).toBe(false);
-    expect(edit.graph.edges.at(-1)).toMatchObject({
+    expect(edit.graph.edges.map((edge) => edge.id)).toEqual(
+      withGain.graph.edges.map((edge) => edge.id)
+    );
+    expect(edit.graph.edges[0]).toMatchObject({
+      color: "#abc123",
+      depth: 0.25,
       gain: 0.5,
+      id: cable?.id,
       muted: true,
       source: "src-a",
       target: withGain.nodeId,
+      transform: { max: 0.8, min: 0.2 },
+    });
+  });
+
+  test("rewiring a branch preserves its compiled pan, solo and gain", () => {
+    const start = inserted(
+      inserted(patch(radio("a")), "compressor", "src-a->speakers").graph,
+      "delay",
+      "compressor->speakers"
+    ).graph;
+    const split = seriesToParallel(start, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const branch = split.graph.edges.find(
+      (edge) => edge.target === "compressor"
+    );
+    const merge = split.graph.nodes.find((node) => node.type === "merge");
+    if (!(branch && merge)) {
+      throw new Error("Expected a branch into a Merge");
+    }
+    const leveled = {
+      ...split.graph,
+      edges: split.graph.edges.map((edge) =>
+        edge === branch ? { ...edge, gain: 0.5, pan: -0.75, solo: true } : edge
+      ),
+    };
+    const edit = reconnectEdge(leveled, branch.id, {
+      source: branch.source,
+      sourceHandle: branch.sourceHandle,
+      target: merge.id,
+      targetHandle: "in:audio:main",
+    });
+    if (!edit.ok) {
+      throw new Error(edit.message);
+    }
+    expect(edit.graph.edges.find((edge) => edge.id === branch.id)).toEqual({
+      ...branch,
+      gain: 0.5,
+      pan: -0.75,
+      solo: true,
+      target: merge.id,
+    });
+    const before = compile(leveled, ENV);
+    const after = compile(edit.graph, ENV);
+    expect(before.issues).toEqual([]);
+    expect(after.issues).toEqual([]);
+    const branchSettings = (graph: NodeGraph) => {
+      const [effect] = compile(graph, ENV).lanes.get("src-a")?.effects ?? [];
+      if (effect?.type !== "fxComposite") {
+        throw new Error("Expected a Split");
+      }
+      return effect.chains.map(({ gain, id, pan, solo }) => ({
+        gain,
+        id,
+        pan,
+        solo,
+      }));
+    };
+    expect(branchSettings(edit.graph)).toEqual(branchSettings(leveled));
+    expect(branchSettings(edit.graph)[0]).toMatchObject({
+      pan: -0.75,
+      solo: true,
     });
   });
 
@@ -293,6 +374,7 @@ describe("reconnectEdge", () => {
 
     // Station B's cable to Speakers onto the Gain's input Station A holds.
     const toSpeakers = wired.edges.find((edge) => edge.source === "src-b");
+    const original = structuredClone(wired);
     const refused = reconnectEdge(wired, toSpeakers?.id ?? "", {
       source: "src-b",
       sourceHandle: "out:audio:main",
@@ -300,6 +382,7 @@ describe("reconnectEdge", () => {
       targetHandle: "in:audio:main",
     });
     expect(refused.ok).toBe(false);
+    expect(wired).toEqual(original);
   });
 
   test("the same ends are a no-op", () => {

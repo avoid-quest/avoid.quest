@@ -476,7 +476,7 @@ export function connectNodes(
  * Rewires cable `edgeId` to `connection`, as dragging a cable end does: the
  * old cable goes and the new one comes in one edit, checked against the
  * patch without the old one, so an input it filled takes the new cable.
- * The cable keeps its level, mute and colour.
+ * Only its endpoints change; its id, order and settings stay.
  */
 export function reconnectEdge(
   graph: NodeGraph,
@@ -506,14 +506,20 @@ export function reconnectEdge(
   if (connected === without || !added) {
     return { message: "That cable can't go there", ok: false };
   }
-  const { color, gain, muted } = old;
   return {
     graph: {
       ...connected,
-      edges: [
-        ...connected.edges.slice(0, -1),
-        { ...added, ...(color === undefined ? {} : { color }), gain, muted },
-      ],
+      edges: graph.edges.map((edge) =>
+        edge === old
+          ? {
+              ...edge,
+              source: added.source,
+              sourceHandle: added.sourceHandle,
+              target: added.target,
+              targetHandle: added.targetHandle,
+            }
+          : edge
+      ),
     },
     ok: true,
   };

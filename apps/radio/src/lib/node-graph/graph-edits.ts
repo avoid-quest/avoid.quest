@@ -2,7 +2,7 @@
  * Graph Edits
  *
  * Pure edits the canvas commits to the node store: cables in and out, nodes
- * moved or removed, and the Station edits behind search. The search bar adds
+ * moved or removed, the viewport, and the Station edits behind search. The search bar adds
  * a Station wired to Speakers, an empty Station slot is filled in place, and
  * saved-station snapshots follow their records (a rename, a new stream, a
  * hide). Each returns the same graph when nothing changes, so a no-op
@@ -21,6 +21,7 @@ import type { Connection } from "./validate";
 
 type StationNode = Extract<GraphNode, { type: "station" }>;
 type Position = GraphNode["position"];
+type Viewport = NodeGraph["viewport"];
 
 /** Where the first Station goes relative to Speakers: one column left. */
 const FIRST_STATION_OFFSET_X = 480;
@@ -275,6 +276,15 @@ export function moveNodes(
     return { ...node, position: { x: position.x, y: position.y } };
   });
   return changed ? { ...graph, nodes } : graph;
+}
+
+/** Where the canvas was panned and zoomed to, restored when it remounts. */
+export function setViewport(graph: NodeGraph, viewport: Viewport): NodeGraph {
+  const { x, y, zoom } = viewport;
+  const current = graph.viewport;
+  return current.x === x && current.y === y && current.zoom === zoom
+    ? graph
+    : { ...graph, viewport: { x, y, zoom } };
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   removeEdges,
   removeNodes,
   setStationRadio,
+  setViewport,
   syncStationSnapshots,
 } from "./graph-edits";
 import {
@@ -124,6 +125,14 @@ test("moveNodes commits only changed positions", () => {
 
   const moved = moveNodes(start, new Map([["src-a", { x: 5, y: 6 }]]));
   expect(moved.nodes[0]?.position).toEqual({ x: 5, y: 6 });
+});
+
+test("setViewport commits only a changed viewport", () => {
+  const start = patch(radio("a"));
+  expect(setViewport(start, { ...start.viewport })).toBe(start);
+  const panned = setViewport(start, { x: 40, y: -12, zoom: 0.75 });
+  expect(panned.viewport).toEqual({ x: 40, y: -12, zoom: 0.75 });
+  expect(panned.nodes).toBe(start.nodes);
 });
 
 describe("syncStationSnapshots", () => {

@@ -9,6 +9,7 @@ import {
   moveNodes,
   removeEdges,
   removeNodes,
+  setViewport,
 } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
@@ -29,6 +30,7 @@ import {
   type FlowNode,
   type FlowNodeChange,
   type FlowNodeTypes,
+  type FlowViewport,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -73,6 +75,11 @@ function liveChannelKey(
     .filter((channelId) => channels[channelId]?.isPlaying)
     .sort()
     .join(" ");
+}
+
+/** A patch never panned or zoomed still has the template's viewport. */
+function isUntouchedViewport({ x, y, zoom }: FlowViewport): boolean {
+  return x === 0 && y === 0 && zoom === 1;
 }
 
 function pointerOf(event: MouseEvent | TouchEvent): Point {
@@ -148,6 +155,8 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
   const [measured, setMeasured] = useState<ReadonlyMap<string, Size>>(
     new Map()
   );
+  // Read once: React Flow takes its starting viewport only on mount.
+  const [initialViewport] = useState(() => graph.viewport);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const {
     fitView,
@@ -279,6 +288,11 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
     commitNodeGraph((current) => connectNodes(current, connection));
   };
 
+  // The viewport persists when a pan, zoom or fit settles.
+  const handleMoveEnd = (_event: unknown, viewport: FlowViewport) => {
+    commitNodeGraph((current) => setViewport(current, viewport));
+  };
+
   // A cable dropped from an audio input onto empty space brings a Station
   // slot to feed it; the palette for every other kind comes later.
   const handleConnectEnd = (
@@ -373,9 +387,10 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
     <div className="absolute inset-0" ref={wrapperRef}>
       <ReactFlow
         connectionRadius={24}
+        defaultViewport={initialViewport}
         deleteKeyCode={DELETE_KEYS}
         edges={edges}
-        fitView
+        fitView={isUntouchedViewport(initialViewport)}
         fitViewOptions={FIT_VIEW_OPTIONS}
         isValidConnection={isValidConnection}
         maxZoom={1.5}
@@ -385,6 +400,7 @@ function Canvas({ graph, reveal }: NodeCanvasProps & { graph: NodeGraph }) {
         onConnect={handleConnect}
         onConnectEnd={handleConnectEnd}
         onEdgesChange={handleEdgesChange}
+        onMoveEnd={handleMoveEnd}
         onNodesChange={handleNodesChange}
         panActivationKeyCode={null}
       />

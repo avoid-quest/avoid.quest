@@ -17,6 +17,7 @@ export type {
   NodeChange as FlowNodeChange,
   NodeProps as FlowNodeProps,
   NodeTypes as FlowNodeTypes,
+  Viewport as FlowViewport,
 } from "@xyflow/react";
 export {
   Handle,

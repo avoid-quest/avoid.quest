@@ -16,6 +16,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { ClientOnly } from "@/components/client-only";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
+import { useNodeMidi } from "@/lib/hooks/use-node-midi";
 import { useNodeSession } from "@/lib/hooks/use-node-session";
 import { useAllRadios } from "@/lib/hooks/use-radios";
 import { findStationNode, removeNodes } from "@/lib/node-graph/graph-edits";
@@ -35,6 +36,7 @@ import { NodeCanvasSkeleton } from "../radio-loading-skeleton";
 import { RadioSearchBar } from "../radio-search-bar";
 import { ConnectDialog } from "./connect-dialog";
 import { type NodeActions, NodeActionsProvider } from "./node-actions";
+import { NodeInspector, useNodeInspector } from "./node-inspector";
 import {
   NodePalette,
   type PaletteRequest,
@@ -77,6 +79,8 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
   const isPhone = useIsMobile();
+  const inspector = useNodeInspector({ isPhone });
+  useNodeMidi(graph);
   const management = useNodeRadioManagement({
     onStationAdded: (nodeId) => setReveal({ nodeId }),
     savedRadios: savedRadios.isReady ? savedRadios.data : undefined,
@@ -162,6 +166,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     handleEditRadio: management.handleEditRadio,
     handleSaveSessionRadio: management.handleSaveSessionRadio,
     handleToggleRadio: management.handleToggleRadio,
+    inspectNode: inspector.inspect,
     radios: radios ?? [],
     removeNode: (nodeId) => {
       commitNodeGraph(
@@ -280,12 +285,22 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
               minSize={240}
             >
               <ScrollArea className="h-full">
-                <div className="flex w-0 min-w-full flex-col gap-2 px-1.5 py-3">
-                  <h2 className="px-2.5 font-medium text-muted-foreground text-xs">
-                    Rack
-                  </h2>
-                  {rack}
-                </div>
+                {/* The selected FX's settings take the Rack's place. */}
+                {inspector.nodeId ? (
+                  <div className="w-0 min-w-full px-1.5 py-3">
+                    <NodeInspector
+                      nodeId={inspector.nodeId}
+                      onClose={inspector.close}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex w-0 min-w-full flex-col gap-2 px-1.5 py-3">
+                    <h2 className="px-2.5 font-medium text-muted-foreground text-xs">
+                      Rack
+                    </h2>
+                    {rack}
+                  </div>
+                )}
               </ScrollArea>
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -300,6 +315,14 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
           request={palette}
           validateOptions={validateOptions}
         />
+
+        {isPhone ? (
+          <NodeInspector
+            isPhone
+            nodeId={inspector.nodeId}
+            onClose={inspector.close}
+          />
+        ) : null}
 
         <ConnectDialog
           nodeId={connectNodeId}

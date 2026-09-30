@@ -14,6 +14,11 @@ type EffectParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  /**
+   * Where MIDI learn targets start, e.g. `node:<nodeId>` in Node mode. DJ
+   * decks leave it unset and get `<deckId>:effect:<effectId>`.
+   */
+  midiTargetPrefix?: string;
 };
 
 export function EffectParams({
@@ -21,6 +26,7 @@ export function EffectParams({
   onUpdate,
   deckId,
   effectId,
+  midiTargetPrefix,
 }: EffectParamsProps) {
   const schema = getEffectSchema(effect.type);
 
@@ -38,6 +44,7 @@ export function EffectParams({
         deckId={deckId}
         effect={effect}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
       />
     );
@@ -51,6 +58,7 @@ export function EffectParams({
         deckId={deckId}
         effect={effect as RevampConfig}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
       />
     );
@@ -61,6 +69,7 @@ export function EffectParams({
         effect={effect}
         effectId={effectId}
         layout={layout}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
         schema={schema}
       />
@@ -71,6 +80,7 @@ export function EffectParams({
         deckId={deckId}
         effect={effect}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
         schema={schema}
       />

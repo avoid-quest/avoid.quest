@@ -21,9 +21,11 @@ import {
   type LucideIcon,
   MoreHorizontalIcon,
   RotateCcwIcon,
+  SlidersHorizontalIcon,
   Trash2Icon,
 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import {
   getNodeDefinition,
@@ -67,7 +69,7 @@ export const MAX_CONTROL_COLUMNS = 4;
 const COLUMN_GAP_PX = 8;
 const BODY_PADDING_PX = 16;
 /** A fader release lands after the 32 ms param throttle's trailing call. */
-const RELEASE_DELAY_MS = 48;
+export const RELEASE_DELAY_MS = 48;
 
 /** The node width for `columns` controls, never narrower than `minColumns`. */
 export function moduleWidth(columns: number, minColumns: number): number {
@@ -113,6 +115,7 @@ export function ModuleHeader({
   badge,
   enabled,
   onEnabledChange,
+  onInspect,
   onReset,
   onRemove,
 }: {
@@ -123,6 +126,8 @@ export function ModuleHeader({
   /** Set on effects: the header carries their enable switch. */
   enabled?: boolean;
   onEnabledChange?: (enabled: boolean) => void;
+  /** Opens every param in the inspector. */
+  onInspect?: () => void;
   onReset: () => void;
   onRemove: () => void;
 }) {
@@ -171,6 +176,12 @@ export function ModuleHeader({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {onInspect ? (
+              <DropdownMenuItem onClick={onInspect}>
+                <SlidersHorizontalIcon />
+                All settings
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onClick={onReset}>
               <RotateCcwIcon />
               Reset to defaults
@@ -254,10 +265,15 @@ export type ModuleKnobProps = {
   scale?: "linear" | "log";
   format: (value: number) => string;
   description?: string;
+  /** Right-click learns MIDI for it: `node:<nodeId>:<paramKey>`. */
+  midiTargetId?: string;
   onChange: (value: number) => void;
 };
 
-/** The shared Knob without its caption, throttled like every param knob. */
+/**
+ * The shared Knob without its caption, throttled like every param knob,
+ * and MIDI-learnable when it has a target.
+ */
 export function ModuleKnob({
   label,
   name,
@@ -270,25 +286,33 @@ export function ModuleKnob({
   scale,
   format,
   description,
+  midiTargetId,
   onChange,
 }: ModuleKnobProps) {
   const throttledOnChange = useThrottledParam(onChange);
+  const knob = (
+    <Knob
+      ariaLabel={name}
+      bipolar={bipolar ?? (defaultValue !== undefined && min < 0 && max > 0)}
+      defaultValue={defaultValue}
+      format={format}
+      max={max}
+      min={min}
+      onChange={throttledOnChange}
+      scale={scale}
+      size={36}
+      step={step}
+      title={description ? `${label}: ${description}` : label}
+      value={value}
+    />
+  );
   return (
     <ControlColumn label={label}>
-      <Knob
-        ariaLabel={name}
-        bipolar={bipolar ?? (defaultValue !== undefined && min < 0 && max > 0)}
-        defaultValue={defaultValue}
-        format={format}
-        max={max}
-        min={min}
-        onChange={throttledOnChange}
-        scale={scale}
-        size={36}
-        step={step}
-        title={description ? `${label}: ${description}` : label}
-        value={value}
-      />
+      {midiTargetId ? (
+        <MidiControlWrapper targetId={midiTargetId}>{knob}</MidiControlWrapper>
+      ) : (
+        knob
+      )}
     </ControlColumn>
   );
 }

@@ -12,6 +12,7 @@ import {
   getEffectDefaultConfig,
   UNIVERSAL_EFFECT_PARAM_DEFS,
 } from "@/lib/audio/dsp/effects/schema";
+import { nodeMidiTargetPrefix } from "@/lib/midi/node-midi-actions";
 import {
   createNodeEffectConfig,
   getNodeDefinition,
@@ -138,6 +139,7 @@ function BodyControlView({
         format={(next) => formatParam(param.formatKey ?? "default", next)}
         label={label}
         max={param.max}
+        midiTargetId={`${nodeMidiTargetPrefix(effect.id)}:${param.key}`}
         min={param.min}
         name={name}
         onChange={(next) =>
@@ -195,6 +197,8 @@ export type EffectNodeBodyProps = {
   /** A knob released: the turn becomes an undo step. */
   onRelease: () => void;
   onRemove: () => void;
+  /** Opens every param in the inspector. */
+  onInspect?: () => void;
 };
 
 /**
@@ -210,6 +214,7 @@ export function EffectNodeBody({
   onStep,
   onRelease,
   onRemove,
+  onInspect,
 }: EffectNodeBodyProps) {
   const title = getNodeDefinition(effect.type).name;
   const controls = firstLayoutRow(effect.type);
@@ -225,6 +230,7 @@ export function EffectNodeBody({
         icon={nodeIcon(effect.type)}
         on={effect.enabled}
         onEnabledChange={(enabled) => onStep({ enabled })}
+        onInspect={onInspect}
         onRemove={onRemove}
         // A reset keeps the effect on or off; only its params go back.
         onReset={() =>
@@ -273,6 +279,7 @@ export function EffectNode({
         badge={badge}
         effect={effect}
         onChange={(patch) => commit(patch, false)}
+        onInspect={() => actions.inspectNode(id)}
         onRelease={() => snapshotNodeGraph()}
         onRemove={() => actions.removeNode(id)}
         onStep={(patch) => commit(patch, true)}

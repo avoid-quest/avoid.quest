@@ -57,6 +57,15 @@ function formatMapping(mapping: MidiMapping | undefined): string {
   return `${typeLabel} ${mapping.control} ch.${mapping.channel + 1}${transformInfo}`;
 }
 
+/** The DJ groups listed under their own titles above any others. */
+const DJ_ACTION_GROUPS = new Set([
+  "deck-a",
+  "deck-b",
+  "mixer",
+  "deck-a-effects",
+  "deck-b-effects",
+]);
+
 type MappingRowProps = {
   targetId: string;
   label: string;
@@ -227,6 +236,14 @@ export function MidiSettings() {
   const deckBEffectTargets = actions
     .filter((a) => a.group === "deck-b-effects")
     .map((a) => a.targetId);
+  // Anything else is named by its owner, e.g. a node's title in Node mode.
+  const otherGroups = [
+    ...new Set(
+      actions
+        .map((a) => a.group)
+        .filter((group) => !DJ_ACTION_GROUPS.has(group))
+    ),
+  ];
 
   const handleConnect = () => {
     control.connect().catch(() => undefined);
@@ -284,11 +301,11 @@ export function MidiSettings() {
 
   return (
     <div className="space-y-5">
-      {playerMode !== "dj" && (
+      {playerMode === "single" && (
         <Alert className="py-2.5">
           <InfoIcon />
           <AlertDescription className="text-xs">
-            MIDI mappings are applied in DJ mode.
+            MIDI mappings are applied in DJ and Node modes.
           </AlertDescription>
         </Alert>
       )}
@@ -466,6 +483,23 @@ export function MidiSettings() {
             targetIds={deckBEffectTargets}
             title="Deck B effects"
           />
+
+          {otherGroups.map((group) => (
+            <MappingGroup
+              actions={actions}
+              isLearning={isLearning || !permissionGranted}
+              key={group}
+              learningTarget={learningTarget}
+              mappings={mappings}
+              onRemove={handleRemoveMapping}
+              onStartLearn={handleStartLearn}
+              onStopLearn={handleStopLearn}
+              targetIds={actions
+                .filter((a) => a.group === group)
+                .map((a) => a.targetId)}
+              title={group}
+            />
+          ))}
         </div>
       </div>
     </div>

@@ -25,6 +25,7 @@ type TailoredParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  midiTargetPrefix?: string;
 };
 
 function readValue(effect: EffectConfig, key: string): unknown {
@@ -140,11 +141,13 @@ export function TailoredParams({
   onUpdate,
   deckId,
   effectId,
+  midiTargetPrefix,
 }: TailoredParamsProps) {
   const defs = getEffectParamDefs(effect.type);
   const byKey = new Map(defs.map((def) => [def.key, def]));
   const targetPrefix =
-    deckId && effectId ? `${deckId}:effect:${effectId}` : undefined;
+    midiTargetPrefix ??
+    (deckId && effectId ? `${deckId}:effect:${effectId}` : undefined);
   const placed = new Set(layout.rows.flatMap((row) => row.keys));
   const leftovers = defs.filter((def) => !placed.has(def.key));
   const rows: LayoutRow[] = leftovers.length
@@ -200,6 +203,7 @@ export function TailoredParams({
         deckId={deckId}
         effect={effect}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
       />
     </div>

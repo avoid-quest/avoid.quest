@@ -84,6 +84,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   resetAllPlaybackRuntime();
+  inspectNode.mockClear();
 });
 
 const ENV: CompileEnv = { crossOriginIsolated: false, profile: "desktop" };
@@ -149,12 +150,15 @@ function buildGraph(): NodeGraph {
   } satisfies NodeGraphInput);
 }
 
+const inspectNode = mock((_nodeId: string) => undefined);
+
 const actions: NodeActions = {
   fillStation: asyncNoop,
   handleDeleteRadio: noop,
   handleEditRadio: noop,
   handleSaveSessionRadio: noop,
   handleToggleRadio: asyncNoop,
+  inspectNode,
   radios: [],
   removeNode: noop,
   saveDiscoveredStation: noop,
@@ -237,6 +241,15 @@ describe("NodeRack", () => {
       expect(controls.toggleMute).toHaveBeenLastCalledWith(lane.id);
     }
     expect(controls.setPlaying).toHaveBeenCalledTimes(plan.lanes.size);
+  });
+
+  test("a lane's FX chip opens the inspector for that effect", () => {
+    const { view } = renderRack(buildGraph());
+
+    fireEvent.click(view.getByRole("button", { name: "Delay settings" }));
+
+    expect(inspectNode).toHaveBeenCalledTimes(1);
+    expect(inspectNode).toHaveBeenCalledWith("nts-delay");
   });
 
   test("an empty patch points at the search", () => {

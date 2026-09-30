@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useId, useState } from "react";
@@ -94,8 +95,8 @@ function RackSection({
 }
 
 /**
- * The FX lowered into a lane, and its backend badge: `compat` or
- * `bypassed`, nothing while it runs as planned.
+ * The FX lowered into a lane as chips that open the inspector, and its
+ * backend badge: `compat` or `bypassed`, nothing while it runs as planned.
  */
 function LaneChain({
   lane,
@@ -104,6 +105,7 @@ function LaneChain({
   lane: LanePlan;
   nodesById: Map<string, GraphNode>;
 }) {
+  const actions = useNodeActions();
   const fx = lane.nodes
     .slice(1)
     .map((id) => nodesById.get(id))
@@ -113,15 +115,25 @@ function LaneChain({
   }
   return (
     <div className="flex flex-wrap items-center gap-1 pl-9">
-      {fx.map((node) => (
-        <Badge
-          className="font-normal text-[10px]"
-          key={node.id}
-          variant="outline"
-        >
-          {getNodeDefinition(node.type).name}
-        </Badge>
-      ))}
+      {fx.map((node) => {
+        const { name } = getNodeDefinition(node.type);
+        return (
+          <Badge
+            asChild
+            className="cursor-pointer font-normal text-[10px] hover:bg-accent hover:text-accent-foreground"
+            key={node.id}
+            variant="outline"
+          >
+            <button
+              aria-label={`${name} settings`}
+              onClick={() => actions.inspectNode(node.id)}
+              type="button"
+            >
+              {name}
+            </button>
+          </Badge>
+        );
+      })}
       <BackendBadge nodeId={lane.id} />
     </div>
   );

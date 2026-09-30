@@ -1,5 +1,10 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { paramFormatters } from "@/components/audio/effect-params/param-definitions";
+import {
+  NATIVE_PARAM_RANGES,
+  type NativeParamRange,
+  nodeMidiTargetPrefix,
+} from "@/lib/midi/node-midi-actions";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
   type NativeParams,
@@ -61,81 +66,58 @@ type Controls = {
   onStep: (patch: NativeParams) => void;
 };
 
-function NativeControls({ node, title, onChange, onStep }: Controls) {
+const FORMATS: Record<NativeParamRange["key"], (value: number) => string> = {
+  frequency: paramFormatters.frequency,
+  gainDb: paramFormatters.gain,
+  pan: paramFormatters.pan,
+  Q: paramFormatters.q,
+};
+
+const DEFAULTS: Record<NativeParamRange["key"], number> = {
+  frequency: 1000,
+  gainDb: 0,
+  pan: 0,
+  Q: 1,
+};
+
+/**
+ * A node's type select, if it has one, then a knob per native param, each
+ * MIDI-learnable as `node:<nodeId>:<key>`. The node body and the inspector
+ * share them.
+ */
+export function NativeControls({ node, title, onChange, onStep }: Controls) {
   const name = (label: string) => controlName(title, label);
-  switch (node.type) {
-    case "filter":
-      return (
-        <>
-          <ModuleSelect
-            label="Type"
-            name={name("Type")}
-            onChange={(type) =>
-              onStep({ type: type as "lowpass" | "highpass" })
-            }
-            options={FILTER_TYPES}
-            value={node.data.type}
-          />
-          <ModuleKnob
-            defaultValue={1000}
-            format={paramFormatters.frequency}
-            label="Cutoff"
-            max={20_000}
-            min={20}
-            name={name("Cutoff")}
-            onChange={(frequency) => onChange({ frequency })}
-            scale="log"
-            step={1}
-            value={node.data.frequency}
-          />
-          <ModuleKnob
-            defaultValue={1}
-            format={paramFormatters.q}
-            label="Q"
-            max={10}
-            min={0.1}
-            name={name("Q")}
-            onChange={(Q) => onChange({ Q })}
-            scale="log"
-            value={node.data.Q}
-          />
-        </>
-      );
-    case "pan":
-      return (
-        <ModuleKnob
-          bipolar
-          defaultValue={0}
-          format={paramFormatters.pan}
-          label="Pan"
-          max={1}
-          min={-1}
-          name={name("Pan")}
-          onChange={(pan) => onChange({ pan })}
-          value={node.data.pan}
+  const data = node.data as Record<string, unknown>;
+  return (
+    <>
+      {node.type === "filter" ? (
+        <ModuleSelect
+          label="Type"
+          name={name("Type")}
+          onChange={(type) => onStep({ type: type as "lowpass" | "highpass" })}
+          options={FILTER_TYPES}
+          value={node.data.type}
         />
-      );
-    case "gain":
-      return (
+      ) : null}
+      {NATIVE_PARAM_RANGES[node.type].map((range) => (
         <ModuleKnob
-          bipolar
-          defaultValue={0}
-          format={paramFormatters.gain}
-          label="Gain"
-          // The schema's full range, so a stored +24 dB trim stays put.
-          max={24}
-          min={-40}
-          name={name("Gain")}
-          onChange={(gainDb) => onChange({ gainDb })}
-          step={0.1}
-          value={node.data.gainDb}
+          bipolar={range.min < 0 && range.max > 0}
+          defaultValue={DEFAULTS[range.key]}
+          format={FORMATS[range.key]}
+          key={range.key}
+          label={range.label}
+          max={range.max}
+          midiTargetId={`${nodeMidiTargetPrefix(node.id)}:${range.key}`}
+          min={range.min}
+          name={name(range.label)}
+          onChange={(value) => onChange({ [range.key]: value })}
+          scale={range.scale}
+          step={range.step}
+          value={data[range.key] as number}
         />
-      );
-    default: {
-      const exhaustive: never = node;
-      return exhaustive;
-    }
-  }
+      ))}
+    </>
+  );
 }
 
 const COLUMNS: Record<NativeNodeType, number> = { filter: 3, gain: 1, pan: 1 };
@@ -147,6 +129,8 @@ export type NativeNodeBodyProps = {
   onStep: (patch: NativeParams) => void;
   onRelease: () => void;
   onRemove: () => void;
+  /** Opens the node in the inspector. */
+  onInspect?: () => void;
 };
 
 export function NativeNodeBody({
@@ -156,6 +140,7 @@ export function NativeNodeBody({
   onStep,
   onRelease,
   onRemove,
+  onInspect,
 }: NativeNodeBodyProps) {
   const title = getNodeDefinition(node.type).name;
   return (
@@ -167,6 +152,7 @@ export function NativeNodeBody({
       <ModuleHeader
         icon={nodeIcon(node.type)}
         on={false}
+        onInspect={onInspect}
         onRemove={onRemove}
         onReset={() => onStep(defaultsOf(node.type))}
         title={title}
@@ -211,6 +197,7 @@ export function NativeStripNode({
       <NativeNodeBody
         node={node}
         onChange={(patch) => commit(patch, false)}
+        onInspect={() => actions.inspectNode(id)}
         onRelease={() => snapshotNodeGraph()}
         onRemove={() => actions.removeNode(id)}
         onStep={(patch) => commit(patch, true)}

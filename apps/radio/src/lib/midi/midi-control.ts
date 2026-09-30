@@ -65,6 +65,7 @@ export type MidiControlSnapshot = {
   learningTarget: MidiTargetId | null;
   mappings: readonly MidiMapping[];
   mappingsByTarget: ReadonlyMap<MidiTargetId, MidiMapping>;
+  nodeActive: boolean;
   status:
     | "connected"
     | "connecting"
@@ -126,6 +127,12 @@ type QueuedEffectChange = {
   dispatchRevision: number;
   factory: EffectChangeFactory;
 };
+
+/** Actions another module owns and replaces wholesale, e.g. node params. */
+type ActionSource = { actions: readonly MidiAction[] };
+
+/** Node mode's targets: `node:<nodeId>:<paramKey>`. */
+export const NODE_TARGET_PREFIX = "node:";
 
 type ParsedMidiMessage = {
   channel: number;
@@ -241,6 +248,7 @@ export function createMidiControl({
     ({ dispatch: _, ...action }) => action
   );
   const effectBindings = new Map<DeckId, EffectBinding>();
+  const actionSources = new Set<ActionSource>();
   const lastButtonDispatch = new Map<MidiTargetId, number>();
   const inputCleanups = new Set<() => void>();
   const pendingValues = new Map<MidiTargetId, number>();
@@ -249,6 +257,7 @@ export function createMidiControl({
   let connectRevision = 0;
   let devices: readonly MidiDeviceInfo[] = [];
   let djActive = false;
+  let nodeActive = false;
   let error: Error | null = null;
   let effectDispatchRevision = 0;
   let frameId: number | null = null;
@@ -272,6 +281,7 @@ export function createMidiControl({
       learningTarget,
       mappings,
       mappingsByTarget,
+      nodeActive,
       status,
     };
   };
@@ -316,6 +326,11 @@ export function createMidiControl({
     }
     for (const binding of effectBindings.values()) {
       for (const action of binding.actions) {
+        actions.set(action.targetId, action);
+      }
+    }
+    for (const source of actionSources) {
+      for (const action of source.actions) {
         actions.set(action.targetId, action);
       }
     }
@@ -490,7 +505,12 @@ export function createMidiControl({
       return;
     }
     const mapping = mappingsByKey.get(mappingKey(message));
-    if (!(mapping && persisted.enabled && djActive)) {
+    // Node targets move node params only while Node mode is up; every other
+    // target is a DJ control.
+    const active = mapping?.targetId.startsWith(NODE_TARGET_PREFIX)
+      ? nodeActive
+      : djActive;
+    if (!(mapping && persisted.enabled && active)) {
       return;
     }
     const action = actions.get(mapping.targetId);
@@ -531,6 +551,42 @@ export function createMidiControl({
         cancelPendingDispatch();
         djActive = false;
         notify();
+      };
+    },
+    /**
+     * Node mode is up: `node:` mappings move node params until the returned
+     * cleanup runs.
+     */
+    activateNode(): () => void {
+      nodeActive = true;
+      notify();
+      return () => {
+        cancelPendingDispatch();
+        nodeActive = false;
+        notify();
+      };
+    },
+    /**
+     * Registers actions that `update` replaces as a whole, e.g. every node
+     * param in the patch. Mappings stay when an action goes, so an undo that
+     * brings a node back brings its MIDI control back too.
+     */
+    bindActions() {
+      const source: ActionSource = { actions: [] };
+      actionSources.add(source);
+      return {
+        dispose() {
+          if (actionSources.delete(source)) {
+            rebuildActions();
+          }
+        },
+        update(next: readonly MidiAction[]) {
+          if (!actionSources.has(source)) {
+            return;
+          }
+          source.actions = next;
+          rebuildActions();
+        },
       };
     },
     bindDeckEffects(deckId: DeckId) {
@@ -662,12 +718,14 @@ export function createMidiControl({
       access = null;
       devices = [];
       djActive = false;
+      nodeActive = false;
       learningTarget = null;
       error = null;
       for (const binding of effectBindings.values()) {
         binding.disposed = true;
       }
       effectBindings.clear();
+      actionSources.clear();
       status = browser.isSupported() ? "prompt" : "unsupported";
       rebuildActions();
       listeners.clear();

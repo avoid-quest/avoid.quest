@@ -13,6 +13,7 @@ type RevampParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  midiTargetPrefix?: string;
 };
 
 type Band = {
@@ -92,13 +93,15 @@ export function RevampParams({
   onUpdate,
   deckId,
   effectId,
+  midiTargetPrefix,
 }: RevampParamsProps) {
   const defaults = getEffectDefaultConfig("revamp") as unknown as Record<
     string,
     number
   >;
   const targetPrefix =
-    deckId && effectId ? `${deckId}:effect:${effectId}` : undefined;
+    midiTargetPrefix ??
+    (deckId && effectId ? `${deckId}:effect:${effectId}` : undefined);
   const knob = (
     key: string,
     label: string,
@@ -206,6 +209,7 @@ export function RevampParams({
         deckId={deckId}
         effect={effect}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
       />
     </div>

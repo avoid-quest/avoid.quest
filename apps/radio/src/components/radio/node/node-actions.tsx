@@ -19,6 +19,8 @@ export type NodeActions = Pick<
 > & {
   radios: Radio[];
   removeNode: (nodeId: string) => void;
+  /** Opens every param of an FX or native strip node in the inspector. */
+  inspectNode: (nodeId: string) => void;
 };
 
 const NodeActionsContext = createContext<NodeActions | null>(null);

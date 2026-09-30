@@ -187,7 +187,8 @@ function LaneChain({
 }
 
 /** A local file from an earlier page has no lane until it is picked again. */
-function RepickFileRow({ radio }: { radio: Radio }) {
+function RepickFileRow({ radio, nodeId }: { radio: Radio; nodeId: string }) {
+  const actions = useNodeActions();
   return (
     <li className={cn(stationRowClassName, "opacity-60")}>
       <StationRowText title={radio.name}>
@@ -195,6 +196,15 @@ function RepickFileRow({ radio }: { radio: Radio }) {
           Pick the file again on its File.
         </StationRowSubtitle>
       </StationRowText>
+      <Button
+        aria-label={`Pick ${radio.name} again`}
+        data-inspect-node={nodeId}
+        onClick={() => actions.inspectNode(nodeId)}
+        size="sm"
+        variant="outline"
+      >
+        Pick again
+      </Button>
     </li>
   );
 }
@@ -218,7 +228,7 @@ function TracksButton({ nodeId, name }: { nodeId: string; name: string }) {
 }
 
 /** A hidden saved station keeps its node but has no lane; Show restores it. */
-function HiddenStationRow({ radio }: { radio: Radio }) {
+function HiddenStationRow({ radio, nodeId }: { radio: Radio; nodeId: string }) {
   const actions = useNodeActions();
   return (
     <li
@@ -231,6 +241,15 @@ function HiddenStationRow({ radio }: { radio: Radio }) {
       <StationRowText title={radio.name}>
         <StationRowSubtitle>Hidden. Show it to play here.</StationRowSubtitle>
       </StationRowText>
+      <Button
+        aria-label={`${radio.name} settings`}
+        data-inspect-node={nodeId}
+        onClick={() => actions.inspectNode(nodeId)}
+        size="sm"
+        variant="outline"
+      >
+        Settings
+      </Button>
       <RadioItemActions
         onDelete={actions.handleDeleteRadio}
         onEdit={actions.handleEditRadio}
@@ -276,12 +295,20 @@ export function NodeRack({
       : []
   );
 
-  if (groups.length === 0 && hidden.length === 0 && repick.length === 0) {
-    return <EmptyHint className="py-10">Search to add a station</EmptyHint>;
-  }
+  const listed = new Set([
+    ...[...plan.lanes.values()].flatMap((lane) => lane.nodes),
+    ...hidden.map((node) => node.id),
+    ...repick.map((node) => node.id),
+  ]);
+  const otherModules = graph.nodes.filter((node) => !listed.has(node.id));
 
   return (
     <div className="flex flex-col gap-4">
+      {graph.nodes.every(
+        (node) => getNodeDefinition(node.type).category === "output"
+      ) ? (
+        <EmptyHint className="py-10">Search to add a station</EmptyHint>
+      ) : null}
       {groups.map((group) => (
         <RackSection
           hint={group.key === UNWIRED_GROUP ? "Silent until cabled" : undefined}
@@ -347,14 +374,38 @@ export function NodeRack({
       {repick.length > 0 ? (
         <RackSection title="Pick again">
           {repick.map((file) => (
-            <RepickFileRow key={file.id} radio={file.radio} />
+            <RepickFileRow key={file.id} nodeId={file.id} radio={file.radio} />
           ))}
         </RackSection>
       ) : null}
       {hidden.length > 0 ? (
         <RackSection title="Hidden">
           {hidden.map((station) => (
-            <HiddenStationRow key={station.id} radio={station.radio} />
+            <HiddenStationRow
+              key={station.id}
+              nodeId={station.id}
+              radio={station.radio}
+            />
+          ))}
+        </RackSection>
+      ) : null}
+      {otherModules.length > 0 ? (
+        <RackSection title="Other modules">
+          {otherModules.map((node) => (
+            <li className={stationRowClassName} key={node.id}>
+              <StationRowText title={nodeLabel(node)} />
+              {isInspectable(node) ? (
+                <Button
+                  aria-label={`${nodeLabel(node)} settings`}
+                  data-inspect-node={node.id}
+                  onClick={() => actions.inspectNode(node.id)}
+                  size="sm"
+                  variant="outline"
+                >
+                  Settings
+                </Button>
+              ) : null}
+            </li>
           ))}
         </RackSection>
       ) : null}

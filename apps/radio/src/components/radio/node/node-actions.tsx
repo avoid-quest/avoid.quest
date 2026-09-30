@@ -24,7 +24,7 @@ export type NodeActions = Pick<
   removeNode: (nodeId: string) => void;
   /** "Swap effect…" on an FX node: pick the effect it becomes. */
   swapEffect: (nodeId: string) => void;
-  /** Opens every param of an FX or native strip node in the inspector. */
+  /** Opens a module's settings, source picker or device controls. */
   inspectNode: (nodeId: string) => void;
 };
 

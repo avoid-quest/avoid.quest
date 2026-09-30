@@ -193,7 +193,7 @@ export type OutputDeviceNodeData = Extract<
   { type: "deviceOut" }
 >["data"] & { taken: string[] };
 
-function takenDevices(graph: NodeGraph, nodeId: string): string[] {
+export function takenDevices(graph: NodeGraph, nodeId: string): string[] {
   return graph.nodes.flatMap((node) =>
     node.type === "deviceOut" && node.id !== nodeId && node.data.deviceId
       ? [node.data.deviceId]

@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { NodeStore } from "@/lib/node-graph/node-store";
@@ -184,9 +184,15 @@ function createStore(): NodeStore {
  * Node mode's wiring in small: the Rack and the inspector share one
  * `useNodeInspector`, which picks its layout from the viewport.
  */
-function Harness({ store }: { store: NodeStore }) {
+function Harness({
+  store,
+  onInspect,
+}: {
+  store: NodeStore;
+  onInspect?: () => void;
+}) {
   const isPhone = useIsMobile();
-  const inspector = useNodeInspector({ isPhone, store });
+  const inspector = useNodeInspector({ isPhone, onInspect, store });
   const graph = nodeStoreModule.useNodeGraph(store);
   const inspectorShown = !isPhone && inspector.nodeId !== null;
   const actions = {
@@ -239,13 +245,13 @@ function Harness({ store }: { store: NodeStore }) {
   );
 }
 
-function renderHarness(store: NodeStore) {
+function renderHarness(store: NodeStore, onInspect?: () => void) {
   const client = new QueryClient({
     defaultOptions: { queries: { enabled: false, retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <Harness store={store} />
+      <Harness onInspect={onInspect} store={store} />
     </QueryClientProvider>
   );
 }
@@ -272,7 +278,7 @@ function compressorKnobsPastFirstRow(): string[] {
 }
 
 describe("isInspectable", () => {
-  test("every source opens its channel strip; a Merge or an output doesn't", () => {
+  test("sources and outputs expose settings; a Merge has none", () => {
     const graph = nodeGraphSchema.parse({
       edges: [],
       nodes: [
@@ -293,7 +299,7 @@ describe("isInspectable", () => {
       file: true,
       input: true,
       merge: false,
-      speakers: false,
+      speakers: true,
       station: true,
       track: true,
     });
@@ -301,6 +307,108 @@ describe("isInspectable", () => {
 });
 
 describe("NodeInspector", () => {
+  test("Inspect reveals the desktop panel before showing the node", () => {
+    const store = createStore();
+    const expand = mock(() => {
+      expect(store.state.selection.nodes).toEqual([]);
+    });
+    const view = renderHarness(store, expand);
+    fireEvent.click(view.getByRole("button", { name: "Compressor settings" }));
+    expect(expand).toHaveBeenCalledTimes(1);
+    expect(view.getByRole("region", { name: "Compressor" })).toBeTruthy();
+  });
+
+  test("a patch with no lanes still exposes empty sources, inputs, loose FX and outputs", () => {
+    const store = nodeStoreModule.createNodeStore(
+      nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          { data: {}, id: "station", position, type: "station" },
+          { id: "track", position, type: "platform" },
+          { id: "file", position, type: "file" },
+          { id: "input", position, type: "deviceIn" },
+          { id: "output", position, type: "deviceOut" },
+          {
+            data: { effect: createNodeEffectConfig("compressor", "comp") },
+            id: "comp",
+            position,
+            type: "compressor",
+          },
+          { id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      })
+    );
+    const view = renderHarness(store);
+    const checkSettings = (name: string, check: () => void) => {
+      fireEvent.click(view.getByRole("button", { name: `${name} settings` }));
+      check();
+      fireEvent.click(view.getByRole("button", { name: "Close settings" }));
+    };
+    checkSettings("Empty Station", () =>
+      expect(view.getByPlaceholderText("Search or paste a stream")).toBeTruthy()
+    );
+    checkSettings("Empty Track", () =>
+      expect(view.getByRole("group", { name: "Search on" })).toBeTruthy()
+    );
+    checkSettings("Empty File", () =>
+      expect(view.getByText("Browse files")).toBeTruthy()
+    );
+    checkSettings("Audio input", () => {
+      expect(
+        view.getByRole("button", { name: "Allow microphone" })
+      ).toBeTruthy();
+      expect(
+        view.getByRole("combobox", { name: "Input channels" })
+      ).toBeTruthy();
+    });
+    checkSettings("Output device", () =>
+      expect(
+        view.getByText(
+          "This browser can't choose an output, playing through Speakers"
+        )
+      ).toBeTruthy()
+    );
+    checkSettings("Speakers", () =>
+      expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy()
+    );
+    checkSettings("Compressor", () =>
+      expect(view.getByRole("slider", { name: "Threshold" })).toBeTruthy()
+    );
+  });
+
+  test("a restored local File can be picked again from the Rack", () => {
+    const store = nodeStoreModule.createNodeStore(
+      nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          {
+            data: {
+              radio: {
+                enabled: true,
+                id: "lost-file",
+                name: "Lost.wav",
+                platformMetadata: {
+                  filename: "Lost.wav",
+                  platform: "local-file",
+                },
+                streamUrl: "blob:https://radio.test/old",
+              },
+            },
+            id: "file",
+            position,
+            type: "file",
+          },
+          { id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      })
+    );
+    const view = renderHarness(store);
+    fireEvent.click(view.getByRole("button", { name: "Pick Lost.wav again" }));
+    expect(view.getByRole("button", { name: "Browse files" })).toBeTruthy();
+  });
+
   test("selecting an FX node shows its full params", () => {
     const store = createStore();
     const view = renderHarness(store);

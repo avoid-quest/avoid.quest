@@ -5,14 +5,11 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { useStore } from "@tanstack/react-store";
 import { XIcon } from "lucide-react";
 import { VolumeControl } from "@/components/audio/volume-control";
-import { findPort } from "@/lib/node-graph/catalogue";
 import { laneChannelId } from "@/lib/node-graph/compile";
 import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
-import type { RadioSourceNodeType } from "@/lib/node-graph/schema";
 import { getNodePlayback } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
-import { Position } from "./flow-adapter";
-import { INTERACTIVE, keepControlKeys, NodePort } from "./module-frame";
+import { INTERACTIVE, keepControlKeys } from "./module-frame";
 
 /**
  * Source Node Frame
@@ -175,28 +172,4 @@ export function useSourceLane(nodeId: string) {
     onVolumeCommit: () => snapshotNodeGraph(),
     playback,
   };
-}
-
-/** A source's one port, audio out, lit while its lane plays. */
-export function SourceOutPort({
-  type,
-  name,
-  isLive,
-}: {
-  type: RadioSourceNodeType;
-  /** What it holds, or its type while empty. */
-  name: string;
-  isLive: boolean;
-}) {
-  const port = findPort(type, "out", "audio", "main");
-  return port ? (
-    <NodePort
-      ariaLabel={`${name} audio out`}
-      className={cn(isLive && "node-port-live")}
-      label="Audio out"
-      port={port}
-      position={Position.Right}
-      type={type}
-    />
-  ) : null;
 }

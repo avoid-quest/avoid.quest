@@ -3,6 +3,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type ResizablePanelHandle,
 } from "@avoid.quest/ui/components/resizable";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import {
@@ -12,7 +13,7 @@ import {
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ClientOnly } from "@/components/client-only";
 import type { Radio } from "@/lib/audio";
@@ -81,7 +82,11 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
   const isPhone = useIsMobile();
-  const inspector = useNodeInspector({ isPhone });
+  const inspectorPanel = useRef<ResizablePanelHandle>(null);
+  const inspector = useNodeInspector({
+    isPhone,
+    onInspect: () => inspectorPanel.current?.expand(),
+  });
   useNodeMidi(graph);
   const management = useNodeRadioManagement({
     onStationAdded: (nodeId) => setReveal({ nodeId }),
@@ -297,6 +302,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
               defaultSize={360}
               maxSize="40"
               minSize={240}
+              panelRef={inspectorPanel}
             >
               <ScrollArea className="h-full">
                 {/* The selected FX's settings take the Rack's place. */}

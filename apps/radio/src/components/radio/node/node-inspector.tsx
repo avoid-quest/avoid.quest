@@ -41,7 +41,9 @@ import {
   type GraphNode,
   isRadioSourceNode,
   isStripSource,
+  type StripSourceNode,
 } from "@/lib/node-graph/schema";
+import { isLocalFileGone } from "@/lib/node-graph/sources";
 import { getNodePlayback } from "@/lib/node-playback";
 import type { PlatformTrack } from "@/lib/platform-types";
 import {
@@ -49,12 +51,19 @@ import {
   isStreamingMetadata,
 } from "../dj/deck/deck-panel-helpers";
 import { TracklistView } from "../dj/deck/deck-tracklist";
+import { AudioInputNodeContent } from "./audio-input-content";
 import { BackendBadge } from "./backend-badge";
+import { FileNodeContent } from "./file-content";
+import { feedsOutput, takenDevices } from "./flow-elements";
 import { RELEASE_DELAY_MS } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
+import { NodeMasterControls } from "./node-master";
 import { NodeSourceStripPanel } from "./node-source-strip";
+import { OutputDeviceNodeContent } from "./output-device-content";
 import { SplitInspectorParams } from "./split-nodes";
+import { StationNodeContent } from "./station-content";
+import { TrackNodeContent } from "./track-content";
 
 /**
  * Node Inspector
@@ -98,7 +107,7 @@ export function sourceTracklist(
 
 /**
  * FX and native strip nodes have params to inspect, and every source its
- * channel strip; a Merge or an output doesn't.
+ * channel strip. Outputs expose their device or master controls; a Merge has no settings.
  */
 export function isInspectable(node: GraphNode | undefined): boolean {
   return Boolean(
@@ -107,7 +116,9 @@ export function isInspectable(node: GraphNode | undefined): boolean {
         node.type === "filter" ||
         node.type === "pan" ||
         node.type === "gain" ||
-        isStripSource(node))
+        isStripSource(node) ||
+        node.type === "deviceOut" ||
+        node.type === "speakers")
   );
 }
 
@@ -146,9 +157,12 @@ export function selectedInspectable(state: NodeStoreState): string | null {
 export function useNodeInspector({
   isPhone,
   store = nodeStore,
+  onInspect,
 }: {
   isPhone: boolean;
   store?: NodeStore;
+  /** Reveals the desktop panel before its content takes focus. */
+  onInspect?: () => void;
 }) {
   const [phone, setPhone] = useState<{ id: string | null; open: boolean }>({
     id: null,
@@ -169,6 +183,9 @@ export function useNodeInspector({
       }
     },
     inspect: (id: string) => {
+      if (!isPhone) {
+        onInspect?.();
+      }
       setNodeSelection({ edges: [], nodes: [id] }, store);
       if (isPhone) {
         setPhone({ id, open: true });
@@ -186,6 +203,72 @@ export function useNodeInspector({
 const INSPECTOR_BODY =
   "space-y-4 [&_.uppercase]:font-sans [&_.uppercase]:text-[10px] [&_.uppercase]:normal-case [&_.uppercase]:tracking-normal";
 
+/** Source picking and transport stay the same in the patch and inspector. */
+function SourceInspectorParams({
+  node,
+  store,
+}: {
+  node: StripSourceNode;
+  store: NodeStore;
+}) {
+  const graph = useStore(store, (state) => state.graph);
+  let content: React.ReactNode;
+  if (node.type === "deviceIn") {
+    content = (
+      <AudioInputNodeContent
+        data={{
+          ...node.data,
+          feedsOutput: Boolean(graph && feedsOutput(graph, node.id)),
+        }}
+        id={node.id}
+        showStrip={false}
+        store={store}
+      />
+    );
+  } else if (node.type === "station") {
+    content = (
+      <StationNodeContent data={node.data} id={node.id} showStrip={false} />
+    );
+  } else if (node.type === "platform") {
+    content = (
+      <TrackNodeContent
+        data={node.data}
+        id={node.id}
+        showStrip={false}
+        store={store}
+      />
+    );
+  } else {
+    content = (
+      <FileNodeContent data={node.data} id={node.id} showStrip={false} />
+    );
+  }
+  const hasSource =
+    node.type === "deviceIn" ||
+    (node.data.radio !== null && !isLocalFileGone(node.data.radio));
+  const tracklist = sourceTracklist(node);
+  return (
+    <>
+      {content}
+      {hasSource ? (
+        <NodeSourceStripPanel
+          node={node}
+          showInputControls={false}
+          store={store}
+          target={inspectorTitle(node)}
+        />
+      ) : null}
+      {tracklist ? (
+        <TracklistView
+          currentTrackIndex={tracklist.currentTrackIndex}
+          onPlayTrack={(url) => getNodePlayback().playTrack(node.id, url)}
+          tracks={tracklist.tracks}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function InspectorParams({
   node,
   store,
@@ -194,6 +277,7 @@ function InspectorParams({
   store: NodeStore;
 }) {
   const title = getNodeDefinition(node.type).name;
+  const currentGraph = useStore(store, (state) => state.graph);
   // A release lands after the knob throttle's trailing call, then takes
   // the turn as one undo step. Selects and switches release here too.
   const release = () => {
@@ -201,23 +285,20 @@ function InspectorParams({
   };
   let params: React.ReactNode;
   if (isStripSource(node)) {
-    const tracklist = sourceTracklist(node);
+    params = <SourceInspectorParams node={node} store={store} />;
+  } else if (node.type === "deviceOut") {
     params = (
-      <>
-        <NodeSourceStripPanel
-          node={node}
-          store={store}
-          target={inspectorTitle(node)}
-        />
-        {tracklist ? (
-          <TracklistView
-            currentTrackIndex={tracklist.currentTrackIndex}
-            onPlayTrack={(url) => getNodePlayback().playTrack(node.id, url)}
-            tracks={tracklist.tracks}
-          />
-        ) : null}
-      </>
+      <OutputDeviceNodeContent
+        data={{
+          ...node.data,
+          taken: currentGraph ? takenDevices(currentGraph, node.id) : [],
+        }}
+        id={node.id}
+        store={store}
+      />
     );
+  } else if (node.type === "speakers") {
+    params = <NodeMasterControls />;
   } else if (isSplitNode(node)) {
     // Branches are cables here, so the rack's nested chains don't apply.
     params = <SplitInspectorParams node={node} store={store} />;

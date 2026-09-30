@@ -184,16 +184,20 @@ export function NodeSourceStripPanel({
   node,
   target,
   store = nodeStore,
+  showInputControls = true,
 }: {
   node: StripSourceNode;
   target: string;
   store?: NodeStore;
+  showInputControls?: boolean;
 }) {
   const playback = getNodePlayback();
   const runtime = useLaneRuntime(node.id);
   const soloedOut = useSoloedOut(node.data.strip.solo, store);
   const audioSettings = useAudioSettings();
-  const devices = useNodeDevices({ enabled: node.type === "deviceIn" });
+  const devices = useNodeDevices({
+    enabled: node.type === "deviceIn" && showInputControls,
+  });
   const radio =
     node.type === "deviceIn" ? null : (node.data.radio as Radio | null);
   const station = useStationDetails(
@@ -213,7 +217,7 @@ export function NodeSourceStripPanel({
   return (
     <SourceStrip
       input={
-        node.type === "deviceIn"
+        node.type === "deviceIn" && showInputControls
           ? {
               canGoLive:
                 node.data.deviceId !== null &&

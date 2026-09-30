@@ -220,6 +220,10 @@ describe("NodeRack", () => {
     // A hidden station has no lane: it is listed apart, with no controls.
     const hidden = view.getByRole("list", { name: "Hidden" });
     expect(within(hidden).getByText("Hidden FM")).toBeTruthy();
+    fireEvent.click(
+      within(hidden).getByRole("button", { name: "Hidden FM settings" })
+    );
+    expect(inspectNode).toHaveBeenCalledWith("hidden");
     expect(view.queryByRole("button", { name: "Play Hidden FM" })).toBeNull();
   });
 
@@ -381,6 +385,32 @@ describe("NodeRack", () => {
       name: "Compressor settings, keyed by BBC Radio 4",
     });
     expect(chip.getAttribute("title")).toBe("Keyed by BBC Radio 4");
+  });
+
+  test("shows graph issues even when an invalid path compiles no lanes", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [cable("delay", "delay")],
+      nodes: [
+        { data: {}, id: "empty", position, type: "station" },
+        {
+          data: { effect: createNodeEffectConfig("delay", "delay") },
+          id: "delay",
+          position,
+          type: "delay",
+        },
+        { id: SPEAKERS_NODE_ID, position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const plan = compile(graph, ENV);
+    const { view } = renderRack(graph);
+    expect(plan.lanes.size).toBe(0);
+    expect(plan.issues.length).toBeGreaterThan(0);
+    for (const issue of plan.issues) {
+      expect(view.getAllByText(issue.message).length).toBeGreaterThan(0);
+    }
+    fireEvent.click(view.getByRole("button", { name: "Delay settings" }));
+    expect(inspectNode).toHaveBeenCalledWith("delay");
   });
 
   test("an empty patch points at the search", () => {

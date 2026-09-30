@@ -63,6 +63,20 @@ export function createNodeStore(graph: NodeGraph | null = null): NodeStore {
 
 export const nodeStore = createNodeStore();
 
+/** Documents whose local resources can still return through Undo or Redo. */
+export function getRetainedNodeGraphs(
+  state: NodeStoreState = nodeStore.state
+): ReadonlySet<NodeGraph> {
+  return new Set(
+    [
+      state.graph,
+      state.history.present,
+      ...state.history.past,
+      ...state.history.future,
+    ].filter((graph): graph is NodeGraph => graph !== null)
+  );
+}
+
 /** Keeps only selected ids that still exist in `graph`. */
 function pruneSelection(
   selection: NodeSelection,

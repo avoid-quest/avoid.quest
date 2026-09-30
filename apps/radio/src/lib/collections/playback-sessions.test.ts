@@ -3,11 +3,24 @@ import { createDefaultEffectConfig } from "@/lib/audio";
 import {
   createLocalNamModelId,
   getCachedNamModel,
+  getNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { laneChannelId, laneSoundId } from "@/lib/node-graph/compile";
+import {
+  commitNodeGraph,
+  loadNodeGraph,
+  NODE_HISTORY_LIMIT,
+  nodeStore,
+  redoNodeGraph,
+  undoNodeGraph,
+} from "@/lib/node-graph/node-store";
 import type { NodeGraphInput } from "@/lib/node-graph/schema";
+import {
+  buildNodeGraphFromTemplate,
+  buildNodeSessionFromTemplate,
+} from "@/lib/node-graph/templates";
 import {
   buildDjSessionFromLegacyState,
   buildMultipleSessionFromRadios,
@@ -71,6 +84,7 @@ if (typeof sessionStorage === "undefined") {
 }
 
 async function resetPlaybackState() {
+  loadNodeGraph(null);
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
     radiosCollection.stateWhenReady(),
@@ -147,6 +161,147 @@ describe("buildSingleSessionFromLegacyState", () => {
 });
 
 describe("local NAM model garbage collection", () => {
+  async function loadNamPatch() {
+    const modelId = createLocalNamModelId();
+    const modelData = '{"weights":[1,2,3]}';
+    await saveNamModel(modelId, modelData);
+    const graph = buildNodeGraphFromTemplate("blank");
+    const effect = createNodeEffectConfig("neuralAmp", "amp");
+    effect.modelId = modelId;
+    graph.nodes.push({
+      data: { effect },
+      id: "amp",
+      position: { x: 0, y: 0 },
+      type: "neuralAmp",
+    });
+    playbackSessionsCollection.insert({
+      ...buildNodeSessionFromTemplate("blank"),
+      graph,
+    });
+    loadNodeGraph(graph);
+    return { graph, modelData, modelId };
+  }
+
+  function persistGraph() {
+    updatePlaybackSession("node", (draft) => {
+      draft.graph = nodeStore.state.graph ?? undefined;
+    });
+  }
+
+  test("keeps deleted model bytes for Undo and Redo, then releases them on history reset", async () => {
+    const { modelData, modelId } = await loadNamPatch();
+    const subscription = nodeStore.subscribe(persistGraph);
+
+    try {
+      commitNodeGraph(
+        (current) => ({
+          ...current,
+          nodes: current.nodes.filter((node) => node.id !== "amp"),
+        }),
+        nodeStore,
+        "snapshot"
+      );
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBe(modelData);
+
+      expect(undoNodeGraph()).toBe(true);
+      expect(
+        nodeStore.state.graph?.nodes.some((node) => node.id === "amp")
+      ).toBe(true);
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBe(modelData);
+
+      expect(redoNodeGraph()).toBe(true);
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBe(modelData);
+
+      loadNodeGraph(nodeStore.state.graph);
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBeNull();
+    } finally {
+      subscription.unsubscribe();
+    }
+  });
+
+  test.each(["template", "import"])(
+    "keeps models through %s replacement as an undo step",
+    async (replacement) => {
+      const { modelData, modelId } = await loadNamPatch();
+      const blank = buildNodeGraphFromTemplate("blank");
+      if (replacement === "import") {
+        // Imports persist their patch before committing it to the editor.
+        updatePlaybackSession("node", (draft) => {
+          draft.graph = blank;
+        });
+      }
+      commitNodeGraph(() => blank, nodeStore, "snapshot");
+      persistGraph();
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBe(modelData);
+
+      expect(undoNodeGraph()).toBe(true);
+      persistGraph();
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBe(modelData);
+
+      expect(redoNodeGraph()).toBe(true);
+      persistGraph();
+      await Promise.resolve();
+      expect(await getNamModel(modelId)).toBe(modelData);
+    }
+  );
+
+  test("releases a model when its last undo snapshot is evicted", async () => {
+    const { modelData, modelId } = await loadNamPatch();
+    commitNodeGraph(
+      () => buildNodeGraphFromTemplate("blank"),
+      nodeStore,
+      "snapshot"
+    );
+    persistGraph();
+    for (let step = 1; step < NODE_HISTORY_LIMIT; step += 1) {
+      commitNodeGraph(
+        (current) => ({
+          ...current,
+          viewport: { ...current.viewport, x: step },
+        }),
+        nodeStore,
+        "snapshot"
+      );
+    }
+    await Promise.resolve();
+    expect(await getNamModel(modelId)).toBe(modelData);
+
+    // No session write accompanies this history-only release.
+    commitNodeGraph(
+      (current) => ({ ...current, viewport: { ...current.viewport, x: 1000 } }),
+      nodeStore,
+      "snapshot"
+    );
+    await Promise.resolve();
+    expect(await getNamModel(modelId)).toBeNull();
+  });
+
+  test("keeps a model held only by Redo until a new edit discards that history", async () => {
+    const { graph, modelData, modelId } = await loadNamPatch();
+    const blank = buildNodeGraphFromTemplate("blank");
+    loadNodeGraph(blank);
+    commitNodeGraph(() => graph, nodeStore, "snapshot");
+    expect(undoNodeGraph()).toBe(true);
+    persistGraph();
+    await Promise.resolve();
+    expect(await getNamModel(modelId)).toBe(modelData);
+
+    commitNodeGraph(
+      (current) => ({ ...current, viewport: { ...current.viewport, x: 1 } }),
+      nodeStore,
+      "snapshot"
+    );
+    await Promise.resolve();
+    expect(redoNodeGraph()).toBe(false);
+    expect(await getNamModel(modelId)).toBeNull();
+  });
+
   test("collects nested removals, replacements, channels, and sessions while preserving shared references", async () => {
     const sharedId = createLocalNamModelId();
     const nestedOnlyId = createLocalNamModelId();

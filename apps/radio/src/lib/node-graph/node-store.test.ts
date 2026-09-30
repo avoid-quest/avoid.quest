@@ -8,6 +8,7 @@ import {
 import {
   commitNodeGraph,
   createNodeStore,
+  getRetainedNodeGraphs,
   loadNodeGraph,
   NODE_HISTORY_LIMIT,
   type NodeStore,
@@ -98,6 +99,22 @@ function volumeOf(store: NodeStore, id: string): number | undefined {
 }
 
 describe("node store undo", () => {
+  test("retained documents include current edits, snapshots and redo, without duplicates", () => {
+    const store = createNodeStore(graph);
+    const blank = buildNodeGraphFromTemplate("blank");
+    commitNodeGraph(() => blank, store, "snapshot");
+    undoNodeGraph(store);
+    const edited = setStationVolume(graph, "src-a", 0.4);
+    commitNodeGraph(() => edited, store);
+
+    expect(getRetainedNodeGraphs(store.state)).toEqual(
+      new Set([graph, blank, edited])
+    );
+
+    loadNodeGraph(null, store);
+    expect(getRetainedNodeGraphs(store.state).size).toBe(0);
+  });
+
   test("undo and redo restore the graph across delete, connect and template load", () => {
     const store = createNodeStore(graph);
 

@@ -21,7 +21,16 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
-import { EFFECT_NODE_TYPES, nodeGraphSchema } from "@/lib/node-graph/schema";
+import {
+  getRetainedNodeGraphs,
+  type NodeStoreState,
+  nodeStore,
+} from "@/lib/node-graph/node-store";
+import {
+  EFFECT_NODE_TYPES,
+  type NodeGraph,
+  nodeGraphSchema,
+} from "@/lib/node-graph/schema";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -497,10 +506,10 @@ function updatePlaybackSessionRecord(
  * a lane, so the derived channels alone would let its NAM model be deleted.
  */
 function collectGraphEffects(
-  session: PlaybackSessionRecord | undefined
+  graph: NodeGraph | null | undefined
 ): EffectConfig[] {
   return (
-    session?.graph?.nodes.flatMap((node) =>
+    graph?.nodes.flatMap((node) =>
       EFFECT_NODE_TYPES.some((type) => type === node.type) &&
       "effect" in node.data
         ? [node.data.effect as EffectConfig]
@@ -516,16 +525,27 @@ function collectSessionNamModelIds(
     ...(session?.channels.flatMap((channel) => [
       ...collectLocalNamModelIds(channel.effects),
     ]) ?? []),
-    ...collectLocalNamModelIds(collectGraphEffects(session)),
+    ...collectLocalNamModelIds(collectGraphEffects(session?.graph)),
   ]);
 }
 
-function collectReferencedNamModelIds(): Set<string> {
+function collectRetainedNamModelIds(
+  state: NodeStoreState = nodeStore.state
+): Set<string> {
   return new Set(
-    [...playbackSessionsCollection.state.values()].flatMap((session) => [
-      ...collectSessionNamModelIds(session),
+    [...getRetainedNodeGraphs(state)].flatMap((graph) => [
+      ...collectLocalNamModelIds(collectGraphEffects(graph)),
     ])
   );
+}
+
+function collectReferencedNamModelIds(): Set<string> {
+  return new Set([
+    ...collectRetainedNamModelIds(),
+    ...[...playbackSessionsCollection.state.values()].flatMap((session) => [
+      ...collectSessionNamModelIds(session),
+    ]),
+  ]);
 }
 
 function scheduleNamModelCleanup(candidates: Iterable<string>): void {
@@ -543,6 +563,16 @@ function scheduleNamModelCleanup(candidates: Iterable<string>): void {
     );
   });
 }
+
+// History eviction and reset can release models without changing a session.
+let observedNodeState = nodeStore.state;
+nodeStore.subscribe((state) => {
+  const previous = observedNodeState;
+  observedNodeState = state;
+  if (previous.graph !== state.graph || previous.history !== state.history) {
+    scheduleNamModelCleanup(collectRetainedNamModelIds(previous));
+  }
+});
 
 function collectNamModels(
   effects: readonly EffectConfig[]

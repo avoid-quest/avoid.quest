@@ -28,6 +28,7 @@ import {
 import { endLabel, portName } from "./describe";
 import {
   connectNodes,
+  findStationNode,
   insertNodeOnEdge,
   isSwappableType,
   nextStationPosition,
@@ -42,7 +43,13 @@ import {
   type NodeGraph,
   type NodeType,
 } from "./schema";
-import { type NodeTemplateId, SPEAKERS_NODE_ID } from "./templates";
+import {
+  buildNodeGraphFromTemplate,
+  type NodeTemplateId,
+  type NodeTemplateSources,
+  SPEAKERS_NODE_ID,
+  stationNodeId,
+} from "./templates";
 import {
   type Connection,
   type Issue,
@@ -91,12 +98,21 @@ export type PaletteFrom = {
   type: "source" | "target";
 };
 
+/** Starter first: it is also the patch a new node session opens with. */
 export const PALETTE_TEMPLATES: readonly PaletteTemplateEntry[] = [
+  {
+    description: "One station slot wired to Speakers",
+    id: "template:starter",
+    kind: "template",
+    name: "Starter",
+    section: "templates",
+    template: "starter",
+  },
   {
     description: "Your enabled stations, each wired to Speakers",
     id: "template:start-from-multiple",
     kind: "template",
-    name: "Start from Multiple",
+    name: "All my stations",
     section: "templates",
     template: "start-from-multiple",
   },
@@ -117,6 +133,30 @@ export const PALETTE_TEMPLATES: readonly PaletteTemplateEntry[] = [
     template: "blank",
   },
 ];
+
+/**
+ * The patch `template` puts in place of `current`: the view stays, and a
+ * station already in the patch keeps its level. Committed whole, it is one
+ * undo step.
+ */
+export function templatePatch(
+  current: NodeGraph,
+  template: NodeTemplateId,
+  sources: Pick<NodeTemplateSources, "saved" | "session"> = {}
+): NodeGraph {
+  return {
+    ...buildNodeGraphFromTemplate(template, {
+      ...sources,
+      levels: (radio) => {
+        const station = findStationNode(current, radio);
+        return station
+          ? { muted: station.data.muted, volume: station.data.volume }
+          : undefined;
+      },
+    }),
+    viewport: current.viewport,
+  };
+}
 
 const SECTION_OF = {
   fx: "fx",

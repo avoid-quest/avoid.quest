@@ -181,4 +181,14 @@ describe("NodeStage", () => {
     );
     expect(view.getByRole("button", { name: "Play all (0)" })).toBeTruthy();
   });
+
+  test("the Starter patch's empty slot still points at the search", async () => {
+    playbackSessionsCollection.insert(buildNodeSessionFromTemplate("starter"));
+    const { view } = renderStage();
+
+    await waitFor(() =>
+      expect(view.getByText("Search to add a station")).toBeTruthy()
+    );
+    expect(view.queryByRole("list", { name: "Sources" })).toBeNull();
+  });
 });

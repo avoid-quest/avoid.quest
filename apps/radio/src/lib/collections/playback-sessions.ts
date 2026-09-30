@@ -44,11 +44,7 @@ import {
 } from "./migrations/multiple-to-node";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
-import {
-  getSessionRadios,
-  isSessionRadio,
-  sessionRadiosCollection,
-} from "./session-radios";
+import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -421,12 +417,13 @@ function buildDjSessionFromLegacy(): PlaybackSessionRecord {
   return buildDjSessionFromLegacyState(readLegacyDjState());
 }
 
-/** "Start from Multiple" over the enabled saved and session stations. */
-function buildNodeSessionFromEnabledRadios(): PlaybackSessionRecord {
-  return buildNodeSessionFromTemplate("start-from-multiple", {
-    saved: [...radiosCollection.state.values()] as Radio[],
-    session: getSessionRadios(),
-  });
+/**
+ * The Starter patch, for a new node session: one empty Station slot wired to
+ * Speakers. "All my stations" and the other templates stay in the Templates
+ * menu.
+ */
+function buildDefaultNodeSession(): PlaybackSessionRecord {
+  return buildNodeSessionFromTemplate("starter");
 }
 
 function upsertSession(session: PlaybackSessionRecord): void {
@@ -752,20 +749,20 @@ export async function initializePlaybackSessions(): Promise<void> {
     upsertSession(buildSingleSessionFromLegacyState());
     // Playback starts paused; disabling restoration must not erase a patch.
     if (!hasStoredNodeGraph) {
-      upsertSession(buildNodeSessionFromEnabledRadios());
+      upsertSession(buildDefaultNodeSession());
     }
     upsertSession(buildDjSessionFromLegacyState());
     scheduleNamModelCleanup(discardedModelIds);
   } else if (playbackSessionsCollection.state.size === 0) {
     upsertSession(buildSingleSessionFromLegacy());
-    upsertSession(buildNodeSessionFromEnabledRadios());
+    upsertSession(buildDefaultNodeSession());
     upsertSession(buildDjSessionFromLegacy());
   } else {
     if (!playbackSessionsCollection.state.has("single")) {
       upsertSession(buildSingleSessionFromLegacy());
     }
     if (!playbackSessionsCollection.state.has("node")) {
-      upsertSession(buildNodeSessionFromEnabledRadios());
+      upsertSession(buildDefaultNodeSession());
     }
     if (!playbackSessionsCollection.state.has("dj")) {
       upsertSession(buildDjSessionFromLegacy());

@@ -1058,7 +1058,7 @@ function createNodePlayback(
       laneOutcomes.clear();
       stopListening();
       loadNodeGraph(
-        session.graph ?? buildNodeGraphFromTemplate("blank"),
+        session.graph ?? buildNodeGraphFromTemplate("starter"),
         store
       );
       observedGraph = store.state.graph;

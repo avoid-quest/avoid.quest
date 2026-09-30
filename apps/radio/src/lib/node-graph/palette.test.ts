@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { createNodeEffectConfig } from "./catalogue";
+import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
 import {
   addPaletteNode,
   autoConnection,
@@ -8,10 +9,12 @@ import {
   createPaletteNode,
   dropOnNode,
   dropRefusal,
+  PALETTE_TEMPLATES,
   type PaletteFrom,
   type PaletteNodeEntry,
   paletteEntries,
   resetEffect,
+  templatePatch,
 } from "./palette";
 import {
   AUDIO_IN_HANDLE,
@@ -66,7 +69,8 @@ describe("paletteEntries", () => {
       "routing:Stereo Split",
       "routing:Band Split",
       "routing:Merge",
-      "templates:Start from Multiple",
+      "templates:Starter",
+      "templates:All my stations",
       "templates:Duck",
       "templates:Blank",
     ]);
@@ -187,6 +191,64 @@ describe("paletteEntries", () => {
         ? node.data.effect.crossoverFrequencies
         : null
     ).toEqual([250, 2500]);
+  });
+});
+
+describe("templates", () => {
+  test("lists Starter, All my stations, Duck and Blank in that order", () => {
+    expect(
+      PALETTE_TEMPLATES.map((entry) => [entry.name, entry.template])
+    ).toEqual([
+      ["Starter", "starter"],
+      ["All my stations", "start-from-multiple"],
+      ["Duck", "duck"],
+      ["Blank", "blank"],
+    ]);
+  });
+
+  test("each replaces the patch as one undo step", () => {
+    for (const { template } of PALETTE_TEMPLATES) {
+      const before = { ...patch, viewport: { x: 12, y: 34, zoom: 0.8 } };
+      const store = createNodeStore(before);
+
+      commitNodeGraph(
+        (current) => templatePatch(current, template, { saved: [radio("a")] }),
+        store,
+        "snapshot"
+      );
+
+      expect(store.state.graph).toEqual({
+        ...buildNodeGraphFromTemplate(template, { saved: [radio("a")] }),
+        viewport: before.viewport,
+      });
+      expect(store.state.history.past).toHaveLength(1);
+      expect(undoNodeGraph(store)).toBe(true);
+      expect(store.state.graph).toEqual(before);
+    }
+  });
+
+  test("a station already in the patch keeps its level", () => {
+    const quiet = {
+      ...patch,
+      nodes: patch.nodes.map((node) =>
+        node.id === "src-a" && node.type === "station"
+          ? { ...node, data: { ...node.data, muted: true, volume: 0.3 } }
+          : node
+      ),
+    };
+
+    const next = templatePatch(quiet, "start-from-multiple", {
+      saved: [radio("a"), radio("c")],
+    });
+
+    expect(next.nodes.find((node) => node.id === "src-a")?.data).toMatchObject({
+      muted: true,
+      volume: 0.3,
+    });
+    expect(next.nodes.find((node) => node.id === "src-c")?.data).toMatchObject({
+      muted: false,
+      volume: 1,
+    });
   });
 });
 

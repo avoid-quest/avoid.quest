@@ -40,6 +40,7 @@ import {
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import type { Profile } from "@/lib/node-graph/validate";
 import {
   getPlaybackChannelRuntime,
@@ -432,6 +433,25 @@ describe("Node Playback", () => {
       false
     );
     expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.23);
+  });
+
+  test("a node session without a graph loads the Starter patch", async () => {
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: [],
+      crossfadePosition: 0.5,
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 0.8,
+    });
+    const harness = createHarness();
+
+    await harness.playback.activate();
+
+    expect(harness.store.state.graph).toEqual(
+      buildNodeGraphFromTemplate("starter")
+    );
+    expect(harness.context.channels.activate).not.toHaveBeenCalled();
   });
 
   test("an empty Station slot has no lane", async () => {

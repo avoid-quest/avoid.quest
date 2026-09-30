@@ -400,7 +400,7 @@ describe("initializePlaybackSessions", () => {
     expect(getPlaybackSession("dj")).toBeDefined();
   });
 
-  test("builds Node from Start from Multiple on a fresh store", async () => {
+  test("builds Node from the Starter patch on a fresh store", async () => {
     saveRadio(radio("kexp"));
     addSessionRadio(radio("rg_live"));
 
@@ -408,8 +408,7 @@ describe("initializePlaybackSessions", () => {
 
     const node = getPlaybackSession("node");
     expect(node?.graph?.nodes.map((entry) => entry.id)).toEqual([
-      "src-kexp",
-      "src-rg_live",
+      "src-station",
       "speakers",
     ]);
     expect(hasMultiple()).toBe(false);
@@ -490,10 +489,12 @@ describe("from raw localStorage", () => {
       expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
       expect(result.backup?.mode).toBe("multiple");
       // Restore keeps the kept stations and the old master; without it,
-      // Node is rebuilt from the enabled saved and session stations.
-      expect(result.nodeStations).toEqual(["src-kexp", "src-rg_live"]);
+      // Node is rebuilt from the Starter patch, one empty slot.
+      expect(result.nodeStations).toEqual(
+        restoreStateOnLoad ? ["src-kexp", "src-rg_live"] : ["src-station"]
+      );
       expect(result.masterVolume).toBe(restoreStateOnLoad ? 0.3 : 1);
-      expect(result.laneVolumes).toEqual([0.9, 1]);
+      expect(result.laneVolumes).toEqual(restoreStateOnLoad ? [0.9, 1] : []);
     });
   }
 

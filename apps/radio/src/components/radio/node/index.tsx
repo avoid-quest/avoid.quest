@@ -20,24 +20,20 @@ import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useNodeMidi } from "@/lib/hooks/use-node-midi";
 import { useNodeSession } from "@/lib/hooks/use-node-session";
 import { useAllRadios } from "@/lib/hooks/use-radios";
-import {
-  findStationNode,
-  removeNodesHealed,
-} from "@/lib/node-graph/graph-edits";
+import { removeNodesHealed } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   nodeStore,
   useNodeGraph,
 } from "@/lib/node-graph/node-store";
-import {
-  buildNodeGraphFromTemplate,
-  type NodeTemplateId,
-} from "@/lib/node-graph/templates";
+import { templatePatch } from "@/lib/node-graph/palette";
+import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
 import { NodeCanvasSkeleton } from "../radio-loading-skeleton";
 import { RadioSearchBar } from "../radio-search-bar";
+import { NodeCanvasHint } from "./canvas-hint";
 import { ConnectDialog } from "./connect-dialog";
 import { type NodeActions, NodeActionsProvider } from "./node-actions";
 import { NodeInspector, useNodeInspector } from "./node-inspector";
@@ -105,20 +101,11 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const loadTemplate = (template: NodeTemplateId) => {
     const saved = savedRadios.isReady ? savedRadios.data : [];
     commitNodeGraph(
-      (current) => ({
-        ...buildNodeGraphFromTemplate(template, {
-          // A station already in the patch keeps its level.
-          levels: (radio) => {
-            const station = findStationNode(current, radio);
-            return station
-              ? { muted: station.data.muted, volume: station.data.volume }
-              : undefined;
-          },
+      (current) =>
+        templatePatch(current, template, {
           saved,
           session: management.sessionRadios,
         }),
-        viewport: current.viewport,
-      }),
       nodeStore,
       "snapshot"
     );
@@ -224,9 +211,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       ) : (
         <NodeCanvasSkeleton />
       )}
-      <p className="pointer-events-none absolute bottom-2 left-3 z-10 text-muted-foreground text-xs">
-        Drag a cable to empty space to add a node
-      </p>
+      <NodeCanvasHint graph={graph} />
     </div>
   );
   const rack = graph ? <NodeRack graph={graph} /> : null;

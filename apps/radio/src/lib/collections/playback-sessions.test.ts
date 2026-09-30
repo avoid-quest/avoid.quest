@@ -986,6 +986,64 @@ describe("session persistence and init", () => {
     expect(session?.channels[0]?.radio?.id).toBe("kexp");
   });
 
+  test("initializePlaybackSessions starts a new node session from the Starter patch", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      radiosCollection.stateWhenReady(),
+    ]);
+    for (const order of [0, 1, 2, 3, 4]) {
+      radiosCollection.insert({
+        enabled: true,
+        id: `saved-${order}`,
+        isSystem: false,
+        name: `Saved ${order}`,
+        order,
+        streamUrl: `https://radio.example/saved-${order}.mp3`,
+      });
+    }
+
+    await initializePlaybackSessions();
+
+    const nodeSession = getPlaybackSession("node");
+    expect(nodeSession?.graph).toEqual(buildNodeGraphFromTemplate("starter"));
+    expect(nodeSession?.channels).toEqual([]);
+  });
+
+  test("initializePlaybackSessions keeps a stored three-Station patch byte for byte", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      radiosCollection.stateWhenReady(),
+      settingsCollection.stateWhenReady(),
+    ]);
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: { mode: "node", restoreStateOnLoad: true },
+    });
+    const saved = ["a", "b", "c"].map((id, order) => ({
+      enabled: true,
+      id: `saved-${id}`,
+      isSystem: false,
+      name: `Saved ${id}`,
+      order,
+      streamUrl: `https://radio.example/${id}.mp3`,
+    }));
+    for (const radio of saved) {
+      radiosCollection.insert(radio);
+    }
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", { saved })
+    );
+    const before = JSON.stringify(getPlaybackSession("node")?.graph);
+
+    await initializePlaybackSessions();
+
+    const graph = getPlaybackSession("node")?.graph;
+    expect(graph?.nodes.filter((node) => node.type === "station")).toHaveLength(
+      3
+    );
+    expect(JSON.stringify(graph)).toBe(before);
+  });
+
   test("initializePlaybackSessions empties a Station whose session radio is gone", async () => {
     await Promise.all([
       playbackSessionsCollection.stateWhenReady(),
@@ -1194,17 +1252,14 @@ describe("session persistence and init", () => {
     expect(singleSession?.channels[0]?.radio).toBeNull();
     expect(singleSession?.channels[0]?.volume).toBe(1);
 
-    // The Multiple record migrated, then Node rebuilt from saved stations.
+    // The Multiple record migrated, then Node rebuilt from the Starter.
     expect(
       playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
     ).toBe(false);
     const nodeSession = getPlaybackSession("node");
     expect(nodeSession?.masterVolume).toBe(1);
-    expect(nodeSession?.channels).toHaveLength(1);
-    expect(nodeSession?.channels[0]?.id).toBe("n:src-saved-radio-1");
-    expect(nodeSession?.channels[0]?.radio?.id).toBe("saved-radio-1");
-    expect(nodeSession?.channels[0]?.volume).toBe(1);
-    expect(nodeSession?.channels[0]?.muted).toBe(false);
+    expect(nodeSession?.graph).toEqual(buildNodeGraphFromTemplate("starter"));
+    expect(nodeSession?.channels).toEqual([]);
 
     const djSession = getPlaybackSession("dj");
     const deckA = djSession?.channels.find(

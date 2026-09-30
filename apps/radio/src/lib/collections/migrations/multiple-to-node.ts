@@ -240,7 +240,7 @@ export function migrateMultipleSession(
       );
     } catch (error) {
       // Never block startup on an old record: the backup holds it, and init
-      // builds Node from "Start from Multiple" when "node" is missing.
+      // builds Node from the Starter patch when "node" is missing.
       console.warn(
         "[multiple-to-node] Could not migrate the Multiple session",
         error

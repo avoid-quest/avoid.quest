@@ -37,7 +37,12 @@ station they had is a compact card on the left: station name, now-playing line, 
 and volume. Grey cables run from each card into a **Speakers** node on the right, which holds
 Play all (N), the master volume and a small stereo meter. Space still plays or pauses
 everything. A single hint line under the canvas reads "Drag a cable to empty space to add a
-node". Pressing `/`, double-clicking the canvas, or dropping a cable on empty space opens the
+node".
+
+A new user, or one with no stored node session, starts from the **Starter** patch instead:
+one empty Station slot, its body the station search, wired to Speakers. Until a source holds
+a station the canvas hint says what to do first: "Search a station in the slot, or press / to
+add a node". The richer templates stay in the Templates menu and the palette. Pressing `/`, double-clicking the canvas, or dropping a cable on empty space opens the
 palette, and a station picked there is wired in ahead of time. Pressing play makes the
 cables carrying signal brighten with their live level.
 
@@ -509,7 +514,7 @@ collapsible Stage strip sits under the canvas once macros exist (PR 6):
 │  │▶ BBC 4 (talk)   │┄┄┄┘ (amber long-dash)     ╚═▶│ ▶ Play all (2)│       │
 │  └─────────────────┘                              │ ▁▁▁▁● ▮▮ meter│       │
 │                                                   └───────────────┘       │
-│  Drag a cable to empty space to add a node          React Flow attribution│
+│  Drag a cable to empty space to add a node                                │
 ├──────────────────────────────────────────────────────────┴────────────────┤
 │ Stage ▾  [Macro ◔] [Dial ◔] [Crossfade ━●━]    ☐ show cables             │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -582,8 +587,8 @@ What this design does instead:
 - Cables are achromatic by default, because audio is the majority. Colour is reserved for the
   minority kinds and for live signal, so a patch reads like the rest of the zinc app, not
   like a flowchart tool.
-- The only exception is React Flow's attribution badge, which stays small bottom-right
-  without Pro.
+- React Flow's attribution badge is hidden (`proOptions={{ hideAttribution: true }}` from a
+  module constant), so the canvas corner stays clear.
 
 ## 7. Interaction
 
@@ -627,14 +632,17 @@ What this design does instead:
   store. Snapshots are taken on drag stop, connect, delete, template load and knob release
   (`Cmd+Z` / `Shift+Cmd+Z`). Undo is just another diff, so it is click-free too. This is our
   own code: no zundo, and nothing copied from React Flow Pro.
-- **Templates.**
-  - **Start from Multiple**: every enabled saved station plus session stations, in Multiple's
+- **Templates.** The Templates menu and the palette list Starter, All my stations, Duck and
+  Blank, in that order. Each replaces the patch as one undo step.
+  - **Starter**: one empty Station slot wired to Speakers, in Duck's columns. It is the
+    default for a new node session. Play all does nothing until the slot holds a station.
+  - **All my stations** (id `start-from-multiple`): every enabled saved station plus session stations, in Multiple's
     order (saved first; `multiple-playback.ts:120-197`), each wired to Speakers at its volume.
   - **Duck** (PR 4): a talk station keys a Compressor on a music station.
   - **Frankenstation** and **Two cities** (PR 5): three stations in bands → Merge; two
     stations panned hard L/R.
   - **Dial** and **Radio Dérive** (PR 6): the first 3 enabled stations → Dial → Speakers;
-    Clock → Randomiser → Station roulette through Static. Dial becomes the new-user default.
+    Clock → Randomiser → Station roulette through Static.
   - **Talk-over** (PR 7): station + Mic → compressor sidechain.
   - **Blank**: Speakers only.
 - **MIDI.**
@@ -742,7 +750,9 @@ runs **before** any mutation of either collection. It is idempotent.
 
    If a `"node"` record already exists, the step only deletes the stale `"multiple"` record.
 3. **Fresh stores, `restoreStateOnLoad === false`, or a missing `"node"` record.** Build
-   `"node"` from the "Start from Multiple" template over enabled radios. This replaces
+   `"node"` from the Starter template (`buildDefaultNodeSession`): one empty Station slot
+   wired to Speakers. A stored or migrated `"node"` session keeps its graph; with
+   `restoreStateOnLoad === false` the Starter is rebuilt on every load. This replaces
    `buildMultipleSessionFromEnabledRadios` at its three call sites (`playback-sessions.ts:783`,
    `:788` and `:795`). Whether `restoreStateOnLoad === false` should also discard an authored
    graph is §12 question 12.

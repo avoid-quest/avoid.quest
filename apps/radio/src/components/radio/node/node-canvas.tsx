@@ -118,6 +118,8 @@ const SERIES_PARALLEL_EDITS = {
 /** Station node width, so a node fed from an input lands with its port at the cursor. */
 const STATION_WIDTH = 240;
 const FIT_VIEW_OPTIONS = { maxZoom: 1, padding: 0.2 };
+/** No React Flow attribution in the canvas corner. */
+const PRO_OPTIONS = { hideAttribution: true };
 
 /** A loose node dragged over a cable it can go into. */
 type InsertTarget = { node: string; edge: string };
@@ -743,6 +745,7 @@ function Canvas({
         onNodeDragStop={handleNodeDragStop}
         onNodesChange={handleNodesChange}
         panActivationKeyCode={null}
+        proOptions={PRO_OPTIONS}
         zoomOnDoubleClick={false}
       />
     </div>

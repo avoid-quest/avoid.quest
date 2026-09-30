@@ -36,7 +36,6 @@
     transparent
   );
   --xy-selection-border-default: 1px dashed var(--ring);
-  --xy-attribution-background-color-default: transparent;
 }
 
 @layer components {
@@ -117,9 +116,5 @@
     opacity: 1;
     stroke: var(--foreground);
     stroke-width: 3;
-  }
-
-  .react-flow__attribution a {
-    color: var(--muted-foreground);
   }
 }

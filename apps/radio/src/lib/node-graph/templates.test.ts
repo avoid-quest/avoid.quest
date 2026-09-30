@@ -7,7 +7,9 @@ import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
   DUCK_NODE_ID,
+  NODE_TEMPLATE_IDS,
   SPEAKERS_NODE_ID,
+  STARTER_STATION_ID,
   STATION_ROW_HEIGHT,
 } from "./templates";
 import { validate } from "./validate";
@@ -26,6 +28,56 @@ function stationIds(graph: ReturnType<typeof buildNodeGraphFromTemplate>) {
     .filter((node) => node.type === "station")
     .map((node) => node.id);
 }
+
+describe("starter", () => {
+  test("is one empty Station slot wired to Speakers", () => {
+    const graph = buildNodeGraphFromTemplate("starter", {
+      saved: [radio("a", { enabled: true })],
+    });
+
+    expect(graph.nodes).toEqual([
+      expect.objectContaining({
+        data: { muted: false, radio: null, volume: 1 },
+        id: STARTER_STATION_ID,
+        type: "station",
+      }),
+      expect.objectContaining({ id: SPEAKERS_NODE_ID, type: "speakers" }),
+    ]);
+    expect(graph.edges).toEqual([
+      {
+        gain: 1,
+        id: `${STARTER_STATION_ID}->${SPEAKERS_NODE_ID}`,
+        muted: false,
+        source: STARTER_STATION_ID,
+        sourceHandle: "out:audio:main",
+        target: SPEAKERS_NODE_ID,
+        targetHandle: "in:audio:main",
+      },
+    ]);
+    expect(nodeGraphSchema.parse(graph)).toEqual(graph);
+    expect(validate(graph)).toEqual([]);
+  });
+
+  test("compiles to Speakers alone until the slot holds a station", () => {
+    const plan = compile(buildNodeGraphFromTemplate("starter"), {
+      crossOriginIsolated: false,
+    });
+
+    expect(plan.lanes.size).toBe(0);
+    expect(plan.sinks.size).toBe(1);
+  });
+
+  test("builds a valid node session with no lanes", () => {
+    const session = buildNodeSessionFromTemplate("starter");
+
+    expect(session.channels).toEqual([]);
+    expect(parsePlaybackSessionRecord(session).graph).toEqual(session.graph);
+  });
+
+  test("comes first among the templates", () => {
+    expect(NODE_TEMPLATE_IDS[0]).toBe("starter");
+  });
+});
 
 describe("start-from-multiple", () => {
   test("orders enabled saved stations by order, then session stations", () => {

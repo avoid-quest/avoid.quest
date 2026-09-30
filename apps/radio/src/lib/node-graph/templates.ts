@@ -3,6 +3,7 @@
  *
  * Pure builders for the patches a node session can start from:
  *
+ * - "starter": the default, one empty Station slot wired to Speakers;
  * - "start-from-multiple": every enabled saved station, then the session
  *   stations, in Multiple's order, each wired to Speakers at its volume;
  * - "duck": a talk station keys a Compressor on a music station, so the
@@ -27,6 +28,7 @@ import {
 import { deriveNodeChannels } from "./session-channels";
 
 export const NODE_TEMPLATE_IDS = [
+  "starter",
   "start-from-multiple",
   "duck",
   "blank",
@@ -118,12 +120,47 @@ function speakersNode(position: { x: number; y: number }): GraphNode {
   };
 }
 
+/** The Starter template's empty Station slot. */
+export const STARTER_STATION_ID = "src-station";
+
+/**
+ * The smallest patch that plays: one empty Station slot to search, wired to
+ * Speakers, in Duck's columns.
+ */
+function starter(): NodeGraph {
+  return {
+    edges: [
+      {
+        gain: 1,
+        id: `${STARTER_STATION_ID}->${SPEAKERS_NODE_ID}`,
+        muted: false,
+        source: STARTER_STATION_ID,
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: SPEAKERS_NODE_ID,
+        targetHandle: AUDIO_IN_HANDLE,
+      },
+    ],
+    nodes: [
+      {
+        data: { muted: false, radio: null, volume: 1 },
+        id: STARTER_STATION_ID,
+        position: { x: 0, y: 0 },
+        type: "station",
+      },
+      // A cable's length right of the slot, as in Duck.
+      speakersNode({ x: STATION_WIDTH + 120, y: 0 }),
+    ],
+    version: NODE_GRAPH_VERSION,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
 /** A station to lay out, with its level. */
 export type StationSeed = { radio: Radio } & Partial<NodeTemplateLevels>;
 
 /**
  * Stations in order in one column, or two past eight, each wired to a
- * Speakers node centred on their right. Shared by "Start from Multiple" and
+ * Speakers node centred on their right. Shared by "All my stations" and
  * the Multiple → Node migration.
  */
 export function buildStationPatch(seeds: readonly StationSeed[]): NodeGraph {
@@ -280,6 +317,8 @@ export function buildNodeGraphFromTemplate(
   sources: NodeTemplateSources = {}
 ): NodeGraph {
   switch (template) {
+    case "starter":
+      return starter();
     case "start-from-multiple":
       return startFromMultiple(sources);
     case "duck":

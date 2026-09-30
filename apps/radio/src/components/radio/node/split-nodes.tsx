@@ -8,6 +8,7 @@ import {
   BAND_COUNTS,
   type BandCount,
   bandCountOf,
+  branchBaseGain,
   branchCables,
   branchName,
   MAX_CROSSOVER_HZ,
@@ -240,6 +241,7 @@ export function SplitInspectorParams({
                   </p>
                   <BranchControls
                     data={{
+                      baseGain: branchBaseGain(node, edge.sourceHandle),
                       gain: edge.gain,
                       muted: edge.muted,
                       name,

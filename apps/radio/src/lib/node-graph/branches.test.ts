@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type {
   EffectType,
   FrequencySplitConfig,
+  FxCompositeConfig,
 } from "@/lib/audio/dsp/effects/types";
 import {
+  branchBaseGain,
   branchCables,
   branchName,
   branchTag,
@@ -62,6 +64,36 @@ function nodeOf(graph: NodeGraph, id: string): SplitNode {
 function bandsOf(graph: NodeGraph, id: string): FrequencySplitConfig {
   return nodeOf(graph, id).data.effect as FrequencySplitConfig;
 }
+
+describe("branch base gain", () => {
+  test("uses the configured chain in port order and defaults for extra branches", () => {
+    const graph = patch([
+      split("s", "fxComposite"),
+      split("lr", "stereoSplit"),
+    ]);
+    const node = nodeOf(graph, "s");
+    expect(branchBaseGain(node, "out:audio:branch-1")).toBe(Math.SQRT1_2);
+    expect(branchBaseGain(node, "out:audio:branch-3")).toBe(Math.SQRT1_2);
+    expect(branchBaseGain(nodeOf(graph, "lr"), "out:audio:left")).toBe(1);
+    const effect = node.data.effect as FxCompositeConfig;
+    const configured = {
+      ...node,
+      data: {
+        effect: {
+          ...effect,
+          chains: effect.chains
+            .map((chain) => ({
+              ...chain,
+              gain: chain.order === 0 ? 0.5 : 0.25,
+            }))
+            .reverse(),
+        },
+      },
+    };
+    expect(branchBaseGain(configured, "out:audio:branch-1")).toBe(0.5);
+    expect(branchBaseGain(configured, "out:audio:branch-2")).toBe(0.25);
+  });
+});
 
 describe("split ports", () => {
   test("a Split shows the branches in use plus one, from two to four", () => {

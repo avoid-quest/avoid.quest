@@ -7,7 +7,12 @@
  * stays testable without the canvas chunk.
  */
 
-import { branchName, branchTag, isSplitNode } from "@/lib/node-graph/branches";
+import {
+  branchBaseGain,
+  branchName,
+  branchTag,
+  isSplitNode,
+} from "@/lib/node-graph/branches";
 import { getNodeDefinition, isShipped } from "@/lib/node-graph/catalogue";
 import { laneChannelId, type MergeRole } from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
@@ -87,6 +92,7 @@ export type MergeNodeData = { role: MergeRole | null; inputs: number };
 
 /** What a branch cable draws: its tag, and the chain params it carries. */
 export type BranchEdgeData = {
+  baseGain: number;
   tag: string;
   name: string;
   gain: number;
@@ -188,6 +194,7 @@ function branchOf(
     return null;
   }
   const data: BranchEdgeData = {
+    baseGain: branchBaseGain(source, edge.sourceHandle),
     gain: edge.gain,
     muted: edge.muted,
     name: branchName(source, edge.sourceHandle),

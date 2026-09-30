@@ -173,6 +173,7 @@ describe("flow elements", () => {
         "lr.left",
         "branch",
         {
+          baseGain: 1,
           gain: 0.5,
           muted: false,
           name: "Left",
@@ -184,7 +185,15 @@ describe("flow elements", () => {
       [
         "lr.right",
         "branch",
-        { gain: 1, muted: true, name: "Right", pan: 0, solo: false, tag: "R" },
+        {
+          baseGain: 1,
+          gain: 1,
+          muted: true,
+          name: "Right",
+          pan: 0,
+          solo: false,
+          tag: "R",
+        },
       ],
       ["mix->speakers", "default", undefined],
     ]);

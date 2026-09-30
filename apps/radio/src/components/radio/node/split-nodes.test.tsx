@@ -84,6 +84,7 @@ const { act, cleanup, fireEvent, render, within } = await import(
 let MergeNodeBody: typeof import("./merge-node")["MergeNodeBody"];
 let SplitInspectorParams: typeof import("./split-nodes")["SplitInspectorParams"];
 let branchSummary: typeof import("./branch-controls")["branchSummary"];
+let BranchControls: typeof import("./branch-controls")["BranchControls"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
 let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
@@ -94,7 +95,7 @@ let moduleFrame: typeof import("./module-frame");
 beforeAll(async () => {
   ({ MergeNodeBody } = await import("./merge-node"));
   ({ SplitInspectorParams } = await import("./split-nodes"));
-  ({ branchSummary } = await import("./branch-controls"));
+  ({ BranchControls, branchSummary } = await import("./branch-controls"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
@@ -207,7 +208,9 @@ describe("Split inspector", () => {
       expect.stringContaining("Mid to Merge"),
       expect.stringContaining("High to Merge"),
     ]);
-    expect(branches.getByRole("slider", { name: "Low gain" })).toBeTruthy();
+    expect(
+      branches.getByRole("slider", { name: "Low cable trim" })
+    ).toBeTruthy();
     expect(branches.getByRole("slider", { name: "Mid pan" })).toBeTruthy();
     expect(view.queryByText("Add nested effect")).toBeNull();
     expect(view.queryByText("Add parallel chain")).toBeNull();
@@ -244,6 +247,7 @@ describe("Split inspector", () => {
 describe("branch tag", () => {
   test("says what differs from a unity, centred branch", () => {
     const data = {
+      baseGain: 1,
       gain: 1,
       muted: false,
       name: "Low",
@@ -255,6 +259,33 @@ describe("branch tag", () => {
     expect(
       branchSummary({ ...data, gain: 0.5, muted: true, pan: -0.4, solo: true })
     ).toEqual(["-6.0 dB", "L40", "M", "S"]);
+  });
+
+  test("includes the Split base attenuation without changing the cable trim", () => {
+    const store = createStore();
+    const before = store.state.graph;
+    const data = {
+      baseGain: Math.SQRT1_2,
+      gain: 0.5,
+      muted: false,
+      name: "Branch 1",
+      pan: 0,
+      solo: false,
+      tag: "1",
+    };
+    const view = render(
+      <BranchControls data={data} edgeId="branch" store={store} />
+    );
+    expect(view.getByText("Base -3.0 dB · base + trim -9.0 dB")).toBeTruthy();
+    expect(
+      view
+        .getByRole("slider", { name: "Branch 1 cable trim" })
+        .getAttribute("aria-valuenow")
+    ).toBe("0.5");
+    expect(store.state.graph).toBe(before);
+    expect(branchSummary({ ...data, gain: 1 })).toEqual(["-3.0 dB"]);
+    expect(branchSummary(data)).toEqual(["-9.0 dB"]);
+    expect(branchSummary({ ...data, gain: 0 })).toEqual(["-∞ dB"]);
   });
 });
 

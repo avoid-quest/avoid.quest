@@ -84,7 +84,7 @@ export function BranchEdge({
                   data.muted && "opacity-60",
                   data.solo && "border-primary/40 text-primary"
                 )}
-                title={`${described}. Click for gain, pan, mute and solo`}
+                title={`${described}. Level is base + cable trim. Click for cable trim, pan, mute and solo`}
                 type="button"
               >
                 <span className={cn(data.muted && "line-through")}>

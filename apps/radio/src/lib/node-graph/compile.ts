@@ -15,6 +15,7 @@ import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
 } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
+import { EFFECT_DEFINITIONS } from "@/lib/audio/dsp/effects/schema";
 import type {
   EffectChainConfig,
   EffectConfig,
@@ -676,8 +677,10 @@ function portName(handle: string): string {
  * the registry, so a third or fourth branch matches them. Stereo and band
  * splits divide the signal, so theirs stay at unity.
  */
-function defaultChainGain(type: EffectConfig["type"]): number {
-  return type === "fxComposite" ? Math.SQRT1_2 : 1;
+export function defaultChainGain(
+  type: "fxComposite" | "stereoSplit" | "frequencySplit"
+): number {
+  return EFFECT_DEFINITIONS[type].defaultConfig.chains[0]?.gain ?? 1;
 }
 
 function splitPorts(effect: EffectConfig): string[] | null {

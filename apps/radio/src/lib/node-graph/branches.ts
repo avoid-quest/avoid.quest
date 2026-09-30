@@ -13,8 +13,11 @@ import type {
   EffectConfig,
   FrequencySplitConfig,
 } from "@/lib/audio/dsp/effects/types";
-import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
-import { MAX_SPLIT_BRANCHES } from "./compile";
+import {
+  isEffectContainer,
+  isEffectContainerType,
+} from "@/lib/audio/dsp/routing/effect-tree";
+import { defaultChainGain, MAX_SPLIT_BRANCHES } from "./compile";
 import type { EffectNodeType, GraphEdge, GraphNode, NodeGraph } from "./schema";
 import { parseHandleId } from "./validate";
 
@@ -119,6 +122,18 @@ export function branchTag(node: SplitNode, handle: string): string {
     return String(branchIndex(handle));
   }
   return effectOf(node).type === "stereoSplit" ? name.charAt(0) : name;
+}
+
+/** The configured chain gain underneath a branch cable's additional trim. */
+export function branchBaseGain(node: SplitNode, handle: string): number {
+  const effect = effectOf(node);
+  if (!isEffectContainer(effect)) {
+    return 1;
+  }
+  const chains = [...effect.chains].sort(
+    (left, right) => left.order - right.order
+  );
+  return chains[branchIndex(handle) - 1]?.gain ?? defaultChainGain(node.type);
 }
 
 /** The audio cables leaving a split, in port order: its branches. */

@@ -611,6 +611,50 @@ describe("node session persistence", () => {
     expect(updated?.graph?.edges).toHaveLength(4);
   });
 
+  test("keeps a NAM model that only an unwired graph FX node uses", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const graphOnlyId = createLocalNamModelId();
+    await saveNamModel(graphOnlyId, '{"graphOnly":true}');
+    const amp = createNodeEffectConfig("neuralAmp", "amp");
+    amp.modelId = graphOnlyId;
+    const graph = createDuckGraph();
+    graph.nodes.push({
+      data: { effect: amp },
+      id: "amp",
+      position: { x: 240, y: 224 },
+      type: "neuralAmp",
+    });
+
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: createDuckChannels(),
+      crossfadePosition: 0.5,
+      graph,
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+
+    // The amp reaches no lane, so only the graph references its model.
+    updatePlaybackChannel("node", "n:src-kexp", (draft) => {
+      draft.effects = [];
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(graphOnlyId)).toBe('{"graphOnly":true}');
+
+    updatePlaybackSession("node", (draft) => {
+      if (draft.graph) {
+        draft.graph.nodes = draft.graph.nodes.filter(
+          (node) => node.id !== "amp"
+        );
+      }
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getCachedNamModel(graphOnlyId)).toBeNull();
+  });
+
   test("keeps a node session without a graph valid", () => {
     const session = parsePlaybackSessionRecord({
       channels: [],

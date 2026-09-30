@@ -21,7 +21,7 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
-import { nodeGraphSchema } from "@/lib/node-graph/schema";
+import { EFFECT_NODE_TYPES, nodeGraphSchema } from "@/lib/node-graph/schema";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
@@ -492,14 +492,32 @@ function updatePlaybackSessionRecord(
   updateRecord.call(playbackSessionsCollection, id, updater);
 }
 
+/**
+ * FX configs a Node graph holds. A bypassed or unwired FX node never reaches
+ * a lane, so the derived channels alone would let its NAM model be deleted.
+ */
+function collectGraphEffects(
+  session: PlaybackSessionRecord | undefined
+): EffectConfig[] {
+  return (
+    session?.graph?.nodes.flatMap((node) =>
+      EFFECT_NODE_TYPES.some((type) => type === node.type) &&
+      "effect" in node.data
+        ? [node.data.effect as EffectConfig]
+        : []
+    ) ?? []
+  );
+}
+
 function collectSessionNamModelIds(
   session: PlaybackSessionRecord | undefined
 ): Set<string> {
-  return new Set(
-    session?.channels.flatMap((channel) => [
+  return new Set([
+    ...(session?.channels.flatMap((channel) => [
       ...collectLocalNamModelIds(channel.effects),
-    ]) ?? []
-  );
+    ]) ?? []),
+    ...collectLocalNamModelIds(collectGraphEffects(session)),
+  ]);
 }
 
 function collectReferencedNamModelIds(): Set<string> {

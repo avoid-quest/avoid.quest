@@ -96,6 +96,8 @@ type LaneOutput = {
   sends: Map<string, LaneSend>;
   /** Swaps in flight; laneOut stays at 0 until the last one ends. */
   ducks: number;
+  /** Resolves once laneOut is silent for the swaps in flight. */
+  silent: Promise<void> | null;
 };
 
 function delay(ms: number): Promise<void> {
@@ -256,6 +258,7 @@ export function createNodeLaneOutputs({
         out: null,
         realtime: false,
         sends: new Map(),
+        silent: null,
         soundId,
       };
       lanes.set(laneId, lane);
@@ -301,14 +304,22 @@ export function createNodeLaneOutputs({
         return await replace();
       }
       lane.ducks += 1;
-      rampLinear(lane.out, 0);
+      // A swap arriving mid-duck waits for that same duck to reach 0;
+      // restarting the ramp would move its end past the first swap's wait.
+      if (!lane.silent) {
+        rampLinear(lane.out, 0);
+        lane.silent = wait(LANE_DUCK_MS);
+      }
       try {
-        await wait(LANE_DUCK_MS);
+        await lane.silent;
         return await replace();
       } finally {
         lane.ducks -= 1;
-        if (lane.ducks === 0 && lane.out && lanes.get(laneId) === lane) {
-          rampLinear(lane.out, 1);
+        if (lane.ducks === 0) {
+          lane.silent = null;
+          if (lane.out && lanes.get(laneId) === lane) {
+            rampLinear(lane.out, 1);
+          }
         }
       }
     },

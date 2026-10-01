@@ -389,8 +389,9 @@ describe("createNodeLaneOutputs", () => {
     harness.outputs.attach("kexp", "node:n:kexp");
     const { laneOut } = harness.connectSound("node:n:kexp");
 
+    const outcome = deferred();
     const first = harness.outputs.swap("kexp", async () => undefined);
-    const second = harness.outputs.swap("kexp", async () => undefined);
+    const second = harness.outputs.swap("kexp", () => outcome.promise);
     harness.waits[0]?.resolve();
     await first;
 
@@ -399,12 +400,62 @@ describe("createNodeLaneOutputs", () => {
       value: 0,
     });
 
-    harness.waits[1]?.resolve();
+    outcome.resolve();
     await second;
     expect(laneOut.gain.events.at(-1)).toMatchObject({
       type: "linear",
       value: 1,
     });
+  });
+
+  test("a swap started mid-duck replaces once that duck is silent, not before", async () => {
+    const harness = createHarness(0.7);
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { laneOut } = harness.connectSound("node:n:kexp");
+    harness.context.currentTime = 10;
+    const firstReplace = mock(async () => undefined);
+    const secondReplace = mock(async () => undefined);
+
+    const first = harness.outputs.swap("kexp", firstReplace);
+    const ducked = laneOut.gain.events.length;
+    harness.context.currentTime = 10.005;
+    const second = harness.outputs.swap("kexp", secondReplace);
+
+    // The duck in flight keeps its deadline; the second swap waits on it.
+    expect(laneOut.gain.events).toHaveLength(ducked);
+    expect(harness.waits).toHaveLength(1);
+    expect(firstReplace).not.toHaveBeenCalled();
+    expect(secondReplace).not.toHaveBeenCalled();
+
+    harness.waits[0]?.resolve();
+    await Promise.all([first, second]);
+
+    expect(firstReplace).toHaveBeenCalledTimes(1);
+    expect(secondReplace).toHaveBeenCalledTimes(1);
+    expect(
+      laneOut.gain.events.filter(
+        (event) => event.type === "linear" && event.value === 0
+      )
+    ).toHaveLength(1);
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
+  });
+
+  test("a swap after the duck lifted ducks again", async () => {
+    const harness = createHarness(0.7);
+    harness.outputs.attach("kexp", "node:n:kexp");
+    harness.connectSound("node:n:kexp");
+
+    const first = harness.outputs.swap("kexp", async () => undefined);
+    harness.waits[0]?.resolve();
+    await first;
+    const second = harness.outputs.swap("kexp", async () => undefined);
+
+    expect(harness.waits).toHaveLength(2);
+    harness.waits[1]?.resolve();
+    await second;
   });
 
   test("swap without a connected sound replaces at once", async () => {

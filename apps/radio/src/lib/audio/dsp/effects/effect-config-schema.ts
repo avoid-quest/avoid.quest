@@ -2,14 +2,17 @@
  * Effect Config Schema
  *
  * Zod schema for a stored EffectConfig tree. It upgrades legacy param keys,
- * checks container shapes, and fills missing params from the effect defaults.
- * Shared by playback sessions and the node graph.
+ * checks container shapes and nesting depth, and fills missing params from
+ * the effect defaults. Shared by playback sessions and the node graph, which
+ * read it at different strictness (`Strictness`).
  */
 
 import { z } from "zod";
 import {
   DEFAULT_EFFECT_TEMPO,
+  isEffectContainer,
   isValidFrequencySplitShape,
+  MAX_EFFECT_TREE_DEPTH,
 } from "../routing/effect-tree.js";
 import { getEffectParamDefs } from "./param-traversal.js";
 import type { EffectParamDef } from "./param-types.js";
@@ -127,105 +130,285 @@ function isParamValue(param: EffectParamDef, value: unknown): boolean {
   }
 }
 
+/** Whether a select holds one of its declared options. */
+function isSelectOption(
+  param: Extract<EffectParamDef, { type: "select" }>,
+  value: unknown
+): boolean {
+  return param.options.some((option) =>
+    param.valueType === "number"
+      ? Number(option.value) === value
+      : option.value === value
+  );
+}
+
+/** Whether a well-typed value lies outside what its control can set. */
+function isOutOfRange(param: EffectParamDef, value: unknown): boolean {
+  if (param.type === "slider") {
+    return (value as number) < param.min || (value as number) > param.max;
+  }
+  return param.type === "select" && !isSelectOption(param, value);
+}
+
+/**
+ * The loudest a container branch may be: the Branch gain slider's top,
+ * which a node cable's gain matches.
+ */
+export const MAX_CHAIN_GAIN = 4;
+
+/**
+ * How strictly a config is read.
+ *
+ * - `stored`: a playback channel, as Single, DJ and the node compiler write
+ *   it. A param outside its control's range is clamped (a slider) or reset
+ *   to its default (a select), so an old session keeps loading, and Post-FX
+ *   Trim has no ceiling, since a node lane folds its cable trims into it.
+ * - `node`: an FX node's own config, which only its controls write, so
+ *   anything they can't set is refused: a value outside its range, a branch
+ *   gain past the slider, or an effect or chain id used twice in the tree.
+ */
+type Strictness = "stored" | "node";
+
 /** Flags universal params outside their range and mistyped effect params. */
 function checkEffectParams(
   value: Record<string, unknown> & { type: EffectType },
-  context: z.RefinementCtx
+  context: z.RefinementCtx,
+  strictness: Strictness
 ): void {
   for (const { key, label, max, min } of UNIVERSAL_EFFECT_PARAM_DEFS) {
     const current = value[key];
-    if (typeof current === "number" && (current < min || current > max)) {
+    const ceiling =
+      strictness === "stored" && key === "outputGain"
+        ? Number.POSITIVE_INFINITY
+        : max;
+    if (typeof current === "number" && (current < min || current > ceiling)) {
       context.addIssue({
         code: "custom",
-        message: `${label} must be between ${min} and ${max}`,
+        message:
+          ceiling === max
+            ? `${label} must be between ${min} and ${max}`
+            : `${label} must be at least ${min}`,
         path: [key],
       });
     }
   }
   for (const param of getEffectParamDefs(value.type)) {
     const paramValue = value[param.key];
-    if (paramValue !== undefined && !isParamValue(param, paramValue)) {
+    if (paramValue === undefined) {
+      continue;
+    }
+    if (!isParamValue(param, paramValue)) {
       context.addIssue({
         code: "custom",
         message: `${param.label} has the wrong type`,
+        path: [param.key],
+      });
+    } else if (strictness === "node" && isOutOfRange(param, paramValue)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          param.type === "slider"
+            ? `${param.label} must be between ${param.min} and ${param.max}`
+            : `${param.label} must be one of its options`,
         path: [param.key],
       });
     }
   }
 }
 
-const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
-  z.object({
-    effects: z.array(effectConfigSchema),
-    gain: z.number(),
-    id: z.string(),
-    muted: z.boolean(),
-    name: z.string(),
-    order: z.number(),
-    pan: z.number(),
-    solo: z.boolean(),
-  })
-);
+/** Brings a stored param back inside what its control can set. */
+function clampEffectParams(
+  config: Record<string, unknown> & { type: EffectType },
+  defaults: Record<string, unknown>
+): void {
+  for (const param of getEffectParamDefs(config.type)) {
+    const current = config[param.key];
+    if (current === undefined || !isOutOfRange(param, current)) {
+      continue;
+    }
+    config[param.key] =
+      param.type === "slider"
+        ? Math.min(param.max, Math.max(param.min, current as number))
+        : defaults[param.key];
+  }
+}
 
-export const effectConfigSchema: z.ZodType<EffectConfig> = z.lazy(() =>
-  z.preprocess(
-    migrateLegacyEffectConfig,
-    z
-      .object({
-        chains: z.array(effectChainConfigSchema).optional(),
-        crossoverFrequencies: z.array(z.number()).optional(),
-        dryWet: z.number(),
-        enabled: z.boolean(),
-        id: z.string(),
-        inputGain: z.number(),
-        order: z.number(),
-        outputGain: z.number(),
-        sidechain: effectSidechainSchema.optional(),
-        type: z.enum(EFFECT_TYPES),
-      })
-      .passthrough()
-      .superRefine((value, context) => {
-        checkEffectParams(value, context);
-        if (
-          (value.type === "fxComposite" ||
-            value.type === "stereoSplit" ||
-            value.type === "frequencySplit") &&
-          !value.chains
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: `${value.type} requires child chains`,
-            path: ["chains"],
-          });
+function checkContainerShape(
+  value: {
+    chains?: readonly EffectChainConfig[];
+    crossoverFrequencies?: readonly number[];
+    type: EffectType;
+  },
+  context: z.RefinementCtx
+): void {
+  if (
+    (value.type === "fxComposite" ||
+      value.type === "stereoSplit" ||
+      value.type === "frequencySplit") &&
+    !value.chains
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: `${value.type} requires child chains`,
+      path: ["chains"],
+    });
+  }
+  if (value.type === "stereoSplit" && value.chains?.length !== 2) {
+    context.addIssue({
+      code: "custom",
+      message: "Stereo Split requires left and right chains",
+      path: ["chains"],
+    });
+  }
+  if (
+    value.type === "frequencySplit" &&
+    !isValidFrequencySplitShape(
+      value.chains ?? [],
+      value.crossoverFrequencies ?? []
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "Frequency Split requires 2–4 bands with ascending crossovers",
+      path: ["chains"],
+    });
+  }
+}
+
+/**
+ * How deep containers nest in a raw config, read without recursion, so a
+ * hostile document can't overflow the stack before the limit is checked.
+ * A top-level effect sits at depth 0, the effects in its chains at 1.
+ */
+function rawEffectTreeDepth(value: unknown): number {
+  let deepest = 0;
+  const pending: [unknown, number][] = [[value, 0]];
+  for (let entry = pending.pop(); entry; entry = pending.pop()) {
+    const [effect, depth] = entry;
+    const chains = (effect as { chains?: unknown } | null)?.chains;
+    if (!Array.isArray(chains)) {
+      continue;
+    }
+    for (const chain of chains) {
+      const effects = (chain as { effects?: unknown } | null)?.effects;
+      if (Array.isArray(effects)) {
+        deepest = Math.max(deepest, depth + 1);
+        if (deepest > MAX_EFFECT_TREE_DEPTH) {
+          return deepest;
         }
-        if (value.type === "stereoSplit" && value.chains?.length !== 2) {
-          context.addIssue({
-            code: "custom",
-            message: "Stereo Split requires left and right chains",
-            path: ["chains"],
-          });
+        for (const child of effects) {
+          pending.push([child, depth + 1]);
         }
-        if (
-          value.type === "frequencySplit" &&
-          !isValidFrequencySplitShape(
-            value.chains ?? [],
-            value.crossoverFrequencies ?? []
-          )
-        ) {
-          context.addIssue({
-            code: "custom",
-            message:
-              "Frequency Split requires 2–4 bands with ascending crossovers",
-            path: ["chains"],
-          });
+      }
+    }
+  }
+  return deepest;
+}
+
+/** Ids `validateEffectTree` refuses: an effect or chain id used twice. */
+function checkUniqueIds(effect: EffectConfig, context: z.RefinementCtx): void {
+  const effectIds = new Set<string>();
+  const chainIds = new Set<string>();
+  const visit = (current: EffectConfig) => {
+    if (effectIds.has(current.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `Duplicate effect id "${current.id}"`,
+      });
+    }
+    effectIds.add(current.id);
+    for (const chain of isEffectContainer(current) ? current.chains : []) {
+      if (chainIds.has(chain.id)) {
+        context.addIssue({
+          code: "custom",
+          message: `Duplicate effect chain id "${chain.id}"`,
+        });
+      }
+      chainIds.add(chain.id);
+      for (const child of chain.effects) {
+        visit(child);
+      }
+    }
+  };
+  visit(effect);
+}
+
+function createEffectConfigSchema(
+  strictness: Strictness
+): z.ZodType<EffectConfig> {
+  const chainLimits =
+    strictness === "node"
+      ? {
+          gain: z.number().min(0).max(MAX_CHAIN_GAIN),
+          pan: z.number().min(-1).max(1),
         }
-      })
-      .transform(
-        (value) =>
-          ({
-            ...createDefaultEffectConfig(value.type, value.id, value.order),
-            ...value,
-          }) as EffectConfig
-      )
-  )
-);
+      : { gain: z.number(), pan: z.number() };
+  const chainSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
+    z.object({
+      ...chainLimits,
+      effects: z.array(treeSchema),
+      id: z.string(),
+      muted: z.boolean(),
+      name: z.string(),
+      order: z.number(),
+      solo: z.boolean(),
+    })
+  );
+  const treeSchema: z.ZodType<EffectConfig> = z.lazy(() =>
+    z.preprocess(
+      migrateLegacyEffectConfig,
+      z
+        .object({
+          chains: z.array(chainSchema).optional(),
+          crossoverFrequencies: z.array(z.number()).optional(),
+          dryWet: z.number(),
+          enabled: z.boolean(),
+          id: z.string(),
+          inputGain: z.number(),
+          order: z.number(),
+          outputGain: z.number(),
+          sidechain: effectSidechainSchema.optional(),
+          type: z.enum(EFFECT_TYPES),
+        })
+        .passthrough()
+        .superRefine((value, context) => {
+          checkEffectParams(value, context, strictness);
+          checkContainerShape(value, context);
+        })
+        .transform((value) => {
+          const defaults = createDefaultEffectConfig(
+            value.type,
+            value.id,
+            value.order
+          );
+          const config = { ...defaults, ...value };
+          clampEffectParams(config, defaults);
+          return config as EffectConfig;
+        })
+    )
+  );
+  const root = z
+    .unknown()
+    .superRefine((value, context) => {
+      if (rawEffectTreeDepth(value) > MAX_EFFECT_TREE_DEPTH) {
+        context.addIssue({
+          code: "custom",
+          message: `Effects nest at most ${MAX_EFFECT_TREE_DEPTH} deep`,
+          path: ["chains"],
+        });
+      }
+    })
+    .pipe(treeSchema);
+  return strictness === "node"
+    ? root.superRefine(checkUniqueIds)
+    : (root as z.ZodType<EffectConfig>);
+}
+
+/**
+ * A stored effect, as a playback channel holds it (Single, DJ and the
+ * compiled lanes of Node): see `Strictness`.
+ */
+export const effectConfigSchema = createEffectConfigSchema("stored");
+
+/** An FX node's config in a patch: see `Strictness`. */
+export const nodeEffectConfigSchema = createEffectConfigSchema("node");

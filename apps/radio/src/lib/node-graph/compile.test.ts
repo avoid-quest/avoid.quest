@@ -10,6 +10,7 @@ import {
   normalizeEffectTree,
   visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
+import { parsePlaybackSessionRecord } from "@/lib/collections/playback-sessions";
 import { setBandCount, setCrossover } from "./branches";
 import { createNodeEffectConfig } from "./catalogue";
 import {
@@ -43,6 +44,7 @@ import {
   type NodeType,
   nodeGraphSchema,
 } from "./schema";
+import { deriveNodeChannels } from "./session-channels";
 import { forgetLocalFileUrls, keepLocalFileUrl } from "./sources";
 import { BUS_MERGE_MESSAGE, validate, validateConnection } from "./validate";
 
@@ -689,6 +691,28 @@ describe("compile: lanes in series", () => {
     );
     expect(lane(plan, "a").effects[0]?.signalGain).toBe(0);
     expect(plan.edges.get("verb->speakers")?.muted).toBe(false);
+  });
+
+  test("a lane whose trims push a Post-FX trim past its slider still saves", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("first", "compressor", { enabled: true, outputGain: 2 }),
+        fx("second", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("a", "first"),
+        audio("first", "second", { gain: 4 }),
+        audio("second", "speakers"),
+      ]
+    );
+    expect(lane(plan, "a").effects[0]?.outputGain).toBe(8);
+    const session = parsePlaybackSessionRecord({
+      channels: deriveNodeChannels(plan),
+      id: "node",
+    });
+    expect(session.channels[0]?.effects[0]?.outputGain).toBe(8);
   });
 
   test("a trim passes a bypassed FX untouched, since bypass drops its gains", () => {

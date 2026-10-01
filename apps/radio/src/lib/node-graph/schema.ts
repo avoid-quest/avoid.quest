@@ -11,7 +11,7 @@
  */
 
 import { z } from "zod";
-import { effectConfigSchema } from "@/lib/audio/dsp/effects/effect-config-schema";
+import { nodeEffectConfigSchema } from "@/lib/audio/dsp/effects/effect-config-schema";
 import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { MidiTransform } from "@/lib/midi/types";
 
@@ -339,7 +339,7 @@ const gainNodeSchema = z.object({
 const effectNodeSchema = z
   .object({
     ...nodeBase,
-    data: z.object({ effect: effectConfigSchema }),
+    data: z.object({ effect: nodeEffectConfigSchema }),
     type: z.enum(EFFECT_NODE_TYPES),
   })
   .refine((node) => node.data.effect.type === node.type, {

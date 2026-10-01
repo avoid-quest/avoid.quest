@@ -72,7 +72,8 @@
       "registerProcessor",
       "sampleRate",
       "BUFFER_SIZE",
-      "__APP_VERSION__"
+      "__APP_VERSION__",
+      "__CHANGELOG_NEWEST_DATE__"
     ]
   },
   "linter": {

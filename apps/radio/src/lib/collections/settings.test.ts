@@ -79,6 +79,29 @@ describe("changelog on first visit", () => {
     }
   });
 
+  test("a new browser is marked at the newest entry, not its own clock", async () => {
+    const newest = "2026-09-30T12:00:00.000Z";
+    const stored = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+      },
+    });
+    Object.defineProperty(globalThis, "__CHANGELOG_NEWEST_DATE__", {
+      configurable: true,
+      value: newest,
+    });
+    try {
+      await initializeSettings();
+      expect(getChangelogSeenAt(CHANGELOG_STORAGE_KEY)).toBe(newest);
+    } finally {
+      Reflect.deleteProperty(globalThis, "localStorage");
+      Reflect.deleteProperty(globalThis, "__CHANGELOG_NEWEST_DATE__");
+    }
+  });
+
   test("a reset keeps the mark it finds", async () => {
     const seenAt = "2026-01-01T00:00:00.000Z";
     const stored = new Map([[CHANGELOG_STORAGE_KEY, seenAt]]);

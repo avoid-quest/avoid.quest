@@ -63,6 +63,13 @@ export const settingsCollection = createCollection(
   })
 );
 
+/** The newest What's new entry's date, set by the build; none in tests. */
+function getNewestChangelogDate(): string | undefined {
+  return typeof __CHANGELOG_NEWEST_DATE__ === "string"
+    ? __CHANGELOG_NEWEST_DATE__
+    : undefined;
+}
+
 /**
  * Initialize settings with defaults if empty
  */
@@ -73,9 +80,10 @@ export async function initializeSettings(): Promise<void> {
   if (existing.size === 0) {
     // A first visit has nothing new to catch up on. Marked before the insert
     // so anything waiting for settings already sees the mark. A reset keeps
-    // the mark it finds, so unread changes stay unread.
+    // the mark it finds, so unread changes stay unread. The mark is the
+    // newest entry's date, not this browser's clock, which can be off.
     if (getChangelogSeenAt(CHANGELOG_STORAGE_KEY) === null) {
-      markChangelogSeen(CHANGELOG_STORAGE_KEY);
+      markChangelogSeen(CHANGELOG_STORAGE_KEY, getNewestChangelogDate());
     }
     settingsCollection.insert({
       id: SETTINGS_ID,

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { readGitChangelog } from "./git-changelog";
+import { gitChangelogPlugin, readGitChangelog } from "./git-changelog";
 
 let repo = "";
 let commitCount = 0;
@@ -97,6 +97,20 @@ describe("readGitChangelog", () => {
   test("stops at the limit", () => {
     expect(readGitChangelog(repo, { limit: 1, paths: ["app"] })).toHaveLength(
       1
+    );
+  });
+
+  test("the plugin defines the newest entry's date for first visits", () => {
+    const plugin = gitChangelogPlugin({ paths: ["app"] });
+    const config = (
+      plugin.config as (config: { root: string }) => {
+        define: Record<string, string>;
+      }
+    )({ root: repo });
+    const newest = readGitChangelog(repo, { paths: ["app"] })[0]?.date;
+
+    expect(config.define.__CHANGELOG_NEWEST_DATE__).toBe(
+      JSON.stringify(newest)
     );
   });
 

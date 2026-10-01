@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import type { ChangelogEntry } from "@avoid.quest/ui/lib/changelog";
 import type { Plugin } from "vite";
 
 const VIRTUAL_ID = "virtual:changelog";
+/** Build-time global: the newest entry's date, or null with no entries. */
+const NEWEST_DATE_GLOBAL = "__CHANGELOG_NEWEST_DATE__";
 const RESOLVED_VIRTUAL_ID = `\0${VIRTUAL_ID}`;
 const FIELD_SEPARATOR = "\x1f";
 const RECORD_SEPARATOR = "\x1e";
@@ -167,21 +170,29 @@ export function readGitChangelog(
 
 /**
  * Serves `virtual:changelog` from the git history at build time, so merged
- * work shows up without anyone writing release notes.
+ * work shows up without anyone writing release notes. It also defines
+ * `__CHANGELOG_NEWEST_DATE__`, the newest entry's date, which a first visit
+ * marks as seen so the browser's clock never decides what is unread.
  */
 export function gitChangelogPlugin(source: GitChangelogSource = {}): Plugin {
-  let root = process.cwd();
-  let entries: ChangelogEntry[] | undefined;
+  let entries: ChangelogEntry[] = [];
 
   return {
-    configResolved(config) {
-      ({ root } = config);
+    config(config) {
+      entries = readGitChangelog(
+        path.resolve(config.root ?? process.cwd()),
+        source
+      );
+      return {
+        define: {
+          [NEWEST_DATE_GLOBAL]: JSON.stringify(entries[0]?.date ?? null),
+        },
+      };
     },
     load(id) {
       if (id !== RESOLVED_VIRTUAL_ID) {
         return;
       }
-      entries ??= readGitChangelog(root, source);
       return `export default ${JSON.stringify(entries)};`;
     },
     name: "git-changelog",

@@ -218,6 +218,27 @@ describe("validate: port kinds", () => {
     ).toEqual(["sidechain-source@loose->comp"]);
   });
 
+  test("audio → sidechain is refused from a node after the station", () => {
+    expect(
+      check(
+        [
+          station("music"),
+          station("talk"),
+          node("level", "gain"),
+          fx("comp", "compressor"),
+          speakers,
+        ],
+        [
+          audio("music", "comp"),
+          audio("comp", "speakers"),
+          audio("talk", "level"),
+          audio("level", "speakers"),
+          key("level", "comp"),
+        ]
+      )
+    ).toEqual(["sidechain-source@level->comp"]);
+  });
+
   test("a key into FX on a bus is refused", () => {
     const nodes = [
       station("a"),

@@ -741,12 +741,22 @@ function checkSidechains(
     if (to.kind !== "sidechain") {
       continue;
     }
-    if (typeof lanes.get(edge.source) !== "string") {
+    const lane = lanes.get(edge.source);
+    if (typeof lane !== "string") {
       edgeIssue(
         context,
         edge,
         "sidechain-source",
         "A key must come from a station lane"
+      );
+    } else if (lane !== edge.source) {
+      // The engine keys from the station's raw signal, so a cable drawn after
+      // its Gain or FX would claim a tap it doesn't get.
+      edgeIssue(
+        context,
+        edge,
+        "sidechain-source",
+        "A key must come from the station itself"
       );
     } else if (typeof lanes.get(edge.target) === "string") {
       keyed.add(edge.target);

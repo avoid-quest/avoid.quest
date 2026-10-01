@@ -903,7 +903,8 @@ function planKeys({
   for (const { edge, to } of wired) {
     const from = labels.get(edge.source);
     const lane = labels.get(edge.target);
-    const station = typeof from === "string" ? byId.get(from) : undefined;
+    // Only a key straight from its station binds: the engine taps the raw lane.
+    const station = from === edge.source ? byId.get(from) : undefined;
     const target = byId.get(edge.target);
     if (
       to.kind !== "sidechain" ||

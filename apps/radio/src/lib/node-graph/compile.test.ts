@@ -1416,6 +1416,33 @@ describe("compile: key cables", () => {
     });
   });
 
+  test("a key drawn after the station's FX is refused and binds nothing", () => {
+    const patch = graph(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("crush", "crusher", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "crush"),
+        audio("crush", "speakers"),
+        // The engine keys from talk's raw signal, not from after the crusher.
+        key("crush", "comp"),
+      ]
+    );
+    const plan = compile(patch, ENV);
+
+    expect(codes(plan)).toEqual(["sidechain-source@crush~>comp"]);
+    expect(lane(plan, "music").effects[0]?.sidechain).toBeUndefined();
+    expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
+      "crush~>comp": "A key must come from the station itself",
+    });
+  });
+
   test("a key from an empty station slot binds nothing", () => {
     const plan = build(
       [

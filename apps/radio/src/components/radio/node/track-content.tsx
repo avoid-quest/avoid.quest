@@ -10,7 +10,10 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
+import {
+  PLATFORM_SOURCE_DEFINITIONS,
+  SPOTIFY_SOURCE_STYLE,
+} from "@/lib/dj-library-sources";
 import { setTrackSearchPlatform } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
@@ -44,7 +47,8 @@ import { beginSourceRequest } from "./use-node-radio-management";
 /**
  * Track Node
  *
- * A YouTube, SoundCloud or Bandcamp track, album or playlist as a source.
+ * A YouTube, SoundCloud, Bandcamp or Spotify track, album or playlist, or a
+ * Mixcloud show, as a source.
  * Empty, its body is DJ's external search, unlocked ("Search all") or
  * locked by a platform chip; a pick or a pasted link loads through DJ's
  * track loader. A radio link hands off: the node becomes a Station. Filled,
@@ -62,7 +66,9 @@ export function sourceChipOf(radio: Radio): {
   Icon: ReturnType<typeof platformSourceIcon>;
 } {
   const platform = radio.platformMetadata?.platform;
+  // Spotify's library tile shares a tab; a Spotify Track plays here.
   const definition =
+    (platform === "spotify" ? SPOTIFY_SOURCE_STYLE : undefined) ??
     PLATFORM_SOURCE_DEFINITIONS.find(
       (entry) => entry.pendingPlatform === platform
     ) ??

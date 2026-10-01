@@ -458,6 +458,7 @@ function DeckPanelInner({
   } else if (contentKind === "pending-external" && pendingPlatform) {
     const searchPlatform =
       pendingPlatform === "bandcamp" ||
+      pendingPlatform === "mixcloud" ||
       pendingPlatform === "soundcloud" ||
       pendingPlatform === "youtube" ||
       pendingPlatform === "radiogarden"

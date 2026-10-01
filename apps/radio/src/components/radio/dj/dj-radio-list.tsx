@@ -42,6 +42,7 @@ import { toDjBrowserRadio } from "./browser/browser-model";
 export {
   AUDIO_INPUT_PLATFORM_ID,
   BANDCAMP_PLATFORM_ID,
+  MIXCLOUD_PLATFORM_ID,
   PLATFORM_ITEMS,
   RADIO_GARDEN_PLATFORM_ID,
   SEARCH_ALL_PLATFORM_ID,

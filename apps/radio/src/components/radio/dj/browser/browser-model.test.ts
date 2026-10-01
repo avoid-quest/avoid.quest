@@ -9,12 +9,12 @@ describe("DJ browser model", () => {
       "Radio Garden",
       "Bandcamp",
       "SoundCloud",
+      "Mixcloud",
       "YouTube",
       "Audio file",
       "Audio input",
       "Browser tab audio",
       "Spotify",
-      "Mixcloud",
       "Radio episodes / shows",
     ]);
   });

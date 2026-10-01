@@ -49,6 +49,7 @@ export const TRACK_SEARCH_PLATFORMS = [
   "youtube",
   "soundcloud",
   "bandcamp",
+  "mixcloud",
 ] as const;
 
 export type TrackSearchPlatform = (typeof TRACK_SEARCH_PLATFORMS)[number];

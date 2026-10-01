@@ -230,7 +230,7 @@ describe("TrackNodeBody", () => {
     const chips = view
       .getAllByRole("button", { pressed: false })
       .map((chip) => chip.textContent);
-    expect(chips).toEqual(["YouTube", "SoundCloud", "Bandcamp"]);
+    expect(chips).toEqual(["YouTube", "SoundCloud", "Bandcamp", "Mixcloud"]);
     expect(view.getByRole("button", { pressed: true }).textContent).toBe("All");
     expect(
       view.getByRole("searchbox", { name: "Search or paste a link" })

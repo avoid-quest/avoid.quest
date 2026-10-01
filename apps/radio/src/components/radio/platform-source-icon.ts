@@ -6,10 +6,14 @@ import {
   RadioTowerIcon,
   SearchIcon,
 } from "lucide-react";
-import type { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
+import type {
+  PLATFORM_SOURCE_DEFINITIONS,
+  SPOTIFY_SOURCE_STYLE,
+} from "@/lib/dj-library-sources";
 
 export type PlatformSourceIcon =
-  (typeof PLATFORM_SOURCE_DEFINITIONS)[number]["icon"];
+  | (typeof PLATFORM_SOURCE_DEFINITIONS)[number]["icon"]
+  | (typeof SPOTIFY_SOURCE_STYLE)["icon"];
 
 /**
  * The icon a platform source wears in DJ's library and on Node's Track and

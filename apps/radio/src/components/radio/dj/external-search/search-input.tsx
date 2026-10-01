@@ -59,6 +59,7 @@ const PLATFORM_LABELS: Record<SearchPlatform, string> = {
 
 const PLATFORM_OPTIONS = [
   "bandcamp",
+  "mixcloud",
   "radiogarden",
   "soundcloud",
   "youtube",

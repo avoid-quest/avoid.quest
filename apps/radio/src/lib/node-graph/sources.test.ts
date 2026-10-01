@@ -15,6 +15,7 @@ import {
   keepLocalFileUrl,
   localFileRadio,
   sourceTypeForRadio,
+  trackSubtitle,
 } from "./sources";
 import { buildNodeGraphFromTemplate, SPEAKERS_NODE_ID } from "./templates";
 import { validate } from "./validate";
@@ -77,6 +78,40 @@ describe("sourceTypeForRadio", () => {
     expect(sourceTypeForRadio(staticMp3)).toBe("file");
     expect(isTrackRadio(youtube)).toBe(true);
     expect(isTrackRadio(station)).toBe(false);
+  });
+
+  test("a Spotify item and a Mixcloud show are Tracks", () => {
+    const spotify = {
+      ...station,
+      platformMetadata: {
+        itemType: "album" as const,
+        name: "Discovery",
+        platform: "spotify" as const,
+        spotifyId: "2noRn2Aes5aoNVsU6iWThc",
+        tracks: [
+          {
+            artist: "Daft Punk",
+            name: "One More Time",
+            spotifyId: "0DiWol3AO6WpXZgp0goxAV",
+            streamUrl: station.streamUrl,
+            url: "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV",
+          },
+        ],
+        url: "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc",
+      },
+    };
+    const mixcloud = {
+      ...station,
+      platformMetadata: {
+        itemType: "show" as const,
+        platform: "mixcloud" as const,
+        url: "https://www.mixcloud.com/user/show/",
+      },
+    };
+    expect(sourceTypeForRadio(spotify)).toBe("platform");
+    expect(sourceTypeForRadio(mixcloud)).toBe("platform");
+    expect(trackSubtitle(spotify)).toBe("Spotify · Track 1 of 1");
+    expect(trackSubtitle(mixcloud)).toBe("Mixcloud");
   });
 });
 
@@ -207,6 +242,7 @@ describe("palette Sources", () => {
       "platform:youtube",
       "platform:soundcloud",
       "platform:bandcamp",
+      "platform:mixcloud",
       "file",
       "deviceIn",
       "capture:browser-audio",
@@ -214,7 +250,12 @@ describe("palette Sources", () => {
       "capture:mixcloud",
       "capture:radio-shows",
     ]);
-    for (const platform of ["youtube", "soundcloud", "bandcamp"] as const) {
+    for (const platform of [
+      "youtube",
+      "soundcloud",
+      "bandcamp",
+      "mixcloud",
+    ] as const) {
       const definition = PLATFORM_SOURCE_DEFINITIONS.find(
         (entry) => entry.pendingPlatform === platform
       );
@@ -225,6 +266,13 @@ describe("palette Sources", () => {
         name: String(definition?.radio.name),
       } as ReturnType<typeof trackChip>);
     }
+  });
+
+  test("Mixcloud's chip is its search, not its tab-sharing source", () => {
+    expect(trackChip("mixcloud")).toMatchObject({
+      icon: "mixcloud",
+      name: "Mixcloud",
+    });
   });
 
   test("a Track chip adds a Track locked to it, wired to Speakers", () => {

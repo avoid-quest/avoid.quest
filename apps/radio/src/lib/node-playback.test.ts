@@ -3534,6 +3534,28 @@ describe("Node Playback: Track and File sources", () => {
     expect(harness.context.reportError).not.toHaveBeenCalled();
   });
 
+  test("picking another track while one plays starts the new track once", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const harness = createHarness({
+      resolveStream: async () => ({
+        streamFormat: "progressive",
+        streamUrl: "https://media.example/next.m4a",
+      }),
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("video", true);
+
+    await harness.playback.playTrack("video", "yt:next");
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackChannel("node", channelOf("video"))?.radio).toMatchObject(
+      { streamUrl: "https://media.example/next.m4a" }
+    );
+    expect(getPlaybackChannelRuntime(channelOf("video")).isPlaying).toBe(true);
+    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(2);
+  });
+
   test.each(["resolved", "unresolved", "rejected"] as const)(
     "a manual Track selection %s after deactivation has no effect",
     async (outcome) => {

@@ -486,6 +486,8 @@ function createNodePlayback(
   const carriedLanes = new Map<string, boolean>();
   /** Lanes removed in this batch, whose cable ops run before the removal. */
   const removingLanes = new Set<string>();
+  /** Lanes a track change starts itself, so their carry doesn't resume. */
+  const explicitStarts = new Set<string>();
   const laneGenerations = new Map<string, number>();
   /** Per lane: the backend its effects last settled on, as reported. */
   const laneOutcomes = new Map<string, EffectsBackend>();
@@ -1121,7 +1123,14 @@ function createNodePlayback(
     if (!committed) {
       return;
     }
-    applyPendingCommit();
+    // This start replaces the lane's carried resume, which would start the
+    // same sound a second time.
+    explicitStarts.add(nodeId);
+    try {
+      applyPendingCommit();
+    } finally {
+      explicitStarts.delete(nodeId);
+    }
     await startChannel(laneChannelId(nodeId), isCurrent);
   };
 
@@ -1348,7 +1357,8 @@ function createNodePlayback(
 
   const addLane = (laneId: string, channelId: string) => {
     const generation = bumpLane(laneId);
-    const wasPlaying = carriedLanes.get(laneId) ?? false;
+    const wasPlaying =
+      (carriedLanes.get(laneId) ?? false) && !explicitStarts.has(laneId);
     carriedLanes.delete(laneId);
     const settling = settlingLanes.get(laneId);
     if (!settling) {

@@ -23,7 +23,12 @@ import {
   loadNodeGraph,
   nodeStore,
 } from "@/lib/node-graph/node-store";
-import { migrateNodeGraph, type NodeGraph } from "@/lib/node-graph/schema";
+import {
+  type GraphNode,
+  isRadioSourceNode,
+  migrateNodeGraph,
+  type NodeGraph,
+} from "@/lib/node-graph/schema";
 import { type Issue, validate } from "@/lib/node-graph/validate";
 import {
   normalizePlayerMode,
@@ -794,6 +799,57 @@ const replaceImportedDataSync = (importData: DatabaseExport): void => {
 };
 
 /**
+ * The patch with each Station snapshot of a merged station renamed to the
+ * id the merge keeps it under: the matching local record's, or the fresh id
+ * of an inserted one. Snapshots sync to the library by id first, so a
+ * backup id another local station holds would point the Station there.
+ */
+function remapMergedStationIds(
+  graph: NodeGraph,
+  ids: ReadonlyMap<string, string>
+): NodeGraph {
+  let changed = false;
+  const nodes = graph.nodes.map((node): GraphNode => {
+    const radio = isRadioSourceNode(node) ? node.data.radio : null;
+    const id = radio?.id === undefined ? undefined : String(radio.id);
+    const merged = id === undefined ? undefined : ids.get(id);
+    if (!(radio && merged) || merged === id) {
+      return node;
+    }
+    changed = true;
+    return {
+      ...node,
+      data: { ...node.data, radio: { ...radio, id: merged } },
+    } as GraphNode;
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+/**
+ * The local record with what a merged backup station changes. The full
+ * record is validated, keeping preferences and the optional metadata older
+ * backups omit.
+ */
+function prepareMergedRadio(local: RadioRecord, imported: Radio): RadioRecord {
+  return radiosCollection.validateData(
+    {
+      ...local,
+      description: imported.description,
+      logoUrl: imported.logoUrl,
+      ...(imported.metadataConfig === undefined
+        ? {}
+        : { metadataConfig: imported.metadataConfig }),
+      ...(imported.streamFormat === undefined
+        ? {}
+        : { streamFormat: imported.streamFormat }),
+      streamUrl: imported.streamUrl,
+      websiteUrl: imported.websiteUrl,
+    },
+    "insert"
+  );
+}
+
+/**
  * Merge imported data with existing data
  */
 const mergeImportedDataSync = (importData: DatabaseExport): void => {
@@ -806,6 +862,8 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
     const existingRadios = Array.from(radiosCollection.state.values());
     const inserts: RadioRecord[] = [];
     const updates = new Map<string, RadioRecord>();
+    // Backup station id -> the id the merge keeps that station under.
+    const mergedIds = new Map<string, string>();
 
     // Merge radios using similar logic to syncRadioData
     const existingRadiosMap = new Map(
@@ -817,32 +875,20 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
 
     for (const importedRadio of validated.radios) {
       const existing = existingRadiosMap.get(importedRadio.name);
+      const backupId =
+        importedRadio.id === undefined ? undefined : String(importedRadio.id);
 
       if (existing) {
+        if (backupId !== undefined) {
+          mergedIds.set(backupId, existing.id);
+        }
         // Check if radio data has changed
-        const importsMetadataConfig =
-          importedRadio.metadataConfig !== undefined;
-        const importsStreamFormat = importedRadio.streamFormat !== undefined;
         if (hasRadioImportChanges(existing, importedRadio)) {
-          // Validate the full updated record while preserving preferences and
-          // optional metadata omitted by older backups.
           updates.set(
             existing.id,
-            radiosCollection.validateData(
-              {
-                ...(updates.get(existing.id) ?? existing),
-                description: importedRadio.description,
-                logoUrl: importedRadio.logoUrl,
-                ...(importsMetadataConfig
-                  ? { metadataConfig: importedRadio.metadataConfig }
-                  : {}),
-                ...(importsStreamFormat
-                  ? { streamFormat: importedRadio.streamFormat }
-                  : {}),
-                streamUrl: importedRadio.streamUrl,
-                websiteUrl: importedRadio.websiteUrl,
-              },
-              "insert"
+            prepareMergedRadio(
+              updates.get(existing.id) ?? existing,
+              importedRadio
             )
           );
           updatedRadiosCount += 1;
@@ -853,10 +899,14 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
           ...existingRadios.map((r) => r.order || 0),
           0
         );
+        const id = generateId();
+        if (backupId !== undefined) {
+          mergedIds.set(backupId, id);
+        }
         inserts.push(
           prepareImportedRadio(
             importedRadio,
-            generateId(),
+            id,
             false,
             maxOrder + newRadiosCount + 1
           )
@@ -869,11 +919,12 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
       inserts,
       existingRadios.map((radio) => radio.id)
     );
-    if (graph) {
-      prepareNodeSessionGraph(graph, masterVolume);
+    const mergedGraph = graph && remapMergedStationIds(graph, mergedIds);
+    if (mergedGraph) {
+      prepareNodeSessionGraph(mergedGraph, masterVolume);
     }
     applyImportedChanges(
-      graph,
+      mergedGraph,
       () => {
         for (const radio of updates.values()) {
           radiosCollection.update(radio.id, (draft) => {

@@ -986,6 +986,44 @@ describe("Node patch backups", () => {
     expect(data.radios.map((radio) => radio.name)).toEqual(["KEXP"]);
   });
 
+  test("a merge points imported Stations at the records it keeps", () => {
+    // Renamed here since the backup, so the backup's KEXP merges as new.
+    saveRadio({ ...stationRadio("kexp"), name: "KEXP at home" });
+    // Saved here under another id; the merge matches it by name.
+    saveRadio({ ...stationRadio("nts-local"), name: "NTS" }, 1);
+    const nts = { ...stationRadio("nts"), name: "NTS" };
+    const graph = nodeGraphSchema.parse({
+      edges: [cable("src-kexp", "speakers"), cable("src-nts", "speakers")],
+      nodes: [
+        stationInput("kexp"),
+        { data: { radio: nts }, id: "src-nts", position, type: "station" },
+        speakersInput,
+      ],
+      version: 2,
+    });
+
+    mergeImportedData(
+      rawBackup({
+        radios: [stationRadio("kexp"), nts],
+        sessions: { node: { graph } },
+      })
+    );
+
+    const inserted = [...radiosCollection.state.values()].find(
+      (radio) => radio.name === "KEXP"
+    );
+    if (!inserted) {
+      throw new Error("Expected the backup's KEXP to merge as new");
+    }
+    expect(inserted.id).not.toBe("kexp");
+    const stationIds = getPlaybackSession("node")
+      ?.graph?.nodes.filter((node) => node.type === "station")
+      .map((node) =>
+        node.type === "station" ? String(node.data.radio?.id) : null
+      );
+    expect(stationIds).toEqual([inserted.id, "nts-local"]);
+  });
+
   test("an import replaces the open patch as one undo step", () => {
     const local = seedLocalPatch();
     loadNodeGraph(local);

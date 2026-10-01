@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import LZString from "lz-string";
 import { toast } from "sonner";
-import type { Radio } from "@/lib/audio";
+import { AudioManager, type Radio } from "@/lib/audio";
 import {
   createLocalNamModelId,
   deleteNamModel,
@@ -1019,6 +1019,60 @@ describe("Node patch backups", () => {
       expect(getPlaybackSession("node")?.masterVolume).toBe(1);
     }
   );
+
+  test.each([
+    ["merge", mergeImportedData],
+    ["replace", replaceImportedData],
+  ])(
+    "%s applies the imported Speakers level while Node plays",
+    async (_label, apply) => {
+      seedLocalPatch();
+      settingsCollection.update(SETTINGS_ID, (draft) => {
+        draft.player.mode = "node";
+      });
+      const audio = AudioManager.getInstance();
+      audio.setGlobalVolume(0.9);
+
+      apply(
+        rawBackup({
+          sessions: {
+            node: {
+              graph: buildNodeGraphFromTemplate("blank"),
+              masterVolume: 0.1,
+            },
+          },
+          settings: { player: { mode: "node" } },
+        })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(getPlaybackSession("node")?.masterVolume).toBe(0.1);
+      expect(audio.getGlobalVolume()).toBe(0.1);
+      AudioManager.resetInstance();
+    }
+  );
+
+  test("an import leaves another mode's level alone", async () => {
+    seedLocalPatch();
+    const audio = AudioManager.getInstance();
+    audio.setGlobalVolume(0.9);
+
+    mergeImportedData(
+      rawBackup({
+        sessions: {
+          node: {
+            graph: buildNodeGraphFromTemplate("blank"),
+            masterVolume: 0.1,
+          },
+        },
+        settings: { player: { mode: "single" } },
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(audio.getGlobalVolume()).toBe(0.9);
+    AudioManager.resetInstance();
+  });
 
   test.each([-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY, "0.3", null])(
     "an invalid master level %p fails before changing the library, patch or history",

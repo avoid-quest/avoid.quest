@@ -188,6 +188,24 @@ function readImportedMasterVolume(
 }
 
 /**
+ * A patch import stores its Speakers level in the session; while Node is the
+ * mode, the running audio takes it too, as a change of the control would.
+ * Otherwise Node's activation applies it.
+ */
+function applyImportedMasterVolume(): Promise<void> {
+  if (normalizePlayerMode(getSettings()?.player.mode) !== "node") {
+    return Promise.resolve();
+  }
+  return import("@/lib/playback-actions-shared")
+    .then(({ applySessionMasterVolume }) => {
+      applySessionMasterVolume("node");
+    })
+    .catch((error: unknown) => {
+      console.warn("[import] Could not apply the Speakers level", error);
+    });
+}
+
+/**
  * Applies prevalidated collection changes together, then commits the imported
  * open patch as an undo step only after synchronous persistence acceptance.
  */
@@ -274,6 +292,7 @@ function applyImportedChanges(
     } else {
       loadNodeGraph(importedGraph);
     }
+    applyImportedMasterVolume();
   }
 }
 

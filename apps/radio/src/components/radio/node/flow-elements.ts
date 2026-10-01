@@ -56,7 +56,12 @@ export function isDrawn(node: GraphNode): boolean {
   return DRAWN_NODE_TYPES.includes(node.type);
 }
 
-/** React Flow's announcements in the app's words. */
+/**
+ * React Flow's announcements in the app's words. React Flow reads the
+ * `keyboardDisabled` description while keyboard access is on (its own
+ * default there names the arrow keys) and `default` only once it is off,
+ * so the arrow keys belong in the first. B only bypasses an effect.
+ */
 export const NODE_ARIA_LABELS: Partial<FlowAriaLabelConfig> = {
   "edge.a11yDescription.default":
     "Press Enter or Space to select this cable, then I to insert a node into it or Delete to remove it.",
@@ -64,9 +69,9 @@ export const NODE_ARIA_LABELS: Partial<FlowAriaLabelConfig> = {
   "node.a11yDescription.ariaLiveMessage": ({ direction, x, y }) =>
     `Moved the module ${direction} to ${Math.round(x)}, ${Math.round(y)}`,
   "node.a11yDescription.default":
-    "Press Enter or Space to select this module, C to connect it, B to bypass it, Delete to remove it and Escape to cancel.",
+    "Press Enter or Space to select this module, C to connect it, B to bypass an effect, Delete to remove it and Escape to cancel.",
   "node.a11yDescription.keyboardDisabled":
-    "Press Enter or Space to select this module, then the arrow keys to move it. C connects it, B bypasses it, Delete removes it and Escape cancels.",
+    "Press Enter or Space to select this module, then the arrow keys to move it. C connects it, B bypasses an effect, Delete removes it and Escape cancels.",
 };
 
 /** Where a mouse or touch gesture ended, in client pixels. */

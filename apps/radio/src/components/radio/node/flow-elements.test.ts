@@ -397,6 +397,20 @@ describe("flow elements", () => {
     }
   });
 
+  test("the module description React Flow reads names the arrow keys, and B only for effects", () => {
+    // React Flow reads `keyboardDisabled` while keyboard access is on.
+    const read = NODE_ARIA_LABELS["node.a11yDescription.keyboardDisabled"];
+    const off = NODE_ARIA_LABELS["node.a11yDescription.default"];
+
+    expect(read).toContain("arrow keys");
+    expect(off).not.toContain("arrow keys");
+    for (const description of [read, off]) {
+      expect(description).toContain("an effect");
+      expect(description).not.toContain("bypass it");
+      expect(description).not.toContain("bypasses it");
+    }
+  });
+
   test("key cables draw as keys, and an idle one says why", () => {
     const duck = buildNodeGraphFromTemplate("duck", {
       saved: [

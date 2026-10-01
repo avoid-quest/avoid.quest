@@ -213,6 +213,16 @@ describe("NodeCanvas", () => {
     expect(view.container.querySelector(".react-flow__attribution")).toBeNull();
   });
 
+  test("tells a focused module's screen reader that the arrow keys move it", () => {
+    const view = mountStarter();
+    const node = view.container.querySelector(".react-flow__node");
+    const description = view.container.querySelector(
+      `[id="${node?.getAttribute("aria-describedby")}"]`
+    );
+
+    expect(description?.textContent).toContain("arrow keys");
+  });
+
   test("says what to do first until the slot holds a station", () => {
     const view = mountStarter();
 

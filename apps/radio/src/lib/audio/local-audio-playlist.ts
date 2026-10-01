@@ -7,20 +7,39 @@ import {
   isAudioFile,
 } from "./file-metadata";
 
-/** Local URLs owned by a file or folder, including tracks not playing yet. */
+function isUrl(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * Local URLs owned by a file or folder, including tracks not playing yet.
+ * A restored or imported snapshot is read loosely, so a malformed track
+ * list counts as none rather than throwing.
+ */
 export function localAudioUrls(radio: Radio | null | undefined): string[] {
   const metadata = radio?.platformMetadata;
   if (metadata?.platform === "local-file") {
-    return [radio?.streamUrl || metadata.objectUrl];
+    return [radio?.streamUrl || metadata.objectUrl].filter(isUrl);
   }
   if (metadata?.platform !== "static-audio" || !metadata.isLocal) {
     return [];
   }
+  const tracks: unknown = metadata.tracks;
   return [
-    ...new Set([
-      metadata.streamUrl,
-      ...(metadata.tracks?.map((track) => track.streamUrl) ?? []),
-    ]),
+    ...new Set(
+      [
+        metadata.streamUrl,
+        ...(Array.isArray(tracks)
+          ? tracks.map((track: unknown) =>
+              typeof track === "object" &&
+              track !== null &&
+              "streamUrl" in track
+                ? track.streamUrl
+                : undefined
+            )
+          : []),
+      ].filter(isUrl)
+    ),
   ];
 }
 

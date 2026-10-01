@@ -54,6 +54,26 @@ describe("local folder playlist", () => {
     ).toBeNull();
   });
 
+  test("reads a malformed stored track list as no tracks", () => {
+    const stored = (tracks: unknown) =>
+      localAudioUrls({
+        name: "Mix",
+        platformMetadata: {
+          isLocal: true,
+          platform: "static-audio",
+          streamUrl: "blob:mix/1.mp3",
+          tracks,
+        } as never,
+        streamUrl: "blob:mix/1.mp3",
+      });
+
+    expect(stored({ 0: "blob:mix/2.mp3" })).toEqual(["blob:mix/1.mp3"]);
+    expect(stored("blob:mix/2.mp3")).toEqual(["blob:mix/1.mp3"]);
+    expect(
+      stored([null, { streamUrl: 2 }, { streamUrl: "blob:mix/2.mp3" }])
+    ).toEqual(["blob:mix/1.mp3", "blob:mix/2.mp3"]);
+  });
+
   test("rejects a selection with no playable files", async () => {
     await expect(
       loadLocalAudioPlaylist(

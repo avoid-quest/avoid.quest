@@ -1159,6 +1159,13 @@ export function idleKeys(
     if (parseHandleId(edge.targetHandle)?.kind !== "sidechain") {
       continue;
     }
+    // A refused cable can share its lane with the one that keys, so its own
+    // issue wins over a matching channel.
+    const refusal = issues.get(`edge:${edge.id}`);
+    if (refusal) {
+      idle.set(edge.id, refusal);
+      continue;
+    }
     const effect = inLane.get(edge.target);
     const channelId = laneOf.get(edge.source)?.channelId;
     if (channelId && effect?.sidechain?.channelId === channelId) {

@@ -1388,6 +1388,34 @@ describe("compile: key cables", () => {
     ).toEqual({ "talk~>off": "Switch the effect on to use its key" });
   });
 
+  test("idleKeys flags a refused second key from the keying lane", () => {
+    const patch = graph(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "speakers"),
+        key("talk", "comp"),
+        // Same ports again: the validator refuses this second cable.
+        { ...key("talk", "comp"), id: "again" },
+      ]
+    );
+    const plan = compile(patch, ENV);
+
+    expect(codes(plan)).toEqual(["duplicate-edge@again"]);
+    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+      channelId: "n:talk",
+    });
+    expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
+      again: plan.issues[0]?.message,
+    });
+  });
+
   test("a key from an empty station slot binds nothing", () => {
     const plan = build(
       [

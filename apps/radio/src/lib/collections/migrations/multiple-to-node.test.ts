@@ -167,6 +167,18 @@ describe("migrateMultipleSession", () => {
     expect(hasMultiple()).toBe(false);
   });
 
+  test("keeps a saved station whose id has a discovery prefix", async () => {
+    // An imported library keeps its ids, discovery prefixes included.
+    saveRadio(radio("rg_saved"));
+    await insertMultiple([{ radio: radio("rg_saved") }]);
+
+    migrateMultipleSession(collections, createMemoryStorage());
+
+    expect(
+      getPlaybackSession("node")?.graph?.nodes.map((entry) => entry.id)
+    ).toEqual(["src-rg_saved", "speakers"]);
+  });
+
   test("carries masterVolume to Speakers and each channel's level to its Station", async () => {
     saveRadio(radio("kexp"));
     saveRadio(radio("nts"), 1);

@@ -159,6 +159,7 @@ export function buildNodeSessionFromMultipleRecord(
 /**
  * Keeps a radio that is among `saved`, or a session radio still among
  * `session`, this tab's sessionStorage (the test Multiple's prune used).
+ * Saved comes first: an imported library can keep a discovery-prefixed id.
  */
 export function createKeptRadioTest(
   saved: Iterable<Pick<Radio, "id">>,
@@ -171,7 +172,7 @@ export function createKeptRadioTest(
       return false;
     }
     const id = String(radio.id);
-    return isSessionRadio(radio) ? sessionIds.has(id) : savedIds.has(id);
+    return savedIds.has(id) || (isSessionRadio(radio) && sessionIds.has(id));
   };
 }
 

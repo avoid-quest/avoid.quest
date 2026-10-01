@@ -878,6 +878,11 @@ runs **before** any mutation of either collection. It is idempotent.
    `buildMultipleSessionFromEnabledRadios` at its three call sites (`playback-sessions.ts:783`,
    `:788` and `:795`). Whether `restoreStateOnLoad === false` should also discard an authored
    graph is §12 question 12.
+
+   > Implementation note: the shipped behavior differs from the sentence above.
+   > With `restoreStateOnLoad === false`, Starter is installed only when no Node
+   > graph is stored. An authored graph survives, as the
+   > [current contract](../../NODE_MODE_PROPOSAL.md) states.
 4. **Unknown modes at runtime.** A `normalizePlayerMode(mode)` helper maps `"multiple" →
    "node"` and anything unknown to `"single"`. It is used by `preloadRadioMode`, by the
    `Radios` renderer (`apps/radio/src/components/radio/index.tsx:35-63`, which today renders
@@ -1083,7 +1088,8 @@ isolation).
     URLs strip non-catalogue stream URLs by default?
 12. **`restoreStateOnLoad === false`.** Multiple rebuilt from enabled radios on every load.
     Rebuilding Node the same way discards an authored patch. Keep that literal behaviour, or
-    keep the graph and reset only volumes and master?
+    keep the graph and reset only volumes and master? *(Resolved: the graph is kept;
+    see the implementation note in §8 step 3.)*
 13. **Recording.** Is a Recorder that writes radio streams to a file acceptable for the
     product, given station rights and terms of service?
 14. **Mic in Node bypasses the main output delay** (realtime path). Mixing it with delayed

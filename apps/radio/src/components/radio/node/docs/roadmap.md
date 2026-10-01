@@ -11,9 +11,18 @@ the source of truth for availability.
 - **Cross-source buses:** shared Merge/FX buses, sends and returns, crossfade and
   Dial routing. Sources already mix at physical outputs; a shared authored bus is
   the missing capability. Revisit ownership, latency and loudness at that seam.
+  The current engine imposes three constraints on that design.
+  `EffectsController.reconcile` accepts only registered AudioManager sounds, so
+  bus FX need an owned bus registration rather than a synthetic sound id.
+  Validation refuses a key cable into FX outside a station lane; keep that
+  refusal until bus FX receive a resolved key source. A pre-fader send must tap
+  the lane's `preFaderSend`, because `nodes.gain` is already post-fader.
 - **Control graph:** Macro, MIDI-in cables, LFO, Clock, Randomiser, Follower,
   song/title triggers and Sundial. Preserve graph validation and define how
   modulation reaches current engine parameters before exposing those ports.
+  Graph commits and `channelEffects.change` persist authored values and trigger
+  reconciliation. Continuous modulation therefore needs a transient runtime
+  parameter path that changes neither the session nor the authored base value.
 - **Additional routing/output nodes:** delayed feedback Loop, Tape Warp, Scope,
   Headphones and Recorder. The shipped per-source whole-track Loop and cue bus do
   not imply these authored nodes are implemented.

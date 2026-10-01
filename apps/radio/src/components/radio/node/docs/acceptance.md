@@ -5,6 +5,23 @@ unlock, capture, output routing or MIDI behavior. Record the commit, browser,
 device, scenario and observed result when a pending gate is completed. A failed
 gate needs a reproducible failure; a missing device stays **unverified**.
 
+## Deploying is one-way
+
+Releasing Node migrates stored data in place: the mode becomes `"node"`, the
+`"multiple"` session becomes a `"node"` patch, and file backups that carry Node
+data are export version 3. A release from before Node cannot read that state
+(it fails on the `"node"` mode), so **rolling back is a roll-forward**: a new
+release that runs `migrateNodeToMultiple`
+(`src/lib/collections/migrations/node-to-multiple.ts`) at init, never a revert of
+this deploy. Nothing deletes what that fix needs:
+
+- localStorage `radio-app-multiple-backup` keeps the Multiple session and mode
+  as first stored, and `migrateNodeToMultiple` rebuilds from it when the patch
+  has no Station lanes. The `"multiple"` record is deleted only once Node or
+  that backup holds it.
+- localStorage `radio-app-node-graph-backup` keeps every stored patch the v2
+  upgrade could not read before it was dropped.
+
 ## Recorded browser checks
 
 Checked on 2026-10-01 (Europe/Rome) in T3 Code's collaborative preview against the

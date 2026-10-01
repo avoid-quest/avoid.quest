@@ -5,6 +5,7 @@ import youtubeSearch from "./fixtures/youtube-search.json";
 import {
   getSpotifyItem,
   getSpotifyMetadata,
+  resolveSpotifyItemStream,
   resolveSpotifyShortLink,
   resolveSpotifyTrackStream,
   SPOTIFY_NO_MATCH_ERROR,
@@ -345,6 +346,34 @@ describe("getSpotifyItem", () => {
       success: false,
     });
     expect(youtube.searches).toHaveLength(4);
+  });
+});
+
+describe("resolveSpotifyItemStream", () => {
+  test("plays metadata resolved elsewhere without fetching Spotify", async () => {
+    const youtube = fakeYouTube({
+      byQuery: {
+        "songs: Daft Punk Get Lucky (Radio Edit)": GET_LUCKY_SONGS,
+      },
+    });
+    const result = await resolveSpotifyItemStream(
+      {
+        artist: "Daft Punk, Pharrell Williams, Nile Rodgers",
+        artists: ["Daft Punk", "Pharrell Williams", "Nile Rodgers"],
+        duration: 247.6,
+        itemType: "track",
+        name: "Get Lucky (Radio Edit) [feat. Pharrell Williams and Nile Rodgers]",
+        platform: "spotify",
+        spotifyId: "2Foc5Q5nqNiosCNqttzHof",
+        url: "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
+      },
+      { youtube }
+    );
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    expect(result.streamUrl).toBe("https://media.example/Rgrt_8mXrK8.webm");
+    expect(result.metadata.youtubeVideoId).toBe("Rgrt_8mXrK8");
   });
 });
 

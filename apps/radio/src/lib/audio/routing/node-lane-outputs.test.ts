@@ -60,16 +60,17 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     };
   });
   const waits: Deferred[] = [];
+  const wait = mock((_ms: number) => {
+    const pending = deferred();
+    waits.push(pending);
+    return pending.promise;
+  });
   const outputs = createNodeLaneOutputs({
     getHost: () => host,
     getLevels: (laneId) => levels.get(laneId) ?? new Map(),
     onConnect,
     route,
-    wait: mock((_ms: number) => {
-      const wait = deferred();
-      waits.push(wait);
-      return wait.promise;
-    }),
+    wait,
   });
   const context = new FakeAudioContext();
   const mainSources = new Set<unknown>();
@@ -112,6 +113,7 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     route,
     routes,
     setLevel,
+    wait,
     waits,
   };
 }
@@ -378,6 +380,34 @@ describe("createNodeLaneOutputs", () => {
     harness.waits[0]?.resolve();
 
     await expect(swapped).rejects.toThrow("tree failed");
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
+  });
+
+  test("a duck whose wait throws still lifts, and the next swap ducks again", async () => {
+    const harness = createHarness(0.7);
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { laneOut } = harness.connectSound("node:n:kexp");
+    harness.wait.mockImplementationOnce(() => {
+      throw new Error("no timer");
+    });
+    const replace = mock(async () => "ready");
+
+    await expect(harness.outputs.swap("kexp", replace)).rejects.toThrow(
+      "no timer"
+    );
+    expect(replace).not.toHaveBeenCalled();
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
+
+    const next = harness.outputs.swap("kexp", replace);
+    expect(harness.waits).toHaveLength(1);
+    harness.waits[0]?.resolve();
+    expect(await next).toBe("ready");
     expect(laneOut.gain.events.at(-1)).toMatchObject({
       type: "linear",
       value: 1,

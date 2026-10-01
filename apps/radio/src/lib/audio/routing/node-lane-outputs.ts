@@ -304,13 +304,14 @@ export function createNodeLaneOutputs({
         return await replace();
       }
       lane.ducks += 1;
-      // A swap arriving mid-duck waits for that same duck to reach 0;
-      // restarting the ramp would move its end past the first swap's wait.
-      if (!lane.silent) {
-        rampLinear(lane.out, 0);
-        lane.silent = wait(LANE_DUCK_MS);
-      }
+      // Inside the try, so a duck that fails to start still lifts.
       try {
+        // A swap arriving mid-duck waits for that same duck to reach 0;
+        // restarting the ramp would move its end past the first swap's wait.
+        if (!lane.silent) {
+          rampLinear(lane.out, 0);
+          lane.silent = wait(LANE_DUCK_MS);
+        }
         await lane.silent;
         return await replace();
       } finally {

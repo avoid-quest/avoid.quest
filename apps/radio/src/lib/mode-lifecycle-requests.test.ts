@@ -153,6 +153,39 @@ describe("mode lifecycle requests", () => {
     expect(switchTo).not.toHaveBeenCalled();
   });
 
+  test("switches to a legacy stored mode's replacement without committing", async () => {
+    insertPlaybackSession("node");
+    const switchTo = mock(
+      async (_mode: PlaybackSessionId, _options?: { commit?: boolean }) =>
+        undefined
+    );
+    const requests = createModeLifecycleRequests({
+      // Another tab wrote "multiple" while this one plays Single.
+      getCurrentSettings: () =>
+        ({
+          id: "app-settings",
+          player: { mode: "multiple", restoreStateOnLoad: true },
+        }) as unknown as SettingsRecord,
+      manager: {
+        activateInitialMode: mock(
+          async (_mode: PlaybackSessionId) => undefined
+        ),
+        getSnapshot: mock(() => ({
+          currentMode: "single" as const,
+          error: null,
+          phase: "active" as const,
+          requestedMode: null,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
+        switchTo,
+      },
+    });
+
+    await requests.synchronizeMode("node");
+
+    expect(switchTo).toHaveBeenCalledWith("node", { commit: false });
+  });
+
   test("activates a legacy stored mode as its replacement without committing", async () => {
     insertPlaybackSession("node");
     const activateInitialMode = mock(

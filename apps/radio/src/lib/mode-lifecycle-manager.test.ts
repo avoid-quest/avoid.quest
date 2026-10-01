@@ -17,6 +17,7 @@ import {
 import {
   createModeLifecycleRegistry,
   createModeManager,
+  type ModeLifecycle,
   resetPlaybackLifecycleState,
 } from "./mode-lifecycle-manager";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
@@ -497,6 +498,28 @@ describe("mode lifecycle manager", () => {
       phase: "active",
     });
     expect(committedModes).toEqual(["node"]);
+  });
+
+  test("a switch that follows the settings leaves them alone", async () => {
+    const commitMode = mock((_mode: PlaybackSessionId) => undefined);
+    const lifecycle = (): ModeLifecycle => ({
+      activate: mock(async () => undefined),
+      deactivate: mock(async () => undefined),
+      getPhase: () => "inactive",
+    });
+    const manager = createModeManager({
+      commitMode,
+      initialMode: "single",
+      lifecycles: { dj: lifecycle(), node: lifecycle(), single: lifecycle() },
+    });
+
+    await manager.switchTo("node", { commit: false });
+
+    expect(commitMode).not.toHaveBeenCalled();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "node",
+      phase: "active",
+    });
   });
 
   test("rolls back to the previous active mode when activation fails", async () => {

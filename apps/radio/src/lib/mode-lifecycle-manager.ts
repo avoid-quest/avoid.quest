@@ -47,11 +47,23 @@ type CreateModeManagerOptions = {
   commitMode?: (mode: PlaybackSessionId) => void;
 };
 
+export type SwitchModeOptions = {
+  /**
+   * Whether to write the mode to settings once it is active (the default).
+   * False follows a mode the settings already name: a legacy record the
+   * settings step could not rewrite would fail the write and roll back.
+   */
+  commit?: boolean;
+};
+
 export type ModeManager = {
   getSnapshot: () => ModeTransitionSnapshot;
   subscribe: (listener: () => void) => () => void;
   activateInitialMode: (mode: PlaybackSessionId) => Promise<void>;
-  switchTo: (nextMode: PlaybackSessionId) => Promise<void>;
+  switchTo: (
+    nextMode: PlaybackSessionId,
+    options?: SwitchModeOptions
+  ) => Promise<void>;
 };
 
 const MODE_FADE_OUT_DURATION_MS = 150;
@@ -229,7 +241,10 @@ export function createModeManager({
     }
   }
 
-  async function switchMode(nextMode: PlaybackSessionId): Promise<void> {
+  async function switchMode(
+    nextMode: PlaybackSessionId,
+    { commit = true }: SwitchModeOptions
+  ): Promise<void> {
     if (snapshot.currentMode === nextMode && snapshot.phase === "active") {
       return;
     }
@@ -249,7 +264,9 @@ export function createModeManager({
       await lifecycles[nextMode].activate();
       activatedNextMode = true;
 
-      commitMode(nextMode);
+      if (commit) {
+        commitMode(nextMode);
+      }
       emit({
         currentMode: nextMode,
         error: null,
@@ -300,11 +317,14 @@ export function createModeManager({
         listeners.delete(listener);
       };
     },
-    switchTo(nextMode: PlaybackSessionId): Promise<void> {
+    switchTo(
+      nextMode: PlaybackSessionId,
+      options: SwitchModeOptions = {}
+    ): Promise<void> {
       if (isTransitionInProgress()) {
         return Promise.reject(new Error("Mode transition in progress"));
       }
-      return switchMode(nextMode);
+      return switchMode(nextMode, options);
     },
   };
 }

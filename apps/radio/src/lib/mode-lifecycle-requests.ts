@@ -50,8 +50,9 @@ export function createModeLifecycleRequests({
       await waitForPlaybackSession(mode);
 
       const settings = getCurrentSettings();
-      // A legacy mode the settings step could not rewrite ("multiple") is
-      // synchronized as its replacement, without a settings write.
+      // The settings already name `mode`, so neither path writes them: a
+      // legacy mode the settings step could not rewrite ("multiple") is
+      // synchronized as its replacement.
       if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
         return;
       }
@@ -65,7 +66,7 @@ export function createModeLifecycleRequests({
         return manager.activateInitialMode(mode);
       }
 
-      return manager.switchTo(mode);
+      return manager.switchTo(mode, { commit: false });
     },
   };
 }

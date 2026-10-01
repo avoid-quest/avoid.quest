@@ -352,6 +352,51 @@ describe("flow elements", () => {
     ).toMatchObject({ ariaLabel: "Compressor", type: "compressor" });
   });
 
+  test("a muted or silent cable stops the live glow, and so does what it feeds", () => {
+    const wire = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: "in:audio:main",
+    });
+    const graph = (cable: { muted?: boolean; gain?: number }): NodeGraph =>
+      nodeGraphSchema.parse({
+        ...patch,
+        edges: [
+          { ...wire("kexp->comp", "src-kexp", "comp"), ...cable },
+          wire("comp->speakers", "comp", "speakers"),
+        ],
+        nodes: [
+          ...patch.nodes,
+          {
+            data: { effect: createNodeEffectConfig("compressor", "comp") },
+            id: "comp",
+            position: { x: 240, y: 0 },
+            type: "compressor",
+          },
+        ],
+      });
+    const classes = (cable: { muted?: boolean; gain?: number }) =>
+      Object.fromEntries(
+        toFlowEdges(graph(cable), {
+          liveLanes: new Set(["n:src-kexp"]),
+          selection,
+        }).map((edge) => [edge.id, edge.className])
+      );
+
+    expect(classes({})).toEqual({
+      "comp->speakers": "node-edge-live",
+      "kexp->comp": "node-edge-live",
+    });
+    for (const silent of [{ muted: true }, { gain: 0 }]) {
+      expect(classes(silent)).toEqual({
+        "comp->speakers": undefined,
+        "kexp->comp": undefined,
+      });
+    }
+  });
+
   test("key cables draw as keys, and an idle one says why", () => {
     const duck = buildNodeGraphFromTemplate("duck", {
       saved: [

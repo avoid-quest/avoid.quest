@@ -286,10 +286,15 @@ export function toFlowNodes(
   }));
 }
 
+/** A cable that plays nothing: muted, or turned all the way down. */
+function isSilent(edge: GraphEdge): boolean {
+  return edge.muted || edge.gain === 0;
+}
+
 /**
  * Nodes carrying a playing source's audio: each live Station, Track, File
- * or Audio input, and every node its audio cables reach through FX, up to
- * the outputs.
+ * or Audio input, and every node its audible audio cables reach through FX,
+ * up to the outputs.
  */
 export function liveNodeIds(
   graph: Pick<NodeGraph, "nodes" | "edges">,
@@ -311,6 +316,7 @@ export function liveNodeIds(
     for (const edge of graph.edges) {
       if (
         edge.source === id &&
+        !isSilent(edge) &&
         parseHandleId(edge.sourceHandle)?.kind === "audio" &&
         parseHandleId(edge.targetHandle)?.kind === "audio"
       ) {
@@ -405,7 +411,7 @@ export function toFlowEdges(
         ...branchOf(drawn.get(edge.source), edge),
         ariaLabel: label,
         className:
-          live.has(edge.source) && kind === "audio"
+          live.has(edge.source) && kind === "audio" && !isSilent(edge)
             ? "node-edge-live"
             : undefined,
         ...(kind === "sidechain"

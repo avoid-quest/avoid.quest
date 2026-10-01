@@ -123,3 +123,33 @@ describe("readGitChangelog", () => {
     }
   });
 });
+
+describe("squash merges under a plain title", () => {
+  let mainRepo = "";
+
+  beforeAll(() => {
+    mainRepo = repo;
+    repo = mkdtempSync(path.join(tmpdir(), "git-changelog-squash-"));
+    git(["init", "--quiet"]);
+    commit(
+      "Cache shared radio metadata in Workers KV (#308)\n\n* feat(radio): share public radio metadata\n\n* fix(radio): close shared metadata cache gaps"
+    );
+    commit(
+      "Update dependencies and configure worker setup (#300)\n\n* Update dependencies\n\n* chore: defer client-only modules"
+    );
+    commit(
+      "Reorganize the player internals (#299)\n\n* feat(radio): split the player store\n\nChangelog: skip"
+    );
+  });
+
+  afterAll(() => {
+    rmSync(repo, { force: true, recursive: true });
+    repo = mainRepo;
+  });
+
+  test("lists one that squashed a feature by its title", () => {
+    expect(readGitChangelog(repo).map(({ text }) => text)).toEqual([
+      "Cache shared radio metadata in Workers KV",
+    ]);
+  });
+});

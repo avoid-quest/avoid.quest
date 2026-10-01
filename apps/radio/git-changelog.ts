@@ -68,7 +68,44 @@ function readChangelogLine({ body, subject }: Commit) {
 }
 
 /**
- * Newest first. `feat` commits are listed by their subject. A `Changelog:`
+ * Whether a squash merge's list of commits holds one of `types` that is not
+ * hidden by its own `Changelog:` line. A squash under a plain PR title, such
+ * as "Cache shared radio metadata (#308)", is then listed by that title.
+ */
+function squashesListedType({ body }: Commit, types: string[]) {
+  const listStart = body.search(SQUASHED_COMMITS);
+  if (listStart === -1) {
+    return false;
+  }
+  return body
+    .slice(listStart)
+    .split(SQUASHED_COMMITS)
+    .some((squashed) => {
+      const type = CONVENTIONAL_SUBJECT.exec(squashed.split("\n", 1)[0] ?? "");
+      const line = CHANGELOG_LINE.exec(squashed)?.[1]?.trim().toLowerCase();
+      return (
+        types.includes(type?.[1] ?? "") && !(line && HIDDEN_VALUES.has(line))
+      );
+    });
+}
+
+/** The entry a commit's subject gives, when its type is listed. */
+function readSubjectText(commit: Commit, types: string[]) {
+  const conventional = CONVENTIONAL_SUBJECT.exec(commit.subject);
+  if (conventional) {
+    return types.includes(conventional[1] ?? "")
+      ? conventional[2]?.replace(PULL_REQUEST_SUFFIX, "")
+      : undefined;
+  }
+  return PULL_REQUEST_SUFFIX.test(commit.subject) &&
+    squashesListedType(commit, types)
+    ? commit.subject.replace(PULL_REQUEST_SUFFIX, "")
+    : undefined;
+}
+
+/**
+ * Newest first. `feat` commits are listed by their subject, and a squash
+ * merge under a plain title that squashed one by that title. A `Changelog:`
  * line in a commit message rewords it (and lists any type), and
  * `Changelog: skip` hides it. Reverted commits are dropped.
  */
@@ -100,12 +137,7 @@ function parseGitChangelog(
     if (override && HIDDEN_VALUES.has(override.toLowerCase())) {
       continue;
     }
-    const conventional = CONVENTIONAL_SUBJECT.exec(commit.subject);
-    const subjectText =
-      conventional && types.includes(conventional[1] ?? "")
-        ? conventional[2]?.replace(PULL_REQUEST_SUFFIX, "")
-        : undefined;
-    const text = override || subjectText;
+    const text = override || readSubjectText(commit, types);
     if (!text || texts.has(text.toLowerCase())) {
       continue;
     }

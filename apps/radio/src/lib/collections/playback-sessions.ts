@@ -598,10 +598,14 @@ function collectGraphEffects(
 function collectSessionNamModelIds(
   session: PlaybackSessionRecord | undefined
 ): Set<string> {
+  // A retired record kept for a later migration run loads unvalidated.
+  const channels = Array.isArray(session?.channels) ? session.channels : [];
   return new Set([
-    ...(session?.channels.flatMap((channel) => [
-      ...collectLocalNamModelIds(channel.effects),
-    ]) ?? []),
+    ...channels.flatMap((channel) =>
+      Array.isArray(channel?.effects)
+        ? [...collectLocalNamModelIds(channel.effects)]
+        : []
+    ),
     ...collectLocalNamModelIds(collectGraphEffects(session?.graph)),
   ]);
 }
@@ -709,6 +713,8 @@ async function externalizeChannelNamModels(
 async function externalizeStoredNamModels(): Promise<void> {
   const channels = [...playbackSessionsCollection.state.values()].flatMap(
     (session) =>
+      // A retired record left for a later migration run cannot be updated.
+      PLAYBACK_SESSION_IDS.includes(session.id) &&
       getNodeGraphReadOnlyVersion(session.graph) === null
         ? session.channels.map((channel) => ({
             channel,

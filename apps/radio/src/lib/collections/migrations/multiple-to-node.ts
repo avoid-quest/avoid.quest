@@ -9,8 +9,8 @@
  * this runs first in `initializePlaybackSessions`, before anything updates
  * the collection, and again whenever another tab writes a `"multiple"`
  * record back. It is idempotent: once `"node"` exists it only deletes
- * `"multiple"`. The settings step is `migrateLegacyPlayerMode` in
- * `collections/settings.ts`.
+ * `"multiple"`, and never before Node or a readable backup holds it. The
+ * settings step is `migrateLegacyPlayerMode` in `collections/settings.ts`.
  */
 
 import type { Radio } from "@/lib/audio/playback/types";
@@ -185,18 +185,36 @@ function withoutVirtualFields(record: unknown): unknown {
     : record;
 }
 
-/** Writes the backup unless one exists; a failing storage is not fatal. */
+/** Whether `storage` holds a backup a rollback could read back. */
+function hasReadableBackup(storage: BackupStorage): boolean {
+  const raw = storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY);
+  if (raw === null) {
+    return false;
+  }
+  try {
+    const backup: unknown = JSON.parse(raw);
+    return isRecord(backup) && "session" in backup;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Writes the backup unless a readable one exists; a corrupt one is replaced.
+ * Returns whether a readable backup is stored afterwards. A failing storage
+ * is not fatal, but the caller then keeps the record.
+ */
 function backupMultipleRecord(
   session: unknown,
   mode: string | null,
   storage: BackupStorage | null
-): void {
+): boolean {
   if (!storage) {
-    return;
+    return false;
   }
   try {
-    if (storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY) !== null) {
-      return;
+    if (hasReadableBackup(storage)) {
+      return true;
     }
     const backup: MultipleBackup = {
       createdAt: Date.now(),
@@ -204,17 +222,21 @@ function backupMultipleRecord(
       session: withoutVirtualFields(session),
     };
     storage.setItem(MULTIPLE_BACKUP_STORAGE_KEY, JSON.stringify(backup));
+    return hasReadableBackup(storage);
   } catch (error) {
     console.warn(
       "[multiple-to-node] Could not back up the Multiple session",
       error
     );
+    return false;
   }
 }
 
 /**
  * The session step. Idempotent: with no `"multiple"` record it does nothing,
  * and with a `"node"` record already stored it only deletes `"multiple"`.
+ * The record goes only once Node holds it or a readable backup does; until
+ * then it stays, unvalidated and unused, and a later run retries.
  */
 export function migrateMultipleSession(
   collections: MultipleToNodeCollections,
@@ -225,9 +247,16 @@ export function migrateMultipleSession(
   if (multiple === undefined) {
     return;
   }
-  if (!sessions.state.has("node")) {
-    const mode = getReplacedPlayerMode() ?? getSettings()?.player.mode ?? null;
-    backupMultipleRecord(multiple, mode, storage);
+  const mode = getReplacedPlayerMode() ?? getSettings()?.player.mode ?? null;
+  if (sessions.state.has("node")) {
+    // Another tab's write, or a record kept by a failed run: a backup
+    // stored earlier still holds the first record. Without storage nothing
+    // outlives this page, so there is nothing to keep it for.
+    if (storage && !backupMultipleRecord(multiple, mode, storage)) {
+      return;
+    }
+  } else {
+    const backedUp = backupMultipleRecord(multiple, mode, storage);
     try {
       // The insert validates the new record.
       sessions.insert(
@@ -240,12 +269,16 @@ export function migrateMultipleSession(
         )
       );
     } catch (error) {
-      // Never block startup on an old record: the backup holds it, and init
-      // builds Node from the Starter patch when "node" is missing.
+      // Never block startup on an old record: init builds Node from the
+      // Starter patch when "node" is missing.
       console.warn(
         "[multiple-to-node] Could not migrate the Multiple session",
         error
       );
+      if (!backedUp) {
+        // Nothing else holds it, so it stays for a later run.
+        return;
+      }
     }
   }
   // Delete does not validate, so a stale record still goes.

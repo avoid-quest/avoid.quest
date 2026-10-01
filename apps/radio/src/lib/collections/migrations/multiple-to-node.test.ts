@@ -324,12 +324,30 @@ describe("migrateMultipleSession", () => {
     playbackSessionsCollection.insert(existing);
     await insertMultiple([{ radio: radio("kexp") }], 0.1);
     const storage = createMemoryStorage();
+    storage.setItem(
+      MULTIPLE_BACKUP_STORAGE_KEY,
+      JSON.stringify({ createdAt: 1, mode: "multiple", session: {} })
+    );
+    storage.setItem.mockClear();
 
     migrateMultipleSession(collections, storage);
 
     expect(getPlaybackSession("node")).toMatchObject(existing);
     expect(hasMultiple()).toBe(false);
+    // The backup written first stays.
     expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  test("backs up a multiple record before deleting it beside node", async () => {
+    playbackSessionsCollection.insert(buildNodeSessionFromTemplate("blank"));
+    const record = await insertMultiple([{ radio: radio("kexp") }], 0.1);
+    const storage = createMemoryStorage();
+
+    migrateMultipleSession(collections, storage);
+
+    expect(hasMultiple()).toBe(false);
+    const raw = storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY);
+    expect((JSON.parse(raw ?? "{}") as MultipleBackup).session).toEqual(record);
   });
 
   test("reads a legacy record leniently", () => {
@@ -415,6 +433,91 @@ describe("migrateMultipleSession", () => {
     expect(deleted).toEqual(["multiple"]);
     expect(storage.setItem).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  const unusableStorages = {
+    "a blocked storage": () => null,
+    "a storage that refuses writes": () => ({
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+    }),
+  };
+  for (const [name, createStorage] of Object.entries(unusableStorages)) {
+    test(`keeps multiple when the node insert fails with ${name}`, () => {
+      const originalWarn = console.warn;
+      console.warn = mock(() => undefined);
+      const deleted: string[] = [];
+      const sessions = {
+        delete: (id: string) => deleted.push(id),
+        insert: () => {
+          throw new Error("SchemaValidationError");
+        },
+        state: new Map([["multiple", { channels: [], id: "multiple" }]]),
+      } as unknown as typeof playbackSessionsCollection;
+
+      try {
+        migrateMultipleSession({ ...collections, sessions }, createStorage());
+      } finally {
+        console.warn = originalWarn;
+      }
+
+      expect(deleted).toEqual([]);
+    });
+  }
+
+  test("replaces a corrupt backup before giving up the record", () => {
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+    const deleted: string[] = [];
+    const record = { channels: [], id: "multiple" };
+    const sessions = {
+      delete: (id: string) => deleted.push(id),
+      insert: () => {
+        throw new Error("SchemaValidationError");
+      },
+      state: new Map([["multiple", record]]),
+    } as unknown as typeof playbackSessionsCollection;
+    const storage = createMemoryStorage();
+    storage.setItem(MULTIPLE_BACKUP_STORAGE_KEY, "{not json");
+
+    try {
+      migrateMultipleSession({ ...collections, sessions }, storage);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const backup = JSON.parse(
+      storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY) ?? "{}"
+    ) as MultipleBackup;
+    expect(backup.session).toEqual(record);
+    expect(deleted).toEqual(["multiple"]);
+  });
+
+  test("a kept record migrates once the backup can be written", async () => {
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+    // Node came from the Starter patch after a failed run.
+    playbackSessionsCollection.insert(buildNodeSessionFromTemplate("starter"));
+    await insertMultiple([{ radio: radio("kexp") }]);
+
+    try {
+      migrateMultipleSession(collections, {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error("QuotaExceededError");
+        },
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+    expect(hasMultiple()).toBe(true);
+
+    const storage = createMemoryStorage();
+    migrateMultipleSession(collections, storage);
+    expect(hasMultiple()).toBe(false);
+    expect(storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY)).not.toBeNull();
   });
 });
 

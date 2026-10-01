@@ -388,7 +388,9 @@ function lastEnabledIndex(effects: readonly EffectConfig[]): number {
  * Places pending trim before the whole FX signal, including its dry path.
  * A silencing trim also stays pending, so the exits stay muted too: when an
  * FX is switched on, the mute moving into it never opens a send while the
- * async effect update is still on its way.
+ * async effect update is still on its way. A trim after a default Autotune
+ * goes into the next FX instead of its output, even at unity, so turning
+ * it never flips the Autotune's bare-device layout and rebuilds the lane.
  */
 function placeTrim(
   effects: EffectConfig[],
@@ -402,7 +404,7 @@ function placeTrim(
   const pending = level === 0 ? trim : UNITY;
   const previousIndex = lastEnabledIndex(effects);
   const previous = effects[previousIndex];
-  if (previous) {
+  if (previous && !isDirectLayout(previous)) {
     effects[previousIndex] = {
       ...previous,
       outputGain: previous.outputGain * level,

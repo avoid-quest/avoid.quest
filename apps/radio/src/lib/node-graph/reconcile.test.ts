@@ -201,6 +201,42 @@ describe("diff", () => {
     ]);
   });
 
+  test("a trim after a default Autotune keeps its direct layout", () => {
+    const autotuned = ({
+      gainDb = 0,
+      muted = false,
+    }: {
+      gainDb?: number;
+      muted?: boolean;
+    } = {}) =>
+      plan(
+        [
+          station("a"),
+          fx("tune", "autotune", { enabled: true }),
+          node("gain", "gain", { gainDb }),
+          fx("delay", "delay", { enabled: true }),
+          speakers,
+        ],
+        [
+          audio("a", "tune"),
+          audio("tune", "gain", { muted }),
+          audio("gain", "delay"),
+          audio("delay", "speakers"),
+        ]
+      );
+    const unity = autotuned();
+    const nudged = autotuned({ gainDb: -0.1 });
+
+    expect(types(diff(unity, nudged))).toEqual(["setLaneEffects"]);
+    expect(types(diff(nudged, unity))).toEqual(["setLaneEffects"]);
+    expect(types(diff(unity, autotuned({ muted: true })))).not.toContain(
+      "replaceLaneEffects"
+    );
+    const [tune, delay] = nudged.lanes.get("a")?.effects ?? [];
+    expect(tune?.outputGain).toBe(1);
+    expect(delay?.signalGain).toBeCloseTo(10 ** (-0.1 / 20));
+  });
+
   test("a native pan or filter change is a setParam", () => {
     const strip = (pan: number, frequency: number) =>
       plan(

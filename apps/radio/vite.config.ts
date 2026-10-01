@@ -104,6 +104,18 @@ const VENDOR_CHUNK_GROUPS: Array<{
     name: "vendor-xyflow",
   },
   {
+    match: (id) => id.includes("/node_modules/react-resizable-panels/"),
+    // Node mode's shell only. Apart from vendor-xyflow, which the shell must
+    // not import statically, and out of the eager shared vendor chunk.
+    name: "vendor-resizable",
+  },
+  {
+    match: (id) => id.includes("/node_modules/@radix-ui/react-popover/"),
+    // Node mode's branch edges and the What's new popover only, both lazy.
+    // The popper and dismissable layer it uses stay shared with the menus.
+    name: "vendor-popover",
+  },
+  {
     match: (id) =>
       id.includes("/node_modules/@dnd-kit/") ||
       id.includes("/node_modules/lucide-react/"),

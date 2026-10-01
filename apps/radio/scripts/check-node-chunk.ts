@@ -9,6 +9,9 @@
  * - a React Flow chunk is loaded eagerly: reachable through static imports
  *   from the route entries and preloads in the TanStack Start manifest;
  * - no client chunk imports it lazily.
+ *
+ * It also fails when another vendor only lazy features use (see
+ * LAZY_VENDORS) loads eagerly with the page.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -20,6 +23,13 @@ const CLIENT_ASSETS = path.join(DIST, "client", "assets");
 
 /** Strings only React Flow's runtime carries. */
 const XYFLOW_MARKERS = ["react-flow__renderer", "@xyflow/"];
+/** Strings only these vendors carry; each must stay out of eager chunks. */
+const LAZY_VENDORS = [
+  // Node mode's resizable shell.
+  { markers: ['"data-separator"'], name: "react-resizable-panels" },
+  // Node mode's branch edges and the What's new popover.
+  { markers: ["PopoverTrigger"], name: "Radix Popover" },
+];
 const STATIC_IMPORT =
   /(?:^|[;}\s])(?:import|export)\s*(?:[\w$*{}\s,]+?\s*from\s*)?["']\.\/([^"']+\.js)["']/g;
 const DYNAMIC_IMPORT = /import\(\s*["']\.\/([^"']+\.js)["']\s*\)/g;
@@ -84,6 +94,14 @@ if (manifest) {
   for (const [name] of flowChunks) {
     if (eager.has(name)) {
       failures.push(`React Flow chunk ${name} loads eagerly with the page`);
+    }
+  }
+  for (const vendor of LAZY_VENDORS) {
+    for (const name of eager) {
+      const source = chunks.get(name) ?? "";
+      if (vendor.markers.some((marker) => source.includes(marker))) {
+        failures.push(`${vendor.name} in ${name} loads eagerly with the page`);
+      }
     }
   }
 } else {

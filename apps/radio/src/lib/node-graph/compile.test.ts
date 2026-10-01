@@ -1238,6 +1238,43 @@ describe("compile: series-parallel regions", () => {
     ]);
   });
 
+  test("a soloed cable among several on one Split port solos its branch too", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("x", "fxComposite", { enabled: true }),
+        fx("delay", "delay"),
+        fx("crush", "crusher"),
+        fx("fold", "cheapReverb"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "x"),
+        { ...audio("x", "delay", { from: "branch-1" }), solo: true },
+        audio("x", "crush", { from: "branch-1" }),
+        audio("x", "fold", { from: "branch-2" }),
+        audio("delay", "merge"),
+        audio("crush", "merge"),
+        audio("fold", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "fxComposite") {
+      throw new Error("Expected a composite");
+    }
+    // Branch 2 goes quiet behind the soloed Branch 1 ...
+    expect(split.chains.map((chain) => chain.solo)).toEqual([true, false]);
+    // ... and inside Branch 1 only the soloed cable plays.
+    const [fanOut] = split.chains[0]?.effects ?? [];
+    if (fanOut?.type !== "fxComposite") {
+      throw new Error("Expected a nested fan-out");
+    }
+    expect(fanOut.chains.map((chain) => chain.solo)).toEqual([true, false]);
+  });
+
   test("a Split's third branch mixes at the same level as its first two", () => {
     const plan = build(
       [

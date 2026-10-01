@@ -830,9 +830,11 @@ class LaneLowerer {
           muted: chain.muted || branch.trim.muted,
           order: index,
           // The branch cable carries the chain's pan and solo, on top of
-          // what the container holds (a MIDI-learned chain pan).
+          // what the container holds (a MIDI-learned chain pan). With
+          // several cables on the port each keeps its own in the nested
+          // fan-out, and a soloed one also solos its branch over the rest.
           pan: clampPan(chain.pan + (cable?.pan ?? 0)),
-          solo: chain.solo || cable?.solo === true,
+          solo: chain.solo || cables.some(({ edge }) => edge.solo === true),
         },
       ];
     });

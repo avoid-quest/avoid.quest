@@ -220,6 +220,24 @@ describe("connectableHandles", () => {
     }
   });
 
+  test("validates the unchanged patch once for the whole drag", () => {
+    const spy = spyOn(validateModule, "validate");
+    try {
+      const verdicts = connectableHandles(graph, {
+        handle: "out:audio:main",
+        node: "kexp",
+        type: "source",
+      });
+      // Once with each of the 5 facing ports' cables, once without any.
+      expect(spy).toHaveBeenCalledTimes(5 + 1);
+      expect(
+        [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
+      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("during a drag, isValidConnection validates nothing", () => {
     startConnectionHints(graph, {
       handle: "out:audio:main",

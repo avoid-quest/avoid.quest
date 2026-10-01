@@ -1177,13 +1177,27 @@ function candidateEdgeId(graph: ValidatableGraph): string {
 }
 
 /**
+ * The problems `graph` already has, which `validateConnection` leaves out
+ * as not a new cable's doing. Take it once to check many cables against the
+ * same patch, e.g. every port a drag faces, rather than once per cable.
+ */
+export function connectionBaseline(
+  graph: ValidatableGraph,
+  options?: ValidateOptions
+): ReadonlySet<string> {
+  return new Set(validate(graph, options).map(issueKey));
+}
+
+/**
  * The problems a new cable would introduce; empty means it may connect.
- * Ask `connectionVerdict` instead, which picks the one to show.
+ * Ask `connectionVerdict` instead, which picks the one to show. `baseline`
+ * is `connectionBaseline(graph, options)` when the caller already has it.
  */
 export function validateConnection(
   graph: ValidatableGraph,
   connection: Connection,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: ReadonlySet<string>
 ): Issue[] {
   if (
     connection.id !== undefined &&
@@ -1207,7 +1221,7 @@ export function validateConnection(
     target: connection.target,
     targetHandle: connection.targetHandle ?? "",
   };
-  const before = new Set(validate(graph, options).map(issueKey));
+  const before = baseline ?? connectionBaseline(graph, options);
   return validate(
     { ...graph, edges: [...graph.edges, candidate] },
     options
@@ -1252,19 +1266,21 @@ export const SAME_SIDE_MESSAGE = "A cable runs from an output to an input";
  * node, the Connect… dialog, the palette and cable surgery all ask here.
  * The cable's own problem comes first, then what it would break elsewhere,
  * e.g. a Merge that would sum two stations. Two outputs or two inputs are
- * refused before any validation, so a drag can ask about every port.
+ * refused before any validation, so a drag can ask about every port; it
+ * passes the patch's `connectionBaseline` so that is validated only once.
  */
 export function connectionVerdict(
   graph: ValidatableGraph,
   connection: Connection,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: ReadonlySet<string>
 ): Verdict {
   const source = parseHandleId(connection.sourceHandle);
   const target = parseHandleId(connection.targetHandle);
   if (source?.direction === "in" || target?.direction === "out") {
     return { code: "bad-handle", message: SAME_SIDE_MESSAGE, ok: false };
   }
-  const issues = validateConnection(graph, connection, options);
+  const issues = validateConnection(graph, connection, options, baseline);
   const refusal = issues.find((issue) => issue.target === "edge") ?? issues[0];
   return refusal
     ? { code: refusal.code, message: refusal.message, ok: false }

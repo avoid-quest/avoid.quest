@@ -68,6 +68,7 @@ import {
 } from "./templates";
 import {
   type Connection,
+  connectionBaseline,
   connectionVerdict,
   deviceOutVerdict,
   kindsPatch,
@@ -348,19 +349,23 @@ function cableBetween(
       };
 }
 
-/** Every cable from `from` into `node` that would pass validation. */
+/**
+ * Every cable from `from` into `node` that would pass validation, against
+ * the patch's `baseline` when the caller checks many nodes.
+ */
 function validCables(
   graph: NodeGraph,
   node: GraphNode,
   from: PaletteFrom,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: ReadonlySet<string>
 ): Connection[] {
   if (node.id === from.node) {
     return [];
   }
   return facingPorts(node, from)
     .map((port) => cableBetween(from, node.id, port))
-    .filter((cable) => connectionVerdict(graph, cable, options).ok);
+    .filter((cable) => connectionVerdict(graph, cable, options, baseline).ok);
 }
 
 /** The key a port's verdict goes under: `"<nodeId> <handleId>"`. */
@@ -371,9 +376,9 @@ export function portKey(nodeId: string, handle: string): string {
 /**
  * What a cable dragged from `from` may end on: a verdict for every shipped
  * port in the patch, keyed by `portKey`. Taken once when a drag starts, so
- * lighting the ports costs one validation per port facing the drag, not
- * one per port per pointer move. Ports on the drag's own side are refused
- * without one.
+ * lighting the ports costs one validation per port facing the drag, plus
+ * one of the patch as it is, not one per port per pointer move. Ports on
+ * the drag's own side are refused without one.
  */
 export function connectableHandles(
   graph: NodeGraph,
@@ -381,13 +386,19 @@ export function connectableHandles(
   options?: ValidateOptions
 ): Map<string, Verdict> {
   const verdicts = new Map<string, Verdict>();
+  const baseline = connectionBaseline(graph, options);
   for (const node of graph.nodes) {
     const definition = getNodeDefinition(node.type);
     for (const port of definition.ports) {
       if (isShipped(port.ship ?? definition.ship, options?.release ?? "v1")) {
         verdicts.set(
           portKey(node.id, portHandleId(port)),
-          connectionVerdict(graph, cableBetween(from, node.id, port), options)
+          connectionVerdict(
+            graph,
+            cableBetween(from, node.id, port),
+            options,
+            baseline
+          )
         );
       }
     }
@@ -825,13 +836,14 @@ export function autoConnection(
   graph: NodeGraph,
   from: PaletteFrom,
   nodeId: string,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: ReadonlySet<string>
 ): Connection | null {
   const node = graph.nodes.find((entry) => entry.id === nodeId);
   if (!node) {
     return null;
   }
-  const cables = validCables(graph, node, from, options);
+  const cables = validCables(graph, node, from, options, baseline);
   return cables.length === 1 ? (cables[0] ?? null) : null;
 }
 
@@ -850,7 +862,8 @@ export function dropRefusal(
   graph: NodeGraph,
   from: PaletteFrom,
   nodeId: string,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: ReadonlySet<string>
 ): string | null {
   const node = graph.nodes.find((entry) => entry.id === nodeId);
   const kind = parseHandleId(from.handle)?.kind;
@@ -864,10 +877,15 @@ export function dropRefusal(
         : kindsPatch(port.kind, kind)
     )
     .map((port) =>
-      connectionVerdict(graph, cableBetween(from, node.id, port), options)
+      connectionVerdict(
+        graph,
+        cableBetween(from, node.id, port),
+        options,
+        baseline
+      )
     );
   if (verdicts.length === 0) {
-    return noPortRefusal(graph, from, node, kind, options);
+    return noPortRefusal(graph, from, node, kind, options, baseline);
   }
   const refusals = verdicts.filter(
     (verdict): verdict is Refusal => !verdict.ok
@@ -890,7 +908,8 @@ function noPortRefusal(
   from: PaletteFrom,
   node: GraphNode,
   kind: PortKind,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: ReadonlySet<string>
 ): string | null {
   const facing = from.type === "source" ? "in" : "out";
   // A key cable leaves an audio output.
@@ -904,7 +923,8 @@ function noPortRefusal(
       label: "",
       max: 1,
     }),
-    options
+    options,
+    baseline
   );
   return !verdict.ok &&
     (verdict.code === "no-audio-in" || verdict.code === "no-out")
@@ -938,6 +958,7 @@ export function dropOnNode(
   port: string | null,
   options?: ValidateOptions
 ): DropOutcome {
+  const baseline = connectionBaseline(graph, options);
   if (port) {
     const cable: Connection =
       from.type === "source"
@@ -953,7 +974,7 @@ export function dropOnNode(
             target: from.node,
             targetHandle: from.handle,
           };
-    const verdict = connectionVerdict(graph, cable, options);
+    const verdict = connectionVerdict(graph, cable, options, baseline);
     if (verdict.ok) {
       return { connect: cable };
     }
@@ -961,13 +982,13 @@ export function dropOnNode(
       return { refuse: verdict.message };
     }
   }
-  const cable = autoConnection(graph, from, nodeId, options);
+  const cable = autoConnection(graph, from, nodeId, options, baseline);
   if (cable) {
     return { connect: cable };
   }
-  const refuse = dropRefusal(graph, from, nodeId, options);
+  const refuse = dropRefusal(graph, from, nodeId, options, baseline);
   const replace = refuse
-    ? replacement(graph, from, nodeId, port, options)
+    ? replacement(graph, from, nodeId, port, options, baseline)
     : null;
   return replace ? { refuse, replace } : { refuse };
 }
@@ -983,7 +1004,8 @@ function replacement(
   from: PaletteFrom,
   nodeId: string,
   port: string | null,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline: ReadonlySet<string> = connectionBaseline(graph, options)
 ): Replacement | null {
   const node = graph.nodes.find((entry) => entry.id === nodeId);
   const kind = parseHandleId(from.handle)?.kind;
@@ -1000,7 +1022,10 @@ function replacement(
     )
     .map((facing) => {
       const cable = cableBetween(from, node.id, facing);
-      return { cable, verdict: connectionVerdict(graph, cable, options) };
+      return {
+        cable,
+        verdict: connectionVerdict(graph, cable, options, baseline),
+      };
     });
   // A port refused for a truer reason than being full says that instead.
   if (
@@ -1053,6 +1078,7 @@ export function connectPorts(
     return [];
   }
   const ports: ConnectPort[] = [];
+  const baseline = connectionBaseline(graph, options);
   for (const port of getNodeDefinition(node.type).ports) {
     const from: PaletteFrom = {
       handle: portHandleId(port),
@@ -1060,7 +1086,7 @@ export function connectPorts(
       type: port.direction === "out" ? "source" : "target",
     };
     const targets = graph.nodes.flatMap((other) =>
-      validCables(graph, other, from, options).map((connection) => {
+      validCables(graph, other, from, options, baseline).map((connection) => {
         const handle =
           from.type === "source"
             ? connection.targetHandle
@@ -1094,6 +1120,7 @@ export function rewireTargets(
     ...graph,
     edges: graph.edges.filter((entry) => entry.id !== edgeId),
   };
+  const baseline = connectionBaseline(without, options);
   // The end that stays put decides which ports fit: audio may move between
   // a normal input and a key (sidechain) input, as a drag can.
   const fixed = parseHandleId(
@@ -1115,7 +1142,12 @@ export function rewireTargets(
           target: end === "target" ? node.id : edge.target,
           targetHandle: end === "target" ? handle : edge.targetHandle,
         };
-        const verdict = connectionVerdict(without, connection, options);
+        const verdict = connectionVerdict(
+          without,
+          connection,
+          options,
+          baseline
+        );
         return {
           connection,
           key: `${node.id} ${handle}`,

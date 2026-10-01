@@ -1811,6 +1811,33 @@ function createNodePlayback(
     setManagedSessionMasterVolume("node", volume, ctx);
   };
 
+  /**
+   * A Go live that didn't go live, e.g. a cancelled picker or a denied mic,
+   * turns its Monitor back off, unless a later Go live or stop took over.
+   */
+  const resetFailedMonitor = (
+    nodeId: string,
+    channelId: string,
+    revision: number
+  ) => {
+    const runtime = getPlaybackChannelRuntime(channelId);
+    const node = store.state.graph?.nodes.find((entry) => entry.id === nodeId);
+    if (
+      node?.type !== "deviceIn" ||
+      !node.data.strip.monitor ||
+      channelStartRevisions.get(channelId) !== revision + 1 ||
+      runtime.isPlaying ||
+      runtime.isLoading
+    ) {
+      return;
+    }
+    commitNodeGraph(
+      (graph) => setSourceStrip(graph, nodeId, { monitor: false }),
+      store,
+      "rebase"
+    );
+  };
+
   const setPlaying = async (nodeId: string, playing: boolean) => {
     const channelId = laneChannelId(nodeId);
     if (isDeviceChannel(channelId)) {
@@ -1822,7 +1849,9 @@ function createNodePlayback(
       );
     }
     if (playing) {
+      const revision = channelStartRevisions.get(channelId) ?? 0;
       await startChannel(channelId);
+      resetFailedMonitor(nodeId, channelId, revision);
       return;
     }
     const cancelledStart = cancelChannelStarts("pause", channelId);

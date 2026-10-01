@@ -3021,6 +3021,43 @@ describe("Node Playback audio inputs and output devices", () => {
     }
   });
 
+  test("a Go live that fails turns its Monitor back off", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const harness = createHarness();
+    deviceEngine(harness.context);
+    harness.context.audio.playDeviceSound = mock(() =>
+      Promise.reject(new DOMException("denied", "NotAllowedError"))
+    );
+    const monitor = () => {
+      const node = harness.store.state.graph?.nodes.find(
+        (entry) => entry.id === "mic"
+      );
+      return node?.type === "deviceIn" ? node.data.strip.monitor : null;
+    };
+    await harness.playback.activate();
+
+    const start = harness.playback.setPlaying("mic", true);
+    expect(monitor()).toBe(true);
+    await start;
+
+    expect(getPlaybackChannelRuntime(channelOf("mic")).error).not.toBeNull();
+    expect(monitor()).toBe(false);
+  });
+
+  test("a Go live that goes live keeps its Monitor on", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const harness = createHarness();
+    deviceEngine(harness.context);
+    await harness.playback.activate();
+
+    await harness.playback.setPlaying("mic", true);
+
+    const node = harness.store.state.graph?.nodes.find(
+      (entry) => entry.id === "mic"
+    );
+    expect(node?.type === "deviceIn" && node.data.strip.monitor).toBe(true);
+  });
+
   test.each([0, 0.2])(
     "Go live seeds the saved fader %s before capture",
     async (volume) => {

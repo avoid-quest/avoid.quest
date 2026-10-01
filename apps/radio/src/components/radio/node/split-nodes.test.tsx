@@ -337,6 +337,7 @@ describe("split ports", () => {
       <ModulePorts
         nodeId="split"
         outputIds={outputIds}
+        outputLabel={(port) => `Branch ${port.id.split("-").at(-1)}`}
         title="Split"
         type="fxComposite"
       />
@@ -361,6 +362,12 @@ describe("split ports", () => {
       "out:audio:branch-1",
       "out:audio:branch-2",
     ]);
+    // Only the outputs are named for their branches; the input is an input.
+    expect(
+      [...view.container.querySelectorAll("[data-handle]")].map((handle) =>
+        handle.getAttribute("title")
+      )
+    ).toEqual(["Input", "Branch 1", "Branch 2"]);
     const measured = updateNodeInternals.mock.calls.length;
 
     view.rerender(

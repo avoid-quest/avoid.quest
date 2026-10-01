@@ -223,6 +223,44 @@ describe("NodeCanvas", () => {
     expect(description?.textContent).toContain("arrow keys");
   });
 
+  test("a split's input reads as its input, its outputs as its branches", async () => {
+    const view = mountGraph(
+      schema.nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          {
+            data: {
+              effect: catalogue.createNodeEffectConfig("stereoSplit", "lr"),
+            },
+            id: "lr",
+            position: { x: 0, y: 0 },
+            type: "stereoSplit",
+          },
+          {
+            data: {},
+            id: "speakers",
+            position: { x: 400, y: 0 },
+            type: "speakers",
+          },
+        ],
+        version: 2,
+      })
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const port = (handle: string) =>
+      view.container.querySelector(
+        `.react-flow__handle[data-nodeid="lr"][data-handleid="${handle}"]`
+      );
+
+    expect(port("in:audio:main")?.getAttribute("title")).toBe("Input");
+    expect(port("in:audio:main")?.getAttribute("aria-label")).toBe(
+      "Stereo Split input"
+    );
+    expect(port("out:audio:left")?.getAttribute("title")).toBe("Left");
+  });
+
   test("says what to do first until the slot holds a station", () => {
     const view = mountStarter();
 

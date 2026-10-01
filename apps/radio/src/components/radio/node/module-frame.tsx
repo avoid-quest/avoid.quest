@@ -584,7 +584,7 @@ export function NodePort(props: NodePortProps) {
  * outputs down the right, spread evenly, each a `NodePort`. A key input
  * wears the amber ring (`data-kind="sidechain"`).
  * A split shows only the outputs it has in use (`outputIds`),
- * named for its branches (`portLabel`), and re-measures its handles
+ * named for its branches (`outputLabel`), and re-measures its handles
  * whenever they change so cables land on the moved and new ports.
  */
 export function ModulePorts({
@@ -592,14 +592,15 @@ export function ModulePorts({
   title,
   nodeId,
   outputIds,
-  portLabel = portName,
+  outputLabel = portName,
 }: {
   type: NodeType;
   title: string;
   /** Set with `outputIds`: the node whose handles come and go. */
   nodeId?: string;
   outputIds?: readonly string[];
-  portLabel?: (port: PortDefinition) => string;
+  /** Names each output; inputs keep their catalogue names. */
+  outputLabel?: (port: PortDefinition) => string;
 }) {
   const flow = useContext(FlowPortsContext);
   const shown = outputIds?.join(" ");
@@ -622,7 +623,8 @@ export function ModulePorts({
   const outputs = ports.filter((port) => port.direction === "out");
   const handles = (side: typeof inputs, position: Position) =>
     side.map((port, index) => {
-      const name = portLabel(port);
+      const name =
+        port.direction === "out" ? outputLabel(port) : portName(port);
       return (
         <NodePort
           ariaLabel={`${title} ${name.toLowerCase()}`}

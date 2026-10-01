@@ -198,7 +198,7 @@ describe("palette Sources", () => {
   const patch = buildNodeGraphFromTemplate("blank");
 
   test("offers Station, Track with DJ's platform chips, and File", () => {
-    const sources = paletteEntries(patch).filter(
+    const sources = paletteEntries(patch, { displayCapture: true }).filter(
       (entry) => entry.section === "sources"
     );
     expect(sources.map((entry) => entry.id)).toEqual([

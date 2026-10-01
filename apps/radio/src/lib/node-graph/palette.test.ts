@@ -56,6 +56,7 @@ const emptyStation: PaletteNodeEntry = {
 describe("paletteEntries", () => {
   test("offers Stations, saved stations and templates, not a second Speakers", () => {
     const entries = paletteEntries(patch, {
+      displayCapture: true,
       radios: [radio("c"), radio("d", { enabled: false })],
     });
 
@@ -135,6 +136,7 @@ describe("paletteEntries", () => {
 
   test("a cable from an input offers only nodes that can feed it", () => {
     const entries = paletteEntries(patch, {
+      displayCapture: true,
       from: fromSpeakers,
       radios: [radio("c")],
     });
@@ -238,7 +240,7 @@ describe("paletteEntries: audio inputs and output devices", () => {
   }
 
   test("Sources list Audio input and one entry per input, set to it", () => {
-    const entries = paletteEntries(patch, { devices });
+    const entries = paletteEntries(patch, { devices, displayCapture: true });
 
     expect(names(entries, "sources")).toEqual([
       "Station",
@@ -257,6 +259,25 @@ describe("paletteEntries: audio inputs and output devices", () => {
     ]);
     expect(entries.find((entry) => entry.id === "deviceIn:line")).toMatchObject(
       { device: { deviceId: "line", label: "Line in" }, type: "deviceIn" }
+    );
+  });
+
+  test("a browser that can't share its audio is offered no shared-audio source", () => {
+    const entries = paletteEntries(patch, { devices, displayCapture: false });
+
+    expect(names(entries, "sources")).toEqual([
+      "Station",
+      "Track",
+      "YouTube",
+      "SoundCloud",
+      "Bandcamp",
+      "File",
+      "Audio input",
+      "Desk mic",
+      "Line in",
+    ]);
+    expect(entries.some((entry) => entry.id.startsWith("capture:"))).toBe(
+      false
     );
   });
 

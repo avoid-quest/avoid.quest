@@ -48,6 +48,17 @@ for (const [key, value] of Object.entries({
   });
 }
 
+// Shared tab or computer audio is offered where the browser can share it.
+Object.defineProperty(dom.window.navigator, "mediaDevices", {
+  configurable: true,
+  value: {
+    addEventListener: () => undefined,
+    enumerateDevices: () => Promise.resolve([]),
+    getDisplayMedia: () => Promise.reject(new Error("Not shared")),
+    removeEventListener: () => undefined,
+  },
+});
+
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
   value: true,
@@ -377,6 +388,7 @@ describe("NodePalette devices", () => {
       value: {
         addEventListener: () => undefined,
         enumerateDevices,
+        getDisplayMedia: () => Promise.reject(new Error("Not shared")),
         getUserMedia: mock(async () => ({ getTracks: () => [] })),
         removeEventListener: () => undefined,
       },

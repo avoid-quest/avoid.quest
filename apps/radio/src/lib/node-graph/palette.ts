@@ -458,12 +458,25 @@ export type PaletteOptions = ValidateOptions & {
    * as on Safari, no Output device is offered.
    */
   sinkSelection?: boolean;
+  /**
+   * Whether the browser can share a tab's or the computer's audio
+   * (`getDisplayMedia`). Without it, as on iOS and Android, no shared-audio
+   * source is offered. Defaults to what this browser can do.
+   */
+  displayCapture?: boolean;
   from?: PaletteFrom | null;
   /** A cable to insert the pick into (`I`). */
   into?: string | null;
   /** An FX node to swap to the pick ("Swap effect…"). */
   swap?: string | null;
 };
+
+/** Whether this browser can share a tab's or the computer's audio. */
+function canCaptureDisplayAudio(): boolean {
+  return (
+    typeof globalThis.navigator?.mediaDevices?.getDisplayMedia === "function"
+  );
+}
 
 /** Whether a new node of `type` could take the cable, or go into it. */
 function fits(
@@ -496,6 +509,7 @@ export function paletteEntries(
     radios = [],
     devices = { inputs: [], outputs: [] },
     sinkSelection = false,
+    displayCapture = canCaptureDisplayAudio(),
     from = null,
     into = null,
     swap = null,
@@ -525,7 +539,7 @@ export function paletteEntries(
       ...(type === "deviceIn"
         ? [
             ...inputDeviceEntries(devices.inputs),
-            ...BROWSER_AUDIO_SOURCES.map((source) => ({
+            ...(displayCapture ? BROWSER_AUDIO_SOURCES : []).map((source) => ({
               device: {
                 capture: "display" as const,
                 deviceId: "display",

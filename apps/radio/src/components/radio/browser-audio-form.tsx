@@ -90,9 +90,9 @@ export function BrowserAudioHelp({
         </details>
       ) : null}
       <p className="text-muted-foreground">
-        Desktop Chrome / Edge recommended. Window and computer audio depend on
-        your browser and OS. Use headphones for computer audio to avoid
-        capturing the mixer output again. Protected content may be silent.
+        Desktop Chrome / Edge recommended. Only a tab's audio can be shared, so
+        the mixer never captures itself; route desktop apps through a virtual
+        audio input instead. Protected content may be silent.
       </p>
     </div>
   );
@@ -138,7 +138,7 @@ export function BrowserAudioForm({
         }}
         size="sm"
       >
-        {loading ? <Spinner /> : <MonitorIcon />}Share tab / computer audio
+        {loading ? <Spinner /> : <MonitorIcon />}Share tab audio
       </Button>
       {onCancel ? (
         <Button onClick={onCancel} size="sm" variant="ghost">

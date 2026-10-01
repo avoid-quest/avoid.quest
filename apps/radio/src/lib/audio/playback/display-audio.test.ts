@@ -11,7 +11,7 @@ afterEach(() =>
   })
 );
 
-function capture() {
+function capture(displaySurface = "browser") {
   const tracks = ["audio", "video"].map((kind) => {
     const listeners = new Set<() => void>();
     return {
@@ -22,7 +22,8 @@ function capture() {
           listener();
         }
       },
-      getSettings: () => ({ channelCount: 2 }),
+      getSettings: () =>
+        kind === "video" ? { displaySurface } : { channelCount: 2 },
       kind,
       label: kind,
       readyState: "live",
@@ -34,6 +35,7 @@ function capture() {
   const stream = {
     getAudioTracks: () => tracks.slice(0, 1),
     getTracks: () => tracks,
+    getVideoTracks: () => tracks.slice(1),
   } as unknown as MediaStream;
   return { stream, tracks };
 }
@@ -88,12 +90,32 @@ describe("browser audio capture", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
     expect(getDisplayMedia).toHaveBeenCalledWith(
       expect.objectContaining({
+        audio: expect.objectContaining({
+          restrictOwnAudio: true,
+          suppressLocalAudioPlayback: true,
+        }),
+        monitorTypeSurfaces: "exclude",
         selfBrowserSurface: "exclude",
-        systemAudio: "include",
+        systemAudio: "exclude",
         video: { displaySurface: "browser", frameRate: 1 },
+        windowAudio: "exclude",
       })
     );
   });
+
+  test.each(["monitor", "window"])(
+    "a %s share is refused and released so the mixer cannot capture its own output",
+    async (surface) => {
+      const { stream, tracks } = capture(surface);
+      browser(() => Promise.resolve(stream));
+      await expect(requestDisplayAudio()).rejects.toThrow(
+        "Share a browser tab"
+      );
+      for (const track of tracks) {
+        expect(track.stop).toHaveBeenCalledTimes(1);
+      }
+    }
+  );
 
   test("a video-only selection is released and produces an actionable error", async () => {
     const { stream, tracks } = capture();

@@ -13,7 +13,14 @@ export function stopCapturedAudio(stream: MediaStream): void {
   }
 }
 
-/** Must run before awaiting engine setup, while the user's gesture is active. */
+/**
+ * Only another tab's audio may be shared. Screen (system) and window audio
+ * can contain this page's own output, which the mixer would then play back
+ * into the capture: a feedback loop. The options below are hints, so a
+ * capture of any surface other than a browser tab is refused afterwards.
+ *
+ * Must run before awaiting engine setup, while the user's gesture is active.
+ */
 export async function requestDisplayAudio(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error(
@@ -21,28 +28,38 @@ export async function requestDisplayAudio(): Promise<MediaStream> {
     );
   }
   const options: DisplayMediaStreamOptions & {
+    monitorTypeSurfaces: "exclude";
     selfBrowserSurface: "exclude";
     surfaceSwitching: "exclude";
-    systemAudio: "include";
-    windowAudio: "window";
+    systemAudio: "exclude";
+    windowAudio: "exclude";
   } = {
     audio: {
       autoGainControl: false,
       echoCancellation: false,
       noiseSuppression: false,
+      restrictOwnAudio: true,
       suppressLocalAudioPlayback: true,
     } as MediaTrackConstraints,
+    monitorTypeSurfaces: "exclude",
     selfBrowserSurface: "exclude",
     surfaceSwitching: "exclude",
-    systemAudio: "include",
+    systemAudio: "exclude",
     video: { displaySurface: "browser", frameRate: 1 },
-    windowAudio: "window",
+    windowAudio: "exclude",
   };
   const stream = await navigator.mediaDevices.getDisplayMedia(options);
+  const surface = stream.getVideoTracks?.()[0]?.getSettings?.().displaySurface;
+  if (surface && surface !== "browser") {
+    stopCapturedAudio(stream);
+    throw new Error(
+      "Share a browser tab. Screen and window audio can include this mixer and feed back into it."
+    );
+  }
   if (!stream.getAudioTracks().some((track) => track.readyState === "live")) {
     stopCapturedAudio(stream);
     throw new Error(
-      "No audio was shared. Choose a tab and enable Share tab audio, or choose a screen/window that offers audio."
+      "No audio was shared. Choose a tab and enable Share tab audio."
     );
   }
   // Video is required by the browser's picker and remains owned until sharing

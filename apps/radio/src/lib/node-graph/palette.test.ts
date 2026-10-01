@@ -448,6 +448,69 @@ describe("addPaletteNode", () => {
   });
 });
 
+describe("addPaletteNode: patch budgets", () => {
+  const full = buildNodeGraphFromTemplate("start-from-multiple", {
+    saved: Array.from({ length: 24 }, (_, index) => radio(String(index))),
+  });
+
+  test("refuses a 25th source, with or without a dropped cable", () => {
+    expect(validate(full)).toEqual([]);
+
+    for (const options of [{}, { from: fromSpeakers }]) {
+      expect(addPaletteNode(full, emptyStation, options)).toEqual({
+        graph: full,
+        message: "Up to 24 sources per patch",
+        nodeId: null,
+      });
+    }
+  });
+
+  test("a Station that would take a 65th cable comes loose", () => {
+    const stations = buildNodeGraphFromTemplate("start-from-multiple", {
+      saved: Array.from({ length: 16 }, (_, index) => radio(String(index))),
+    });
+    let graph = stations;
+    for (const deviceId of ["one", "two", "three"]) {
+      const output = addPaletteNode(graph, {
+        device: { deviceId, label: deviceId },
+        id: `deviceOut:${deviceId}`,
+        kind: "node",
+        name: deviceId,
+        section: "outputs",
+        type: "deviceOut",
+      });
+      ({ graph } = output);
+      for (const station of stations.nodes.filter(
+        (node) => node.type === "station"
+      )) {
+        graph = {
+          ...graph,
+          edges: [
+            ...graph.edges,
+            {
+              gain: 1,
+              id: `${station.id}->${output.nodeId}`,
+              muted: false,
+              source: station.id,
+              sourceHandle: AUDIO_OUT_HANDLE,
+              target: output.nodeId ?? "",
+              targetHandle: AUDIO_IN_HANDLE,
+            },
+          ],
+        };
+      }
+    }
+    expect(graph.edges).toHaveLength(64);
+    expect(validate(graph)).toEqual([]);
+
+    const { graph: added, nodeId } = addPaletteNode(graph, emptyStation);
+
+    expect(added.nodes.some((node) => node.id === nodeId)).toBe(true);
+    expect(added.edges).toEqual(graph.edges);
+    expect(validate(added)).toEqual([]);
+  });
+});
+
 describe("addPaletteNode FX", () => {
   test("an effect comes on, with the node id as its effect id", () => {
     const { graph, nodeId } = addPaletteNode(

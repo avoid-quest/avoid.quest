@@ -36,6 +36,7 @@ import {
   findStationNode,
   insertNodeOnEdge,
   isSwappableType,
+  newIssue,
   nextFxPosition,
   nextOutputPosition,
   nextStationPosition,
@@ -743,14 +744,16 @@ export type AddPaletteNodeOptions = ValidateOptions & {
  * first port that takes it, and a cable picked with `I` gets the node
  * inserted into it; otherwise a new Station, Track or File is wired to
  * Speakers, as the search bar does. An Audio input is never wired on its own: a mic into
- * speakers can howl, so that cable is the user's to make. Returns the
- * same graph when the node can't be built.
+ * speakers can howl, so that cable is the user's to make. A cable that
+ * would not compile is left out, so the node comes loose. Returns the
+ * same graph when the node can't be built, or with the reason when the
+ * node itself would not compile, e.g. a 25th source.
  */
 export function addPaletteNode(
   start: NodeGraph,
   entry: PaletteNodeEntry,
   { position, from = null, into = null, ...options }: AddPaletteNodeOptions = {}
-): { graph: NodeGraph; nodeId: string | null } {
+): { graph: NodeGraph; nodeId: string | null; message?: string } {
   // An FX in a free spot gets its column, Speakers moving right for it; the
   // spot is found before the move, which can shift where a sourceless
   // patch's column would be.
@@ -769,6 +772,12 @@ export function addPaletteNode(
     return { graph: start, nodeId: null };
   }
   const added = withNode(graph, node);
+  // Checked before any cable: a cable's own check takes an over-budget
+  // node as already there.
+  const issue = newIssue(graph, added, options);
+  if (issue) {
+    return { graph: start, message: issue.message, nodeId: null };
+  }
   if (into) {
     const inserted = insertNodeOnEdge(added, nodeId, into, options);
     return { graph: inserted.ok ? inserted.graph : added, nodeId };
@@ -781,8 +790,9 @@ export function addPaletteNode(
     isRadioSourceNode(node) ||
     (node.type === "deviceIn" && node.data.capture === "display")
   ) {
+    const wired = { ...added, edges: wireToSpeakers(added, nodeId) };
     return {
-      graph: { ...added, edges: wireToSpeakers(added, nodeId) },
+      graph: newIssue(added, wired, options) ? added : wired,
       nodeId,
     };
   }

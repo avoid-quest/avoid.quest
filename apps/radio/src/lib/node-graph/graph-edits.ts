@@ -843,7 +843,7 @@ function issueKey(issue: Issue): string {
  * station, branches joined in a Merge). The backend estimate plays no
  * part, so any environment will do.
  */
-function newIssue(
+export function newIssue(
   before: NodeGraph,
   after: NodeGraph,
   options?: ValidateOptions

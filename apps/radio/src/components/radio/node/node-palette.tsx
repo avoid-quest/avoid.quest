@@ -15,6 +15,7 @@ import {
 } from "@avoid.quest/ui/components/drawer";
 import { LayoutTemplateIcon } from "lucide-react";
 import { useEffect } from "react";
+import { toast } from "sonner";
 import {
   type PickerItem,
   PickerList,
@@ -340,6 +341,7 @@ export function NodePalette({
       return;
     }
     let added: string | null = null;
+    let refused: string | undefined;
     commitNodeGraph(
       (latest) => {
         const { edge, position } = current;
@@ -353,11 +355,15 @@ export function NodePalette({
               : position,
         });
         added = result.nodeId;
+        refused = result.message;
         return result.graph;
       },
       store,
       "snapshot"
     );
+    if (refused) {
+      toast(refused);
+    }
     if (added) {
       onAdded?.(added, current);
     }

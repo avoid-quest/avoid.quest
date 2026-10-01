@@ -1319,6 +1319,40 @@ describe("compile: series-parallel regions", () => {
     ]);
   });
 
+  test("a made-up fan-out id never takes a node's or a chain's id", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("a:fan-out", "cheapReverb", { enabled: true }),
+        fx("crush", "crusher", { enabled: true }),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        audio("a", "a:fan-out", { id: "e" }),
+        audio("a", "crush", { id: "f" }),
+        audio("a:fan-out", "merge"),
+        audio("crush", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const { effects } = lane(plan, "a");
+    expect(shape(effects)).toEqual([
+      [
+        "fxComposite",
+        "a:fan-out~2",
+        [[["cheapReverb", "a:fan-out"]], [["crusher", "crush"]]],
+      ],
+    ]);
+    const ids = effectIds(effects);
+    expect(new Set(ids).size).toBe(ids.length);
+    const [split] = effects;
+    expect(
+      split && "chains" in split ? split.chains.map((chain) => chain.id) : []
+    ).toEqual(["a:fan-out~2:e", "a:fan-out~2:f"]);
+  });
+
   test("regions nest, and branches may share their Merge", () => {
     const plan = build(
       [

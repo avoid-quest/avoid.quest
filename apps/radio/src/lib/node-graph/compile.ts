@@ -433,6 +433,49 @@ const EXIT = "\u0000exit";
 
 type Branch = { effects: EffectConfig[]; trim: Trim };
 
+/**
+ * Ids for one lane's tree. An effect is keyed by id in the engine, and a
+ * chain within its tree, so the ids the compiler makes up for an implicit
+ * fan-out and its branches never take one the patch uses (a node, or a
+ * Split's chain), and a chain id two containers share is used once.
+ */
+class LaneIds {
+  private readonly taken = new Set<string>();
+  private readonly used = new Set<string>();
+
+  constructor(byId: ReadonlyMap<string, GraphNode>) {
+    for (const node of byId.values()) {
+      this.taken.add(node.id);
+      const effect = effectOf(node);
+      for (const chain of effect && isEffectContainer(effect)
+        ? effect.chains
+        : []) {
+        this.taken.add(chain.id);
+      }
+    }
+  }
+
+  /** `base`, or `base~2`, `base~3`… when that is taken. */
+  fresh(base: string): string {
+    let id = base;
+    for (let suffix = 2; this.taken.has(id); suffix += 1) {
+      id = `${base}~${suffix}`;
+    }
+    this.taken.add(id);
+    this.used.add(id);
+    return id;
+  }
+
+  /** A patch's own id, kept unless this lane already used it. */
+  claim(id: string): string {
+    if (this.used.has(id)) {
+      return this.fresh(id);
+    }
+    this.used.add(id);
+    return id;
+  }
+}
+
 type Walk = {
   current: string;
   effects: EffectConfig[];
@@ -462,6 +505,7 @@ class LaneLowerer {
   private readonly exits = new Map<string, WiredEdge[]>();
   private readonly postDominators = new Map<string, Set<string>>();
   private readonly byId: ReadonlyMap<string, GraphNode>;
+  private readonly ids: LaneIds;
 
   constructor(
     byId: ReadonlyMap<string, GraphNode>,
@@ -470,6 +514,7 @@ class LaneLowerer {
     sinks: ReadonlySet<string>
   ) {
     this.byId = byId;
+    this.ids = new LaneIds(byId);
     const audio = wired.filter(
       ({ edge, from, to }) =>
         from.kind === "audio" && to.kind === "audio" && members.has(edge.source)
@@ -742,16 +787,19 @@ class LaneLowerer {
     }
     const chains = ports.flatMap((port, index): EffectChainConfig[] => {
       const cables = outs.filter(({ edge }) => edge.sourceHandle === port);
-      const chain: EffectChainConfig = configChains[index] ?? {
-        effects: [],
-        gain: defaultChainGain(base.type),
-        id: `${split}:${portName(port)}`,
-        muted: false,
-        name: `Branch ${index + 1}`,
-        order: index,
-        pan: 0,
-        solo: false,
-      };
+      const configured = configChains[index];
+      const chain: EffectChainConfig = configured
+        ? { ...configured, id: this.ids.claim(configured.id) }
+        : {
+            effects: [],
+            gain: defaultChainGain(base.type),
+            id: this.ids.fresh(`${split}:${portName(port)}`),
+            muted: false,
+            name: `Branch ${index + 1}`,
+            order: index,
+            pan: 0,
+            solo: false,
+          };
       if (cables.length === 0) {
         // A Split drops an unused branch; a stereo or band split mutes it.
         return base.type === "fxComposite"
@@ -801,13 +849,13 @@ class LaneLowerer {
 
   /** One output cabled to several places that meet again: an implicit Split. */
   private lowerFanOut(
-    id: string,
+    base: string,
     cables: readonly WiredEdge[],
     meeting: string,
     level: number,
     { order }: { order: number }
   ): FxCompositeConfig {
-    const owner = cables[0]?.edge.source ?? id;
+    const owner = cables[0]?.edge.source ?? base;
     if (level > MAX_EFFECT_TREE_DEPTH) {
       throw new LoweringError(
         owner,
@@ -822,13 +870,15 @@ class LaneLowerer {
         `Up to ${MAX_SPLIT_BRANCHES} branches`
       );
     }
+    const id = this.ids.fresh(base);
     return {
       chains: cables.map(({ edge }, index) => {
+        const chainId = this.ids.fresh(`${id}:${edge.id}`);
         const branch = this.lowerBranch(edge, meeting, level);
         return {
           effects: branch.effects,
           gain: branch.trim.gain,
-          id: `${id}:${edge.id}`,
+          id: chainId,
           muted: branch.trim.muted,
           name: `Branch ${index + 1}`,
           order: index,

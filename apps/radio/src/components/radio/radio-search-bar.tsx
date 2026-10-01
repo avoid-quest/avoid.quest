@@ -437,6 +437,8 @@ export function RadioSearchBar({
         aria-expanded={showDropdown}
         aria-label="Search stations"
         isSearching={isSearching}
+        // Pasted links can be long (signed HLS, share links); text stays short.
+        maxLength={onSubmitUrl ? 2048 : 200}
         onChange={handleQueryChange}
         onFocus={handleFocus}
         onKeyDown={handleKeyDown}

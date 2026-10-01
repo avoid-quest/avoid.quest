@@ -206,6 +206,14 @@ describe("RadioSearchBar pasted links", () => {
     });
   });
 
+  test("a long tokenized link fits in the search", () => {
+    const { search } = renderSearch({ onSubmitUrl: async () => null });
+
+    // Signed HLS and share links run past 200 characters; the browser would
+    // silently cut the paste at maxLength.
+    expect(search.maxLength).toBeGreaterThanOrEqual(2048);
+  });
+
   test("a link that loads clears the search", async () => {
     const { search, type } = renderSearch({ onSubmitUrl: async () => null });
 

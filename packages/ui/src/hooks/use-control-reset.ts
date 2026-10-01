@@ -2,13 +2,16 @@
 
 import { type MouseEvent, type PointerEvent, useRef } from "react";
 
+/** Receives the gesture that triggered the reset, e.g. to find its thumb. */
+type ResetHandler = (event: MouseEvent | PointerEvent) => void;
+
 const TAP_INTERVAL_MS = 300;
 const TAP_MOVEMENT_PX = 8;
 
 type Tap = { pointerId: number; time: number; x: number; y: number };
 
 /** Reset gestures share the same tap detection across knobs and faders. */
-export function useControlReset(reset: (() => void) | undefined) {
+export function useControlReset(reset: ResetHandler | undefined) {
   const activeTap = useRef<Tap | null>(null);
   const lastTap = useRef<Tap | null>(null);
 
@@ -17,7 +20,7 @@ export function useControlReset(reset: (() => void) | undefined) {
     event.stopPropagation();
     activeTap.current = null;
     lastTap.current = null;
-    reset?.();
+    reset?.(event);
   }
 
   function onPointerDown(event: PointerEvent) {

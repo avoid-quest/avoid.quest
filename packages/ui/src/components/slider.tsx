@@ -125,6 +125,19 @@ function getThumbShapeClass(
   return `${dims} rounded-sm ${grip} after:inset-y-1.5 after:left-1/2 after:w-px after:-translate-x-1/2`;
 }
 
+/** The thumb a reset gesture landed on, or null for the track. */
+function getGestureThumbIndex(event: SyntheticEvent): number | null {
+  const { target } = event;
+  const thumb =
+    target && "closest" in target
+      ? (target as HTMLElement).closest<HTMLElement>(
+          '[data-slot="slider-thumb"]'
+        )
+      : null;
+  const index = Number(thumb?.dataset.index);
+  return Number.isInteger(index) ? index : null;
+}
+
 function composeHandlers<Event extends SyntheticEvent>(
   original: ((event: Event) => void) | undefined,
   gesture: (event: Event) => void
@@ -179,6 +192,7 @@ function Slider({
   const {
     changeValues: handleValueChange,
     elementRef,
+    getRequestedValues,
     inputValues,
   } = useFineWheel<HTMLSpanElement>({
     disabled,
@@ -228,10 +242,19 @@ function Slider({
   const reset = useControlReset(
     disabled || resetValues === undefined
       ? undefined
-      : () => {
-          const next = resetValues.map((entry) =>
-            Math.max(min, Math.min(max, entry))
-          );
+      : (event) => {
+          const clamp = (entry: number) => Math.max(min, Math.min(max, entry));
+          // A gesture on one thumb resets only that thumb; the track resets all.
+          const thumbIndex = getGestureThumbIndex(event);
+          const current = getRequestedValues();
+          const next =
+            thumbIndex === null
+              ? resetValues.map(clamp)
+              : current.map((entry, index) =>
+                  index === thumbIndex
+                    ? clamp(resetValues[index] ?? resetValues[0] ?? entry)
+                    : entry
+                );
           handleValueChange(next);
           onValueCommit?.(next);
         }

@@ -282,3 +282,32 @@ test("Slider uses an explicit reset target and supports uncontrolled resets", ()
   expect(control.getAttribute("aria-valuenow")).toBe("0");
   expect(onCommit).toHaveBeenLastCalledWith([0]);
 });
+
+test("Slider resets only the thumb a gesture lands on", () => {
+  const changes: number[][] = [];
+  function Range() {
+    const [value, setValue] = useState([20, 80]);
+    return (
+      <Slider
+        aria-label="Range"
+        defaultValue={[0, 100]}
+        max={100}
+        min={0}
+        onValueChange={(next) => {
+          changes.push(next);
+          setValue(next);
+        }}
+        value={value}
+      />
+    );
+  }
+  const view = render(<Range />);
+  const [low, high] = view.getAllByRole("slider", { name: "Range" });
+  if (!(low && high)) {
+    throw new Error("expected two thumbs");
+  }
+  fireEvent.doubleClick(high);
+  expect(changes.at(-1)).toEqual([20, 100]);
+  pointer(low, "pointerdown", { ctrlKey: true });
+  expect(changes.at(-1)).toEqual([0, 100]);
+});

@@ -1774,6 +1774,49 @@ function createNodePlayback(
     await setChannelPlaying(channelId, false, revision);
   };
 
+  /**
+   * Fades out and releases every `n:*` channel, then the lane outputs,
+   * device sinks and badges, before the orphan check. Listening stops first.
+   */
+  const releaseAll = async () => {
+    epoch += 1;
+    settlingLanes.clear();
+    carriedLanes.clear();
+    for (const generation of activePlayAllGenerations) {
+      generation.cancellation = "deactivate";
+    }
+    cancelChannelStarts("deactivate");
+    const initialChannelIds = getOwnedChannelIds();
+    const initialSoundIds = getRuntimeSoundIds(initialChannelIds);
+    await Promise.all(
+      initialSoundIds.map((soundId) =>
+        fadeOutSound(soundId, fadeOutDurationMs, true)
+      )
+    );
+    for (const generation of activePlayAllGenerations) {
+      generation.cancellation = "deactivate";
+    }
+    cancelChannelStarts("deactivate");
+    const channelIds = Array.from(
+      new Set([...initialChannelIds, ...getOwnedChannelIds()])
+    );
+    const soundIds = Array.from(
+      new Set([...initialSoundIds, ...getRuntimeSoundIds(channelIds)])
+    );
+    for (const channelId of channelIds) {
+      releaseChannel(channelId);
+    }
+    advancingLanes.clear();
+    laneOutputs.dispose();
+    deviceSinks.dispose();
+    publishSinkStatuses();
+    plan = EMPTY_PLAN;
+    laneOutcomes.clear();
+    publishBadges();
+    observedGraph = null;
+    cleanupOrphanedSounds(soundIds, ctx, "node");
+  };
+
   return {
     async activate() {
       const session = await getReadyManagedPlaybackSession("node");
@@ -1803,7 +1846,10 @@ function createNodePlayback(
       try {
         reconcile(true);
       } catch (error) {
+        // The manager reports this mode inactive: release the lanes made
+        // before the failing one.
         stopListening();
+        await releaseAll();
         throw error;
       }
       applySessionMasterVolume("node", ctx);
@@ -1834,42 +1880,7 @@ function createNodePlayback(
         });
       }
       stopListening();
-      epoch += 1;
-      settlingLanes.clear();
-      carriedLanes.clear();
-      for (const generation of activePlayAllGenerations) {
-        generation.cancellation = "deactivate";
-      }
-      cancelChannelStarts("deactivate");
-      const initialChannelIds = getOwnedChannelIds();
-      const initialSoundIds = getRuntimeSoundIds(initialChannelIds);
-      await Promise.all(
-        initialSoundIds.map((soundId) =>
-          fadeOutSound(soundId, fadeOutDurationMs, true)
-        )
-      );
-      for (const generation of activePlayAllGenerations) {
-        generation.cancellation = "deactivate";
-      }
-      cancelChannelStarts("deactivate");
-      const channelIds = Array.from(
-        new Set([...initialChannelIds, ...getOwnedChannelIds()])
-      );
-      const soundIds = Array.from(
-        new Set([...initialSoundIds, ...getRuntimeSoundIds(channelIds)])
-      );
-      for (const channelId of channelIds) {
-        releaseChannel(channelId);
-      }
-      advancingLanes.clear();
-      laneOutputs.dispose();
-      deviceSinks.dispose();
-      publishSinkStatuses();
-      plan = EMPTY_PLAN;
-      laneOutcomes.clear();
-      publishBadges();
-      observedGraph = null;
-      cleanupOrphanedSounds(soundIds, ctx, "node");
+      await releaseAll();
     },
     flush: applyPendingCommit,
     jumpToCue(nodeId) {

@@ -737,6 +737,27 @@ describe("Node Playback", () => {
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
   });
 
+  test("a failed activation releases the lanes it made before failing", async () => {
+    insertNodeSession(patch([station("a"), station("b")]));
+    const harness = createHarness();
+    const { activate } = harness.context.channels;
+    harness.context.channels.activate = mock(
+      (...args: Parameters<typeof activate>) => {
+        if (args[1] === channelOf("b")) {
+          throw new Error("no sound");
+        }
+        return activate(...args);
+      }
+    );
+
+    await expect(harness.playback.activate()).rejects.toThrow("no sound");
+
+    expect(harness.context.channels.deactivate).toHaveBeenCalledWith(
+      channelOf("a")
+    );
+    expect(getPlaybackChannelRuntime(channelOf("a")).soundId).toBeNull();
+  });
+
   test("keeps a commit queued in the same tick as deactivation", async () => {
     insertNodeSession(patch([station("a")]));
     const harness = createHarness();

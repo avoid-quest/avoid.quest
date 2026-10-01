@@ -600,7 +600,8 @@ export function connectNodes(
  * Rewires cable `edgeId` to `connection`, as dragging a cable end does: the
  * old cable goes and the new one comes in one edit, checked against the
  * patch without the old one, so an input it filled takes the new cable.
- * Only its endpoints change; its id, order and settings stay.
+ * Only its endpoints change; its id, order and settings stay, except a
+ * branch pan and solo, which go when it no longer leaves a split.
  */
 export function reconnectEdge(
   graph: NodeGraph,
@@ -636,7 +637,11 @@ export function reconnectEdge(
       edges: graph.edges.map((edge) =>
         edge === old
           ? {
-              ...edge,
+              ...(isSplitNode(
+                graph.nodes.find((node) => node.id === added.source)
+              )
+                ? edge
+                : withoutBranchParams(edge)),
               source: added.source,
               sourceHandle: added.sourceHandle,
               target: added.target,
@@ -978,62 +983,68 @@ export function insertNodeOnEdge(
   };
 }
 
-/** What a removed node's own config adds to a path through it. */
-type HealBase = {
+/** A cable without branch pan and solo, which only a split's cables show. */
+function withoutBranchParams(edge: GraphEdge): GraphEdge {
+  const { pan: _pan, solo: _solo, ...kept } = edge;
+  return kept;
+}
+
+/** What a removed node adds to a path out through `downstream`. */
+type HealBranch = {
   gain: number;
   muted: boolean;
-  pan: number;
+  pan?: number;
   solo: boolean;
 };
 
-const NO_HEAL_BASE: HealBase = { gain: 1, muted: false, pan: 0, solo: false };
+const NO_HEAL_BRANCH: HealBranch = { gain: 1, muted: false, solo: false };
 
 /**
- * A split's configured chain under the branch `downstream` leaves by: its
- * gain (a Split's -3 dB by default), mute, pan and solo, which the compiler
- * applies on top of the branch cable's. Any other node adds nothing.
+ * A split's branch: the cable's pan and solo, with the chain config under
+ * them (a Split's -3 dB by default, or a MIDI-learned gain, mute, pan or
+ * solo) that the compiler applies too. Any other node adds nothing, and
+ * pan or solo on its cables is not drawn, so it doesn't count.
  */
-function healBase(
+function healBranch(
   node: GraphNode | undefined,
   downstream: GraphEdge
-): HealBase {
+): HealBranch {
   if (!isSplitNode(node)) {
-    return NO_HEAL_BASE;
+    return NO_HEAL_BRANCH;
   }
   const handle = downstream.sourceHandle;
+  const basePan = branchBasePan(node, handle);
   return {
     gain: branchBaseGain(node, handle),
     muted: branchBaseMuted(node, handle),
-    pan: branchBasePan(node, handle),
-    solo: branchBaseSolo(node, handle),
+    ...(downstream.pan === undefined && basePan === 0
+      ? {}
+      : { pan: (downstream.pan ?? 0) + basePan }),
+    solo: downstream.solo === true || branchBaseSolo(node, handle),
   };
 }
 
 /**
- * A healed cable's branch pan and solo. A cable out of a split carries its
- * branch's, so deleting the split hands them to the cable that replaces
- * it, on top of the cable in's (an outer split's branch) and the split's
- * own chain config.
+ * A healed cable's branch pan: the cable in's (an outer split's branch)
+ * plus the deleted split's. Only a cable out of a split shows pan and
+ * solo, so one out of anything else gets neither; the cable in keeps its
+ * own solo, and a deleted split's solo becomes mutes instead.
  */
 function healedBranch(
   upstream: GraphEdge,
-  downstream: GraphEdge,
-  base: HealBase
+  branch: HealBranch,
+  source: GraphNode | undefined
 ): Pick<GraphEdge, "pan" | "solo"> {
+  if (!isSplitNode(source)) {
+    return {};
+  }
   const pan =
-    upstream.pan === undefined && downstream.pan === undefined && !base.pan
+    upstream.pan === undefined && branch.pan === undefined
       ? undefined
-      : Math.max(
-          -1,
-          Math.min(1, (upstream.pan ?? 0) + (downstream.pan ?? 0) + base.pan)
-        );
-  const solo =
-    upstream.solo === undefined && downstream.solo === undefined && !base.solo
-      ? undefined
-      : upstream.solo === true || downstream.solo === true || base.solo;
+      : Math.max(-1, Math.min(1, (upstream.pan ?? 0) + (branch.pan ?? 0)));
   return {
     ...(pan === undefined ? {} : { pan }),
-    ...(solo === undefined ? {} : { solo }),
+    ...(upstream.solo === undefined ? {} : { solo: upstream.solo }),
   };
 }
 
@@ -1042,11 +1053,12 @@ function healedBranch(
  * cable out when the node's two ports are the same kind, so A → X → B
  * becomes A → B, but a key into X never turns into audio. The healed cable
  * keeps the incoming one's id, its gain is both cables' gains, it is muted
- * if either was, and it carries both cables' branch pan and solo; a
- * deleted split's chain gain, mute, pan and solo fold in too, so the mix
- * keeps its level. A heal that would not validate or compile is left out;
- * so is one louder than a cable can be, which `loud` reports unless an end
- * of it goes too.
+ * if either was, and a deleted split's branch folds in too, so the mix
+ * keeps its level: its chain gain and mute, its pan when the cable in
+ * comes out of a split that can show it, and its solo as a mute on each
+ * branch it silenced. A heal that would not validate or compile is left
+ * out; so is one louder than a cable can be, which `loud` reports unless
+ * an end of it goes too.
  */
 function removeNodeHealed(
   graph: NodeGraph,
@@ -1060,17 +1072,20 @@ function removeNodeHealed(
   const outs = graph.edges.filter(
     (edge) => edge.source === nodeId && edge.target !== nodeId
   );
-  const removed = graph.nodes.find((node) => node.id === nodeId);
+  const nodeOf = (id: string) => graph.nodes.find((node) => node.id === id);
+  const removed = nodeOf(nodeId);
   let next = removeNodes(graph, [nodeId]);
   let loud = false;
   for (const upstream of ins) {
-    for (const downstream of outs) {
-      const kind = parseHandleId(upstream.targetHandle)?.kind;
-      if (!kind || kind !== parseHandleId(downstream.sourceHandle)?.kind) {
-        continue;
-      }
-      const base = healBase(removed, downstream);
-      const gain = upstream.gain * downstream.gain * base.gain;
+    const kind = parseHandleId(upstream.targetHandle)?.kind;
+    const heals = outs.flatMap((downstream) =>
+      kind && kind === parseHandleId(downstream.sourceHandle)?.kind
+        ? [{ branch: healBranch(removed, downstream), downstream }]
+        : []
+    );
+    const soloed = heals.some(({ branch }) => branch.solo);
+    for (const { branch, downstream } of heals) {
+      const gain = upstream.gain * downstream.gain * branch.gain;
       if (gain > MAX_EDGE_GAIN) {
         loud ||= !(
           removing.has(upstream.source) || removing.has(downstream.target)
@@ -1081,13 +1096,17 @@ function removeNodeHealed(
       next = withCleanCable(
         next,
         {
-          ...upstream,
-          ...healedBranch(upstream, downstream, base),
+          ...withoutBranchParams(upstream),
+          ...healedBranch(upstream, branch, nodeOf(upstream.source)),
           gain,
           id: taken.has(upstream.id)
             ? uniqueId(`${upstream.source}->${downstream.target}`, taken)
             : upstream.id,
-          muted: upstream.muted || downstream.muted || base.muted,
+          muted:
+            upstream.muted ||
+            downstream.muted ||
+            branch.muted ||
+            (soloed && !branch.solo),
           target: downstream.target,
           targetHandle: downstream.targetHandle,
         },

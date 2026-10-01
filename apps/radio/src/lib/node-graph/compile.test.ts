@@ -1275,6 +1275,34 @@ describe("compile: series-parallel regions", () => {
     expect(fanOut.chains.map((chain) => chain.solo)).toEqual([true, false]);
   });
 
+  test("an implicit fan-out ignores pan and solo the canvas can't show", () => {
+    const plan = build(
+      [
+        station("a"),
+        fx("delay", "delay"),
+        fx("crush", "crusher"),
+        node("merge", "merge"),
+        speakers,
+      ],
+      [
+        { ...audio("a", "delay"), pan: -1, solo: true },
+        audio("a", "crush"),
+        audio("delay", "merge"),
+        audio("crush", "merge"),
+        audio("merge", "speakers"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [fanOut] = lane(plan, "a").effects;
+    if (fanOut?.type !== "fxComposite") {
+      throw new Error("Expected an implicit fan-out");
+    }
+    expect(fanOut.chains.map(({ pan, solo }) => ({ pan, solo }))).toEqual([
+      { pan: 0, solo: false },
+      { pan: 0, solo: false },
+    ]);
+  });
+
   test("a Split's third branch mixes at the same level as its first two", () => {
     const plan = build(
       [

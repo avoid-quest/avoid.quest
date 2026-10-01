@@ -763,6 +763,7 @@ class LaneLowerer {
     const outs = this.outsOf(split);
     if (!(base && isEffectContainer(base))) {
       return this.lowerFanOut(`${split}:fan-out`, outs, meeting, level, {
+        branchParams: false,
         order,
       });
     }
@@ -817,7 +818,7 @@ class LaneLowerer {
                 cables,
                 meeting,
                 level + 1,
-                { order: 0 }
+                { branchParams: true, order: 0 }
               ),
             ],
             trim: UNITY,
@@ -850,13 +851,17 @@ class LaneLowerer {
     } as EffectConfig;
   }
 
-  /** One output cabled to several places that meet again: an implicit Split. */
+  /**
+   * One output cabled to several places that meet again: an implicit Split.
+   * Only cables out of a split port take their pan and solo
+   * (`branchParams`), as only those draw branch controls to change them.
+   */
   private lowerFanOut(
     base: string,
     cables: readonly WiredEdge[],
     meeting: string,
     level: number,
-    { order }: { order: number }
+    { branchParams, order }: { branchParams: boolean; order: number }
   ): FxCompositeConfig {
     const owner = cables[0]?.edge.source ?? base;
     if (level > MAX_EFFECT_TREE_DEPTH) {
@@ -885,8 +890,8 @@ class LaneLowerer {
           muted: branch.trim.muted,
           name: `Branch ${index + 1}`,
           order: index,
-          pan: edge.pan ?? 0,
-          solo: edge.solo === true,
+          pan: branchParams ? (edge.pan ?? 0) : 0,
+          solo: branchParams && edge.solo === true,
         };
       }),
       dryWet: 1,

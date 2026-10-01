@@ -4,6 +4,8 @@ import {
   moduleWidth,
 } from "@/components/radio/node/module-frame";
 import type { Radio } from "@/lib/audio/playback/types";
+import { isSplitNode } from "./branches";
+import { createNodeEffectConfig } from "./catalogue";
 import { compile } from "./compile";
 import {
   addStationNode,
@@ -41,6 +43,7 @@ import {
   type EffectNodeType,
   type NodeGraph,
   type NodeType,
+  nodeGraphSchema,
 } from "./schema";
 import { seriesToParallel } from "./series-parallel";
 import { forgetLocalFileUrls, localFileRadio } from "./sources";
@@ -452,6 +455,46 @@ describe("reconnectEdge", () => {
       pan: -0.75,
       solo: true,
     });
+  });
+
+  test("a branch cable moved off its split drops the pan and solo it can't show", () => {
+    const start = inserted(
+      inserted(patch(radio("a")), "compressor", "src-a->speakers").graph,
+      "delay",
+      "compressor->speakers"
+    ).graph;
+    const split = seriesToParallel(start, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const branch = split.graph.edges.find(
+      (edge) => edge.target === "compressor"
+    );
+    if (!branch) {
+      throw new Error("Expected a branch");
+    }
+    const soloed = {
+      ...split.graph,
+      edges: split.graph.edges.map((edge) =>
+        edge === branch ? { ...edge, gain: 0.5, pan: -0.75, solo: true } : edge
+      ),
+    };
+    const edit = reconnectEdge(soloed, branch.id, {
+      source: "src-a",
+      sourceHandle: "out:audio:main",
+      target: "compressor",
+      targetHandle: "in:audio:main",
+    });
+    if (!edit.ok) {
+      throw new Error(edit.message);
+    }
+    const moved = edit.graph.edges.find((edge) => edge.id === branch.id);
+    expect(moved).toMatchObject({ gain: 0.5, source: "src-a" });
+    expect(moved?.pan).toBeUndefined();
+    expect(moved?.solo).toBeUndefined();
   });
 
   test("takes a one-cable input its own cable filled; refuses one another cable fills", () => {
@@ -1048,7 +1091,7 @@ describe("removeNodesHealed", () => {
     expect(compile(live, ENV).edges.size).toBe(1);
   });
 
-  test("deleting a split hands each branch's pan and solo to its healed cable", () => {
+  test("deleting a split turns a branch solo into mutes, never a hidden solo", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", "compressor->speakers");
     const split = seriesToParallel(two.graph, {
@@ -1072,23 +1115,102 @@ describe("removeNodesHealed", () => {
 
     const healed = accepted(removeNodesHealed(panned, [splitNode?.id ?? ""]));
 
+    // A Station's cables draw no branch controls, so they carry none.
+    expect(
+      healed.edges.filter(
+        (edge) =>
+          !isSplitNode(healed.nodes.find((node) => node.id === edge.source)) &&
+          (edge.pan !== undefined || edge.solo !== undefined)
+      )
+    ).toEqual([]);
     const into = (target: string) =>
       healed.edges.find(
         (edge) => edge.source === "src-a" && edge.target === target
       );
-    expect(into("compressor")).toMatchObject({ pan: -0.5, solo: true });
-    expect(into("delay")?.solo).toBeUndefined();
+    expect(into("compressor")?.muted).toBe(false);
+    // The solo's sound stays: the branch it silenced is muted instead.
+    expect(into("delay")?.muted).toBe(true);
     const plan = compile(healed, ENV);
     expect(plan.issues).toEqual([]);
     const [fanOut] = plan.lanes.get("src-a")?.effects ?? [];
     expect(
       fanOut && "chains" in fanOut
-        ? fanOut.chains.map(({ pan, solo }) => ({ pan, solo }))
+        ? fanOut.chains.map(({ muted, solo }) => ({ muted, solo }))
         : null
     ).toEqual([
-      { pan: -0.5, solo: true },
-      { pan: 0, solo: false },
+      { muted: false, solo: false },
+      { muted: true, solo: false },
     ]);
+  });
+
+  test("deleting a nested split hands its pan to the outer split's cables", () => {
+    const effect = (id: string, type: EffectNodeType) => ({
+      data: { effect: createNodeEffectConfig(type, id) },
+      id,
+      position: { x: 0, y: 0 },
+      type,
+    });
+    const cable = (
+      source: string,
+      target: string,
+      from = "main",
+      extra: Partial<NodeGraph["edges"][number]> = {}
+    ) => ({
+      id: `${source}->${target}:${from}`,
+      source,
+      sourceHandle: `out:audio:${from}`,
+      target,
+      targetHandle: "in:audio:main",
+      ...extra,
+    });
+    const start = patch(radio("a"));
+    const nested = nodeGraphSchema.parse({
+      ...start,
+      edges: [
+        cable("src-a", "outer"),
+        cable("outer", "inner", "branch-1", { pan: -0.5, solo: true }),
+        cable("outer", "merge-outer", "branch-2"),
+        cable("inner", "delay", "branch-1", { pan: 0.25 }),
+        cable("inner", "crush", "branch-2", { solo: true }),
+        cable("delay", "merge-outer"),
+        cable("crush", "merge-outer"),
+        cable("merge-outer", SPEAKERS_NODE_ID),
+      ],
+      nodes: [
+        ...start.nodes,
+        effect("outer", "fxComposite"),
+        effect("inner", "fxComposite"),
+        effect("delay", "delay"),
+        effect("crush", "crusher"),
+        {
+          data: {},
+          id: "merge-outer",
+          position: { x: 0, y: 0 },
+          type: "merge",
+        },
+      ],
+    });
+    expect(compile(nested, ENV).issues).toEqual([]);
+
+    const healed = accepted(removeNodesHealed(nested, ["inner"]));
+
+    const into = (target: string) =>
+      healed.edges.find((edge) => edge.target === target);
+    // The outer branch's own pan and solo stay; the inner split's pan adds
+    // on, and its solo mutes the branch it silenced.
+    expect(into("delay")).toMatchObject({
+      muted: true,
+      pan: -0.25,
+      solo: true,
+      source: "outer",
+    });
+    expect(into("crush")).toMatchObject({
+      muted: false,
+      pan: -0.5,
+      solo: true,
+      source: "outer",
+    });
+    expect(compile(healed, ENV).issues).toEqual([]);
   });
 
   test("deleting a split keeps each branch's chain level and mute", () => {

@@ -249,6 +249,7 @@ describe("branch tag", () => {
   test("says what differs from a unity, centred branch", () => {
     const data = {
       baseGain: 1,
+      basePan: 0,
       gain: 1,
       muted: false,
       name: "Low",
@@ -262,11 +263,39 @@ describe("branch tag", () => {
     ).toEqual(["-6.0 dB", "L40", "M", "S"]);
   });
 
+  test("shows a configured chain pan added to the cable's own", () => {
+    const store = createStore();
+    const data = {
+      baseGain: 1,
+      basePan: 0.5,
+      gain: 1,
+      muted: false,
+      name: "Branch 1",
+      pan: 0.2,
+      solo: false,
+      tag: "1",
+    };
+    const view = render(
+      <BranchControls data={data} edgeId="branch" store={store} />
+    );
+
+    expect(branchSummary(data)).toEqual(["R70"]);
+    expect(branchSummary({ ...data, pan: 0.8 })).toEqual(["R100"]);
+    expect(view.getByText("Pan base R50 · base + cable R70")).toBeTruthy();
+    // The knob still turns the cable's own pan.
+    expect(
+      view
+        .getByRole("slider", { name: "Branch 1 pan" })
+        .getAttribute("aria-valuenow")
+    ).toBe("0.2");
+  });
+
   test("includes the Split base attenuation without changing the cable trim", () => {
     const store = createStore();
     const before = store.state.graph;
     const data = {
       baseGain: Math.SQRT1_2,
+      basePan: 0,
       gain: 0.5,
       muted: false,
       name: "Branch 1",

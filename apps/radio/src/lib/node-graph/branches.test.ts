@@ -6,6 +6,7 @@ import type {
 } from "@/lib/audio/dsp/effects/types";
 import {
   branchBaseGain,
+  branchBasePan,
   branchCables,
   branchName,
   branchTag,
@@ -92,6 +93,30 @@ describe("branch base gain", () => {
     };
     expect(branchBaseGain(configured, "out:audio:branch-1")).toBe(0.5);
     expect(branchBaseGain(configured, "out:audio:branch-2")).toBe(0.25);
+  });
+});
+
+describe("branch base pan", () => {
+  test("uses the configured chain's pan in port order, centred otherwise", () => {
+    const graph = patch([split("s", "fxComposite")]);
+    const node = nodeOf(graph, "s");
+    expect(branchBasePan(node, "out:audio:branch-1")).toBe(0);
+    const effect = node.data.effect as FxCompositeConfig;
+    const configured = {
+      ...node,
+      data: {
+        effect: {
+          ...effect,
+          chains: effect.chains.map((chain) => ({
+            ...chain,
+            pan: chain.order === 0 ? -0.5 : 0.25,
+          })),
+        },
+      },
+    };
+    expect(branchBasePan(configured, "out:audio:branch-1")).toBe(-0.5);
+    expect(branchBasePan(configured, "out:audio:branch-2")).toBe(0.25);
+    expect(branchBasePan(configured, "out:audio:branch-4")).toBe(0);
   });
 });
 

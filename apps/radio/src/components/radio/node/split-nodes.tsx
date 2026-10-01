@@ -9,6 +9,7 @@ import {
   type BandCount,
   bandCountOf,
   branchBaseGain,
+  branchBasePan,
   branchCables,
   branchName,
   DEFAULT_CROSSOVERS,
@@ -244,6 +245,7 @@ export function SplitInspectorParams({
                   <BranchControls
                     data={{
                       baseGain: branchBaseGain(node, edge.sourceHandle),
+                      basePan: branchBasePan(node, edge.sourceHandle),
                       gain: edge.gain,
                       muted: edge.muted,
                       name,

@@ -245,6 +245,7 @@ describe("flow elements", () => {
         "branch",
         {
           baseGain: 1,
+          basePan: 0,
           gain: 0.5,
           muted: false,
           name: "Left",
@@ -258,6 +259,7 @@ describe("flow elements", () => {
         "branch",
         {
           baseGain: 1,
+          basePan: 0,
           gain: 1,
           muted: true,
           name: "Right",

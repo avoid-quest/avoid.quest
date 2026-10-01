@@ -9,6 +9,7 @@
 
 import {
   branchBaseGain,
+  branchBasePan,
   branchName,
   branchTag,
   isSplitNode,
@@ -207,6 +208,8 @@ export type MergeNodeData = { role: MergeRole | null; inputs: number };
 /** What a branch cable draws: its tag, and the chain params it carries. */
 export type BranchEdgeData = {
   baseGain: number;
+  /** The chain's own pan, which the cable's `pan` is added to. */
+  basePan: number;
   tag: string;
   name: string;
   gain: number;
@@ -334,6 +337,7 @@ function branchOf(
   }
   const data: BranchEdgeData = {
     baseGain: branchBaseGain(source, edge.sourceHandle),
+    basePan: branchBasePan(source, edge.sourceHandle),
     gain: edge.gain,
     muted: edge.muted,
     name: branchName(source, edge.sourceHandle),

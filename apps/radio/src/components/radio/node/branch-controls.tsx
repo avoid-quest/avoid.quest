@@ -20,6 +20,11 @@ import { keepControlKeys, ModuleKnob, useReleaseStep } from "./module-frame";
  * the inspector, which loads without React Flow, can use them.
  */
 
+/** The pan the branch plays at: its chain's, plus its cable's. */
+export function branchPan(data: Pick<BranchEdgeData, "basePan" | "pan">) {
+  return Math.min(1, Math.max(-1, data.basePan + data.pan));
+}
+
 /** Base + cable trim, then what differs from a centred, unmuted branch. */
 export function branchSummary(data: BranchEdgeData): string[] {
   const parts: string[] = [];
@@ -27,8 +32,9 @@ export function branchSummary(data: BranchEdgeData): string[] {
   if (gain !== 1) {
     parts.push(paramFormatters.linearGain(gain));
   }
-  if (Math.abs(data.pan) >= 0.05) {
-    parts.push(paramFormatters.pan(data.pan));
+  const pan = branchPan(data);
+  if (Math.abs(pan) >= 0.05) {
+    parts.push(paramFormatters.pan(pan));
   }
   if (data.muted) {
     parts.push("M");
@@ -66,6 +72,12 @@ export function BranchControls({
         Base {paramFormatters.linearGain(data.baseGain)} · base + trim{" "}
         {paramFormatters.linearGain(data.baseGain * data.gain)}
       </p>
+      {data.basePan === 0 ? null : (
+        <p className="text-muted-foreground text-xs tabular-nums">
+          Pan base {paramFormatters.pan(data.basePan)} · base + cable{" "}
+          {paramFormatters.pan(branchPan(data))}
+        </p>
+      )}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
       <div
@@ -87,6 +99,7 @@ export function BranchControls({
         <ModuleKnob
           bipolar
           defaultValue={0}
+          description="Cable pan, added to the configured branch base pan"
           format={paramFormatters.pan}
           label="Pan"
           max={1}

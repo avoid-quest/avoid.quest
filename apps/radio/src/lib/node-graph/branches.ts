@@ -124,16 +124,35 @@ export function branchTag(node: SplitNode, handle: string): string {
   return effectOf(node).type === "stereoSplit" ? name.charAt(0) : name;
 }
 
-/** The configured chain gain underneath a branch cable's additional trim. */
-export function branchBaseGain(node: SplitNode, handle: string): number {
+/** The configured chain behind a branch's port, in chain order. */
+function branchChain(
+  node: SplitNode,
+  handle: string
+): EffectChainConfig | undefined {
   const effect = effectOf(node);
   if (!isEffectContainer(effect)) {
-    return 1;
+    return;
   }
   const chains = [...effect.chains].sort(
     (left, right) => left.order - right.order
   );
-  return chains[branchIndex(handle) - 1]?.gain ?? defaultChainGain(node.type);
+  return chains[branchIndex(handle) - 1];
+}
+
+/** The configured chain gain underneath a branch cable's additional trim. */
+export function branchBaseGain(node: SplitNode, handle: string): number {
+  if (!isEffectContainer(effectOf(node))) {
+    return 1;
+  }
+  return branchChain(node, handle)?.gain ?? defaultChainGain(node.type);
+}
+
+/**
+ * The configured chain pan (a MIDI-learned one) that the compiler adds to
+ * a branch cable's own pan.
+ */
+export function branchBasePan(node: SplitNode, handle: string): number {
+  return branchChain(node, handle)?.pan ?? 0;
 }
 
 /** The audio cables leaving a split, in port order: its branches. */

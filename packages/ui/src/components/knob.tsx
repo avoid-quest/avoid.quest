@@ -88,16 +88,6 @@ function Knob({
   } | null>(null);
   const range = max - min;
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
-  const snap = (v: number) => {
-    const snapped = Number((Math.round(v / step) * step).toPrecision(12));
-    if (
-      defaultValue !== undefined &&
-      Math.abs(snapped - defaultValue) < range * SNAP_RATIO
-    ) {
-      return defaultValue;
-    }
-    return clamp(snapped);
-  };
   const isLog = scale === "log" && min > 0;
   // Position 0..1 along the sweep, and back.
   const toPosition = (v: number) =>
@@ -106,6 +96,18 @@ function Knob({
       : (clamp(v) - min) / range;
   const fromPosition = (t: number) =>
     isLog ? min * (max / min) ** t : min + t * range;
+  // The snap zone is a slice of the sweep, so a log knob's stays as narrow
+  // as a linear one's instead of swallowing the bottom decades.
+  const snap = (v: number) => {
+    const snapped = Number((Math.round(v / step) * step).toPrecision(12));
+    if (
+      defaultValue !== undefined &&
+      Math.abs(toPosition(snapped) - toPosition(defaultValue)) < SNAP_RATIO
+    ) {
+      return defaultValue;
+    }
+    return clamp(snapped);
+  };
   const toAngle = (v: number) => toPosition(v) * SWEEP - SWEEP / 2;
   const origin = bipolar && defaultValue !== undefined ? defaultValue : min;
   const valueAngle = toAngle(inputValue);

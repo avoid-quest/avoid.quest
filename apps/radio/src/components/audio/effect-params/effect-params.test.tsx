@@ -58,11 +58,13 @@ const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
 
-// Radix Select measures and scrolls, which JSDOM does not do.
+// Radix Select measures and scrolls, and knobs capture the pointer, which
+// JSDOM does not do.
 for (const [key, value] of Object.entries({
   hasPointerCapture: (): boolean => false,
   releasePointerCapture: (): void => undefined,
   scrollIntoView: (): void => undefined,
+  setPointerCapture: (): void => undefined,
 })) {
   Object.defineProperty(dom.window.HTMLElement.prototype, key, {
     configurable: true,
@@ -72,12 +74,14 @@ for (const [key, value] of Object.entries({
 }
 
 let EffectParams: typeof import("./effect-params")["EffectParams"];
+let ParamSlider: typeof import("./param-slider")["ParamSlider"];
 let createDefaultEffectConfig: typeof import("@/lib/audio/dsp/effects/registry")["createDefaultEffectConfig"];
 let effectConfigSchema: typeof import("@/lib/audio/dsp/effects/effect-config-schema")["effectConfigSchema"];
 let nodeEffectConfigSchema: typeof import("@/lib/audio/dsp/effects/effect-config-schema")["nodeEffectConfigSchema"];
 
 beforeAll(async () => {
   ({ EffectParams } = await import("./effect-params"));
+  ({ ParamSlider } = await import("./param-slider"));
   ({ createDefaultEffectConfig } = await import(
     "@/lib/audio/dsp/effects/registry"
   ));
@@ -194,4 +198,43 @@ describe("EffectParams selects", () => {
       expect(nodeEffectConfigSchema.safeParse(updated).success).toBe(true);
     }
   );
+});
+
+describe("ParamSlider", () => {
+  function drag(slider: HTMLElement, type: string, clientY: number) {
+    fireEvent(
+      slider,
+      new dom.window.PointerEvent(type, {
+        bubbles: true,
+        buttons: 1,
+        cancelable: true,
+        clientY,
+        pointerId: 1,
+      })
+    );
+  }
+
+  test("frequency knobs sweep logarithmically, so bass is a short drag away", () => {
+    const onChange = mock((_value: number) => undefined);
+    const view = render(
+      <ParamSlider
+        defaultValue={20}
+        formatKey="frequency"
+        label="Freq"
+        max={20_000}
+        min={20}
+        onChange={onChange}
+        step={1}
+        value={20}
+      />
+    );
+    const slider = view.getByRole("slider", { name: "Freq" });
+
+    drag(slider, "pointerdown", 200);
+    drag(slider, "pointermove", 190);
+
+    const [value] = onChange.mock.calls.at(-1) ?? [];
+    expect(value).toBeGreaterThan(20);
+    expect(value).toBeLessThan(200);
+  });
 });

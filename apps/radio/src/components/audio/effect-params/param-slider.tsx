@@ -43,6 +43,9 @@ export function ParamSlider({
     formatter ? formatter(next) : formatParam(formatKey, next, formatter);
   const fillFromDefault =
     bipolar ?? (defaultValue !== undefined && min < 0 && max > 0);
+  // Hearing is logarithmic: a linear 20 Hz..20 kHz sweep packs the bass
+  // into a few pixels.
+  const scale = formatKey === "frequency" && min > 0 ? "log" : "linear";
 
   return (
     <Knob
@@ -54,6 +57,7 @@ export function ParamSlider({
       max={max}
       min={min}
       onChange={throttledOnChange}
+      scale={scale}
       size={36}
       step={step}
       title={description ? `${label}: ${description}` : undefined}

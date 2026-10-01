@@ -31,28 +31,35 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 
 afterEach(cleanup);
 
-function renderKnob(disabled = false) {
+type KnobProps = Parameters<typeof Knob>[0];
+
+function renderKnob(
+  disabled = false,
+  props: Omit<KnobProps, "onChange" | "value"> = {
+    defaultValue: 0,
+    label: "Pan",
+    max: 1,
+    min: -1,
+  }
+) {
   const onChange = mock((_value: number) => undefined);
   function Harness() {
-    const [value, setValue] = useState(0);
+    const [value, setValue] = useState(props.defaultValue ?? props.min);
     function handleChange(next: number) {
       onChange(next);
       setValue(next);
     }
     return (
       <Knob
-        defaultValue={0}
+        {...props}
         disabled={disabled}
-        label="Pan"
-        max={1}
-        min={-1}
         onChange={handleChange}
         value={value}
       />
     );
   }
   const view = render(<Harness />);
-  const slider = view.getByRole("slider", { name: "Pan" });
+  const slider = view.getByRole("slider", { name: props.label });
   const setPointerCapture = mock((_pointerId: number) => undefined);
   Object.defineProperty(slider, "setPointerCapture", {
     value: setPointerCapture,
@@ -148,5 +155,38 @@ describe("Knob pointer ownership", () => {
     fireEvent.doubleClick(slider);
     expect(onChange).not.toHaveBeenCalled();
     expect(setPointerCapture).not.toHaveBeenCalled();
+  });
+});
+
+describe("Knob snapping", () => {
+  const frequency = {
+    defaultValue: 20,
+    label: "Freq",
+    max: 20_000,
+    min: 20,
+    scale: "log",
+    step: 1,
+  } as const;
+
+  test("a log knob snaps to its default only within a sliver of the sweep", () => {
+    const { slider } = renderKnob(false, frequency);
+    pointer(slider, "pointerdown", 1, 200);
+    pointer(slider, "pointermove", 1, 199);
+    expect(slider.getAttribute("aria-valuenow")).toBe("20");
+
+    // Five pixels up is a few hertz, not a snap back to 20 Hz.
+    pointer(slider, "pointermove", 1, 195);
+    const value = Number(slider.getAttribute("aria-valuenow"));
+    expect(value).toBeGreaterThan(20);
+    expect(value).toBeLessThan(30);
+  });
+
+  test("a linear knob still snaps to its default as it nears it", () => {
+    const { slider } = renderKnob();
+    pointer(slider, "pointerdown", 1, 100);
+    pointer(slider, "pointermove", 1, 99);
+    expect(slider.getAttribute("aria-valuenow")).toBe("0");
+    pointer(slider, "pointermove", 1, 95);
+    expect(slider.getAttribute("aria-valuenow")).toBe("0.06");
   });
 });

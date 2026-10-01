@@ -20,6 +20,7 @@ export const SPOTIFY_MATCH_MIN_SCORE = 0.6;
 const MIN_DURATION_TOLERANCE_SECONDS = 15;
 const DURATION_TOLERANCE_RATIO = 0.1;
 const MIN_TITLE_COVERAGE = 0.5;
+const MIN_TITLE_HEAD_PRECISION = 0.6;
 
 const WEIGHT_DURATION = 0.4;
 const WEIGHT_TITLE = 0.3;
@@ -46,6 +47,10 @@ const TITLE_NOISE_GROUP_PATTERN =
 // " - Remastered 2011", " - 2011 Remaster", " - feat. X".
 const TITLE_NOISE_SUFFIX_PATTERN =
   /\s+-\s+[^-]*\b(?:feat\.?|ft\.?|featuring|remaster(?:ed)?)\b.*$/iu;
+// "(Official Video)", "[4K]": notes, not part of the song's name.
+const TITLE_BRACKET_GROUP_PATTERN = /[([][^)\]]*[)\]]/gu;
+// " | Vevo", " // Album", "#shorts": trailing notes.
+const TITLE_TAIL_PATTERN = /\s+(?:\||\/\/)\s.*$|#.*$/u;
 const OFFICIAL_TITLE_PATTERN = /\bofficial\s+(?:audio|video|music\s+video)\b/iu;
 const TOPIC_AUTHOR_PATTERN = /\s-\stopic$/iu;
 const VEVO_AUTHOR_PATTERN = /vevo$/iu;
@@ -143,6 +148,13 @@ export function buildSpotifyYouTubeQuery(track: SpotifyMatchTrack): string {
   const artist = track.artists[0]?.trim() ?? "";
   const query = `${artist} ${cleanSpotifyTitle(track.name)}`.trim();
   return query.slice(0, MAX_QUERY_LENGTH);
+}
+
+/** A YouTube title without its bracketed and trailing notes. */
+function titleHead(title: string): string {
+  return title
+    .replace(TITLE_BRACKET_GROUP_PATTERN, " ")
+    .replace(TITLE_TAIL_PATTERN, "");
 }
 
 function weightedCoverage(
@@ -250,14 +262,24 @@ export function scoreYouTubeCandidate(
   }
 
   const artistTokens = new Set(track.artists.flatMap(tokenize));
-  const youtubeSongTokens = youtubeTitleTokens.filter(
-    (token) => !(NOISE_WORDS.has(token) || artistTokens.has(token))
-  );
-  const precision =
-    youtubeSongTokens.length === 0
+  const isSongToken = (token: string) =>
+    !(NOISE_WORDS.has(token) || artistTokens.has(token));
+  const titlePrecision = (tokens: readonly string[]) =>
+    tokens.length === 0
       ? 1
-      : youtubeSongTokens.filter((token) => spotifyTitleSet.has(token)).length /
-        youtubeSongTokens.length;
+      : tokens.filter((token) => spotifyTitleSet.has(token)).length /
+        tokens.length;
+  // Another song that only contains this title ("One Love" for "One").
+  // Version words are left to the duration check.
+  const headSongTokens = tokenize(titleHead(candidate.title)).filter(
+    (token) =>
+      isSongToken(token) &&
+      (spotifyTitleSet.has(token) || !VERSION_WORDS.has(token))
+  );
+  if (titlePrecision(headSongTokens) < MIN_TITLE_HEAD_PRECISION) {
+    return reject("title has extra words", durationDelta);
+  }
+  const precision = titlePrecision(youtubeTitleTokens.filter(isSongToken));
   const titleScore =
     TITLE_COVERAGE_SHARE * coverage + (1 - TITLE_COVERAGE_SHARE) * precision;
 

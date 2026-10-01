@@ -179,6 +179,71 @@ describe("match scoring", () => {
     ).toBe("artist does not match");
   });
 
+  test.each([
+    ["Perfect", "Ed Sheeran", 263, "Perfect Duet (with Beyoncé)", 259],
+    ["One", "U2", 276, "One Love", 280],
+    ["Stay", "Rihanna", 240, "Stay With Me", 240],
+  ])(
+    "rejects %s for a longer title by %s",
+    (name, artist, duration, title, youtubeDuration) => {
+      expect(
+        scoreYouTubeCandidate(
+          { artists: [artist], duration, name },
+          {
+            author: `${artist} - Topic`,
+            duration: youtubeDuration,
+            title,
+            videoId: "x0000000000",
+          }
+        ).rejection
+      ).toBe("title has extra words");
+    }
+  );
+
+  test("never ranks a longer title as the runner-up", () => {
+    const perfect = { artists: ["Ed Sheeran"], duration: 263, name: "Perfect" };
+    const ranked = rankYouTubeCandidates(perfect, [
+      {
+        author: "Ed Sheeran - Topic",
+        duration: 263,
+        title: "Perfect",
+        videoId: "exact000000",
+      },
+      {
+        author: "Ed Sheeran - Topic",
+        duration: 259,
+        title: "Perfect Duet (with Beyoncé)",
+        videoId: "duet0000000",
+      },
+    ]);
+    expect(ranked.map((match) => match.videoId)).toEqual(["exact000000"]);
+  });
+
+  test("ignores bracketed and trailing notes when checking for extra words", () => {
+    const hello = { artists: ["Adele"], duration: 367, name: "Hello" };
+    for (const { author, title } of [
+      {
+        author: "AdeleVEVO",
+        title: "Adele - Hello (Official Music Video) | Vevo",
+      },
+      { author: "AdeleVEVO", title: "Hello - Adele | 25" },
+      {
+        author: "Adele",
+        title: "Adele - Hello (Official Video 2015) [4K Remaster]",
+      },
+      { author: "Uploader", title: "Adele - Hello - Radio Edit" },
+    ]) {
+      expect(
+        scoreYouTubeCandidate(hello, {
+          author,
+          duration: 367,
+          title,
+          videoId: "x0000000000",
+        }).rejection
+      ).toBeUndefined();
+    }
+  });
+
   test("accepts full artist credits in the channel or title", () => {
     for (const { artists, author, title } of [
       {

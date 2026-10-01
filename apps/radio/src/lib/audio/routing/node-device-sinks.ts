@@ -18,7 +18,7 @@
  */
 
 import {
-  isSinkIdSupported,
+  isMediaElementSinkIdSupported,
   safeDisconnect,
   safeDisconnectFrom,
 } from "../utils";
@@ -134,7 +134,7 @@ function teardown(entry: SinkEntry): void {
 }
 
 export function createNodeDeviceSinks({
-  isSupported = isSinkIdSupported,
+  isSupported = isMediaElementSinkIdSupported,
   createElement = () => new Audio(),
   listOutputDeviceIds: listIds = listOutputDeviceIds,
   watchDevices: watch = watchDevices,

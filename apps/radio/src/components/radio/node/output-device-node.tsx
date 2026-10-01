@@ -16,7 +16,7 @@ import {
   VolumeXIcon,
 } from "lucide-react";
 import type { DeviceSinkStatus } from "@/lib/audio/routing/node-device-sinks";
-import { isSinkIdSupported } from "@/lib/audio/utils";
+import { isMediaElementSinkIdSupported } from "@/lib/audio/utils";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { findPort } from "@/lib/node-graph/catalogue";
 import { setDeviceParams } from "@/lib/node-graph/graph-edits";
@@ -299,7 +299,7 @@ export function OutputDeviceNode({
         onToggleMute={() => commit({ muted: !data.muted })}
         selected={selected}
         status={status}
-        supported={isSinkIdSupported()}
+        supported={isMediaElementSinkIdSupported()}
       />
     </>
   );

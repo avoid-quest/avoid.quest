@@ -21,7 +21,7 @@ import {
   type PickerSection,
 } from "@/components/audio/effect-picker";
 import { getEffectMetadata, type Radio } from "@/lib/audio";
-import { isSinkIdSupported } from "@/lib/audio/utils";
+import { isMediaElementSinkIdSupported } from "@/lib/audio/utils";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import { swapEffect } from "@/lib/node-graph/graph-edits";
 import {
@@ -296,7 +296,7 @@ export function NodePalette({
             from,
             into,
             radios,
-            sinkSelection: isSinkIdSupported(),
+            sinkSelection: isMediaElementSinkIdSupported(),
             swap,
           })
         )

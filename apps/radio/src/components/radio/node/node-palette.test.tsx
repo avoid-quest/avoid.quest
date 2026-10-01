@@ -346,7 +346,8 @@ describe("NodePalette devices", () => {
   ];
   const enumerateDevices = mock(async () => devices);
 
-  class FakeAudioContext {
+  // An Output device plays through an <audio> element's setSinkId.
+  class FakeMediaElement {
     setSinkId() {
       return Promise.resolve();
     }
@@ -366,6 +367,7 @@ describe("NodePalette devices", () => {
 
   afterEach(() => {
     Reflect.deleteProperty(globalThis, "AudioContext");
+    Reflect.deleteProperty(globalThis, "HTMLMediaElement");
   });
 
   function sectionNames(
@@ -418,9 +420,9 @@ describe("NodePalette devices", () => {
   });
 
   test("Outputs list one Output device per output, beside Speakers", async () => {
-    Object.defineProperty(globalThis, "AudioContext", {
+    Object.defineProperty(globalThis, "HTMLMediaElement", {
       configurable: true,
-      value: FakeAudioContext,
+      value: FakeMediaElement,
       writable: true,
     });
     const { view } = await openPalette();
@@ -429,9 +431,19 @@ describe("NodePalette devices", () => {
   });
 
   test("without setSinkId the palette offers no Output device", async () => {
-    Object.defineProperty(globalThis, "AudioContext", {
+    Object.defineProperty(globalThis, "HTMLMediaElement", {
       configurable: true,
       value: class {},
+      writable: true,
+    });
+    // AudioContext.setSinkId alone can't point an <audio> at a device.
+    Object.defineProperty(globalThis, "AudioContext", {
+      configurable: true,
+      value: class {
+        setSinkId() {
+          return Promise.resolve();
+        }
+      },
       writable: true,
     });
     const { view } = await openPalette();

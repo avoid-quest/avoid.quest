@@ -13,6 +13,19 @@ const stationHosts = radios.flatMap((radio) =>
     ? [new URL(radio.websiteUrl).hostname.replace(WWW_PREFIX, "")]
     : []
 );
+// Station live streams load as streams, including those on a station
+// subdomain; a stream host that also serves the station site stays eligible.
+const streamUrls = radios.flatMap((radio) =>
+  radio.streamUrl ? [new URL(radio.streamUrl)] : []
+);
+const streamHrefs = new Set(streamUrls.map(({ href }) => href));
+const streamHosts = new Set(
+  streamUrls
+    .map(({ hostname }) => hostname)
+    .filter(
+      (hostname) => !stationHosts.includes(hostname.replace(WWW_PREFIX, ""))
+    )
+);
 
 /** Hosted players remain in their tab; direct recordings still use the file loader. */
 export function detectBrowserAudioSource(
@@ -21,7 +34,7 @@ export function detectBrowserAudioSource(
   if (!isPublicHttpUrl(value) || isStaticAudioUrl(value)) {
     return null;
   }
-  const { hostname, username, password } = new URL(value);
+  const { hostname, href, username, password } = new URL(value);
   if (username || password) {
     return null;
   }
@@ -30,6 +43,9 @@ export function detectBrowserAudioSource(
   }
   if (hostname === "mixcloud.com" || hostname.endsWith(".mixcloud.com")) {
     return "mixcloud";
+  }
+  if (streamHosts.has(hostname) || streamHrefs.has(href)) {
+    return null;
   }
   return stationHosts.some(
     (host) => hostname === host || hostname.endsWith(`.${host}`)

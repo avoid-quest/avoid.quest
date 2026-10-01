@@ -152,6 +152,37 @@ describe("browser audio capture", () => {
     }
   });
 
+  test("a share that ended during engine setup is rejected and released", async () => {
+    const { stream, tracks } = capture();
+    browser(() => Promise.resolve(stream));
+    const [audioTrack] = tracks;
+    if (!audioTrack) {
+      throw new Error("Expected an audio track");
+    }
+    audioTrack.readyState = "ended";
+    const node = {
+      connect: () => undefined,
+      disconnect: () => undefined,
+      gain: { value: 1 },
+    };
+    const createMediaStreamSource = mock(() => node);
+    const source = new DeviceSource(
+      {
+        createGain: () => node,
+        createMediaStreamSource,
+      } as unknown as AudioContext,
+      "capture"
+    );
+    await expect(source.start("display", { stream })).rejects.toThrow(
+      "Audio sharing ended"
+    );
+    expect(source.isActive).toBe(false);
+    expect(createMediaStreamSource).not.toHaveBeenCalled();
+    for (const track of tracks) {
+      expect(track.stop).toHaveBeenCalled();
+    }
+  });
+
   test("Stop sharing on either track releases the full capture and marks the input inactive", async () => {
     const { stream, tracks } = capture();
     const getUserMedia = browser(() => Promise.resolve(stream));

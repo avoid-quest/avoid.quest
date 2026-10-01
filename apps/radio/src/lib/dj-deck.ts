@@ -17,6 +17,10 @@ import {
   loadLocalAudioPlaylist,
   localAudioUrls,
 } from "@/lib/audio/local-audio-playlist";
+import {
+  requestDisplayAudio,
+  stopCapturedAudio,
+} from "@/lib/audio/playback/display-audio";
 import type { StreamFormat } from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
@@ -83,6 +87,14 @@ import {
   setPlaybackChannelSoundId,
 } from "@/lib/stores/playback-runtime-store";
 import { generateId } from "@/lib/types";
+
+/** Whether a device source captures on load; a stream was already acquired. */
+type CaptureOnLoad = boolean | MediaStream;
+
+function isDisplayCapture(radio: Radio | null): boolean {
+  const metadata = radio?.platformMetadata;
+  return isDeviceInputMetadata(metadata) && metadata.capture === "display";
+}
 
 export type DeckId = "deck-a" | "deck-b";
 export type DeckSide = "left" | "right";
@@ -673,7 +685,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     metadata: Extract<
       NonNullable<Radio["platformMetadata"]>,
       { platform: "device-input" }
-    >
+    >,
+    stream?: MediaStream
   ): Promise<void> => {
     const { playGeneration } = runtimes[deckId];
     // Seed the fader before the capture can reach the output.
@@ -682,7 +695,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     const channelCount = await startDeviceCapture(
       options.audio,
       soundId,
-      metadata,
+      stream ? { ...metadata, stream } : metadata,
       () =>
         isCurrent(deckId, generation) &&
         runtimes[deckId].playGeneration === playGeneration
@@ -704,14 +717,20 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     soundId: string,
     radio: Radio,
     wasPlaying: boolean,
-    captureOnLoad: boolean
+    captureOnLoad: CaptureOnLoad
   ): Promise<void> => {
     const metadata = radio.platformMetadata;
     if (isDeviceInputMetadata(metadata)) {
-      if (!captureOnLoad) {
+      if (captureOnLoad === false) {
         return;
       }
-      await startDeviceInput(deckId, generation, soundId, metadata);
+      await startDeviceInput(
+        deckId,
+        generation,
+        soundId,
+        metadata,
+        captureOnLoad === true ? undefined : captureOnLoad
+      );
       if (isCurrent(deckId, generation)) {
         applyCrossfade();
       }
@@ -824,9 +843,17 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     loadGeneration: number,
     radio: Radio | null,
     playbackPolicy: "paused" | "preserve" = "preserve",
-    captureOnLoad = true
+    captureOnLoad: CaptureOnLoad = true
   ): Promise<void> => {
+    // A pre-acquired capture the Deck did not adopt must not keep sharing.
+    // Stopping one the Deck already released is a no-op.
+    const releaseCapture = () => {
+      if (typeof captureOnLoad === "object") {
+        stopCapturedAudio(captureOnLoad);
+      }
+    };
     if (!isLoadCurrent(deckId, loadGeneration)) {
+      releaseCapture();
       return;
     }
     const generation = beginGeneration(deckId);
@@ -854,6 +881,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       });
       if (!isCurrent(deckId, generation)) {
         activationCleanup();
+        releaseCapture();
         return;
       }
       runtimes[deckId].bindingCleanup = activationCleanup;
@@ -874,12 +902,14 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       );
       if (!isCurrent(deckId, generation)) {
         activationCleanup();
+        releaseCapture();
         releaseReplacedFile(previous, radio);
         return;
       }
       releaseReplacedFile(previous, radio);
       setPendingSource(deckId, null);
     } catch (error) {
+      releaseCapture();
       if (!isCurrent(deckId, generation)) {
         activationCleanup?.();
         releaseReplacedFile(previous, radio);
@@ -1169,27 +1199,37 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     intent: Extract<DjDeckLoadIntent, { type: "device-input" }>
   ): Promise<DeckSourceLoadResult> {
     const side = sideForDeck(deckId);
-    await commitRadio(deckId, loadGeneration, {
-      description: intent.capture
-        ? "Shared tab / computer audio"
-        : "Device input (mic/line-in)",
-      enabled: true,
-      id: `device-input-${side}`,
-      name: intent.deviceLabel,
-      platformMetadata: {
-        ...(intent.capture
-          ? { capture: intent.capture, sourceUrl: intent.sourceUrl }
-          : {}),
-        channelCount: 2,
-        channelSelection: { left: 0, right: 1 },
-        deviceId: intent.deviceId,
-        deviceLabel: intent.deviceLabel,
-        itemType: "track",
-        platform: "device-input",
-        url: "",
+    // Open the picker before replacing the Deck, while the gesture is active,
+    // so a cancelled or audio-less share leaves the current source in place.
+    const stream =
+      intent.capture === "display" ? await requestDisplayAudio() : undefined;
+    await commitRadio(
+      deckId,
+      loadGeneration,
+      {
+        description: intent.capture
+          ? "Shared tab / computer audio"
+          : "Device input (mic/line-in)",
+        enabled: true,
+        id: `device-input-${side}`,
+        name: intent.deviceLabel,
+        platformMetadata: {
+          ...(intent.capture
+            ? { capture: intent.capture, sourceUrl: intent.sourceUrl }
+            : {}),
+          channelCount: 2,
+          channelSelection: { left: 0, right: 1 },
+          deviceId: intent.deviceId,
+          deviceLabel: intent.deviceLabel,
+          itemType: "track",
+          platform: "device-input",
+          url: "",
+        },
+        streamUrl: "",
       },
-      streamUrl: "",
-    });
+      "preserve",
+      stream ?? true
+    );
     return loaded();
   }
 
@@ -1416,7 +1456,14 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     const loadGeneration = beginSourceLoad(deckId);
     switch (intent.type) {
       case "radio":
-        await commitRadio(deckId, loadGeneration, intent.radio);
+        // Restored/library shares return paused: the picker needs a gesture.
+        await commitRadio(
+          deckId,
+          loadGeneration,
+          intent.radio,
+          "preserve",
+          !isDisplayCapture(intent.radio)
+        );
         return loaded();
       case "device-input":
         return await loadDeviceIntent(deckId, loadGeneration, intent);

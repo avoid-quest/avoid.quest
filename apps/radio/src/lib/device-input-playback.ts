@@ -32,6 +32,8 @@ export type DeviceInputTarget = {
    * guard. Left out, the capture keeps DeviceSource's defaults (all off).
    */
   echoCancellation?: boolean;
+  /** A display stream the caller already acquired during the user's gesture. */
+  stream?: MediaStream;
 };
 
 /**
@@ -42,11 +44,18 @@ export type DeviceInputTarget = {
 export async function startDeviceInput(
   audio: DeviceInputAudio,
   soundId: string,
-  { capture, channelSelection, deviceId, echoCancellation }: DeviceInputTarget,
+  {
+    capture,
+    channelSelection,
+    deviceId,
+    echoCancellation,
+    stream: acquired,
+  }: DeviceInputTarget,
   isCurrent: () => boolean = () => true
 ): Promise<number | null> {
   const stream =
-    capture === "display" ? await requestDisplayAudio() : undefined;
+    acquired ??
+    (capture === "display" ? await requestDisplayAudio() : undefined);
   if (stream && !isCurrent()) {
     stopCapturedAudio(stream);
     return null;

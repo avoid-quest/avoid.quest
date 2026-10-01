@@ -109,6 +109,16 @@ function getCaptureState(stream: MediaStream): CaptureState {
 }
 
 /**
+ * Sharing may have stopped while the engine was set up; its ended event
+ * already fired, so check the track state directly.
+ */
+function assertSharingLive(stream: MediaStream): void {
+  if (!stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    throw new Error("Audio sharing ended. Share the tab again.");
+  }
+}
+
+/**
  * DeviceSource
  *
  * Captures audio from a specific audio input device and provides it as a Web Audio node.
@@ -458,6 +468,9 @@ export class DeviceSource {
       }
       const { audioTrack, capabilities, settings } = getCaptureState(stream);
       this.stream = stream;
+      if (constraints.stream) {
+        assertSharingLive(stream);
+      }
       this.watchTrackEnd(stream);
 
       this._permissionState = "granted";

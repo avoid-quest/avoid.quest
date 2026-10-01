@@ -61,6 +61,10 @@ describe("hosted audio links", () => {
   ])("rejects unsafe or spoofed hosted URL %s", (url) =>
     expect(detectBrowserAudioSource(url)).toBeNull()
   );
+  test.each(radios.filter((radio) => radio.streamUrl))(
+    "keeps the $name live stream on the stream loader",
+    (radio) => expect(detectBrowserAudioSource(radio.streamUrl)).toBeNull()
+  );
   test("direct recordings still use the normal seekable audio loader", () => {
     expect(
       detectBrowserAudioSource("https://radioblackout.org/episodes/show.mp3")

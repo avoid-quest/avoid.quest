@@ -225,6 +225,21 @@ function createContext(): PlaybackActionContext {
   };
 }
 
+function withDisplayMedia(
+  getDisplayMedia: () => Promise<MediaStream>
+): () => void {
+  const original = globalThis.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { mediaDevices: { getDisplayMedia } },
+  });
+  return () =>
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: original,
+    });
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   insertDjSession();
@@ -662,6 +677,92 @@ describe("DjDeckModule", () => {
       throw new Error("Expected the current device resource to remain active");
     }
     expect(audio.activeSounds).toEqual(new Set([currentSoundId]));
+  });
+
+  test("restores a shared display source paused without opening the picker", async () => {
+    const getDisplayMedia = mock(() =>
+      Promise.reject(new Error("Must not open the picker without a gesture"))
+    );
+    const restoreNavigator = withDisplayMedia(getDisplayMedia);
+    try {
+      const audio = createAudioAdapter();
+      const module = createDjDeckModule({
+        audio,
+        context: createContext(),
+        effects: createEffects(),
+        output: createOutput(),
+        platform: createPlatform(),
+      });
+      const shared: Radio = {
+        id: "device-input-left",
+        name: "Spotify",
+        platformMetadata: {
+          capture: "display",
+          channelCount: 2,
+          channelSelection: { left: 0, right: 1 },
+          deviceId: "display",
+          deviceLabel: "Spotify",
+          itemType: "track",
+          platform: "device-input",
+          sourceUrl: "https://open.spotify.com/track/abc",
+          url: "",
+        },
+        streamUrl: "",
+      };
+
+      await module.deck("deck-a").load({ radio: shared, type: "radio" });
+
+      expect(getDisplayMedia).not.toHaveBeenCalled();
+      expect(audio.startDevice).not.toHaveBeenCalled();
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(shared);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+        "left_device-input-left:1"
+      );
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test("keeps the current source when the display picker is cancelled", async () => {
+    const restoreNavigator = withDisplayMedia(() =>
+      Promise.reject(new DOMException("Cancelled", "NotAllowedError"))
+    );
+    try {
+      const audio = createAudioAdapter();
+      const module = createDjDeckModule({
+        audio,
+        context: createContext(),
+        effects: createEffects(),
+        output: createOutput(),
+        platform: createPlatform(),
+      });
+      const deck = module.deck("deck-a");
+      const station: Radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      await deck.load({ radio: station, type: "radio" });
+
+      await expect(
+        deck.load({
+          capture: "display",
+          deviceId: "display",
+          deviceLabel: "Spotify",
+          sourceUrl: "https://open.spotify.com/track/abc",
+          type: "device-input",
+        })
+      ).rejects.toThrow("Cancelled");
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(station);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+        "left_station-1:1"
+      );
+      expect(audio.activeSounds).toEqual(new Set(["left_station-1:1"]));
+      expect(audio.startDevice).not.toHaveBeenCalled();
+    } finally {
+      restoreNavigator();
+    }
   });
 
   test("retains every folder track across track changes and releases the folder on replacement", async () => {

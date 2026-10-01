@@ -63,8 +63,10 @@ const MOUNT_PATH_PATTERN = /^\/[\w.-]*$/;
 // Encoders put "radio" in the artist slot; a song can still be called "Radio".
 const ARTIST_ONLY_PLACEHOLDERS = new Set(["radio"]);
 const TITLE_LABEL_PATTERN = /^(?:now\s+playing|on\s+air)\s*:\s*/i;
-const EDGE_SEPARATOR_PATTERN = /^[\s\-–—]+|[\s\-–—]+$/g;
-const TITLE_SEPARATOR_PATTERN = /\s+[-–—]\s+/g;
+const EDGE_SEPARATOR_PATTERN = /[\s\-–—]/;
+// Matches only from the start of a whitespace run, so a long run with no
+// dash is scanned once rather than from each of its positions.
+const TITLE_SEPARATOR_PATTERN = /(?<!\s)\s+[-–—]\s+/g;
 const WHITESPACE_PATTERN = /\s+/g;
 const QUOTE_PAIRS = new Map([
   ['"', '"'],
@@ -145,12 +147,28 @@ function unwrapQuotes(value: string): string {
     : value;
 }
 
+/**
+ * Walks in from both ends: an end-anchored regex retries from every
+ * position of an inner separator run, which is quadratic on long titles.
+ */
+function trimEdgeSeparators(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && EDGE_SEPARATOR_PATTERN.test(value.charAt(start))) {
+    start += 1;
+  }
+  while (end > start && EDGE_SEPARATOR_PATTERN.test(value.charAt(end - 1))) {
+    end -= 1;
+  }
+  return value.slice(start, end);
+}
+
 function trimSeparatorsAndQuotes(value: string): string {
   let text = value;
-  let next = unwrapQuotes(text.replace(EDGE_SEPARATOR_PATTERN, ""));
+  let next = unwrapQuotes(trimEdgeSeparators(text));
   while (next !== text) {
     text = next;
-    next = unwrapQuotes(text.replace(EDGE_SEPARATOR_PATTERN, ""));
+    next = unwrapQuotes(trimEdgeSeparators(text));
   }
   return text;
 }

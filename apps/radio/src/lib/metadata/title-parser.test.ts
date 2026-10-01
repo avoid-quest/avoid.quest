@@ -153,6 +153,33 @@ describe("parseRadioTitle junk handling", () => {
       parseRadioTitle("Resonance Extra", { stationNames: ["Resonance Extra"] })
     ).toMatchObject({ title: "Resonance Extra" });
   });
+
+  test("trims edges in linear time on long inner separator runs", () => {
+    const spaced = `a${" ".repeat(20_000)}b`;
+    const dashed = `a${" -".repeat(10_000)}b`;
+    const tabbed = `a${"\t".repeat(20_000)}b`;
+    const startedAt = performance.now();
+    const results = [spaced, dashed, tabbed].map((title) =>
+      parseRadioTitle(title, { stationNames: ["Station"] })
+    );
+    expect(performance.now() - startedAt).toBeLessThan(50);
+
+    expect(results).toEqual([
+      { artist: null, rawTitle: spaced, title: spaced },
+      { artist: "a", rawTitle: dashed, title: "b" },
+      { artist: null, rawTitle: tabbed, title: tabbed },
+    ]);
+    expect(parseRadioTitle(" - a -  - b - ")).toEqual({
+      artist: "a",
+      rawTitle: "a -  - b",
+      title: "b",
+    });
+    expect(parseRadioTitle('—  "Artist - Title" –\t')).toEqual({
+      artist: "Artist",
+      rawTitle: "Artist - Title",
+      title: "Title",
+    });
+  });
 });
 
 describe("placeholder scope", () => {

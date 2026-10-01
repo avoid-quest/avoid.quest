@@ -23,24 +23,27 @@ const NOT_AN_ITEM_MESSAGE =
 
 async function readBoundedText(response: Response): Promise<string> {
   if (!response.body) {
-    return (await response.text()).slice(0, MAX_PAGE_BYTES);
+    return "";
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let text = "";
+  let bytes = 0;
   try {
-    while (text.length < MAX_PAGE_BYTES) {
+    while (bytes < MAX_PAGE_BYTES) {
       // biome-ignore lint/performance/noAwaitInLoops: stream chunks must be read sequentially
       const { done, value } = await reader.read();
       if (done) {
         break;
       }
-      text += decoder.decode(value, { stream: true });
+      const chunk = value.subarray(0, MAX_PAGE_BYTES - bytes);
+      bytes += chunk.byteLength;
+      text += decoder.decode(chunk, { stream: true });
     }
   } finally {
     await reader.cancel().catch(() => undefined);
   }
-  return text;
+  return text + decoder.decode();
 }
 
 function resolveLocation(location: string | null, base: string): URL | null {

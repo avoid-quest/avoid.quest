@@ -165,4 +165,44 @@ describe("match scoring", () => {
       rankYouTubeCandidates(ONE_MORE_TIME, [candidate, candidate])
     ).toHaveLength(1);
   });
+
+  test.each([
+    ["The National", "The Chainsmokers - Topic"],
+    ["The Beatles", "The Weeknd - Topic"],
+    ["Daft Punk", "Daft - Topic"],
+  ])("rejects partial artist matches for %s", (artist, author) => {
+    expect(
+      scoreYouTubeCandidate(
+        { artists: [artist], duration: 180, name: "Tell Me" },
+        { author, duration: 180, title: "Tell Me", videoId: "x0000000000" }
+      ).rejection
+    ).toBe("artist does not match");
+  });
+
+  test("accepts full artist credits in the channel or title", () => {
+    for (const { artists, author, title } of [
+      {
+        artists: ["The Beatles"],
+        author: "Beatles - Topic",
+        title: "One More Time",
+      },
+      {
+        artists: ["Daft Punk"],
+        author: "Uploader",
+        title: "Daft Punk - One More Time (Official Audio)",
+      },
+      {
+        artists: ["Daft Punk", "Pharrell Williams"],
+        author: "Pharrell Williams - Topic",
+        title: "One More Time",
+      },
+    ]) {
+      expect(
+        scoreYouTubeCandidate(
+          { ...ONE_MORE_TIME, artists },
+          { author, duration: 320, title, videoId: "x0000000000" }
+        ).rejection
+      ).toBeUndefined();
+    }
+  });
 });

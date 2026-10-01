@@ -162,11 +162,13 @@ function weightedCoverage(
 }
 
 function artistCoverage(artist: string, haystack: ReadonlySet<string>): number {
-  const tokens = tokenize(artist);
+  const tokens = tokenize(artist).filter(
+    (token) => token !== "the" && token !== "and"
+  );
   if (tokens.length === 0) {
     return 0;
   }
-  return tokens.filter((token) => haystack.has(token)).length / tokens.length;
+  return tokens.every((token) => haystack.has(token)) ? 1 : 0;
 }
 
 function scoreArtist(

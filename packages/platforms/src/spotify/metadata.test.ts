@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { load } from "cheerio";
-import { parseSpotifyEmbedPage, parseSpotifyTrackPageAlbum } from "./metadata";
+import { parseSpotifyEmbedPage } from "./metadata";
 
 function fixture(name: string): string {
   return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
@@ -149,27 +149,5 @@ describe("parseSpotifyEmbedPage", () => {
       error: "This Spotify album has no tracks",
       success: false,
     });
-  });
-});
-
-describe("parseSpotifyTrackPageAlbum", () => {
-  test("reads the album from og:description", () => {
-    expect(
-      parseSpotifyTrackPageAlbum(fixture("track-page-get-lucky.html"))
-    ).toBe("Get Lucky (Radio Edit) [feat. Pharrell Williams and Nile Rodgers]");
-    expect(
-      parseSpotifyTrackPageAlbum(
-        '<meta property="og:description" content="Daft Punk · Discovery · Song · 2001"/>'
-      )
-    ).toBe("Discovery");
-  });
-
-  test("ignores descriptions in another shape", () => {
-    expect(
-      parseSpotifyTrackPageAlbum(
-        '<meta property="og:description" content="Listen on Spotify"/>'
-      )
-    ).toBeUndefined();
-    expect(parseSpotifyTrackPageAlbum("<html></html>")).toBeUndefined();
   });
 });

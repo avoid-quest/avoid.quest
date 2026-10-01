@@ -89,16 +89,18 @@ const RAHILL_SONGS = results("piped-songs: Rahill Tell Me");
 const RAHILL_VIDEOS = results("invidious: Rahill Tell Me");
 
 describe("getSpotifyMetadata", () => {
-  test("adds the album name from the track page", async () => {
+  test("leaves a track's album unknown when the embed does not provide it", async () => {
     const requests: string[] = [];
     const result = await getSpotifyMetadata(
       "https://open.spotify.com/intl-it/track/2Foc5Q5nqNiosCNqttzHof?si=abc",
       { fetchImpl: spotifyFetch(requests) }
     );
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    expect(result.metadata.album).toBeUndefined();
     expect(result).toMatchObject({
       metadata: {
-        album:
-          "Get Lucky (Radio Edit) [feat. Pharrell Williams and Nile Rodgers]",
         artist: "Daft Punk, Pharrell Williams, Nile Rodgers",
         url: "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
       },
@@ -106,7 +108,6 @@ describe("getSpotifyMetadata", () => {
     });
     expect(requests.toSorted()).toEqual([
       "https://open.spotify.com/embed/track/2Foc5Q5nqNiosCNqttzHof",
-      "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
     ]);
   });
 
@@ -160,6 +161,45 @@ describe("resolveSpotifyTrackStream", () => {
       success: true,
     });
     expect(youtube.streams).toEqual(["10OaW3O429k", "st1qchy2tyc"]);
+  });
+
+  test("tries video results before leftover unstreamable songs", async () => {
+    const songs = [
+      "song0000001",
+      "song0000002",
+      "song0000003",
+      "song0000004",
+    ].map((videoId) => ({
+      author: "Rahill - Topic",
+      duration: tellMe.duration,
+      title: tellMe.name,
+      videoId,
+    }));
+    const youtube = fakeYouTube({
+      byQuery: {
+        "songs: Rahill Tell Me": songs,
+        "videos: Rahill Tell Me": [
+          {
+            author: "Rahill",
+            duration: tellMe.duration,
+            title: "Rahill - Tell Me (Official Video)",
+            videoId: "video000001",
+          },
+        ],
+      },
+      failingStreams: songs.map((song) => song.videoId),
+    });
+    await expect(
+      resolveSpotifyTrackStream(tellMe, { youtube })
+    ).resolves.toMatchObject({
+      match: { videoId: "video000001" },
+      success: true,
+    });
+    expect(youtube.streams).toEqual([
+      "song0000001",
+      "song0000002",
+      "video000001",
+    ]);
   });
 
   test("returns the no-match error when nothing is close enough", async () => {
@@ -350,6 +390,47 @@ describe("resolveSpotifyShortLink", () => {
       })
     ).resolves.toBe("https://open.spotify.com/playlist/432nsnOM9L55tkiOFnHbI2");
     expect(requests).toHaveLength(2);
+  });
+
+  test.each([
+    ["an oversized chunk", ["x".repeat(256 * 1024)]],
+    ["multibyte chunks", ["é".repeat(128 * 1024), ""]],
+  ])("stops reading at the byte limit for %s", async (_name, prefixes) => {
+    const target = "https://open.spotify.com/playlist/432nsnOM9L55tkiOFnHbI2";
+    const chunks = [...prefixes];
+    chunks[chunks.length - 1] += target;
+    chunks.push("x".repeat(256 * 1024));
+    const cancel = mock(() => undefined);
+    const response = new Response(
+      new ReadableStream({
+        cancel,
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(new TextEncoder().encode(chunk));
+          }
+        },
+      })
+    );
+    const fetchImpl = mock(() =>
+      Promise.resolve(response)
+    ) as unknown as typeof fetch;
+    await expect(
+      resolveSpotifyShortLink("https://spotify.link/abc", { fetchImpl })
+    ).rejects.toThrow(
+      "Spotify short link does not point to a track, album or playlist"
+    );
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  test("reports an empty landing page", async () => {
+    const fetchImpl = mock(() =>
+      Promise.resolve(new Response(null))
+    ) as unknown as typeof fetch;
+    await expect(
+      resolveSpotifyShortLink("https://spotify.link/abc", { fetchImpl })
+    ).rejects.toThrow(
+      "Spotify short link does not point to a track, album or playlist"
+    );
   });
 
   test("rejects links that leave Spotify or land on a non-item page", async () => {

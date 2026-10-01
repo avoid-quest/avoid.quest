@@ -12,7 +12,7 @@ client credentials or API key.
 - **Metadata:** the public embed page
   `https://open.spotify.com/embed/<track|album|playlist>/<id>` carries the
   full item as JSON in `<script id="__NEXT_DATA__">`. It is the only source
-  the module needs. The track page adds the album name of a single track.
+  the module needs. Individual track embeds do not provide an album name.
 - **Short links:** `spotify.link/<code>` resolves through Branch.io
   (`spotify.app.link`), server-side only.
 - **Search: not supported. Spotify is pasted-link only.** An anonymous search
@@ -78,14 +78,16 @@ playlists), and a `trackList`:
 Recorded fixtures are in `fixtures/embed-*.html`; the access token is redacted
 and track lists are cut to a few entries.
 
-### Track page (album name)
+### Track page (not used)
 
 `GET https://open.spotify.com/track/<id>` (about 270 KB) has
-`<meta property="og:description" content="Daft Punk · Discovery · Song · 2001">`,
-which reads `<artists> · <album> · Song · <year>` when requested with
-`accept-language: en`. It also has `music:duration`, `music:album` (a URL
-only) and `music:release_date`. The module reads it best effort, in parallel
-with the embed, for track links only. See `fixtures/track-page-get-lucky.html`.
+`og:description` in the form `<artists> · <track title> · Song · <year>` when
+requested with `accept-language: en`. The recorded Get Lucky page repeats its
+`og:title` in the second segment; it does not provide the album name. It also
+has `music:duration`, `music:album` (a URL only) and `music:release_date`.
+Individual track links therefore leave the album name unknown. Album embeds
+provide the album name for their own tracks. See
+`fixtures/track-page-get-lucky.html`.
 
 ### oEmbed (not used)
 

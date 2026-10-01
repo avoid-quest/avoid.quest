@@ -6,18 +6,9 @@
  * and the audio from the YouTube upload that best matches it. See RESEARCH.md.
  */
 
-import {
-  getSpotifyUrl,
-  needsSpotifyResolution,
-  parseSpotifyRef,
-  type SpotifyRef,
-} from "./detect.js";
+import { needsSpotifyResolution, parseSpotifyRef } from "./detect.js";
 import { buildSpotifyYouTubeQuery, rankYouTubeCandidates } from "./match.js";
-import {
-  parseSpotifyEmbedPage,
-  parseSpotifyTrackPageAlbum,
-  SPOTIFY_EMBED_BASE_URL,
-} from "./metadata.js";
+import { parseSpotifyEmbedPage, SPOTIFY_EMBED_BASE_URL } from "./metadata.js";
 import { resolveSpotifyShortLink } from "./short-link.js";
 import type {
   SpotifyItemError,
@@ -55,7 +46,6 @@ export {
 } from "./match.js";
 export {
   parseSpotifyEmbedPage,
-  parseSpotifyTrackPageAlbum,
   SPOTIFY_EMBED_BASE_URL,
 } from "./metadata.js";
 export type { SpotifyShortLinkOptions } from "./short-link.js";
@@ -143,20 +133,6 @@ async function fetchSpotifyPage(
   return await response.text();
 }
 
-async function fetchTrackAlbum(
-  ref: SpotifyRef,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal
-): Promise<string | undefined> {
-  try {
-    return parseSpotifyTrackPageAlbum(
-      await fetchSpotifyPage(getSpotifyUrl(ref), fetchImpl, signal)
-    );
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Resolves a Spotify track, album or playlist link (web URL, `spotify:` URI
  * or `spotify.link` share link) to metadata, without matching any audio.
@@ -184,21 +160,12 @@ export async function getSpotifyMetadata(
       );
     }
 
-    const [embedHtml, album] = await Promise.all([
-      fetchSpotifyPage(
-        `${SPOTIFY_EMBED_BASE_URL}/${ref.type}/${ref.id}`,
-        fetchImpl,
-        requestSignal
-      ),
-      ref.type === "track"
-        ? fetchTrackAlbum(ref, fetchImpl, requestSignal)
-        : undefined,
-    ]);
-    const parsed = parseSpotifyEmbedPage(ref, embedHtml);
-    if (parsed.success && album) {
-      parsed.metadata.album = album;
-    }
-    return parsed;
+    const embedHtml = await fetchSpotifyPage(
+      `${SPOTIFY_EMBED_BASE_URL}/${ref.type}/${ref.id}`,
+      fetchImpl,
+      requestSignal
+    );
+    return parseSpotifyEmbedPage(ref, embedHtml);
   } catch (error) {
     return createErrorResponse(
       `Failed to get Spotify item: ${errorMessage(error)}`
@@ -299,11 +266,11 @@ export async function resolveSpotifyTrackStream(
     signal?.throwIfAborted();
 
     const videos = await searchCandidates(youtube, query, "videos", signal);
-    const allMatches = rankYouTubeCandidates(track, [...songs, ...videos]);
-    matched ||= allMatches.length > 0;
+    const videoMatches = rankYouTubeCandidates(track, videos);
+    matched ||= videoMatches.length > 0;
     const fromVideos = await streamFirstPlayable(
       youtube,
-      allMatches,
+      videoMatches,
       tried,
       signal
     );

@@ -14,7 +14,6 @@ import type {
 
 export const SPOTIFY_EMBED_BASE_URL = "https://open.spotify.com/embed";
 
-const OG_DESCRIPTION_SEPARATOR = " · ";
 const MS_PER_SECOND = 1000;
 
 type SpotifyEmbedImage = {
@@ -210,22 +209,4 @@ export function parseSpotifyEmbedPage(
     return createErrorResponse(`This Spotify ${ref.type} has no tracks`);
   }
   return { metadata, success: true };
-}
-
-/**
- * The album name from a track page's `og:description`, which reads
- * "<artists> · <album> · Song · <year>" for English pages.
- */
-export function parseSpotifyTrackPageAlbum(html: string): string | undefined {
-  const description = load(html)('meta[property="og:description"]')
-    .first()
-    .attr("content");
-  if (!description) {
-    return undefined;
-  }
-  const parts = description.split(OG_DESCRIPTION_SEPARATOR);
-  if (parts.length < 4 || parts.at(-2) !== "Song") {
-    return undefined;
-  }
-  return parts.slice(1, -2).join(OG_DESCRIPTION_SEPARATOR).trim() || undefined;
 }

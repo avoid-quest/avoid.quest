@@ -18,6 +18,8 @@ const DEEPEN_COUNT = 500;
 const CONVENTIONAL_SUBJECT = /^(\w+)(?:\([^)]*\))?!?:\s*(.+)$/;
 const PULL_REQUEST_SUFFIX = /\s*\(#\d+\)$/;
 const CHANGELOG_LINE = /^changelog:[ \t]*(.*)$/im;
+const CHANGELOG_LINES = /^changelog:[ \t]*(.*)$/gim;
+const CHANGELOG_SINCE = /^changelog-since:[ \t]*([0-9a-f]{4,40})[ \t]*$/im;
 const REVERTED_COMMIT = /This reverts commit ([0-9a-f]{40})/g;
 // Where a squash merge starts listing the commits it squashed.
 const SQUASHED_COMMITS = /^\* /m;
@@ -56,15 +58,24 @@ function findRevertedCommits(commits: Commit[]) {
 }
 
 /**
- * The commit's `Changelog:` line. In a squash merge (a subject ending in
- * `(#123)`), lines inside the list of squashed commits belong to those
- * commits, so only the lines above that list count.
+ * The part of a commit message that is its own. In a squash merge (a subject
+ * ending in `(#123)`), lines inside the list of squashed commits belong to
+ * those commits, so only the lines above that list count.
  */
-function readChangelogLine({ body, subject }: Commit) {
-  const own = PULL_REQUEST_SUFFIX.test(subject)
-    ? body.split(SQUASHED_COMMITS, 1)[0]
-    : body;
-  return CHANGELOG_LINE.exec(own ?? "")?.[1]?.trim();
+function readOwnBody({ body, subject }: Commit) {
+  return (
+    (PULL_REQUEST_SUFFIX.test(subject)
+      ? body.split(SQUASHED_COMMITS, 1)[0]
+      : body) ?? ""
+  );
+}
+
+/** The commit's `Changelog:` lines, in the order written. */
+function readChangelogLines(commit: Commit) {
+  return Array.from(
+    readOwnBody(commit).matchAll(CHANGELOG_LINES),
+    (match) => match[1]?.trim() ?? ""
+  ).filter(Boolean);
 }
 
 /**
@@ -104,12 +115,83 @@ function readSubjectText(commit: Commit, types: string[]) {
 }
 
 /**
+ * The entries a commit gives, in the order written: its `Changelog:` lines,
+ * else its subject when listed, and none when a line hides it.
+ */
+function readEntryTexts(commit: Commit, types: string[]) {
+  const lines = readChangelogLines(commit);
+  if (lines.some((line) => HIDDEN_VALUES.has(line.toLowerCase()))) {
+    return [];
+  }
+  if (lines.length > 0) {
+    return lines;
+  }
+  const subjectText = readSubjectText(commit, types);
+  return subjectText ? [subjectText] : [];
+}
+
+/**
+ * Hashes of commits replaced by a newer `Changelog-Since:` note that is
+ * itself listed. Resolve its boundary against unfiltered ancestry, since a
+ * path-filtered log can omit that commit. `commits` is newest first.
+ */
+function findCoveredCommits(
+  root: string,
+  commits: Commit[],
+  reverted: Set<string>,
+  types: string[]
+) {
+  const covered = new Set<string>();
+  for (const commit of commits) {
+    if (
+      reverted.has(commit.hash) ||
+      covered.has(commit.hash) ||
+      readEntryTexts(commit, types).length === 0
+    ) {
+      continue;
+    }
+    const since = CHANGELOG_SINCE.exec(readOwnBody(commit))?.[1]?.toLowerCase();
+    if (!since) {
+      continue;
+    }
+    try {
+      const boundary = git(root, [
+        "rev-parse",
+        "--verify",
+        `${since}^{commit}`,
+      ]).trim();
+      git(root, ["merge-base", "--is-ancestor", boundary, commit.hash]);
+      for (const hash of git(root, [
+        "rev-list",
+        `${boundary}..${commit.hash}`,
+      ]).split("\n")) {
+        if (hash && hash !== commit.hash) {
+          covered.add(hash);
+        }
+      }
+    } catch {
+      // An unresolved or unrelated boundary must not hide older entries.
+    }
+  }
+  return covered;
+}
+
+/**
  * Newest first. `feat` commits are listed by their subject, and a squash
  * merge under a plain title that squashed one by that title. A `Changelog:`
- * line in a commit message rewords it (and lists any type), and
- * `Changelog: skip` hides it. Reverted commits are dropped.
+ * line in a commit message rewords it (and lists any type), several list it
+ * as several entries in the order written, and `Changelog: skip` hides it.
+ * Reverted commits are dropped.
+ *
+ * A release note carries `Changelog-Since: <sha>`: its entries replace those
+ * of its ancestors after the boundary commit, so those commits list nothing.
+ * The boundary is resolved even when it changed none of the selected paths.
+ * Work landed as squash merges or with its own commits on `main` is covered
+ * either way; merge commits above the note list nothing.
+ * Hidden notes and invalid, unresolved, or unrelated boundaries cover nothing.
  */
 function parseGitChangelog(
+  root: string,
   log: string,
   { types = ["feat"], limit = 12 }: GitChangelogOptions = {}
 ): ChangelogEntry[] {
@@ -123,30 +205,29 @@ function parseGitChangelog(
       return { body, date, hash, subject };
     });
   const reverted = findRevertedCommits(commits);
+  const covered = findCoveredCommits(root, commits, reverted, types);
   const entries: ChangelogEntry[] = [];
   const texts = new Set<string>();
 
   for (const commit of commits) {
-    if (entries.length >= limit) {
-      break;
-    }
-    if (reverted.has(commit.hash)) {
+    if (reverted.has(commit.hash) || covered.has(commit.hash)) {
       continue;
     }
-    const override = readChangelogLine(commit);
-    if (override && HIDDEN_VALUES.has(override.toLowerCase())) {
-      continue;
+    for (const [index, text] of readEntryTexts(commit, types).entries()) {
+      if (entries.length >= limit) {
+        return entries;
+      }
+      if (texts.has(text.toLowerCase())) {
+        continue;
+      }
+      texts.add(text.toLowerCase());
+      entries.push({
+        date: commit.date,
+        // Later lines get a suffix, so each entry's id is unique and stable.
+        id: index === 0 ? commit.hash : `${commit.hash}:${index}`,
+        text: capitalize(text),
+      });
     }
-    const text = override || readSubjectText(commit, types);
-    if (!text || texts.has(text.toLowerCase())) {
-      continue;
-    }
-    texts.add(text.toLowerCase());
-    entries.push({
-      date: commit.date,
-      id: commit.hash,
-      text: capitalize(text),
-    });
   }
   return entries;
 }
@@ -193,7 +274,7 @@ export function readGitChangelog(
       "--",
       ...paths,
     ]);
-    return parseGitChangelog(log, options);
+    return parseGitChangelog(root, log, options);
   } catch {
     console.warn("[changelog] No git history; the changelog is empty");
     return [];

@@ -10,6 +10,7 @@ import {
   type NodeType,
 } from "./schema";
 import {
+  analyseGraph,
   BUS_MERGE_MESSAGE,
   type Connection,
   connectionVerdict,
@@ -1581,6 +1582,33 @@ describe("validate: messages", () => {
 });
 
 describe("validate: budgets", () => {
+  test("an oversized chain stored downstream first labels in linear time", () => {
+    // Quadratic labelling took tens of seconds here, before any budget.
+    const count = 20_000;
+    const ids = range(count).map((index) => `g${index}`);
+    const chain = (head: string, first: string[]) =>
+      graph(
+        [
+          ...first.map(station),
+          ...(head === "merge" ? [node("merge", "merge")] : []),
+          ...[...ids].reverse().map((id) => node(id, "gain")),
+          speakers,
+        ],
+        [
+          ...(head === "merge" ? first.map((id) => audio(id, "merge")) : []),
+          ...[head, ...ids]
+            .slice(0, -1)
+            .map((id, index) => audio(id, ids[index] ?? "")),
+          audio(ids.at(-1) ?? "", "speakers"),
+        ]
+      );
+    const lane = analyseGraph(chain("a", ["a"])).topology;
+    expect(lane.lanes.get(ids.at(-1) ?? "")).toBe("a");
+    const bus = analyseGraph(chain("merge", ["a", "b"])).topology;
+    expect(bus.lanes.get(ids.at(-1) ?? "")).toBeNull();
+    expect(bus.buses.get(ids.at(-1) ?? "")).toBe("merge");
+  }, 3000);
+
   test("the budget table matches the proposal", () => {
     expect(NODE_BUDGETS).toEqual({
       desktop: {

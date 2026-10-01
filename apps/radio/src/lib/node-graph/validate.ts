@@ -761,9 +761,26 @@ export function nativePlacementIssues(
   );
 }
 
+function audioOutputs(
+  inputs: ReadonlyMap<string, readonly string[]>
+): Map<string, string[]> {
+  const outputs = new Map<string, string[]>();
+  for (const [target, sources] of inputs) {
+    for (const source of sources) {
+      const targets = outputs.get(source) ?? [];
+      targets.push(target);
+      outputs.set(source, targets);
+    }
+  }
+  return outputs;
+}
+
 /**
  * Labels each node with the lane it belongs to, or as a bus when it sums
- * more than one lane. A monotone fixpoint, so audio cycles settle too.
+ * more than one lane. A monotone fixpoint, so audio cycles settle too. A
+ * worklist revisits only what a change feeds, and a label only moves from
+ * none to a lane to a bus, so a long imported chain stays linear whatever
+ * order its nodes are stored in.
  */
 function labelLanes(
   context: Context,
@@ -773,22 +790,68 @@ function labelLanes(
   for (const node of context.graph.nodes) {
     lanes.set(node.id, definitionOf(node).source ? node.id : undefined);
   }
-  const followers = context.graph.nodes.filter(
-    (node) => !definitionOf(node).source
-  );
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const node of followers) {
-      const upstream = (inputs.get(node.id) ?? []).map((id) => lanes.get(id));
-      const next = joinLane(lanes.get(node.id), laneFromInputs(node, upstream));
-      if (next !== lanes.get(node.id)) {
-        lanes.set(node.id, next);
-        changed = true;
+  const outputs = audioOutputs(inputs);
+  const pending = context.graph.nodes
+    .filter((node) => !definitionOf(node).source)
+    .reverse();
+  const queued = new Set(pending.map((node) => node.id));
+  for (let node = pending.pop(); node; node = pending.pop()) {
+    queued.delete(node.id);
+    const upstream = (inputs.get(node.id) ?? []).map((id) => lanes.get(id));
+    const next = joinLane(lanes.get(node.id), laneFromInputs(node, upstream));
+    if (next === lanes.get(node.id)) {
+      continue;
+    }
+    lanes.set(node.id, next);
+    for (const id of outputs.get(node.id) ?? []) {
+      const target = context.nodes.get(id);
+      if (target && !definitionOf(target).source && !queued.has(id)) {
+        queued.add(id);
+        pending.push(target);
       }
     }
   }
   return lanes;
+}
+
+/**
+ * `nodes` upstream first along the cables that carry a bus id (into a node
+ * that is not bus-making), so one pass settles a chain; what a legal cycle
+ * leaves unordered follows in patch order.
+ */
+function busOrder(
+  nodes: readonly GraphNode[],
+  inputs: ReadonlyMap<string, readonly string[]>
+): GraphNode[] {
+  const members = new Map(nodes.map((node) => [node.id, node]));
+  const waiting = new Map<string, number>();
+  const outputs = new Map<string, string[]>();
+  for (const node of nodes) {
+    const sources = BUS_NODE_TYPES.has(node.type)
+      ? []
+      : (inputs.get(node.id) ?? []).filter((id) => members.has(id));
+    waiting.set(node.id, sources.length);
+    for (const source of sources) {
+      const targets = outputs.get(source) ?? [];
+      targets.push(node.id);
+      outputs.set(source, targets);
+    }
+  }
+  const ready = nodes.filter((node) => waiting.get(node.id) === 0).reverse();
+  const order: GraphNode[] = [];
+  for (let node = ready.pop(); node; node = ready.pop()) {
+    order.push(node);
+    for (const id of outputs.get(node.id) ?? []) {
+      const left = (waiting.get(id) ?? 0) - 1;
+      waiting.set(id, left);
+      const next = members.get(id);
+      if (left === 0 && next) {
+        ready.push(next);
+      }
+    }
+  }
+  const ordered = new Set(order);
+  return [...order, ...nodes.filter((node) => !ordered.has(node))];
 }
 
 /**
@@ -803,8 +866,9 @@ function labelBuses(
   lanes: ReadonlyMap<string, Lane>
 ): Map<string, string> {
   const buses = new Map<string, string>();
-  const busNodes = context.graph.nodes.filter(
-    (node) => lanes.get(node.id) === null
+  const busNodes = busOrder(
+    context.graph.nodes.filter((node) => lanes.get(node.id) === null),
+    inputs
   );
   for (const node of busNodes) {
     buses.set(node.id, node.id);

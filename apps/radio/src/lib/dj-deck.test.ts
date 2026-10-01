@@ -710,6 +710,47 @@ describe("DjDeckModule", () => {
     );
   });
 
+  test("tells the file form when a parsed folder fails to activate", async () => {
+    const audio = createAudioAdapter();
+    audio.loadFile = mock((file) =>
+      Promise.resolve({
+        displayName: file.name,
+        duration: 10,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "audio/mpeg",
+        objectUrl: `blob:https://radio.example/${file.name}`,
+      })
+    );
+    audio.activate = mock(() => {
+      throw new Error("decoder unavailable");
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+
+    const result = await module.deck("deck-a").load({
+      files: [new File(["audio"], "1.mp3"), new File(["audio"], "2.mp3")],
+      type: "files",
+    });
+
+    expect(result).toEqual({
+      message: "the deck couldn't play it",
+      type: "failed",
+    });
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/1.mp3"
+    );
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/2.mp3"
+    );
+  });
+
   test("keeps a file URL until a replacement source commits", async () => {
     const audio = createAudioAdapter();
     audio.loadFile = mock(() =>

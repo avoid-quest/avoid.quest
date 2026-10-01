@@ -1239,13 +1239,18 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     let radio: Radio | null = null;
     try {
       radio = await loadLocalAudioPlaylist(files, options.audio.loadFile);
+      if (!isLoadCurrent(deckId, loadGeneration)) {
+        return loaded();
+      }
+      await commitRadio(deckId, loadGeneration, radio);
+      const failed = activationFailed(deckId, loadGeneration);
+      if (failed) {
+        return failed;
+      }
       if (isLoadCurrent(deckId, loadGeneration)) {
-        await commitRadio(deckId, loadGeneration, radio);
-        if (isLoadCurrent(deckId, loadGeneration)) {
-          updatePlaybackChannel("dj", deckId, (draft) => {
-            draft.autoplay = true;
-          });
-        }
+        updatePlaybackChannel("dj", deckId, (draft) => {
+          draft.autoplay = true;
+        });
       }
       return loaded();
     } catch (error) {
@@ -1258,13 +1263,18 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
           )
         : loaded();
     } finally {
-      const owned = new Set(
-        localAudioUrls(getPlaybackChannel("dj", deckId)?.radio)
-      );
-      for (const url of localAudioUrls(radio)) {
-        if (!owned.has(url)) {
-          releaseFileUrl(url);
-        }
+      releaseUnownedFolderUrls(deckId, radio);
+    }
+  }
+
+  /** Releases a picked folder's URLs unless the Deck now plays them. */
+  function releaseUnownedFolderUrls(deckId: DeckId, radio: Radio | null) {
+    const owned = new Set(
+      localAudioUrls(getPlaybackChannel("dj", deckId)?.radio)
+    );
+    for (const url of localAudioUrls(radio)) {
+      if (!owned.has(url)) {
+        releaseFileUrl(url);
       }
     }
   }

@@ -804,6 +804,8 @@ describe("node session persistence", () => {
       id: "node",
       masterVolume: 1,
     });
+    // This tab's editor holds the patch, as Node mode's does.
+    loadNodeGraph(getPlaybackSession("node")?.graph ?? null);
 
     // The amp reaches no lane, so only the graph references its model.
     updatePlaybackChannel("node", "n:src-kexp", (draft) => {
@@ -820,9 +822,56 @@ describe("node session persistence", () => {
         );
       }
     });
+    loadNodeGraph(getPlaybackSession("node")?.graph ?? null);
     await Promise.resolve();
     await Promise.resolve();
     expect(getCachedNamModel(graphOnlyId)).toBeNull();
+  });
+
+  test("never deletes a NAM model another tab's patch added", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const ownGraph = createDuckGraph();
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: createDuckChannels(),
+      crossfadePosition: 0.5,
+      graph: ownGraph,
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+    const own = getPlaybackSession("node");
+    loadNodeGraph(own?.graph ?? null);
+
+    // Another tab adds an amp; its write reaches this tab through storage.
+    const otherModelId = createLocalNamModelId();
+    await saveNamModel(otherModelId, '{"otherTab":true}');
+    const amp = createNodeEffectConfig("neuralAmp", "amp");
+    amp.modelId = otherModelId;
+    const otherGraph = createDuckGraph();
+    otherGraph.nodes.push({
+      data: { effect: amp },
+      id: "amp",
+      position: { x: 240, y: 224 },
+      type: "neuralAmp",
+    });
+    await Promise.resolve();
+    writeLegacyRecord(playbackSessionsCollection, {
+      ...(own as NonNullable<typeof own>),
+      graph: otherGraph,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      getPlaybackSession("node")?.graph?.nodes.some((node) => node.id === "amp")
+    ).toBe(true);
+
+    // This tab, which never saw the amp, writes its own patch over it.
+    updatePlaybackSession("node", (draft) => {
+      draft.graph = nodeStore.state.graph ?? undefined;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(await getNamModel(otherModelId)).toBe('{"otherTab":true}');
   });
 
   test("keeps a node session without a graph valid", () => {

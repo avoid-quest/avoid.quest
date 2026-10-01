@@ -519,8 +519,9 @@ export function writeNodeSessionGraph(
   }
   const prepared = prepareNodeSessionGraph(graph, masterVolume);
   registerNodeSessionRadios(graph);
+  holdNodeNamModels(collectSessionNamModelIds(prepared));
   if (playbackSessionsCollection.state.has("node")) {
-    const previousModelIds = collectSessionNamModelIds(
+    const previousModelIds = collectReleasableNamModelIds(
       playbackSessionsCollection.state.get("node")
     );
     updatePlaybackSessionRecord("node", (draft) => {
@@ -610,6 +611,34 @@ function collectSessionNamModelIds(
   ]);
 }
 
+/**
+ * Local NAM models of the Node patch this tab holds: the ones it loaded at
+ * startup, wrote, or kept in its editor and history. Another tab's patch
+ * reaches this one only through storage, and this tab's next write can
+ * replace that record, but the models it added are not this tab's to
+ * delete: they may still be on that tab's canvas.
+ */
+const heldNodeNamModelIds = new Set<string>();
+
+function holdNodeNamModels(modelIds: Iterable<string>): void {
+  for (const modelId of modelIds) {
+    heldNodeNamModelIds.add(modelId);
+  }
+}
+
+/** The models a write replacing `session` may release. */
+function collectReleasableNamModelIds(
+  session: PlaybackSessionRecord | undefined
+): Set<string> {
+  const modelIds = collectSessionNamModelIds(session);
+  if (session?.id !== "node") {
+    return modelIds;
+  }
+  return new Set(
+    [...modelIds].filter((modelId) => heldNodeNamModelIds.has(modelId))
+  );
+}
+
 function collectRetainedNamModelIds(
   state: NodeStoreState = nodeStore.state
 ): Set<string> {
@@ -651,9 +680,11 @@ function scheduleNamModelCleanup(candidates: Iterable<string>): void {
 
 // History eviction and reset can release models without changing a session.
 let observedNodeState = nodeStore.state;
+holdNodeNamModels(collectRetainedNamModelIds(observedNodeState));
 nodeStore.subscribe((state) => {
   const previous = observedNodeState;
   observedNodeState = state;
+  holdNodeNamModels(collectRetainedNamModelIds(state));
   if (previous.graph !== state.graph || previous.history !== state.history) {
     scheduleNamModelCleanup(collectRetainedNamModelIds(previous));
   }
@@ -748,6 +779,9 @@ async function externalizeStoredNamModels(): Promise<void> {
   );
   for (const { channel, effects, sessionId } of updates) {
     if (effects.some((effect, index) => effect !== channel.effects[index])) {
+      if (sessionId === "node") {
+        holdNodeNamModels(collectLocalNamModelIds(effects));
+      }
       updatePlaybackChannel(sessionId, channel.id, (draft) => {
         draft.effects = effects;
       });
@@ -787,6 +821,8 @@ export async function initializePlaybackSessions(): Promise<void> {
   // Likewise a node session a v1 release stored: its graph is upgraded
   // before restoreNodeSessionRadios or restore update it.
   migrateNodeGraphSession(playbackSessionsCollection);
+  // The patch this tab starts from is its own to garbage-collect.
+  holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
   stopWatchingLegacyWrites ??= watchLegacyMultipleWrites({
     ...legacyCollections,
     settings: settingsCollection,
@@ -861,7 +897,7 @@ export function updatePlaybackSession(
     existing &&
     !(id === "node" && getNodeSessionReadOnlyVersion() !== null)
   ) {
-    const previousModelIds = collectSessionNamModelIds(existing);
+    const previousModelIds = collectReleasableNamModelIds(existing);
     updatePlaybackSessionRecord(id, updater);
     scheduleNamModelCleanup(previousModelIds);
   }
@@ -872,7 +908,7 @@ export function deletePlaybackSession(id: PlaybackSessionId): void {
   if (!existing) {
     return;
   }
-  const previousModelIds = collectSessionNamModelIds(existing);
+  const previousModelIds = collectReleasableNamModelIds(existing);
   playbackSessionsCollection.delete(id);
   scheduleNamModelCleanup(previousModelIds);
 }

@@ -11,12 +11,14 @@ import { type NodeGraph, nodeGraphSchema } from "@/lib/node-graph/schema";
 import {
   exportNamModels,
   prepareImportedNamModels,
+  validateMissingNamModels,
   validateNamModelBackup,
 } from "./nam-backup";
 
 const INVALID_BACKUP = /Invalid NAM model backup/;
 const INVALID_MODEL = /NAM model must contain a JSON object/;
 const MISSING_MODEL = /Missing local NAM model/;
+const INVALID_MISSING = /Invalid missing NAM model list/;
 const modelData = '{"version":"0.5.2","weights":[1,2,3]}';
 
 function modelGraph(modelId: string): NodeGraph {
@@ -61,8 +63,9 @@ describe("NAM file-backup assets", () => {
     const id = createLocalNamModelId();
     const graph = modelGraph(id);
     await saveNamModel(id, modelData);
-    const backup = await exportNamModels(graph);
+    const { missing, models: backup } = await exportNamModels(graph);
     expect(backup).toEqual({ [id]: modelData });
+    expect(missing).toBeUndefined();
     await deleteNamModel(id);
 
     const imported = await prepareImportedNamModels(graph, backup);
@@ -94,7 +97,7 @@ describe("NAM file-backup assets", () => {
       type: "fxComposite",
     };
     await saveNamModel(id, modelData);
-    const backup = await exportNamModels(graph);
+    const { models: backup } = await exportNamModels(graph);
     await deleteNamModel(id);
     const imported = await prepareImportedNamModels(graph, backup);
     const [importedRack] = imported.graph.nodes;
@@ -134,8 +137,37 @@ describe("NAM file-backup assets", () => {
     await expect(prepareImportedNamModels(graph, undefined)).rejects.toThrow(
       MISSING_MODEL
     );
-    await expect(exportNamModels(graph)).rejects.toThrow(MISSING_MODEL);
+    expect(() => validateMissingNamModels(["local-nam:other"], graph)).toThrow(
+      INVALID_MISSING
+    );
+    expect(() => validateMissingNamModels(id, graph)).toThrow(INVALID_MISSING);
     expect(await getNamModel(id)).toBeNull();
+  });
+
+  test("a model gone from this device is listed missing and imports without bytes", async () => {
+    const id = createLocalNamModelId();
+    const graph = modelGraph(id);
+
+    const exported = await exportNamModels(graph);
+    expect(exported).toEqual({ missing: [id], models: undefined });
+
+    const missing = validateMissingNamModels(exported.missing, graph);
+    expect(validateNamModelBackup(exported.models, graph, missing)).toBe(
+      undefined
+    );
+    const imported = await prepareImportedNamModels(
+      graph,
+      exported.models,
+      missing
+    );
+    const amp = imported.graph.nodes.find((node) => node.type === "neuralAmp");
+    if (amp?.type !== "neuralAmp" || amp.data.effect.type !== "neuralAmp") {
+      throw new Error("Expected NAM effect");
+    }
+    // The FX stays, without a model.
+    expect(amp.data.effect.modelId).toBeNull();
+    expect(amp.data.effect.modelData).toBeNull();
+    await imported.rollback();
   });
 
   test("legacy graph-only backups use an available local model explicitly", async () => {

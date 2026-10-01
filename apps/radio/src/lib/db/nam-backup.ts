@@ -37,40 +37,98 @@ function localModels(graph: NodeGraph | null): NeuralAmpConfig[] {
   );
 }
 
-/** File backups carry every local model, including unwired and nested FX. */
-export async function exportNamModels(
-  graph: NodeGraph | null
-): Promise<NamModelBackup | undefined> {
-  const entries = await Promise.all(
-    localModels(graph).map(async (model) => {
-      const id = model.modelId as string;
-      const data = model.modelData ?? (await getNamModel(id));
-      if (!data) {
-        throw new Error(`Missing local NAM model: ${model.modelName ?? id}`);
-      }
-      return [
-        id,
-        parseNamModel(model.modelName ?? id, data).modelData,
-      ] as const;
-    })
-  );
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+export type NamModelExport = {
+  models: NamModelBackup | undefined;
+  /** Local models the patch names whose bytes this browser no longer has. */
+  missing: string[] | undefined;
+};
+
+async function readLocalModel(model: NeuralAmpConfig): Promise<string | null> {
+  const id = model.modelId as string;
+  const data = model.modelData ?? (await getNamModel(id).catch(() => null));
+  if (!data) {
+    return null;
+  }
+  try {
+    return parseNamModel(model.modelName ?? id, data).modelData;
+  } catch {
+    return null;
+  }
 }
 
-/** Validate bytes and reference coverage before previewing or applying a backup. */
-export function validateNamModelBackup(
+/**
+ * File backups carry every local model, including unwired and nested FX.
+ * One whose bytes are gone is listed as missing rather than failing the
+ * backup, so stations, settings and the rest of the patch still export.
+ */
+export async function exportNamModels(
+  graph: NodeGraph | null
+): Promise<NamModelExport> {
+  const entries = await Promise.all(
+    localModels(graph).map(
+      async (model) =>
+        [model.modelId as string, await readLocalModel(model)] as const
+    )
+  );
+  const models: NamModelBackup = {};
+  const missing = new Set<string>();
+  for (const [id, data] of entries) {
+    if (data) {
+      models[id] = data;
+    } else {
+      missing.add(id);
+    }
+  }
+  for (const id of Object.keys(models)) {
+    missing.delete(id);
+  }
+  return {
+    missing: missing.size > 0 ? [...missing] : undefined,
+    models: Object.keys(models).length > 0 ? models : undefined,
+  };
+}
+
+/** Validate the list of models a backup says it could not carry. */
+export function validateMissingNamModels(
   raw: unknown,
   graph: NodeGraph | null
-): NamModelBackup | undefined {
+): string[] | undefined {
   if (raw === undefined) {
     return undefined;
   }
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+  const referenced = new Set(localModels(graph).map((model) => model.modelId));
+  if (
+    !(
+      Array.isArray(raw) &&
+      raw.every((id) => typeof id === "string" && referenced.has(id))
+    )
+  ) {
+    throw new Error("Invalid missing NAM model list");
+  }
+  return raw.length > 0 ? [...new Set(raw as string[])] : undefined;
+}
+
+/**
+ * Validate bytes and reference coverage before previewing or applying a
+ * backup. A model the backup lists as `missing` may come without bytes.
+ */
+export function validateNamModelBackup(
+  raw: unknown,
+  graph: NodeGraph | null,
+  missing: readonly string[] = []
+): NamModelBackup | undefined {
+  if (raw === undefined && missing.length === 0) {
+    return undefined;
+  }
+  if (
+    raw !== undefined &&
+    (raw === null || typeof raw !== "object" || Array.isArray(raw))
+  ) {
     throw new Error("Invalid NAM model backup");
   }
   const referenced = new Set(localModels(graph).map((model) => model.modelId));
   const models: NamModelBackup = {};
-  for (const [id, data] of Object.entries(raw)) {
+  for (const [id, data] of Object.entries(raw ?? {})) {
     if (
       !id.startsWith("local-nam:") ||
       id.length === "local-nam:".length ||
@@ -81,14 +139,14 @@ export function validateNamModelBackup(
     }
     models[id] = parseNamModel(id, data).modelData;
   }
+  const absent = new Set(missing);
   for (const model of localModels(graph)) {
-    if (!(model.modelData || models[model.modelId as string])) {
-      throw new Error(
-        `Missing local NAM model: ${model.modelName ?? model.modelId}`
-      );
+    const id = model.modelId as string;
+    if (!(model.modelData || models[id] || absent.has(id))) {
+      throw new Error(`Missing local NAM model: ${model.modelName ?? id}`);
     }
   }
-  return models;
+  return raw === undefined ? undefined : models;
 }
 
 export function hasLocalNamModels(graph: NodeGraph | null): boolean {
@@ -97,17 +155,27 @@ export function hasLocalNamModels(graph: NodeGraph | null): boolean {
 
 /**
  * Fresh IDs preserve local/Undo assets even when a backup reuses their IDs.
- * Only newly staged models are removed if the following import fails.
+ * Only newly staged models are removed if the following import fails. A
+ * model the backup lists as missing, with no bytes here either, loads as
+ * an FX without a model.
  */
 export async function prepareImportedNamModels(
   graph: NodeGraph,
-  backup: NamModelBackup | undefined
+  backup: NamModelBackup | undefined,
+  missing: readonly string[] = []
 ): Promise<{ graph: NodeGraph; rollback: () => Promise<void> }> {
+  const absent = new Set(missing);
   const entries = await Promise.all(
     localModels(graph).map(async (model) => {
       const id = model.modelId as string;
-      const bytes = backup?.[id] ?? model.modelData ?? (await getNamModel(id));
+      const bytes =
+        backup?.[id] ??
+        model.modelData ??
+        (await getNamModel(id).catch(() => null));
       if (!bytes) {
+        if (absent.has(id)) {
+          return null;
+        }
         throw new Error(`Missing local NAM model: ${model.modelName ?? id}`);
       }
       return [
@@ -116,7 +184,7 @@ export async function prepareImportedNamModels(
       ] as const;
     })
   );
-  const data = new Map(entries);
+  const data = new Map(entries.filter((entry) => entry !== null));
   const replacements = new Map<string, string>();
   const rollback = async () => {
     await Promise.all([...replacements.values()].map(deleteNamModel));
@@ -135,7 +203,12 @@ export async function prepareImportedNamModels(
     }
     const prepared = structuredClone(graph);
     for (const model of localModels(prepared)) {
-      model.modelId = replacements.get(model.modelId as string) as string;
+      const replacement = replacements.get(model.modelId as string);
+      if (!replacement) {
+        // Missing from the backup: the FX stays, without a model.
+        model.modelName = null;
+      }
+      model.modelId = replacement ?? null;
       model.modelData = null;
     }
     return { graph: prepared, rollback };

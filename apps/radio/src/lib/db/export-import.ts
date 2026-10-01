@@ -34,6 +34,7 @@ import {
   exportNamModels,
   hasLocalNamModels,
   prepareImportedNamModels,
+  validateMissingNamModels,
   validateNamModelBackup,
 } from "./nam-backup";
 
@@ -373,10 +374,18 @@ export const createDatabaseExport = async (): Promise<DatabaseExport> => {
   const settings = getSettings();
   const graph = playbackSessionsCollection.state.get("node")?.graph ?? null;
   const sessions = exportSessions();
+  const namModels = await exportNamModels(graph);
+  if (namModels.missing) {
+    console.warn(
+      "[export] Backing up without missing local NAM models",
+      namModels.missing
+    );
+  }
 
   return {
     exportDate: new Date().toISOString(),
-    namModels: await exportNamModels(graph),
+    missingNamModels: namModels.missing,
+    namModels: namModels.models,
     radios: radios as unknown as Radio[],
     sessions,
     settings: (settings || {
@@ -397,7 +406,8 @@ export const exportDatabase = async (): Promise<void> => {
   }
 
   try {
-    const jsonString = JSON.stringify(await createDatabaseExport(), null, 2);
+    const backup = await createDatabaseExport();
+    const jsonString = JSON.stringify(backup, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
     const url = URL.createObjectURL(blob);
 
@@ -411,7 +421,16 @@ export const exportDatabase = async (): Promise<void> => {
 
     // Store export timestamp
     localStorage.setItem(STORAGE_KEY_LAST_EXPORT, new Date().toISOString());
-    toast.success("Backup downloaded");
+    const missing = backup.missingNamModels?.length ?? 0;
+    if (missing > 0) {
+      toast.warning(
+        missing === 1
+          ? "Backup downloaded without 1 NAM model missing on this device"
+          : `Backup downloaded without ${missing} NAM models missing on this device`
+      );
+    } else {
+      toast.success("Backup downloaded");
+    }
   } catch (error) {
     console.error("Export failed:", error);
     toast.error("Couldn't download backup");
@@ -496,7 +515,12 @@ export const parseImportData = (
     const data: unknown = JSON.parse(dataString);
     return validateImportData(
       source === "share-link" && isRecord(data)
-        ? { ...data, namModels: undefined, sessions: undefined }
+        ? {
+            ...data,
+            missingNamModels: undefined,
+            namModels: undefined,
+            sessions: undefined,
+          }
         : data
     );
   } catch (error) {
@@ -552,7 +576,15 @@ export const validateImportData = (data: unknown): DatabaseExport => {
   };
   // Refuse an invalid patch here, before any preview or change.
   const graph = readImportedNodePatch(importData);
-  importData.namModels = validateNamModelBackup(exportData.namModels, graph);
+  importData.missingNamModels = validateMissingNamModels(
+    exportData.missingNamModels,
+    graph
+  );
+  importData.namModels = validateNamModelBackup(
+    exportData.namModels,
+    graph,
+    importData.missingNamModels
+  );
   readImportedMasterVolume(importData);
   return importData;
 };
@@ -863,17 +895,27 @@ function importWithNamModels(
     apply(validated);
     return;
   }
-  return prepareImportedNamModels(graph, validated.namModels).then(
+  return prepareImportedNamModels(
+    graph,
+    validated.namModels,
+    validated.missingNamModels
+  ).then(
     async (prepared) => {
       try {
         apply({
           ...validated,
+          missingNamModels: undefined,
           namModels: undefined,
           sessions: {
             ...validated.sessions,
             node: { ...validated.sessions?.node, graph: prepared.graph },
           },
         });
+        if (validated.missingNamModels) {
+          toast.warning(
+            "Some NAM models were missing from this backup; their amps load without a model"
+          );
+        }
       } catch (error) {
         await prepared.rollback();
         throw error;

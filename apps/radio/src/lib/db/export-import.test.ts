@@ -1343,6 +1343,40 @@ describe("local NAM file backups", () => {
     }
   );
 
+  test.each(importers)(
+    "%s imports a backup made without a model missing on its device",
+    async (_label, apply) => {
+      seedLocalPatch();
+      const goneId = createLocalNamModelId();
+      playbackSessionsCollection.update("node", (draft) => {
+        draft.graph = patchWithModel(goneId);
+      });
+      const warnings = spyOn(console, "warn").mockImplementation(
+        () => undefined
+      );
+      try {
+        // The model's file is gone, yet stations and the patch back up.
+        const exported = await createDatabaseExport();
+        expect(exported.missingNamModels).toEqual([goneId]);
+        expect(exported.namModels).toBeUndefined();
+        expect(exported.radios).toHaveLength(1);
+        await resetCollections();
+
+        await apply(parseImportData(JSON.stringify(exported)));
+      } finally {
+        warnings.mockRestore();
+      }
+
+      const amp = getPlaybackSession("node")?.graph?.nodes.find(
+        (node) => node.type === "neuralAmp"
+      );
+      if (amp?.type !== "neuralAmp" || amp.data.effect.type !== "neuralAmp") {
+        throw new Error("Expected imported NAM effect");
+      }
+      expect(amp.data.effect.modelId).toBeNull();
+    }
+  );
+
   test("a legacy backup without available model bytes reports the missing model", async () => {
     const local = seedLocalPatch();
     loadNodeGraph(local);

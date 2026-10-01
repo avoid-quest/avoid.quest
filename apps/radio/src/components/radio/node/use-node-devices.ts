@@ -30,7 +30,9 @@ export function nodeDevices(
  * The browser's audio inputs and outputs for Node mode's device nodes and
  * palette, following hot-plug and where the mic permission stands.
  * `inputsListed` and `outputsListed` are true once a list holds real
- * device ids, so a device missing from it is truly unplugged.
+ * device ids, so a device missing from it is truly unplugged. Outputs
+ * listed with the mic allowed vouch for the inputs too: an empty input
+ * list then means the last input was unplugged.
  */
 export function useNodeDevices({ enabled = true }: { enabled?: boolean } = {}) {
   const {
@@ -46,7 +48,7 @@ export function useNodeDevices({ enabled = true }: { enabled?: boolean } = {}) {
   const granted = permissionState === "granted";
   return {
     inputs,
-    inputsListed: granted && inputs.length > 0,
+    inputsListed: granted && (inputs.length > 0 || outputs.length > 0),
     isLoading,
     outputs,
     outputsListed: granted && outputs.length > 0,

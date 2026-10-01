@@ -129,6 +129,7 @@ export class DeviceSource {
   private _channelSelection: ChannelSelection = { left: 0, right: 1 };
   private _channelCount = 2;
   private diagnostics: DeviceSourceDiagnostics | null = null;
+  private trackEndCleanup: (() => void) | null = null;
   private diagnosticsTrack: MediaStreamTrack | null = null;
   private splitter: ChannelSplitterNode | null = null;
   private merger: ChannelMergerNode | null = null;
@@ -453,6 +454,7 @@ export class DeviceSource {
       }
       const { audioTrack, capabilities, settings } = getCaptureState(stream);
       this.stream = stream;
+      this.watchTrackEnd(stream);
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
@@ -496,6 +498,23 @@ export class DeviceSource {
       this.handleStartError(error);
       throw error;
     }
+  }
+
+  /**
+   * The browser ends a capture's tracks when its device is unplugged or the
+   * mic permission is revoked: the capture stops then, rather than read as
+   * live with no audio.
+   */
+  private watchTrackEnd(stream: MediaStream): void {
+    const ended = () => this.stop();
+    for (const track of stream.getTracks()) {
+      track.addEventListener?.("ended", ended);
+    }
+    this.trackEndCleanup = () => {
+      for (const track of stream.getTracks()) {
+        track.removeEventListener?.("ended", ended);
+      }
+    };
   }
 
   /**
@@ -546,6 +565,9 @@ export class DeviceSource {
     this.diagnostics = null;
     this.diagnosticsTrack = null;
     const wasActive = this._isActive;
+
+    this.trackEndCleanup?.();
+    this.trackEndCleanup = null;
 
     // Stop all tracks in the stream
     if (this.stream) {

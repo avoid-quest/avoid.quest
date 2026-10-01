@@ -289,4 +289,55 @@ describe("DeviceSource capture policy", () => {
 
     source.stop();
   });
+
+  test("a capture whose track ends, unplugged or revoked, stops", async () => {
+    const listeners = new Set<() => void>();
+    const track = {
+      addEventListener: (_type: string, listener: () => void) => {
+        listeners.add(listener);
+      },
+      getSettings: () => ({ channelCount: 2, deviceId: "usb-mic" }),
+      removeEventListener: (_type: string, listener: () => void) => {
+        listeners.delete(listener);
+      },
+      stop: mock(() => undefined),
+    };
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {
+        mediaDevices: {
+          addEventListener: () => undefined,
+          getUserMedia: () =>
+            Promise.resolve({
+              getAudioTracks: () => [track],
+              getTracks: () => [track],
+            }),
+          removeEventListener: () => undefined,
+        },
+      },
+    });
+    const node = {
+      connect: () => undefined,
+      disconnect: () => undefined,
+      gain: { value: 1 },
+    };
+    const context = {
+      createGain: () => node,
+      createMediaStreamSource: () => node,
+    } as unknown as AudioContext;
+    const onInactive = mock(() => undefined);
+    const source = new DeviceSource(context, "mic", { onInactive });
+
+    await source.start("usb-mic");
+    expect(source.isActive).toBe(true);
+
+    for (const listener of [...listeners]) {
+      listener();
+    }
+
+    expect(source.isActive).toBe(false);
+    expect(source.output).toBeNull();
+    expect(onInactive).toHaveBeenCalledTimes(1);
+    expect(listeners.size).toBe(0);
+  });
 });

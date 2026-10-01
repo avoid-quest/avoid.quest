@@ -338,6 +338,20 @@ describe("Audio input node", () => {
     ).toContain("Desk mic");
   });
 
+  test("hot-plug: unplugging the last input still reads Unplugged", async () => {
+    media.permission = "granted";
+    const view = render(<InputHarness />);
+    await flush();
+
+    await act(async () => {
+      plug([USB]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(
+      view.getByText("Unplugged: plug it back in or pick another")
+    ).toBeTruthy();
+  });
+
   test("cabled to an output, it says to use headphones and offers echo cancellation", async () => {
     media.permission = "granted";
     const onEchoCancellationChange = mock((_enabled: boolean) => undefined);

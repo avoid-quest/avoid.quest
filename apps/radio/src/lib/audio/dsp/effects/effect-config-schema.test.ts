@@ -5,6 +5,7 @@ import {
   MAX_CHAIN_GAIN,
   nodeEffectConfigSchema,
 } from "./effect-config-schema";
+import { getEffectMidiParamDefs } from "./param-traversal";
 import { createDefaultEffectConfig } from "./registry";
 import {
   EFFECT_TYPES,
@@ -113,6 +114,22 @@ describe("effectConfigSchema (stored)", () => {
 describe("nodeEffectConfigSchema", () => {
   const refuses = (config: unknown) =>
     expect(nodeEffectConfigSchema.safeParse(config).success).toBe(false);
+
+  test.each(EFFECT_TYPES.map((type) => [type]))(
+    "reads a %s as its palette node and its controls' ends set it",
+    (type) => {
+      const config = createDefaultEffectConfig(type, "fx", 0);
+      expect(nodeEffectConfigSchema.safeParse(config).success).toBe(true);
+      for (const param of getEffectMidiParamDefs(type)) {
+        for (const value of [param.min, param.max]) {
+          expect(
+            nodeEffectConfigSchema.safeParse({ ...config, [param.key]: value })
+              .success
+          ).toBe(true);
+        }
+      }
+    }
+  );
 
   test("refuses a Post-FX trim past its slider", () => {
     refuses({

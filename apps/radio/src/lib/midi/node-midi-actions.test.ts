@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { removeNodes, setEffectParams } from "@/lib/node-graph/graph-edits";
 import {
@@ -217,6 +218,31 @@ describe("createNodeMidiActions", () => {
     const { enabled } = effectOf(store, "comp");
     byTarget.get("node:comp:enabled")?.dispatch(1);
     expect(effectOf(store, "comp").enabled).toBe(!enabled);
+  });
+
+  test("a value past 0..1 from a mapping's transform stays in the param's range", () => {
+    const store = createNodeStore(buildGraph());
+    const actions = createNodeMidiActions(
+      store.state.graph as NodeGraph,
+      storeCommit(store)
+    );
+    const byTarget = new Map(actions.map((a) => [a.targetId, a]));
+    const threshold = getEffectMidiParamDefs("compressor").find(
+      (param) => param.key === "threshold"
+    );
+
+    byTarget.get("node:comp:threshold")?.dispatch(1.5);
+    expect(effectOf(store, "comp").threshold).toBe(threshold?.max);
+    byTarget.get("node:comp:outputGain")?.dispatch(-0.5);
+    expect(effectOf(store, "comp").outputGain).toBe(0);
+    byTarget.get("node:lp:frequency")?.dispatch(2);
+    const filter = store.state.graph?.nodes.find((node) => node.id === "lp");
+    expect((filter?.data as { frequency: number } | undefined)?.frequency).toBe(
+      20_000
+    );
+
+    // The patch stays one the strict FX schema reads.
+    expect(nodeGraphSchema.safeParse(store.state.graph).success).toBe(true);
   });
 
   test("the signature follows the patch's shape, not its params", () => {

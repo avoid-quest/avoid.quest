@@ -78,13 +78,24 @@ export function nodeMidiTargetPrefix(nodeId: string): MidiTargetId {
   return `${NODE_TARGET_PREFIX}${nodeId}`;
 }
 
-/** Maps a 0..1 controller value onto a param's range. */
-function scaled(value: number, range: { min: number; max: number }): number {
-  return range.min + value * (range.max - range.min);
+/**
+ * Keeps a scaled value inside its param's range. A mapping's transform can
+ * reach past 0..1, and the patch refuses an FX param its control can't set.
+ */
+function withinRange(
+  value: number,
+  { min, max }: { min: number; max: number }
+): number {
+  return Math.min(max, Math.max(min, value));
 }
 
-function logScaled(value: number, { min, max }: NativeParamRange): number {
-  return min * (max / min) ** value;
+/** Maps a 0..1 controller value onto a param's range. */
+function scaled(value: number, range: { min: number; max: number }): number {
+  return withinRange(range.min + value * (range.max - range.min), range);
+}
+
+function logScaled(value: number, range: NativeParamRange): number {
+  return withinRange(range.min * (range.max / range.min) ** value, range);
 }
 
 function isNativeNode(

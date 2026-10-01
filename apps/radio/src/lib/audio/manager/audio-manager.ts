@@ -1017,19 +1017,20 @@ export class AudioManager {
     };
 
     try {
-      await instance.playbackSource.refreshUrl(
+      // A pause while the new URL loads keeps the sound paused.
+      const playing = await instance.playbackSource.refreshUrl(
         toPlaybackInput(refreshedRadio),
         seekPosition
       );
 
       instance.radio = refreshedRadio;
       instance.loading = false;
-      instance.playing = true;
+      instance.playing = playing;
 
       notifySoundState(this.notifyListeners, soundId, instance, {
         error: null,
         isLoading: false,
-        isPlaying: true,
+        isPlaying: playing,
       });
     } catch (error) {
       instance.loading = false;

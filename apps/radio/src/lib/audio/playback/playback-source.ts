@@ -21,7 +21,8 @@ type PlaybackSource = {
   load: (input: PlaybackInput) => Promise<void>;
   pause: () => void;
   play: () => Promise<void>;
-  refreshUrl: (input: PlaybackInput, seekPosition?: number) => Promise<void>;
+  /** Swaps in a renewed URL; resolves whether the source plays on. */
+  refreshUrl: (input: PlaybackInput, seekPosition?: number) => Promise<boolean>;
   seek: (position: number) => void;
   setPlaybackRate: (rate: number) => void;
   /** Key lock: keep the pitch while the rate changes. */

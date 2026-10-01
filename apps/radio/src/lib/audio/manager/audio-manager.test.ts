@@ -232,6 +232,38 @@ describe("AudioManager", () => {
     expect(instance.loading).toBe(false);
   });
 
+  test.each([true, false])(
+    "a stream refresh reports playing only when its source plays on (%p)",
+    async (playsOn) => {
+      const manager = AudioManager.getInstance();
+      const soundId = manager.createSound(station, "node:n:track");
+      const instance = getRegistry(manager).get(soundId);
+      if (!instance) {
+        throw new Error("sound was not created");
+      }
+      instance.playbackSource = {
+        ...createPendingSource(),
+        refreshUrl: async () => playsOn,
+      } as unknown as PlaybackSource;
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => {
+        states.push(state);
+      });
+
+      await manager.refreshStreamUrl(
+        soundId,
+        "https://radio.example/renewed.mp3",
+        12
+      );
+
+      expect(states.at(-1)).toMatchObject({
+        isLoading: false,
+        isPlaying: playsOn,
+      });
+      expect(instance.playing).toBe(playsOn);
+    }
+  );
+
   test("without a connector, Single and DJ sounds connect to the main bus", async () => {
     const manager = AudioManager.getInstance();
     const graph = createGraphHarness(manager);

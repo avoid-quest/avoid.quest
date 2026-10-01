@@ -344,6 +344,52 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   });
 
+  test("a refresh of a playing stream plays on its new URL", async () => {
+    const browser = installBrowser();
+    try {
+      const source = new MediaElementPlaybackSource(null, "native");
+      const audio = browser.audio();
+      await startNativeStream(source, audio, "https://radio.example/old.mp3");
+
+      const refresh = source.refreshUrl({
+        format: "progressive",
+        src: "https://radio.example/new.mp3",
+      });
+      await flushMicrotasks();
+      audio.emit("canplay");
+
+      expect(await refresh).toBe(true);
+      expect(audio.paused).toBe(false);
+      expect(audio.src).toBe("https://radio.example/new.mp3");
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("a pause while a refresh loads keeps the stream paused", async () => {
+    const browser = installBrowser();
+    try {
+      const source = new MediaElementPlaybackSource(null, "native");
+      const audio = browser.audio();
+      await startNativeStream(source, audio, "https://radio.example/old.mp3");
+
+      const refresh = source.refreshUrl({
+        format: "progressive",
+        src: "https://radio.example/new.mp3",
+      });
+      await flushMicrotasks();
+      source.pause();
+      audio.emit("canplay");
+
+      expect(await refresh).toBe(false);
+      expect(audio.paused).toBe(true);
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
   test("keeps its speed through a load and sets key lock on the element", () => {
     const browser = installBrowser();
     try {

@@ -328,9 +328,20 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
   }
 
-  async refreshUrl(input: PlaybackInput, seekPosition?: number): Promise<void> {
+  /**
+   * Loads `input` in place of the current stream at `seekPosition`. It plays
+   * on only if it was playing and no pause, play or load came meanwhile.
+   * Resolves whether it is meant to play now.
+   */
+  async refreshUrl(
+    input: PlaybackInput,
+    seekPosition?: number
+  ): Promise<boolean> {
     const shouldResume = this.shouldResumeAfterLoad || !this.audio.paused;
-    await this.load(input);
+    const loading = this.load(input);
+    // The load drops the old intent first; any later pause or play moves it.
+    const { playbackIntent } = this;
+    await loading;
 
     if (
       seekPosition !== undefined &&
@@ -340,9 +351,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.seek(seekPosition);
     }
 
-    if (shouldResume) {
+    if (shouldResume && playbackIntent === this.playbackIntent) {
       await this.play();
     }
+    return this.shouldResumeAfterLoad;
   }
 
   private async loadSource(

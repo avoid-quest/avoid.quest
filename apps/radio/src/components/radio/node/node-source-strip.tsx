@@ -117,6 +117,7 @@ export function NodeCompactStrip({
       className={cn("flex min-w-0 items-center gap-1", className)}
       onKeyUp={release}
       onPointerUp={release}
+      onWheelCapture={release}
     >
       <CompactSourceStrip
         className="flex-1"

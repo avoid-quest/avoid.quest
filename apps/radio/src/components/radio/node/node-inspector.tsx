@@ -350,6 +350,7 @@ function InspectorParams({
       data-vaul-no-drag
       onKeyUp={release}
       onPointerUp={release}
+      onWheelCapture={release}
     >
       {params}
     </div>

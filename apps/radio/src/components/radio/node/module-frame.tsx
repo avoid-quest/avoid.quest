@@ -225,7 +225,9 @@ export function ModuleHeader({
  * The body's control row. Keys stay here (`keepControlKeys`): an arrow on a
  * focused knob turns it instead of moving the node, and Delete or C don't
  * reach the canvas.
- * A pointer or key release is where the patch takes an undo step.
+ * A pointer or key release is where the patch takes an undo step, and so is
+ * each wheel tick; a control's own wheel listener stops the event, so this
+ * one listens in the capture phase.
  */
 export function ModuleControls({
   onRelease,
@@ -248,6 +250,7 @@ export function ModuleControls({
       onKeyDown={keepControlKeys}
       onKeyUp={release}
       onPointerUp={release}
+      onWheelCapture={release}
     >
       {children}
     </div>

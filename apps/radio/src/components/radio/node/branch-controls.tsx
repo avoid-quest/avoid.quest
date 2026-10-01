@@ -75,6 +75,7 @@ export function BranchControls({
         onKeyDown={keepControlKeys}
         onKeyUp={release}
         onPointerUp={release}
+        onWheelCapture={release}
       >
         <ModuleKnob
           defaultValue={1}

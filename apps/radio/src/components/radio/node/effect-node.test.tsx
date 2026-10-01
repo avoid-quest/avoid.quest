@@ -1,5 +1,13 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  jest,
+  mock,
+  test,
+} from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { EffectConfig } from "@/lib/audio";
@@ -273,6 +281,39 @@ describe("EffectNodeBody", () => {
       (effect as { threshold: number }).threshold
     );
     expect(outside).not.toHaveBeenCalled();
+  });
+
+  test("a wheel tick on a knob takes an undo step once the throttle flushes", () => {
+    jest.useFakeTimers();
+    try {
+      const onChange = mock((_patch: Partial<EffectConfig>) => undefined);
+      const onRelease = mock(() => undefined);
+      const view = renderBody(
+        createDefaultEffectConfig("compressor", "c1", 0),
+        {
+          onChange,
+          onRelease,
+        }
+      );
+
+      const knob = view.getByRole("slider", { name: "Compressor threshold" });
+      act(() => {
+        knob.dispatchEvent(
+          new dom.window.WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            deltaY: -1,
+          })
+        );
+      });
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onRelease).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(moduleFrame.RELEASE_DELAY_MS);
+      expect(onRelease).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

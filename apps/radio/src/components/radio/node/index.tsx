@@ -99,7 +99,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const [portDrop, setPortDrop] = useState<PortDrop | null>(null);
   const patchWasOpenRef = useRef(false);
   const isPhone = useIsMobile();
-  const inspectorPanel = useRef<ResizablePanelHandle>(null);
+  const inspectorPanel = useRef<ResizablePanelHandle | null>(null);
   const inspector = useNodeInspector({
     isPhone,
     onInspect: () => inspectorPanel.current?.expand(),

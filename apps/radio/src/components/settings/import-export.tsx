@@ -191,7 +191,7 @@ export function ImportExport({
             </p>
           )}
 
-          {shareUrl?.trim() !== "" && (
+          {shareUrl.trim() !== "" && (
             <div className="space-y-1.5">
               <Label htmlFor="share-url">Share link</Label>
               <Input

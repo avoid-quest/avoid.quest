@@ -46,7 +46,6 @@ export function useControlReset(reset: ResetHandler | undefined) {
     }
     const previous = lastTap.current;
     if (
-      // biome-ignore lint/suspicious/noUnnecessaryConditions: the previous pointerup records this ref for a later touch event
       previous &&
       event.timeStamp - previous.time <= TAP_INTERVAL_MS &&
       Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <=

@@ -3911,6 +3911,158 @@ describe("Node Playback: Track and File sources", () => {
     ).not.toHaveBeenCalled();
   });
 
+  test.each(["source", "all"] as const)(
+    "an interrupted stream's renewal cannot resume it after a %s pause",
+    async (pause) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const renewal = Promise.withResolvers<{
+        streamFormat: "progressive";
+        streamUrl: string;
+      }>();
+      const harness = createHarness({
+        resolveStream: mock(() => renewal.promise),
+      });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("video", true);
+
+      laneWatcher(
+        harness.context,
+        "video"
+      )(
+        audioState({
+          error: {
+            code: "STREAM_INTERRUPTED",
+            id: "e1",
+            message: "expired",
+            position: 42,
+            timestamp: Date.now(),
+          },
+        })
+      );
+      if (pause === "all") {
+        harness.playback.pauseAll();
+      } else {
+        await harness.playback.setPlaying("video", false);
+      }
+      renewal.resolve({
+        streamFormat: "progressive",
+        streamUrl: "https://media.example/renewed.m4a",
+      });
+      await harness.playback.whenSettled();
+
+      expect(
+        harness.context.audioEngine.playback.refreshStreamUrl
+      ).not.toHaveBeenCalled();
+      expect(getPlaybackChannelRuntime(channelOf("video")).isPlaying).toBe(
+        false
+      );
+    }
+  );
+
+  test("an interrupted stream renewing its URL keeps its stream budget slot", async () => {
+    insertNodeSession(
+      patch([
+        station("a"),
+        station("b"),
+        trackNode("t1"),
+        trackNode("video"),
+        trackNode("t2"),
+      ])
+    );
+    const renewal = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({
+      profile: "mobile",
+      resolveStream: mock(() => renewal.promise),
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.setPlaying("b", true);
+    await harness.playback.setPlaying("t1", true);
+    await harness.playback.setPlaying("video", true);
+
+    setPlaybackChannelRuntime(channelOf("video"), () => ({
+      isLoading: false,
+      isPlaying: false,
+    }));
+    laneWatcher(
+      harness.context,
+      "video"
+    )(
+      audioState({
+        error: {
+          code: "STREAM_INTERRUPTED",
+          id: "e1",
+          message: "expired",
+          position: 42,
+          timestamp: Date.now(),
+        },
+      })
+    );
+    await harness.playback.setPlaying("t2", true);
+
+    expect(getPlaybackChannelRuntime(channelOf("t2"))).toMatchObject({
+      error: {
+        message:
+          "Up to 4 streams can play at once here. Pause one to start this.",
+      },
+      isPlaying: false,
+    });
+    renewal.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/renewed.m4a",
+    });
+    await harness.playback.whenSettled();
+  });
+
+  test("a replaced track's fading sound ending never advances its replacement", async () => {
+    insertNodeSession(patch([trackNode("album", album)]));
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("album", true);
+    const oldWatcher = laneWatcher(harness.context, "album");
+
+    const replacement = {
+      id: "other-album",
+      name: "Another album",
+      platformMetadata: {
+        itemType: "album",
+        platform: "bandcamp",
+        tracks: [
+          { name: "A", streamUrl: "https://media.example/a.mp3" },
+          { name: "B", streamUrl: "https://media.example/b.mp3" },
+        ],
+        url: "https://artist.bandcamp.com/album/another-album",
+      },
+      streamUrl: "https://media.example/a.mp3",
+    } as Radio;
+    commitNodeGraph(
+      (graph) => setSourceRadio(graph, "album", replacement),
+      harness.store
+    );
+    harness.playback.flush();
+    // The old sound ends while it fades out.
+    setPlaybackChannelRuntime(channelOf("album"), () => ({
+      isPlaying: false,
+    }));
+    oldWatcher(audioState({ hasEnded: true }));
+    fade.resolve();
+    await harness.playback.whenSettled();
+
+    const node = harness.store.state.graph?.nodes.find(
+      (entry) => entry.id === "album"
+    );
+    expect(node?.data).toMatchObject({
+      radio: { streamUrl: "https://media.example/a.mp3" },
+    });
+  });
+
   test("an album moves to its next track at the end of one, and plays it", async () => {
     insertNodeSession(patch([trackNode("album", album)]));
     const harness = createHarness();

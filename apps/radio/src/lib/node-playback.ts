@@ -457,6 +457,12 @@ function createNodePlayback(
   const laneWatches = new Map<string, LaneWatch>();
   /** Channels moving to their next track, so an end is handled once. */
   const advancingLanes = new Set<string>();
+  /**
+   * Interrupted streams renewing their URL. Their runtime says neither
+   * playing nor loading meanwhile, yet each resumes, so it keeps its slot
+   * in the stream budget until a pause, removal or deactivate cancels it.
+   */
+  const refreshingStreams = new Set<PendingChannelStart>();
 
   /**
    * A lane's level per output: the gains of its unmuted cables into it,
@@ -806,6 +812,11 @@ function createNodePlayback(
         busy.add(ownership.channelId);
       }
     }
+    for (const refresh of refreshingStreams) {
+      if (!refresh.cancelled) {
+        busy.add(refresh.channelId);
+      }
+    }
     busy.delete(channelId);
     return busy.size;
   };
@@ -1073,9 +1084,14 @@ function createNodePlayback(
       return;
     }
     if (state.error?.code === "STREAM_INTERRUPTED") {
+      // A pause, removal or deactivate while it resolves drops the resume.
+      const pending: PendingChannelStart = { cancelled: false, channelId };
+      const canRefresh = () => !pending.cancelled && isCurrent();
+      pendingChannelStarts.add(pending);
+      refreshingStreams.add(pending);
       track(
         refreshPlatformStream(radio, soundId, state.error.position ?? 0, {
-          isCurrent,
+          isCurrent: canRefresh,
           onFailed: (request, error) =>
             reportLaneFailure(channelId, request.failureMessage, error),
           onRefreshed: () =>
@@ -1090,6 +1106,9 @@ function createNodePlayback(
               streamFormat
             ),
           resolveStream,
+        }).finally(() => {
+          pendingChannelStarts.delete(pending);
+          refreshingStreams.delete(pending);
         })
       ).catch(warn("Could not refresh a stream"));
       return;
@@ -1241,6 +1260,9 @@ function createNodePlayback(
     bumpLane(laneId);
     laneOutcomes.delete(laneId);
     advancingLanes.delete(channelId);
+    // The plan already holds any replacement: the fading sound's end or
+    // interruption must not act on it.
+    laneWatches.delete(channelId);
     const runtime = getPlaybackChannelRuntime(channelId);
     carriedLanes.set(laneId, runtime.isPlaying || runtime.isLoading);
     cancelChannelStarts("remove", channelId);

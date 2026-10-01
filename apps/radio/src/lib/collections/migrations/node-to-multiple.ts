@@ -12,6 +12,7 @@
 
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
+import { laneChannelId } from "@/lib/node-graph/compile";
 import {
   createDefaultChannel,
   type PlaybackChannelRecord,
@@ -98,15 +99,22 @@ export function parseMultipleSessionRecord(
 /**
  * A `"multiple"` record with one channel per Station lane, in lane order and
  * at the lane's volume and mute. A station on two lanes keeps its first.
+ * Track, File and Audio input lanes have no Multiple channel; without a
+ * graph no lane is known to be a Station's.
  */
 export function buildMultipleSessionFromNodeSession(
-  node: Pick<PlaybackSessionRecord, "channels" | "masterVolume">
+  node: Pick<PlaybackSessionRecord, "channels" | "graph" | "masterVolume">
 ): MultipleSessionRecord {
+  const stationLaneIds = new Set(
+    (node.graph?.nodes ?? [])
+      .filter((graphNode) => graphNode.type === "station")
+      .map((graphNode) => laneChannelId(graphNode.id))
+  );
   const channelIds = new Set<string>();
   const channels = [...node.channels]
     .sort((a, b) => a.order - b.order)
     .flatMap((lane): MultipleChannelRecord[] => {
-      if (!lane.radio) {
+      if (!(lane.radio && stationLaneIds.has(lane.id))) {
         return [];
       }
       const radio = lane.radio as Radio;
@@ -176,14 +184,15 @@ export function migrateNodeToMultiple({
   // The current schemas reject both records, so they are written unvalidated.
   if (!sessions.state.has(LEGACY_MULTIPLE_SESSION_ID)) {
     const node = sessions.state.get("node");
+    const fromLanes = buildMultipleSessionFromNodeSession({
+      channels: node?.channels ?? [],
+      graph: node?.graph,
+      masterVolume: node?.masterVolume ?? 1,
+    });
     const multiple =
-      node && node.channels.length > 0
-        ? buildMultipleSessionFromNodeSession(node)
-        : (readMultipleBackup(storage)?.session ??
-          buildMultipleSessionFromNodeSession({
-            channels: [],
-            masterVolume: node?.masterVolume ?? 1,
-          }));
+      fromLanes.channels.length > 0
+        ? fromLanes
+        : (readMultipleBackup(storage)?.session ?? fromLanes);
     writeLegacyRecord(sessions, { ...multiple, id: "multiple" });
   }
   const current = settings.state.get(SETTINGS_ID);

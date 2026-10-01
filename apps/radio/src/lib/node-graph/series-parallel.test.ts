@@ -142,6 +142,61 @@ describe("seriesToParallel (P)", () => {
   });
 });
 
+describe("seriesToParallel (P): the cable budget", () => {
+  /** The series patch with filler stations cabled to Speakers and two outputs. */
+  function withCables(total: number): NodeGraph {
+    const targets = ["speakers", "out-1", "out-2"];
+    const fillers = Array.from(
+      { length: total - series.edges.length },
+      (_, index) => ({
+        source: `s${Math.floor(index / targets.length)}`,
+        target: targets[index % targets.length] ?? "speakers",
+      })
+    );
+    const stations = [...new Set(fillers.map(({ source }) => source))];
+    return nodeGraphSchema.parse({
+      ...series,
+      edges: [
+        ...series.edges,
+        ...fillers.map(({ source, target }) => audio(source, target)),
+      ],
+      nodes: [
+        ...series.nodes,
+        ...stations.map((id, index) => ({
+          data: {
+            radio: { id, name: id, streamUrl: `https://${id}.test` },
+          },
+          id,
+          position: { x: 0, y: 200 * (index + 1) },
+          type: "station",
+        })),
+        ...["out-1", "out-2"].map((id) => ({
+          data: { deviceId: id, deviceLabel: id },
+          id,
+          position: { x: 1600, y: 200 },
+          type: "deviceOut",
+        })),
+      ],
+    });
+  }
+
+  test("refuses P when its three new cables would pass 64", () => {
+    const full = withCables(62);
+    expect(compile(full, { crossOriginIsolated: false }).issues).toEqual([]);
+
+    expect(seriesToParallel(full, both)).toEqual({
+      message: "Up to 64 cables per patch",
+      ok: false,
+    });
+  });
+
+  test("allows P that lands on exactly 64 cables", () => {
+    const result = seriesToParallel(withCables(61), both);
+
+    expect(result.ok && result.graph.edges.length).toBe(64);
+  });
+});
+
 describe("parallelToSeries (S)", () => {
   test("restores the original series graph", () => {
     const result = parallelToSeries(parallel(), both);

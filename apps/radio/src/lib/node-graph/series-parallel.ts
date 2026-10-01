@@ -16,12 +16,12 @@
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { branchIndex } from "./branches";
 import { isEffectNodeType } from "./catalogue";
-import { uniqueId } from "./graph-edits";
+import { newIssue, uniqueId } from "./graph-edits";
 import type { NodeSelection } from "./node-store";
 import { createPaletteNode } from "./palette";
 import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
 import { AUDIO_IN_HANDLE, AUDIO_OUT_HANDLE } from "./templates";
-import { parseHandleId } from "./validate";
+import { parseHandleId, type ValidateOptions } from "./validate";
 
 export type SeriesParallelEdit =
   | { ok: true; graph: NodeGraph; selection: NodeSelection }
@@ -125,10 +125,14 @@ function seriesPair(
   return null;
 }
 
-/** P: two FX in series become Split → both → Merge. */
+/**
+ * P: two FX in series become Split → both → Merge. Refused when the result
+ * would not compile, e.g. past the cable budget, as P adds three cables.
+ */
 export function seriesToParallel(
   graph: NodeGraph,
-  selection: NodeSelection
+  selection: NodeSelection,
+  options?: ValidateOptions
 ): SeriesParallelEdit {
   const pair = seriesPair(graph, selection);
   if (!pair) {
@@ -191,8 +195,13 @@ export function seriesToParallel(
     }
     return node;
   });
+  const next = { ...graph, edges, nodes: [...nodes, split, merge] };
+  const issue = newIssue(graph, next, options);
+  if (issue) {
+    return { message: issue.message, ok: false };
+  }
   return {
-    graph: { ...graph, edges, nodes: [...nodes, split, merge] },
+    graph: next,
     ok: true,
     selection: { edges: [], nodes: [first.id, second.id] },
   };

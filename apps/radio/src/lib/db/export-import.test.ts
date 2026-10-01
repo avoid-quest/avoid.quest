@@ -224,6 +224,15 @@ describe("validateImportData", () => {
     expect("single" in imported.settings.player).toBe(false);
   });
 
+  test("accepts version 3 backups and refuses newer ones", () => {
+    expect(validateImportData({ ...rawBackup({}), version: 3 }).version).toBe(
+      3
+    );
+    expect(() => validateImportData({ ...rawBackup({}), version: 4 })).toThrow(
+      NEWER_VERSION
+    );
+  });
+
   test.each([
     ["multiple", "node"],
     ["party", "single"],
@@ -1211,6 +1220,24 @@ describe("local NAM file backups", () => {
       version: 2,
     });
   }
+
+  test("a backup with Node data is version 3, a library-only one version 2", async () => {
+    seedLocalPatch();
+    expect((await createDatabaseExport()).version).toBe(3);
+
+    await resetCollections();
+    saveRadio(stationRadio("kexp"));
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: { mode: "single", restoreStateOnLoad: true },
+    });
+    expect((await createDatabaseExport()).version).toBe(2);
+
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.player.mode = "node";
+    });
+    expect((await createDatabaseExport()).version).toBe(3);
+  });
 
   test.each(importers)(
     "%s restores model bytes into a clean store",

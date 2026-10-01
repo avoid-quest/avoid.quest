@@ -38,7 +38,14 @@ import {
   validateNamModelBackup,
 } from "./nam-backup";
 
-const EXPORT_VERSION = 2;
+/** A backup with only stations and settings an older release can apply. */
+const LIBRARY_EXPORT_VERSION = 2;
+/**
+ * A backup with Node data: a patch, its models, or the "node" mode. Releases
+ * before Node refuse it as newer instead of half-applying it. This is also
+ * the newest version this release imports.
+ */
+const EXPORT_VERSION = 3;
 const STORAGE_KEY_LAST_EXPORT = "radioproxy_last_export";
 const DATA_FRAGMENT_LENGTH = 6;
 const SETTINGS_ID = "app-settings";
@@ -357,6 +364,20 @@ function checkImportedRadioIds(
   }
 }
 
+function getExportVersion(
+  data: Pick<
+    DatabaseExport,
+    "missingNamModels" | "namModels" | "sessions" | "settings"
+  >
+): number {
+  const hasNodeData =
+    data.sessions !== undefined ||
+    data.namModels !== undefined ||
+    data.missingNamModels !== undefined ||
+    data.settings.player.mode === "node";
+  return hasNodeData ? EXPORT_VERSION : LIBRARY_EXPORT_VERSION;
+}
+
 /** The Node patch for a file backup, when the node session holds one. */
 function exportSessions(): DatabaseExport["sessions"] {
   const session = playbackSessionsCollection.state.get("node");
@@ -382,7 +403,7 @@ export const createDatabaseExport = async (): Promise<DatabaseExport> => {
     );
   }
 
-  return {
+  const backup: Omit<DatabaseExport, "version"> = {
     exportDate: new Date().toISOString(),
     missingNamModels: namModels.missing,
     namModels: namModels.models,
@@ -392,8 +413,8 @@ export const createDatabaseExport = async (): Promise<DatabaseExport> => {
       id: SETTINGS_ID,
       player: { mode: "single" },
     }) as unknown as DatabaseExport["settings"],
-    version: EXPORT_VERSION,
   };
+  return { ...backup, version: getExportVersion(backup) };
 };
 
 /**
@@ -452,14 +473,17 @@ export const generateShareUrl = (): string => {
     const radios = Array.from(radiosCollection.state.values());
     const settings = getSettings();
 
-    const exportData: DatabaseExport = {
+    const link: Omit<DatabaseExport, "version"> = {
       exportDate: new Date().toISOString(),
       radios: radios as unknown as Radio[],
       settings: (settings || {
         id: SETTINGS_ID,
         player: { mode: "single" },
       }) as unknown as DatabaseExport["settings"],
-      version: EXPORT_VERSION,
+    };
+    const exportData: DatabaseExport = {
+      ...link,
+      version: getExportVersion(link),
     };
 
     const jsonString = JSON.stringify(exportData);

@@ -383,7 +383,12 @@ function lastEnabledIndex(effects: readonly EffectConfig[]): number {
   return -1;
 }
 
-/** Places pending trim before the whole FX signal, including its dry path. */
+/**
+ * Places pending trim before the whole FX signal, including its dry path.
+ * A silencing trim also stays pending, so the exits stay muted too: when an
+ * FX is switched on, the mute moving into it never opens a send while the
+ * async effect update is still on its way.
+ */
 function placeTrim(
   effects: EffectConfig[],
   effect: EffectConfig,
@@ -393,6 +398,7 @@ function placeTrim(
     return { effect, trim };
   }
   const level = trimLevel(trim);
+  const pending = level === 0 ? trim : UNITY;
   const previousIndex = lastEnabledIndex(effects);
   const previous = effects[previousIndex];
   if (previous) {
@@ -400,7 +406,7 @@ function placeTrim(
       ...previous,
       outputGain: previous.outputGain * level,
     } as EffectConfig;
-    return { effect, trim: UNITY };
+    return { effect, trim: pending };
   }
   return {
     effect: {
@@ -408,7 +414,7 @@ function placeTrim(
       outputGain: level === 0 && effect.dryWet < 1 ? 0 : effect.outputGain,
       signalGain: level,
     } as EffectConfig,
-    trim: UNITY,
+    trim: pending,
   };
 }
 

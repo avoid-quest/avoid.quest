@@ -690,7 +690,21 @@ describe("compile: lanes in series", () => {
       [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
     );
     expect(lane(plan, "a").effects[0]?.signalGain).toBe(0);
-    expect(plan.edges.get("verb->speakers")?.muted).toBe(false);
+    expect(plan.edges.get("verb->speakers")?.muted).toBe(true);
+  });
+
+  test("switching on an FX behind a muted cable keeps its exits muted", () => {
+    // The send must not open before the async FX update silences the input.
+    const plans = [false, true].map((enabled) =>
+      build(
+        [station("a"), fx("verb", "cheapReverb", { enabled }), speakers],
+        [audio("a", "verb", { muted: true }), audio("verb", "speakers")]
+      )
+    );
+    for (const plan of plans) {
+      expect(plan.edges.get("verb->speakers")?.muted).toBe(true);
+    }
+    expect(lane(plans[1] as EnginePlan, "a").effects[0]?.signalGain).toBe(0);
   });
 
   test("a lane whose trims push a Post-FX trim past its slider still saves", () => {

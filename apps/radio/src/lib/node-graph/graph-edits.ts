@@ -24,6 +24,7 @@ import {
   isEffectContainerType,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
+import { generateId } from "@/lib/types";
 import {
   createNodeEffectConfig,
   getNodeDefinition,
@@ -103,7 +104,7 @@ export function uniqueId(base: string, taken: ReadonlySet<string>): string {
  * MIDI mappings for Undo, keyed by its id, so a new one must not take it.
  */
 export function freshNodeId(type: GraphNode["type"]): string {
-  return `${type}-${crypto.randomUUID()}`;
+  return `${type}-${generateId()}`;
 }
 
 /** Same saved or session id; without ids on both sides, the same stream. */

@@ -11,6 +11,7 @@ import {
   DUPLICATE_OFFSET_PX,
   duplicateNodes,
   findStationNode,
+  freshNodeId,
   type GraphEdit,
   insertNodeOnEdge,
   moveNodes,
@@ -135,6 +136,21 @@ describe("addStationNode", () => {
       x: (speakers?.position.x ?? 0) - 480,
       y: speakers?.position.y ?? 0,
     });
+  });
+});
+
+describe("freshNodeId", () => {
+  test("still mints ids where crypto.randomUUID is missing", () => {
+    const original = globalThis.crypto;
+    // As in Safari before 15.4, or a page served over plain http.
+    globalThis.crypto = {} as Crypto;
+    try {
+      const first = freshNodeId("delay");
+      expect(first).toStartWith("delay-");
+      expect(freshNodeId("delay")).not.toBe(first);
+    } finally {
+      globalThis.crypto = original;
+    }
   });
 });
 

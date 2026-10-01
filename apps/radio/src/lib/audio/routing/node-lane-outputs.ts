@@ -83,6 +83,8 @@ export type NodeLaneOutputs = {
 export const LANE_LEVEL_TIME_CONSTANT_S = 0.005;
 /** The layout duck ramps out, and back, over 20 ms. */
 export const LANE_DUCK_MS = 20;
+/** A dropped send is unwired after 7τ, once its fade is under 0.1%. */
+export const LANE_DROP_MS = Math.ceil(LANE_LEVEL_TIME_CONSTANT_S * 7 * 1000);
 
 type LaneSend = { gain: GainNode; release: () => void };
 
@@ -280,7 +282,7 @@ export function createNodeLaneOutputs({
         lane.sends.delete(sinkId);
         const { out } = lane;
         settleSend(send.gain, 0);
-        wait(LANE_DUCK_MS).then(
+        wait(LANE_DROP_MS).then(
           () => dropSend(out, send),
           () => dropSend(out, send)
         );

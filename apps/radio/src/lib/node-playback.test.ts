@@ -32,6 +32,7 @@ import {
 import { createNodeDeviceSinks } from "@/lib/audio/routing/node-device-sinks";
 import {
   createNodeLaneOutputs,
+  LANE_DROP_MS,
   LANE_DUCK_MS,
   LANE_LEVEL_TIME_CONSTANT_S,
 } from "@/lib/audio/routing/node-lane-outputs";
@@ -3886,7 +3887,7 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(audio.destinations[0]?.stopped).toEqual([true]);
     expect(statuses.state).toEqual({});
     // Its send fades out before it comes off the lane.
-    await new Promise((resolve) => setTimeout(resolve, LANE_DUCK_MS + 5));
+    await new Promise((resolve) => setTimeout(resolve, LANE_DROP_MS + 5));
     expect(sends()).toHaveLength(1);
   });
 });

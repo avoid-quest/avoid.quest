@@ -313,6 +313,11 @@ describe("createNodeLaneOutputs", () => {
     });
     expect(desk.size).toBe(1);
     expect(laneOut.connections.has(send)).toBe(true);
+    // Unwired only once the tail is under 0.5% (about -46 dB).
+    const dropMs = harness.wait.mock.calls.at(-1)?.[0] ?? 0;
+    expect(
+      Math.exp(-dropMs / 1000 / LANE_LEVEL_TIME_CONSTANT_S)
+    ).toBeLessThanOrEqual(0.005);
 
     harness.waits.at(-1)?.resolve();
     await Promise.resolve();

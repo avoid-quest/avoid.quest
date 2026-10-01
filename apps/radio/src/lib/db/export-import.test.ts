@@ -13,6 +13,7 @@ import {
   createDefaultChannel,
   getPlaybackSession,
   getSettings,
+  type PlaybackSessionId,
   playbackSessionsCollection,
   radiosCollection,
   sessionRadiosCollection,
@@ -22,6 +23,7 @@ import {
   LEGACY_MULTIPLE_SESSION_ID,
   writeLegacyRecord,
 } from "@/lib/collections/migrations/legacy-records";
+import { modeLifecycleRequests } from "@/lib/mode-lifecycle-requests";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import {
   commitNodeGraph,
@@ -140,6 +142,16 @@ function rawBackup(fields: Record<string, unknown>): DatabaseExport {
     version: 2,
     ...fields,
   } as DatabaseExport;
+}
+
+/** Reports `mode` as the one the mode lifecycle runs. */
+function playingMode(mode: PlaybackSessionId) {
+  return spyOn(modeLifecycleRequests, "getTransitionSnapshot").mockReturnValue({
+    currentMode: mode,
+    error: null,
+    phase: "active",
+    requestedMode: null,
+  });
 }
 
 /** A saved station, Node mode, and a stored Start from Multiple patch. */
@@ -1068,6 +1080,7 @@ describe("Node patch backups", () => {
       settingsCollection.update(SETTINGS_ID, (draft) => {
         draft.player.mode = "node";
       });
+      const snapshot = playingMode("node");
       const audio = AudioManager.getInstance();
       audio.setGlobalVolume(0.9);
 
@@ -1086,9 +1099,36 @@ describe("Node patch backups", () => {
 
       expect(getPlaybackSession("node")?.masterVolume).toBe(0.1);
       expect(audio.getGlobalVolume()).toBe(0.1);
+      snapshot.mockRestore();
       AudioManager.resetInstance();
     }
   );
+
+  test("an import that selects Node leaves the playing mode's level alone", async () => {
+    seedLocalPatch();
+    // The setting names Node at once; Single plays until Node activates.
+    const snapshot = playingMode("single");
+    const audio = AudioManager.getInstance();
+    audio.setGlobalVolume(0.9);
+
+    mergeImportedData(
+      rawBackup({
+        sessions: {
+          node: {
+            graph: buildNodeGraphFromTemplate("blank"),
+            masterVolume: 0.1,
+          },
+        },
+        settings: { player: { mode: "node" } },
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(getSettings()?.player.mode).toBe("node");
+    expect(audio.getGlobalVolume()).toBe(0.9);
+    snapshot.mockRestore();
+    AudioManager.resetInstance();
+  });
 
   test("an import leaves another mode's level alone", async () => {
     seedLocalPatch();

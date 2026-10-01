@@ -194,16 +194,22 @@ function readImportedMasterVolume(
 
 /**
  * A patch import stores its Speakers level in the session; while Node is the
- * mode, the running audio takes it too, as a change of the control would.
- * Otherwise Node's activation applies it.
+ * running mode, the audio takes it too, as a change of the control would.
+ * Otherwise Node's activation applies it. The running mode is the
+ * lifecycle's, read once loaded: the imported setting can name Node while
+ * another mode still plays.
  */
 function applyImportedMasterVolume(): Promise<void> {
-  if (normalizePlayerMode(getSettings()?.player.mode) !== "node") {
-    return Promise.resolve();
-  }
-  return import("@/lib/playback-actions-shared")
-    .then(({ applySessionMasterVolume }) => {
-      applySessionMasterVolume("node");
+  return Promise.all([
+    import("@/lib/mode-lifecycle-requests"),
+    import("@/lib/playback-actions-shared"),
+  ])
+    .then(([{ modeLifecycleRequests }, { applySessionMasterVolume }]) => {
+      const { currentMode, phase } =
+        modeLifecycleRequests.getTransitionSnapshot();
+      if (currentMode === "node" && phase === "active") {
+        applySessionMasterVolume("node");
+      }
     })
     .catch((error: unknown) => {
       console.warn("[import] Could not apply the Speakers level", error);

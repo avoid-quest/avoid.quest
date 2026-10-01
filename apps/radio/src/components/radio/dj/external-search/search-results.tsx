@@ -28,6 +28,7 @@ type SearchResultsProps = {
 
 const PLATFORM_LABELS = {
   bandcamp: "BC",
+  mixcloud: "MC",
   radiogarden: "RG",
   soundcloud: "SC",
   youtube: "YT",

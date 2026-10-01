@@ -1,4 +1,5 @@
 import { isBandcampUrl } from "./bandcamp/detect.js";
+import { isMixcloudUrl } from "./mixcloud/detect.js";
 import { isRadioGardenUrl } from "./radiogarden/detect.js";
 import { isSoundCloudUrl } from "./soundcloud/detect.js";
 import type { Platform } from "./types.js";
@@ -11,6 +12,15 @@ export {
   isBandcampUrl,
   normalizeBandcampUrl,
 } from "./bandcamp/detect.js";
+
+export type { MixcloudShowRef } from "./mixcloud/detect.js";
+export {
+  getMixcloudShowUrl,
+  isMixcloudShowUrl,
+  isMixcloudUrl,
+  normalizeMixcloudUrl,
+  parseMixcloudShowUrl,
+} from "./mixcloud/detect.js";
 
 export { extractChannelId, isRadioGardenUrl } from "./radiogarden/detect.js";
 
@@ -38,6 +48,10 @@ export function detectPlatformFromUrl(url: string): Platform | null {
 
   if (isBandcampUrl(url)) {
     return "bandcamp";
+  }
+
+  if (isMixcloudUrl(url)) {
+    return "mixcloud";
   }
 
   if (isRadioGardenUrl(url)) {

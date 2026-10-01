@@ -42,6 +42,7 @@ type SearchInputProps = {
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
   all: "Tracks from all platforms",
   bandcamp: "Tracks & albums from independent artists",
+  mixcloud: "DJ mixes, radio shows & podcasts",
   radiogarden: "40,000+ radio stations worldwide",
   soundcloud: "Tracks, mixes & DJ sets",
   youtube: "Music videos & audio",
@@ -50,6 +51,7 @@ const PLATFORM_HINTS: Record<SearchPlatform, string> = {
 const PLATFORM_LABELS: Record<SearchPlatform, string> = {
   all: "All platforms",
   bandcamp: "Bandcamp",
+  mixcloud: "Mixcloud",
   radiogarden: "Radio Garden",
   soundcloud: "SoundCloud",
   youtube: "YouTube",

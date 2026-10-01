@@ -1,0 +1,22 @@
+{
+  "data": {
+    "cloudcastLookup": {
+      "name": "Cryptkeeper",
+      "audioLength": 3723,
+      "isExclusive": false,
+      "restrictedReason": null,
+      "owner": {
+        "displayName": "dholbach",
+        "username": "dholbach"
+      },
+      "picture": {
+        "url": "https://thumbnailer.mixcloud.com/unsafe/1024x1024/extaudio/a/4/1/3/7e83-445a-4339-9f12-677a718db4de.jpg"
+      },
+      "streamInfo": {
+        "url": "ITItPyZtbmEwOGYoKCo3JTwhN3o8MzcxMSxmNyEsOz0xayx4I3gubnJyfXliK2Y7bChgMXJ4dnQtbGQlY2BkLXBsa2RxZXk3Y3x2dWdocXh9IHZgImAlcCQnK3IbKxAoAHQMEQAOCAQFcC4+G3ksZDQf",
+        "hlsUrl": "ITItPyZtbmE1OyxrLDssKj87JjBhNDEmNSAkazcqLTomIWA/Ij9gd2sgfSxiKWY8dX1/eCZwdT1iYWcke3lteH13fzB+YGVjZ3d3dG00eGcpcC5hJjogKi9gIXw0fA==",
+        "dashUrl": "ITItPyZtbmE1OyxrLDssKj87JjBhNDEmNSAkazcqLTomIWAzLz8nc2twfSliLmY8bCh5ZHRkJGB8MXp1fjFhZXxxamJkN2NgZX90fWRheC19aiJ6LnspLjknKioyMGg/Pyk="
+      }
+    }
+  }
+}

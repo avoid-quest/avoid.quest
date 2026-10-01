@@ -5,6 +5,11 @@ import type {
   BandcampTrackInfo,
 } from "./bandcamp/types.js";
 import type {
+  MixcloudItemError,
+  MixcloudItemResult,
+  MixcloudMetadata,
+} from "./mixcloud/types.js";
+import type {
   RadioGardenItemError,
   RadioGardenItemResult,
   RadioGardenMetadata,
@@ -22,10 +27,16 @@ import type {
   YouTubeTrackInfo,
 } from "./youtube/types.js";
 
-export type Platform = "bandcamp" | "radiogarden" | "soundcloud" | "youtube";
+export type Platform =
+  | "bandcamp"
+  | "mixcloud"
+  | "radiogarden"
+  | "soundcloud"
+  | "youtube";
 
 export type PlatformMetadata =
   | BandcampMetadata
+  | MixcloudMetadata
   | RadioGardenMetadata
   | SoundCloudMetadata
   | YouTubeMetadata;
@@ -37,12 +48,14 @@ export type PlatformTrack =
 
 export type PlatformItemResult =
   | BandcampItemResult
+  | MixcloudItemResult
   | RadioGardenItemResult
   | SoundCloudItemResult
   | YouTubeItemResult;
 
 export type PlatformItemError =
   | BandcampItemError
+  | MixcloudItemError
   | RadioGardenItemError
   | SoundCloudItemError
   | YouTubeItemError;

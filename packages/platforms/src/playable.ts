@@ -3,8 +3,10 @@ import {
   detectPlatformFromUrl,
   needsResolution,
   normalizeBandcampUrl,
+  normalizeMixcloudUrl,
   normalizeSoundCloudUrl,
 } from "./detect.js";
+import { getMixcloudItem } from "./mixcloud/index.js";
 import { extractChannelId } from "./radiogarden/detect.js";
 import { getRadioGardenItem } from "./radiogarden/index.js";
 import { getSoundCloudItem, resolveShortLink } from "./soundcloud/index.js";
@@ -168,6 +170,24 @@ async function resolveSoundCloudPlayableItem<TStaticAudioMetadata>(
   });
 }
 
+async function resolveMixcloudPlayableItem<TStaticAudioMetadata>(
+  normalizedUrl: string
+): Promise<PlayablePlatformResolutionResult<TStaticAudioMetadata>> {
+  const result = await getMixcloudItem(normalizedUrl);
+  if (!result.success) {
+    return providerError(
+      "mixcloud",
+      result.error || "Failed to resolve Mixcloud item"
+    );
+  }
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "mixcloud",
+    streamUrl: result.streamUrl,
+  });
+}
+
 async function resolveYouTubePlayableItem<TStaticAudioMetadata>(
   normalizedUrl: string,
   invidiousOptions: InvidiousOptions | undefined
@@ -299,7 +319,7 @@ function hasTracks(
 }
 
 function isCollectionMetadata(metadata: PlatformMetadata): boolean {
-  if (metadata.platform === "radiogarden") {
+  if (metadata.platform === "mixcloud" || metadata.platform === "radiogarden") {
     return false;
   }
   if (metadata.platform === "youtube") {
@@ -321,6 +341,7 @@ export async function normalizePlayablePlatformUrl(
   }
 
   normalized = normalizeSoundCloudUrl(normalized);
+  normalized = normalizeMixcloudUrl(normalized);
   return normalizeBandcampUrl(normalized);
 }
 
@@ -414,6 +435,8 @@ export function createPlayablePlatformResolver<TStaticAudioMetadata = never>({
     switch (platform) {
       case "bandcamp":
         return await resolveBandcampPlayableItem(normalizedUrl);
+      case "mixcloud":
+        return await resolveMixcloudPlayableItem(normalizedUrl);
       case "soundcloud":
         return await resolveSoundCloudPlayableItem(normalizedUrl);
       case "youtube":

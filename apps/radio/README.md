@@ -32,8 +32,9 @@ audio** as shared-tab sources, and Node also **Mixcloud** (DJ's Mixcloud tile
 searches Mixcloud instead). Open the source in another tab, play it there, then
 use **Go live** (Node) or **Share tab audio** (DJ), choose that tab and enable
 **Share tab audio** in the browser picker. Pasted Spotify links other than
-tracks, albums and playlists, Mixcloud links other than shows, and supported
-station archive links load the same shared-audio source; direct audio-file and
+tracks, albums and playlists (artist share links may fail to resolve), Mixcloud
+links other than shows, and supported station archive links load the same
+shared-audio source; direct audio-file and
 playlist URLs retain the normal seekable player. Tracks, shows and seeking are
 controlled in the source tab. Sharing is never restored automatically.
 

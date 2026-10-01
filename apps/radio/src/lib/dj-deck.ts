@@ -448,12 +448,16 @@ function keepLazyTrackStream(
 ): void {
   const metadata = radio.platformMetadata;
   if (request.platform === "spotify") {
-    const track = isSpotifyMetadata(metadata)
-      ? metadata.tracks?.find(
-          (candidate) => candidate.spotifyId === request.spotifyId
-        )
-      : undefined;
-    if (track) {
+    if (!isSpotifyMetadata(metadata)) {
+      return;
+    }
+    const track =
+      metadata.itemType === "track"
+        ? metadata
+        : metadata.tracks?.find(
+            (candidate) => candidate.spotifyId === request.spotifyId
+          );
+    if (track?.spotifyId === request.spotifyId) {
       track.streamUrl = resolved.streamUrl;
       track.youtubeVideoId = resolved.youtubeVideoId ?? track.youtubeVideoId;
     }

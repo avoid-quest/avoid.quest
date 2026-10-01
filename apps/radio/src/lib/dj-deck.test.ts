@@ -1815,6 +1815,77 @@ describe("DjDeckModule", () => {
     });
   });
 
+  test("keeps a direct Spotify track's match for stream refresh", async () => {
+    const audio = createAudioAdapter();
+    const platform = createPlatform();
+    platform.resolveStream = mock(() =>
+      Promise.resolve({
+        streamFormat: "progressive" as const,
+        streamUrl: "https://radio.example/matched.webm",
+        youtubeVideoId: "Rgrt_8mXrK8",
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    await module.deck("deck-a").load({
+      autoPlay: false,
+      radio: {
+        id: "spotify-track",
+        name: "Get Lucky",
+        platformMetadata: {
+          itemType: "track",
+          platform: "spotify",
+          spotifyId: "2Foc5Q5nqNiosCNqttzHof",
+          url: "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
+        },
+        streamUrl: "spotify:track:2Foc5Q5nqNiosCNqttzHof",
+      },
+      type: "track",
+    });
+    expect(
+      getPlaybackChannel("dj", "deck-a")?.radio?.platformMetadata
+    ).toMatchObject({
+      streamUrl: "https://radio.example/matched.webm",
+      youtubeVideoId: "Rgrt_8mXrK8",
+    });
+
+    audio.emit("left_spotify-track:1", {
+      error: {
+        code: "STREAM_INTERRUPTED",
+        id: "expired-spotify",
+        message: "expired",
+        position: 42,
+        timestamp: Date.now(),
+      },
+      hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(platform.resolveStream).toHaveBeenCalledTimes(2);
+    expect(platform.resolveStream).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        platform: "youtube",
+        reason: "stream-refresh",
+        videoId: "Rgrt_8mXrK8",
+      })
+    );
+    expect(audio.refresh).toHaveBeenCalledWith(
+      "left_spotify-track:1",
+      "https://radio.example/matched.webm",
+      42,
+      "progressive"
+    );
+  });
+
   test("refreshes an interrupted provider stream only for its owning generation", async () => {
     const audio = createAudioAdapter();
     const platform = createPlatform();

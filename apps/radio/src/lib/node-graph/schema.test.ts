@@ -318,6 +318,36 @@ describe("migrateNodeGraph", () => {
       }),
     ],
     [
+      "an effect inside a Split that has the node's id",
+      (raw: ReturnType<typeof migratedLayout>) => {
+        const split = createNodeEffectConfig("fxComposite", "old-id");
+        const [chain, ...rest] = split.chains;
+        return {
+          ...raw,
+          nodes: [
+            ...raw.nodes,
+            {
+              data: {
+                effect: {
+                  ...split,
+                  chains: [
+                    {
+                      ...chain,
+                      effects: [createNodeEffectConfig("delay", "split")],
+                    },
+                    ...rest,
+                  ],
+                },
+              },
+              id: "split",
+              position,
+              type: "fxComposite",
+            },
+          ],
+        };
+      },
+    ],
+    [
       "a cable louder than +12 dB",
       (raw: ReturnType<typeof migratedLayout>) => ({
         ...raw,

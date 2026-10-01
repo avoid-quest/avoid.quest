@@ -13,6 +13,10 @@
 import { z } from "zod";
 import { nodeEffectConfigSchema } from "@/lib/audio/dsp/effects/effect-config-schema";
 import { EFFECT_TYPES, type EffectConfig } from "@/lib/audio/dsp/effects/types";
+import {
+  findEffectInTree,
+  isEffectContainer,
+} from "@/lib/audio/dsp/routing/effect-tree";
 import type { MidiTransform } from "@/lib/midi/types";
 
 export const NODE_GRAPH_VERSION = 2;
@@ -346,6 +350,19 @@ const effectNodeSchema = z
     message: "Effect type must match the node type",
     path: ["data", "effect", "type"],
   })
+  // The effect takes the node's id below, after its own check for ids used
+  // twice, so an effect inside it must not have that id already.
+  .refine(
+    ({ data: { effect }, id }) =>
+      !(
+        isEffectContainer(effect) &&
+        effect.chains.some((chain) => findEffectInTree(chain.effects, id))
+      ),
+    {
+      message: "An effect inside this node has the node's id",
+      path: ["data", "effect", "chains"],
+    }
+  )
   .transform((node) => ({
     ...node,
     // The node id is the EffectConfig id, so openDAW can update in place.

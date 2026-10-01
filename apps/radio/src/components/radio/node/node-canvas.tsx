@@ -181,6 +181,29 @@ type FitTools = Pick<
   "fitView" | "getNodes" | "getNodesBounds" | "setViewport"
 >;
 
+/** Whether any node shows in `wrapper` at `viewport`. */
+function anyNodeInView(
+  { getNodes, getNodesBounds }: FitTools,
+  wrapper: HTMLElement | null,
+  { x, y, zoom }: FlowViewport
+): boolean {
+  const frame = wrapper?.getBoundingClientRect();
+  if (!frame) {
+    return true;
+  }
+  return getNodes().some((node) => {
+    const box = getNodesBounds([node]);
+    const left = x + box.x * zoom;
+    const top = y + box.y * zoom;
+    return (
+      left < frame.width &&
+      top < frame.height &&
+      left + box.width * zoom > 0 &&
+      top + box.height * zoom > 0
+    );
+  });
+}
+
 /**
  * Fits the patch in view, as F, a template load or a second tap on Patch
  * does; on a phone a patch too big for the readable zoom shows its top.
@@ -225,6 +248,26 @@ function liveChannelKey(
 /** A patch never panned or zoomed still has the template's viewport. */
 function isUntouchedViewport({ x, y, zoom }: FlowViewport): boolean {
   return x === 0 && y === 0 && zoom === 1;
+}
+
+/**
+ * An untouched patch opens fitted, and so does one whose saved view shows
+ * none of it on a phone, e.g. a view saved on a wider screen.
+ */
+function needsFit(
+  tools: FitTools,
+  wrapper: HTMLElement | null,
+  isPhone: boolean,
+  viewport: FlowViewport
+): boolean {
+  return (
+    isUntouchedViewport(viewport) ||
+    (isPhone && !anyNodeInView(tools, wrapper, viewport))
+  );
+}
+
+function sameViewport(left: FlowViewport, right: FlowViewport): boolean {
+  return left.x === right.x && left.y === right.y && left.zoom === right.zoom;
 }
 
 /** React Flow's node changes, folded into what the canvas keeps or commits. */
@@ -329,8 +372,13 @@ function holdsPort(
 export type NodeCanvasProps = {
   /** A Station the search bar just added; the view pans to it if hidden. */
   reveal: { nodeId: string } | null;
-  /** Bumped to fit the patch in view, e.g. after a template loads. */
+  /**
+   * Bumped to fit the patch in view, e.g. after a template loads. A
+   * request is fitted once, then handed back through `onFitHandled`, so a
+   * canvas mounted again (a phone back on Patch) keeps its pan and zoom.
+   */
   fitRequest: number;
+  onFitHandled?: () => void;
   /** Opens the add-node palette: double-click, or a cable dropped in space. */
   onOpenPalette: (request: PaletteRequest) => void;
   /** C on a focused node opens the keyboard Connect… dialog for it. */
@@ -343,6 +391,7 @@ function Canvas({
   graph,
   reveal,
   fitRequest,
+  onFitHandled,
   onOpenPalette,
   onOpenConnect,
   isPhone = false,
@@ -364,6 +413,9 @@ function Canvas({
   );
   // Read once: React Flow takes its starting viewport only on mount.
   const [initialViewport] = useState(() => graph.viewport);
+  // The view the canvas opened on or last settled on. The patch's own
+  // viewport differing from it was set elsewhere, e.g. by an import.
+  const viewRef = useRef<FlowViewport>(initialViewport);
   const wrapperRef = useRef<HTMLDivElement>(null);
   // The cable a dragged node would go into if let go now: state to
   // highlight it, a ref for the drop, which reads it in the same event.
@@ -594,6 +646,7 @@ function Canvas({
   // The viewport persists when a pan, zoom or fit settles; it is never an
   // undo step of its own.
   const handleMoveEnd = (_event: unknown, viewport: FlowViewport) => {
+    viewRef.current = viewport;
     commitNodeGraph(
       (current) => setGraphViewport(current, viewport),
       nodeStore,
@@ -962,27 +1015,51 @@ function Canvas({
 
   // React Flow's first fit centres an untouched patch; on a phone it is
   // redone once the nodes are measured, so a tall patch opens on its top. A
-  // pending reveal pans to its node instead, and a persisted viewport stays.
+  // pending reveal pans to its node instead, and a persisted viewport that
+  // shows the patch stays.
   useEffect(() => {
     if (!(isPhone && nodesInitialized) || phoneAlignedRef.current) {
       return;
     }
     phoneAlignedRef.current = true;
-    if (!reveal && isUntouchedViewport(initialViewport)) {
+    if (
+      !reveal &&
+      needsFit(fitTools, wrapperRef.current, isPhone, initialViewport)
+    ) {
       fitPatch(fitTools, wrapperRef.current, isPhone);
     }
   }, [fitTools, initialViewport, isPhone, nodesInitialized, reveal]);
 
-  // A template load can move everything; fit it back in view.
+  // A patch replaced in place, as an import does, brings its own view.
+  const { x: viewX, y: viewY, zoom: viewZoom } = graph.viewport;
+  useEffect(() => {
+    const viewport = { x: viewX, y: viewY, zoom: viewZoom };
+    if (sameViewport(viewport, viewRef.current)) {
+      return;
+    }
+    // A frame for the new patch's nodes to be measured.
+    const frame = requestAnimationFrame(() => {
+      viewRef.current = viewport;
+      if (needsFit(fitTools, wrapperRef.current, isPhone, viewport)) {
+        fitPatch(fitTools, wrapperRef.current, isPhone);
+      } else {
+        fitTools.setViewport(viewport);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fitTools, isPhone, viewX, viewY, viewZoom]);
+
+  // A template load can move everything; fit it back in view, once.
   useEffect(() => {
     if (fitRequest === 0) {
       return;
     }
     const frame = requestAnimationFrame(() => {
       fitPatch(fitTools, wrapperRef.current, isPhone, 200);
+      onFitHandled?.();
     });
     return () => cancelAnimationFrame(frame);
-  }, [fitRequest, fitTools, isPhone]);
+  }, [fitRequest, fitTools, isPhone, onFitHandled]);
 
   // F fits the patch in view, unless typing or inside a menu or dialog.
   useEffect(() => {

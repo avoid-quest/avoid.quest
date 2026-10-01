@@ -257,6 +257,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
             <NodeCanvas
               fitRequest={fitRequest}
               isPhone={isPhone}
+              onFitHandled={() => setFitRequest(0)}
               onOpenConnect={setConnectNodeId}
               onOpenPalette={openPalette}
               reveal={reveal}

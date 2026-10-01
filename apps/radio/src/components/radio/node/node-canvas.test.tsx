@@ -150,8 +150,10 @@ const kexp = {
   streamUrl: "https://radio.example/kexp.mp3",
 };
 
+type CanvasProps = Partial<import("react").ComponentProps<typeof NodeCanvas>>;
+
 /** The canvas and its hint, as the mode mounts them. */
-function Patch() {
+function Patch(props: CanvasProps) {
   const graph = nodeStoreModule.useNodeGraph();
   return (
     <div style={{ height: 600, position: "relative", width: 800 }}>
@@ -160,6 +162,7 @@ function Patch() {
         onOpenConnect={noop}
         onOpenPalette={noop}
         reveal={null}
+        {...props}
       />
       <NodeCanvasHint graph={graph} />
     </div>
@@ -170,7 +173,10 @@ function mountStarter() {
   return mountGraph(templates.buildNodeGraphFromTemplate("starter"));
 }
 
-function mountGraph(graph: import("@/lib/node-graph/schema").NodeGraph) {
+function mountGraph(
+  graph: import("@/lib/node-graph/schema").NodeGraph,
+  props: CanvasProps = {}
+) {
   nodeStoreModule.loadNodeGraph(graph);
   const actions = {
     fillSource: noop,
@@ -193,7 +199,7 @@ function mountGraph(graph: import("@/lib/node-graph/schema").NodeGraph) {
   return render(
     <QueryClientProvider client={client}>
       <NodeActionsProvider value={actions}>
-        <Patch />
+        <Patch {...props} />
       </NodeActionsProvider>
     </QueryClientProvider>
   );
@@ -249,6 +255,103 @@ describe("NodeCanvas", () => {
     expect(
       view.getByText("Search a station in the slot, or tap + to add a node")
     ).toBeTruthy();
+  });
+});
+
+describe("NodeCanvas: the view", () => {
+  /** The canvas's pan and zoom, from React Flow's viewport transform. */
+  const viewportTransform = (container: HTMLElement) =>
+    (container.querySelector(".react-flow__viewport") as HTMLElement | null)
+      ?.style.transform;
+
+  /** Lets React Flow measure, then runs the canvas's next frames. */
+  const settle = async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  };
+
+  test("a fit request is fitted once, then handed back", async () => {
+    let handled = 0;
+    mountGraph(templates.buildNodeGraphFromTemplate("starter"), {
+      fitRequest: 1,
+      onFitHandled: () => {
+        handled += 1;
+      },
+    });
+    await settle();
+
+    expect(handled).toBe(1);
+  });
+
+  test("a patch replaced in place, as by an import, brings its own view", async () => {
+    const view = mountGraph({
+      ...templates.buildNodeGraphFromTemplate("starter"),
+      viewport: { x: 10, y: 20, zoom: 1 },
+    });
+    await settle();
+    expect(viewportTransform(view.container)).toBe(
+      "translate(10px,20px) scale(1)"
+    );
+
+    act(() => {
+      nodeStoreModule.commitNodeGraph(
+        (graph) => ({ ...graph, viewport: { x: 120, y: 40, zoom: 0.5 } }),
+        nodeStoreModule.nodeStore,
+        "snapshot"
+      );
+    });
+    await settle();
+
+    expect(viewportTransform(view.container)).toBe(
+      "translate(120px,40px) scale(0.5)"
+    );
+  });
+
+  test("a phone opens fitted when the saved view shows none of the patch", async () => {
+    const frame = spyOn(
+      dom.window.HTMLElement.prototype,
+      "getBoundingClientRect"
+    ).mockImplementation(() => new dom.window.DOMRect(0, 0, 390, 600));
+    try {
+      const view = mountGraph(
+        {
+          ...templates.buildNodeGraphFromTemplate("starter"),
+          viewport: { x: -50_000, y: -50_000, zoom: 1 },
+        },
+        { isPhone: true }
+      );
+      await settle();
+
+      expect(viewportTransform(view.container)).not.toContain("-50000px");
+    } finally {
+      frame.mockRestore();
+    }
+  });
+
+  test("a phone keeps a saved view that shows the patch", async () => {
+    const frame = spyOn(
+      dom.window.HTMLElement.prototype,
+      "getBoundingClientRect"
+    ).mockImplementation(() => new dom.window.DOMRect(0, 0, 390, 600));
+    try {
+      const view = mountGraph(
+        {
+          ...templates.buildNodeGraphFromTemplate("starter"),
+          viewport: { x: 10, y: 20, zoom: 1 },
+        },
+        { isPhone: true }
+      );
+      await settle();
+
+      expect(viewportTransform(view.container)).toBe(
+        "translate(10px,20px) scale(1)"
+      );
+    } finally {
+      frame.mockRestore();
+    }
   });
 });
 

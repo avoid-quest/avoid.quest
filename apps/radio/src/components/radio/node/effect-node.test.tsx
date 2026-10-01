@@ -283,7 +283,20 @@ describe("EffectNodeBody", () => {
     expect(outside).not.toHaveBeenCalled();
   });
 
-  test("a wheel tick on a knob takes an undo step once the throttle flushes", () => {
+  /** Turns `knob` by one wheel tick. */
+  const wheel = (knob: HTMLElement) => {
+    act(() => {
+      knob.dispatchEvent(
+        new dom.window.WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          deltaY: -1,
+        })
+      );
+    });
+  };
+
+  test("a wheel turn on a knob takes one undo step once the wheel settles", () => {
     jest.useFakeTimers();
     try {
       const onChange = mock((_patch: Partial<EffectConfig>) => undefined);
@@ -297,19 +310,63 @@ describe("EffectNodeBody", () => {
       );
 
       const knob = view.getByRole("slider", { name: "Compressor threshold" });
-      act(() => {
-        knob.dispatchEvent(
-          new dom.window.WheelEvent("wheel", {
-            bubbles: true,
-            cancelable: true,
-            deltaY: -1,
-          })
-        );
-      });
+      // A trackpad's ticks, closer together than the settle time.
+      for (let tick = 0; tick < 20; tick += 1) {
+        wheel(knob);
+        jest.advanceTimersByTime(16);
+      }
 
-      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalled();
       expect(onRelease).not.toHaveBeenCalled();
-      jest.advanceTimersByTime(moduleFrame.RELEASE_DELAY_MS);
+      jest.advanceTimersByTime(moduleFrame.WHEEL_SETTLE_MS);
+      expect(onRelease).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a wheel moved to another knob takes the first knob's step there and then", () => {
+    jest.useFakeTimers();
+    try {
+      const onRelease = mock(() => undefined);
+      const view = renderBody(
+        createDefaultEffectConfig("compressor", "c1", 0),
+        { onRelease }
+      );
+
+      wheel(view.getByRole("slider", { name: "Compressor threshold" }));
+      jest.advanceTimersByTime(10);
+      expect(onRelease).not.toHaveBeenCalled();
+      wheel(view.getByRole("slider", { name: "Compressor ratio" }));
+      expect(onRelease).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(moduleFrame.WHEEL_SETTLE_MS);
+      expect(onRelease).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("a gesture started before the last release lands takes that step first", () => {
+    jest.useFakeTimers();
+    try {
+      const onRelease = mock(() => undefined);
+      const view = renderBody(
+        createDefaultEffectConfig("compressor", "c1", 0),
+        { onRelease }
+      );
+
+      fireEvent.pointerUp(
+        view.getByRole("slider", { name: "Compressor threshold" })
+      );
+      jest.advanceTimersByTime(moduleFrame.RELEASE_DELAY_MS / 2);
+      expect(onRelease).not.toHaveBeenCalled();
+      const ratio = view.getByRole("slider", { name: "Compressor ratio" });
+      // JSDOM has no pointer capture.
+      ratio.setPointerCapture = noop;
+      fireEvent.pointerDown(ratio);
+      expect(onRelease).toHaveBeenCalledTimes(1);
+      // The first release's timer is spent; nothing lands mid-gesture.
+      jest.advanceTimersByTime(moduleFrame.WHEEL_SETTLE_MS);
       expect(onRelease).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();

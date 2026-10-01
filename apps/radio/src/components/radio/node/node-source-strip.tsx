@@ -27,7 +27,7 @@ import { getNodePlayback } from "@/lib/node-playback";
 import { isRadioBrowserMetadata } from "@/lib/platform-types";
 import { streamFormatOf } from "@/lib/source-strip";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
-import { RELEASE_DELAY_MS } from "./module-frame";
+import { useReleaseStep } from "./module-frame";
 import {
   CompactSourceStrip,
   SourceStrip,
@@ -76,13 +76,6 @@ function commitStrip(
   );
 }
 
-/** Knob turns fold into one undo step, taken once the pointer lets go. */
-function releaseStep(store: NodeStore) {
-  return () => {
-    setTimeout(() => snapshotNodeGraph(store), RELEASE_DELAY_MS);
-  };
-}
-
 /**
  * The compact strip on a source's node body and Rack row, with the
  * button that opens its full strip in the inspector.
@@ -109,15 +102,12 @@ export function NodeCompactStrip({
 }) {
   const runtime = useLaneRuntime(nodeId);
   const soloedOut = useSoloedOut(strip.solo, store);
-  const release = releaseStep(store);
+  // Knob turns fold into one undo step, taken once the gesture ends.
+  const release = useReleaseStep(() => snapshotNodeGraph(store));
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: listens for releases; each control is focusable itself
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: listens for releases; each control is focusable itself
     <div
       className={cn("flex min-w-0 items-center gap-1", className)}
-      onKeyUp={release}
-      onPointerUp={release}
-      onWheelCapture={release}
+      {...release}
     >
       <CompactSourceStrip
         className="flex-1"

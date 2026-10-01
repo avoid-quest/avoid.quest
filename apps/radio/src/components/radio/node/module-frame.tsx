@@ -31,8 +31,11 @@ import {
   createContext,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
+  type SyntheticEvent,
   useContext,
   useEffect,
+  useRef,
 } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
@@ -81,6 +84,75 @@ const COLUMN_GAP_PX = 8;
 const BODY_PADDING_PX = 16;
 /** A fader release lands after the 32 ms param throttle's trailing call. */
 export const RELEASE_DELAY_MS = 48;
+/**
+ * A wheel turn is one undo step, taken once the wheel has been still this
+ * long: a trackpad sends dozens of ticks a second, and a step per tick
+ * would push the whole undo history out in a few seconds of scrolling.
+ */
+export const WHEEL_SETTLE_MS = 300;
+
+/** The control a gesture is on: a knob or slider, else the element itself. */
+function gestureControl(event: SyntheticEvent): EventTarget | null {
+  const { target } = event;
+  return target instanceof Element
+    ? (target.closest('[role="slider"]') ?? target)
+    : target;
+}
+
+type PendingStep = {
+  control: EventTarget | null;
+  release: () => void;
+  timer: ReturnType<typeof setTimeout>;
+  wheel: boolean;
+};
+
+/** Takes the pending step now, if there is one. */
+function takeStep(pending: RefObject<PendingStep | null>): void {
+  const step = pending.current;
+  if (!step) {
+    return;
+  }
+  clearTimeout(step.timer);
+  pending.current = null;
+  step.release();
+}
+
+/**
+ * Where a group of controls takes its undo steps. A pointer or key release
+ * takes one once the knob throttle's trailing call has landed; a wheel turn
+ * takes one once the wheel settles. A step still pending when the next
+ * gesture starts, or when the wheel moves to another control, is taken
+ * there and then, so each gesture is its own step. A wheel listener on a
+ * control stops the event, so the wheel is heard in the capture phase.
+ */
+export function useReleaseStep(onRelease: () => void) {
+  const pending = useRef<PendingStep | null>(null);
+  const flush = () => takeStep(pending);
+  const schedule = (event: SyntheticEvent, wheel: boolean) => {
+    const control = gestureControl(event);
+    const step = pending.current;
+    if (step?.wheel && wheel && step.control === control) {
+      clearTimeout(step.timer);
+    } else {
+      flush();
+    }
+    pending.current = {
+      control,
+      release: onRelease,
+      timer: setTimeout(flush, wheel ? WHEEL_SETTLE_MS : RELEASE_DELAY_MS),
+      wheel,
+    };
+  };
+  // A step still pending when the controls go is taken, not dropped.
+  useEffect(() => () => takeStep(pending), []);
+  return {
+    onKeyDownCapture: flush,
+    onKeyUp: (event: SyntheticEvent) => schedule(event, false),
+    onPointerDownCapture: flush,
+    onPointerUp: (event: SyntheticEvent) => schedule(event, false),
+    onWheelCapture: (event: SyntheticEvent) => schedule(event, true),
+  };
+}
 
 /** The node width for `columns` controls, never narrower than `minColumns`. */
 export function moduleWidth(columns: number, minColumns: number): number {
@@ -225,9 +297,8 @@ export function ModuleHeader({
  * The body's control row. Keys stay here (`keepControlKeys`): an arrow on a
  * focused knob turns it instead of moving the node, and Delete or C don't
  * reach the canvas.
- * A pointer or key release is where the patch takes an undo step, and so is
- * each wheel tick; a control's own wheel listener stops the event, so this
- * one listens in the capture phase.
+ * A pointer or key release, or a wheel turn once it settles, is where the
+ * patch takes an undo step (`useReleaseStep`).
  */
 export function ModuleControls({
   onRelease,
@@ -236,9 +307,7 @@ export function ModuleControls({
   onRelease: () => void;
   children: ReactNode;
 }) {
-  const release = () => {
-    setTimeout(onRelease, RELEASE_DELAY_MS);
-  };
+  const release = useReleaseStep(onRelease);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
@@ -248,9 +317,7 @@ export function ModuleControls({
         INTERACTIVE
       )}
       onKeyDown={keepControlKeys}
-      onKeyUp={release}
-      onPointerUp={release}
-      onWheelCapture={release}
+      {...release}
     >
       {children}
     </div>

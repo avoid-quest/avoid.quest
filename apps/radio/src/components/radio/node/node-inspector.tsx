@@ -55,7 +55,7 @@ import { AudioInputNodeContent } from "./audio-input-content";
 import { BackendBadge } from "./backend-badge";
 import { FileNodeContent } from "./file-content";
 import { feedsOutput, takenDevices } from "./flow-elements";
-import { RELEASE_DELAY_MS } from "./module-frame";
+import { useReleaseStep } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
 import { NodeMasterControls } from "./node-master";
@@ -282,9 +282,7 @@ function InspectorParams({
   const currentGraph = useStore(store, (state) => state.graph);
   // A release lands after the knob throttle's trailing call, then takes
   // the turn as one undo step. Selects and switches release here too.
-  const release = () => {
-    setTimeout(() => snapshotNodeGraph(store), RELEASE_DELAY_MS);
-  };
+  const release = useReleaseStep(() => snapshotNodeGraph(store));
   let params: React.ReactNode;
   if (isStripSource(node)) {
     params = <SourceInspectorParams node={node} store={store} />;
@@ -345,15 +343,7 @@ function InspectorParams({
     );
   }
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: listens for releases; each control is focusable itself
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: listens for releases; each control is focusable itself
-    <div
-      className={INSPECTOR_BODY}
-      data-vaul-no-drag
-      onKeyUp={release}
-      onPointerUp={release}
-      onWheelCapture={release}
-    >
+    <div className={INSPECTOR_BODY} data-vaul-no-drag {...release}>
       {params}
     </div>
   );

@@ -10,7 +10,7 @@ import {
 } from "@/lib/node-graph/node-store";
 import { MAX_EDGE_GAIN } from "@/lib/node-graph/schema";
 import type { BranchEdgeData } from "./flow-elements";
-import { keepControlKeys, ModuleKnob, RELEASE_DELAY_MS } from "./module-frame";
+import { keepControlKeys, ModuleKnob, useReleaseStep } from "./module-frame";
 
 /**
  * Branch Controls
@@ -59,9 +59,7 @@ export function BranchControls({
       step ? "snapshot" : undefined
     );
   };
-  const release = () => {
-    setTimeout(() => snapshotNodeGraph(store), RELEASE_DELAY_MS);
-  };
+  const release = useReleaseStep(() => snapshotNodeGraph(store));
   return (
     <div className="space-y-1">
       <p className="text-muted-foreground text-xs tabular-nums">
@@ -73,9 +71,7 @@ export function BranchControls({
       <div
         className="nodrag nopan nowheel flex items-start gap-x-2"
         onKeyDown={keepControlKeys}
-        onKeyUp={release}
-        onPointerUp={release}
-        onWheelCapture={release}
+        {...release}
       >
         <ModuleKnob
           defaultValue={1}

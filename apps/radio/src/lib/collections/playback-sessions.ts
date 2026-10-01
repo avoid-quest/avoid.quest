@@ -710,7 +710,25 @@ async function externalizeChannelNamModels(
   }, effects);
 }
 
+/**
+ * Loads the models FX nodes that reach no lane hold, so wiring one later
+ * finds its bytes: the audio adapter reads local models from the cache.
+ */
+async function hydrateGraphNamModels(): Promise<void> {
+  const modelIds = [...playbackSessionsCollection.state.values()].flatMap(
+    (session) => [
+      ...collectLocalNamModelIds(collectGraphEffects(session.graph)),
+    ]
+  );
+  await Promise.all(
+    [...new Set(modelIds)].map((modelId) =>
+      getNamModel(modelId).catch(() => null)
+    )
+  );
+}
+
 async function externalizeStoredNamModels(): Promise<void> {
+  await hydrateGraphNamModels();
   const channels = [...playbackSessionsCollection.state.values()].flatMap(
     (session) =>
       // A retired record left for a later migration run cannot be updated.

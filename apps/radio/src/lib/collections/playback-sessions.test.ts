@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createDefaultEffectConfig } from "@/lib/audio";
 import {
   createLocalNamModelId,
@@ -970,6 +970,41 @@ describe("session persistence and init", () => {
       ).toBe(false);
     });
   }
+
+  test("initializePlaybackSessions loads the model of an FX node no lane uses", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const modelId = createLocalNamModelId();
+    const amp = createNodeEffectConfig("neuralAmp", "amp");
+    amp.modelId = modelId;
+    const graph = createDuckGraph();
+    graph.nodes.push({
+      data: { effect: amp },
+      id: "amp",
+      position: { x: 240, y: 224 },
+      type: "neuralAmp",
+    });
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: createDuckChannels(),
+      crossfadePosition: 0.5,
+      graph,
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+    const namModelStore = await import(
+      "@/lib/audio/dsp/effects/nam-model-store"
+    );
+    const load = spyOn(namModelStore, "getNamModel");
+
+    try {
+      await initializePlaybackSessions();
+      // The amp is unwired, so only the graph names its model.
+      expect(load).toHaveBeenCalledWith(modelId);
+    } finally {
+      load.mockRestore();
+    }
+  });
 
   test("initializePlaybackSessions creates the default Node patch when restore is disabled and none is stored", async () => {
     await Promise.all([

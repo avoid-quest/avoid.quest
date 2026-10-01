@@ -633,6 +633,56 @@ describe("NativeNodeBody", () => {
   });
 });
 
+describe("ModuleKnob", () => {
+  test("a stored value outside its range widens it, and a turn moves from that value", () => {
+    const onChange = mock((_patch: unknown) => undefined);
+    const filter = render(
+      <NativeNodeBody
+        node={{
+          data: { frequency: 5, Q: 1, type: "lowpass" },
+          id: "f",
+          position: { x: 0, y: 0 },
+          type: "filter",
+        }}
+        onChange={onChange}
+        onRelease={noop}
+        onRemove={noop}
+        onStep={noop}
+      />
+    );
+    const cutoff = filter.getByRole("slider", { name: "Filter cutoff" });
+    expect(cutoff.getAttribute("aria-valuemin")).toBe("5");
+    expect(cutoff.getAttribute("aria-valuenow")).toBe("5");
+    fireEvent.keyDown(cutoff, { key: "ArrowUp" });
+    expect(onChange).toHaveBeenLastCalledWith({ frequency: 6 });
+    cleanup();
+
+    const node = (gainDb: number) => ({
+      data: { gainDb },
+      id: "g",
+      position: { x: 0, y: 0 },
+      type: "gain" as const,
+    });
+    const props = {
+      onChange,
+      onRelease: noop,
+      onRemove: noop,
+      onStep: noop,
+    };
+    const gain = render(<NativeNodeBody node={node(-60)} {...props} />);
+    const knob = () => gain.getByRole("slider", { name: "Gain" });
+    expect(knob().getAttribute("aria-valuemin")).toBe("-60");
+    fireEvent.keyDown(knob(), { key: "ArrowUp" });
+    expect(onChange).toHaveBeenLastCalledWith({ gainDb: -59.9 });
+
+    // Turned back into range, the knob keeps its reach, so it never shifts
+    // under a turn.
+    gain.rerender(<NativeNodeBody node={node(-30)} {...props} />);
+    expect(knob().getAttribute("aria-valuemin")).toBe("-60");
+    expect(knob().getAttribute("aria-valuemax")).toBe("24");
+  });
+});
+
 describe("NodePort", () => {
   /**
    * A patch on a real canvas whose nodes draw only their ports, so each

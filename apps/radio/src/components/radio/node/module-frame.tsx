@@ -36,6 +36,7 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
 } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
@@ -366,7 +367,11 @@ export type ModuleKnobProps = {
 
 /**
  * The shared Knob without its caption, throttled like every param knob,
- * and MIDI-learnable when it has a target.
+ * and MIDI-learnable when it has a target. A stored value the patch
+ * accepts but the knob's range leaves out (a 5 Hz Filter, a -60 dB Gain
+ * from an import) widens the knob to take it in, so it reads true and the
+ * first turn moves from it rather than jumping to the range's end. The
+ * widened range stays while the knob shows, so it never shifts mid-turn.
  */
 export function ModuleKnob({
   label,
@@ -385,14 +390,24 @@ export function ModuleKnob({
   onChange,
 }: ModuleKnobProps) {
   const throttledOnChange = useThrottledParam(onChange);
+  // The furthest values seen outside the range; none, while inside it.
+  const [stray, setStray] = useState({
+    high: Number.NEGATIVE_INFINITY,
+    low: Number.POSITIVE_INFINITY,
+  });
+  const low = value < min ? Math.min(stray.low, value) : stray.low;
+  const high = value > max ? Math.max(stray.high, value) : stray.high;
+  if (low !== stray.low || high !== stray.high) {
+    setStray({ high, low });
+  }
   const knob = (
     <Knob
       ariaLabel={name}
       bipolar={bipolar ?? (defaultValue !== undefined && min < 0 && max > 0)}
       defaultValue={defaultValue}
       format={format}
-      max={max}
-      min={min}
+      max={Math.max(max, high)}
+      min={Math.min(min, low)}
       onChange={throttledOnChange}
       scale={scale}
       size={36}

@@ -8,7 +8,7 @@ import {
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
 import { setTrackSearchPlatform } from "@/lib/node-graph/graph-edits";
@@ -265,10 +265,18 @@ export function TrackNode({
   const lane = useSourceLane(id);
   const [loadError, setLoadError] = useState<string | null>(null);
   const radio = data.radio as Radio | null;
+  // The search stays open while a `yt:` pick resolves; a later pick, link
+  // or platform supersedes it, so only the latest request fills the Track.
+  const loadRequest = useRef(0);
 
   const handleLoad = async (picked: Radio) => {
+    loadRequest.current += 1;
+    const request = loadRequest.current;
     setLoadError(null);
     const loaded = await prepareSourceRadio(picked);
+    if (request !== loadRequest.current) {
+      return;
+    }
     if ("error" in loaded) {
       setLoadError(loaded.error);
       return;
@@ -277,6 +285,7 @@ export function TrackNode({
   };
   // A radio stream hands off: the Track becomes a Station playing it.
   const handleStreamLink = async (url: string) => {
+    loadRequest.current += 1;
     setLoadError(null);
     setLoadError(await actions.fillStationFromUrl(id, url));
   };
@@ -296,6 +305,7 @@ export function TrackNode({
         }}
         onRemove={() => actions.removeNode(id)}
         onSearchPlatformChange={(platform) => {
+          loadRequest.current += 1;
           commitNodeGraph(
             (graph) => setTrackSearchPlatform(graph, id, platform),
             nodeStore,

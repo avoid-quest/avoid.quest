@@ -34,6 +34,7 @@ import {
   MAX_EFFECT_TEMPO,
   MIN_EFFECT_TEMPO,
 } from "@/lib/audio/dsp/effects/tempo";
+import { visitEffectTree } from "@/lib/audio/dsp/routing/effect-tree";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 
@@ -50,6 +51,20 @@ type EffectChainProps = {
   tempo?: number;
   onTempoChange?: (tempo: number) => void;
 };
+
+/**
+ * Only delay-style effects follow the synced tempo. Containers forward tempo
+ * to their nested chains, so search the whole tree, not just the top level.
+ */
+export function effectsUseTempo(effects: readonly EffectConfig[]): boolean {
+  let usesTempo = false;
+  visitEffectTree(effects, (effect) => {
+    if ("tempoSync" in effect || "preSyncTimeLeft" in effect) {
+      usesTempo = true;
+    }
+  });
+  return usesTempo;
+}
 
 function ignoreEffectUpdate(_config: Partial<EffectConfig>) {
   return null;
@@ -115,10 +130,8 @@ export function EffectChain({
   onTempoChange,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
-  // Only delay-style effects follow the synced tempo; hide the field otherwise.
-  const usesTempo = effects.some(
-    (effect) => "tempoSync" in effect || "preSyncTimeLeft" in effect
-  );
+  // Hide the tempo field unless something in the tree follows it.
+  const usesTempo = effectsUseTempo(effects);
   const [showPicker, setShowPicker] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
 

@@ -812,9 +812,14 @@ export async function initializePlaybackSessions(): Promise<void> {
   const activeMode = normalizePlayerMode(settings?.player.mode);
   const activeSession = playbackSessionsCollection.state.get(activeMode);
   if (activeSession) {
-    updatePlaybackSession(activeMode, (draft) => {
-      draft.masterVolume = draft.masterVolume ?? 1;
-    });
+    try {
+      updatePlaybackSession(activeMode, (draft) => {
+        draft.masterVolume = draft.masterVolume ?? 1;
+      });
+    } catch (error) {
+      // A patch the v2 step kept unread, for want of a backup, fails it.
+      console.warn("[playback-sessions] Could not touch the session", error);
+    }
   }
 }
 

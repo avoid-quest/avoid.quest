@@ -10,12 +10,20 @@ import type {
   NeuralAmpConfig,
 } from "@/lib/audio/dsp/effects/types";
 import { visitEffectTree } from "@/lib/audio/dsp/routing/effect-tree";
-import { EFFECT_NODE_TYPES, type NodeGraph } from "@/lib/node-graph/schema";
+import {
+  EFFECT_NODE_TYPES,
+  getNodeGraphReadOnlyVersion,
+  type NodeGraph,
+} from "@/lib/node-graph/schema";
 
 export type NamModelBackup = Record<string, string>;
 
 function graphNamModels(graph: NodeGraph | null): NeuralAmpConfig[] {
   const models: NeuralAmpConfig[] = [];
+  // A newer release's patch is kept as stored; its shape is not ours to read.
+  if (getNodeGraphReadOnlyVersion(graph) !== null) {
+    return models;
+  }
   for (const node of graph?.nodes ?? []) {
     if (
       EFFECT_NODE_TYPES.some((type) => type === node.type) &&

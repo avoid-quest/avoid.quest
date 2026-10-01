@@ -1227,6 +1227,22 @@ describe("Node patch backups", () => {
     expect(undoNodeGraph()).toBe(false);
   });
 
+  test("a backup does not read into a future patch it cannot parse", async () => {
+    const session = buildNodeSessionFromGraph(
+      buildNodeGraphFromTemplate("starter")
+    );
+    // A later release may change any shape, `nodes` included.
+    const graph = { nodes: { amp: { type: "neuralAmp" } }, version: 3 };
+    writeLegacyRecord(playbackSessionsCollection, { ...session, graph });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const exported = await createDatabaseExport();
+
+    expect(exported.sessions?.node?.graph).toEqual(graph);
+    expect(exported.namModels).toBeUndefined();
+    expect(exported.missingNamModels).toBeUndefined();
+  });
+
   const invalidGraphs: [string, unknown, RegExp][] = [
     [
       "a cable into a port of an unknown kind",

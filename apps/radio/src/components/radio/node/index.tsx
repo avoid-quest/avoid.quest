@@ -39,6 +39,7 @@ import { RadioSearchBar } from "../radio-search-bar";
 import { NodeCanvasHint } from "./canvas-hint";
 import { ConnectDialog } from "./connect-dialog";
 import { type NodeActions, NodeActionsProvider } from "./node-actions";
+import type { PortDrop } from "./node-canvas";
 import { NodeInspector, useNodeInspector } from "./node-inspector";
 import {
   NodePalette,
@@ -95,6 +96,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
   const [rewireEdgeId, setRewireEdgeId] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
+  const [portDrop, setPortDrop] = useState<PortDrop | null>(null);
   const patchWasOpenRef = useRef(false);
   const isPhone = useIsMobile();
   const inspectorPanel = useRef<ResizablePanelHandle>(null);
@@ -215,6 +217,9 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   // shows on neither, so the Patch opens on it for its search, form or
   // cables.
   const handlePaletteAdded = (nodeId: string, request: PaletteRequest) => {
+    if (request.drop && request.from) {
+      setPortDrop({ from: request.from, nodeId, y: request.drop.y });
+    }
     if (
       isPhone &&
       phoneView !== "patch" &&
@@ -260,6 +265,8 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
               onFitHandled={() => setFitRequest(0)}
               onOpenConnect={setConnectNodeId}
               onOpenPalette={openPalette}
+              onPortDropHandled={() => setPortDrop(null)}
+              portDrop={portDrop}
               reveal={reveal}
             />
           </Suspense>

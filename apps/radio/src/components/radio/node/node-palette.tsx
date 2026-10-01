@@ -61,6 +61,12 @@ export type PaletteRequest = {
    * its width.
    */
   edge?: "left" | "right";
+  /**
+   * Where a cable was let go in space, in flow coordinates. The canvas
+   * moves the picked node, once measured, so the port the cable takes sits
+   * level with it.
+   */
+  drop?: { x: number; y: number };
   /** A cable selected with I: the pick goes into it. */
   into?: string | null;
   /** An FX node's "Swap effect…": the pick replaces its effect. */

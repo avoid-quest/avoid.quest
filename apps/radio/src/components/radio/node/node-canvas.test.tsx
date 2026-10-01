@@ -296,6 +296,81 @@ describe("NodeCanvas: the view", () => {
     expect(handled).toBe(1);
   });
 
+  test("a node picked for a cable let go in space moves its port level with the drop", async () => {
+    // A port 40 px down a node, as a module's sits under its header.
+    const rect = spyOn(
+      dom.window.HTMLElement.prototype,
+      "getBoundingClientRect"
+    ).mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("react-flow__handle")
+        ? new dom.window.DOMRect(0, 40, 8, 8)
+        : new dom.window.DOMRect(0, 0, 160, 100);
+    });
+    let handled = 0;
+    try {
+      mountGraph(
+        schema.nodeGraphSchema.parse({
+          edges: [
+            {
+              id: "kexp->verb",
+              source: "kexp",
+              sourceHandle: "out:audio:main",
+              target: "verb",
+              targetHandle: "in:audio:main",
+            },
+          ],
+          nodes: [
+            {
+              data: { radio: kexp },
+              id: "kexp",
+              position: { x: 0, y: 0 },
+              type: "station",
+            },
+            {
+              data: {
+                effect: catalogue.createNodeEffectConfig("cheapReverb", "verb"),
+              },
+              id: "verb",
+              position: { x: 300, y: 480 },
+              type: "cheapReverb",
+            },
+            {
+              data: {},
+              id: "speakers",
+              position: { x: 600, y: 0 },
+              type: "speakers",
+            },
+          ],
+          version: 2,
+        }),
+        {
+          onPortDropHandled: () => {
+            handled += 1;
+          },
+          portDrop: {
+            from: { handle: "out:audio:main", node: "kexp", type: "source" },
+            nodeId: "verb",
+            y: 500,
+          },
+        }
+      );
+      await settle();
+    } finally {
+      rect.mockRestore();
+    }
+
+    expect(handled).toBe(1);
+    const { graph, history } = nodeStoreModule.nodeStore.state;
+    expect(graph?.nodes.find((node) => node.id === "verb")?.position).toEqual({
+      x: 300,
+      // React Flow sizes a port by offsetHeight, 100 px in this harness.
+      y: 500 - (40 + 100 / 2),
+    });
+    // Still the one step that added the node, not one of its own.
+    expect(history.past).toHaveLength(0);
+    expect(history.present).toBe(graph);
+  });
+
   test("a patch replaced in place, as by an import, brings its own view", async () => {
     const view = mountGraph({
       ...templates.buildNodeGraphFromTemplate("starter"),

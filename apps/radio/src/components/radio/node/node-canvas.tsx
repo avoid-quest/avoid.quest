@@ -369,6 +369,35 @@ function holdsPort(
         held.sourceHandle === connection.sourceHandle;
 }
 
+/** A node picked for a cable let go in space, to move level with the drop. */
+export type PortDrop = { nodeId: string; from: PaletteFrom; y: number };
+
+/**
+ * The port on `nodeId` that the cable from `from` plugs into, as React
+ * Flow measured it: its handle, and which side's handles it is among.
+ */
+function droppedPort(
+  graph: NodeGraph | null,
+  { from, nodeId }: PortDrop
+): { handle: string; side: "source" | "target" } | null {
+  const fromSource = from.type === "source";
+  const cable = graph?.edges.find((edge) =>
+    fromSource
+      ? edge.source === from.node &&
+        edge.sourceHandle === from.handle &&
+        edge.target === nodeId
+      : edge.target === from.node &&
+        edge.targetHandle === from.handle &&
+        edge.source === nodeId
+  );
+  if (!cable) {
+    return null;
+  }
+  return fromSource
+    ? { handle: cable.targetHandle, side: "target" }
+    : { handle: cable.sourceHandle, side: "source" };
+}
+
 export type NodeCanvasProps = {
   /** A Station the search bar just added; the view pans to it if hidden. */
   reveal: { nodeId: string } | null;
@@ -379,6 +408,9 @@ export type NodeCanvasProps = {
    */
   fitRequest: number;
   onFitHandled?: () => void;
+  /** A node picked for a cable let go in space; handed back once level. */
+  portDrop?: PortDrop | null;
+  onPortDropHandled?: () => void;
   /** Opens the add-node palette: double-click, or a cable dropped in space. */
   onOpenPalette: (request: PaletteRequest) => void;
   /** C on a focused node opens the keyboard Connect… dialog for it. */
@@ -392,6 +424,8 @@ function Canvas({
   reveal,
   fitRequest,
   onFitHandled,
+  portDrop = null,
+  onPortDropHandled,
   onOpenPalette,
   onOpenConnect,
   isPhone = false,
@@ -843,7 +877,9 @@ function Canvas({
     const drop = screenToFlowPosition(pointer);
     // A node feeding an input sits left of the cursor, one fed by an output
     // right of it, so its port lands where the cable was let go.
+    // It lands a little above, then moves level once measured.
     onOpenPalette({
+      drop,
       edge: from.type === "target" ? "right" : "left",
       from,
       position: { x: drop.x, y: drop.y - 20 },
@@ -1091,6 +1127,50 @@ function Canvas({
     onInsertInto: onOpenPalette,
     validateOptions,
   });
+
+  // A node picked for a cable let go in space moves, once measured, so the
+  // port the cable takes is level with where it was let go, whatever the
+  // node's height. It stays the one undo step that added it.
+  useEffect(() => {
+    if (!portDrop) {
+      return;
+    }
+    let frame = 0;
+    let framesLeft = REVEAL_MEASURE_FRAMES;
+    const level = () => {
+      const port = droppedPort(nodeStore.state.graph, portDrop);
+      const handles = getInternalNode(portDrop.nodeId)?.internals.handleBounds;
+      const bounds = port && handles?.[port.side];
+      const handle = bounds?.find((entry) => entry.id === port?.handle);
+      if (!handle && framesLeft > 0) {
+        framesLeft -= 1;
+        frame = requestAnimationFrame(level);
+        return;
+      }
+      onPortDropHandled?.();
+      if (!handle) {
+        return;
+      }
+      const y = portDrop.y - (handle.y + handle.height / 2);
+      commitNodeGraph(
+        (current) => {
+          const node = current.nodes.find(
+            (entry) => entry.id === portDrop.nodeId
+          );
+          return node
+            ? moveNodes(
+                current,
+                new Map([[node.id, { x: node.position.x, y }]])
+              )
+            : current;
+        },
+        nodeStore,
+        "rebase"
+      );
+    };
+    frame = requestAnimationFrame(level);
+    return () => cancelAnimationFrame(frame);
+  }, [getInternalNode, onPortDropHandled, portDrop]);
 
   // Pan to a Station added from the search bar when it lands out of view.
   // A node not measured yet is waited for a few frames, then taken as one

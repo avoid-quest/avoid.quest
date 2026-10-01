@@ -1675,6 +1675,68 @@ describe("Node Playback native strip", () => {
     await start;
   });
 
+  /** An engine whose sounds get nodes in their play call, as AudioManager's do. */
+  function nodesOnPlay(context: PlaybackActionContext) {
+    const calls: string[] = [];
+    const withNodes = new Set<string>();
+    let connect: SoundOutputConnector | null = null;
+    Object.assign(context.audio, {
+      getPreFaderNode: mock((soundId: string) =>
+        withNodes.has(soundId) ? { soundId } : null
+      ),
+      playSound: mock((soundId: string) => {
+        // Nodes, then the graph connects, then the stream is asked to play.
+        withNodes.add(soundId);
+        connect?.(
+          createFakeFader(new FakeAudioContext()).node,
+          false,
+          () => () => undefined
+        );
+        calls.push("stream");
+        setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
+          isPlaying: true,
+        }));
+        return Promise.resolve();
+      }),
+      setPan: mock((_soundId: string, pan: number) => {
+        calls.push(`pan ${pan}`);
+      }),
+      setSoundOutputConnector: mock(
+        (_soundId: string, connector: SoundOutputConnector | null) => {
+          connect = connector;
+        }
+      ),
+    });
+    return calls;
+  }
+
+  test("a new sound's strip is on its nodes before its stream starts", async () => {
+    insertNodeSession(strip(0.5, true));
+    const harness = createHarness();
+    const calls = nodesOnPlay(harness.context);
+    await harness.playback.activate();
+
+    await harness.playback.setPlaying("a", true);
+
+    expect(calls.slice(0, 2)).toEqual(["pan 0.5", "stream"]);
+  });
+
+  test("a strip change made while paused is on the sound before it resumes", async () => {
+    insertNodeSession(strip(0.5, false));
+    const harness = createHarness();
+    const calls = nodesOnPlay(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.setPlaying("a", false);
+    calls.length = 0;
+
+    await commit(harness, () => strip(-0.5, false));
+    await harness.playback.setPlaying("a", true);
+
+    expect(calls.indexOf("pan -0.5")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("pan -0.5")).toBeLessThan(calls.indexOf("stream"));
+  });
+
   test("a strip change made while paused applies when the Station resumes", async () => {
     insertNodeSession(strip(0.5, false));
     const harness = createHarness();
@@ -2761,6 +2823,41 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(getPlaybackChannel("node", channelOf("mic"))?.radio).toMatchObject({
       platformMetadata: { deviceId: "usb-mic", platform: "device-input" },
     });
+  });
+
+  test("Go live writes its strip once the capture has nodes, never before", async () => {
+    const pan = {
+      data: { pan: 0.5 },
+      id: "pan",
+      position: { x: 120, y: 200 },
+      type: "pan",
+    } as NodeInput;
+    insertNodeSession(
+      wired([mic("mic"), pan, speakers], ["mic>pan", "pan>speakers"])
+    );
+    const harness = createHarness();
+    const { active } = deviceEngine(harness.context);
+    const startCapture = harness.context.audio.playDeviceSound;
+    // The permission prompt comes first; the capture's nodes after it.
+    harness.context.audio.playDeviceSound = mock(
+      async (...args: Parameters<typeof startCapture>) => {
+        await Promise.resolve();
+        return startCapture(...args);
+      }
+    );
+    harness.context.audio.getPreFaderNode = mock((soundId: string) =>
+      active.has(soundId) ? ({ soundId } as unknown as GainNode) : null
+    );
+    const writes: boolean[] = [];
+    harness.context.audio.setPan = mock((soundId: string) => {
+      writes.push(active.has(soundId));
+    });
+    await harness.playback.activate();
+
+    await harness.playback.setPlaying("mic", true);
+
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every(Boolean)).toBe(true);
   });
 
   test.each([0, 0.2])(

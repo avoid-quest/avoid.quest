@@ -557,6 +557,8 @@ function createNodePlayback(
   const laneOutputs = createLaneOutputs({
     getHost: () => ctx.audio,
     getLevels: laneLevels,
+    // A new sound's nodes exist from its connect, before its playback starts.
+    onConnect: (laneId) => applyLaneStrip(laneChannelId(laneId)),
     route: routeSink,
   });
 
@@ -862,16 +864,15 @@ function createNodePlayback(
   };
 
   /**
-   * Writes a lane's native strip onto its sound once the sound has nodes.
-   * Both halves are always written, so a pan back to centre or a removed
-   * filter reaches a sound that still holds the old values.
+   * Writes a lane's native strip onto its sound's nodes, once it has them:
+   * a sound without nodes gets it as they connect. Both halves are always
+   * written, so a pan back to centre or a removed filter reaches a sound
+   * that still holds the old values.
    */
   const applyLaneStrip = (channelId: string) => {
-    const lane = [...plan.lanes.values()].find(
-      (entry) => entry.channelId === channelId
-    );
+    const lane = laneOfChannel(channelId);
     const { soundId } = getPlaybackChannelRuntime(channelId);
-    if (!(lane && soundId)) {
+    if (!(lane && soundId && ctx.audio.getPreFaderNode(soundId))) {
       return;
     }
     ctx.audio.setPan(soundId, lane.pan);
@@ -991,22 +992,21 @@ function createNodePlayback(
       // Before the play call: the sound's graph connects inside it.
       laneOutputs.attach(nodeId, lane.soundId);
     }
+    // A sound that played before resumes on its nodes at the play call, so
+    // its strip goes on first; a new sound's goes on as it connects.
+    applyLaneStrip(channelId);
     const ownership = beginChannelStart(channelId);
     const ownsStart = () =>
       isCurrent() &&
       ownership.cancellation === null &&
       channelStartRevisions.get(channelId) === ownership.revision;
     try {
-      const starting = setChannelPlaying(
+      const started = await setChannelPlaying(
         channelId,
         true,
         ownership.revision,
         ownsStart
       );
-      // The play call builds the sound's nodes and requests the stream
-      // synchronously; write the strip now, before any audio reaches them.
-      applyLaneStrip(channelId);
-      const started = await starting;
       if (started && ownsStart()) {
         // Again once it plays, for nodes the start built later.
         settleStartedLane(channelId, lane);
@@ -1534,10 +1534,13 @@ function createNodePlayback(
         break;
       case "pan":
       case "filter":
+        // On the sound's nodes, paused too, so a resume starts on it.
+        applyLaneStrip(channelId);
+        break;
       case "cueListen":
-        // Both live on the sound's nodes, which exist once it plays.
+        // The tap lives on the sound's nodes, which exist once it plays.
         if (getPlaybackChannelRuntime(channelId).isPlaying) {
-          (op.param === "cueListen" ? syncCueTap : applyLaneStrip)(channelId);
+          syncCueTap(channelId);
         }
         break;
       case "transport":

@@ -22,7 +22,7 @@ function deferred(): Deferred {
   return { promise, resolve: () => resolve() };
 }
 
-function createHarness(level = 1) {
+function createHarness(level = 1, onConnect?: (laneId: string) => void) {
   const connectors = new Map<string, SoundOutputConnector>();
   const host = {
     setSoundOutputConnector: mock(
@@ -63,6 +63,7 @@ function createHarness(level = 1) {
   const outputs = createNodeLaneOutputs({
     getHost: () => host,
     getLevels: (laneId) => levels.get(laneId) ?? new Map(),
+    onConnect,
     route,
     wait: mock((_ms: number) => {
       const wait = deferred();
@@ -140,6 +141,17 @@ describe("createNodeLaneOutputs", () => {
       type: "target",
       value: 0.5,
     });
+  });
+
+  test("onConnect runs for the lane as its sound connects", () => {
+    const onConnect = mock((_laneId: string) => undefined);
+    const harness = createHarness(1, onConnect);
+    harness.outputs.attach("kexp", "node:n:kexp");
+    expect(onConnect).not.toHaveBeenCalled();
+
+    harness.connectSound("node:n:kexp");
+
+    expect(onConnect).toHaveBeenCalledWith("kexp");
   });
 
   test("attach is a no-op for the attached sound, and laneOut is stable", () => {

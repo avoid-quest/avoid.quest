@@ -46,6 +46,11 @@ export type NodeLaneOutputsOptions = {
   getLevels: (laneId: string) => ReadonlyMap<string, number>;
   /** Where a sink's sends go; every sink is the main bus without it. */
   route?: LaneSinkRoute;
+  /**
+   * Runs as the lane's sound connects: its native nodes exist from here,
+   * and its playback has not started yet.
+   */
+  onConnect?: (laneId: string) => void;
   wait?: (ms: number) => Promise<void>;
 };
 
@@ -130,6 +135,7 @@ const toMain: LaneSinkRoute = (_sinkId, _send, connectMain) => connectMain();
 export function createNodeLaneOutputs({
   getHost,
   getLevels,
+  onConnect,
   route = toMain,
   wait = delay,
 }: NodeLaneOutputsOptions): NodeLaneOutputs {
@@ -200,6 +206,7 @@ export function createNodeLaneOutputs({
   const connectorFor =
     (laneId: string, lane: LaneOutput): SoundOutputConnector =>
     (source, realtime, connectMain) => {
+      onConnect?.(laneId);
       const out = ensureOut(lane, source.context);
       source.connect(out);
       const reconnect =

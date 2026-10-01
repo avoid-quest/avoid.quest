@@ -1,5 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
+import type { SpotifyMetadata } from "@avoid.quest/platforms/spotify";
 import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
+import { resolveSpotifyItem as matchSpotifyItem } from "./platform-client";
 import { createPlatformItemLoader } from "./platform-item-loader";
 
 function youtubeClient(
@@ -317,6 +319,62 @@ describe("browser platform item loader", () => {
       },
       success: true,
     });
-    expect(resolveSpotifyItem).toHaveBeenCalledWith(pasted);
+    expect(resolveSpotifyItem).toHaveBeenCalledWith(pasted, {
+      signal: undefined,
+    });
+  });
+
+  test("stops matching a Spotify playlist once its load is aborted", async () => {
+    const url = "https://open.spotify.com/playlist/432nsnOM9L55tkiOFnHbI2";
+    const track = (spotifyId: string, name: string) => ({
+      artist: "Rahill",
+      duration: 160,
+      name,
+      spotifyId,
+      streamUrl: `spotify:track:${spotifyId}`,
+      url: `https://open.spotify.com/track/${spotifyId}`,
+    });
+    const metadata: SpotifyMetadata = {
+      itemType: "playlist",
+      platform: "spotify",
+      spotifyId: "432nsnOM9L55tkiOFnHbI2",
+      tracks: [
+        track("4Z1olDl8aym5xZYZAat672", "Tell Me"),
+        track("5eXyjGDzy8wrEn1pzu13uM", "Shake"),
+        track("2Foc5Q5nqNiosCNqttzHof", "Swimming Pool"),
+      ],
+      url,
+    };
+    const controller = new AbortController();
+    // The user cancels while the first track is being searched.
+    const search = mock(() => {
+      controller.abort();
+      return Promise.resolve([]);
+    });
+    const load = createPlatformItemLoader({
+      getYouTubeClient: () => {
+        throw new Error("YouTube links must remain unused");
+      },
+      resolvePlatformItem: mock(() => {
+        throw new Error("Spotify must not use the platform resolver");
+      }),
+      resolveSpotifyItem: (spotifyUrl, options) =>
+        matchSpotifyItem(spotifyUrl, {
+          ...options,
+          loadMetadata: () => Promise.resolve(metadata),
+          youtube: {
+            resolveStream: () => Promise.reject(new Error("unused")),
+            search,
+          },
+        }),
+      resolveStaticAudio: mock(() =>
+        Promise.reject(new Error("static audio must remain unused"))
+      ),
+    });
+
+    await expect(
+      load(url, { signal: controller.signal })
+    ).resolves.toMatchObject({ success: false });
+    expect(search).toHaveBeenCalledTimes(1);
   });
 });

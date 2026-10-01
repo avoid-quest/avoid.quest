@@ -2745,6 +2745,10 @@ describe("Node Playback audio inputs and output devices", () => {
                 readyState: ended.has(soundId) ? "ended" : "live",
               }),
               isActive: true,
+              stop: () => {
+                calls.push(`stop ${soundId}`);
+                active.delete(soundId);
+              },
             }
           : null
       ),
@@ -3168,6 +3172,54 @@ describe("Node Playback audio inputs and output devices", () => {
         isLoading: false,
         isPlaying: true,
       });
+    } finally {
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: original,
+      });
+    }
+  });
+
+  test("Off ends a shared tab's capture; a mic stays open for an instant Go live", async () => {
+    insertNodeSession(
+      wired(
+        [
+          mic("tab", {
+            capture: "display",
+            deviceId: "display",
+            deviceLabel: "Spotify",
+          }),
+          mic("mic"),
+          speakers,
+        ],
+        ["tab>speakers", "mic>speakers"]
+      )
+    );
+    const original = globalThis.navigator;
+    const getDisplayMedia = mock(() =>
+      Promise.resolve({
+        getAudioTracks: () => [{ readyState: "live" }],
+        getTracks: () => [],
+      } as unknown as MediaStream)
+    );
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { mediaDevices: { getDisplayMedia } },
+    });
+    try {
+      const harness = createHarness();
+      const { calls } = deviceEngine(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("tab", true);
+      await harness.playback.setPlaying("mic", true);
+      calls.length = 0;
+
+      await harness.playback.setPlaying("tab", false);
+      await harness.playback.setPlaying("mic", false);
+
+      expect(calls).toEqual([`stop ${soundOf("tab")}`]);
+      await harness.playback.setPlaying("tab", true);
+      expect(getDisplayMedia).toHaveBeenCalledTimes(2);
     } finally {
       Object.defineProperty(globalThis, "navigator", {
         configurable: true,

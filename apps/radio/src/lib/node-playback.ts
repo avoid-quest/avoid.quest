@@ -1843,6 +1843,15 @@ function createNodePlayback(
     );
   };
 
+  /** Off ends a tab share, so the tab plays locally again and stops sharing. */
+  const endTabShare = (channelId: string) => {
+    const source = laneOfChannel(channelId)?.source;
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    if (source?.kind === "device" && source.capture === "display" && soundId) {
+      ctx.audio.getDeviceSource(soundId)?.stop();
+    }
+  };
+
   const setPlaying = async (nodeId: string, playing: boolean) => {
     const channelId = laneChannelId(nodeId);
     if (isDeviceChannel(channelId)) {
@@ -1864,6 +1873,7 @@ function createNodePlayback(
       ? (channelStartRevisions.get(channelId) ??
         advanceChannelRevision(channelId))
       : advanceChannelRevision(channelId);
+    endTabShare(channelId);
     await setChannelPlaying(channelId, false, revision);
   };
 

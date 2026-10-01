@@ -947,6 +947,35 @@ describe("NodeCanvas: dragging a cable", () => {
     }
   });
 
+  test("a rewired cable removed during its drag offers no Replace", async () => {
+    const { port, view } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    try {
+      grabCableEnd(view.container, "nts->speakers");
+      const compIn = port("comp", "in:audio:main");
+      move(-5000, compIn);
+      // Another tab removes the cable before it is let go.
+      act(() => {
+        nodeStoreModule.commitNodeGraph(
+          (current) => ({
+            ...current,
+            edges: current.edges.filter((edge) => edge.id !== "nts->speakers"),
+          }),
+          nodeStoreModule.nodeStore,
+          "snapshot"
+        );
+      });
+      release(compIn);
+      const [[message, options]] = toast.mock.calls as [
+        [string, ExternalToast | undefined],
+      ];
+      expect(message).toBe("These are already connected");
+      expect(options?.action).toBeUndefined();
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
   test("Replace puts a rewired cable in the port's place", async () => {
     const { port, view } = await mountPatch();
     const toast = spyOn(sonner, "toast");

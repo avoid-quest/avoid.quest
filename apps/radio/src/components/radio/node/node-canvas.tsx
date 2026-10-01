@@ -770,20 +770,17 @@ function Canvas({
       }
     } else if (outcome.refuse) {
       const { replace } = outcome;
+      // A rewired cable gone from the patch since its drag began, e.g. in
+      // another tab, has nothing to put in the port's place: no Replace.
+      const rewiredEdge = rewired
+        ? graph.edges.find((edge) => edge.id === rewired.edge)
+        : null;
       refuse(
         outcome.refuse,
-        replace
+        replace && rewiredEdge !== undefined
           ? {
               label: "Replace",
-              onClick: () =>
-                replaceCable(
-                  replace,
-                  from.type,
-                  rewired
-                    ? (graph.edges.find((edge) => edge.id === rewired.edge) ??
-                        null)
-                    : null
-                ),
+              onClick: () => replaceCable(replace, from.type, rewiredEdge),
             }
           : undefined
       );

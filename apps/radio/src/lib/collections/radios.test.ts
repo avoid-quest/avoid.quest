@@ -183,8 +183,9 @@ describe("a Spotify or Mixcloud tab saved before both became platforms", () => {
     radiosCollection.update(shared.id, (draft) => {
       draft.enabled = false;
     });
-    expect(radiosCollection.state.get(shared.id)?.platformMetadata).toEqual(
-      shared.platformMetadata
-    );
+    expect(radiosCollection.state.get(shared.id)).toMatchObject({
+      enabled: false,
+      platformMetadata: shared.platformMetadata,
+    });
   });
 });

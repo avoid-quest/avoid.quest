@@ -248,16 +248,16 @@ function withDisplayMedia(
 function sharedRadio(): Radio {
   return {
     id: "device-input-left",
-    name: "Spotify",
+    name: "Browser tab audio",
     platformMetadata: {
       capture: "display",
       channelCount: 2,
       channelSelection: { left: 0, right: 1 },
       deviceId: "display",
-      deviceLabel: "Spotify",
+      deviceLabel: "Browser tab audio",
       itemType: "track",
       platform: "device-input",
-      sourceUrl: "https://open.spotify.com/track/abc",
+      sourceUrl: "https://www.nts.live/shows/test",
       url: "",
     },
     streamUrl: "",
@@ -719,16 +719,16 @@ describe("DjDeckModule", () => {
       });
       const shared: Radio = {
         id: "device-input-left",
-        name: "Spotify",
+        name: "Browser tab audio",
         platformMetadata: {
           capture: "display",
           channelCount: 2,
           channelSelection: { left: 0, right: 1 },
           deviceId: "display",
-          deviceLabel: "Spotify",
+          deviceLabel: "Browser tab audio",
           itemType: "track",
           platform: "device-input",
-          sourceUrl: "https://open.spotify.com/track/abc",
+          sourceUrl: "https://www.nts.live/shows/test",
           url: "",
         },
         streamUrl: "",
@@ -772,8 +772,8 @@ describe("DjDeckModule", () => {
         deck.load({
           capture: "display",
           deviceId: "display",
-          deviceLabel: "Spotify",
-          sourceUrl: "https://open.spotify.com/track/abc",
+          deviceLabel: "Browser tab audio",
+          sourceUrl: "https://www.nts.live/shows/test",
           type: "device-input",
         })
       ).rejects.toThrow("Sharing was cancelled");
@@ -1300,8 +1300,8 @@ describe("DjDeckModule", () => {
       await deck.load({
         capture: "display",
         deviceId: "display",
-        deviceLabel: "Spotify",
-        sourceUrl: "https://open.spotify.com/track/abc",
+        deviceLabel: "Browser tab audio",
+        sourceUrl: "https://www.nts.live/shows/test",
         type: "device-input",
       });
       const { soundId } = getPlaybackChannelRuntime("deck-a");

@@ -44,7 +44,7 @@ import {
   stopLegacyMultipleListeners,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
-import { settingsCollection } from "@/lib/collections/settings";
+import { getSettings, settingsCollection } from "@/lib/collections/settings";
 import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
@@ -872,6 +872,21 @@ describe("Node Playback volume and mute", () => {
     expect(getPlaybackSession("node")?.masterVolume).toBe(0);
     harness.playback.toggleMasterMute();
     expect(getPlaybackSession("node")?.masterVolume).toBe(0.8);
+  });
+
+  test("master volume is heard while settings still hold the legacy Multiple mode", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    // A legacy record that failed its rewrite stays "multiple"; Node runs.
+    const settings = getSettings() as unknown as {
+      player: { mode: string };
+    };
+    settings.player.mode = "multiple";
+
+    harness.playback.setMasterVolume(0.3);
+
+    expect(harness.context.audio.setGlobalVolume).toHaveBeenLastCalledWith(0.3);
   });
 
   test("unmuting a zero volume restores the latest volume a commit set", async () => {

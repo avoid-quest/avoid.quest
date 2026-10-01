@@ -12,6 +12,7 @@ import {
   shouldUseNativeSinglePlayback,
 } from "@/lib/collections/settings";
 import { validateRadioForMode } from "@/lib/external-url/utils";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
@@ -221,7 +222,8 @@ export function setManagedSessionMasterVolume(
   updatePlaybackSession(sessionId, (draft) => {
     draft.masterVolume = volume;
   });
-  if ((getSettings()?.player.mode ?? "single") === sessionId) {
+  // A legacy "multiple" that failed its rewrite still runs Node.
+  if (normalizePlayerMode(getSettings()?.player.mode) === sessionId) {
     ctx.audio.setGlobalVolume(volume);
   }
 }

@@ -147,6 +147,11 @@ export function branchBaseGain(node: SplitNode, handle: string): number {
   return branchChain(node, handle)?.gain ?? defaultChainGain(node.type);
 }
 
+/** Whether the configured chain under a branch cable is muted. */
+export function branchBaseMuted(node: SplitNode, handle: string): boolean {
+  return branchChain(node, handle)?.muted === true;
+}
+
 /**
  * The configured chain pan (a MIDI-learned one) that the compiler adds to
  * a branch cable's own pan.

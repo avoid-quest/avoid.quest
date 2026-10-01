@@ -9,6 +9,7 @@
 
 import {
   branchBaseGain,
+  branchBaseMuted,
   branchBasePan,
   branchName,
   branchTag,
@@ -291,9 +292,19 @@ export function toFlowNodes(
   }));
 }
 
-/** A cable that plays nothing: muted, or turned all the way down. */
-function isSilent(edge: GraphEdge): boolean {
-  return edge.muted || edge.gain === 0;
+/**
+ * A cable that plays nothing: muted, or turned all the way down, itself
+ * or, out of a split, the chain under it, as the compiler multiplies them.
+ */
+function isSilent(edge: GraphEdge, source: GraphNode | undefined): boolean {
+  if (edge.muted || edge.gain === 0) {
+    return true;
+  }
+  return (
+    isSplitNode(source) &&
+    (branchBaseMuted(source, edge.sourceHandle) ||
+      branchBaseGain(source, edge.sourceHandle) === 0)
+  );
 }
 
 /**
@@ -306,6 +317,7 @@ export function liveNodeIds(
   liveLanes: ReadonlySet<string>
 ): Set<string> {
   const live = new Set<string>();
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const queue = graph.nodes
     .filter(
       (node) =>
@@ -321,7 +333,7 @@ export function liveNodeIds(
     for (const edge of graph.edges) {
       if (
         edge.source === id &&
-        !isSilent(edge) &&
+        !isSilent(edge, byId.get(id)) &&
         parseHandleId(edge.sourceHandle)?.kind === "audio" &&
         parseHandleId(edge.targetHandle)?.kind === "audio"
       ) {
@@ -416,7 +428,9 @@ export function toFlowEdges(
         ...branchOf(drawn.get(edge.source), edge),
         ariaLabel: label,
         className:
-          live.has(edge.source) && kind === "audio" && !isSilent(edge)
+          live.has(edge.source) &&
+          kind === "audio" &&
+          !isSilent(edge, drawn.get(edge.source))
             ? "node-edge-live"
             : undefined,
         ...(kind === "sidechain"

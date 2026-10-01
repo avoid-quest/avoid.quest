@@ -397,6 +397,70 @@ describe("flow elements", () => {
     }
   });
 
+  test("a branch whose chain is muted or turned down stops the live glow", () => {
+    const wire = (id: string, source: string, target: string) => ({
+      id,
+      source,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: "in:audio:main",
+    });
+    const split = createNodeEffectConfig("fxComposite", "split");
+    const graph = (chain: { muted?: boolean; gain?: number }): NodeGraph =>
+      nodeGraphSchema.parse({
+        ...patch,
+        edges: [
+          wire("kexp->split", "src-kexp", "split"),
+          {
+            ...wire("split->comp", "split", "comp"),
+            sourceHandle: "out:audio:branch-1",
+          },
+          wire("comp->speakers", "comp", "speakers"),
+        ],
+        nodes: [
+          ...patch.nodes,
+          {
+            data: {
+              effect: {
+                ...split,
+                chains: split.chains.map((entry, index) =>
+                  index === 0 ? { ...entry, ...chain } : entry
+                ),
+              },
+            },
+            id: "split",
+            position: { x: 240, y: 0 },
+            type: "fxComposite",
+          },
+          {
+            data: { effect: createNodeEffectConfig("compressor", "comp") },
+            id: "comp",
+            position: { x: 480, y: 0 },
+            type: "compressor",
+          },
+        ],
+      });
+    const classes = (chain: { muted?: boolean; gain?: number }) =>
+      Object.fromEntries(
+        toFlowEdges(graph(chain), {
+          liveLanes: new Set(["n:src-kexp"]),
+          selection,
+        }).map((edge) => [edge.id, edge.className])
+      );
+
+    expect(classes({})).toMatchObject({
+      "comp->speakers": "node-edge-live",
+      "split->comp": "node-edge-live",
+    });
+    for (const silent of [{ muted: true }, { gain: 0 }]) {
+      expect(classes(silent)).toMatchObject({
+        "comp->speakers": undefined,
+        "kexp->split": "node-edge-live",
+        "split->comp": undefined,
+      });
+    }
+  });
+
   test("the module description React Flow reads names the arrow keys, and B only for effects", () => {
     // React Flow reads `keyboardDisabled` while keyboard access is on.
     const read = NODE_ARIA_LABELS["node.a11yDescription.keyboardDisabled"];

@@ -11,6 +11,12 @@ const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
 const REMOVED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-removed";
 const EVICTED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-evicted";
 const MAX_SESSION_RADIOS = 20;
+/**
+ * Removed or evicted ids kept per list, newest last; older ones are
+ * forgotten. A tombstone only matters while a patch still holds the radio,
+ * and a patch holds far fewer than this.
+ */
+const MAX_SESSION_RADIO_TOMBSTONES = 100;
 let lastAddedAt = 0;
 
 const memorySessionStorage = new Map<string, string>();
@@ -186,11 +192,19 @@ function readSessionRadioIds(key: string): Set<string> {
 }
 
 function writeSessionRadioIds(key: string, ids: Set<string>): void {
-  if (ids.size === 0) {
-    sessionStorageApi.removeItem(key);
-    return;
+  try {
+    if (ids.size === 0) {
+      sessionStorageApi.removeItem(key);
+      return;
+    }
+    sessionStorageApi.setItem(
+      key,
+      JSON.stringify([...ids].slice(-MAX_SESSION_RADIO_TOMBSTONES))
+    );
+  } catch (error) {
+    // A full or blocked storage loses the tombstones, not the radio change.
+    console.warn("[session-radios] Could not store removed radios", error);
   }
-  sessionStorageApi.setItem(key, JSON.stringify([...ids]));
 }
 
 function forgetSessionRadioId(key: string, id: string): void {

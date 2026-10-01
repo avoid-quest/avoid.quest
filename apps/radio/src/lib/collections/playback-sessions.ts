@@ -51,6 +51,7 @@ import {
   addSessionRadio,
   isSessionRadio,
   sessionRadiosCollection,
+  wasSessionRadioEvicted,
   wasSessionRadioRemoved,
 } from "./session-radios";
 import { settingsCollection } from "./settings";
@@ -448,25 +449,59 @@ function upsertSession(session: PlaybackSessionRecord): void {
   playbackSessionsCollection.insert(session);
 }
 
+/** Ids of the session radios Stations in `graph` hold. */
+function collectGraphSessionRadioIds(
+  graph: NodeGraph | null | undefined
+): Set<string> {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  return new Set(
+    nodes.flatMap((node) => {
+      const radio = isRadioSourceNode(node) ? (node.data.radio as Radio) : null;
+      return radio && isSessionOnlyRadio(radio) ? [String(radio.id)] : [];
+    })
+  );
+}
+
 /**
  * Registers every session radio a Station in `graph` holds back into this
  * tab's session radios. The patch stores the whole radio, so a station
  * picked from search and never saved keeps playing in a new tab, as it
  * does after a reload; without this its Station stayed filled with no
- * lane behind it. One this tab removed on purpose stays removed.
+ * lane behind it.
+ *
+ * One this tab removed on purpose, or let go to make room for newer ones,
+ * stays out while the patch keeps holding it. A Station that comes back
+ * with this write (Undo after deleting it in Node, say) registers its radio
+ * again; `previous` is the patch the write replaces, and `onlyReturning`
+ * limits registration to those.
  */
-function registerNodeSessionRadios(graph: NodeGraph): void {
+function registerNodeSessionRadios(
+  graph: NodeGraph,
+  previous?: NodeGraph | null,
+  onlyReturning = false
+): void {
   const sessionRadioIds = readStoredSessionRadioIds();
+  const previousIds = previous ? collectGraphSessionRadioIds(previous) : null;
   for (const node of graph.nodes) {
     const radio = isRadioSourceNode(node) ? (node.data.radio as Radio) : null;
+    if (!(radio && isSessionOnlyRadio(radio))) {
+      continue;
+    }
+    const id = String(radio.id);
+    if (sessionRadioIds.has(id)) {
+      continue;
+    }
+    const returning = previousIds !== null && !previousIds.has(id);
     if (
-      radio &&
-      isSessionOnlyRadio(radio) &&
-      !sessionRadioIds.has(String(radio.id)) &&
-      !wasSessionRadioRemoved(String(radio.id))
+      returning ||
+      !(
+        onlyReturning ||
+        wasSessionRadioRemoved(id) ||
+        wasSessionRadioEvicted(id)
+      )
     ) {
       addSessionRadio(radio);
-      sessionRadioIds.add(String(radio.id));
+      sessionRadioIds.add(id);
     }
   }
 }
@@ -518,7 +553,10 @@ export function writeNodeSessionGraph(
     return null;
   }
   const prepared = prepareNodeSessionGraph(graph, masterVolume);
-  registerNodeSessionRadios(graph);
+  registerNodeSessionRadios(
+    graph,
+    playbackSessionsCollection.state.get("node")?.graph
+  );
   holdNodeNamModels(collectSessionNamModelIds(prepared));
   if (playbackSessionsCollection.state.has("node")) {
     const previousModelIds = collectReleasableNamModelIds(
@@ -900,6 +938,10 @@ export function updatePlaybackSession(
     const previousModelIds = collectReleasableNamModelIds(existing);
     updatePlaybackSessionRecord(id, updater);
     scheduleNamModelCleanup(previousModelIds);
+    const graph = id === "node" ? getPlaybackSession("node")?.graph : null;
+    if (graph && graph !== existing.graph) {
+      registerNodeSessionRadios(graph, existing.graph, true);
+    }
   }
 }
 

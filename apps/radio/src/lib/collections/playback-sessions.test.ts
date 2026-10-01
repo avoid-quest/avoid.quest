@@ -1327,6 +1327,90 @@ describe("session persistence and init", () => {
     expect(sessionRadiosCollection.state.has("rg_picked")).toBe(true);
   });
 
+  test("Undo after deleting a session station in Node registers it again", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const picked = {
+      id: "rg_undo",
+      name: "Undo Session Radio",
+      streamUrl: "https://radio.example/undo.mp3",
+    };
+    addSessionRadio(picked);
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", { session: [picked] })
+    );
+    const withStation = getPlaybackSession("node")?.graph as NodeGraph;
+
+    // Node's delete removes the radio and its Stations.
+    removeSessionRadio(picked.id);
+    updatePlaybackSession("node", (draft) => {
+      draft.graph = {
+        ...withStation,
+        edges: [],
+        nodes: withStation.nodes.filter((node) => node.type !== "station"),
+      };
+    });
+    expect(sessionRadiosCollection.state.has("rg_undo")).toBe(false);
+
+    // Undo brings the Station back, and its radio with it.
+    updatePlaybackSession("node", (draft) => {
+      draft.graph = withStation;
+    });
+    expect(sessionRadiosCollection.state.has("rg_undo")).toBe(true);
+  });
+
+  test("an edit keeps a session radio removed while its Station stays", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const picked = {
+      id: "rg_kept_out",
+      name: "Kept Out",
+      streamUrl: "https://radio.example/kept-out.mp3",
+    };
+    addSessionRadio(picked);
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", { session: [picked] })
+    );
+    // Removed in Single mode; the patch still holds it.
+    removeSessionRadio(picked.id);
+
+    updatePlaybackSession("node", (draft) => {
+      if (draft.graph) {
+        draft.graph.viewport = { x: 10, y: 10, zoom: 1 };
+      }
+    });
+
+    expect(sessionRadiosCollection.state.has("rg_kept_out")).toBe(false);
+  });
+
+  test("a full session list does not take back a station it let go", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const evicted = {
+      id: "rg_oldest",
+      name: "Oldest",
+      streamUrl: "https://radio.example/oldest.mp3",
+    };
+    addSessionRadio(evicted);
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", {
+        session: [evicted],
+      })
+    );
+    const graph = getPlaybackSession("node")?.graph as NodeGraph;
+    for (let index = 0; index < 20; index += 1) {
+      addSessionRadio({
+        id: `rg_newer_${index}`,
+        name: `Newer ${index}`,
+        streamUrl: `https://radio.example/newer-${index}.mp3`,
+      });
+    }
+    expect(sessionRadiosCollection.state.has("rg_oldest")).toBe(false);
+    const listed = [...sessionRadiosCollection.state.keys()].sort();
+
+    writeNodeSessionGraph(graph);
+    writeNodeSessionGraph({ ...graph, viewport: { x: 5, y: 5, zoom: 1 } });
+
+    expect([...sessionRadiosCollection.state.keys()].sort()).toEqual(listed);
+  });
+
   test("initializePlaybackSessions keeps a Station whose session radio is still stored", async () => {
     await Promise.all([
       playbackSessionsCollection.stateWhenReady(),

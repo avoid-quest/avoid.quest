@@ -9,6 +9,7 @@ import { platformMetadataSchema } from "./schemas";
 
 const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
 const REMOVED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-removed";
+const EVICTED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-evicted";
 const MAX_SESSION_RADIOS = 20;
 let lastAddedAt = 0;
 
@@ -169,10 +170,10 @@ export function getSessionRadios(): Radio[] {
   return getOrderedSessionRadioRecords().map(toSessionRadio);
 }
 
-function readRemovedSessionRadioIds(): Set<string> {
+function readSessionRadioIds(key: string): Set<string> {
   try {
     const parsed = JSON.parse(
-      sessionStorageApi.getItem(REMOVED_SESSION_RADIOS_STORAGE_KEY) ?? "[]"
+      sessionStorageApi.getItem(key) ?? "[]"
     ) as unknown;
     return new Set(
       Array.isArray(parsed)
@@ -184,15 +185,19 @@ function readRemovedSessionRadioIds(): Set<string> {
   }
 }
 
-function writeRemovedSessionRadioIds(ids: Set<string>): void {
+function writeSessionRadioIds(key: string, ids: Set<string>): void {
   if (ids.size === 0) {
-    sessionStorageApi.removeItem(REMOVED_SESSION_RADIOS_STORAGE_KEY);
+    sessionStorageApi.removeItem(key);
     return;
   }
-  sessionStorageApi.setItem(
-    REMOVED_SESSION_RADIOS_STORAGE_KEY,
-    JSON.stringify([...ids])
-  );
+  sessionStorageApi.setItem(key, JSON.stringify([...ids]));
+}
+
+function forgetSessionRadioId(key: string, id: string): void {
+  const ids = readSessionRadioIds(key);
+  if (ids.delete(id)) {
+    writeSessionRadioIds(key, ids);
+  }
 }
 
 /**
@@ -200,16 +205,27 @@ function writeRemovedSessionRadioIds(ids: Set<string>): void {
  * that still holds it doesn't register it back.
  */
 export function wasSessionRadioRemoved(id: string | number): boolean {
-  return readRemovedSessionRadioIds().has(String(id));
+  return readSessionRadioIds(REMOVED_SESSION_RADIOS_STORAGE_KEY).has(
+    String(id)
+  );
+}
+
+/**
+ * Whether the session radio `id` left this tab's list to make room for newer
+ * ones, so a patch that still holds it doesn't register it back and push
+ * out another.
+ */
+export function wasSessionRadioEvicted(id: string | number): boolean {
+  return readSessionRadioIds(EVICTED_SESSION_RADIOS_STORAGE_KEY).has(
+    String(id)
+  );
 }
 
 export function addSessionRadio(radio: Radio): void {
   const record = toSessionRadioRecord(radio);
   const id = String(record.id);
-  const removed = readRemovedSessionRadioIds();
-  if (removed.delete(id)) {
-    writeRemovedSessionRadioIds(removed);
-  }
+  forgetSessionRadioId(REMOVED_SESSION_RADIOS_STORAGE_KEY, id);
+  forgetSessionRadioId(EVICTED_SESSION_RADIOS_STORAGE_KEY, id);
   if (sessionRadiosCollection.state.has(id)) {
     sessionRadiosCollection.update(id, (draft) => {
       Object.assign(draft, record);
@@ -219,11 +235,16 @@ export function addSessionRadio(radio: Radio): void {
 
   sessionRadiosCollection.insert(record);
 
-  for (const staleRadio of getOrderedSessionRadioRecords().slice(
-    MAX_SESSION_RADIOS
-  )) {
-    sessionRadiosCollection.delete(String(staleRadio.id));
+  const evicted = getOrderedSessionRadioRecords().slice(MAX_SESSION_RADIOS);
+  if (evicted.length === 0) {
+    return;
   }
+  const evictedIds = readSessionRadioIds(EVICTED_SESSION_RADIOS_STORAGE_KEY);
+  for (const staleRadio of evicted) {
+    sessionRadiosCollection.delete(String(staleRadio.id));
+    evictedIds.add(String(staleRadio.id));
+  }
+  writeSessionRadioIds(EVICTED_SESSION_RADIOS_STORAGE_KEY, evictedIds);
 }
 
 export function removeSessionRadio(id: string | number): void {
@@ -231,5 +252,8 @@ export function removeSessionRadio(id: string | number): void {
   if (sessionRadiosCollection.state.has(key)) {
     sessionRadiosCollection.delete(key);
   }
-  writeRemovedSessionRadioIds(readRemovedSessionRadioIds().add(key));
+  writeSessionRadioIds(
+    REMOVED_SESSION_RADIOS_STORAGE_KEY,
+    readSessionRadioIds(REMOVED_SESSION_RADIOS_STORAGE_KEY).add(key)
+  );
 }

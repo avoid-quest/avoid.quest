@@ -1047,14 +1047,24 @@ function removeNodeHealed(
   return { graph: next, loud };
 }
 
+/** A device id for an empty Audio input, so its routes compile. */
+const PLACEHOLDER_DEVICE_ID = "placeholder";
+
 /**
- * The patch with every Station, Track and File playing: an empty, hidden or
- * re-pick one has no lane, so its routes are compiled as though it did.
+ * The patch with every source playing: an empty, hidden or re-pick
+ * Station, Track or File, or an Audio input with no device, has no lane,
+ * so its routes are compiled as though it did.
  */
 function withEveryStationLive(graph: NodeGraph): NodeGraph {
   return {
     ...graph,
     nodes: graph.nodes.map((node) => {
+      if (node.type === "deviceIn" && node.data.deviceId === null) {
+        return {
+          ...node,
+          data: { ...node.data, deviceId: PLACEHOLDER_DEVICE_ID },
+        };
+      }
       if (!isRadioSourceNode(node) || isRadioSourceLive(node)) {
         return node;
       }
@@ -1080,8 +1090,8 @@ function withEveryStationLive(graph: NodeGraph): NodeGraph {
 /**
  * Removes nodes together, each healing the path through it. Refuses the
  * whole edit if an existing source-to-output route is lost while both ends
- * remain, an empty or hidden Station's included, so it still plays once
- * filled or shown, or if a heal would need a cable louder than one can be,
+ * remain, an empty or hidden Station's or a device-less Audio input's
+ * included, so it still plays once filled, shown or set, or if a heal would need a cable louder than one can be,
  * which would change the level. Explicit cable deletions and removal of a
  * source or output are still allowed; a failed heal must not silently
  * disconnect another lane.

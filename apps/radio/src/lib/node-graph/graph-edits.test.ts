@@ -980,6 +980,33 @@ describe("removeNodesHealed", () => {
     expect(edit.ok).toBe(false);
   });
 
+  test("refuses deleting a Merge that would drop an empty Audio input's route", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", `${one.nodeId}->speakers`);
+    const split = seriesToParallel(two.graph, {
+      edges: [],
+      nodes: [one.nodeId, two.nodeId],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const input = createPaletteNode("deviceIn", "src-a", { x: 0, y: 0 });
+    expect(input?.data).toMatchObject({ deviceId: null });
+    const empty = {
+      ...split.graph,
+      nodes: split.graph.nodes.map((node) =>
+        node.id === "src-a" && input ? input : node
+      ),
+    };
+    expect(compile(empty, ENV).edges.size).toBe(0);
+    const merge = empty.nodes.find((node) => node.type === "merge");
+
+    expect(removeNodesHealed(empty, [merge?.id ?? ""]).ok).toBe(false);
+    // Once it has a device, the same patch plays through the region.
+    const live = setDeviceParams(empty, "src-a", { deviceId: "mic" });
+    expect(compile(live, ENV).edges.size).toBe(1);
+  });
+
   test("deleting a split hands each branch's pan and solo to its healed cable", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", "compressor->speakers");

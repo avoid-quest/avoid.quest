@@ -4107,6 +4107,44 @@ describe("Node Playback: Track and File sources", () => {
     expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
   });
 
+  test("a sound repeating its interruption renews its stream once", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const renewal = Promise.withResolvers<PlatformStreamResolution | null>();
+    const resolveStream = mock(() => renewal.promise);
+    const harness = createHarness({ resolveStream });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("video", true);
+    const interrupted = audioState({
+      error: {
+        code: "STREAM_INTERRUPTED",
+        id: "e1",
+        message: "expired",
+        position: 42,
+        timestamp: Date.now(),
+      },
+    });
+
+    const watch = laneWatcher(harness.context, "video");
+    watch(interrupted);
+    watch({ ...interrupted, isBuffering: true });
+    renewal.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/renewed.m4a",
+    });
+    await harness.playback.whenSettled();
+
+    expect(resolveStream).toHaveBeenCalledTimes(1);
+    expect(
+      harness.context.audioEngine.playback.refreshStreamUrl
+    ).toHaveBeenCalledTimes(1);
+
+    // A later interruption, once that renewal is done, renews again.
+    watch(interrupted);
+    await harness.playback.whenSettled();
+    expect(resolveStream).toHaveBeenCalledTimes(2);
+  });
+
   test("a stream the platform can't renew says so on the lane", async () => {
     insertNodeSession(patch([trackNode("video")]));
     const harness = createHarness({ resolveStream: mock(async () => null) });

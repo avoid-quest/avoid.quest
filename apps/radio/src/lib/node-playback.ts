@@ -1236,6 +1236,13 @@ function createNodePlayback(
       return;
     }
     if (state.error?.code === "STREAM_INTERRUPTED") {
+      // The sound repeats its error with each state until it resumes; one
+      // renewal at a time.
+      for (const refresh of refreshingStreams) {
+        if (refresh.channelId === channelId && refresh.isCurrent()) {
+          return;
+        }
+      }
       // A pause, removal or deactivate while it resolves drops the resume.
       const pending = pendingChannelStarts.begin(channelId, isCurrent);
       const refresh = { channelId, isCurrent: pending.isCurrent };

@@ -252,18 +252,55 @@ describe("fine control wheel changes", () => {
       />
     );
     const thumb = requireElement(view.container, '[role="slider"]');
-    act(() =>
-      thumb.dispatchEvent(
-        new dom.window.KeyboardEvent("keydown", {
-          bubbles: true,
-          cancelable: true,
-          key: "ArrowUp",
-        })
-      )
-    );
-    expect(changes).toEqual([[1]]);
     wheel(thumb, -1);
-    expect(changes.at(-1)).toEqual([1.01]);
+    expect(changes).toEqual([[1.01]]);
+  });
+
+  test("keyboard steps escape a snapping fader's reset value", () => {
+    function Fader() {
+      const [value, setValue] = useState(1);
+      return (
+        <Slider
+          defaultValue={[1]}
+          max={1.585}
+          min={0}
+          onValueChange={([next]) => setValue(next ?? 1)}
+          snapToDefault
+          step={0.01}
+          value={[value]}
+        />
+      );
+    }
+    const view = render(<Fader />);
+    const thumb = requireElement(view.container, '[role="slider"]');
+    pressKey(thumb, "ArrowUp");
+    pressKey(thumb, "ArrowUp");
+    expect(thumb.getAttribute("aria-valuenow")).toBe("1.02");
+    pressKey(thumb, "ArrowDown");
+    pressKey(thumb, "ArrowDown");
+    pressKey(thumb, "ArrowDown");
+    expect(thumb.getAttribute("aria-valuenow")).toBe("0.99");
+  });
+
+  test("DJ crossfader arrow keys move away from the centre", () => {
+    const changes: number[] = [];
+    function Crossfader() {
+      const [position, setPosition] = useState(0.5);
+      return (
+        <MixerCrossfader
+          crossfadePosition={position}
+          onCrossfadeChange={(next) => {
+            changes.push(next);
+            setPosition(next);
+          }}
+        />
+      );
+    }
+    const view = render(<Crossfader />);
+    const thumb = requireElement(view.container, '[role="slider"]');
+    pressKey(thumb, "ArrowRight");
+    pressKey(thumb, "ArrowRight");
+    expect(changes).toEqual([0.51, 0.52]);
   });
 
   test("DJ crossfader preserves wheel precision at the centre", () => {

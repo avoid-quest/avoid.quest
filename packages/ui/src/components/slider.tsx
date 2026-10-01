@@ -8,8 +8,10 @@ import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
 import {
   type ComponentProps,
   type CSSProperties,
+  type KeyboardEvent,
   type SyntheticEvent,
   useImperativeHandle,
+  useRef,
   useState,
 } from "react";
 
@@ -20,7 +22,7 @@ type SliderProps = ComponentProps<typeof Root> & {
   size?: "default" | "lg";
   /** Gesture reset target; defaults to the initial defaultValue. */
   resetValue?: number[];
-  /** Snap ordinary pointer/key changes near the reset target; wheel nudges stay precise. */
+  /** Snap pointer changes near the reset target; keyboard and wheel nudges stay precise. */
   snapToDefault?: boolean;
   /** Whole-value wheel steps for discrete parameters; continuous parameters use 0.01. */
   wheelStep?: number;
@@ -194,9 +196,24 @@ function Slider({
     [elementRef]
   );
 
+  // Radix recomputes each key press from the controlled value, so snapping a
+  // keyboard step back to the reset target would leave the thumb stuck there.
+  const keyboardChange = useRef(false);
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    props.onKeyDown?.(event);
+    if (event.defaultPrevented) {
+      return;
+    }
+    keyboardChange.current = true;
+    // Radix handles this key synchronously after this handler returns.
+    queueMicrotask(() => {
+      keyboardChange.current = false;
+    });
+  }
+
   function handleSliderValueChange(next: number[]) {
     handleValueChange(
-      snapToDefault && resetValues
+      snapToDefault && resetValues && !keyboardChange.current
         ? next.map((entry, index) => {
             const target = resetValues[index];
             return target !== undefined &&
@@ -261,6 +278,7 @@ function Slider({
       {...props}
       onContextMenu={composeHandlers(props.onContextMenu, reset.onContextMenu)}
       onDoubleClick={composeHandlers(props.onDoubleClick, reset.onDoubleClick)}
+      onKeyDown={handleKeyDown}
       onLostPointerCapture={composeHandlers(
         props.onLostPointerCapture,
         reset.onPointerCancel

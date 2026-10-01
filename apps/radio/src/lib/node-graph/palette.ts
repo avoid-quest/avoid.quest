@@ -724,14 +724,16 @@ export function addPaletteNode(
   entry: PaletteNodeEntry,
   { position, from = null, into = null, ...options }: AddPaletteNodeOptions = {}
 ): { graph: NodeGraph; nodeId: string | null } {
-  // An FX in a free spot gets its column, Speakers moving right for it.
+  // An FX in a free spot gets its column, Speakers moving right for it; the
+  // spot is found before the move, which can shift where a sourceless
+  // patch's column would be.
   const graph =
     position || !isFxColumnType(entry.type) ? start : withFxColumn(start);
   const nodeId = nodeIdFor(graph, entry.type);
   const node = createPaletteNode(
     entry.type,
     nodeId,
-    position ?? defaultPosition(graph, entry.type),
+    position ?? defaultPosition(start, entry.type),
     entry.radio ?? null,
     entry.device ?? null,
     entry.searchPlatform

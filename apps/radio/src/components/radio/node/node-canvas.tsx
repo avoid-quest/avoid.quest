@@ -657,7 +657,8 @@ function Canvas({
         replace
           ? {
               label: "Replace",
-              onClick: () => replaceCable(replace, rewired?.edge ?? null),
+              onClick: () =>
+                replaceCable(replace, from.type, rewired?.edge ?? null),
             }
           : undefined
       );
@@ -666,13 +667,26 @@ function Canvas({
 
   // Replace on a one-cable refusal: the port's cable moves to the new far
   // end, keeping its level. A cable being rewired onto the port takes its
-  // place instead, and the port's old cable goes. One undo step.
+  // place instead, and the port's old cable goes. One undo step. The toast
+  // outlives the drop, so a port's cable moved or gone since is left alone.
   const replaceCable = (
     { connection, edge }: Replacement,
+    fromType: PaletteFrom["type"],
     rewired: string | null
   ) => {
     commitNodeGraph(
       (current) => {
+        const held = current.edges.find((entry) => entry.id === edge);
+        const stillHeld =
+          held &&
+          (fromType === "source"
+            ? held.target === connection.target &&
+              held.targetHandle === connection.targetHandle
+            : held.source === connection.source &&
+              held.sourceHandle === connection.sourceHandle);
+        if (!stillHeld) {
+          return current;
+        }
         const edit = rewired
           ? reconnectEdge(
               removeEdges(current, [edge]),

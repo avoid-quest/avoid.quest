@@ -222,17 +222,30 @@ export function nextStationPosition(graph: NodeGraph): Position {
     );
     return { x: first.position.x, y: bottomOf(column) };
   }
-  const speakers = graph.nodes.find((node) => node.type === "speakers");
+  const speakers = speakersOf(graph);
   return speakers
-    ? {
-        x: speakers.position.x - FIRST_STATION_OFFSET_X,
-        y: speakers.position.y,
-      }
+    ? { x: firstSourceX(graph, speakers), y: speakers.position.y }
     : { x: 0, y: 0 };
 }
 
 function speakersOf(graph: NodeGraph): GraphNode | undefined {
   return graph.nodes.find((node) => node.type === "speakers");
+}
+
+/**
+ * Where a first source goes in a patch with none: one column left of
+ * Speakers, or left of an FX column already standing there (Speakers moved
+ * right for it), so the source and the FX column keep clear of each other.
+ */
+function firstSourceX(graph: NodeGraph, speakers: GraphNode): number {
+  const between = graph.nodes
+    .filter(
+      (node) => !isStripSource(node) && node.position.x < speakers.position.x
+    )
+    .map((node) => node.position.x);
+  return between.length > 0
+    ? Math.min(...between) - FX_GAP_X - SOURCE_COLUMN_WIDTH
+    : speakers.position.x - FIRST_STATION_OFFSET_X;
 }
 
 /**
@@ -247,9 +260,7 @@ function sourceColumnsRight(graph: NodeGraph, speakers: GraphNode): number {
     )
     .map((node) => node.position.x);
   const left =
-    lefts.length > 0
-      ? Math.max(...lefts)
-      : speakers.position.x - FIRST_STATION_OFFSET_X;
+    lefts.length > 0 ? Math.max(...lefts) : firstSourceX(graph, speakers);
   return left + SOURCE_COLUMN_WIDTH;
 }
 

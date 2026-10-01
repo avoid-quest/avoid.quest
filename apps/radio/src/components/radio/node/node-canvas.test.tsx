@@ -492,6 +492,46 @@ describe("NodeCanvas: dragging a cable", () => {
     }
   });
 
+  test("Replace leaves alone a port's cable moved since the toast", async () => {
+    const { port } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    try {
+      fireEvent.mouseDown(port("kexp", "out:audio:main"), {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+      });
+      const key = port("comp", "in:sidechain:key");
+      move(-5000, key);
+      release(key);
+      const [[, options]] = toast.mock.calls as [[string, ExternalToast]];
+      const action = options.action as { label: string; onClick: () => void };
+
+      // The key's cable goes to the Reverb before Replace is clicked.
+      act(() => {
+        nodeStoreModule.commitNodeGraph(
+          (current) => ({
+            ...current,
+            edges: current.edges.map((edge) =>
+              edge.id === "nts->comp"
+                ? { ...edge, target: "verb", targetHandle: "in:audio:main" }
+                : edge
+            ),
+          }),
+          nodeStoreModule.nodeStore,
+          "snapshot"
+        );
+      });
+      const moved = nodeStoreModule.nodeStore.state.graph;
+      action.onClick();
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toEqual(
+        moved?.edges ?? []
+      );
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
   test("a drop on another Station's body says it takes no audio in", async () => {
     const { port, view } = await mountPatch();
     const toast = spyOn(sonner, "toast");

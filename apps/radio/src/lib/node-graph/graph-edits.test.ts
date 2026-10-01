@@ -233,6 +233,17 @@ describe("where a new node lands", () => {
     );
   });
 
+  test("FX in a Blank patch share one column clear of Speakers, and a Station goes left of it", () => {
+    const start = buildNodeGraphFromTemplate("blank");
+    const first = addPaletteNode(start, gainEntry);
+    const second = addPaletteNode(first.graph, gainEntry);
+
+    const firstX = positionOf(first.graph, first.nodeId)?.x ?? 0;
+    expect(positionOf(second.graph, second.nodeId)?.x).toBe(firstX);
+    expect(positionOf(second.graph, "speakers")?.x).toBe(firstX + 224 + 40);
+    expect(nextStationPosition(second.graph).x).toBe(firstX - 40 - 240);
+  });
+
   test("Speakers, and what is beside it, move right to make room for the FX column", () => {
     // The Starter's Speakers sit a cable's length from the slot.
     const start = buildNodeGraphFromTemplate("starter");

@@ -765,7 +765,8 @@ describe("validate: feedback", () => {
   });
 
   test("a key from downstream of its FX closes no cycle", () => {
-    // The key taps its lane before the FX, so no audio runs back.
+    // The key taps its lane before the FX, so no audio runs back: only its
+    // source is refused, as every key not straight from a Station is.
     expect(
       check(
         [
@@ -781,10 +782,10 @@ describe("validate: feedback", () => {
           key("g", "comp"),
         ]
       )
-    ).toEqual([]);
+    ).toEqual(["sidechain-source@g->comp"]);
   });
 
-  test("two lanes may key each other", () => {
+  test("two lanes keying each other close no cycle", () => {
     expect(
       check(
         [
@@ -803,7 +804,7 @@ describe("validate: feedback", () => {
           key("cb", "ca"),
         ]
       )
-    ).toEqual([]);
+    ).toEqual(["sidechain-source@ca->cb", "sidechain-source@cb->ca"]);
   });
 
   test("control cycles are refused", () => {

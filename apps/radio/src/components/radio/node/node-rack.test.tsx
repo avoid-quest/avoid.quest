@@ -392,6 +392,37 @@ describe("NodeRack", () => {
     expect(chip.getAttribute("title")).toBe("Keyed by BBC Radio 4");
   });
 
+  test("a key on a switched-off FX names no station, as its cable reads idle", () => {
+    const graph = buildNodeGraphFromTemplate("duck", {
+      saved: [
+        {
+          enabled: true,
+          id: "kexp",
+          name: "KEXP",
+          streamUrl: "https://radio.example/kexp.mp3",
+        },
+        {
+          enabled: true,
+          id: "r4",
+          name: "BBC Radio 4",
+          streamUrl: "https://radio.example/r4.mp3",
+        },
+      ],
+    });
+    const { view } = renderRack({
+      ...graph,
+      nodes: graph.nodes.map((node) => {
+        const { effect } = node.data as { effect?: { enabled: boolean } };
+        return effect
+          ? { ...node, data: { effect: { ...effect, enabled: false } } }
+          : node;
+      }),
+    } as typeof graph);
+
+    const chip = view.getByRole("button", { name: "Compressor settings" });
+    expect(chip.getAttribute("title")).toBeNull();
+  });
+
   test("shows graph issues even when an invalid path compiles no lanes", () => {
     const graph = nodeGraphSchema.parse({
       edges: [cable("delay", "delay")],

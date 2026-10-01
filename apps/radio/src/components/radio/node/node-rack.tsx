@@ -5,13 +5,13 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { KeyRoundIcon, ListMusicIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { findEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
   type CompileEnv,
   compile,
   type EnginePlan,
+  idleKeys,
   type LanePlan,
 } from "@/lib/node-graph/compile";
 import { nodeLabel } from "@/lib/node-graph/describe";
@@ -21,6 +21,7 @@ import {
   type NodeGraph,
 } from "@/lib/node-graph/schema";
 import { isTrackRadio } from "@/lib/node-graph/sources";
+import { parseHandleId } from "@/lib/node-graph/validate";
 import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { EmptyHint } from "../empty-hint";
@@ -117,18 +118,48 @@ function RackSection({
 }
 
 /**
+ * The station keying each FX, by FX node id, for the key cables the plan
+ * keys with: the same verdict the canvas's idle key tags show, so a key
+ * on a switched-off FX, or one the runtime won't bind, names no station.
+ */
+function keyingStations(
+  graph: NodeGraph,
+  plan: EnginePlan
+): Map<string, string> {
+  const idle = idleKeys(graph, plan);
+  const stationOf = new Map<string, string>();
+  for (const lane of plan.lanes.values()) {
+    for (const id of lane.nodes) {
+      stationOf.set(id, lane.radio.name);
+    }
+  }
+  const keyed = new Map<string, string>();
+  for (const edge of graph.edges) {
+    const station = stationOf.get(edge.source);
+    if (
+      station &&
+      parseHandleId(edge.targetHandle)?.kind === "sidechain" &&
+      !idle.has(edge.id)
+    ) {
+      keyed.set(edge.target, station);
+    }
+  }
+  return keyed;
+}
+
+/**
  * The FX lowered into a lane as chips that open the inspector, and its
  * backend badge: `compat` or `bypassed`, nothing while it runs as planned.
  */
 function LaneChain({
   lane,
   nodesById,
-  laneNames,
+  keyedBy: keyers,
 }: {
   lane: LanePlan;
   nodesById: Map<string, GraphNode>;
-  /** Station name by lane channel id, to name what keys an FX. */
-  laneNames: ReadonlyMap<string, string>;
+  /** The station keying each FX whose key cable keys, by FX node id. */
+  keyedBy: ReadonlyMap<string, string>;
 }) {
   const actions = useNodeActions();
   const fx = lane.nodes
@@ -154,9 +185,7 @@ function LaneChain({
             </Badge>
           );
         }
-        const keyChannel = findEffectInTree(lane.effects, node.id)?.sidechain
-          ?.channelId;
-        const keyedBy = keyChannel ? laneNames.get(keyChannel) : undefined;
+        const keyedBy = keyers.get(node.id);
         return (
           <Badge
             asChild
@@ -263,9 +292,7 @@ export function NodeRack({
   const plan = compile(graph, env ?? detectedEnv);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const groups = groupLanes(plan, nodesById);
-  const laneNames = new Map(
-    [...plan.lanes.values()].map((lane) => [lane.channelId, lane.radio.name])
-  );
+  const keyedBy = keyingStations(graph, plan);
   const hidden = graph.nodes.flatMap((node) =>
     node.type === "station" && node.data.radio?.enabled === false
       ? [{ id: node.id, radio: node.data.radio as Radio }]
@@ -339,8 +366,8 @@ export function NodeRack({
                   volume={lane.volume}
                 >
                   <LaneChain
+                    keyedBy={keyedBy}
                     lane={lane}
-                    laneNames={laneNames}
                     nodesById={nodesById}
                   />
                 </NodeSourceRow>

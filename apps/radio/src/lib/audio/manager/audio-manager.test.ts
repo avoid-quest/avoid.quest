@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { AudioState, PlaybackSource } from "../playback/index.js";
-import { FakeAudioContext } from "../routing/fake-audio-nodes";
+import {
+  FakeAudioContext,
+  type FakeAudioParam,
+} from "../routing/fake-audio-nodes";
 import type {
   AudioNodes,
   MainOutputConnect,
@@ -226,6 +229,44 @@ describe("AudioManager", () => {
       }
     }
   );
+
+  test("a stopped audio input stays muted through volume changes until it goes live", async () => {
+    const capture = createDeviceCaptureHarness();
+    try {
+      const { manager } = capture;
+      const soundId = manager.createSound(station, "node:n:mic");
+      const start = manager.playDeviceSound(soundId, "usb-mic");
+      (await capture.request()).resolve(capturedStream().stream);
+      await start;
+      const gain = getRegistry(manager).get(soundId)?.nodes?.gain
+        .gain as unknown as FakeAudioParam;
+      const lastGain = () => {
+        const event = gain.events
+          .filter((candidate) => candidate.type !== "cancel")
+          .at(-1);
+        return event && "value" in event ? event.value : null;
+      };
+      expect(lastGain()).toBe(1);
+      manager.pauseSound(soundId);
+      expect(lastGain()).toBe(0.0001);
+
+      manager.setGlobalVolume(0.5);
+      expect(lastGain()).toBe(0.0001);
+      manager.setVolume(soundId, 0.8);
+      expect(lastGain()).toBe(0.0001);
+      manager.muteSound(soundId);
+      manager.unmuteSound(soundId);
+      expect(lastGain()).toBe(0.0001);
+      expect(manager.getSoundVolume(soundId)).toBe(0.8);
+
+      await manager.playSound(soundId, 0.8);
+      expect(lastGain()).toBe(0.4);
+      manager.setGlobalVolume(1);
+      expect(lastGain()).toBe(0.8);
+    } finally {
+      capture.restore();
+    }
+  });
 
   test("pausing a sound that is still connecting settles its loading state", async () => {
     const manager = AudioManager.getInstance();

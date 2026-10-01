@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { type ExternalToast, toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
@@ -20,6 +20,7 @@ import {
   commitNodeGraph,
   nodeStore,
   setNodeSelection,
+  snapshotNodeGraph,
   useNodeGraph,
   useNodeSelection,
 } from "@/lib/node-graph/node-store";
@@ -229,6 +230,13 @@ function fitPatch(
   );
 }
 
+/**
+ * Arrow-key nudges of a selected node are one undo step, taken once the
+ * keys have been still this long: a held arrow repeats about 30 times a
+ * second, and a step per nudge would push the whole undo history out.
+ */
+export const NUDGE_SETTLE_MS = 300;
+
 /** No React Flow attribution in the canvas corner. */
 const PRO_OPTIONS = { hideAttribution: true };
 
@@ -315,6 +323,60 @@ function removeCanvasNodes(
   }
   commitNodeGraph(() => edit.graph, nodeStore, "snapshot");
   return true;
+}
+
+/**
+ * Takes the positions React Flow let go of without having dragged them out
+ * of `batch.dropped` and returns them: arrow-key nudges, not drops.
+ * `draggingIds` tracks the nodes mid-drag across batches.
+ */
+function takeNudges(
+  batch: NodeChangeBatch,
+  draggingIds: Set<string>
+): Map<string, Point> {
+  const nudged = new Map<string, Point>();
+  for (const id of batch.dragging.keys()) {
+    draggingIds.add(id);
+  }
+  for (const [id, position] of batch.dropped) {
+    if (!draggingIds.delete(id)) {
+      nudged.set(id, position);
+      batch.dropped.delete(id);
+    }
+  }
+  return nudged;
+}
+
+type NudgeTimer = ReturnType<typeof setTimeout>;
+
+/**
+ * Moves nudged nodes, if any, now, and takes the run's undo step once the
+ * keys settle.
+ */
+function nudgeNodes(
+  nudged: ReadonlyMap<string, Point>,
+  timer: RefObject<NudgeTimer | null>
+): void {
+  if (nudged.size === 0) {
+    return;
+  }
+  commitNodeGraph((latest) => moveNodes(latest, nudged), nodeStore);
+  const pending = timer.current;
+  if (pending !== null) {
+    clearTimeout(pending);
+  }
+  timer.current = setTimeout(() => takeNudgeStep(timer), NUDGE_SETTLE_MS);
+}
+
+/** Takes the pending nudge step now, if there is one. */
+function takeNudgeStep(timer: RefObject<NudgeTimer | null>): void {
+  const pending = timer.current;
+  if (pending === null) {
+    return;
+  }
+  clearTimeout(pending);
+  timer.current = null;
+  snapshotNodeGraph(nodeStore);
 }
 
 function foldNodeChange(batch: NodeChangeBatch, change: FlowNodeChange) {
@@ -466,6 +528,10 @@ function Canvas({
   // viewport differing from it was set elsewhere, e.g. by an import.
   const viewRef = useRef<FlowViewport>(initialViewport);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // The nodes React Flow is dragging. A node it lets go of without having
+  // dragged it was nudged with the arrow keys.
+  const draggingRef = useRef<Set<string>>(new Set());
+  const nudgeTimerRef = useRef<NudgeTimer | null>(null);
   // The cable a dragged node would go into if let go now: state to
   // highlight it, a ref for the drop, which reads it in the same event.
   const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
@@ -567,6 +633,7 @@ function Canvas({
       foldNodeChange(batch, change);
     }
     const { dragging, dropped, removed, selected, sizes } = batch;
+    const nudged = takeNudges(batch, draggingRef.current);
     if (dragging.size > 0 || dropped.size > 0) {
       setDragPositions((previous) => {
         const next = new Map(previous);
@@ -608,6 +675,7 @@ function Canvas({
         "snapshot"
       );
     }
+    nudgeNodes(nudged, nudgeTimerRef);
     const removalAccepted = removeCanvasNodes(removed, validateOptions);
     const selectedNodes = (
       removalAccepted ? [...selected] : [...current.nodes]
@@ -1053,10 +1121,12 @@ function Canvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [env.profile]);
 
-  // A canvas that goes mid-drag leaves no ports lit behind it.
+  // A canvas that goes mid-drag leaves no ports lit behind it, and one
+  // that goes mid-nudge takes that step rather than dropping it.
   useEffect(
     () => () => {
       clearConnectionHints();
+      takeNudgeStep(nudgeTimerRef);
     },
     []
   );

@@ -118,6 +118,7 @@ afterEach(() => {
 
 let NodeCanvas: typeof import("./node-canvas")["default"];
 let phoneFitViewport: typeof import("./node-canvas")["phoneFitViewport"];
+let NUDGE_SETTLE_MS: typeof import("./node-canvas")["NUDGE_SETTLE_MS"];
 let NodeCanvasHint: typeof import("./canvas-hint")["NodeCanvasHint"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
@@ -128,7 +129,11 @@ let catalogue: typeof import("@/lib/node-graph/catalogue");
 let schema: typeof import("@/lib/node-graph/schema");
 
 beforeAll(async () => {
-  ({ default: NodeCanvas, phoneFitViewport } = await import("./node-canvas"));
+  ({
+    default: NodeCanvas,
+    NUDGE_SETTLE_MS,
+    phoneFitViewport,
+  } = await import("./node-canvas"));
   ({ NodeCanvasHint } = await import("./canvas-hint"));
   ({ NodeActionsProvider } = await import("./node-actions"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
@@ -221,6 +226,41 @@ describe("NodeCanvas", () => {
     );
 
     expect(description?.textContent).toContain("arrow keys");
+  });
+
+  test("a run of arrow-key nudges is one undo step", async () => {
+    const view = mountStarter();
+    const { state } = nodeStoreModule.nodeStore;
+    const start = state.graph?.nodes.find((entry) => entry.id === "speakers");
+    const pastBefore = state.history.past.length;
+    const node = view.container.querySelector(
+      '.react-flow__node[data-id="speakers"]'
+    ) as HTMLElement;
+    act(() => {
+      node.focus();
+      fireEvent.keyDown(node, { key: "Enter" });
+    });
+    for (let press = 0; press < 5; press += 1) {
+      act(() => {
+        fireEvent.keyDown(node, { key: "ArrowRight" });
+      });
+    }
+    await act(
+      () => new Promise((resolve) => setTimeout(resolve, NUDGE_SETTLE_MS + 50))
+    );
+
+    const { graph, history } = nodeStoreModule.nodeStore.state;
+    const moved = graph?.nodes.find((entry) => entry.id === "speakers");
+    expect(moved?.position.x).toBe((start?.position.x ?? 0) + 25);
+    expect(history.past).toHaveLength(pastBefore + 1);
+    act(() => {
+      expect(nodeStoreModule.undoNodeGraph()).toBe(true);
+    });
+    expect(
+      nodeStoreModule.nodeStore.state.graph?.nodes.find(
+        (entry) => entry.id === "speakers"
+      )?.position
+    ).toEqual(start?.position);
   });
 
   test("a split's input reads as its input, its outputs as its branches", async () => {

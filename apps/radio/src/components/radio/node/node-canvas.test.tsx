@@ -121,6 +121,8 @@ let phoneFitViewport: typeof import("./node-canvas")["phoneFitViewport"];
 let NUDGE_SETTLE_MS: typeof import("./node-canvas")["NUDGE_SETTLE_MS"];
 let NodeCanvasHint: typeof import("./canvas-hint")["NodeCanvasHint"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
+let nodeActionsModule: typeof import("./node-actions");
+let graphEdits: typeof import("@/lib/node-graph/graph-edits");
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let templates: typeof import("@/lib/node-graph/templates");
 let validateModule: typeof import("@/lib/node-graph/validate");
@@ -135,7 +137,9 @@ beforeAll(async () => {
     phoneFitViewport,
   } = await import("./node-canvas"));
   ({ NodeCanvasHint } = await import("./canvas-hint"));
-  ({ NodeActionsProvider } = await import("./node-actions"));
+  nodeActionsModule = await import("./node-actions");
+  ({ NodeActionsProvider } = nodeActionsModule);
+  graphEdits = await import("@/lib/node-graph/graph-edits");
   nodeStoreModule = await import("@/lib/node-graph/node-store");
   templates = await import("@/lib/node-graph/templates");
   validateModule = await import("@/lib/node-graph/validate");
@@ -261,6 +265,48 @@ describe("NodeCanvas", () => {
         (entry) => entry.id === "speakers"
       )?.position
     ).toEqual(start?.position);
+  });
+
+  test("a knob tick on one FX re-renders that FX's node alone", async () => {
+    const fxIds = ["fx0", "fx1", "fx2", "fx3"];
+    mountGraph(
+      schema.nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          ...fxIds.map((id, index) => ({
+            data: {
+              effect: catalogue.createNodeEffectConfig("compressor", id),
+            },
+            id,
+            position: { x: index * 300, y: 0 },
+            type: "compressor",
+          })),
+          {
+            data: {},
+            id: "speakers",
+            position: { x: 1200, y: 0 },
+            type: "speakers",
+          },
+        ],
+        version: 2,
+      })
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // Every FX node body asks for the node actions once per render.
+    const renders = spyOn(nodeActionsModule, "useNodeActions");
+    try {
+      act(() => {
+        nodeStoreModule.commitNodeGraph((graph) =>
+          graphEdits.setEffectParams(graph, "fx0", { threshold: -30 } as never)
+        );
+      });
+
+      expect(renders).toHaveBeenCalledTimes(1);
+    } finally {
+      renders.mockRestore();
+    }
   });
 
   test("a split's input reads as its input, its outputs as its branches", async () => {

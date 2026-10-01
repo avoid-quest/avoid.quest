@@ -162,6 +162,28 @@ describe("flow elements", () => {
     expect(edgeUnderPointer({ x: 0, y: 0 }, {} as Document)).toBeNull();
   });
 
+  test("a node or cable drawn the same as last time is handed back as it was", () => {
+    const options = { measured: new Map(), positions: new Map(), selection };
+    const before = toFlowNodes(patch, options);
+    const after = toFlowNodes(patch, {
+      ...options,
+      positions: new Map([["src-kexp", { x: 5, y: 5 }]]),
+    });
+    const edgeOptions = { liveLanes: new Set<string>(), selection };
+    const cables = toFlowEdges(patch, edgeOptions);
+
+    expect(after.map((node, index) => node === before[index])).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    expect(
+      toFlowEdges(patch, edgeOptions).every(
+        (edge, index) => edge === cables[index]
+      )
+    ).toBe(true);
+  });
+
   test("the cable a dragged node would go into is marked", () => {
     const edges = toFlowEdges(patch, {
       insertTarget: "src-nts->speakers",

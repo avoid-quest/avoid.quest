@@ -227,6 +227,52 @@ export type BranchEdgeData = {
 /** What a key cable draws: why it keys nothing, or null while it keys. */
 export type KeyEdgeData = { idle: string | null };
 
+/**
+ * The flow element last drawn for each patch node and cable. React Flow
+ * rebuilds and re-renders every node and cable handed to it as a new
+ * object, so one that comes out the same as last time is handed back as
+ * it was: a knob tick or a drag move then re-renders only what it changed.
+ */
+const drawnNodes = new WeakMap<GraphNode, FlowNode>();
+const drawnEdges = new WeakMap<GraphEdge, FlowEdge>();
+
+/** `next`, or the element last drawn for `key` when it is the same. */
+function reuseDrawn<K extends object, V>(
+  drawn: WeakMap<K, V>,
+  key: K,
+  next: V
+): V {
+  const previous = drawn.get(key);
+  if (previous !== undefined && sameDrawn(previous, next)) {
+    return previous;
+  }
+  drawn.set(key, next);
+  return next;
+}
+
+function isPlain(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === Array.prototype;
+}
+
+/** Equal values: plain objects and arrays by their entries, else identity. */
+function sameDrawn(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (!(isPlain(a) && isPlain(b)) || Array.isArray(a) !== Array.isArray(b)) {
+    return false;
+  }
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && sameDrawn(a[key], b[key]))
+  );
+}
+
 function mergeData(
   graph: NodeGraph,
   node: GraphNode,
@@ -278,18 +324,20 @@ export function toFlowNodes(
     }
     return node.data;
   };
-  return graph.nodes.filter(isDrawn).map((node) => ({
-    // Named like its cables, so "KEXP, audio module" rather than a bare role.
-    ariaLabel: nodeLabel(node),
-    data: dataOf(node),
-    deletable: node.type !== "speakers",
-    domAttributes: { "aria-roledescription": "audio module" },
-    id: node.id,
-    measured: measured.get(node.id),
-    position: positions.get(node.id) ?? node.position,
-    selected: selection.nodes.includes(node.id),
-    type: node.type,
-  }));
+  return graph.nodes.filter(isDrawn).map((node) =>
+    reuseDrawn(drawnNodes, node, {
+      // Named like its cables, so "KEXP, audio module" rather than a bare role.
+      ariaLabel: nodeLabel(node),
+      data: dataOf(node),
+      deletable: node.type !== "speakers",
+      domAttributes: { "aria-roledescription": "audio module" },
+      id: node.id,
+      measured: measured.get(node.id),
+      position: positions.get(node.id) ?? node.position,
+      selected: selection.nodes.includes(node.id),
+      type: node.type,
+    })
+  );
 }
 
 /**
@@ -448,6 +496,6 @@ export function toFlowEdges(
         flowEdge.className =
           `${flowEdge.className ?? ""} node-edge-insert`.trim();
       }
-      return flowEdge;
+      return reuseDrawn(drawnEdges, edge, flowEdge);
     });
 }

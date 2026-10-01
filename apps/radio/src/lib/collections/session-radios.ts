@@ -8,6 +8,7 @@ import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { platformMetadataSchema } from "./schemas";
 
 const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
+const REMOVED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-removed";
 const MAX_SESSION_RADIOS = 20;
 let lastAddedAt = 0;
 
@@ -168,9 +169,47 @@ export function getSessionRadios(): Radio[] {
   return getOrderedSessionRadioRecords().map(toSessionRadio);
 }
 
+function readRemovedSessionRadioIds(): Set<string> {
+  try {
+    const parsed = JSON.parse(
+      sessionStorageApi.getItem(REMOVED_SESSION_RADIOS_STORAGE_KEY) ?? "[]"
+    ) as unknown;
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === "string")
+        : []
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeRemovedSessionRadioIds(ids: Set<string>): void {
+  if (ids.size === 0) {
+    sessionStorageApi.removeItem(REMOVED_SESSION_RADIOS_STORAGE_KEY);
+    return;
+  }
+  sessionStorageApi.setItem(
+    REMOVED_SESSION_RADIOS_STORAGE_KEY,
+    JSON.stringify([...ids])
+  );
+}
+
+/**
+ * Whether this tab removed the session radio `id` on purpose, so a patch
+ * that still holds it doesn't register it back.
+ */
+export function wasSessionRadioRemoved(id: string | number): boolean {
+  return readRemovedSessionRadioIds().has(String(id));
+}
+
 export function addSessionRadio(radio: Radio): void {
   const record = toSessionRadioRecord(radio);
   const id = String(record.id);
+  const removed = readRemovedSessionRadioIds();
+  if (removed.delete(id)) {
+    writeRemovedSessionRadioIds(removed);
+  }
   if (sessionRadiosCollection.state.has(id)) {
     sessionRadiosCollection.update(id, (draft) => {
       Object.assign(draft, record);
@@ -192,4 +231,5 @@ export function removeSessionRadio(id: string | number): void {
   if (sessionRadiosCollection.state.has(key)) {
     sessionRadiosCollection.delete(key);
   }
+  writeRemovedSessionRadioIds(readRemovedSessionRadioIds().add(key));
 }

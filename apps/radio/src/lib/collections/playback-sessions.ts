@@ -51,6 +51,7 @@ import {
   addSessionRadio,
   isSessionRadio,
   sessionRadiosCollection,
+  wasSessionRadioRemoved,
 } from "./session-radios";
 import { settingsCollection } from "./settings";
 
@@ -452,7 +453,7 @@ function upsertSession(session: PlaybackSessionRecord): void {
  * tab's session radios. The patch stores the whole radio, so a station
  * picked from search and never saved keeps playing in a new tab, as it
  * does after a reload; without this its Station stayed filled with no
- * lane behind it.
+ * lane behind it. One this tab removed on purpose stays removed.
  */
 function registerNodeSessionRadios(graph: NodeGraph): void {
   const sessionRadioIds = readStoredSessionRadioIds();
@@ -461,7 +462,8 @@ function registerNodeSessionRadios(graph: NodeGraph): void {
     if (
       radio &&
       isSessionOnlyRadio(radio) &&
-      !sessionRadioIds.has(String(radio.id))
+      !sessionRadioIds.has(String(radio.id)) &&
+      !wasSessionRadioRemoved(String(radio.id))
     ) {
       addSessionRadio(radio);
       sessionRadioIds.add(String(radio.id));

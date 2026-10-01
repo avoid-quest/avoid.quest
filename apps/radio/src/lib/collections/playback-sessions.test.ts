@@ -16,7 +16,7 @@ import {
   redoNodeGraph,
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
-import type { NodeGraphInput } from "@/lib/node-graph/schema";
+import type { NodeGraph, NodeGraphInput } from "@/lib/node-graph/schema";
 import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
@@ -45,7 +45,11 @@ import {
   writeNodeSessionGraph,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
-import { addSessionRadio, sessionRadiosCollection } from "./session-radios";
+import {
+  addSessionRadio,
+  removeSessionRadio,
+  sessionRadiosCollection,
+} from "./session-radios";
 import { settingsCollection } from "./settings";
 
 const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
@@ -961,7 +965,9 @@ describe("session persistence and init", () => {
       expect(getCachedNamModel(modelId)).toBe('{"authored":true}');
       expect(getPlaybackSession("single")).toBeDefined();
       expect(getPlaybackSession("dj")).toBeDefined();
-      expect(playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)).toBe(false);
+      expect(
+        playbackSessionsCollection.state.has(LEGACY_MULTIPLE_SESSION_ID)
+      ).toBe(false);
     });
   }
 
@@ -1197,6 +1203,44 @@ describe("session persistence and init", () => {
     expect(sessionRadiosCollection.state.get("rg_picked")).toMatchObject(
       picked
     );
+  });
+
+  test("a session radio removed on purpose is not registered back by its Station", async () => {
+    await Promise.all([
+      playbackSessionsCollection.stateWhenReady(),
+      settingsCollection.stateWhenReady(),
+    ]);
+
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: {
+        mode: "node",
+        restoreStateOnLoad: true,
+      },
+    });
+
+    const picked = {
+      id: "rg_picked",
+      name: "Picked Session Radio",
+      streamUrl: "https://radio.example/picked.mp3",
+    };
+    addSessionRadio(picked);
+    playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("start-from-multiple", { session: [picked] })
+    );
+    // Removed from the list, e.g. in Single mode; the patch still holds it.
+    removeSessionRadio(picked.id);
+
+    const graph = getPlaybackSession("node")?.graph as NodeGraph;
+    writeNodeSessionGraph(graph);
+    await initializePlaybackSessions();
+    expect(sessionRadiosCollection.state.has("rg_picked")).toBe(false);
+
+    // Added again on purpose, it is registered back once it goes missing.
+    addSessionRadio(picked);
+    sessionRadiosCollection.delete("rg_picked");
+    writeNodeSessionGraph(graph);
+    expect(sessionRadiosCollection.state.has("rg_picked")).toBe(true);
   });
 
   test("initializePlaybackSessions keeps a Station whose session radio is still stored", async () => {

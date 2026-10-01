@@ -586,6 +586,54 @@ function restoreNodeSessionRadios(): void {
   }
 }
 
+/**
+ * Calls `listener` after another tab writes the playback sessions, once
+ * this tab's collection holds the write. A tab's own writes never call it:
+ * the browser sends storage events only to the other tabs.
+ */
+export function subscribeToOtherTabSessionWrites(
+  listener: () => void
+): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+  const onStorage = (event: StorageEvent) => {
+    if (
+      event.storageArea !== window.localStorage ||
+      (event.key !== null && event.key !== PLAYBACK_SESSIONS_STORAGE_KEY)
+    ) {
+      return;
+    }
+    // The collection's own storage listener syncs the write first.
+    queueMicrotask(listener);
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
+}
+
+/**
+ * Takes another tab's Node patch into this tab's editor, with `load`
+ * replacing the editor document and its history. Its session-only
+ * stations register here as an Undo's would (`previous` is the stored
+ * patch the other tab replaced), and the history `load` drops releases no
+ * NAM model: the other tab's own history may still bring one back.
+ */
+export function takeOtherTabNodeGraph(
+  graph: NodeGraph,
+  previous: NodeGraph | null,
+  load: () => void
+): void {
+  if (previous) {
+    registerNodeSessionRadios(graph, previous, true);
+  }
+  releasingDroppedNodeHistory = false;
+  try {
+    load();
+  } finally {
+    releasingDroppedNodeHistory = true;
+  }
+}
+
 export const playbackSessionsCollection = createCollection(
   localStorageCollectionOptions({
     getKey: (item) => item.id,
@@ -718,12 +766,17 @@ function scheduleNamModelCleanup(candidates: Iterable<string>): void {
 
 // History eviction and reset can release models without changing a session.
 let observedNodeState = nodeStore.state;
+/** False while another tab's patch replaces the editor's history. */
+let releasingDroppedNodeHistory = true;
 holdNodeNamModels(collectRetainedNamModelIds(observedNodeState));
 nodeStore.subscribe((state) => {
   const previous = observedNodeState;
   observedNodeState = state;
   holdNodeNamModels(collectRetainedNamModelIds(state));
-  if (previous.graph !== state.graph || previous.history !== state.history) {
+  if (
+    releasingDroppedNodeHistory &&
+    (previous.graph !== state.graph || previous.history !== state.history)
+  ) {
     scheduleNamModelCleanup(collectRetainedNamModelIds(previous));
   }
 });
@@ -784,11 +837,20 @@ async function externalizeChannelNamModels(
  * finds its bytes: the audio adapter reads local models from the cache.
  */
 async function hydrateGraphNamModels(): Promise<void> {
-  const modelIds = [...playbackSessionsCollection.state.values()].flatMap(
-    (session) => [
-      ...collectLocalNamModelIds(collectGraphEffects(session.graph)),
-    ]
+  await hydrateNodeGraphNamModels(
+    [...playbackSessionsCollection.state.values()].map(
+      (session) => session.graph
+    )
   );
+}
+
+/** Loads the local NAM models `graphs` hold into the model cache. */
+export async function hydrateNodeGraphNamModels(
+  graphs: readonly (NodeGraph | null | undefined)[]
+): Promise<void> {
+  const modelIds = graphs.flatMap((graph) => [
+    ...collectLocalNamModelIds(collectGraphEffects(graph)),
+  ]);
   await Promise.all(
     [...new Set(modelIds)].map((modelId) =>
       getNamModel(modelId).catch(() => null)

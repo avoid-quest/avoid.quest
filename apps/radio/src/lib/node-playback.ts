@@ -51,9 +51,18 @@
  * and cancellation, Play all with at most 3 starts in flight, and a fade-out
  * deactivate that releases every `n:*` channel before the orphan check. A
  * stream start past the playing-stream budget is refused with a message.
+ *
+ * Every tab writes its whole patch, so another tab's edit is taken in as
+ * it arrives through storage, or this tab's next edit would write over it.
+ * A changed patch loads like an activation's: no undo step, a fresh
+ * history, each tab's own Monitors kept, and nothing written back. An edit
+ * this tab writes while that patch loads wins instead, and a toast says the
+ * other tab's change was replaced.
  */
 
+import { deepEquals } from "@tanstack/react-db";
 import { Store } from "@tanstack/react-store";
+import { toast } from "sonner";
 import type { AudioState, Radio } from "@/lib/audio";
 import { fadeOut } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
@@ -74,7 +83,10 @@ import {
   getNodeSessionReadOnlyVersion,
   getPlaybackChannel,
   getPlaybackSession,
+  hydrateNodeGraphNamModels,
   type PlaybackChannelRecord,
+  subscribeToOtherTabSessionWrites,
+  takeOtherTabNodeGraph,
   updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
 import {
@@ -99,6 +111,7 @@ import {
   withMonitorsOff,
 } from "@/lib/node-graph/graph-edits";
 import {
+  adoptNodeGraph,
   commitNodeGraph,
   loadNodeGraphMigration,
   type NodeStore,
@@ -300,6 +313,8 @@ export type GetNodePlaybackOptions = {
   fadeOutSound?: FadeOutSound;
   getEnv?: () => NodePlaybackEnv;
   laneOutputs?: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
+  /** Calls back after another tab writes the sessions; returns a stop. */
+  otherTabWrites?: (listener: () => void) => () => void;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
   resolveStream?: ResolvePlatformStream;
   /** Where Output device sink statuses are published for their bodies. */
@@ -380,6 +395,51 @@ function isNodeChannelId(channelId: string): boolean {
 
 function warn(message: string) {
   return (error: unknown) => console.warn(`[NodePlayback] ${message}`, error);
+}
+
+/** Whether two values store as the same JSON, in any key order. */
+function isSameStored(a: unknown, b: unknown): boolean {
+  return (
+    a === b ||
+    deepEquals(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b)))
+  );
+}
+
+/** Whether two stored patches match. Monitor is each tab's own Go live. */
+function isSamePatch(a: NodeGraph, b: NodeGraph): boolean {
+  return a === b || isSameStored(withMonitorsOff(a), withMonitorsOff(b));
+}
+
+/** `graph` with each Audio input's Monitor as in `local`, else off. */
+function withMonitorsFrom(graph: NodeGraph, local: NodeGraph): NodeGraph {
+  const monitors = new Map(
+    local.nodes.flatMap((node) =>
+      node.type === "deviceIn" ? [[node.id, node.data.strip.monitor]] : []
+    )
+  );
+  let changed = false;
+  const nodes = graph.nodes.map((node): GraphNode => {
+    const monitor = monitors.get(node.id) ?? false;
+    if (node.type !== "deviceIn" || node.data.strip.monitor === monitor) {
+      return node;
+    }
+    changed = true;
+    return {
+      ...node,
+      data: { ...node.data, strip: { ...node.data.strip, monitor } },
+    };
+  });
+  return changed ? { ...graph, nodes } : graph;
+}
+
+function reportPatchConflict(): void {
+  console.warn(
+    "[NodePlayback] The patch changed in another tab during an edit here; this tab's edit was kept"
+  );
+  toast.warning(
+    "This patch also changed in another tab. The edit made here replaced that change.",
+    { id: "node-patch-conflict" }
+  );
 }
 
 function budgetError(limit: number, channelId: string): PlaybackActionError {
@@ -464,6 +524,7 @@ function createNodePlayback(
     fadeOutSound,
     getEnv,
     laneOutputs: createLaneOutputs,
+    otherTabWrites,
     resolveStream,
     sinkStatuses,
     store,
@@ -486,6 +547,12 @@ function createNodePlayback(
   let epoch = 0;
   let observedGraph: NodeGraph | null = null;
   let subscription: { unsubscribe: () => void } | null = null;
+  /** The stored patch as this tab last wrote, loaded or took it in. */
+  let seenStoredGraph: NodeGraph | null = null;
+  /** Another tab's patch, taken in: its reconcile writes nothing back. */
+  let adoptedGraph: NodeGraph | null = null;
+  let otherTabGeneration = 0;
+  let stopOtherTabWrites: (() => void) | null = null;
   let batch: Promise<void> | null = null;
   const inFlight = new Set<Promise<unknown>>();
   /** Per lane: a removal fade, then any re-add, still in progress. */
@@ -1685,6 +1752,27 @@ function createNodePlayback(
     }
   };
 
+  /** Writes `graph` with its derived channels in one session update. */
+  const storePatch = (graph: NodeGraph, next: EnginePlan) => {
+    const previousChannels = getPlaybackSession("node")?.channels ?? [];
+    const channels = deriveNodeChannels(next, previousChannels);
+    if (graph !== adoptedGraph) {
+      updatePlaybackSession("node", (draft) => {
+        draft.graph = graph;
+        draft.channels = channels;
+      });
+    } else if (isSameStored(channels, previousChannels)) {
+      // Another tab's patch is stored, with these channels: writing it back
+      // would only echo it to that tab.
+      return;
+    } else {
+      updatePlaybackSession("node", (draft) => {
+        draft.channels = channels;
+      });
+    }
+    seenStoredGraph = getPlaybackSession("node")?.graph ?? null;
+  };
+
   /**
    * Compiles the current graph, writes it with its derived channels in one
    * session update, then applies the diff. `strict` (activate) rethrows the
@@ -1697,11 +1785,7 @@ function createNodePlayback(
       return;
     }
     const next = compile(graph, getEnv());
-    const previousChannels = getPlaybackSession("node")?.channels ?? [];
-    updatePlaybackSession("node", (draft) => {
-      draft.graph = graph;
-      draft.channels = deriveNodeChannels(next, previousChannels);
-    });
+    storePatch(graph, next);
     // Undo and template loads change volumes too; mute restores the latest.
     for (const [laneId, lane] of next.lanes) {
       if (lane.volume > 0) {
@@ -1763,10 +1847,64 @@ function createNodePlayback(
     return whenSettled();
   };
 
+  /**
+   * Takes another tab's newer patch in, unless this tab has an edit it
+   * hasn't written yet or wrote one since: that edit is kept, and stored
+   * over the other tab's, which a toast says. Each tab keeps its own
+   * Monitors, as Go live is per tab.
+   */
+  const takeOtherTabPatch = (stored: NodeGraph, previous: NodeGraph | null) => {
+    const local = store.state.graph;
+    if (!local || isReadOnly()) {
+      return;
+    }
+    const migration = migrateNodeGraph(stored);
+    if (migration.status !== "ok") {
+      return;
+    }
+    const latest = getPlaybackSession("node")?.graph;
+    if (local !== observedGraph || !latest || !isSamePatch(latest, stored)) {
+      reportPatchConflict();
+      return;
+    }
+    const graph = withMonitorsFrom(migration.graph, local);
+    adoptedGraph = graph;
+    takeOtherTabNodeGraph(graph, previous, () => adoptNodeGraph(graph, store));
+  };
+
+  /**
+   * Another tab wrote the sessions. A Node patch that changed is taken in
+   * once the NAM models it holds are cached, so its amps load as they do
+   * after a reload; a newer write supersedes one still loading.
+   */
+  const onOtherTabWrite = () => {
+    const stored = getPlaybackSession("node")?.graph ?? null;
+    if (!(active && stored) || stored === seenStoredGraph) {
+      return;
+    }
+    const previous = seenStoredGraph;
+    seenStoredGraph = stored;
+    if (previous && isSamePatch(previous, stored)) {
+      return;
+    }
+    otherTabGeneration += 1;
+    const generation = otherTabGeneration;
+    hydrateNodeGraphNamModels([stored])
+      .then(() => {
+        if (active && generation === otherTabGeneration) {
+          takeOtherTabPatch(stored, previous);
+        }
+      })
+      .catch(warn("Could not take in another tab's patch"));
+  };
+
   const stopListening = () => {
     active = false;
     subscription?.unsubscribe();
     subscription = null;
+    stopOtherTabWrites?.();
+    stopOtherTabWrites = null;
+    otherTabGeneration += 1;
   };
 
   const updateSource = (
@@ -1950,8 +2088,11 @@ function createNodePlayback(
         store
       );
       observedGraph = store.state.graph;
+      seenStoredGraph = session.graph ?? null;
+      adoptedGraph = null;
       active = true;
       subscription = store.subscribe(onStoreChange);
+      stopOtherTabWrites = otherTabWrites(onOtherTabWrite);
       if (migration.status !== "ok") {
         return;
       }
@@ -2157,6 +2298,7 @@ export function getNodePlayback({
   fadeOutSound = fadeOut,
   getEnv = detectNodePlaybackEnv,
   laneOutputs = createNodeLaneOutputs,
+  otherTabWrites = subscribeToOtherTabSessionWrites,
   resolveStream = resolveDjPlatformStreamUrl,
   sinkStatuses = nodeSinkStatuses,
   store = nodeStore,
@@ -2174,6 +2316,7 @@ export function getNodePlayback({
     fadeOutSound,
     getEnv,
     laneOutputs,
+    otherTabWrites,
     resolveStream,
     sinkStatuses,
     store,

@@ -8,6 +8,7 @@ import {
   test,
 } from "bun:test";
 import { Store } from "@tanstack/react-store";
+import { toast } from "sonner";
 import type {
   AudioEngineFacade,
   AudioManager,
@@ -59,6 +60,7 @@ import {
   createNodeStore,
   loadNodeGraph,
   type NodeStore,
+  undoNodeGraph,
 } from "@/lib/node-graph/node-store";
 import { diff } from "@/lib/node-graph/reconcile";
 import {
@@ -66,6 +68,7 @@ import {
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
+import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
 import {
   forgetLocalFileUrls,
   keepLocalFileUrl,
@@ -301,6 +304,8 @@ type Harness = {
   context: PlaybackActionContext;
   effectsChange: ReturnType<typeof mock>;
   fadeOutSound: ReturnType<typeof mock>;
+  /** What hears of another tab's session writes while Node is active. */
+  otherTabListeners: Set<() => void>;
   playback: NodePlayback;
   store: NodeStore;
 };
@@ -332,6 +337,7 @@ function createHarness(
   const fadeOutSound = mock(
     options.fadeOutSound ?? (async (_soundId: string) => undefined)
   );
+  const otherTabListeners = new Set<() => void>();
   const playback = getNodePlayback({
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
@@ -342,12 +348,62 @@ function createHarness(
       profile: options.profile ?? "desktop",
     }),
     laneOutputs: options.laneOutputs,
+    otherTabWrites: (listener) => {
+      otherTabListeners.add(listener);
+      return () => otherTabListeners.delete(listener);
+    },
     ...(options.deviceSinks ? { deviceSinks: options.deviceSinks } : {}),
     ...(options.resolveStream ? { resolveStream: options.resolveStream } : {}),
     sinkStatuses: options.sinkStatuses ?? new Store<NodeSinkStatuses>({}),
     store,
   });
-  return { context, effectsChange, fadeOutSound, playback, store };
+  return {
+    context,
+    effectsChange,
+    fadeOutSound,
+    otherTabListeners,
+    playback,
+    store,
+  };
+}
+
+/**
+ * Stores `graph`, with its channels, as another tab's write reaches this
+ * one: the collection syncs the stored JSON, then the tab hears of it.
+ * `beforeTakenIn` runs once the tab heard, before it takes the patch in.
+ * Returns the stored session as the other tab wrote it.
+ */
+async function writeFromOtherTab(
+  harness: Harness,
+  graph: NodeGraph,
+  beforeTakenIn?: () => void
+): Promise<ReturnType<typeof getPlaybackSession>> {
+  const session = getPlaybackSession("node");
+  if (!session) {
+    throw new Error("No node session");
+  }
+  writeLegacyRecord(
+    playbackSessionsCollection,
+    JSON.parse(
+      JSON.stringify({
+        ...session,
+        channels: deriveNodeChannels(
+          compile(graph, { crossOriginIsolated: false }),
+          session.channels
+        ),
+        graph,
+      })
+    )
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const written = getPlaybackSession("node");
+  for (const listener of harness.otherTabListeners) {
+    listener();
+  }
+  beforeTakenIn?.();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await harness.playback.whenSettled();
+  return written;
 }
 
 /** Commits an edit and waits for its ops, fades included. */
@@ -1444,6 +1500,160 @@ describe("Node Playback budget", () => {
     await harness.playback.playAll();
 
     expect(harness.context.audio.playSound).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe("Node Playback across tabs", () => {
+  const micInput = (monitor: boolean): NodeInput =>
+    ({
+      data: {
+        channelSelection: { left: 0, right: 1 },
+        deviceId: "usb-mic",
+        deviceLabel: "Desk mic",
+        strip: { monitor },
+      },
+      id: "mic",
+      position: { x: 0, y: 200 },
+      type: "deviceIn",
+    }) as NodeInput;
+
+  test("takes in another tab's newer patch as no undo step, without writing it back", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    commitNodeGraph(
+      withStation("a", { volume: 0.5 }),
+      harness.store,
+      "snapshot"
+    );
+    await harness.playback.whenSettled();
+    expect(harness.store.state.history.past).toHaveLength(1);
+
+    const written = await writeFromOtherTab(
+      harness,
+      patch([station("a", { volume: 0.3 }), station("b")])
+    );
+
+    expect(getPlaybackSession("node")).toBe(written);
+    expect(stationData(harness.store, "a")?.volume).toBe(0.3);
+    expect(stationData(harness.store, "b")).toBeDefined();
+    expect(harness.context.channels.activate).toHaveBeenCalledWith(
+      "node",
+      channelOf("b"),
+      expect.objectContaining({ id: "b" }),
+      soundOf("b")
+    );
+    // Undo can't bring back the patch the other tab replaced.
+    expect(harness.store.state.history.past).toEqual([]);
+    expect(undoNodeGraph(harness.store)).toBe(false);
+  });
+
+  test("this tab's next edit builds on the other tab's patch", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    await writeFromOtherTab(harness, patch([station("a"), station("b")]));
+
+    await commit(harness, withStation("a", { volume: 0.2 }));
+
+    const stored = getPlaybackSession("node")?.graph;
+    expect(stored?.nodes.map((node) => node.id).sort()).toEqual([
+      "a",
+      "b",
+      "speakers",
+    ]);
+    expect(stored?.nodes.find((node) => node.id === "a")?.data).toMatchObject({
+      volume: 0.2,
+    });
+  });
+
+  test("an unchanged patch, or another tab's Monitor, leaves this tab's editor as it is", async () => {
+    const own = patch([station("a"), micInput(false)]);
+    insertNodeSession(own);
+    const harness = createHarness();
+    await harness.playback.activate();
+    commitNodeGraph(
+      withStation("a", { volume: 0.4 }),
+      harness.store,
+      "snapshot"
+    );
+    await harness.playback.whenSettled();
+    const { graph, history } = harness.store.state;
+    if (!graph) {
+      throw new Error("No graph");
+    }
+
+    await writeFromOtherTab(harness, graph);
+    await writeFromOtherTab(harness, {
+      ...graph,
+      nodes: graph.nodes.map((node) =>
+        node.type === "deviceIn"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                strip: { ...node.data.strip, monitor: true },
+              },
+            }
+          : node
+      ),
+    });
+
+    expect(harness.store.state.graph).toBe(graph);
+    expect(harness.store.state.history).toBe(history);
+  });
+
+  test("keeps each tab's own Monitor when it takes in a patch", async () => {
+    insertNodeSession(patch([station("a"), micInput(false)]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    commitNodeGraph(
+      (graph) => setSourceStrip(graph, "mic", { monitor: true }),
+      harness.store,
+      "rebase"
+    );
+    await harness.playback.whenSettled();
+
+    await writeFromOtherTab(
+      harness,
+      patch([station("a", { volume: 0.6 }), micInput(false)])
+    );
+
+    const mic = harness.store.state.graph?.nodes.find(
+      (node) => node.id === "mic"
+    );
+    expect(stationData(harness.store, "a")?.volume).toBe(0.6);
+    expect(mic?.type === "deviceIn" && mic.data.strip.monitor).toBe(true);
+  });
+
+  test("keeps an edit made while another tab's patch loads, and says so", async () => {
+    const warning = spyOn(toast, "warning");
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+
+    await writeFromOtherTab(harness, patch([station("a"), station("b")]), () =>
+      commitNodeGraph(withStation("a", { volume: 0.2 }), harness.store)
+    );
+
+    expect(stationData(harness.store, "b")).toBeUndefined();
+    expect(
+      getPlaybackSession("node")?.graph?.nodes.find((node) => node.id === "a")
+        ?.data
+    ).toMatchObject({ volume: 0.2 });
+    expect(warning).toHaveBeenCalledTimes(1);
+    warning.mockRestore();
+  });
+
+  test("stops hearing other tabs once Node stops", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    expect(harness.otherTabListeners.size).toBe(1);
+
+    await harness.playback.deactivate();
+
+    expect(harness.otherTabListeners.size).toBe(0);
   });
 });
 

@@ -9,6 +9,7 @@ import {
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { laneChannelId, laneSoundId } from "@/lib/node-graph/compile";
 import {
+  adoptNodeGraph,
   commitNodeGraph,
   loadNodeGraph,
   NODE_HISTORY_LIMIT,
@@ -16,7 +17,11 @@ import {
   redoNodeGraph,
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
-import type { NodeGraph, NodeGraphInput } from "@/lib/node-graph/schema";
+import {
+  type NodeGraph,
+  type NodeGraphInput,
+  nodeGraphSchema,
+} from "@/lib/node-graph/schema";
 import {
   buildNodeGraphFromTemplate,
   buildNodeSessionFromTemplate,
@@ -40,6 +45,8 @@ import {
   removePlaybackChannel,
   SINGLE_ACTIVE_CHANNEL_ID,
   stopLegacyMultipleListeners,
+  subscribeToOtherTabSessionWrites,
+  takeOtherTabNodeGraph,
   updatePlaybackChannel,
   updatePlaybackSession,
   writeNodeSessionGraph,
@@ -872,6 +879,122 @@ describe("node session persistence", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(await getNamModel(otherModelId)).toBe('{"otherTab":true}');
+  });
+
+  test("taking in another tab's patch keeps the NAM models of the history it replaces", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const modelId = createLocalNamModelId();
+    await saveNamModel(modelId, '{"undoOnly":true}');
+    const amp = createNodeEffectConfig("neuralAmp", "amp");
+    amp.modelId = modelId;
+    const withAmp = createDuckGraph();
+    withAmp.nodes.push({
+      data: { effect: amp },
+      id: "amp",
+      position: { x: 240, y: 224 },
+      type: "neuralAmp",
+    });
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: createDuckChannels(),
+      crossfadePosition: 0.5,
+      graph: withAmp,
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+    loadNodeGraph(getPlaybackSession("node")?.graph ?? null);
+    // Deleted here, the amp is still one Undo away.
+    commitNodeGraph(
+      (graph) => ({
+        ...graph,
+        nodes: graph.nodes.filter((node) => node.id !== "amp"),
+      }),
+      nodeStore,
+      "snapshot"
+    );
+    updatePlaybackSession("node", (draft) => {
+      draft.graph = nodeStore.state.graph ?? undefined;
+    });
+    const previous = getPlaybackSession("node")?.graph ?? null;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(await getNamModel(modelId)).toBe('{"undoOnly":true}');
+
+    // Another tab's patch, which never held the amp, replaces it.
+    const other = nodeGraphSchema.parse(createDuckGraph());
+    other.viewport = { x: 40, y: 0, zoom: 1 };
+    takeOtherTabNodeGraph(other, previous, () => adoptNodeGraph(other));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(nodeStore.state.graph).toBe(other);
+    expect(nodeStore.state.history.past).toEqual([]);
+    expect(await getNamModel(modelId)).toBe('{"undoOnly":true}');
+  });
+
+  test("taking in another tab's patch registers the session stations it added", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const picked = {
+      id: "rg_other_tab",
+      name: "Other Tab Pick",
+      streamUrl: "https://radio.example/other-tab.mp3",
+    };
+    const previous = nodeGraphSchema.parse(createDuckGraph());
+    const other = buildNodeSessionFromTemplate("start-from-multiple", {
+      saved: [{ ...KEXP_RADIO, enabled: true, order: 0 }],
+      session: [picked],
+    }).graph as NodeGraph;
+
+    takeOtherTabNodeGraph(other, previous, () => adoptNodeGraph(other));
+
+    expect(sessionRadiosCollection.state.get("rg_other_tab")).toMatchObject(
+      picked
+    );
+  });
+
+  test("hears only other tabs' writes of the playback sessions", async () => {
+    const storage = {} as Storage;
+    type StorageListener = (event: Partial<StorageEvent>) => void;
+    const listeners = new Set<StorageListener>();
+    const fakeWindow = {
+      addEventListener: (_type: string, listener: StorageListener) =>
+        listeners.add(listener),
+      localStorage: storage,
+      removeEventListener: (_type: string, listener: StorageListener) =>
+        listeners.delete(listener),
+    };
+    const storageEvent = (key: string | null, storageArea: unknown) => {
+      for (const listener of listeners) {
+        listener({ key, storageArea: storageArea as Storage });
+      }
+    };
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+    try {
+      const heard: string[] = [];
+      const stop = subscribeToOtherTabSessionWrites(() => heard.push("write"));
+
+      storageEvent(PLAYBACK_SESSIONS_STORAGE_KEY, storage);
+      storageEvent(SETTINGS_STORAGE_KEY, storage);
+      storageEvent(PLAYBACK_SESSIONS_STORAGE_KEY, {});
+      storageEvent(null, storage);
+      stop();
+      storageEvent(PLAYBACK_SESSIONS_STORAGE_KEY, storage);
+      await Promise.resolve();
+
+      // The sessions key and a cleared storage, and none once stopped.
+      expect(heard).toEqual(["write", "write"]);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, "window", descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
   });
 
   test("keeps a node session without a graph valid", () => {

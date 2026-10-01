@@ -130,6 +130,24 @@ export function loadNodeGraph(
   }));
 }
 
+/**
+ * Takes in another tab's newer patch. Like a load it is no undo step and
+ * starts a fresh history, since a step recorded against the older patch
+ * would bring back what the other tab changed. The selection keeps what
+ * still exists.
+ */
+export function adoptNodeGraph(
+  graph: NodeGraph,
+  store: NodeStore = nodeStore
+): void {
+  store.setState((state) => ({
+    graph,
+    history: freshHistory(graph),
+    readOnlyVersion: null,
+    selection: pruneSelection(state.selection, graph),
+  }));
+}
+
 /** Carries the storage migration's read-only result through to the editor. */
 export function loadNodeGraphMigration(
   migration: NodeGraphMigration,

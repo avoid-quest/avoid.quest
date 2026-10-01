@@ -683,6 +683,67 @@ describe("NodeCanvas: dragging a cable", () => {
     }
   });
 
+  test("Replace leaves alone a rewired cable moved since the toast", async () => {
+    const { port, view } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    try {
+      // NTS's Speakers cable is pulled onto the Compressor's full input.
+      grabCableEnd(view.container, "nts->speakers");
+      const compIn = port("comp", "in:audio:main");
+      move(-5000, compIn);
+      release(compIn);
+      const [[, options]] = toast.mock.calls as [[string, ExternalToast]];
+      const action = options.action as { label: string; onClick: () => void };
+      expect(action.label).toBe("Replace");
+
+      // That cable goes to the Reverb before Replace is clicked.
+      act(() => {
+        nodeStoreModule.commitNodeGraph(
+          (current) => ({
+            ...current,
+            edges: current.edges.map((edge) =>
+              edge.id === "nts->speakers"
+                ? { ...edge, target: "verb", targetHandle: "in:audio:main" }
+                : edge
+            ),
+          }),
+          nodeStoreModule.nodeStore,
+          "snapshot"
+        );
+      });
+      const moved = nodeStoreModule.nodeStore.state.graph;
+      action.onClick();
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toEqual(
+        moved?.edges ?? []
+      );
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
+  test("Replace puts a rewired cable in the port's place", async () => {
+    const { port, view } = await mountPatch();
+    const toast = spyOn(sonner, "toast");
+    try {
+      grabCableEnd(view.container, "nts->speakers");
+      const compIn = port("comp", "in:audio:main");
+      move(-5000, compIn);
+      release(compIn);
+      const [[, options]] = toast.mock.calls as [[string, ExternalToast]];
+      const action = options.action as { label: string; onClick: () => void };
+      action.onClick();
+      const edges = nodeStoreModule.nodeStore.state.graph?.edges ?? [];
+      expect(edges.some((edge) => edge.id === "fip->comp")).toBe(false);
+      expect(edges.find((edge) => edge.id === "nts->speakers")).toMatchObject({
+        source: "nts",
+        target: "comp",
+        targetHandle: "in:audio:main",
+      });
+    } finally {
+      toast.mockRestore();
+    }
+  });
+
   test("a cable end let go on empty space unplugs the cable", async () => {
     const { view } = await mountPatch();
     grabCableEnd(view.container, "fip->comp");

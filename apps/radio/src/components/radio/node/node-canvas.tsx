@@ -29,7 +29,7 @@ import {
   paletteEntries,
   type Replacement,
 } from "@/lib/node-graph/palette";
-import type { NodeGraph } from "@/lib/node-graph/schema";
+import type { GraphEdge, NodeGraph } from "@/lib/node-graph/schema";
 import {
   parallelToSeries,
   seriesToParallel,
@@ -294,6 +294,36 @@ function foldNodeChange(batch: NodeChangeBatch, change: FlowNodeChange) {
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id) => right.includes(id));
+}
+
+/** Cable `cable.id` still runs between the ends it had. */
+function unmoved(graph: NodeGraph, cable: GraphEdge): boolean {
+  const now = graph.edges.find((entry) => entry.id === cable.id);
+  return (
+    now !== undefined &&
+    now.source === cable.source &&
+    now.sourceHandle === cable.sourceHandle &&
+    now.target === cable.target &&
+    now.targetHandle === cable.targetHandle
+  );
+}
+
+/** Cable `edgeId` is still on the port a Replace was offered for. */
+function holdsPort(
+  graph: NodeGraph,
+  edgeId: string,
+  fromType: PaletteFrom["type"],
+  connection: Connection
+): boolean {
+  const held = graph.edges.find((entry) => entry.id === edgeId);
+  if (!held) {
+    return false;
+  }
+  return fromType === "source"
+    ? held.target === connection.target &&
+        held.targetHandle === connection.targetHandle
+    : held.source === connection.source &&
+        held.sourceHandle === connection.sourceHandle;
 }
 
 export type NodeCanvasProps = {
@@ -659,7 +689,14 @@ function Canvas({
           ? {
               label: "Replace",
               onClick: () =>
-                replaceCable(replace, from.type, rewired?.edge ?? null),
+                replaceCable(
+                  replace,
+                  from.type,
+                  rewired
+                    ? (graph.edges.find((edge) => edge.id === rewired.edge) ??
+                        null)
+                    : null
+                ),
             }
           : undefined
       );
@@ -669,29 +706,27 @@ function Canvas({
   // Replace on a one-cable refusal: the port's cable moves to the new far
   // end, keeping its level. A cable being rewired onto the port takes its
   // place instead, and the port's old cable goes. One undo step. The toast
-  // outlives the drop, so a port's cable moved or gone since is left alone.
+  // outlives the drop, so a port's cable, or the rewired cable, moved or
+  // gone since is left alone.
   const replaceCable = (
     { connection, edge }: Replacement,
     fromType: PaletteFrom["type"],
-    rewired: string | null
+    rewired: GraphEdge | null
   ) => {
     commitNodeGraph(
       (current) => {
-        const held = current.edges.find((entry) => entry.id === edge);
-        const stillHeld =
-          held &&
-          (fromType === "source"
-            ? held.target === connection.target &&
-              held.targetHandle === connection.targetHandle
-            : held.source === connection.source &&
-              held.sourceHandle === connection.sourceHandle);
-        if (!stillHeld) {
+        if (
+          !(
+            (rewired === null || unmoved(current, rewired)) &&
+            holdsPort(current, edge, fromType, connection)
+          )
+        ) {
           return current;
         }
         const edit = rewired
           ? reconnectEdge(
               removeEdges(current, [edge]),
-              rewired,
+              rewired.id,
               connection,
               validateOptions
             )

@@ -467,6 +467,44 @@ describe("addPaletteNode", () => {
       }),
     ]);
   });
+
+  test("a dropped cable that would not compile leaves the new node loose", () => {
+    const blank = buildNodeGraphFromTemplate("blank", {});
+    const delay = (id: string) =>
+      createPaletteNode("delay", id, { x: 0, y: 0 }, null, null);
+    const cable = (source: string, target: string) => ({
+      gain: 1,
+      id: `${source}->${target}`,
+      muted: false,
+      source,
+      sourceHandle: AUDIO_OUT_HANDLE,
+      target,
+      targetHandle: AUDIO_IN_HANDLE,
+    });
+    // Branches with no source yet: nothing to join until one comes in.
+    const fanOut = {
+      ...blank,
+      edges: [
+        cable("x", "y"),
+        cable("x", "z"),
+        cable("y", SPEAKERS_NODE_ID),
+        cable("z", SPEAKERS_NODE_ID),
+      ],
+      nodes: [
+        ...blank.nodes,
+        ...["x", "y", "z"].flatMap((id) => delay(id) ?? []),
+      ],
+    };
+
+    const { graph, nodeId } = addPaletteNode(
+      fanOut,
+      { ...emptyStation, radio: radio("c") },
+      { from: { handle: AUDIO_IN_HANDLE, node: "x", type: "target" } }
+    );
+
+    expect(graph.nodes.some((node) => node.id === nodeId)).toBe(true);
+    expect(graph.edges).toEqual(fanOut.edges);
+  });
 });
 
 describe("addPaletteNode: patch budgets", () => {

@@ -797,8 +797,12 @@ export function addPaletteNode(
     return { graph: inserted.ok ? inserted.graph : added, nodeId };
   }
   if (from) {
-    const [cable] = validCables(added, node, from, options);
-    return { graph: cable ? connectNodes(added, cable) : added, nodeId };
+    // A source cabled into a sourceless chain can make it a lane the
+    // compiler refuses, e.g. one that branches without a Merge.
+    const wired = validCables(added, node, from, options)
+      .map((cable) => connectNodes(added, cable))
+      .find((next) => !newIssue(added, next, options));
+    return { graph: wired ?? added, nodeId };
   }
   if (
     isRadioSourceNode(node) ||

@@ -3294,7 +3294,7 @@ describe("Node Playback audio inputs and output devices", () => {
             mic("tab", {
               capture: "display",
               deviceId: "display",
-              deviceLabel: "Spotify",
+              deviceLabel: "Browser tab audio",
             }),
             speakers,
           ],
@@ -3355,7 +3355,7 @@ describe("Node Playback audio inputs and output devices", () => {
           mic("tab", {
             capture: "display",
             deviceId: "display",
-            deviceLabel: "Spotify",
+            deviceLabel: "Browser tab audio",
           }),
           speakers,
         ],
@@ -3405,7 +3405,7 @@ describe("Node Playback audio inputs and output devices", () => {
           mic("tab", {
             capture: "display",
             deviceId: "display",
-            deviceLabel: "Spotify",
+            deviceLabel: "Browser tab audio",
           }),
           mic("mic"),
           speakers,

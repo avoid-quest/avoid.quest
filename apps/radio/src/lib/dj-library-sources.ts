@@ -1,5 +1,8 @@
 import type { Radio } from "@/lib/audio";
-import { BROWSER_AUDIO_SOURCES } from "@/lib/audio/playback/display-audio";
+import {
+  BROWSER_AUDIO_SOURCES,
+  type BrowserAudioSource,
+} from "@/lib/audio/playback/display-audio";
 import type { Platform } from "@/lib/platform-types";
 
 export const AUDIO_INPUT_PLATFORM_ID = -3;
@@ -9,8 +12,14 @@ export const RADIO_GARDEN_PLATFORM_ID = -7;
 export const BANDCAMP_PLATFORM_ID = -8;
 export const SOUNDCLOUD_PLATFORM_ID = -9;
 export const YOUTUBE_PLATFORM_ID = -10;
-// -11 to -14 are the tab-sharing sources below.
+// -11 and -14 are the tab-sharing sources below. -12 and -13 were the
+// retired Spotify and Mixcloud tab-sharing tiles; they are not reused.
 export const MIXCLOUD_PLATFORM_ID = -15;
+
+const TAB_SHARING_PLATFORM_IDS = {
+  "browser-audio": -11,
+  "radio-shows": -14,
+} as const satisfies Record<BrowserAudioSource, number>;
 
 export type DeckSourceLoadIntent =
   | {
@@ -213,32 +222,24 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
       streamUrl: "",
     },
   },
-  // The Mixcloud tile above searches Mixcloud and plays it here; its
-  // tab-sharing tile would open the same pending source, so it is left out.
-  ...BROWSER_AUDIO_SOURCES.flatMap((source, index) =>
-    source.id === "mixcloud"
-      ? []
-      : [
-          {
-            color: "#22c55e",
-            icon: "audio-input" as const,
-            id: -11 - index,
-            pendingPlatform: source.id,
-            radio: {
-              description: "Share audio from another browser tab",
-              enabled: true,
-              id: -11 - index,
-              name: source.name,
-              streamUrl: "",
-            },
-          },
-        ]
-  ),
+  ...BROWSER_AUDIO_SOURCES.map((source) => ({
+    color: "#22c55e",
+    icon: "audio-input" as const,
+    id: TAB_SHARING_PLATFORM_IDS[source.id],
+    pendingPlatform: source.id,
+    radio: {
+      description: "Share audio from another browser tab",
+      enabled: true,
+      id: TAB_SHARING_PLATFORM_IDS[source.id],
+      name: source.name,
+      streamUrl: "",
+    },
+  })),
 ] as const satisfies readonly PlatformSourceDefinition[];
 
 /**
  * Spotify plays pasted links only, so no library tile searches it; its
- * Tracks wear this colour. Its tile in the library shares a tab.
+ * Tracks wear this colour.
  */
 export const SPOTIFY_SOURCE_STYLE = {
   color: "#1db954",

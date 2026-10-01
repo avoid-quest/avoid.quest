@@ -14,9 +14,23 @@ describe("DJ browser model", () => {
       "Audio file",
       "Audio input",
       "Browser tab audio",
-      "Spotify",
       "Radio episodes / shows",
     ]);
+  });
+
+  test("keeps the tab-sharing tiles' ids; the retired ones are not reused", () => {
+    expect(
+      PLATFORM_ITEMS.filter(
+        ({ description }) =>
+          description === "Share audio from another browser tab"
+      ).map(({ id, name }) => [id, name])
+    ).toEqual([
+      [-11, "Browser tab audio"],
+      [-14, "Radio episodes / shows"],
+    ]);
+    expect(PLATFORM_ITEMS.some(({ id }) => id === -12 || id === -13)).toBe(
+      false
+    );
   });
 
   test("uses the unified result location in station rows", () => {

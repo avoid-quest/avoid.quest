@@ -27,10 +27,15 @@ describe("resolveDeckPanelContentKind", () => {
     }
   });
 
-  test("keeps Spotify's library tile on tab sharing: it has no search", () => {
-    expect(resolveDeckPanelContentKind(false, "spotify")).toBe(
+  test("shares a tab only for Browser tab audio and Radio shows", () => {
+    expect(resolveDeckPanelContentKind(false, "browser-audio")).toBe(
       "pending-browser"
     );
+    expect(resolveDeckPanelContentKind(false, "radio-shows")).toBe(
+      "pending-browser"
+    );
+    // Spotify plays pasted links only: it has no pending source to open.
+    expect(resolveDeckPanelContentKind(false, "spotify")).toBe("empty");
   });
 
   test("returns to the loaded radio after the pending source is dismissed", () => {

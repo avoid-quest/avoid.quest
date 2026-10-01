@@ -21,11 +21,8 @@ describe("hosted audio links", () => {
     }
   );
   test.each([
-    "https://open.spotify.com/track/abc",
-    "https://open.spotify.com/episode/4rOoJ6Egrf8K2IrywzwOMk",
-    "https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi",
-    "https://www.mixcloud.com/radio/",
-    "https://www.mixcloud.com/live/radio/",
+    "https://www.nts.live/shows/test",
+    "https://www.nts.live/shows/test/episodes/2026-10-01",
   ])("loads %s without a media resolver or credentials", async (url) => {
     const unexpected = () =>
       Promise.reject(new Error("Unexpected provider call"));
@@ -68,9 +65,16 @@ describe("hosted audio links", () => {
     );
   });
   test.each([
+    "https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi",
+    "https://open.spotify.com/episode/4rOoJ6Egrf8K2IrywzwOMk",
+    "https://www.mixcloud.com/radio/",
+    "https://www.mixcloud.com/live/radio/",
+  ])("does not share a tab for %s: Spotify and Mixcloud are platforms", (url) =>
+    expect(detectBrowserAudioSource(url)).toBeNull()
+  );
+  test.each([
     "https://nts.live.evil.example/shows/test",
-    "https://open.spotify.com.evil.example/track/abc",
-    "https://user:password@mixcloud.com/radio/show/",
+    "https://user:password@www.nts.live/shows/test",
     "javascript:alert(1)",
     "http://localhost/show",
   ])("rejects unsafe or spoofed hosted URL %s", (url) =>

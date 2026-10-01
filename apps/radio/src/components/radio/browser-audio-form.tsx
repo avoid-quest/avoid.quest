@@ -40,7 +40,7 @@ export function BrowserAudioHelp({
           setLink(event.target.value);
           onUrlChange?.(event.target.value.trim());
         }}
-        placeholder="Paste a Spotify, Mixcloud or radio show link"
+        placeholder="Paste a radio show or other page link"
         value={link}
       />
       <Button

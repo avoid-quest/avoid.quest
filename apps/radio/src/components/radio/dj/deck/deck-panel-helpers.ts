@@ -21,10 +21,8 @@ export function resolveDeckPanelContentKind(
   hasRadio: boolean,
   pendingPlatform?: Platform
 ): DeckPanelContentKind {
-  // Spotify has no search, so its pending tile still shares a tab.
   if (
     pendingPlatform === "browser-audio" ||
-    pendingPlatform === "spotify" ||
     pendingPlatform === "radio-shows"
   ) {
     return "pending-browser";

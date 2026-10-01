@@ -246,8 +246,6 @@ describe("palette Sources", () => {
       "file",
       "deviceIn",
       "capture:browser-audio",
-      "capture:spotify",
-      "capture:mixcloud",
       "capture:radio-shows",
     ]);
     for (const platform of [
@@ -266,13 +264,6 @@ describe("palette Sources", () => {
         name: String(definition?.radio.name),
       } as ReturnType<typeof trackChip>);
     }
-  });
-
-  test("Mixcloud's chip is its search, not its tab-sharing source", () => {
-    expect(trackChip("mixcloud")).toMatchObject({
-      icon: "mixcloud",
-      name: "Mixcloud",
-    });
   });
 
   test("a Track chip adds a Track locked to it, wired to Speakers", () => {

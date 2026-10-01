@@ -66,7 +66,7 @@ export function sourceChipOf(radio: Radio): {
   Icon: ReturnType<typeof platformSourceIcon>;
 } {
   const platform = radio.platformMetadata?.platform;
-  // Spotify's library tile shares a tab; a Spotify Track plays here.
+  // Spotify has no library tile; its Tracks wear Spotify's colour.
   const definition =
     (platform === "spotify" ? SPOTIFY_SOURCE_STYLE : undefined) ??
     PLATFORM_SOURCE_DEFINITIONS.find(

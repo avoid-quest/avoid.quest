@@ -1,8 +1,3 @@
-import { isMixcloudShowUrl } from "@avoid.quest/platforms/mixcloud";
-import {
-  needsSpotifyResolution,
-  parseSpotifyRef,
-} from "@avoid.quest/platforms/spotify/detect";
 import { isPublicHttpUrl } from "@avoid.quest/platforms/url-policy";
 import type { Radio } from "@/lib/audio";
 import {
@@ -33,40 +28,18 @@ const streamHosts = new Set(
 );
 
 /**
- * A Spotify track, album or playlist (or a share link to one) or a Mixcloud
- * show: the radio plays these itself, so they don't share a tab.
- */
-function isPlayablePlatformLink(value: string): boolean {
-  return (
-    parseSpotifyRef(value) !== null ||
-    needsSpotifyResolution(value) ||
-    isMixcloudShowUrl(value)
-  );
-}
-
-/**
- * Hosted players remain in their tab; direct recordings still use the file
- * loader, and Spotify and Mixcloud links the radio plays load as tracks.
+ * Station show and episode pages remain in their tab; direct recordings
+ * still use the file loader.
  */
 export function detectBrowserAudioSource(
   value: string
 ): BrowserAudioSource | null {
-  if (
-    !isPublicHttpUrl(value) ||
-    isStaticAudioUrl(value) ||
-    isPlayablePlatformLink(value)
-  ) {
+  if (!isPublicHttpUrl(value) || isStaticAudioUrl(value)) {
     return null;
   }
   const { hostname, href, username, password } = new URL(value);
   if (username || password) {
     return null;
-  }
-  if (hostname === "open.spotify.com" || hostname === "spotify.link") {
-    return "spotify";
-  }
-  if (hostname === "mixcloud.com" || hostname.endsWith(".mixcloud.com")) {
-    return "mixcloud";
   }
   if (streamHosts.has(hostname) || streamHrefs.has(href)) {
     return null;

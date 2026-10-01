@@ -42,7 +42,7 @@ test("Cancel is held while a share loads, so the share cannot land after it", as
     <BrowserAudioForm
       onCancel={onCancel}
       onLoad={() => pending.promise}
-      source="spotify"
+      source="radio-shows"
     />
   );
   const cancel = view.getByRole("button", { name: "Cancel" });

@@ -1,7 +1,5 @@
 export const BROWSER_AUDIO_SOURCES = [
   { id: "browser-audio", name: "Browser tab audio", url: "" },
-  { id: "spotify", name: "Spotify", url: "https://open.spotify.com/" },
-  { id: "mixcloud", name: "Mixcloud", url: "https://www.mixcloud.com/" },
   { id: "radio-shows", name: "Radio episodes / shows", url: "" },
 ] as const;
 

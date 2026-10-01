@@ -235,6 +235,8 @@ describe("NodeStage", () => {
     ).toBeTruthy();
   });
 
+  // A Spotify tab saved before Spotify became a platform: Browser tab audio
+  // under its old name.
   test("shared audio uses Go live without microphone feedback controls", async () => {
     const session = buildNodeSessionFromTemplate("starter");
     const graph = nodeGraphSchema.parse({

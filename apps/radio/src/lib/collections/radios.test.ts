@@ -144,3 +144,47 @@ describe("saved radio sync", () => {
     }
   );
 });
+
+describe("a Spotify or Mixcloud tab saved before both became platforms", () => {
+  test("reloads as Browser tab audio under its name, unchanged", async () => {
+    // As an earlier release saved a pasted Spotify link it shared as a tab.
+    const sourceUrl = "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof";
+    const shared: RadioRecord = {
+      enabled: true,
+      id: `browser-audio:${sourceUrl}`,
+      isSystem: false,
+      name: "Spotify",
+      order: 40,
+      platformMetadata: {
+        capture: "display",
+        channelCount: 2,
+        channelSelection: { left: 0, right: 1 },
+        deviceId: "display",
+        deviceLabel: "Spotify",
+        itemType: "track",
+        platform: "device-input",
+        sourceUrl,
+        url: "",
+      },
+      streamUrl: "",
+    };
+    seedSavedRadios();
+    const stored = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    stored[`s:${shared.id}`] = { data: shared, versionKey: "version-shared" };
+    storage.setItem(STORAGE_KEY, JSON.stringify(stored));
+
+    const { getAllRadios, initializeRadios, radiosCollection } =
+      await reloadRadios();
+    expect(await initializeRadios()).toBeNull();
+    expect(getAllRadios().find(({ id }) => id === shared.id)).toMatchObject(
+      shared
+    );
+    // An edit validates the whole record against the current schema.
+    radiosCollection.update(shared.id, (draft) => {
+      draft.enabled = false;
+    });
+    expect(radiosCollection.state.get(shared.id)?.platformMetadata).toEqual(
+      shared.platformMetadata
+    );
+  });
+});

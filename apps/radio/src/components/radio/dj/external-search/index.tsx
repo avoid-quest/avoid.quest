@@ -161,7 +161,7 @@ function ExternalSearchContent({
         <span>
           {isLoadingLink
             ? "Loading link…"
-            : "Spotify, Mixcloud, radio shows and audio links work too."}
+            : "Spotify, radio show and audio links work too."}
         </span>
         {onCancel ? (
           <Button

@@ -732,7 +732,14 @@ function createNodePlayback(
       soundId,
       getChannelPlayVolume(channel)
     );
-    await startDeviceInput(deviceInputAudio(ctx), soundId, source, isCurrent);
+    await startDeviceInput(
+      deviceInputAudio(ctx),
+      soundId,
+      source,
+      isCurrent,
+      (isLoading) =>
+        setPlaybackChannelRuntime(channel.id, () => ({ isLoading }))
+    );
     // A fader changed during the permission prompt keeps its latest value.
     const latest = getPlaybackChannel("node", channel.id);
     if (latest && !latest.muted) {

@@ -43,8 +43,33 @@ export type DeviceInputTarget = {
  * Opens `target`'s capture on `soundId` with its channels already selected.
  * Resolves with the device's channel count, or null when it is unknown or
  * the start went stale (`isCurrent` turned false while the capture opened).
+ *
+ * A share picker opens before the engine reports loading, so
+ * `onCapturePending` hears `true` as it opens and `false` once the start
+ * settles: Go live can wait for it rather than open a second picker.
  */
 export async function startDeviceInput(
+  audio: DeviceInputAudio,
+  soundId: string,
+  target: DeviceInputTarget,
+  isCurrent: () => boolean = () => true,
+  onCapturePending?: (pending: boolean) => void
+): Promise<number | null> {
+  const picking = target.capture === "display" && !target.stream;
+  if (picking) {
+    onCapturePending?.(true);
+  }
+  try {
+    return await openDeviceInput(audio, soundId, target, isCurrent);
+  } finally {
+    // A stale start's runtime belongs to whatever replaced it.
+    if (picking && isCurrent()) {
+      onCapturePending?.(false);
+    }
+  }
+}
+
+async function openDeviceInput(
   audio: DeviceInputAudio,
   soundId: string,
   {
@@ -54,7 +79,7 @@ export async function startDeviceInput(
     echoCancellation,
     stream: acquired,
   }: DeviceInputTarget,
-  isCurrent: () => boolean = () => true
+  isCurrent: () => boolean
 ): Promise<number | null> {
   const stream =
     acquired ??

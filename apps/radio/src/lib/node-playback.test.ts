@@ -3127,6 +3127,55 @@ describe("Node Playback audio inputs and output devices", () => {
     }
   );
 
+  test("Go live on a shared tab reads as loading while the share picker is open", async () => {
+    insertNodeSession(
+      wired(
+        [
+          mic("tab", {
+            capture: "display",
+            deviceId: "display",
+            deviceLabel: "Spotify",
+          }),
+          speakers,
+        ],
+        ["tab>speakers"]
+      )
+    );
+    const original = globalThis.navigator;
+    const picker = Promise.withResolvers<MediaStream>();
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { mediaDevices: { getDisplayMedia: () => picker.promise } },
+    });
+    try {
+      const harness = createHarness();
+      const { calls } = deviceEngine(harness.context);
+      await harness.playback.activate();
+
+      const start = harness.playback.setPlaying("tab", true);
+      await settle();
+
+      // Go live is disabled while loading, so it cannot open a second picker.
+      expect(getPlaybackChannelRuntime(channelOf("tab")).isLoading).toBe(true);
+      picker.resolve({
+        getAudioTracks: () => [{ readyState: "live" }],
+        getTracks: () => [],
+      } as unknown as MediaStream);
+      await start;
+
+      expect(calls).toHaveLength(1);
+      expect(getPlaybackChannelRuntime(channelOf("tab"))).toMatchObject({
+        isLoading: false,
+        isPlaying: true,
+      });
+    } finally {
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: original,
+      });
+    }
+  });
+
   test.each([0, 0.2])(
     "Go live seeds the saved fader %s before capture",
     async (volume) => {

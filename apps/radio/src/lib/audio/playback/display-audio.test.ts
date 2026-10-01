@@ -138,6 +138,45 @@ describe("browser audio capture", () => {
     );
   });
 
+  test("reports the share picker as pending until the start settles", async () => {
+    const { stream } = capture();
+    const states: boolean[] = [];
+    const seen: string[] = [];
+    browser(() => {
+      seen.push(`picker ${states.join()}`);
+      return Promise.resolve(stream);
+    });
+    const startDevice = mock(() => {
+      seen.push(`engine ${states.join()}`);
+      return Promise.resolve();
+    });
+    const audio = { getDeviceChannelCount: () => 2, startDevice };
+    const target = {
+      channelSelection: { left: 0, right: 1 },
+      deviceId: "display",
+    };
+    const onPending = (state: boolean) => states.push(state);
+    await startDeviceInput(
+      audio,
+      "node",
+      { ...target, capture: "display" },
+      () => true,
+      onPending
+    );
+    expect(seen).toEqual(["picker true", "engine true"]);
+    expect(states).toEqual([true, false]);
+    // A stream acquired by the caller, or a mic, opens no picker here.
+    await startDeviceInput(
+      audio,
+      "node",
+      { ...target, capture: "display", stream },
+      () => true,
+      onPending
+    );
+    await startDeviceInput(audio, "node", target, () => true, onPending);
+    expect(states).toEqual([true, false]);
+  });
+
   test("a video-only selection is released and produces an actionable error", async () => {
     const { stream, tracks } = capture();
     stream.getAudioTracks = () => [];

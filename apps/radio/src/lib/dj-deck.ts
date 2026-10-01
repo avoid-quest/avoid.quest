@@ -699,7 +699,8 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       stream ? { ...metadata, stream } : metadata,
       () =>
         isCurrent(deckId, generation) &&
-        runtimes[deckId].playGeneration === playGeneration
+        runtimes[deckId].playGeneration === playGeneration,
+      (isLoading) => setPlaybackChannelRuntime(deckId, () => ({ isLoading }))
     );
     if (channelCount === null) {
       return;

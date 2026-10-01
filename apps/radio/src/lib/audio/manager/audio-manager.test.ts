@@ -127,6 +127,32 @@ describe("AudioManager", () => {
     }
   );
 
+  test("a capture whose graph cannot connect fails instead of reading as live", async () => {
+    const capture = createDeviceCaptureHarness();
+    try {
+      const { manager } = capture;
+      const soundId = manager.createSound(station, "node:n:tab");
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+      (
+        manager as unknown as {
+          connectAudioGraph: () => Promise<boolean>;
+        }
+      ).connectAudioGraph = async () => false;
+      const { stream, tracks } = capturedStream("display");
+
+      await expect(
+        manager.playDeviceSound(soundId, "display", { stream })
+      ).rejects.toThrow("could not connect to the mixer");
+
+      expect(tracks.every((track) => track.readyState === "ended")).toBe(true);
+      expect(manager.getDeviceSource(soundId)?.isActive ?? false).toBe(false);
+      expect(states.at(-1)).toMatchObject({ isPlaying: false });
+    } finally {
+      capture.restore();
+    }
+  });
+
   test.each(["stopSound", "cleanupSound"] as const)(
     "%s cancels capture while audio initialization is pending",
     async (cancel) => {

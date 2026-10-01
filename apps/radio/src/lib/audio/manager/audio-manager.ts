@@ -448,8 +448,10 @@ export class AudioManager {
       return;
     }
     if (!graphConnected) {
-      console.warn(
-        `[AudioManager] Audio graph connection failed for device ${soundId}`
+      // A capture with no path to the mixer would read as live in silence.
+      deviceSource.stop();
+      throw new Error(
+        "The audio input could not connect to the mixer. Try going live again."
       );
     }
 

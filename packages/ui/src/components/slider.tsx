@@ -244,17 +244,25 @@ function Slider({
       ? undefined
       : (event) => {
           const clamp = (entry: number) => Math.max(min, Math.min(max, entry));
-          // A gesture on one thumb resets only that thumb; the track resets all.
+          // A gesture on one thumb resets only that thumb, stopping short of
+          // its neighbours as a drag would; the track resets all.
           const thumbIndex = getGestureThumbIndex(event);
           const current = getRequestedValues();
+          const distance = minStepsBetweenThumbs * step;
           const next =
             thumbIndex === null
               ? resetValues.map(clamp)
-              : current.map((entry, index) =>
-                  index === thumbIndex
-                    ? clamp(resetValues[index] ?? resetValues[0] ?? entry)
-                    : entry
-                );
+              : current.map((entry, index) => {
+                  if (index !== thumbIndex) {
+                    return entry;
+                  }
+                  const lower =
+                    (current[index - 1] ?? min - distance) + distance;
+                  const upper =
+                    (current[index + 1] ?? max + distance) - distance;
+                  const target = resetValues[index] ?? resetValues[0] ?? entry;
+                  return clamp(Math.min(upper, Math.max(lower, target)));
+                });
           handleValueChange(next);
           onValueCommit?.(next);
         }

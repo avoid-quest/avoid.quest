@@ -283,6 +283,37 @@ test("Slider uses an explicit reset target and supports uncontrolled resets", ()
   expect(onCommit).toHaveBeenLastCalledWith([0]);
 });
 
+test.each([
+  [0, [75, 80]],
+  [1, [20, 25]],
+])("thumb %i's reset stops short of its neighbour", (thumb, expected) => {
+  const changes: number[][] = [];
+  function Range() {
+    const [value, setValue] = useState([20, 80]);
+    return (
+      <Slider
+        aria-label="Range"
+        max={100}
+        min={0}
+        minStepsBetweenThumbs={5}
+        onValueChange={(next) => {
+          changes.push(next);
+          setValue(next);
+        }}
+        resetValue={[90, 10]}
+        value={value}
+      />
+    );
+  }
+  const view = render(<Range />);
+  const target = view.getAllByRole("slider", { name: "Range" })[thumb];
+  if (!target) {
+    throw new Error("expected two thumbs");
+  }
+  fireEvent.doubleClick(target);
+  expect(changes.at(-1)).toEqual(expected);
+});
+
 test("Slider resets only the thumb a gesture lands on", () => {
   const changes: number[][] = [];
   function Range() {

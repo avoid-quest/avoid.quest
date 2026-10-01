@@ -319,11 +319,22 @@ const speakersNodeSchema = z.object({
   type: z.literal("speakers"),
 });
 
+/** A number pulled into `[min, max]` rather than refused. */
+function clampedNumber(min: number, max: number) {
+  return z
+    .number()
+    .positive()
+    .transform((value) => Math.min(max, Math.max(min, value)));
+}
+
 const filterNodeSchema = z.object({
   ...nodeBase,
+  // An imported or shared patch can't scream: Q is resonance in dB here.
+  // Clamped to what the old Filter allowed (Q up to 30), so a migrated
+  // patch still opens rather than going invalid.
   data: z.object({
-    frequency: z.number().positive().default(1000),
-    Q: z.number().positive().default(1),
+    frequency: clampedNumber(20, 20_000).default(1000),
+    Q: clampedNumber(0.1, 30).default(1),
     type: z.enum(["lowpass", "highpass"]).default("lowpass"),
   }),
   type: z.literal("filter"),

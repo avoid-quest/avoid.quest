@@ -188,6 +188,38 @@ describe("migrateNodeGraph", () => {
     ).toEqual(strip);
   });
 
+  test("pulls a stored Filter's cutoff and Q into a safe range", () => {
+    const filtered = (data: Record<string, unknown>) => {
+      const result = migrateNodeGraph({
+        edges: [],
+        nodes: [
+          { data, id: "filter", position, type: "filter" },
+          { id: "speakers", position, type: "speakers" },
+        ],
+        version: NODE_GRAPH_VERSION,
+      });
+      const [filter] = result.status === "ok" ? result.graph.nodes : [];
+      return filter?.type === "filter" ? filter.data : null;
+    };
+
+    // A +300 dB resonance would scream; the old Filter went up to Q 30.
+    expect(filtered({ frequency: 1e6, Q: 300 })).toEqual({
+      frequency: 20_000,
+      Q: 30,
+      type: "lowpass",
+    });
+    expect(filtered({ frequency: 1, Q: 0.01, type: "highpass" })).toEqual({
+      frequency: 20,
+      Q: 0.1,
+      type: "highpass",
+    });
+    expect(filtered({ frequency: 440, Q: 25 })).toEqual({
+      frequency: 440,
+      Q: 25,
+      type: "lowpass",
+    });
+  });
+
   test("keeps a pinned flag and the viewport", () => {
     const raw = migratedLayout();
     const result = migrateNodeGraph({

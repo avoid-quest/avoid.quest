@@ -309,7 +309,10 @@ export type GetNodePlaybackOptions = {
    * settings are applied as a tap goes on, as a DJ deck's CUE does, since
    * Node mode alone never builds the cue output.
    */
-  cueOutput?: () => Pick<OutputRouting, "applySettings" | "registerCueDeck">;
+  cueOutput?: () => Pick<
+    OutputRouting,
+    "applySettings" | "registerCueDeck" | "releaseCue"
+  >;
 };
 
 type PlaybackCancellation = "deactivate" | "pause" | "remove";
@@ -513,6 +516,8 @@ function createNodePlayback(
     string,
     { soundId: string; registration: CueDeckRegistration }
   >();
+  /** Whether a tap opened the cue output since activation. */
+  let cueOpened = false;
 
   /**
    * A lane's level per output: the gains of its unmuted cables into it,
@@ -922,6 +927,7 @@ function createNodePlayback(
     }
     current?.registration.cleanup();
     const output = cueOutput();
+    cueOpened = true;
     cueTaps.set(channelId, {
       registration: output.registerCueDeck(`node:${lane.id}`, tap, true),
       soundId,
@@ -1840,6 +1846,15 @@ function createNodePlayback(
     );
     for (const channelId of channelIds) {
       releaseChannel(channelId);
+    }
+    // The cue output a tap opened closes with the mode, as DJ's does.
+    if (cueOpened) {
+      cueOpened = false;
+      try {
+        cueOutput().releaseCue();
+      } catch (error) {
+        warn("Could not close the cue output")(error);
+      }
     }
     advancingLanes.clear();
     laneOutputs.dispose();

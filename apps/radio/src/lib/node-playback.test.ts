@@ -4777,13 +4777,14 @@ describe("Node Playback: channel strips", () => {
     );
     // Node mode alone never builds the cue output: the tap applies it.
     const applySettings = mock(async () => ({}) as OutputRoutingSnapshot);
+    const releaseCue = mock(() => undefined);
     const context = createTestContext();
     const store = createNodeStore();
     instantStarts(context);
     const playback = getNodePlayback({
       backendBadges: new Store<NodeBackendBadges>({}),
       ctx: context,
-      cueOutput: () => ({ applySettings, registerCueDeck }),
+      cueOutput: () => ({ applySettings, registerCueDeck, releaseCue }),
       effects: { change: mock(async () => ({}) as ChannelEffectsResult) },
       fadeOutSound: mock(async () => undefined),
       getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
@@ -4813,6 +4814,14 @@ describe("Node Playback: channel strips", () => {
     await playback.whenSettled();
 
     expect(registration.cleanup).toHaveBeenCalledTimes(1);
+    expect(releaseCue).not.toHaveBeenCalled();
+
+    // The cue output it opened closes with the mode, as a DJ deck's does.
+    await playback.deactivate();
+    expect(releaseCue).toHaveBeenCalledTimes(1);
+    await playback.activate();
+    await playback.deactivate();
+    expect(releaseCue).toHaveBeenCalledTimes(1);
   });
 
   test("a loaded patch has every Audio input's Monitor off", async () => {

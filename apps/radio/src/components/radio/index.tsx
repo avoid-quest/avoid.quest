@@ -41,11 +41,10 @@ export function Radios() {
     }
     import("@/lib/mode-lifecycle-requests")
       .then(({ modeLifecycleRequests }) =>
-        // A legacy mode ("multiple", or one another tab wrote) is requested
-        // under its replacement, which commits a valid value.
-        storedMode === mode
-          ? modeLifecycleRequests.synchronizeMode(mode)
-          : modeLifecycleRequests.requestMode(mode)
+        // A legacy mode ("multiple", or one another tab wrote) runs as its
+        // replacement. Committing that could fail on the same stale record
+        // the settings step could not rewrite and roll the mode back.
+        modeLifecycleRequests.synchronizeMode(mode)
       )
       .catch((error) => {
         console.error("[radio] Failed to synchronize playback mode:", error);

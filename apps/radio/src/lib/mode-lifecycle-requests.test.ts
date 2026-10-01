@@ -3,7 +3,10 @@ import {
   type PlaybackSessionId,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { settingsCollection } from "@/lib/collections/settings";
+import {
+  type SettingsRecord,
+  settingsCollection,
+} from "@/lib/collections/settings";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
 
 async function resetPlaybackSessions() {
@@ -147,6 +150,38 @@ describe("mode lifecycle requests", () => {
     await requests.synchronizeMode("node");
 
     expect(activateInitialMode).not.toHaveBeenCalled();
+    expect(switchTo).not.toHaveBeenCalled();
+  });
+
+  test("activates a legacy stored mode as its replacement without committing", async () => {
+    insertPlaybackSession("node");
+    const activateInitialMode = mock(
+      async (_mode: PlaybackSessionId) => undefined
+    );
+    const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
+    const requests = createModeLifecycleRequests({
+      // A "multiple" the settings step could not rewrite.
+      getCurrentSettings: () =>
+        ({
+          id: "app-settings",
+          player: { mode: "multiple", restoreStateOnLoad: true },
+        }) as unknown as SettingsRecord,
+      manager: {
+        activateInitialMode,
+        getSnapshot: mock(() => ({
+          currentMode: null,
+          error: null,
+          phase: "inactive" as const,
+          requestedMode: null,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
+        switchTo,
+      },
+    });
+
+    await requests.synchronizeMode("node");
+
+    expect(activateInitialMode).toHaveBeenCalledWith("node");
     expect(switchTo).not.toHaveBeenCalled();
   });
 });

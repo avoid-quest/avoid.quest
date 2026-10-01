@@ -3,6 +3,7 @@ import {
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getSettings, type SettingsRecord } from "@/lib/collections/settings";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   type ModeManager,
   type ModeTransitionSnapshot,
@@ -49,7 +50,9 @@ export function createModeLifecycleRequests({
       await waitForPlaybackSession(mode);
 
       const settings = getCurrentSettings();
-      if (settings && settings.player.mode !== mode) {
+      // A legacy mode the settings step could not rewrite ("multiple") is
+      // synchronized as its replacement, without a settings write.
+      if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
         return;
       }
 

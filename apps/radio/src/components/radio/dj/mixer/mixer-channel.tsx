@@ -5,6 +5,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { HeadphonesIcon } from "lucide-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
+import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import {
   useDeckAPeakLevel,
   useDeckBPeakLevel,
@@ -64,7 +65,14 @@ function ChannelBody({
 }) {
   const label = deckId === "deck-a" ? "A" : "B";
   const prefix = `${deckId}:`;
-  const handleVolume = ([value]: number[]) => deck.setVolume(value ?? 1);
+  // Every write persists the whole DJ session, so a drag writes at ~30fps
+  // rather than at pointer rate.
+  const setVolume = useThrottledParam(deck.setVolume);
+  const setChannelFilter = useThrottledParam(deck.setChannelFilter);
+  const setEffectsDryWet = useThrottledParam(deck.setEffectsDryWet);
+  const setPan = useThrottledParam(deck.setPan);
+  const setSpeed = useThrottledParam(deck.setSpeed);
+  const handleVolume = ([value]: number[]) => setVolume(value ?? 1);
   const handleCue = () => onCueChange(!cueEnabled);
 
   return (
@@ -79,7 +87,7 @@ function ChannelBody({
           label="FILT"
           max={1}
           min={-1}
-          onChange={deck.setChannelFilter}
+          onChange={setChannelFilter}
           step={0.01}
           targetId={`${prefix}filter`}
           value={deck.channelFilter}
@@ -91,7 +99,7 @@ function ChannelBody({
           label="FX"
           max={1}
           min={0}
-          onChange={deck.setEffectsDryWet}
+          onChange={setEffectsDryWet}
           step={0.01}
           targetId={`${prefix}effects-drywet`}
           value={deck.effectsDryWet}
@@ -104,7 +112,7 @@ function ChannelBody({
           label="PAN"
           max={1}
           min={-1}
-          onChange={deck.setPan}
+          onChange={setPan}
           step={0.01}
           targetId={`${prefix}pan`}
           value={deck.pan}
@@ -117,7 +125,7 @@ function ChannelBody({
           label="SPD"
           max={2}
           min={0.5}
-          onChange={deck.setSpeed}
+          onChange={setSpeed}
           scale="log"
           step={0.01}
           targetId={`${prefix}speed`}

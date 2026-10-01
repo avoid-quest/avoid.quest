@@ -116,7 +116,7 @@ beforeEach(() => {
 });
 
 // React DOM checks for input events when it loads, so it loads after the DOM.
-const { cleanup, fireEvent, render, waitFor } = await import(
+const { act, cleanup, fireEvent, render, waitFor } = await import(
   "@testing-library/react"
 );
 
@@ -130,12 +130,18 @@ afterEach(() => {
 
 let TrackNodeBody: typeof import("./track-node")["TrackNodeBody"];
 let FileNodeBody: typeof import("./file-node")["FileNodeBody"];
+let FileNodeContent: typeof import("./file-content")["FileNodeContent"];
+let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
+let beginSourceRequest: typeof import("./use-node-radio-management")["beginSourceRequest"];
 let StationNodeBody: typeof import("./station-node")["StationNodeBody"];
 
 beforeAll(async () => {
   platformItemLoader = await import("@/lib/platform-item-loader");
   ({ TrackNodeBody } = await import("./track-node"));
   ({ FileNodeBody } = await import("./file-node"));
+  ({ FileNodeContent } = await import("./file-content"));
+  ({ NodeActionsProvider } = await import("./node-actions"));
+  ({ beginSourceRequest } = await import("./use-node-radio-management"));
   ({ StationNodeBody } = await import("./station-node"));
 });
 
@@ -349,6 +355,100 @@ describe("FileNodeBody", () => {
 
     expect(view.queryByText("Pick the file again")).toBeNull();
     expect(view.getByRole("button", { name: "Play Demo" })).toBeTruthy();
+  });
+});
+
+describe("FileNodeContent", () => {
+  /** An <audio> probe whose metadata arrives when the test says. */
+  class ProbeAudio {
+    static made: ProbeAudio[] = [];
+    duration = 10;
+    preload = "";
+    src = "";
+    readonly listeners = new Map<string, () => void>();
+
+    constructor() {
+      ProbeAudio.made.push(this);
+    }
+
+    addEventListener(type: string, listener: () => void) {
+      this.listeners.set(type, listener);
+    }
+
+    removeEventListener(type: string) {
+      this.listeners.delete(type);
+    }
+  }
+
+  test("a file picked earlier yields to a newer pick in the other view, even when it loads last", async () => {
+    const originalAudio = globalThis.Audio;
+    Object.defineProperty(globalThis, "Audio", {
+      configurable: true,
+      value: ProbeAudio,
+      writable: true,
+    });
+    ProbeAudio.made = [];
+    const filled: string[] = [];
+    const actions = {
+      fillSource: (
+        nodeId: string,
+        radio: Radio,
+        isCurrent = beginSourceRequest(nodeId)
+      ) => {
+        if (isCurrent()) {
+          filled.push(radio.name);
+        }
+        return Promise.resolve();
+      },
+      inspectNode: noop,
+      removeNode: noop,
+    } as unknown as import("./node-actions").NodeActions;
+    const data = {
+      muted: false,
+      radio: null,
+      strip: DEFAULT_MEDIA_STRIP,
+      volume: 1,
+    };
+    try {
+      const view = render(
+        <NodeActionsProvider value={actions}>
+          <section aria-label="Patch">
+            <FileNodeContent data={data} id="file-race" />
+          </section>
+          <section aria-label="Inspector">
+            <FileNodeContent data={data} id="file-race" />
+          </section>
+        </NodeActionsProvider>
+      );
+      const pick = (region: string, name: string) => {
+        const input = view
+          .getByRole("region", { name: region })
+          .querySelector("input[type=file]") as HTMLInputElement;
+        fireEvent.change(input, {
+          target: { files: [new File(["x"], name, { type: "audio/mpeg" })] },
+        });
+      };
+      const loaded = async (probe: ProbeAudio | undefined) => {
+        await act(async () => {
+          probe?.listeners.get("loadedmetadata")?.();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      };
+
+      pick("Patch", "first.mp3");
+      pick("Inspector", "second.mp3");
+      const [first, second] = ProbeAudio.made;
+      await loaded(second);
+      expect(filled).toEqual(["second"]);
+      await loaded(first);
+      expect(filled).toEqual(["second"]);
+    } finally {
+      Object.defineProperty(globalThis, "Audio", {
+        configurable: true,
+        value: originalAudio,
+        writable: true,
+      });
+    }
   });
 });
 

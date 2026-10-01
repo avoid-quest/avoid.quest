@@ -19,6 +19,7 @@ import {
   useSourceLane,
 } from "./source-node-frame";
 import { TrackCard } from "./track-content";
+import { beginSourceRequest } from "./use-node-radio-management";
 
 /**
  * File Node
@@ -103,15 +104,21 @@ export function FileNodeContent({
   const actions = useNodeActions();
   const lane = useSourceLane(id);
   const radio = data.radio as Radio | null;
+  // Taken as the load starts, so a newer pick or link, here or in the other
+  // view of this File, supersedes it even if this one finishes last.
   const fill = async (
     loading: Promise<{ radio: Radio } | { error: string }>
   ) => {
-    const loaded = await loading;
-    if ("error" in loaded) {
-      return loaded.error;
-    }
+    const isCurrent = beginSourceRequest(id);
     try {
-      await actions.fillSource(id, loaded.radio);
+      const loaded = await loading;
+      if (!isCurrent()) {
+        return null;
+      }
+      if ("error" in loaded) {
+        return loaded.error;
+      }
+      await actions.fillSource(id, loaded.radio, isCurrent);
       return null;
     } finally {
       releaseUnusedLocalFileUrls();

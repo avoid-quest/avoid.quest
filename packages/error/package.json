@@ -12,6 +12,6 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@sentry/tanstackstart-react": "^10.75.3"
+    "@sentry/tanstackstart-react": "^11.2.0"
   }
 }

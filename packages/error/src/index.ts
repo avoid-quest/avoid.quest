@@ -189,6 +189,24 @@ function parseAppName(release: string): string {
   return name || "unknown";
 }
 
+// Sentry v11 replaced `sendDefaultPii` with `dataCollection`, which collects
+// everything when unset. These values reproduce v10's `sendDefaultPii: false`,
+// as listed in Sentry's v10-to-v11 migration guide.
+const PII_HEADER_DENYLIST = {
+  deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+};
+const DATA_COLLECTION = {
+  cookies: false,
+  databaseQueryData: false,
+  genAI: { inputs: false, outputs: false },
+  graphQL: { document: false, variables: false },
+  httpBodies: [],
+  httpHeaders: { request: PII_HEADER_DENYLIST, response: PII_HEADER_DENYLIST },
+  queues: false,
+  urlQueryParams: PII_HEADER_DENYLIST,
+  userInfo: false,
+} satisfies NonNullable<Sentry.BrowserOptions["dataCollection"]>;
+
 function makeBaseSentryOptions(config: {
   dsn: string;
   environment: string;
@@ -197,12 +215,14 @@ function makeBaseSentryOptions(config: {
   currentApp = parseAppName(config.release);
 
   return {
+    // v11 attaches synthetic stack traces to messages by default; v10 did not.
+    attachStacktrace: false,
+    dataCollection: DATA_COLLECTION,
     dsn: config.dsn,
     environment: config.environment,
     maxBreadcrumbs: 0,
     release: config.release,
     sampleRate: 1.0,
-    sendDefaultPii: false,
     tracesSampleRate: 0,
   } as const;
 }

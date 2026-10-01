@@ -376,6 +376,9 @@ export default defineConfig({
       ? sentryTanstackStart({
           authToken: sentryAuthToken,
           autoInstrumentMiddleware: false,
+          // Tracing is off (`tracesSampleRate: 0`), so skip the server-side
+          // dependency instrumentation that Sentry v11 injects at build time.
+          buildTimeInstrumentation: false,
           org: sentryOrg,
           project: sentryProject,
           release: { name: sentryReleaseName },

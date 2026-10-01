@@ -1523,7 +1523,31 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     const loadGeneration = beginSourceLoad(deckId);
     await resetPersistedState(deckId, false);
+    if (isDisplayCapture(radio)) {
+      // Reloading would end the share and reopen the picker, outside the
+      // click once the reset awaited: reset the shared capture in place.
+      resetLiveStrip(deckId, loadGeneration);
+      return;
+    }
     await commitRadio(deckId, loadGeneration, radio);
+  };
+
+  const resetLiveStrip = (deckId: DeckId, loadGeneration: number): void => {
+    const channel = getPlaybackChannel("dj", deckId);
+    if (!(channel && isLoadCurrent(deckId, loadGeneration))) {
+      return;
+    }
+    const strip: DjDeckAudioChange[] = [
+      { muted: channel.muted, type: "mute" },
+      { pan: channel.pan, type: "pan" },
+      { speed: channel.speed, type: "speed" },
+      { type: "channel-filter", value: channel.channelFilter },
+      { filter: channel.filter as FilterConfig, type: "filter" },
+    ];
+    for (const input of strip) {
+      changeActiveSound(deckId, input);
+    }
+    applyCrossfade();
   };
 
   const changeActiveSound = (

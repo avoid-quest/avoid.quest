@@ -1273,6 +1273,67 @@ describe("DjDeckModule", () => {
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:2"]));
   });
 
+  test("Reset on a shared tab keeps the share and resets its strip in place", async () => {
+    const stream = {
+      getAudioTracks: () => [{ readyState: "live" }],
+      getTracks: () => [],
+    } as unknown as MediaStream;
+    const getDisplayMedia = mock(() => Promise.resolve(stream));
+    const restoreNavigator = withDisplayMedia(getDisplayMedia);
+    try {
+      const audio = createAudioAdapter();
+      const { change, effects } = createPersistingEffects();
+      const module = createDjDeckModule({
+        audio,
+        context: createContext(),
+        effects,
+        output: createOutput(),
+        platform: createPlatform(),
+      });
+      const deck = module.deck("deck-a");
+      await deck.load({
+        capture: "display",
+        deviceId: "display",
+        deviceLabel: "Spotify",
+        sourceUrl: "https://open.spotify.com/track/abc",
+        type: "device-input",
+      });
+      const { soundId } = getPlaybackChannelRuntime("deck-a");
+      updatePlaybackChannel("dj", "deck-a", (draft) => {
+        draft.muted = true;
+        draft.pan = 0.25;
+        draft.volume = 0.4;
+      });
+
+      await deck.transport({ type: "reset" });
+
+      expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+      expect(audio.startDevice).toHaveBeenCalledTimes(1);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(soundId);
+      expect(audio.activeSounds).toEqual(new Set([soundId as string]));
+      expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
+        muted: false,
+        pan: 0,
+        radio: { platformMetadata: { capture: "display" } },
+        volume: 1,
+      });
+      expect(audio.change).toHaveBeenCalledWith(soundId, {
+        muted: false,
+        type: "mute",
+      });
+      expect(audio.change).toHaveBeenCalledWith(soundId, {
+        pan: 0,
+        type: "pan",
+      });
+      expect(change).toHaveBeenCalledWith(
+        { channelId: "deck-a", sessionId: "dj" },
+        { tree: [], type: "replace" }
+      );
+    } finally {
+      restoreNavigator();
+    }
+  });
+
   test("persists both Effects resets before yielding to a newer change", async () => {
     const effects = createEffects();
     const { change } = effects;

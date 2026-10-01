@@ -28,9 +28,11 @@ type RadioSearchBarProps = {
   onSaveDiscovered?: (radio: Radio) => void;
   /**
    * A pasted http(s) link, offered as its own row instead of a search.
-   * Resolves to why it didn't load, or null once it did.
+   * Resolves to why it didn't load, or null once it did. `signal` aborts
+   * when the query changes or a result is picked before it resolves, so the
+   * loader must not commit afterwards.
    */
-  onSubmitUrl?: (url: string) => Promise<string | null>;
+  onSubmitUrl?: (url: string, signal: AbortSignal) => Promise<string | null>;
   className?: string;
   /** The results list; e.g. wider than a narrow field. */
   dropdownClassName?: string;
@@ -182,16 +184,24 @@ function usePastedLink(
 ) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // The submission in flight; a later query or pick aborts it.
+  const pending = useRef<AbortController | null>(null);
   const url =
     onSubmitUrl && PASTED_URL.test(query.trim()) ? query.trim() : null;
   const submit = () => {
     if (!(url && onSubmitUrl) || isLoading) {
       return;
     }
+    const controller = new AbortController();
+    pending.current = controller;
+    const { signal } = controller;
     setError(null);
     setIsLoading(true);
-    onSubmitUrl(url)
+    onSubmitUrl(url, signal)
       .then((failure) => {
+        if (signal.aborted) {
+          return;
+        }
         if (failure) {
           setError(failure);
         } else {
@@ -199,11 +209,25 @@ function usePastedLink(
         }
       })
       .catch((cause: unknown) => {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        if (!signal.aborted) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (pending.current === controller) {
+          pending.current = null;
+          setIsLoading(false);
+        }
+      });
   };
-  return { clearError: () => setError(null), error, isLoading, submit, url };
+  /** A newer query or pick wins over the link still loading. */
+  const cancel = () => {
+    pending.current?.abort();
+    pending.current = null;
+    setIsLoading(false);
+    setError(null);
+  };
+  return { cancel, error, isLoading, submit, url };
 }
 
 type PastedLink = ReturnType<typeof usePastedLink>;
@@ -298,6 +322,7 @@ export function RadioSearchBar({
   }, []);
 
   const selectResult = (result: UnifiedRadioSearchResult) => {
+    link.cancel();
     switch (result.action.type) {
       case "local":
         onSelectLocal(result.action.radio);
@@ -320,7 +345,7 @@ export function RadioSearchBar({
     }
   };
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    link.clearError();
+    link.cancel();
     setQuery(event.target.value);
     setActiveIndex(0);
     setIsOpen(true);
@@ -361,6 +386,7 @@ export function RadioSearchBar({
     if (event.key === "Escape") {
       if (query || showDropdown) {
         event.preventDefault();
+        link.cancel();
         resetSearch();
       }
       return;

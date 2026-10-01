@@ -18,6 +18,7 @@ import {
   SourceTransport,
   useSourceLane,
 } from "./source-node-frame";
+import { beginSourceRequest } from "./use-node-radio-management";
 
 type StationData = Extract<GraphNode, { type: "station" }>["data"];
 
@@ -40,7 +41,7 @@ type StationNodeBodyProps = {
   onSelectDiscovered: (radio: Radio) => void;
   onSaveDiscovered?: (radio: Radio) => void;
   /** A pasted stream link; resolves to why it failed, or null. */
-  onSubmitUrl?: (url: string) => Promise<string | null>;
+  onSubmitUrl?: (url: string, signal: AbortSignal) => Promise<string | null>;
   onRemove?: () => void;
   onEdit?: (radio: Radio) => void;
   onDelete?: (radio: Radio) => void;
@@ -244,7 +245,9 @@ export function StationNodeContent({
       onSelectLocal={(picked) => {
         actions.fillStation(id, picked);
       }}
-      onSubmitUrl={(url) => actions.fillStationFromUrl(id, url)}
+      onSubmitUrl={(url, signal) =>
+        actions.fillStationFromUrl(id, url, beginSourceRequest(id, signal))
+      }
       onToggle={actions.handleToggleRadio}
       onToggleMute={lane.onToggleMute}
       onTogglePlayPause={lane.onTogglePlayPause}

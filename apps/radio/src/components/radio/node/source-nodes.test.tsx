@@ -354,7 +354,9 @@ describe("FileNodeBody", () => {
 
 describe("StationNodeBody: a pasted stream", () => {
   test("offers the link instead of a search, and plays it", async () => {
-    const onSubmitUrl = mock(async (_url: string) => null);
+    const onSubmitUrl = mock(
+      async (_url: string, _signal: AbortSignal) => null
+    );
     const view = render(
       withClient(
         <StationNodeBody
@@ -377,7 +379,10 @@ describe("StationNodeBody: a pasted stream", () => {
     fireEvent.keyDown(field, { key: "Enter" });
 
     await waitFor(() =>
-      expect(onSubmitUrl).toHaveBeenCalledWith("https://stream.example/live")
+      expect(onSubmitUrl).toHaveBeenCalledWith(
+        "https://stream.example/live",
+        expect.any(AbortSignal)
+      )
     );
   });
 

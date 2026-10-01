@@ -57,6 +57,9 @@ let replacedPlayerMode: string | undefined;
 
 export const settingsCollection = createCollection(
   localStorageCollectionOptions({
+    // Keep rows resident: the app reads `.state` outside live queries, and
+    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+    gcTime: 0,
     getKey: (item) => item.id,
     id: "settings",
     schema: settingsSchema,

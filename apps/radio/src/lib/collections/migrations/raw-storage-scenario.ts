@@ -288,7 +288,9 @@ async function runScenario({
     const subscription = playbackSessionsCollection.subscribeChanges(
       (changes) => {
         crossTabMultipleSynced ||= changes.some(
-          (change) => change.key === "multiple" && change.type === "insert"
+          // Legacy "multiple" rows arrive from other tabs outside the declared key type.
+          (change) =>
+            (change.key as string) === "multiple" && change.type === "insert"
         );
       }
     );

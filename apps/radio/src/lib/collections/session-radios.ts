@@ -119,6 +119,9 @@ function parseSessionRadiosStorage(data: string): unknown {
 
 export const sessionRadiosCollection = createCollection(
   localStorageCollectionOptions({
+    // Keep rows resident: the app reads `.state` outside live queries, and
+    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+    gcTime: 0,
     getKey: (item) => String(item.id),
     id: "session-radios",
     parser: {

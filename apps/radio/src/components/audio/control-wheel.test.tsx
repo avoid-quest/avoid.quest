@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import { Knob } from "@avoid.quest/ui/components/knob";
 import { Slider } from "@avoid.quest/ui/components/slider";
 // @ts-expect-error jsdom types are not installed in this workspace.
@@ -423,6 +423,34 @@ describe("immediate control input with throttled audio updates", () => {
     expect(knob.getAttribute("aria-valuenow")).toBe("0.7");
     pressKey(knob, "ArrowDown");
     expect(changes).toEqual([0.51, 0.61, 0.5, 0.6, 0.7, 0.6]);
+  });
+
+  test("requests the parent never renders expire before a matching external value", () => {
+    jest.useFakeTimers();
+    try {
+      const changes: number[] = [];
+      const control = (value: number) => (
+        <Knob
+          max={1}
+          min={0}
+          onChange={(next) => changes.push(next)}
+          value={value}
+        />
+      );
+      const view = render(control(0.51));
+      const knob = requireElement(view.container, '[role="slider"]');
+      wheel(knob, -1);
+      wheel(knob, 1); // Back to 0.51, so the parent skips both renders.
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      view.rerender(control(0.52)); // An external MIDI edit, not an echo.
+      expect(knob.getAttribute("aria-valuenow")).toBe("0.52");
+      wheel(knob, -1);
+      expect(changes).toEqual([0.52, 0.51, 0.53]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("slider keys use immediate wheel and reset values while controlled props lag", () => {

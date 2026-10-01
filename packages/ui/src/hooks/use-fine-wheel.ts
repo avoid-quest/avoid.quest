@@ -18,6 +18,14 @@ function nudge(
   return Number(legal.toPrecision(12));
 }
 
+/**
+ * Throttled parents deliver the latest request within a few frames. Requests
+ * still unacknowledged after this were never rendered, e.g. input that
+ * returned to the parent's current value, so they must not claim a later
+ * external update as their echo.
+ */
+const PENDING_TIMEOUT_MS = 500;
+
 /** Share immediate control input while parent audio updates can remain throttled. */
 export function useFineWheel<T extends HTMLElement>({
   values,
@@ -44,6 +52,7 @@ export function useFineWheel<T extends HTMLElement>({
   const observed = useRef(values);
   const requested = useRef(values);
   const pending = useRef<number[][]>([]);
+  const pendingTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (sameValues(values, observed.current)) {
@@ -57,12 +66,22 @@ export function useFineWheel<T extends HTMLElement>({
     setInputValues(requested.current);
   }, [values]);
 
+  useEffect(() => () => clearTimeout(pendingTimer.current), []);
+
   function changeValues(next: number[]) {
     if (!sameValues(next, requested.current)) {
       pending.current.push(next);
     }
     requested.current = next;
     setInputValues(next);
+    clearTimeout(pendingTimer.current);
+    pendingTimer.current = setTimeout(() => {
+      if (pending.current.length > 0) {
+        pending.current = [];
+        requested.current = observed.current;
+        setInputValues(observed.current);
+      }
+    }, PENDING_TIMEOUT_MS);
     onChange(next);
   }
 

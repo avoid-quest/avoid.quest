@@ -164,8 +164,9 @@ export const MAX_CHAIN_GAIN = 4;
  *   to its default (a select), so an old session keeps loading, and Post-FX
  *   Trim has no ceiling, since a node lane folds its cable trims into it.
  * - `node`: an FX node's own config, which only its controls write, so
- *   anything they can't set is refused: a value outside its range, a branch
- *   gain past the slider, or an effect or chain id used twice in the tree.
+ *   anything they can't set is refused: a value outside its range, a
+ *   checkbox that isn't true or false, a branch gain past the slider, or an
+ *   effect or chain id used twice in the tree.
  */
 type Strictness = "stored" | "node";
 
@@ -197,7 +198,14 @@ function checkEffectParams(
     if (paramValue === undefined) {
       continue;
     }
-    if (!isParamValue(param, paramValue)) {
+    if (
+      !isParamValue(param, paramValue) ||
+      // A stored checkbox may hold a number the engine reads as on or off;
+      // an FX node's switch only ever writes true or false.
+      (strictness === "node" &&
+        param.type === "checkbox" &&
+        typeof paramValue !== "boolean")
+    ) {
       context.addIssue({
         code: "custom",
         message: `${param.label} has the wrong type`,

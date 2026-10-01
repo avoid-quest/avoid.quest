@@ -99,6 +99,14 @@ describe("effectConfigSchema (stored)", () => {
     expect(effectConfigSchema.parse(config)).toMatchObject({ makeup: 40 });
   });
 
+  test("reads a checkbox stored as a number", () => {
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      lookahead: 1,
+    };
+    expect(effectConfigSchema.safeParse(config).success).toBe(true);
+  });
+
   test("resets a select that holds none of its options", () => {
     const fold = createDefaultEffectConfig("fold", "fold", 0);
     const distortion = createDefaultEffectConfig("distortion", "dist", 0);
@@ -151,6 +159,13 @@ describe("nodeEffectConfigSchema", () => {
       ...createDefaultEffectConfig("distortion", "dist", 0),
       oversample: "8x",
     });
+  });
+
+  test("refuses a checkbox that isn't true or false", () => {
+    const compressor = createDefaultEffectConfig("compressor", "comp", 0);
+    for (const lookahead of [0.5, 1, 0]) {
+      refuses({ ...compressor, lookahead });
+    }
   });
 
   test("refuses a branch gain past the Branch gain slider", () => {

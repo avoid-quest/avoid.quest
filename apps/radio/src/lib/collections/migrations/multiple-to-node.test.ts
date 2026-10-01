@@ -7,13 +7,18 @@ import {
   createDefaultChannel,
   getPlaybackSession,
   initializePlaybackSessions,
+  PLAYBACK_SESSIONS_STORAGE_KEY,
   parsePlaybackSessionRecord,
   playbackSessionsCollection,
   stopLegacyMultipleListeners,
 } from "../playback-sessions";
 import { radiosCollection } from "../radios";
 import { addSessionRadio, sessionRadiosCollection } from "../session-radios";
-import { getSettings, settingsCollection } from "../settings";
+import {
+  getSettings,
+  SETTINGS_STORAGE_KEY,
+  settingsCollection,
+} from "../settings";
 import {
   LEGACY_MULTIPLE_SESSION_ID,
   writeLegacyRecord,
@@ -112,6 +117,61 @@ async function insertMultipleSettings() {
     player: { mode: "multiple", restoreStateOnLoad: true },
   });
   await settle();
+}
+
+/** Stands in for storage events: `write` is another tab writing `key`. */
+function createOtherTabWrites() {
+  const listeners = new Map<string, Set<() => void>>();
+  return {
+    subscribe: (key: string, listener: () => void) => {
+      const keyListeners = listeners.get(key) ?? new Set();
+      keyListeners.add(listener);
+      listeners.set(key, keyListeners);
+      return () => keyListeners.delete(listener);
+    },
+    write: (key: string) => {
+      for (const listener of listeners.get(key) ?? []) {
+        listener();
+      }
+    },
+  };
+}
+
+/**
+ * A window whose storage events reach this tab's listeners, until
+ * `restore`. Collections keep their in-memory storage.
+ */
+function installOtherTabWindow() {
+  type StorageListener = (
+    event: Pick<StorageEvent, "key" | "storageArea">
+  ) => void;
+  const listeners = new Set<StorageListener>();
+  const localStorage = { getItem: () => null };
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      addEventListener: (_type: string, listener: StorageListener) =>
+        listeners.add(listener),
+      localStorage,
+      removeEventListener: (_type: string, listener: StorageListener) =>
+        listeners.delete(listener),
+    },
+  });
+  return {
+    restore: () => {
+      if (descriptor) {
+        Object.defineProperty(globalThis, "window", descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    },
+    write: (key: string) => {
+      for (const listener of listeners) {
+        listener({ key, storageArea: localStorage as unknown as Storage });
+      }
+    },
+  };
 }
 
 function hasMultiple(): boolean {
@@ -587,16 +647,41 @@ describe("initializePlaybackSessions", () => {
   });
 
   test("removes a multiple record another tab writes after init", async () => {
-    saveRadio(radio("kexp"));
-    await initializePlaybackSessions();
-    await settle();
-    const node = getPlaybackSession("node");
+    const otherTab = installOtherTabWindow();
+    try {
+      saveRadio(radio("kexp"));
+      await initializePlaybackSessions();
+      await settle();
+      const node = getPlaybackSession("node");
 
-    await insertMultiple([{ radio: radio("kexp") }], 0.2);
-    await Promise.resolve();
+      await insertMultiple([{ radio: radio("kexp") }], 0.2);
+      otherTab.write(PLAYBACK_SESSIONS_STORAGE_KEY);
+      await Promise.resolve();
 
-    expect(hasMultiple()).toBe(false);
-    expect(getPlaybackSession("node")).toEqual(node);
+      expect(hasMultiple()).toBe(false);
+      expect(getPlaybackSession("node")).toEqual(node);
+    } finally {
+      stopLegacyMultipleListeners();
+      otherTab.restore();
+    }
+  });
+
+  test("leaves a multiple record this tab's own write brings back", async () => {
+    // A write that fails to persist rolls back in this tab, and sends no
+    // storage event; re-running the step on it would fail again.
+    const otherTab = installOtherTabWindow();
+    try {
+      await initializePlaybackSessions();
+      await settle();
+
+      await insertMultiple([{ radio: radio("kexp") }], 0.2);
+      await Promise.resolve();
+
+      expect(hasMultiple()).toBe(true);
+    } finally {
+      stopLegacyMultipleListeners();
+      otherTab.restore();
+    }
   });
 });
 
@@ -607,14 +692,15 @@ describe("watchLegacyMultipleWrites", () => {
       player: { mode: "single", restoreStateOnLoad: true },
     });
     const requestMode = mock(async (_mode: string) => undefined);
+    const otherTab = createOtherTabWrites();
     const stop = watchLegacyMultipleWrites({
       ...collections,
+      otherTabWrites: otherTab.subscribe,
       requestMode,
-      settings: settingsCollection,
     });
 
     await insertMultipleSettings();
-    await Promise.resolve();
+    otherTab.write(SETTINGS_STORAGE_KEY);
     stop();
 
     expect(getSettings()?.player.mode).toBe("node");
@@ -622,21 +708,42 @@ describe("watchLegacyMultipleWrites", () => {
     expect(requestMode).toHaveBeenCalledWith("node");
   });
 
-  test("ignores the modes it offers", async () => {
+  test("ignores the modes it offers", () => {
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: { mode: "single", restoreStateOnLoad: true },
     });
     const requestMode = mock(async (_mode: string) => undefined);
+    const otherTab = createOtherTabWrites();
     const stop = watchLegacyMultipleWrites({
       ...collections,
+      otherTabWrites: otherTab.subscribe,
       requestMode,
-      settings: settingsCollection,
     });
 
     settingsCollection.update(SETTINGS_ID, (draft) => {
       draft.player.mode = "dj";
     });
+    otherTab.write(SETTINGS_STORAGE_KEY);
+    stop();
+
+    expect(requestMode).not.toHaveBeenCalled();
+  });
+
+  test("leaves a multiple mode this tab's own write brings back", async () => {
+    settingsCollection.insert({
+      id: SETTINGS_ID,
+      player: { mode: "single", restoreStateOnLoad: true },
+    });
+    const requestMode = mock(async (_mode: string) => undefined);
+    const otherTab = createOtherTabWrites();
+    const stop = watchLegacyMultipleWrites({
+      ...collections,
+      otherTabWrites: otherTab.subscribe,
+      requestMode,
+    });
+
+    await insertMultipleSettings();
     await Promise.resolve();
     stop();
 
@@ -686,6 +793,20 @@ describe("from raw localStorage", () => {
     expect(result.crossTabNodeUnchanged).toBe(true);
     expect(result.mode).toBe("node");
     expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
+  });
+
+  test("a store too full for Node keeps Multiple and settles", async () => {
+    // The Node record is larger than Multiple's, so it cannot be written,
+    // and the rolled-back delete must not run the step again and again.
+    const result = await runRawStorageScenario({
+      crossTab: false,
+      quotaHeadroom: 50,
+      restoreStateOnLoad: true,
+    });
+
+    expect(result.refusedSessionWrites).toBeLessThan(20);
+    expect(result.storedSessionIds).toEqual(["multiple"]);
+    expect(result.backup).toBeNull();
   });
 
   test("settings that fail validation elsewhere do not stop init", async () => {

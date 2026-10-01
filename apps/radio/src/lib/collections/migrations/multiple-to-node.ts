@@ -24,8 +24,10 @@ import {
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   normalizeRadio,
+  PLAYBACK_SESSIONS_STORAGE_KEY,
   type PlaybackSessionRecord,
   type playbackSessionsCollection,
+  subscribeToOtherTabStorageWrites,
 } from "../playback-sessions";
 import type { radiosCollection } from "../radios";
 import type { sessionRadiosCollection } from "../session-radios";
@@ -33,7 +35,7 @@ import {
   getReplacedPlayerMode,
   getSettings,
   migrateLegacyPlayerMode,
-  type settingsCollection,
+  SETTINGS_STORAGE_KEY,
 } from "../settings";
 import { LEGACY_MULTIPLE_SESSION_ID } from "./legacy-records";
 import { readMultipleBackup } from "./node-to-multiple";
@@ -281,9 +283,13 @@ export function migrateMultipleSession(
 }
 
 type LegacyWriteListeners = MultipleToNodeCollections & {
-  settings: typeof settingsCollection;
   /** Moves the running mode; defaults to the mode lifecycle's requestMode. */
   requestMode?: (mode: string) => Promise<void>;
+  /**
+   * Calls a listener after another tab writes a storage key; defaults to
+   * storage events.
+   */
+  otherTabWrites?: (storageKey: string, listener: () => void) => () => void;
 };
 
 async function requestModeFromLifecycle(mode: string): Promise<void> {
@@ -298,40 +304,32 @@ async function requestModeFromLifecycle(mode: string): Promise<void> {
  * session or mode back through storage events; the session listener re-runs
  * the session step, and the settings listener rewrites the mode and moves
  * this tab to it. Returns the unsubscribe.
+ *
+ * Only another tab's writes count. This tab's own write that fails to
+ * persist (a full localStorage) rolls back and brings the legacy record
+ * back; re-running the step on that would fail and roll back again, without
+ * end.
  */
 export function watchLegacyMultipleWrites({
+  otherTabWrites = subscribeToOtherTabStorageWrites,
   requestMode = requestModeFromLifecycle,
-  settings,
   ...collections
 }: LegacyWriteListeners): () => void {
-  const sessionSubscription = collections.sessions.subscribeChanges(
-    (changes) => {
-      if (
-        changes.some(
-          (change) =>
-            change.key === LEGACY_MULTIPLE_SESSION_ID &&
-            change.type !== "delete"
-        )
-      ) {
-        // Mutating from inside the change callback would re-enter it.
-        queueMicrotask(() => migrateMultipleSession(collections));
-      }
-    }
+  const stopSessions = otherTabWrites(PLAYBACK_SESSIONS_STORAGE_KEY, () =>
+    migrateMultipleSession(collections)
   );
-  const settingsSubscription = settings.subscribeChanges(() => {
+  const stopSettings = otherTabWrites(SETTINGS_STORAGE_KEY, () => {
     const mode: unknown = getSettings()?.player.mode;
     if (mode === undefined || normalizePlayerMode(mode) === mode) {
       return;
     }
-    queueMicrotask(() => {
-      migrateLegacyPlayerMode();
-      requestMode(normalizePlayerMode(mode)).catch((error) => {
-        console.warn("[multiple-to-node] Could not follow the mode", error);
-      });
+    migrateLegacyPlayerMode();
+    requestMode(normalizePlayerMode(mode)).catch((error) => {
+      console.warn("[multiple-to-node] Could not follow the mode", error);
     });
   });
   return () => {
-    sessionSubscription.unsubscribe();
-    settingsSubscription.unsubscribe();
+    stopSessions();
+    stopSettings();
   };
 }

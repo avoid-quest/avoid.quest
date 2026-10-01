@@ -50,6 +50,8 @@ export type SettingsRecord = z.infer<typeof settingsSchema>;
 
 const SETTINGS_ID = "app-settings";
 
+export const SETTINGS_STORAGE_KEY = "radio-app-settings";
+
 /** The stored mode the settings migration replaced, if it replaced one. */
 let replacedPlayerMode: string | undefined;
 
@@ -59,7 +61,7 @@ export const settingsCollection = createCollection(
     id: "settings",
     schema: settingsSchema,
     startSync: true,
-    storageKey: "radio-app-settings",
+    storageKey: SETTINGS_STORAGE_KEY,
   })
 );
 

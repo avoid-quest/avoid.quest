@@ -20,6 +20,11 @@ export type RawStorageScenarioOptions = {
    * validation. Init must still finish.
    */
   staleSettings?: boolean;
+  /**
+   * Once the older release's records are seeded, localStorage holds only
+   * this many more characters, as a store near its quota does.
+   */
+  quotaHeadroom?: number;
 };
 
 export type RawStorageScenarioResult = {
@@ -37,11 +42,16 @@ export type RawStorageScenarioResult = {
   /** Session ids and mode as written to localStorage, not as held in memory. */
   storedSessionIds: string[];
   storedMode: unknown;
+  /** Writes of the playback sessions that localStorage refused. */
+  refusedSessionWrites: number;
 };
 
 const RESULT_PREFIX = "RAW_STORAGE_SCENARIO:";
 const SESSIONS_KEY = "radio-app-playback-sessions";
 const BACKUP_KEY = "radio-app-multiple-backup";
+
+/** A scenario that runs longer has hung, as a page that never yields. */
+const SCENARIO_TIMEOUT_MS = 4000;
 
 export async function runRawStorageScenario(
   options: RawStorageScenarioOptions
@@ -50,8 +60,10 @@ export async function runRawStorageScenario(
     [process.execPath, import.meta.path, JSON.stringify(options)],
     {
       cwd: resolve(dirname(import.meta.path), "../../../.."),
+      killSignal: "SIGKILL",
       stderr: "pipe",
       stdout: "pipe",
+      timeout: SCENARIO_TIMEOUT_MS,
     }
   );
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -68,8 +80,22 @@ export async function runRawStorageScenario(
   return JSON.parse(line.slice(RESULT_PREFIX.length));
 }
 
-function createMemoryStorage(): Storage {
+type MemoryStorage = Storage & {
+  /** Refuses a write that would hold more than `headroom` more characters. */
+  limitTo: (headroom: number) => void;
+  /** Writes refused per key. */
+  refused: Map<string, number>;
+};
+
+function createMemoryStorage(): MemoryStorage {
   const state = new Map<string, string>();
+  const refused = new Map<string, number>();
+  let quota = Number.POSITIVE_INFINITY;
+  const size = () =>
+    [...state].reduce(
+      (total, [key, value]) => total + key.length + value.length,
+      0
+    );
   return {
     clear: () => state.clear(),
     getItem: (key) => state.get(key) ?? null,
@@ -77,10 +103,27 @@ function createMemoryStorage(): Storage {
     get length() {
       return state.size;
     },
+    limitTo: (headroom) => {
+      quota = size() + headroom;
+    },
+    refused,
     removeItem: (key) => {
       state.delete(key);
     },
     setItem: (key, value) => {
+      const previous = state.get(key);
+      const next =
+        size() -
+        (previous === undefined ? 0 : key.length + previous.length) +
+        key.length +
+        value.length;
+      if (next > quota) {
+        refused.set(key, (refused.get(key) ?? 0) + 1);
+        throw new DOMException(
+          "The quota has been exceeded.",
+          "QuotaExceededError"
+        );
+      }
       state.set(key, value);
     },
   };
@@ -155,6 +198,7 @@ async function settle(): Promise<void> {
 
 async function runScenario({
   crossTab,
+  quotaHeadroom,
   restoreStateOnLoad,
   staleSettings = false,
 }: RawStorageScenarioOptions): Promise<RawStorageScenarioResult> {
@@ -192,6 +236,9 @@ async function runScenario({
     SESSIONS_KEY,
     storedRecords([legacyMultipleRecord(0.3)])
   );
+  if (quotaHeadroom !== undefined) {
+    localStorage.limitTo(quotaHeadroom);
+  }
 
   const errors: string[] = [];
   const attempt = (run: () => void) => {
@@ -281,6 +328,7 @@ async function runScenario({
     masterVolume,
     mode: collections.getSettings()?.player.mode,
     nodeStations,
+    refusedSessionWrites: localStorage.refused.get(SESSIONS_KEY) ?? 0,
     sessionIds: [...playbackSessionsCollection.state.keys()].sort(),
     storedMode: storedSettings["s:app-settings"]?.data?.player?.mode,
     storedSessionIds: Object.values(storedSessions)

@@ -56,7 +56,7 @@ import {
 } from "./session-radios";
 import { settingsCollection } from "./settings";
 
-const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
+export const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
 const SETTINGS_ID = "app-settings";
 
 export const PLAYBACK_SESSION_IDS = ["single", "node", "dj"] as const;
@@ -587,11 +587,13 @@ function restoreNodeSessionRadios(): void {
 }
 
 /**
- * Calls `listener` after another tab writes the playback sessions, once
- * this tab's collection holds the write. A tab's own writes never call it:
- * the browser sends storage events only to the other tabs.
+ * Calls `listener` after another tab writes the local-storage collection
+ * stored under `storageKey`, once this tab's collection holds the write. A
+ * tab's own writes never call it, rolled-back ones included: the browser
+ * sends storage events only to the other tabs.
  */
-export function subscribeToOtherTabSessionWrites(
+export function subscribeToOtherTabStorageWrites(
+  storageKey: string,
   listener: () => void
 ): () => void {
   if (typeof window === "undefined") {
@@ -600,7 +602,7 @@ export function subscribeToOtherTabSessionWrites(
   const onStorage = (event: StorageEvent) => {
     if (
       event.storageArea !== window.localStorage ||
-      (event.key !== null && event.key !== PLAYBACK_SESSIONS_STORAGE_KEY)
+      (event.key !== null && event.key !== storageKey)
     ) {
       return;
     }
@@ -609,6 +611,16 @@ export function subscribeToOtherTabSessionWrites(
   };
   window.addEventListener("storage", onStorage);
   return () => window.removeEventListener("storage", onStorage);
+}
+
+/** Calls `listener` after another tab writes the playback sessions. */
+export function subscribeToOtherTabSessionWrites(
+  listener: () => void
+): () => void {
+  return subscribeToOtherTabStorageWrites(
+    PLAYBACK_SESSIONS_STORAGE_KEY,
+    listener
+  );
 }
 
 /**
@@ -923,10 +935,7 @@ export async function initializePlaybackSessions(): Promise<void> {
   migrateNodeGraphSession(playbackSessionsCollection);
   // The patch this tab starts from is its own to garbage-collect.
   holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
-  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites({
-    ...legacyCollections,
-    settings: settingsCollection,
-  });
+  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
 
   const settings = settingsCollection.state.get(SETTINGS_ID);
   const shouldRestore = settings?.player.restoreStateOnLoad !== false;

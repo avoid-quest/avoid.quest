@@ -139,15 +139,20 @@ const duplicate: SurgeryKey = (event, { store, validateOptions }) => {
   // Also keeps the browser's bookmark dialog away.
   event.preventDefault();
   let copies: string[] = [];
+  let refused: string | undefined;
   commitNodeGraph(
     (latest) => {
       const result = duplicateNodes(latest, ids, validateOptions);
       copies = result.nodeIds;
+      refused = result.message;
       return result.graph;
     },
     store,
     "snapshot"
   );
+  if (refused) {
+    toast(refused);
+  }
   if (copies.length > 0) {
     setNodeSelection({ edges: [], nodes: copies }, store);
   }

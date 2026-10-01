@@ -1208,6 +1208,47 @@ describe("duplicateNodes", () => {
     expect(edit.ok).toBe(true);
   });
 
+  test("refuses copies past a patch budget instead of leaving them silent", () => {
+    const full = patch(
+      ...Array.from({ length: 24 }, (_, index) => radio(String(index)))
+    );
+    expect(validate(full)).toEqual([]);
+
+    expect(duplicateNodes(full, ["src-0"])).toEqual({
+      graph: full,
+      message: "Up to 24 sources per patch",
+      nodeIds: [],
+    });
+
+    // 2 cables plus 62 fillers into Speakers; the copied A -> FX cable is 65th.
+    const start = inserted(
+      patch(radio("a")),
+      "compressor",
+      "src-a->speakers"
+    ).graph;
+    const cabled = {
+      ...start,
+      edges: [
+        ...start.edges,
+        ...Array.from({ length: 62 }, (_, index) => ({
+          gain: 1,
+          id: `filler-${index}`,
+          muted: false,
+          source: "src-a",
+          sourceHandle: "out:audio:main",
+          target: SPEAKERS_NODE_ID,
+          targetHandle: "in:audio:main",
+        })),
+      ],
+    };
+    const copied = duplicateNodes(cabled, ["src-a", "compressor"]);
+    expect(copied).toMatchObject({
+      graph: cabled,
+      message: "Up to 64 cables per patch",
+      nodeIds: [],
+    });
+  });
+
   test("a copy never takes a deleted copy's id, so its MIDI stays dormant", () => {
     const start = inserted(
       patch(radio("a")),

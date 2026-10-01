@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import {
+  MAX_CONTROL_COLUMNS,
+  moduleWidth,
+} from "@/components/radio/node/module-frame";
 import type { Radio } from "@/lib/audio/playback/types";
 import { compile } from "./compile";
 import {
@@ -62,6 +66,9 @@ function patch(...radios: Radio[]) {
 }
 
 const ENV = { crossOriginIsolated: false };
+
+/** The widest FX body the canvas draws: four knob columns. */
+const WIDEST_FX = moduleWidth(MAX_CONTROL_COLUMNS, 1);
 
 function accepted(edit: GraphEdit): NodeGraph {
   if (!edit.ok) {
@@ -229,7 +236,7 @@ describe("where a new node lands", () => {
 
     expect(positionOf(graph, nodeId)?.x).toBe(secondColumnX + 240 + 40);
     expect(positionOf(graph, "speakers")?.x).toBeGreaterThanOrEqual(
-      secondColumnX + 240 + 40 + 224 + 40
+      secondColumnX + 240 + 40 + WIDEST_FX + 40
     );
   });
 
@@ -240,7 +247,9 @@ describe("where a new node lands", () => {
 
     const firstX = positionOf(first.graph, first.nodeId)?.x ?? 0;
     expect(positionOf(second.graph, second.nodeId)?.x).toBe(firstX);
-    expect(positionOf(second.graph, "speakers")?.x).toBe(firstX + 224 + 40);
+    expect(positionOf(second.graph, "speakers")?.x).toBe(
+      firstX + WIDEST_FX + 40
+    );
     expect(nextStationPosition(second.graph).x).toBe(firstX - 40 - 240);
   });
 
@@ -260,7 +269,7 @@ describe("where a new node lands", () => {
     const fxX = positionOf(fx.graph, fx.nodeId)?.x ?? 0;
     const speakersX = positionOf(fx.graph, "speakers")?.x ?? 0;
     expect(fxX).toBe(240 + 40);
-    expect(speakersX).toBe(fxX + 224 + 40);
+    expect(speakersX).toBe(fxX + WIDEST_FX + 40);
     // The Output device keeps to the Speakers column.
     expect(positionOf(fx.graph, withOutput.nodeId)?.x).toBe(speakersX);
     // The source stays; a Station added next lands below it, not the FX.
@@ -269,6 +278,22 @@ describe("where a new node lands", () => {
       x: 0,
       y: STATION_ROW_HEIGHT,
     });
+  });
+
+  test("a four-knob FX added to a Starter clears Speakers by a gap", () => {
+    const start = buildNodeGraphFromTemplate("starter");
+    const { graph, nodeId } = addPaletteNode(start, {
+      id: "cheapReverb",
+      kind: "node",
+      name: "Cheap Reverb",
+      section: "fx",
+      type: "cheapReverb",
+    });
+
+    const fxX = positionOf(graph, nodeId)?.x ?? 0;
+    expect(positionOf(graph, "speakers")?.x).toBeGreaterThanOrEqual(
+      fxX + WIDEST_FX + 40
+    );
   });
 
   test("an Output device goes in the Speakers column, below the lowest output there", () => {

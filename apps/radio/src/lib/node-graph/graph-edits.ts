@@ -192,8 +192,11 @@ const SOURCE_COLUMN_WIDTH = 240;
  * phone, where the fit stops at a readable zoom.
  */
 const FX_GAP_X = 40;
-/** The widest FX body (a Compressor, three knobs) plus that gap. */
-const FX_COLUMN_WIDTH = 224 + FX_GAP_X;
+/**
+ * The widest FX body plus that gap: four 64 px knob columns (a Cheap
+ * Reverb), as the canvas's `moduleWidth` draws at most.
+ */
+const FX_COLUMN_WIDTH = 296 + FX_GAP_X;
 
 /**
  * The height a node's row takes. A File whose picked file is gone after a

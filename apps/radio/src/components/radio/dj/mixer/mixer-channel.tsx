@@ -42,26 +42,40 @@ export function MixerChannel(props: MixerChannelProps) {
 
 function MixerChannelA(props: MixerChannelProps) {
   const deck = useDeckAState();
-  const peak = useDeckAPeakLevel();
-  return <ChannelBody deck={deck} peak={peak} {...props} />;
+  return <ChannelBody deck={deck} {...props} />;
 }
 
 function MixerChannelB(props: MixerChannelProps) {
   const deck = useDeckBState();
+  return <ChannelBody deck={deck} {...props} />;
+}
+
+/**
+ * The channel's meter. It updates at meter rate, so it reads the peak level
+ * here rather than re-rendering the whole channel.
+ */
+function ChannelPeakMeter({ deckId }: { deckId: MixerChannelProps["deckId"] }) {
+  return deckId === "deck-a" ? <DeckAPeakMeter /> : <DeckBPeakMeter />;
+}
+
+function DeckAPeakMeter() {
+  const peak = useDeckAPeakLevel();
+  return <PeakMeter className="w-full" left={peak.left} right={peak.right} />;
+}
+
+function DeckBPeakMeter() {
   const peak = useDeckBPeakLevel();
-  return <ChannelBody deck={deck} peak={peak} {...props} />;
+  return <PeakMeter className="w-full" left={peak.left} right={peak.right} />;
 }
 
 function ChannelBody({
   deckId,
   deck,
-  peak,
   cueEnabled,
   isCueActive,
   onCueChange,
 }: MixerChannelProps & {
   deck: ReturnType<typeof useDeckAState>;
-  peak: { left: number; right: number };
 }) {
   const label = deckId === "deck-a" ? "A" : "B";
   const prefix = `${deckId}:`;
@@ -162,7 +176,7 @@ function ChannelBody({
           </div>
         </MidiControlWrapper>
         <div className="flex w-4 py-5">
-          <PeakMeter className="w-full" left={peak.left} right={peak.right} />
+          <ChannelPeakMeter deckId={deckId} />
         </div>
       </div>
       <Button

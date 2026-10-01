@@ -27,10 +27,12 @@ Unsupported files are skipped. Enable autoplay to continue through the list;
 DJ enables it when loading a folder. Files stay on the device and must be picked
 again after a reload.
 
-Both modes offer **Spotify**, **Mixcloud**, **Radio episodes / shows** and
-**Browser tab audio**. Open the source in another tab, play it there, then
+Both modes offer **Spotify**, **Radio episodes / shows** and **Browser tab
+audio** as shared-tab sources, and Node also **Mixcloud** (DJ's Mixcloud tile
+searches Mixcloud instead). Open the source in another tab, play it there, then
 use **Go live** (Node) or **Share tab audio** (DJ), choose that tab and enable
-**Share tab audio** in the browser picker. Pasted Spotify, Mixcloud and supported
+**Share tab audio** in the browser picker. Pasted Spotify links other than
+tracks, albums and playlists, Mixcloud links other than shows, and supported
 station archive links load the same shared-audio source; direct audio-file and
 playlist URLs retain the normal seekable player. Tracks, shows and seeking are
 controlled in the source tab. Sharing is never restored automatically.
@@ -49,6 +51,15 @@ content through its platform. These entries use user-selected browser sharing,
 with no Spotify SDK or direct media extraction. See Chrome's
 [screen-sharing controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls)
 for browser capture capabilities.
+
+## Mixcloud and Spotify tracks
+
+Mixcloud shows play like SoundCloud tracks: search Mixcloud or paste a show
+link. The server resolves the show and the browser plays its HLS stream
+directly. Spotify has no search: paste a track, album or playlist link. The
+server reads Spotify's public metadata and the browser plays the matching
+YouTube upload, matching album and playlist tracks as they play. See
+`packages/platforms/src/{mixcloud,spotify}/RESEARCH.md`.
 
 ## Tech Stack
 

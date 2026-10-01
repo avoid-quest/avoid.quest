@@ -3058,6 +3058,75 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(node?.type === "deviceIn" && node.data.strip.monitor).toBe(true);
   });
 
+  test.each([
+    ["a closed share picker reports nothing", "NotAllowedError", null],
+    [
+      "a share without audio keeps its advice",
+      null,
+      "No audio was shared. Choose a tab and enable Share tab audio.",
+    ],
+  ] as const)(
+    "Go live on a shared tab: %s",
+    async (_name, domError, message) => {
+      insertNodeSession(
+        wired(
+          [
+            mic("tab", {
+              capture: "display",
+              deviceId: "display",
+              deviceLabel: "Spotify",
+            }),
+            speakers,
+          ],
+          ["tab>speakers"]
+        )
+      );
+      const original = globalThis.navigator;
+      const silent = {
+        getAudioTracks: () => [],
+        getTracks: () => [],
+      } as unknown as MediaStream;
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: {
+          mediaDevices: {
+            getDisplayMedia: () =>
+              domError
+                ? Promise.reject(
+                    new DOMException("Permission denied", domError)
+                  )
+                : Promise.resolve(silent),
+          },
+        },
+      });
+      try {
+        const harness = createHarness();
+        const { calls } = deviceEngine(harness.context);
+        await harness.playback.activate();
+
+        await harness.playback.setPlaying("tab", true);
+
+        expect(calls).toEqual([]);
+        if (message === null) {
+          expect(harness.context.reportError).not.toHaveBeenCalled();
+          expect(getPlaybackChannelRuntime(channelOf("tab")).error).toBeNull();
+        } else {
+          expect(harness.context.reportError).toHaveBeenCalledWith(
+            expect.objectContaining({ userMessage: message })
+          );
+          expect(
+            getPlaybackChannelRuntime(channelOf("tab")).error?.message
+          ).toBe(message);
+        }
+      } finally {
+        Object.defineProperty(globalThis, "navigator", {
+          configurable: true,
+          value: original,
+        });
+      }
+    }
+  );
+
   test.each([0, 0.2])(
     "Go live seeds the saved fader %s before capture",
     async (volume) => {

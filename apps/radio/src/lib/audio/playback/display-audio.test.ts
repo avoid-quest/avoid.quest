@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { startDeviceInput } from "@/lib/device-input-playback";
 import { DeviceSource } from "./device-source";
-import { requestDisplayAudio } from "./display-audio";
+import {
+  DisplayAudioError,
+  isDisplayAudioCancel,
+  requestDisplayAudio,
+} from "./display-audio";
 
 const originalNavigator = globalThis.navigator;
 afterEach(() =>
@@ -116,6 +120,23 @@ describe("browser audio capture", () => {
       }
     }
   );
+
+  test("closing the picker is a quiet cancel; a call outside a click says to click", async () => {
+    browser(() =>
+      Promise.reject(new DOMException("Permission denied", "NotAllowedError"))
+    );
+    const cancelled = await requestDisplayAudio().catch((error) => error);
+    expect(isDisplayAudioCancel(cancelled)).toBe(true);
+    browser(() =>
+      Promise.reject(new DOMException("No activation", "InvalidStateError"))
+    );
+    const blocked = await requestDisplayAudio().catch((error) => error);
+    expect(isDisplayAudioCancel(blocked)).toBe(false);
+    expect(blocked).toBeInstanceOf(DisplayAudioError);
+    expect((blocked as Error).message).toBe(
+      "Tab audio sharing must start from a click. Try again."
+    );
+  });
 
   test("a video-only selection is released and produces an actionable error", async () => {
     const { stream, tracks } = capture();

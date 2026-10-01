@@ -8,6 +8,7 @@ import { useState } from "react";
 import {
   BROWSER_AUDIO_SOURCES,
   type BrowserAudioSource,
+  isDisplayAudioCancel,
 } from "@/lib/audio/playback/display-audio";
 import { radios } from "@/lib/const";
 import { InlineError } from "./inline-error";
@@ -129,11 +130,15 @@ export function BrowserAudioForm({
           setError(null);
           setLoading(true);
           onLoad(url, definition.name)
-            .catch((cause: unknown) =>
+            .catch((cause: unknown) => {
+              // Closing the picker keeps the form as it was.
+              if (isDisplayAudioCancel(cause)) {
+                return;
+              }
               setError(
                 cause instanceof Error ? cause.message : "Could not share audio"
-              )
-            )
+              );
+            })
             .finally(() => setLoading(false));
         }}
         size="sm"

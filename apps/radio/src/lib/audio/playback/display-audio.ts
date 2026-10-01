@@ -7,6 +7,36 @@ export const BROWSER_AUDIO_SOURCES = [
 
 export type BrowserAudioSource = (typeof BROWSER_AUDIO_SOURCES)[number]["id"];
 
+/** A sharing failure whose message is written for the user as it is. */
+export class DisplayAudioError extends Error {
+  /** The user closed the picker or declined to share. */
+  readonly cancelled: boolean;
+
+  constructor(message: string, { cancelled = false } = {}) {
+    super(message);
+    this.name = "DisplayAudioError";
+    this.cancelled = cancelled;
+  }
+}
+
+/** A closed or declined share picker: nothing went wrong to report. */
+export function isDisplayAudioCancel(error: unknown): boolean {
+  return error instanceof DisplayAudioError && error.cancelled;
+}
+
+function pickerError(error: unknown): unknown {
+  const name = error instanceof Error ? error.name : null;
+  if (name === "NotAllowedError") {
+    return new DisplayAudioError("Sharing was cancelled.", { cancelled: true });
+  }
+  if (name === "InvalidStateError") {
+    return new DisplayAudioError(
+      "Tab audio sharing must start from a click. Try again."
+    );
+  }
+  return error;
+}
+
 export function stopCapturedAudio(stream: MediaStream): void {
   for (const track of stream.getTracks()) {
     track.stop();
@@ -23,7 +53,7 @@ export function stopCapturedAudio(stream: MediaStream): void {
  */
 export async function requestDisplayAudio(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    throw new Error(
+    throw new DisplayAudioError(
       "Tab audio sharing is unavailable. Use desktop Chrome or Edge, or an audio input device."
     );
   }
@@ -48,17 +78,22 @@ export async function requestDisplayAudio(): Promise<MediaStream> {
     video: { displaySurface: "browser", frameRate: 1 },
     windowAudio: "exclude",
   };
-  const stream = await navigator.mediaDevices.getDisplayMedia(options);
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia(options);
+  } catch (error) {
+    throw pickerError(error);
+  }
   const surface = stream.getVideoTracks?.()[0]?.getSettings?.().displaySurface;
   if (surface && surface !== "browser") {
     stopCapturedAudio(stream);
-    throw new Error(
+    throw new DisplayAudioError(
       "Share a browser tab. Screen and window audio can include this mixer and feed back into it."
     );
   }
   if (!stream.getAudioTracks().some((track) => track.readyState === "live")) {
     stopCapturedAudio(stream);
-    throw new Error(
+    throw new DisplayAudioError(
       "No audio was shared. Choose a tab and enable Share tab audio."
     );
   }

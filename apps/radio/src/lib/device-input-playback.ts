@@ -12,6 +12,9 @@ import {
   stopCapturedAudio,
 } from "@/lib/audio/playback/display-audio";
 
+// A start that rejects with a cancel ended at the share picker: say nothing.
+export { isDisplayAudioCancel } from "@/lib/audio/playback/display-audio";
+
 /** The engine calls a device start needs; AudioManager provides them. */
 export type DeviceInputAudio = {
   startDevice: (

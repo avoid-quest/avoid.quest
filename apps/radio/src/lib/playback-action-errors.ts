@@ -1,5 +1,6 @@
 import type { AudioError, AudioErrorCode, Radio } from "@/lib/audio";
 import { generateErrorId } from "@/lib/audio/playback";
+import { DisplayAudioError } from "@/lib/audio/playback/display-audio";
 
 export type PlaybackActionMode = "single" | "node" | "dj";
 
@@ -56,6 +57,10 @@ export function getFriendlyPlaybackErrorMessage(
   error: unknown,
   fallback = DEFAULT_PLAYBACK_START_ERROR_MESSAGE
 ): string {
+  // Tab sharing says what to do itself; it is no station stream or mic.
+  if (error instanceof DisplayAudioError) {
+    return error.message;
+  }
   if (typeof DOMException !== "undefined" && error instanceof DOMException) {
     if (error.name === "NotAllowedError") {
       return "Playback needs browser audio permission before it can start.";

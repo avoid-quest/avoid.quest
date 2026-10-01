@@ -18,6 +18,7 @@ import {
   localAudioUrls,
 } from "@/lib/audio/local-audio-playlist";
 import {
+  isDisplayAudioCancel,
   requestDisplayAudio,
   stopCapturedAudio,
 } from "@/lib/audio/playback/display-audio";
@@ -1040,7 +1041,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       clearDjErrorSurface(deckId);
       applyCrossfade();
     } catch (error) {
-      if (stillCurrent()) {
+      if (stillCurrent() && !isDisplayAudioCancel(error)) {
         reportFailure(
           deckId,
           "DJ_PLAY_DECK_FAILED",

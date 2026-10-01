@@ -79,6 +79,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 import {
   type DeviceInputAudio,
+  isDisplayAudioCancel,
   startDeviceInput,
 } from "@/lib/device-input-playback";
 import { findNextTrack } from "@/lib/dj-actions-playlist";
@@ -772,19 +773,16 @@ function createNodePlayback(
       ) {
         return await recoverTrackStart(channel, position, shouldReportError);
       }
-      if (shouldReportError()) {
+      if (shouldReportError() && !isDisplayAudioCancel(error)) {
+        const radio = channel?.radio ?? undefined;
         const reportedError = reportPlaybackActionError(ctx.reportError, {
           cause: error,
           channelId,
           code: "PLAY_ERROR",
           mode: "node",
-          radio: channel?.radio ?? undefined,
+          radio,
         });
-        setManagedPlaybackError(
-          channelId,
-          reportedError,
-          channel?.radio ?? undefined
-        );
+        setManagedPlaybackError(channelId, reportedError, radio);
       }
       return false;
     }

@@ -7,6 +7,7 @@
  */
 
 import { safeDisconnect } from "../utils.js";
+import { DisplayAudioError } from "./display-audio.js";
 
 /**
  * Channel selection for routing device input channels to stereo output.
@@ -114,7 +115,7 @@ function getCaptureState(stream: MediaStream): CaptureState {
  */
 function assertSharingLive(stream: MediaStream): void {
   if (!stream.getAudioTracks().some((track) => track.readyState === "live")) {
-    throw new Error("Audio sharing ended. Share the tab again.");
+    throw new DisplayAudioError("Audio sharing ended. Share the tab again.");
   }
 }
 

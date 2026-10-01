@@ -240,6 +240,25 @@ function withDisplayMedia(
     });
 }
 
+function sharedRadio(): Radio {
+  return {
+    id: "device-input-left",
+    name: "Spotify",
+    platformMetadata: {
+      capture: "display",
+      channelCount: 2,
+      channelSelection: { left: 0, right: 1 },
+      deviceId: "display",
+      deviceLabel: "Spotify",
+      itemType: "track",
+      platform: "device-input",
+      sourceUrl: "https://open.spotify.com/track/abc",
+      url: "",
+    },
+    streamUrl: "",
+  };
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   insertDjSession();
@@ -752,7 +771,7 @@ describe("DjDeckModule", () => {
           sourceUrl: "https://open.spotify.com/track/abc",
           type: "device-input",
         })
-      ).rejects.toThrow("Cancelled");
+      ).rejects.toThrow("Sharing was cancelled");
 
       expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(station);
       expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
@@ -764,6 +783,60 @@ describe("DjDeckModule", () => {
       restoreNavigator();
     }
   });
+
+  test.each([
+    ["a cancelled picker reports nothing", "NotAllowedError", null],
+    [
+      "a missing tab-audio API reports its own advice",
+      null,
+      "Tab audio sharing is unavailable. Use desktop Chrome or Edge, or an audio input device.",
+    ],
+  ] as const)(
+    "Go live on a restored share: %s",
+    async (_name, domError, message) => {
+      const restoreNavigator =
+        domError === null
+          ? (() => {
+              const original = globalThis.navigator;
+              Object.defineProperty(globalThis, "navigator", {
+                configurable: true,
+                value: { mediaDevices: {} },
+              });
+              return () =>
+                Object.defineProperty(globalThis, "navigator", {
+                  configurable: true,
+                  value: original,
+                });
+            })()
+          : withDisplayMedia(() =>
+              Promise.reject(new DOMException("Permission denied", domError))
+            );
+      try {
+        const context = createContext();
+        const module = createDjDeckModule({
+          audio: createAudioAdapter(),
+          context,
+          effects: createEffects(),
+          output: createOutput(),
+          platform: createPlatform(),
+        });
+        const deck = module.deck("deck-a");
+        await deck.load({ radio: sharedRadio(), type: "radio" });
+
+        await deck.transport({ type: "play" });
+
+        if (message === null) {
+          expect(context.reportError).not.toHaveBeenCalled();
+        } else {
+          expect(context.reportError).toHaveBeenCalledWith(
+            expect.objectContaining({ userMessage: message })
+          );
+        }
+      } finally {
+        restoreNavigator();
+      }
+    }
+  );
 
   test("retains every folder track across track changes and releases the folder on replacement", async () => {
     const audio = createAudioAdapter();

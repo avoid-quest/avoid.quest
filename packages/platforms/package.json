@@ -21,6 +21,7 @@
     "./soundcloud/search": "./src/soundcloud/search.ts",
     "./soundcloud/fetch-client": "./src/soundcloud/fetch-client/index.ts",
     "./soundcloud/url-policy": "./src/soundcloud/url-policy.ts",
+    "./spotify": "./src/spotify/index.ts",
     "./radiogarden": "./src/radiogarden/index.ts",
     "./radiogarden/search": "./src/radiogarden/search.ts",
     "./radiobrowser": "./src/radiobrowser/index.ts",

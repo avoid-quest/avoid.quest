@@ -21,6 +21,12 @@ import type {
   SoundCloudTrackInfo,
 } from "./soundcloud/types.js";
 import type {
+  SpotifyItemError,
+  SpotifyItemResult,
+  SpotifyMetadata,
+  SpotifyTrackInfo,
+} from "./spotify/types.js";
+import type {
   YouTubeItemError,
   YouTubeItemResult,
   YouTubeMetadata,
@@ -32,6 +38,7 @@ export type Platform =
   | "mixcloud"
   | "radiogarden"
   | "soundcloud"
+  | "spotify"
   | "youtube";
 
 export type PlatformMetadata =
@@ -39,11 +46,13 @@ export type PlatformMetadata =
   | MixcloudMetadata
   | RadioGardenMetadata
   | SoundCloudMetadata
+  | SpotifyMetadata
   | YouTubeMetadata;
 
 export type PlatformTrack =
   | BandcampTrackInfo
   | SoundCloudTrackInfo
+  | SpotifyTrackInfo
   | YouTubeTrackInfo;
 
 export type PlatformItemResult =
@@ -51,6 +60,7 @@ export type PlatformItemResult =
   | MixcloudItemResult
   | RadioGardenItemResult
   | SoundCloudItemResult
+  | SpotifyItemResult
   | YouTubeItemResult;
 
 export type PlatformItemError =
@@ -58,6 +68,7 @@ export type PlatformItemError =
   | MixcloudItemError
   | RadioGardenItemError
   | SoundCloudItemError
+  | SpotifyItemError
   | YouTubeItemError;
 
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;

@@ -2,6 +2,7 @@ import { isBandcampUrl } from "./bandcamp/detect.js";
 import { isMixcloudUrl } from "./mixcloud/detect.js";
 import { isRadioGardenUrl } from "./radiogarden/detect.js";
 import { isSoundCloudUrl } from "./soundcloud/detect.js";
+import { isSpotifyUrl } from "./spotify/detect.js";
 import type { Platform } from "./types.js";
 import { isYouTubeUrl } from "./youtube/detect.js";
 
@@ -30,6 +31,17 @@ export {
   needsResolution,
   normalizeSoundCloudUrl,
 } from "./soundcloud/detect.js";
+
+export type { SpotifyRef } from "./spotify/detect.js";
+export {
+  detectSpotifyItemType,
+  getSpotifyUrl,
+  isSpotifyUrl,
+  needsSpotifyResolution,
+  normalizeSpotifyUrl,
+  parseSpotifyRef,
+  parseSpotifyTrackPlaceholder,
+} from "./spotify/detect.js";
 
 export {
   detectYouTubeItemType,
@@ -60,6 +72,10 @@ export function detectPlatformFromUrl(url: string): Platform | null {
 
   if (isSoundCloudUrl(url)) {
     return "soundcloud";
+  }
+
+  if (isSpotifyUrl(url)) {
+    return "spotify";
   }
 
   if (isYouTubeUrl(url)) {

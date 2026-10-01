@@ -251,6 +251,18 @@ describe("paletteEntries: audio inputs and output devices", () => {
     expect(names(entries, "outputs")).toEqual(["Output device"]);
   });
 
+  test("with only the main output listed, one Output device to set up", () => {
+    const entries = paletteEntries(patch, {
+      devices: {
+        inputs: [],
+        outputs: [{ deviceId: "default", label: "Default - Speakers" }],
+      },
+      sinkSelection: true,
+    });
+
+    expect(names(entries, "outputs")).toEqual(["Output device"]);
+  });
+
   test("a browser that can't choose an output is offered no Output device", () => {
     const entries = paletteEntries(patch, { devices, sinkSelection: false });
 

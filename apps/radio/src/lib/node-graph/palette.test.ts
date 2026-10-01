@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
+import { createNodeEffectConfig } from "./catalogue";
 import {
   addPaletteNode,
   autoConnection,
@@ -9,6 +10,7 @@ import {
   type PaletteFrom,
   type PaletteNodeEntry,
   paletteEntries,
+  resetEffect,
 } from "./palette";
 import {
   AUDIO_IN_HANDLE,
@@ -368,5 +370,48 @@ describe("connectPorts", () => {
       },
     ]);
     expect(connectPorts(patch, "src-a")).toEqual([]);
+  });
+
+  test("offers only the bands a Band Split has", () => {
+    const bands = createPaletteNode("frequencySplit", "bands", { x: 0, y: 0 });
+    if (!bands) {
+      throw new Error("Expected a Band Split");
+    }
+
+    expect(
+      connectPorts({ ...patch, nodes: [...patch.nodes, bands] }, "bands")
+        .map((port) => port.handle)
+        .filter((handle) => handle.startsWith("out:"))
+    ).toEqual(["out:audio:band-1", "out:audio:band-2", "out:audio:band-3"]);
+  });
+});
+
+describe("resetEffect", () => {
+  test("a Split resets to the branch names it was created with", () => {
+    const effect = createNodeEffectConfig("fxComposite", "split");
+    const reset = resetEffect({ ...effect, chains: [], enabled: true });
+
+    expect(reset.enabled).toBe(true);
+    expect(
+      "chains" in reset ? reset.chains.map((chain) => chain.name) : null
+    ).toEqual(["Branch 1", "Branch 2"]);
+  });
+
+  test("a Band Split keeps its band count and resets its crossovers", () => {
+    const three = createPaletteNode("frequencySplit", "bands", { x: 0, y: 0 });
+    if (three?.type !== "frequencySplit") {
+      throw new Error("Expected a Band Split");
+    }
+    const { effect } = three.data;
+    if (effect.type !== "frequencySplit") {
+      throw new Error("Expected a Band Split effect");
+    }
+    const reset = resetEffect({
+      ...effect,
+      crossoverFrequencies: [400, 4000],
+      enabled: false,
+    });
+
+    expect(reset).toEqual({ ...effect, enabled: false });
   });
 });

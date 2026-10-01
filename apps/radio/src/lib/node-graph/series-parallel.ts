@@ -6,9 +6,11 @@
  * cable into A now feeding the Split and B's cables now leaving the Merge.
  * `S` undoes that shape: a Split whose two branches are one FX each, meeting
  * in one Merge, goes back to A → B. Cables keep their ids, gains and mutes
- * where they survive (the A → B cable rides B's branch and comes back), and the layout is chosen so `S` puts A and B back
- * where `P` found them. Both are pure; the canvas commits each as one undo
- * step.
+ * where they survive (the A → B cable rides B's branch and comes back).
+ * `S` puts A where the Split is and B where the Merge is, so `P` then `S`
+ * puts them back where `P` found them unless `P` had to move the Merge right
+ * to make room for the branches; undo restores the exact layout. Both are
+ * pure; the canvas commits each as one undo step.
  */
 
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
@@ -221,7 +223,13 @@ function regionOf(
       branchIndex(left.sourceHandle) - branchIndex(right.sourceHandle)
   );
   const [one, two, ...extra] = branches;
-  if (!(one && two) || extra.length > 0 || one.target === two.target) {
+  // Two cables off one port are a fan-out inside that branch, not two branches.
+  if (
+    !(one && two) ||
+    extra.length > 0 ||
+    one.sourceHandle === two.sourceHandle ||
+    one.target === two.target
+  ) {
     return null;
   }
   const first = nodeById(graph, one.target);

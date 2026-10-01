@@ -193,6 +193,23 @@ describe("parallelToSeries (S)", () => {
   test("refuses a Split whose branches are not one FX each", () => {
     expect(parallelToSeries(series, both).ok).toBe(false);
   });
+
+  test("refuses two cables fanning out of one Split port", () => {
+    const fanned = nodeGraphSchema.parse({
+      ...parallel(),
+      edges: parallel().edges.map((edge) =>
+        edge.id === "comp->echo"
+          ? { ...edge, sourceHandle: "out:audio:branch-1" }
+          : edge
+      ),
+    });
+
+    expect(parallelToSeries(fanned, both)).toEqual({
+      message:
+        "Select a Split whose two branches are one FX each, joined by a Merge",
+      ok: false,
+    });
+  });
 });
 
 describe("series ⇄ parallel undo", () => {

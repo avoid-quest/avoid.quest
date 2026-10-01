@@ -217,14 +217,29 @@ function resolvePort(
   if (!parsed || parsed.direction !== direction) {
     return "bad-handle";
   }
-  return (
-    definitionOf(node).ports.find(
-      (port) =>
-        port.direction === direction &&
-        port.kind === parsed.kind &&
-        port.id === parsed.name
-    ) ?? "unknown-port"
+  const port = definitionOf(node).ports.find(
+    (entry) =>
+      entry.direction === direction &&
+      entry.kind === parsed.kind &&
+      entry.id === parsed.name
   );
+  return port && !isInactiveBand(node, port) ? port : "unknown-port";
+}
+
+/**
+ * A Band Split shows only its configured bands, so a port past them is as
+ * missing as one it never had: the compiler would refuse the whole split.
+ */
+function isInactiveBand(node: GraphNode, port: NodePort): boolean {
+  if (node.type !== "frequencySplit" || port.direction !== "out") {
+    return false;
+  }
+  const { effect } = node.data;
+  if (effect.type !== "frequencySplit") {
+    return false;
+  }
+  const band = Number.parseInt(port.id.split("-").at(-1) ?? "", 10);
+  return band > effect.crossoverFrequencies.length + 1;
 }
 
 /** audio→audio, audio→sidechain, control→control and midi→midi only. */

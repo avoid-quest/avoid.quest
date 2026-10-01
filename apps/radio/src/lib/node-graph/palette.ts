@@ -12,7 +12,7 @@
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import type { Radio } from "@/lib/audio/playback/types";
-import { withBandCount } from "./branches";
+import { bandCountOf, withBandCount } from "./branches";
 import {
   createNodeEffectConfig,
   getNodeDefinition,
@@ -171,6 +171,22 @@ function createEffect(type: EffectNodeType, id: string): EffectConfig {
   return effect.type === "frequencySplit"
     ? withBandCount({ ...effect, crossoverFrequencies: [] }, NEW_BAND_COUNT)
     : effect;
+}
+
+/**
+ * What an effect node's Reset puts back: its params as the palette creates
+ * them, still on or off. A Band Split keeps its band count, and so its cables.
+ */
+export function resetEffect(effect: EffectConfig): EffectConfig {
+  const fresh = createEffect(effect.type, effect.id);
+  const reset =
+    fresh.type === "frequencySplit" && effect.type === "frequencySplit"
+      ? withBandCount(
+          { ...fresh, crossoverFrequencies: [] },
+          bandCountOf(effect)
+        )
+      : fresh;
+  return { ...reset, enabled: effect.enabled };
 }
 
 function withNode(graph: NodeGraph, node: GraphNode): NodeGraph {

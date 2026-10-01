@@ -14,16 +14,14 @@ import {
   UNIVERSAL_EFFECT_PARAM_DEFS,
 } from "@/lib/audio/dsp/effects/schema";
 import { nodeMidiTargetPrefix } from "@/lib/midi/node-midi-actions";
-import {
-  createNodeEffectConfig,
-  getNodeDefinition,
-} from "@/lib/node-graph/catalogue";
+import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import { setEffectParams } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
   nodeStore,
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
+import { resetEffect } from "@/lib/node-graph/palette";
 import type { EffectNodeType } from "@/lib/node-graph/schema";
 import { type BackendBadge, nodeBackendBadges } from "@/lib/node-playback";
 import { BackendBadgeLabel } from "./backend-badge";
@@ -243,12 +241,7 @@ export function EffectNodeBody({
         onInspect={onInspect}
         onRemove={onRemove}
         // A reset keeps the effect on or off; only its params go back.
-        onReset={() =>
-          onStep({
-            ...createNodeEffectConfig(effect.type, effect.id),
-            enabled: effect.enabled,
-          })
-        }
+        onReset={() => onStep(resetEffect(effect))}
         title={title}
       />
       <ModuleControls onRelease={onRelease}>

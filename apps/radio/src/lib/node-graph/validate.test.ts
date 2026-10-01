@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { EffectType } from "@/lib/audio/dsp/effects/types";
+import { withBandCount } from "./branches";
 import { createNodeEffectConfig } from "./catalogue";
 import {
   graphEdgeSchema,
@@ -332,6 +333,35 @@ describe("validate: port kinds", () => {
       "bad-handle@short",
       "unknown-port@no-key",
       "unknown-port@no-out",
+    ]);
+  });
+
+  test("a Band Split's ports past its band count are refused", () => {
+    const threeBands = {
+      data: {
+        effect: withBandCount(
+          createNodeEffectConfig("frequencySplit", "bands"),
+          3
+        ),
+      },
+      id: "bands",
+      position,
+      type: "frequencySplit",
+    } as NodeInput;
+    const patch = graph(
+      [station("a"), threeBands, speakers],
+      [audio("a", "bands")]
+    );
+    const band = (index: number) => ({
+      source: "bands",
+      sourceHandle: `out:audio:band-${index}`,
+      target: "speakers",
+      targetHandle: "in:audio:main",
+    });
+
+    expect(connectionRefusal(patch, band(3))).toBeNull();
+    expect(codes(validateConnection(patch, band(4)))).toEqual([
+      "unknown-port@candidate",
     ]);
   });
 

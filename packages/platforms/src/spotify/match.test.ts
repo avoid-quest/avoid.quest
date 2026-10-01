@@ -244,6 +244,36 @@ describe("match scoring", () => {
     }
   });
 
+  test.each([
+    ["The The", "The The - Topic", "This Is the Day"],
+    ["The The", "Uploader", "The The - This Is the Day"],
+    ["!!!", "!!! - Topic", "Heart of Hearts"],
+    ["!!!", "Uploader", "!!! (Chk Chk Chk) - Heart of Hearts"],
+  ])(
+    "matches %s, whose name has no ordinary words",
+    (artist, author, title) => {
+      const name = title.split(" - ").at(-1) ?? title;
+      expect(
+        scoreYouTubeCandidate(
+          { artists: [artist], duration: 300, name },
+          { author, duration: 300, title, videoId: "a0000000000" }
+        ).rejection
+      ).toBeUndefined();
+    }
+  );
+
+  test.each([
+    ["The The", "Uploader", "This Is the Day"],
+    ["!!!", "Uploader", "Heart of Hearts!!!"],
+  ])("still rejects uploads that never name %s", (artist, author, title) => {
+    expect(
+      scoreYouTubeCandidate(
+        { artists: [artist], duration: 300, name: title.replace("!!!", "") },
+        { author, duration: 300, title, videoId: "a0000000000" }
+      ).rejection
+    ).toBe("artist does not match");
+  });
+
   test("accepts full artist credits in the channel or title", () => {
     for (const { artists, author, title } of [
       {

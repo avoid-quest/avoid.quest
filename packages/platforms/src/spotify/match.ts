@@ -176,19 +176,51 @@ function weightedCoverage(
   return total === 0 ? 0 : found / total;
 }
 
-function artistCoverage(artist: string, haystack: ReadonlySet<string>): number {
+/** Where an artist is looked up: the channel name and the title. */
+type ArtistHaystack = {
+  tokens: ReadonlySet<string>;
+  /** Normalized and lowercased channel name and title. */
+  texts: readonly string[];
+};
+
+const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}]/u;
+
+/** Whether `text` has `name`, not as part of a longer word. */
+function containsName(text: string, name: string): boolean {
+  let index = text.indexOf(name);
+  while (index !== -1) {
+    const before = text[index - 1] ?? "";
+    const after = text[index + name.length] ?? "";
+    if (
+      !(
+        WORD_CHARACTER_PATTERN.test(before) ||
+        WORD_CHARACTER_PATTERN.test(after)
+      )
+    ) {
+      return true;
+    }
+    index = text.indexOf(name, index + 1);
+  }
+  return false;
+}
+
+function artistCoverage(artist: string, haystack: ArtistHaystack): number {
   const tokens = tokenize(artist).filter(
     (token) => token !== "the" && token !== "and"
   );
-  if (tokens.length === 0) {
-    return 0;
+  if (tokens.length > 0) {
+    return tokens.every((token) => haystack.tokens.has(token)) ? 1 : 0;
   }
-  return tokens.every((token) => haystack.has(token)) ? 1 : 0;
+  // A name with no other words ("The The", "!!!") must appear whole.
+  const name = normalize(artist) || artist.trim().toLowerCase();
+  return name && haystack.texts.some((text) => containsName(text, name))
+    ? 1
+    : 0;
 }
 
 function scoreArtist(
   artists: readonly string[],
-  haystack: ReadonlySet<string>
+  haystack: ArtistHaystack
 ): number {
   const [primary = "", ...others] = artists;
   const primaryScore = artistCoverage(primary, haystack);
@@ -303,10 +335,13 @@ export function scoreYouTubeCandidate(
   }
 
   // Artist, looked up in the channel name and the title.
-  const artistHaystack = new Set([
-    ...youtubeTitleTokens,
-    ...tokenize(candidate.author),
-  ]);
+  const artistHaystack = {
+    texts: [candidate.author, candidate.title].flatMap((text) => [
+      normalize(text),
+      text.toLowerCase(),
+    ]),
+    tokens: new Set([...youtubeTitleTokens, ...tokenize(candidate.author)]),
+  };
   const artistScore = scoreArtist(track.artists, artistHaystack);
   if (artistScore === 0) {
     return reject("artist does not match", durationDelta);

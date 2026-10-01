@@ -8,7 +8,10 @@ import {
 import { formatParam } from "@/components/audio/effect-params/param-definitions";
 import type { EffectConfig, EffectType } from "@/lib/audio";
 import { getEffectParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
-import type { EffectParamDef } from "@/lib/audio/dsp/effects/param-types";
+import {
+  type EffectParamDef,
+  parseSelectValue,
+} from "@/lib/audio/dsp/effects/param-types";
 import {
   getEffectDefaultConfig,
   UNIVERSAL_EFFECT_PARAM_DEFS,
@@ -158,8 +161,7 @@ function BodyControlView({
         onChange={(next) => {
           // As the effect rack does: a numeric select commits a number.
           onStep({
-            [param.key]:
-              param.valueType === "number" ? Number.parseInt(next, 10) : next,
+            [param.key]: parseSelectValue(param, next),
           } as Partial<EffectConfig>);
         }}
         options={param.options.map((option) => ({

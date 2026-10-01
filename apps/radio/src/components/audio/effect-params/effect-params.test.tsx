@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { EffectConfig } from "@/lib/audio";
@@ -54,15 +54,35 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 });
 
 // React DOM checks for input events when it loads, so it loads after the DOM.
-const { cleanup, render } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
+
+// Radix Select measures and scrolls, which JSDOM does not do.
+for (const [key, value] of Object.entries({
+  hasPointerCapture: (): boolean => false,
+  releasePointerCapture: (): void => undefined,
+  scrollIntoView: (): void => undefined,
+})) {
+  Object.defineProperty(dom.window.HTMLElement.prototype, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
 
 let EffectParams: typeof import("./effect-params")["EffectParams"];
 let createDefaultEffectConfig: typeof import("@/lib/audio/dsp/effects/registry")["createDefaultEffectConfig"];
+let effectConfigSchema: typeof import("@/lib/audio/dsp/effects/effect-config-schema")["effectConfigSchema"];
+let nodeEffectConfigSchema: typeof import("@/lib/audio/dsp/effects/effect-config-schema")["nodeEffectConfigSchema"];
 
 beforeAll(async () => {
   ({ EffectParams } = await import("./effect-params"));
   ({ createDefaultEffectConfig } = await import(
     "@/lib/audio/dsp/effects/registry"
+  ));
+  ({ effectConfigSchema, nodeEffectConfigSchema } = await import(
+    "@/lib/audio/dsp/effects/effect-config-schema"
   ));
 });
 
@@ -149,4 +169,29 @@ describe("EffectParams MIDI targets", () => {
     // Without a deck or a prefix, nothing is learnable.
     expect(midiTargets(compressor)).toEqual([]);
   });
+});
+
+describe("EffectParams selects", () => {
+  test.each([
+    ["vocoder", "Bands", "12 bands", { bandCount: 12 }],
+    ["fold", "Oversample", "4x", { oversample: 4 }],
+  ] as const)(
+    "a numeric %s select commits a number the schemas accept",
+    async (type, label, option, expected) => {
+      const onUpdate = mock((_config: Partial<EffectConfig>) => undefined);
+      const effect = createDefaultEffectConfig(type, "fx", 0);
+      const view = render(<EffectParams effect={effect} onUpdate={onUpdate} />);
+
+      fireEvent.keyDown(view.getByRole("combobox", { name: label }), {
+        key: "Enter",
+      });
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+      fireEvent.click(view.getByRole("option", { name: option }));
+
+      expect(onUpdate).toHaveBeenCalledWith(expected);
+      const updated = { ...effect, ...expected };
+      expect(effectConfigSchema.safeParse(updated).success).toBe(true);
+      expect(nodeEffectConfigSchema.safeParse(updated).success).toBe(true);
+    }
+  );
 });

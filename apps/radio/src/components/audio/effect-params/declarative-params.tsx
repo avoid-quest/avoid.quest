@@ -12,14 +12,15 @@ import { Textarea } from "@avoid.quest/ui/components/textarea";
 import type { ChangeEvent } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
-import type {
-  CheckboxParamDef,
-  EffectSchema,
-  GroupParamDef,
-  ParamDef,
-  SelectParamDef,
-  SliderParamDef,
-  TextParamDef,
+import {
+  type CheckboxParamDef,
+  type EffectSchema,
+  type GroupParamDef,
+  type ParamDef,
+  parseSelectValue,
+  type SelectParamDef,
+  type SliderParamDef,
+  type TextParamDef,
 } from "@/lib/audio/dsp/effects/schema";
 import { ParamGroup } from "./param-group";
 import { ParamSelect } from "./param-select";
@@ -120,9 +121,7 @@ function SelectControl({
   const value = getEffectValue(ctx.effect, param.key);
   const stringValue = String(value);
   function updateValue(nextValue: string) {
-    const parsed =
-      param.valueType === "number" ? Number.parseInt(nextValue, 10) : nextValue;
-    ctx.onUpdate({ [param.key]: parsed });
+    ctx.onUpdate({ [param.key]: parseSelectValue(param, nextValue) });
   }
 
   return (

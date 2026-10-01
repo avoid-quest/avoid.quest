@@ -110,3 +110,11 @@ export function defineEffect<TType extends EffectType>(
 ): EffectDefinition<TType> {
   return definition;
 }
+
+/** A select's chosen option as the config stores it: numeric selects hold numbers. */
+export function parseSelectValue(
+  param: SelectParamDef,
+  value: string
+): string | number {
+  return param.valueType === "number" ? Number(value) : value;
+}

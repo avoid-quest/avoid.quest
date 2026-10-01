@@ -6,7 +6,10 @@ import type {
   EffectParamDef,
   EffectSchema,
 } from "@/lib/audio/dsp/effects/schema";
-import { getEffectParamDefs } from "@/lib/audio/dsp/effects/schema";
+import {
+  getEffectParamDefs,
+  parseSelectValue,
+} from "@/lib/audio/dsp/effects/schema";
 import {
   type EffectLayout,
   type LayoutRow,
@@ -90,10 +93,9 @@ function Control({
     return (
       <ParamSelect
         label={label}
-        onChange={(next) => {
-          const option = param.options.find((o) => String(o.value) === next);
-          onUpdate({ [param.key]: option?.value ?? next });
-        }}
+        onChange={(next) =>
+          onUpdate({ [param.key]: parseSelectValue(param, next) })
+        }
         options={param.options.map((o) => ({
           label: o.label,
           value: String(o.value),

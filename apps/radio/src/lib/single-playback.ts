@@ -1,5 +1,6 @@
 import PQueue from "p-queue";
 import { fadeOut, type Radio } from "@/lib/audio";
+import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
 import {
   createDefaultChannel,
   getPlaybackChannel,
@@ -312,6 +313,18 @@ async function selectStation(
   }
 }
 
+/**
+ * Whether two records of a Station play through the same sound: an edit to
+ * its stream, stream format or a platform detail that changes how it loads
+ * needs a new one, as a Node lane's does.
+ */
+function loadsTheSame(current: Radio, edited: Radio): boolean {
+  return (
+    JSON.stringify([current.streamUrl, toPlaybackInput(current)]) ===
+    JSON.stringify([edited.streamUrl, toPlaybackInput(edited)])
+  );
+}
+
 /** Moves the selected Station's sound to the stream its record now has. */
 async function reconnectEditedStation(
   station: Radio,
@@ -323,7 +336,7 @@ async function reconnectEditedStation(
   if (
     !channel?.radio ||
     channel.radio.id !== station.id ||
-    channel.radio.streamUrl === station.streamUrl
+    loadsTheSame(channel.radio, station)
   ) {
     return;
   }
@@ -546,14 +559,16 @@ function createSinglePlayback(
         }
         return;
       }
-      if (channel.radio.streamUrl === station.streamUrl) {
+      if (loadsTheSame(channel.radio, station)) {
         return;
       }
       playingRevision += 1;
       clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
       const runtime = getPlaybackChannelRuntime(channel.id);
+      // Still connecting counts as playing, so an edit then resumes it.
+      const resume = runtime.isPlaying || runtime.isLoading;
       try {
-        await selection.runSelection(runtime.isPlaying, null, (signal, state) =>
+        await selection.runSelection(resume, null, (signal, state) =>
           reconnectEditedStation(station, state, ctx, signal)
         );
       } catch (error) {

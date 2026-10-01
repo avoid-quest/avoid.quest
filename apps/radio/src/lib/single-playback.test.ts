@@ -881,6 +881,43 @@ describe("Single Playback", () => {
     expect(context.audio.playSound).toHaveBeenCalledTimes(1);
   });
 
+  test("an edit that changes how the selected Station loads reconnects to it", async () => {
+    const current = station("current");
+    insertSingleSession(current, true);
+    const context = createTestContext();
+    // The same URL, now read as HLS.
+    const edited: Radio = { ...current, streamFormat: "hls" };
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.rebindStation(edited);
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(edited);
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      edited,
+      expect.anything()
+    );
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
+  test("an edited stream of a Station still connecting resumes it", async () => {
+    const current = station("current");
+    insertSingleSession(current, false);
+    setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+      isLoading: true,
+    }));
+    const context = createTestContext();
+    const edited = { ...current, streamUrl: "https://radio.example/new.mp3" };
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.rebindStation(edited);
+
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
   test("releasing a deleted current Station stops it and clears the selection", async () => {
     const current = station("current");
     insertSingleSession(current, true);

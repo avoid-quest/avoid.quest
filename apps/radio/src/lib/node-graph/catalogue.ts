@@ -267,7 +267,8 @@ const OTHER_DEFINITIONS: Record<
     ports: [audioIn(), controlIn("pan", "Pan", "v2"), audioOut()],
     ship: "v1",
   },
-  // A YouTube, SoundCloud or Bandcamp track, album or playlist.
+  // A YouTube, SoundCloud, Bandcamp or Spotify track, album or playlist, or
+  // a Mixcloud show.
   platform: {
     category: "source",
     name: "Track",

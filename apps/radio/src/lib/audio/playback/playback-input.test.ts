@@ -94,6 +94,22 @@ describe("toPlaybackInput", () => {
     });
   });
 
+  test("omits credentials for a Spotify track's YouTube stream", () => {
+    expect(
+      toPlaybackInput({
+        name: "Get Lucky",
+        platformMetadata: {
+          itemType: "track",
+          platform: "spotify",
+          spotifyId: "2Foc5Q5nqNiosCNqttzHof",
+          url: "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
+          youtubeVideoId: "Rgrt_8mXrK8",
+        },
+        streamUrl: "https://provider.example/videoplayback?expire=1",
+      })
+    ).toMatchObject({ credentials: "omit" });
+  });
+
   test("allows native HLS only for curated or allowlisted sources", () => {
     expect(
       toPlaybackInput({
@@ -114,6 +130,28 @@ describe("toPlaybackInput", () => {
         streamUrl: "https://cf-hls-media.sndcdn.com/live.m3u8",
       })
     ).toMatchObject({ allowNativeHls: true });
+    const mixcloud = {
+      itemType: "show" as const,
+      platform: "mixcloud" as const,
+      url: "https://www.mixcloud.com/dholbach/cryptkeeper/",
+    };
+    expect(
+      toPlaybackInput({
+        name: "Mixcloud HLS",
+        platformMetadata: mixcloud,
+        streamFormat: "hls",
+        streamUrl:
+          "https://aod.mixcloud.stream/secure/hls/6/f/c/d/a.m4a/index.m3u8",
+      })
+    ).toMatchObject({ allowNativeHls: true });
+    expect(
+      toPlaybackInput({
+        name: "Spoofed Mixcloud HLS",
+        platformMetadata: mixcloud,
+        streamFormat: "hls",
+        streamUrl: "https://unknown.example/live.m3u8",
+      })
+    ).not.toHaveProperty("allowNativeHls");
     expect(
       toPlaybackInput({
         name: "Untrusted HLS",

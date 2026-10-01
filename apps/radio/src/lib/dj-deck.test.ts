@@ -1738,6 +1738,83 @@ describe("DjDeckModule", () => {
     expect(platform.resolveStream).toHaveBeenCalledTimes(1);
   });
 
+  test("continues a Spotify album by matching its next track on YouTube", async () => {
+    const audio = createAudioAdapter();
+    const platform = createPlatform();
+    platform.resolveStream = mock(() =>
+      Promise.resolve({
+        streamFormat: "progressive" as const,
+        streamUrl: "https://radio.example/aerodynamic.webm",
+        youtubeVideoId: "L93-7vRfxNs",
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    const radio: Radio = {
+      id: "album-1",
+      name: "Discovery",
+      platformMetadata: {
+        itemType: "album",
+        platform: "spotify",
+        spotifyId: "2noRn2Aes5aoNVsU6iWThc",
+        tracks: [
+          {
+            artist: "Daft Punk",
+            name: "One More Time",
+            spotifyId: "0DiWol3AO6WpXZgp0goxAV",
+            streamUrl: "https://radio.example/one-more-time.webm",
+            url: "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV",
+            youtubeVideoId: "FGBhQbmPwH8",
+          },
+          {
+            artist: "Daft Punk",
+            name: "Aerodynamic",
+            spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+            streamUrl: "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+            url: "https://open.spotify.com/track/1NeLwFETswx8Fzxl2AFl91",
+          },
+        ],
+        url: "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc",
+      },
+      streamUrl: "https://radio.example/one-more-time.webm",
+    };
+    await module.deck("deck-a").load({ radio, type: "radio" });
+
+    audio.emit("left_album-1:1", {
+      error: null,
+      hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(platform.resolveStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "spotify",
+        reason: "initial-load",
+        spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+      })
+    );
+    const playing = getPlaybackChannel("dj", "deck-a")?.radio;
+    expect(playing?.streamUrl).toBe("https://radio.example/aerodynamic.webm");
+    expect(playing).not.toHaveProperty("youtubeVideoId");
+    const tracks =
+      playing?.platformMetadata?.platform === "spotify"
+        ? playing.platformMetadata.tracks
+        : [];
+    expect(tracks?.[1]).toMatchObject({
+      streamUrl: "https://radio.example/aerodynamic.webm",
+      youtubeVideoId: "L93-7vRfxNs",
+    });
+  });
+
   test("refreshes an interrupted provider stream only for its owning generation", async () => {
     const audio = createAudioAdapter();
     const platform = createPlatform();

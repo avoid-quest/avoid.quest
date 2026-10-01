@@ -1,3 +1,5 @@
+import { parseSpotifyTrackPlaceholder } from "@avoid.quest/platforms/spotify/detect";
+
 const RESERVED_STREAM_TOKENS = new Set(["left", "right", "deck-a", "deck-b"]);
 const YOUTUBE_LAZY_PREFIX = "yt:";
 const SAME_ORIGIN_PATH_BASE = "https://same-origin.invalid";
@@ -37,6 +39,11 @@ export function validatePlaybackStreamUrl(
       return { ok: false, reason: "missing YouTube video ID" };
     }
     return { normalizedUrl: `${YOUTUBE_LAZY_PREFIX}${videoId}`, ok: true };
+  }
+
+  // An album or playlist track matched to YouTube only when it plays.
+  if (parseSpotifyTrackPlaceholder(normalizedUrl)) {
+    return { normalizedUrl, ok: true };
   }
 
   // Relative paths support same-origin audio assets.

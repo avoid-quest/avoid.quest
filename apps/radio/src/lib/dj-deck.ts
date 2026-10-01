@@ -59,11 +59,16 @@ import {
 import { getMixer } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
-import { refreshPlatformStream } from "@/lib/platform-stream-refresh";
+import {
+  type LazyTrackRequest,
+  lazyTrackRequest,
+  refreshPlatformStream,
+} from "@/lib/platform-stream-refresh";
 import type { Platform } from "@/lib/platform-types";
 import {
   isDeviceInputMetadata,
   isFileMetadata,
+  isSpotifyMetadata,
   isYouTubeMetadata,
 } from "@/lib/platform-types";
 import {
@@ -419,6 +424,49 @@ function reportOutputError(error: unknown, deckId: DeckId): void {
     null,
     deckId
   );
+}
+
+const LAZY_TRACK_FAILURES = {
+  spotify: [
+    "Failed to match Spotify track on YouTube",
+    "DJ_SPOTIFY_RESOLVE_FAILED",
+  ],
+  youtube: ["Failed to resolve YouTube stream", "DJ_YOUTUBE_RESOLVE_FAILED"],
+} as const satisfies Record<
+  LazyTrackRequest["platform"],
+  readonly [string, string]
+>;
+
+/**
+ * Keeps a lazy track's resolved URL, and a Spotify track's match, on the
+ * track, so the next track after it is found and an expired stream renews.
+ */
+function keepLazyTrackStream(
+  radio: Radio,
+  request: LazyTrackRequest,
+  resolved: PlatformStreamResolution
+): void {
+  const metadata = radio.platformMetadata;
+  if (request.platform === "spotify") {
+    const track = isSpotifyMetadata(metadata)
+      ? metadata.tracks?.find(
+          (candidate) => candidate.spotifyId === request.spotifyId
+        )
+      : undefined;
+    if (track) {
+      track.streamUrl = resolved.streamUrl;
+      track.youtubeVideoId = resolved.youtubeVideoId ?? track.youtubeVideoId;
+    }
+    return;
+  }
+  const track = isYouTubeMetadata(metadata)
+    ? metadata.tracks?.find(
+        (candidate) => candidate.videoId === request.videoId
+      )
+    : undefined;
+  if (track) {
+    track.streamUrl = resolved.streamUrl;
+  }
 }
 
 export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
@@ -926,48 +974,41 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     (message, code, error) =>
       reportDjErrorSurface(message, code, error, radio, deckId);
 
-  const resolveYouTubeTrack = async (
+  /** Resolves a lazy `yt:` or `spotify:track:` track for this load. */
+  const resolveLazyTrack = async (
     deckId: DeckId,
     loadGeneration: number,
     radio: Radio,
-    sourceUrl: string,
+    request: LazyTrackRequest,
     onFailure: ReportSourceFailure
   ): Promise<PlatformStreamResolution | null> => {
-    const reportYouTubeFailure = (error?: unknown) =>
-      onFailure(
-        "Failed to resolve YouTube stream",
-        "DJ_YOUTUBE_RESOLVE_FAILED",
-        error
-      );
-    const videoId = sourceUrl.slice(3);
+    const [failureMessage, failureCode] = LAZY_TRACK_FAILURES[request.platform];
+    const reportLazyFailure = (error?: unknown) =>
+      onFailure(failureMessage, failureCode, error);
     let resolved: PlatformStreamResolution | null = null;
     try {
       resolved = await options.platform.resolveStream({
-        platform: "youtube",
+        ...request,
         radio,
         reason: "initial-load",
-        videoId,
       });
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
-        reportYouTubeFailure(error);
+        reportLazyFailure(error);
       }
       return null;
     }
     if (!(isLoadCurrent(deckId, loadGeneration) && resolved)) {
       if (isLoadCurrent(deckId, loadGeneration)) {
-        reportYouTubeFailure();
+        reportLazyFailure();
       }
       return null;
     }
-    const metadata = radio.platformMetadata;
-    const track = isYouTubeMetadata(metadata)
-      ? metadata.tracks?.find((candidate) => candidate.videoId === videoId)
-      : undefined;
-    if (track) {
-      track.streamUrl = resolved.streamUrl;
-    }
-    return resolved;
+    keepLazyTrackStream(radio, request, resolved);
+    return {
+      streamFormat: resolved.streamFormat,
+      streamUrl: resolved.streamUrl,
+    };
   };
 
   const resolveTrack = async (
@@ -977,12 +1018,13 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     sourceUrl: string,
     onFailure = surfaceSourceFailure(deckId, radio)
   ): Promise<PlatformStreamResolution | null> => {
-    const resolved = sourceUrl.startsWith("yt:")
-      ? await resolveYouTubeTrack(
+    const request = lazyTrackRequest(sourceUrl);
+    const resolved = request
+      ? await resolveLazyTrack(
           deckId,
           loadGeneration,
           radio,
-          sourceUrl,
+          request,
           onFailure
         )
       : {

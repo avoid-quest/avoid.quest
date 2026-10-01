@@ -39,6 +39,27 @@ function getSoundCloudDescription(
   }
 }
 
+function getMixcloudDescription(
+  metadata: PlatformMetadata
+): string | undefined {
+  if (metadata.platform !== "mixcloud") {
+    return;
+  }
+  return metadata.artist || "Mixcloud Show";
+}
+
+function getSpotifyDescription(metadata: PlatformMetadata): string | undefined {
+  if (metadata.platform !== "spotify") {
+    return;
+  }
+  const labels = {
+    album: "Spotify Album",
+    playlist: "Spotify Playlist",
+    track: "Spotify Track",
+  } as const;
+  return metadata.artist || labels[metadata.itemType];
+}
+
 function getYouTubeDescription(metadata: PlatformMetadata): string | undefined {
   if (metadata.platform !== "youtube") {
     return;
@@ -72,9 +93,11 @@ function getRadioBrowserDescription(
 function getDescription(metadata: PlatformMetadata): string | undefined {
   return (
     getBandcampDescription(metadata) ??
+    getMixcloudDescription(metadata) ??
     getRadioBrowserDescription(metadata) ??
     getRadioGardenDescription(metadata) ??
     getSoundCloudDescription(metadata) ??
+    getSpotifyDescription(metadata) ??
     getYouTubeDescription(metadata)
   );
 }
@@ -171,6 +194,19 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
     return labels[metadata.itemType];
   }
 
+  if (metadata.platform === "mixcloud") {
+    return "Show";
+  }
+
+  if (metadata.platform === "spotify") {
+    const labels: Record<typeof metadata.itemType, string> = {
+      album: "Album",
+      playlist: "Playlist",
+      track: "Track",
+    };
+    return labels[metadata.itemType];
+  }
+
   if (metadata.platform === "radiogarden") {
     return "Radio Station";
   }
@@ -234,12 +270,15 @@ export function validateRadioForMode(
     return;
   }
 
-  // Platform radios (SoundCloud/Bandcamp/YouTube) need a stream refresh
-  // when their URL expires, which DJ decks and Node lanes run and Single
-  // does not. Radio Garden stations are live streams — they work in all modes
+  // Platform radios (SoundCloud/Bandcamp/YouTube/Mixcloud/Spotify) need a
+  // stream refresh when their URL expires, which DJ decks and Node lanes run
+  // and Single does not. Radio Garden stations are live streams — they work
+  // in all modes
   const djOnlyPlatforms: Record<string, string> = {
     bandcamp: "Bandcamp",
+    mixcloud: "Mixcloud",
     soundcloud: "SoundCloud",
+    spotify: "Spotify",
     youtube: "YouTube",
   };
   const platformKey = radio.platformMetadata?.platform ?? "";

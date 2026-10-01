@@ -2,8 +2,9 @@
  * Node Sources
  *
  * Which Source node holds a radio, and whether a local file still plays.
- * A Station holds live radio, a Track ("platform") a YouTube, SoundCloud or
- * Bandcamp item, and a File a local file or a static audio URL. Filling any
+ * A Station holds live radio, a Track ("platform") a YouTube, SoundCloud,
+ * Bandcamp, Mixcloud or Spotify item, and a File a local file or a static
+ * audio URL. Filling any
  * of them with another kind of radio turns it into the right one in place.
  *
  * A local file plays from a `blob:` object URL that dies with the page, so
@@ -25,7 +26,9 @@ import { isRadioSourceNode, type RadioSourceNodeType } from "./schema";
 /** Platforms a Track plays; each stream URL expires and must be refreshed. */
 const TRACK_PLATFORMS: ReadonlySet<string> = new Set([
   "bandcamp",
+  "mixcloud",
   "soundcloud",
+  "spotify",
   "youtube",
 ]);
 
@@ -56,7 +59,9 @@ export function sourceTypeForRadio(radio: RadioLike): RadioSourceNodeType {
 const PLATFORM_LABELS: Readonly<Record<string, string>> = {
   bandcamp: "Bandcamp",
   "local-file": "Local file",
+  mixcloud: "Mixcloud",
   soundcloud: "SoundCloud",
+  spotify: "Spotify",
   "static-audio": "Audio file",
   youtube: "YouTube",
 };

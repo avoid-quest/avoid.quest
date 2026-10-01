@@ -15,6 +15,8 @@ describe("isCollection", () => {
       ["soundcloud", "playlist"],
       ["soundcloud", "user"],
       ["youtube", "playlist"],
+      ["spotify", "album"],
+      ["spotify", "playlist"],
       ["static-audio", "playlist"],
     ]) {
       expect(isCollectionItem(platform, itemType)).toBeTrue();
@@ -23,6 +25,8 @@ describe("isCollection", () => {
       ["bandcamp", "track"],
       ["soundcloud", "track"],
       ["youtube", "video"],
+      ["spotify", "track"],
+      ["mixcloud", "show"],
       ["radiogarden", "channel"],
     ]) {
       expect(isCollectionItem(platform, itemType)).toBeFalse();
@@ -45,6 +49,35 @@ describe("isCollection", () => {
     expect(getCurrentTrackIndex(metadata, "https://radio.example/3.mp3")).toBe(
       2
     );
+  });
+
+  test("finds an unmatched Spotify track by its placeholder", () => {
+    const metadata = {
+      itemType: "playlist",
+      platform: "spotify",
+      spotifyId: "432nsnOM9L55tkiOFnHbI2",
+      tracks: [
+        {
+          artist: "A",
+          name: "One",
+          spotifyId: "4Z1olDl8aym5xZYZAat672",
+          streamUrl: "https://media.example/1.webm",
+          url: "https://open.spotify.com/track/4Z1olDl8aym5xZYZAat672",
+        },
+        {
+          artist: "B",
+          name: "Two",
+          spotifyId: "5eXyjGDzy8wrEn1pzu13uM",
+          streamUrl: "spotify:track:5eXyjGDzy8wrEn1pzu13uM",
+          url: "https://open.spotify.com/track/5eXyjGDzy8wrEn1pzu13uM",
+        },
+      ],
+      url: "https://open.spotify.com/playlist/432nsnOM9L55tkiOFnHbI2",
+    } as PlatformMetadata;
+
+    expect(
+      getCurrentTrackIndex(metadata, "spotify:track:5eXyjGDzy8wrEn1pzu13uM")
+    ).toBe(1);
   });
 
   test("treats Bandcamp collection as collection metadata", () => {

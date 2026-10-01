@@ -4,6 +4,7 @@ import {
   browserAudioRadio,
   detectBrowserAudioSource,
 } from "./browser-audio-links";
+import { detectPlatformFromUrl } from "./external-url/detect";
 import { setSourceRadio } from "./node-graph/graph-edits";
 import { buildNodeGraphFromTemplate } from "./node-graph/templates";
 import { createPlatformItemLoader } from "./platform-item-loader";
@@ -21,16 +22,17 @@ describe("hosted audio links", () => {
   );
   test.each([
     "https://open.spotify.com/track/abc",
-    "https://open.spotify.com/playlist/abc",
-    "https://open.spotify.com/episode/abc",
-    "https://spotify.link/abc",
-    "https://www.mixcloud.com/radio/show/",
+    "https://open.spotify.com/episode/4rOoJ6Egrf8K2IrywzwOMk",
+    "https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi",
+    "https://www.mixcloud.com/radio/",
+    "https://www.mixcloud.com/live/radio/",
   ])("loads %s without a media resolver or credentials", async (url) => {
     const unexpected = () =>
       Promise.reject(new Error("Unexpected provider call"));
     const load = createPlatformItemLoader({
       getYouTubeClient: () => ({ resolveItem: unexpected }),
       resolvePlatformItem: unexpected,
+      resolveSpotifyItem: unexpected,
       resolveStaticAudio: unexpected,
     });
     const result = await load(url);
@@ -51,6 +53,19 @@ describe("hosted audio links", () => {
       );
       expect(converted.edges).toEqual(graph.edges);
     }
+  });
+  test.each([
+    "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
+    "https://open.spotify.com/intl-de/album/2noRn2Aes5aoNVsU6iWThc?si=x",
+    "https://open.spotify.com/playlist/432nsnOM9L55tkiOFnHbI2",
+    "https://spotify.link/h5TbcGLLkhb",
+    "https://www.mixcloud.com/dholbach/cryptkeeper/",
+    "https://m.mixcloud.com/NTSRadio/show/",
+  ])("plays %s as a platform track, not a shared tab", (url) => {
+    expect(detectBrowserAudioSource(url)).toBeNull();
+    expect(detectPlatformFromUrl(url)).toBe(
+      url.includes("mixcloud") ? "mixcloud" : "spotify"
+    );
   });
   test.each([
     "https://nts.live.evil.example/shows/test",

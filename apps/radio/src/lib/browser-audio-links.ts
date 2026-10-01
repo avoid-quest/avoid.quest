@@ -1,3 +1,8 @@
+import { isMixcloudShowUrl } from "@avoid.quest/platforms/mixcloud";
+import {
+  needsSpotifyResolution,
+  parseSpotifyRef,
+} from "@avoid.quest/platforms/spotify/detect";
 import { isPublicHttpUrl } from "@avoid.quest/platforms/url-policy";
 import type { Radio } from "@/lib/audio";
 import {
@@ -27,11 +32,30 @@ const streamHosts = new Set(
     )
 );
 
-/** Hosted players remain in their tab; direct recordings still use the file loader. */
+/**
+ * A Spotify track, album or playlist (or a share link to one) or a Mixcloud
+ * show: the radio plays these itself, so they don't share a tab.
+ */
+function isPlayablePlatformLink(value: string): boolean {
+  return (
+    parseSpotifyRef(value) !== null ||
+    needsSpotifyResolution(value) ||
+    isMixcloudShowUrl(value)
+  );
+}
+
+/**
+ * Hosted players remain in their tab; direct recordings still use the file
+ * loader, and Spotify and Mixcloud links the radio plays load as tracks.
+ */
 export function detectBrowserAudioSource(
   value: string
 ): BrowserAudioSource | null {
-  if (!isPublicHttpUrl(value) || isStaticAudioUrl(value)) {
+  if (
+    !isPublicHttpUrl(value) ||
+    isStaticAudioUrl(value) ||
+    isPlayablePlatformLink(value)
+  ) {
     return null;
   }
   const { hostname, href, username, password } = new URL(value);

@@ -37,6 +37,35 @@ const playlist: Radio = {
   streamUrl: "https://media.example/one.m4a",
 };
 
+const spotifyAlbum: Radio = {
+  id: "sp-album",
+  name: "Discovery",
+  platformMetadata: {
+    itemType: "album",
+    platform: "spotify",
+    spotifyId: "2noRn2Aes5aoNVsU6iWThc",
+    tracks: [
+      {
+        artist: "Daft Punk",
+        name: "One More Time",
+        spotifyId: "0DiWol3AO6WpXZgp0goxAV",
+        streamUrl: "https://media.example/one.webm",
+        url: "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV",
+        youtubeVideoId: "FGBhQbmPwH8",
+      },
+      {
+        artist: "Daft Punk",
+        name: "Aerodynamic",
+        spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+        streamUrl: "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+        url: "https://open.spotify.com/track/1NeLwFETswx8Fzxl2AFl91",
+      },
+    ],
+    url: "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc",
+  },
+  streamUrl: "https://media.example/one.webm",
+};
+
 function options(
   overrides: Partial<Parameters<typeof refreshPlatformStream>[3]> = {}
 ) {
@@ -76,6 +105,55 @@ describe("getRefreshRequest", () => {
       platform: "soundcloud",
       radio: soundcloud,
       reason: "stream-refresh",
+    });
+  });
+
+  test("renews a Spotify track from its matched upload, a Mixcloud show by its URL", () => {
+    expect(getRefreshRequest(spotifyAlbum)).toEqual({
+      failureCode: "DJ_SPOTIFY_REFRESH_FAILED",
+      failureMessage: "Failed to refresh Spotify stream - please reload",
+      resolution: {
+        platform: "youtube",
+        radio: spotifyAlbum,
+        reason: "stream-refresh",
+        videoId: "FGBhQbmPwH8",
+      },
+    });
+    const mixcloud: Radio = {
+      name: "Cryptkeeper",
+      platformMetadata: {
+        itemType: "show",
+        platform: "mixcloud",
+        url: "https://www.mixcloud.com/dholbach/cryptkeeper/",
+      },
+      streamUrl: "https://dl.mixcloud.stream/a.m4a?sig=x",
+    };
+    expect(getRefreshRequest(mixcloud)).toMatchObject({
+      failureCode: "DJ_MIXCLOUD_REFRESH_FAILED",
+      resolution: {
+        canonicalUrl: "https://www.mixcloud.com/dholbach/cryptkeeper/",
+        platform: "mixcloud",
+        reason: "stream-refresh",
+      },
+    });
+  });
+
+  test("matches a Spotify track again when it has no matched upload", () => {
+    const track: Radio = {
+      name: "Get Lucky",
+      platformMetadata: {
+        itemType: "track",
+        platform: "spotify",
+        spotifyId: "2Foc5Q5nqNiosCNqttzHof",
+        url: "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
+      },
+      streamUrl: "https://media.example/lucky.webm",
+    };
+    expect(getRefreshRequest(track)?.resolution).toEqual({
+      platform: "spotify",
+      radio: track,
+      reason: "stream-refresh",
+      spotifyId: "2Foc5Q5nqNiosCNqttzHof",
     });
   });
 
@@ -144,6 +222,51 @@ describe("radioOnTrack", () => {
         ? next.platformMetadata.tracks
         : [];
     expect(tracks?.[1]?.streamUrl).toBe("https://media.example/two.m4a");
+  });
+
+  test("matches a spotify:track: track and keeps its match on the track", async () => {
+    const resolveStream = mock(async () => ({
+      streamFormat: "progressive" as const,
+      streamUrl: "https://media.example/aero.webm",
+      youtubeVideoId: "L93-7vRfxNs",
+    }));
+    const next = await radioOnTrack(
+      spotifyAlbum,
+      "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+      resolveStream
+    );
+    expect(resolveStream).toHaveBeenCalledWith({
+      platform: "spotify",
+      radio: spotifyAlbum,
+      reason: "playlist-next",
+      spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+    });
+    expect(next?.streamUrl).toBe("https://media.example/aero.webm");
+    expect(next).not.toHaveProperty("youtubeVideoId");
+    const tracks =
+      next?.platformMetadata?.platform === "spotify"
+        ? next.platformMetadata.tracks
+        : [];
+    expect(tracks?.[1]).toMatchObject({
+      streamUrl: "https://media.example/aero.webm",
+      youtubeVideoId: "L93-7vRfxNs",
+    });
+    if (!next) {
+      throw new Error("Expected the matched track");
+    }
+    expect(getRefreshRequest(next)?.resolution).toMatchObject({
+      platform: "youtube",
+      videoId: "L93-7vRfxNs",
+    });
+  });
+
+  test("an unmatched spotify:track: track does not play", async () => {
+    const next = await radioOnTrack(
+      spotifyAlbum,
+      "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+      mock(async () => null)
+    );
+    expect(next).toBeNull();
   });
 
   test("a direct track plays as it is", async () => {

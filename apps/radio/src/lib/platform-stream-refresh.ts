@@ -1,14 +1,18 @@
 /**
  * Platform Stream Refresh
  *
- * YouTube, SoundCloud and Bandcamp stream URLs expire. When one stops with
+ * YouTube, SoundCloud, Bandcamp, Mixcloud and Spotify (a YouTube mirror)
+ * stream URLs expire. When one stops with
  * `STREAM_INTERRUPTED`, the platform is asked for a fresh URL and the sound
  * resumes on it at the position it stopped. DJ decks and Node lanes share
  * this; each reports the outcome its own way.
  *
- * A YouTube track in a playlist is stored as `yt:<videoId>` until it plays,
- * so the next track, or a first pick, resolves through the same port.
+ * A YouTube track in a playlist is stored as `yt:<videoId>`, and a Spotify
+ * album or playlist track as `spotify:track:<id>`, until it plays, so the
+ * next track, or a first pick, resolves through the same port.
  */
+
+import { parseSpotifyTrackPlaceholder } from "@avoid.quest/platforms/spotify/detect";
 
 import type { Radio } from "@/lib/audio";
 import {
@@ -20,7 +24,11 @@ import type {
   PlatformStreamResolution,
   PlatformStreamResolutionInput,
 } from "@/lib/dj-platform-stream-port";
-import { isYouTubeMetadata } from "@/lib/platform-types";
+import {
+  isSpotifyMetadata,
+  isYouTubeMetadata,
+  type SpotifyMetadata,
+} from "@/lib/platform-types";
 
 export type StreamRefreshRequest = {
   failureCode: string;
@@ -32,9 +40,58 @@ export type ResolvePlatformStream = (
   input: PlatformStreamResolutionInput
 ) => Promise<PlatformStreamResolution | null>;
 
+/**
+ * A Spotify radio's playing track renews from the YouTube upload it was
+ * matched to, without matching again; one not matched yet is matched.
+ */
+function getSpotifyRefreshRequest(
+  radio: Radio,
+  metadata: SpotifyMetadata
+): StreamRefreshRequest | null {
+  const track =
+    metadata.itemType === "track"
+      ? metadata
+      : metadata.tracks?.find((item) => item.streamUrl === radio.streamUrl);
+  if (!track) {
+    return null;
+  }
+  const failure = {
+    failureCode: "DJ_SPOTIFY_REFRESH_FAILED",
+    failureMessage: "Failed to refresh Spotify stream - please reload",
+  };
+  return track.youtubeVideoId
+    ? {
+        ...failure,
+        resolution: {
+          platform: "youtube",
+          radio,
+          reason: "stream-refresh",
+          videoId: track.youtubeVideoId,
+        },
+      }
+    : {
+        ...failure,
+        resolution: {
+          platform: "spotify",
+          radio,
+          reason: "stream-refresh",
+          spotifyId: track.spotifyId,
+        },
+      };
+}
+
+const CANONICAL_PROVIDER_NAMES = {
+  bandcamp: "Bandcamp",
+  mixcloud: "Mixcloud",
+  soundcloud: "SoundCloud",
+} as const;
+
 /** The platform request that renews `radio`'s stream, if it has one. */
 export function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
   const metadata = radio.platformMetadata;
+  if (isSpotifyMetadata(metadata)) {
+    return getSpotifyRefreshRequest(radio, metadata);
+  }
   const videoId = isYouTubeMetadata(metadata)
     ? (metadata.videoId ??
       metadata.tracks?.find((track) => track.streamUrl === radio.streamUrl)
@@ -54,6 +111,7 @@ export function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
   }
   if (
     metadata?.platform !== "bandcamp" &&
+    metadata?.platform !== "mixcloud" &&
     metadata?.platform !== "soundcloud"
   ) {
     return null;
@@ -62,8 +120,7 @@ export function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
   if (!canonicalUrl) {
     return null;
   }
-  const providerName =
-    metadata.platform === "bandcamp" ? "Bandcamp" : "SoundCloud";
+  const providerName = CANONICAL_PROVIDER_NAMES[metadata.platform];
   return {
     failureCode: `DJ_${metadata.platform.toUpperCase()}_REFRESH_FAILED`,
     failureMessage: `Failed to refresh ${providerName} stream - please reload`,
@@ -74,6 +131,22 @@ export function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
       reason: "stream-refresh",
     },
   };
+}
+
+/** What resolves a lazy track, short of the radio and the reason. */
+export type LazyTrackRequest =
+  | { platform: "spotify"; spotifyId: string }
+  | { platform: "youtube"; videoId: string };
+
+/** The request for a lazy `yt:` or `spotify:track:` URL; null for any other. */
+export function lazyTrackRequest(streamUrl: string): LazyTrackRequest | null {
+  const spotifyId = parseSpotifyTrackPlaceholder(streamUrl);
+  if (spotifyId) {
+    return { platform: "spotify", spotifyId };
+  }
+  return streamUrl.startsWith("yt:")
+    ? { platform: "youtube", videoId: streamUrl.slice(3) }
+    : null;
 }
 
 export type PlatformStreamRefreshOptions = {
@@ -139,9 +212,10 @@ export async function refreshPlatformStream(
 }
 
 /**
- * `radio` set to play `streamUrl`, one of its tracks: a `yt:` track is
- * resolved first and its URL kept on the track, so the next track after it
- * is found. Null when it can't be resolved or played.
+ * `radio` set to play `streamUrl`, one of its tracks: a `yt:` or
+ * `spotify:track:` track is resolved first and its URL (and a Spotify
+ * track's match) kept on the track, so the next track after it is found and
+ * an expired stream renews. Null when it can't be resolved or played.
  */
 export async function radioOnTrack(
   radio: Radio,
@@ -154,6 +228,37 @@ export async function radioOnTrack(
     streamUrl,
   };
   const metadata = radio.platformMetadata;
+  const spotifyId = parseSpotifyTrackPlaceholder(streamUrl);
+  if (spotifyId) {
+    const matched = await resolveStream({
+      platform: "spotify",
+      radio,
+      reason,
+      spotifyId,
+    });
+    if (!(matched && isSpotifyMetadata(metadata) && metadata.tracks)) {
+      return null;
+    }
+    return withStream(
+      {
+        ...radio,
+        platformMetadata: {
+          ...metadata,
+          tracks: metadata.tracks.map((track) =>
+            track.spotifyId === spotifyId
+              ? {
+                  ...track,
+                  streamUrl: matched.streamUrl,
+                  youtubeVideoId:
+                    matched.youtubeVideoId ?? track.youtubeVideoId,
+                }
+              : track
+          ),
+        },
+      },
+      matched
+    );
+  }
   if (streamUrl.startsWith("yt:")) {
     const videoId = streamUrl.slice(3);
     resolved = await resolveStream({

@@ -51,6 +51,54 @@ describe("loadSourceUrl", () => {
     });
   });
 
+  test("a Spotify album on an unmatched track matches it before it plays", async () => {
+    const album: Radio = {
+      name: "Discovery",
+      platformMetadata: {
+        itemType: "album",
+        platform: "spotify",
+        spotifyId: "2noRn2Aes5aoNVsU6iWThc",
+        tracks: [
+          {
+            artist: "Daft Punk",
+            name: "Aerodynamic",
+            spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+            streamUrl: "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+            url: "https://open.spotify.com/track/1NeLwFETswx8Fzxl2AFl91",
+          },
+        ],
+        url: "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc",
+      },
+      streamUrl: "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+    };
+    const resolveStream = mock(async () => ({
+      streamFormat: "progressive" as const,
+      streamUrl: "https://media.example/aero.webm",
+      youtubeVideoId: "L93-7vRfxNs",
+    }));
+
+    const loaded = await loadSourceUrl(
+      "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc",
+      {
+        loadItem: async () => ({ radio: album, success: true as const }),
+        resolveStream,
+      }
+    );
+
+    expect(resolveStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "spotify",
+        reason: "initial-load",
+        spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+      })
+    );
+    expect(loaded).toEqual({
+      radio: expect.objectContaining({
+        streamUrl: "https://media.example/aero.webm",
+      }),
+    });
+  });
+
   test("says why a link can't load", async () => {
     const loaded = await loadSourceUrl("https://example.com/page", {
       loadItem: async () => ({

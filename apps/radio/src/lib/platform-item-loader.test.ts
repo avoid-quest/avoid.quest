@@ -13,6 +13,9 @@ function youtubeClient(
   };
 }
 
+const unusedSpotify = () =>
+  Promise.reject(new Error("Spotify must remain unused"));
+
 describe("browser platform item loader", () => {
   test("resolves YouTube URLs in the browser without calling the app server", async () => {
     const resolvePlatformItem = mock(() => {
@@ -37,6 +40,7 @@ describe("browser platform item loader", () => {
           )
         ),
       resolvePlatformItem,
+      resolveSpotifyItem: unusedSpotify,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -63,6 +67,7 @@ describe("browser platform item loader", () => {
       resolvePlatformItem: mock(() => {
         throw new Error("Platform server must remain unused");
       }),
+      resolveSpotifyItem: unusedSpotify,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -102,6 +107,18 @@ describe("browser platform item loader", () => {
     },
     {
       metadata: {
+        artist: "NTS Radio",
+        itemType: "show" as const,
+        name: "Mixcloud Show",
+        platform: "mixcloud" as const,
+        url: "https://www.mixcloud.com/NTSRadio/show/",
+      },
+      name: "Mixcloud Show",
+      platform: "mixcloud" as const,
+      url: "https://www.mixcloud.com/NTSRadio/show/",
+    },
+    {
+      metadata: {
         channelId: "station-id",
         itemType: "channel" as const,
         name: "Garden Station",
@@ -125,6 +142,7 @@ describe("browser platform item loader", () => {
     const load = createPlatformItemLoader({
       getYouTubeClient,
       resolvePlatformItem,
+      resolveSpotifyItem: unusedSpotify,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -168,6 +186,7 @@ describe("browser platform item loader", () => {
         throw new Error("YouTube client must remain unused");
       },
       resolvePlatformItem,
+      resolveSpotifyItem: unusedSpotify,
       resolveStaticAudio,
     });
 
@@ -204,6 +223,7 @@ describe("browser platform item loader", () => {
           streamUrl: "https://media.example/signed-stream",
         })
       ),
+      resolveSpotifyItem: unusedSpotify,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -243,6 +263,7 @@ describe("browser platform item loader", () => {
           streamUrl,
         })
       ),
+      resolveSpotifyItem: unusedSpotify,
       resolveStaticAudio: mock(() =>
         Promise.reject(new Error("static audio must remain unused"))
       ),
@@ -252,5 +273,50 @@ describe("browser platform item loader", () => {
       radio: { streamFormat: "hls", streamUrl },
       success: true,
     });
+  });
+
+  test("matches Spotify links in the browser after the server's metadata", async () => {
+    const url = "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof";
+    const resolveSpotifyItem = mock(() =>
+      Promise.resolve({
+        metadata: {
+          artist: "Daft Punk",
+          itemType: "track" as const,
+          name: "Get Lucky",
+          platform: "spotify" as const,
+          spotifyId: "2Foc5Q5nqNiosCNqttzHof",
+          url,
+          youtubeVideoId: "Rgrt_8mXrK8",
+        },
+        streamUrl: "https://media.example/videoplayback?expire=1",
+      })
+    );
+    const load = createPlatformItemLoader({
+      getYouTubeClient: () => {
+        throw new Error("YouTube links must remain unused");
+      },
+      resolvePlatformItem: mock(() => {
+        throw new Error("Spotify must not use the platform resolver");
+      }),
+      resolveSpotifyItem,
+      resolveStaticAudio: mock(() =>
+        Promise.reject(new Error("static audio must remain unused"))
+      ),
+    });
+
+    const pasted =
+      "https://open.spotify.com/intl-de/track/2Foc5Q5nqNiosCNqttzHof?si=x";
+    await expect(load(pasted)).resolves.toMatchObject({
+      radio: {
+        name: "Get Lucky",
+        platformMetadata: {
+          platform: "spotify",
+          youtubeVideoId: "Rgrt_8mXrK8",
+        },
+        streamUrl: "https://media.example/videoplayback?expire=1",
+      },
+      success: true,
+    });
+    expect(resolveSpotifyItem).toHaveBeenCalledWith(pasted);
   });
 });

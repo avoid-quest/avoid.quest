@@ -4,12 +4,16 @@ import type {
   BandcampSearchResult,
 } from "@avoid.quest/platforms/bandcamp";
 import { validateBandcampCdnUrl } from "@avoid.quest/platforms/bandcamp/url-policy";
+import type { MixcloudSearchResult } from "@avoid.quest/platforms/mixcloud/search";
+import { validateMixcloudStreamUrl } from "@avoid.quest/platforms/mixcloud/url-policy";
 import type { RadioGardenSearchResult } from "@avoid.quest/platforms/radiogarden";
 import type { SoundCloudSearchResult } from "@avoid.quest/platforms/soundcloud";
 import {
   isSoundCloudCorsAllowedCdnHostname,
   validateSoundCloudCdnUrl,
 } from "@avoid.quest/platforms/soundcloud/url-policy";
+import type { SpotifyYouTubeSource } from "@avoid.quest/platforms/spotify";
+import { resolveSpotifyItemStream } from "@avoid.quest/platforms/spotify/mirror";
 import {
   type PublicHostnameResolver,
   resolvePublicHostnameWithDoh,
@@ -250,6 +254,20 @@ function validateSoundCloudItem(item: PlatformItem): PlatformItem {
   return item;
 }
 
+function validateMixcloudItem(item: PlatformItem): PlatformItem {
+  if (item.metadata.platform !== "mixcloud") {
+    return item;
+  }
+  const streamUrls = [
+    item.streamUrl,
+    ...(item.metadata.streamUrl === undefined ? [] : [item.metadata.streamUrl]),
+  ];
+  if (streamUrls.some((url) => !validateMixcloudStreamUrl(url).ok)) {
+    throw new Error("Mixcloud returned an unsafe media URL");
+  }
+  return item;
+}
+
 async function validateRadioGardenItem(
   item: PlatformItem,
   fetchImpl: BrowserAudioFetch,
@@ -322,6 +340,7 @@ export async function preparePlatformItem(
   const platform = detectPlayablePlatformFromUrl(requestUrl);
   if (
     (platform !== "bandcamp" &&
+      platform !== "mixcloud" &&
       platform !== "soundcloud" &&
       platform !== "radiogarden") ||
     item.metadata.platform !== platform
@@ -332,6 +351,8 @@ export async function preparePlatformItem(
   switch (platform) {
     case "bandcamp":
       return relayBandcampItem(item, bandcampRelayBaseUrl);
+    case "mixcloud":
+      return validateMixcloudItem(item);
     case "soundcloud":
       return validateSoundCloudItem(item);
     case "radiogarden":
@@ -370,6 +391,50 @@ export async function resolvePlatformItem(
     bandcampRelayBaseUrl,
     signal,
   });
+}
+
+async function loadSpotifyMetadata(url: string) {
+  const { loadSpotifyMetadata: load } = await import(
+    "@/utils/platform.functions"
+  );
+  const result = await load({ data: { url } });
+  if (!result.ok) {
+    throw new Error(result.error.message);
+  }
+  return result.data.metadata;
+}
+
+type SpotifyItemDependencies = {
+  loadMetadata?: typeof loadSpotifyMetadata;
+  signal?: AbortSignal;
+  youtube: SpotifyYouTubeSource;
+};
+
+/**
+ * A Spotify link, played through the matching YouTube upload. Spotify's
+ * metadata comes from the app server (its pages send no CORS headers); the
+ * match runs here, on `youtube`, as the radio's YouTube links do. An album
+ * or playlist matches its first playable track; the rest keep their
+ * `spotify:track:<id>` placeholders until they play.
+ */
+export async function resolveSpotifyItem(
+  url: string,
+  {
+    loadMetadata = loadSpotifyMetadata,
+    signal,
+    youtube,
+  }: SpotifyItemDependencies
+): Promise<PlatformItem> {
+  signal?.throwIfAborted();
+  const metadata = await awaitWithSignal(() => loadMetadata(url), signal);
+  if (metadata.platform !== "spotify") {
+    throw new Error("Platform returned mismatched metadata");
+  }
+  const result = await resolveSpotifyItemStream(metadata, { signal, youtube });
+  if (!result.success) {
+    throw new Error(result.error);
+  }
+  return { metadata: result.metadata, streamUrl: result.streamUrl };
 }
 
 export async function searchBandcamp(
@@ -455,6 +520,17 @@ export async function searchSoundCloud(
 ): Promise<SoundCloudSearchResult[]> {
   const { soundcloudSearch } = await import("@/utils/search.functions");
   const result = await soundcloudSearch({ data: { query } });
+  if (!result.ok) {
+    throw new Error(result.error.message);
+  }
+  return result.data.results;
+}
+
+export async function searchMixcloud(
+  query: string
+): Promise<MixcloudSearchResult[]> {
+  const { mixcloudSearch } = await import("@/utils/search.functions");
+  const result = await mixcloudSearch({ data: { query } });
   if (!result.ok) {
     throw new Error(result.error.message);
   }

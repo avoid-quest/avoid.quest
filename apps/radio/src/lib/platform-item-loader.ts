@@ -7,7 +7,11 @@ import {
   browserAudioRadio,
   detectBrowserAudioSource,
 } from "@/lib/browser-audio-links";
-import { type PlatformItem, resolvePlatformItem } from "@/lib/platform-client";
+import {
+  type PlatformItem,
+  resolvePlatformItem,
+  resolveSpotifyItem,
+} from "@/lib/platform-client";
 import { resolvePlatformStation } from "@/lib/stations/external-station-workflow";
 import { getYouTubeClient } from "@/lib/youtube";
 
@@ -18,6 +22,8 @@ type PlatformItemPayloadResult =
 type PlatformItemLoaderDependencies = {
   getYouTubeClient: () => Pick<YouTubeClient, "resolveItem">;
   resolvePlatformItem: (url: string) => Promise<PlatformItem>;
+  /** Spotify metadata from the server, matched to YouTube in the browser. */
+  resolveSpotifyItem: (url: string) => Promise<PlatformItem>;
   resolveStaticAudio: (url: string) => Promise<PlatformItem>;
 };
 
@@ -123,6 +129,7 @@ function unsupportedPlatform(): PlatformItemPayloadResult {
 export function createPlatformItemLoader({
   getYouTubeClient: getClient,
   resolvePlatformItem: resolveExternalItem,
+  resolveSpotifyItem: resolveSpotify,
   resolveStaticAudio,
 }: PlatformItemLoaderDependencies): (
   url: string
@@ -141,6 +148,7 @@ export function createPlatformItemLoader({
       }
       if (
         platform === "bandcamp" ||
+        platform === "mixcloud" ||
         platform === "radiogarden" ||
         platform === "soundcloud"
       ) {
@@ -148,6 +156,9 @@ export function createPlatformItemLoader({
           normalizedUrl,
           resolveExternalItem
         );
+      }
+      if (platform === "spotify") {
+        return await resolveExternalPlatform(normalizedUrl, resolveSpotify);
       }
       return unsupportedPlatform();
     });
@@ -165,6 +176,8 @@ export function createPlatformItemLoader({
 export const loadPlatformItem = createPlatformItemLoader({
   getYouTubeClient,
   resolvePlatformItem,
+  resolveSpotifyItem: (url) =>
+    resolveSpotifyItem(url, { youtube: getYouTubeClient() }),
   resolveStaticAudio: async (url) => {
     const resolved = await resolveClientStaticAudio(url);
     return {

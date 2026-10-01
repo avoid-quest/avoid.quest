@@ -3,13 +3,14 @@ import type { Platform, PlatformMetadata } from "@/lib/platform-types";
 const COLLECTION_ITEM_TYPES: Readonly<Record<string, readonly string[]>> = {
   bandcamp: ["album", "artist", "collection"],
   soundcloud: ["playlist", "user"],
+  spotify: ["album", "playlist"],
   "static-audio": ["playlist"],
   youtube: ["playlist"],
 };
 
 /**
  * Whether a platform item plays as a tracklist: albums, playlists, a Bandcamp
- * artist's or a SoundCloud user's tracks. The deck's tracklist, its current
+ * artist's or a SoundCloud user's tracks. A Mixcloud show is one recording. The deck's tracklist, its current
  * track and autoplay-next all use this.
  */
 export function isCollectionItem(
@@ -39,6 +40,7 @@ export function getCurrentTrackIndex(
   if (
     metadata.platform === "device-input" ||
     metadata.platform === "local-file" ||
+    metadata.platform === "mixcloud" ||
     metadata.platform === "radio-browser" ||
     metadata.platform === "radiogarden"
   ) {

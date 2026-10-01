@@ -2,8 +2,8 @@
  * Node Source Loaders
  *
  * What fills a Station, Track or File from outside the patch, through the
- * loaders DJ decks use: a picked or pasted platform item (a `yt:` track
- * resolved first), a local file read into an object URL, a static audio
+ * loaders DJ decks use: a picked or pasted platform item (a `yt:` or
+ * `spotify:track:` track resolved first), a local file read into an object URL, a static audio
  * URL (MP3, M3U, PLS) resolved in the browser, and a pasted radio stream
  * made a session station. Each returns the radio to put in the node, or
  * why it can't.
@@ -46,7 +46,7 @@ export type NodeSourceLoaderDependencies = {
 
 const TRACK_UNPLAYABLE = "Couldn't play this track";
 
-/** A picked or pasted item made playable: its `yt:` stream resolved. */
+/** A picked or pasted item made playable: its lazy track resolved. */
 export async function prepareSourceRadio(
   radio: Radio,
   {

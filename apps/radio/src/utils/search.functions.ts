@@ -4,6 +4,10 @@ import {
   type BandcampSearchResult,
   searchBandcamp,
 } from "@avoid.quest/platforms/bandcamp/search";
+import {
+  type MixcloudSearchResult,
+  searchMixcloud,
+} from "@avoid.quest/platforms/mixcloud/search";
 import { fetchClientID } from "@avoid.quest/platforms/soundcloud/fetch-client";
 import {
   type SoundCloudSearchResult,
@@ -89,6 +93,35 @@ export const soundcloudSearch = createServerFn({ method: "POST" })
         run: async () => {
           const clientId = await getSoundCloudClientId();
           const results = await searchSoundCloud(data.query, clientId);
+          return { results };
+        },
+      })
+  );
+
+const MixcloudSearchSchema = z.object({
+  query: z.string().min(1, "Search query is required").max(200),
+});
+
+export type MixcloudSearchResponse = AppResult<{
+  results: MixcloudSearchResult[];
+}>;
+
+export const mixcloudSearch = createServerFn({ method: "POST" })
+  .middleware([rateLimitMiddleware("mixcloud-search")])
+  .validator(MixcloudSearchSchema)
+  .handler(
+    ({ data }): Promise<MixcloudSearchResponse> =>
+      runServerFn({
+        fallback: {
+          category: "dependency",
+          code: "MIXCLOUD_SEARCH_FAILED",
+          expected: false,
+          safeMessage: "Search failed",
+          status: 500,
+        },
+        operation: "mixcloudSearch",
+        run: async () => {
+          const results = await searchMixcloud(data.query);
           return { results };
         },
       })

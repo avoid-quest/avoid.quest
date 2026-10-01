@@ -3,6 +3,9 @@ import type {
   BandcampItemResult,
   BandcampMetadata,
   BandcampTrackInfo,
+  MixcloudItemError,
+  MixcloudItemResult,
+  MixcloudMetadata,
   RadioGardenItemError,
   RadioGardenItemResult,
   RadioGardenMetadata,
@@ -10,6 +13,10 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
+  SpotifyItemError,
+  SpotifyItemResult,
+  SpotifyMetadata,
+  SpotifyTrackInfo,
   YouTubeItemError,
   YouTubeItemResult,
   YouTubeMetadata,
@@ -24,6 +31,11 @@ export type {
   BandcampItemType,
   BandcampMetadata,
   BandcampTrackInfo,
+  MixcloudItemError,
+  MixcloudItemResponse,
+  MixcloudItemResult,
+  MixcloudItemType,
+  MixcloudMetadata,
   RadioGardenItemError,
   RadioGardenItemResponse,
   RadioGardenItemResult,
@@ -35,6 +47,12 @@ export type {
   SoundCloudItemType,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
+  SpotifyItemError,
+  SpotifyItemResponse,
+  SpotifyItemResult,
+  SpotifyItemType,
+  SpotifyMetadata,
+  SpotifyTrackInfo,
   YouTubeItemError,
   YouTubeItemResponse,
   YouTubeItemResult,
@@ -155,6 +173,12 @@ export function isYouTubeMetadata(
   return metadata?.platform === "youtube";
 }
 
+export function isSpotifyMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is SpotifyMetadata {
+  return metadata?.platform === "spotify";
+}
+
 // Re-export for convenience
 export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 
@@ -175,9 +199,11 @@ export type Platform =
   | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =
   | BandcampMetadata
+  | MixcloudMetadata
   | RadioBrowserMetadata
   | RadioGardenMetadata
   | SoundCloudMetadata
+  | SpotifyMetadata
   | YouTubeMetadata
   | DeviceInputMetadata
   | StaticAudioMetadata
@@ -185,6 +211,7 @@ export type PlatformMetadata =
 export type PlatformTrack =
   | BandcampTrackInfo
   | SoundCloudTrackInfo
+  | SpotifyTrackInfo
   | YouTubeTrackInfo
   | StaticAudioTrack;
 export type StaticAudioItemResult = {
@@ -201,14 +228,18 @@ export type StaticAudioItemResponse =
   | StaticAudioItemError;
 export type PlatformItemResult =
   | BandcampItemResult
+  | MixcloudItemResult
   | RadioGardenItemResult
   | SoundCloudItemResult
+  | SpotifyItemResult
   | YouTubeItemResult
   | StaticAudioItemResult;
 export type PlatformItemError =
   | BandcampItemError
+  | MixcloudItemError
   | RadioGardenItemError
   | SoundCloudItemError
+  | SpotifyItemError
   | YouTubeItemError
   | StaticAudioItemError;
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;

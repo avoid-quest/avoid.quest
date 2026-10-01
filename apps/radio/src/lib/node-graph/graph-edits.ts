@@ -968,18 +968,43 @@ export function insertNodeOnEdge(
 }
 
 /**
+ * A healed cable's branch pan and solo. A cable out of a split carries its
+ * branch's, so deleting the split hands them to the cable that replaces
+ * it, on top of the cable in's (an outer split's branch).
+ */
+function healedBranch(
+  upstream: GraphEdge,
+  downstream: GraphEdge
+): Pick<GraphEdge, "pan" | "solo"> {
+  const pan =
+    upstream.pan === undefined && downstream.pan === undefined
+      ? undefined
+      : Math.max(-1, Math.min(1, (upstream.pan ?? 0) + (downstream.pan ?? 0)));
+  const solo =
+    upstream.solo === undefined && downstream.solo === undefined
+      ? undefined
+      : upstream.solo === true || downstream.solo === true;
+  return {
+    ...(pan === undefined ? {} : { pan }),
+    ...(solo === undefined ? {} : { solo }),
+  };
+}
+
+/**
  * Removes one node and heals the path through it: each cable in joins each
  * cable out when the node's two ports are the same kind, so A → X → B
  * becomes A → B, but a key into X never turns into audio. The healed cable
- * keeps the incoming one's id and branch settings, its gain is both
- * cables' gains, and it is muted if either was. A heal that would not
- * validate or compile is left out.
+ * keeps the incoming one's id, its gain is both cables' gains, it is muted
+ * if either was, and it carries both cables' branch pan and solo. A heal
+ * that would not validate or compile is left out; so is one louder than a
+ * cable can be, which `loud` reports unless an end of it goes too.
  */
 function removeNodeHealed(
   graph: NodeGraph,
   nodeId: string,
+  removing: ReadonlySet<string>,
   options?: ValidateOptions
-): NodeGraph {
+): { graph: NodeGraph; loud: boolean } {
   const ins = graph.edges.filter(
     (edge) => edge.target === nodeId && edge.source !== nodeId
   );
@@ -987,10 +1012,18 @@ function removeNodeHealed(
     (edge) => edge.source === nodeId && edge.target !== nodeId
   );
   let next = removeNodes(graph, [nodeId]);
+  let loud = false;
   for (const upstream of ins) {
     for (const downstream of outs) {
       const kind = parseHandleId(upstream.targetHandle)?.kind;
       if (!kind || kind !== parseHandleId(downstream.sourceHandle)?.kind) {
+        continue;
+      }
+      const gain = upstream.gain * downstream.gain;
+      if (gain > MAX_EDGE_GAIN) {
+        loud ||= !(
+          removing.has(upstream.source) || removing.has(downstream.target)
+        );
         continue;
       }
       const taken = cableIdsOf(next);
@@ -998,7 +1031,8 @@ function removeNodeHealed(
         next,
         {
           ...upstream,
-          gain: Math.min(upstream.gain * downstream.gain, MAX_EDGE_GAIN),
+          ...healedBranch(upstream, downstream),
+          gain,
           id: taken.has(upstream.id)
             ? uniqueId(`${upstream.source}->${downstream.target}`, taken)
             : upstream.id,
@@ -1010,7 +1044,7 @@ function removeNodeHealed(
       );
     }
   }
-  return next;
+  return { graph: next, loud };
 }
 
 /**
@@ -1047,18 +1081,27 @@ function withEveryStationLive(graph: NodeGraph): NodeGraph {
  * Removes nodes together, each healing the path through it. Refuses the
  * whole edit if an existing source-to-output route is lost while both ends
  * remain, an empty or hidden Station's included, so it still plays once
- * filled or shown. Explicit cable deletions and removal of a source or
- * output are still allowed; a failed heal must not silently disconnect
- * another lane.
+ * filled or shown, or if a heal would need a cable louder than one can be,
+ * which would change the level. Explicit cable deletions and removal of a
+ * source or output are still allowed; a failed heal must not silently
+ * disconnect another lane.
  */
 export function removeNodesHealed(
   graph: NodeGraph,
   nodeIds: Iterable<string>,
   options?: ValidateOptions
 ): GraphEdit {
+  const removing = new Set(nodeIds);
   let next = graph;
-  for (const nodeId of nodeIds) {
-    next = removeNodeHealed(next, nodeId, options);
+  for (const nodeId of removing) {
+    const healed = removeNodeHealed(next, nodeId, removing, options);
+    if (healed.loud) {
+      return {
+        message: `Those nodes can't be removed without changing a level: the cables around them add up past ${MAX_EDGE_GAIN}×. Turn one down first.`,
+        ok: false,
+      };
+    }
+    next = healed.graph;
   }
   if (next !== graph) {
     const env = { crossOriginIsolated: false, ...options };

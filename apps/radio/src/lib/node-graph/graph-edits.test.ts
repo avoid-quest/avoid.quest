@@ -980,6 +980,78 @@ describe("removeNodesHealed", () => {
     expect(edit.ok).toBe(false);
   });
 
+  test("deleting a split hands each branch's pan and solo to its healed cable", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", "compressor->speakers");
+    const split = seriesToParallel(two.graph, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const splitNode = split.graph.nodes.find(
+      (node) => node.type === "fxComposite"
+    );
+    const panned = {
+      ...split.graph,
+      edges: split.graph.edges.map((edge) =>
+        edge.source === splitNode?.id && edge.target === "compressor"
+          ? { ...edge, pan: -0.5, solo: true }
+          : edge
+      ),
+    };
+
+    const healed = accepted(removeNodesHealed(panned, [splitNode?.id ?? ""]));
+
+    const into = (target: string) =>
+      healed.edges.find(
+        (edge) => edge.source === "src-a" && edge.target === target
+      );
+    expect(into("compressor")).toMatchObject({ pan: -0.5, solo: true });
+    expect(into("delay")?.solo).toBeUndefined();
+    const plan = compile(healed, ENV);
+    expect(plan.issues).toEqual([]);
+    const [fanOut] = plan.lanes.get("src-a")?.effects ?? [];
+    expect(
+      fanOut && "chains" in fanOut
+        ? fanOut.chains.map(({ pan, solo }) => ({ pan, solo }))
+        : null
+    ).toEqual([
+      { pan: -0.5, solo: true },
+      { pan: 0, solo: false },
+    ]);
+  });
+
+  test("refuses a heal louder than one cable can be, rather than turn it down", () => {
+    const { graph } = inserted(
+      patch(radio("a")),
+      "compressor",
+      "src-a->speakers"
+    );
+    const gained = (inGain: number, outGain: number) => ({
+      ...graph,
+      edges: graph.edges.map((edge) => ({
+        ...edge,
+        gain: edge.target === "compressor" ? inGain : outGain,
+      })),
+    });
+
+    expect(removeNodesHealed(gained(4, 4), ["compressor"])).toEqual({
+      message:
+        "Those nodes can't be removed without changing a level: the cables around them add up past 4×. Turn one down first.",
+      ok: false,
+    });
+    expect(
+      accepted(removeNodesHealed(gained(2, 2), ["compressor"])).edges
+    ).toEqual([expect.objectContaining({ gain: 4, target: SPEAKERS_NODE_ID })]);
+    // With no cable out there is nothing to heal, so nothing to refuse.
+    const dangling = removeEdges(gained(4, 4), ["compressor->speakers"]);
+    expect(accepted(removeNodesHealed(dangling, ["compressor"])).edges).toEqual(
+      []
+    );
+  });
+
   test("deleting a loose node or one with no output is allowed", () => {
     const loose = withLoose(patch(radio("a")), "compressor");
     const deleted = accepted(removeNodesHealed(loose.graph, [loose.nodeId]));

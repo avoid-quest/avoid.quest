@@ -86,7 +86,7 @@ export function NodeCompactStrip({
   strip,
   muted,
   onInspect,
-  onToggleMute = () => getNodePlayback().toggleMute(nodeId),
+  onToggleMute,
   className,
   store = nodeStore,
 }: {
@@ -114,7 +114,13 @@ export function NodeCompactStrip({
         muted={muted}
         onPanChange={(pan) => commitStrip(nodeId, { pan }, store, false)}
         onToggleMute={() => {
-          onToggleMute();
+          // Resolved here, not as a parameter default: the React Compiler
+          // skips a component whose default is a closure over another prop.
+          if (onToggleMute) {
+            onToggleMute();
+          } else {
+            getNodePlayback().toggleMute(nodeId);
+          }
           snapshotNodeGraph(store);
         }}
         onToggleSolo={() =>

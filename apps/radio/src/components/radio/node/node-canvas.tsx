@@ -235,6 +235,21 @@ const PRO_OPTIONS = { hideAttribution: true };
 /** A loose node dragged over a cable it can go into. */
 type InsertTarget = { node: string; edge: string };
 
+/**
+ * Whether two insert aims are the same. Plain checks rather than optional
+ * chaining: the React Compiler bails out of the whole Canvas on an
+ * optional-chained comparison inside a ternary test.
+ */
+function sameInsertTarget(
+  a: InsertTarget | null,
+  b: InsertTarget | null
+): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return a.edge === b.edge && a.node === b.node;
+}
+
 /** The playing channel ids, sorted and space-joined for a cheap compare. */
 function liveChannelKey(
   channels: Record<string, { isPlaying: boolean }>
@@ -496,9 +511,7 @@ function Canvas({
   const aimInsert = (target: InsertTarget | null) => {
     insertTargetRef.current = target;
     setInsertTarget((previous) =>
-      previous?.edge === target?.edge && previous?.node === target?.node
-        ? previous
-        : target
+      sameInsertTarget(previous, target) ? previous : target
     );
   };
 

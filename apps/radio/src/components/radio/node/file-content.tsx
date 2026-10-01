@@ -11,7 +11,7 @@ import {
   loadSourceUrl,
 } from "@/lib/node-source-loaders";
 import { FileForm } from "../dj/file-form";
-import { useNodeActions } from "./node-actions";
+import { type NodeActions, useNodeActions } from "./node-actions";
 import { NodeCompactStrip } from "./node-source-strip";
 import {
   EmptySourceFrame,
@@ -89,6 +89,34 @@ export function FileNodeBody({
   );
 }
 
+/**
+ * Loads a pick or link into File `id` and returns its error, if any. The
+ * request is taken as the load starts, so a newer pick or link, here or in
+ * the other view of this File, supersedes it even if this one finishes
+ * last. Kept out of FileNodeContent: the React Compiler cannot lower a
+ * `try` without a `catch` and would skip the whole component.
+ */
+async function fillFile(
+  id: string,
+  loading: Promise<{ radio: Radio } | { error: string }>,
+  actions: NodeActions
+): Promise<string | null> {
+  const isCurrent = beginSourceRequest(id);
+  try {
+    const loaded = await loading;
+    if (!isCurrent()) {
+      return null;
+    }
+    if ("error" in loaded) {
+      return loaded.error;
+    }
+    await actions.fillSource(id, loaded.radio, isCurrent);
+    return null;
+  } finally {
+    releaseUnusedLocalFileUrls();
+  }
+}
+
 /** The File's controls, shared by the patch and inspector. */
 export function FileNodeContent({
   id,
@@ -104,26 +132,8 @@ export function FileNodeContent({
   const actions = useNodeActions();
   const lane = useSourceLane(id);
   const radio = data.radio as Radio | null;
-  // Taken as the load starts, so a newer pick or link, here or in the other
-  // view of this File, supersedes it even if this one finishes last.
-  const fill = async (
-    loading: Promise<{ radio: Radio } | { error: string }>
-  ) => {
-    const isCurrent = beginSourceRequest(id);
-    try {
-      const loaded = await loading;
-      if (!isCurrent()) {
-        return null;
-      }
-      if ("error" in loaded) {
-        return loaded.error;
-      }
-      await actions.fillSource(id, loaded.radio, isCurrent);
-      return null;
-    } finally {
-      releaseUnusedLocalFileUrls();
-    }
-  };
+  const fill = (loading: Promise<{ radio: Radio } | { error: string }>) =>
+    fillFile(id, loading, actions);
 
   return (
     <FileNodeBody

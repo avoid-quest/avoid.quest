@@ -13,7 +13,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 - **External inputs**: device audio input (mic/line-in), local files and folder playlists, shared browser tab audio in Node and DJ
 - **PWA**: installable, service worker, offline shell
 - **Persistence**: TanStack DB collections backed by localStorage — radios, settings, playback sessions
-- **Visualizations**: spectrum analyser, waveform display, level/peak meters
+- **Visualizations**: peak meters, EQ and compressor curves
 - **Media Session API**: lock screen controls, AVRCP Bluetooth metadata
 - **MIDI**: configurable controller mappings for all DJ actions
 - **Import/Export**: JSON config, shareable URL (lz-string compressed)

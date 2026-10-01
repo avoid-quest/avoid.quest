@@ -2107,6 +2107,66 @@ describe("Node Playback lane outputs", () => {
     );
   });
 
+  test("an FX param change while the swap replaces keeps the duck until the latest tree is in", async () => {
+    insertNodeSession(patch([station("a")]));
+    const replaces: Array<{
+      tree: readonly EffectConfig[];
+      done: () => void;
+    }> = [];
+    const harness = createHarness({
+      effects: {
+        change: mock((_ref, change) => {
+          const { promise, resolve } =
+            Promise.withResolvers<ChannelEffectsResult>();
+          replaces.push({
+            done: () => resolve({} as ChannelEffectsResult),
+            tree: change.type === "replace" ? change.tree : [],
+          });
+          return promise;
+        }),
+      },
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { laneOut } = connectLane(harness.context, "a");
+
+    const withReverb = (dryWet: number) => () =>
+      nodeGraphSchema.parse({
+        edges: [cable("a", "verb"), cable("verb", "speakers")],
+        nodes: [station("a"), reverb("verb", { dryWet }), speakers],
+        version: 2,
+      });
+    commitNodeGraph(withReverb(0.5), harness.store);
+    harness.playback.flush();
+    await new Promise((resolve) => setTimeout(resolve, LANE_DUCK_MS + 10));
+    expect(replaces).toHaveLength(1);
+
+    // Same layout, new param, while the swap's replace is still connecting.
+    commitNodeGraph(withReverb(0.25), harness.store);
+    harness.playback.flush();
+    expect(replaces).toHaveLength(1);
+
+    replaces[0]?.done();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(replaces).toHaveLength(2);
+    expect(replaces[1]?.tree).toEqual([
+      expect.objectContaining({ dryWet: 0.25, id: "verb" }),
+    ]);
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 0,
+    });
+
+    replaces[1]?.done();
+    await harness.playback.whenSettled();
+    expect(replaces).toHaveLength(2);
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
+  });
+
   test("a Station removed during the duck is not given its old tree", async () => {
     insertNodeSession(patch([station("a"), station("b")]));
     const harness = createHarness();

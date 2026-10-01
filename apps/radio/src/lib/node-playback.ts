@@ -139,6 +139,7 @@ import {
 } from "@/lib/stores/playback-runtime-store";
 import {
   type ChannelEffects,
+  type ChannelEffectsResult,
   channelEffects,
   type EffectsRuntimeOutcome,
 } from "./channel-effects.js";
@@ -1429,22 +1430,38 @@ function createNodePlayback(
     return result;
   };
 
-  /** Per lane: layout swaps still ducking, whose tree is not replaced yet. */
+  /** Per lane: layout swaps in flight, ducking or replacing its tree. */
   const pendingSwaps = new Map<string, number>();
+  /** Lanes whose tree changed while a swap was in flight. */
+  const staleSwaps = new Set<string>();
+
+  const replaceLatestTree = (laneId: string) => {
+    const lane = plan.lanes.get(laneId);
+    if (lane) {
+      track(replaceTree(lane.id, lane.effects)).catch(
+        warn("Could not apply lane effects")
+      );
+    }
+  };
 
   const endPendingSwap = (laneId: string) => {
     const count = (pendingSwaps.get(laneId) ?? 0) - 1;
     if (count > 0) {
       pendingSwaps.set(laneId, count);
-    } else {
-      pendingSwaps.delete(laneId);
+      return;
+    }
+    pendingSwaps.delete(laneId);
+    // A change the swap could not take, e.g. after its replace failed.
+    if (staleSwaps.delete(laneId)) {
+      replaceLatestTree(laneId);
     }
   };
 
   const changeLaneEffects = (laneId: string, tree: EffectConfig[]) => {
-    // A swap still ducking replaces with the lane's latest tree once silent;
-    // applying this one now would change the layout before the duck.
+    // A swap in flight replaces with the lane's latest tree before its
+    // duck lifts; applying this one now would change the layout audibly.
     if (pendingSwaps.has(laneId)) {
+      staleSwaps.add(laneId);
       return;
     }
     track(replaceTree(laneId, tree)).catch(
@@ -1452,10 +1469,24 @@ function createNodePlayback(
     );
   };
 
+  /** Replaces a lane's tree, again while a commit changed it meanwhile. */
+  const replaceUntilLatest = async (
+    laneId: string
+  ): Promise<ChannelEffectsResult | null> => {
+    staleSwaps.delete(laneId);
+    const lane = plan.lanes.get(laneId);
+    if (!lane) {
+      return null;
+    }
+    const result = await replaceTree(lane.id, lane.effects);
+    return staleSwaps.has(laneId) ? replaceUntilLatest(laneId) : result;
+  };
+
   /**
    * duckLane → replace → await outcome → unduckLane, on laneOut. The tree is
    * read when the lane is silent, so a commit during the duck is not undone
-   * by this op's older tree, and a lane removed meanwhile is left alone.
+   * by this op's older tree, and a lane removed meanwhile is left alone. A
+   * commit while the replace connects is replaced in turn, still ducked.
    */
   const swapLaneEffects = (laneId: string) => {
     pendingSwaps.set(laneId, (pendingSwaps.get(laneId) ?? 0) + 1);
@@ -1466,13 +1497,7 @@ function createNodePlayback(
         endPendingSwap(laneId);
       }
     };
-    track(
-      laneOutputs.swap(laneId, async () => {
-        endSwap();
-        const lane = plan.lanes.get(laneId);
-        return lane ? await replaceTree(lane.id, lane.effects) : null;
-      })
-    )
+    track(laneOutputs.swap(laneId, () => replaceUntilLatest(laneId)))
       .catch(warn("Could not swap lane effects"))
       .finally(endSwap);
   };

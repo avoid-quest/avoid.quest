@@ -1777,6 +1777,38 @@ describe("Node Playback native strip", () => {
 });
 
 describe("Node Playback settling lanes", () => {
+  test("a removed lane whose release throws still settles, unhandled nowhere", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    const warnings = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      insertNodeSession(patch([station("a")]));
+      const harness = createHarness();
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      harness.context.channels.deactivate = mock((_channelId: string) => {
+        throw new Error("cleanup failed");
+      });
+
+      commitNodeGraph(withStation("a", { radio: radio("a2") }), harness.store);
+      harness.playback.flush();
+
+      await expect(
+        harness.playback.setPlaying("a", true)
+      ).resolves.toBeUndefined();
+      await harness.playback.whenSettled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      warnings.mockRestore();
+    }
+  });
+
   test("a pause during an in-place stream change keeps the Station paused", async () => {
     insertNodeSession(patch([station("a")]));
     const fade = Promise.withResolvers<void>();

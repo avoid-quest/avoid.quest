@@ -1376,16 +1376,22 @@ function createNodePlayback(
     }
     // The same lane is still fading out its old stream; take over after it.
     const startEpoch = epoch;
-    const ready = settling.then(() => {
-      if (epoch !== startEpoch || laneGenerations.get(laneId) !== generation) {
-        return;
-      }
-      try {
-        createLaneSound(channelId);
-      } catch (error) {
-        reportLaneError(channelId, error);
-      }
-    });
+    // Never rejects: starts wait on it, and the UI starts without awaiting.
+    const ready = settling
+      .then(() => {
+        if (
+          epoch !== startEpoch ||
+          laneGenerations.get(laneId) !== generation
+        ) {
+          return;
+        }
+        try {
+          createLaneSound(channelId);
+        } catch (error) {
+          reportLaneError(channelId, error);
+        }
+      })
+      .catch(warn("Could not re-add a lane"));
     settlingLanes.set(laneId, ready);
     track(ready).finally(() => {
       if (settlingLanes.get(laneId) === ready) {
@@ -1426,9 +1432,10 @@ function createNodePlayback(
     carriedLanes.set(laneId, runtime.isPlaying || runtime.isLoading);
     cancelChannelStarts("remove", channelId);
     const startEpoch = epoch;
-    const removal = (settlingLanes.get(laneId) ?? Promise.resolve()).then(() =>
-      releaseLane(channelId, startEpoch)
-    );
+    // Never rejects: a re-add and any start wait on it.
+    const removal = (settlingLanes.get(laneId) ?? Promise.resolve())
+      .then(() => releaseLane(channelId, startEpoch))
+      .catch(warn("Could not release a removed lane"));
     settlingLanes.set(laneId, removal);
     track(removal).finally(() => {
       if (settlingLanes.get(laneId) === removal) {

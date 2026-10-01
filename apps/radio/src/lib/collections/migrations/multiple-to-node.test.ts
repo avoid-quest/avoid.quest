@@ -26,6 +26,7 @@ import {
   migrateMultipleSession,
   watchLegacyMultipleWrites,
 } from "./multiple-to-node";
+import { parseMultipleSessionRecord } from "./node-to-multiple";
 import { runRawStorageScenario } from "./raw-storage-scenario";
 
 const SETTINGS_ID = "app-settings";
@@ -326,7 +327,11 @@ describe("migrateMultipleSession", () => {
     const storage = createMemoryStorage();
     storage.setItem(
       MULTIPLE_BACKUP_STORAGE_KEY,
-      JSON.stringify({ createdAt: 1, mode: "multiple", session: {} })
+      JSON.stringify({
+        createdAt: 1,
+        mode: "multiple",
+        session: { channels: [], id: "multiple" },
+      })
     );
     storage.setItem.mockClear();
 
@@ -495,6 +500,37 @@ describe("migrateMultipleSession", () => {
     expect(deleted).toEqual(["multiple"]);
   });
 
+  test("replaces a backup whose session a rollback cannot parse", async () => {
+    playbackSessionsCollection.insert(buildNodeSessionFromTemplate("blank"));
+    const record = await insertMultiple([{ radio: radio("kexp") }], 0.1);
+    const storage = createMemoryStorage();
+    storage.setItem(
+      MULTIPLE_BACKUP_STORAGE_KEY,
+      JSON.stringify({ createdAt: 1, mode: "multiple", session: {} })
+    );
+
+    migrateMultipleSession(collections, storage);
+
+    expect(hasMultiple()).toBe(false);
+    const raw = storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY);
+    expect((JSON.parse(raw ?? "{}") as MultipleBackup).session).toEqual(record);
+  });
+
+  test("keeps multiple beside node when its backup cannot be read back", async () => {
+    playbackSessionsCollection.insert(buildNodeSessionFromTemplate("blank"));
+    await settle();
+    // A record the rollback parser rejects: its channels are not channels.
+    writeLegacyRecord(playbackSessionsCollection, {
+      channels: ["garbage"],
+      id: "multiple",
+    });
+    await settle();
+
+    migrateMultipleSession(collections, createMemoryStorage());
+
+    expect(hasMultiple()).toBe(true);
+  });
+
   test("a kept record migrates once the backup can be written", async () => {
     const originalWarn = console.warn;
     console.warn = mock(() => undefined);
@@ -624,6 +660,10 @@ describe("from raw localStorage", () => {
       expect(result.storedMode).toBe("node");
       expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
       expect(result.backup?.mode).toBe("multiple");
+      // A rollback can read it back, retired metadata kind and all.
+      expect(() =>
+        parseMultipleSessionRecord(result.backup?.session)
+      ).not.toThrow();
       // Restore keeps the kept stations and the old master; without it,
       // Node is rebuilt from the Starter patch, one empty slot.
       expect(result.nodeStations).toEqual(

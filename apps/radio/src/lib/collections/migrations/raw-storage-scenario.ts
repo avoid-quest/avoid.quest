@@ -30,7 +30,7 @@ export type RawStorageScenarioResult = {
   nodeStations: string[];
   masterVolume: number | undefined;
   laneVolumes: number[];
-  backup: { mode: string | null } | null;
+  backup: { mode: string | null; session: unknown } | null;
   crossTabNodeUnchanged: boolean | null;
   /** Whether the synced "multiple" record reached the collection at all. */
   crossTabMultipleSynced: boolean | null;

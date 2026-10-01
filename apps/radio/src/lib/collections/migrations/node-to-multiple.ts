@@ -27,6 +27,7 @@ import {
 import {
   MULTIPLE_BACKUP_STORAGE_KEY,
   type MultipleBackup,
+  readLegacyRadio,
 } from "./multiple-to-node";
 
 const SETTINGS_ID = "app-settings";
@@ -59,6 +60,9 @@ function getMultipleChannelId(radio: Pick<Radio, "id" | "name">): string {
 /**
  * Parses a `"multiple"` session with the schema the release before Node
  * used: the current one, whose ids and roles no longer list "multiple".
+ * A station snapshot that schema now rejects keeps its id, name and stream,
+ * as in the forward migration, so a backup of a record that migration read
+ * can be read back.
  * Throws when `value` is not such a session.
  */
 export function parseMultipleSessionRecord(
@@ -72,7 +76,11 @@ export function parseMultipleSessionRecord(
     ...value,
     channels: channels.map((channel: unknown) =>
       isRecord(channel) && channel.role === "multiple"
-        ? { ...channel, role: "node" }
+        ? {
+            ...channel,
+            radio: readLegacyRadio(channel.radio) ?? channel.radio,
+            role: "node",
+          }
         : channel
     ),
     id: "node",

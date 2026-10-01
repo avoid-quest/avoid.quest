@@ -36,6 +36,7 @@ import {
   type settingsCollection,
 } from "../settings";
 import { LEGACY_MULTIPLE_SESSION_ID } from "./legacy-records";
+import { readMultipleBackup } from "./node-to-multiple";
 
 /** localStorage key holding the pre-migration Multiple record, written once. */
 export const MULTIPLE_BACKUP_STORAGE_KEY = "radio-app-multiple-backup";
@@ -83,7 +84,7 @@ function clampUnit(value: unknown, fallback: number): number {
  * schema now rejects (a retired metadata kind, say); the station then keeps
  * its id, name and stream, so the insert cannot fail on it.
  */
-function readRadio(value: unknown): Radio | null {
+export function readLegacyRadio(value: unknown): Radio | null {
   if (
     !(
       isRecord(value) &&
@@ -126,7 +127,7 @@ export function buildNodeGraphFromMultipleRecord(
     .map((channel, index) => ({
       muted: channel.muted === true,
       order: typeof channel.order === "number" ? channel.order : index,
-      radio: readRadio(channel.radio),
+      radio: readLegacyRadio(channel.radio),
       volume: clampUnit(channel.volume, 1),
     }))
     .filter(
@@ -185,18 +186,12 @@ function withoutVirtualFields(record: unknown): unknown {
     : record;
 }
 
-/** Whether `storage` holds a backup a rollback could read back. */
+/**
+ * Whether `storage` holds a backup a rollback could read back: one whose
+ * session the rollback's own parser accepts.
+ */
 function hasReadableBackup(storage: BackupStorage): boolean {
-  const raw = storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY);
-  if (raw === null) {
-    return false;
-  }
-  try {
-    const backup: unknown = JSON.parse(raw);
-    return isRecord(backup) && "session" in backup;
-  } catch {
-    return false;
-  }
+  return readMultipleBackup(storage) !== null;
 }
 
 /**

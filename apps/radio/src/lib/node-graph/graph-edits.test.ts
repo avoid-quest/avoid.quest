@@ -1091,6 +1091,73 @@ describe("removeNodesHealed", () => {
     ]);
   });
 
+  test("deleting a split keeps each branch's chain level and mute", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", "compressor->speakers");
+    const split = seriesToParallel(two.graph, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const splitNode = split.graph.nodes.find(
+      (node) => node.type === "fxComposite"
+    );
+    const chainGains = (graph: NodeGraph) => {
+      const [effect] = compile(graph, ENV).lanes.get("src-a")?.effects ?? [];
+      return effect && "chains" in effect
+        ? effect.chains.map(({ gain, muted }) => ({ gain, muted }))
+        : null;
+    };
+    expect(chainGains(split.graph)).toEqual([
+      { gain: Math.SQRT1_2, muted: false },
+      { gain: Math.SQRT1_2, muted: false },
+    ]);
+
+    const healed = accepted(
+      removeNodesHealed(split.graph, [splitNode?.id ?? ""])
+    );
+    expect(compile(healed, ENV).issues).toEqual([]);
+    expect(chainGains(healed)).toEqual(chainGains(split.graph));
+
+    // A chain muted (or trimmed) in the Split's own config, as MIDI sets it.
+    const configured = {
+      ...split.graph,
+      nodes: split.graph.nodes.map((node) => {
+        if (node.id !== splitNode?.id || !("effect" in node.data)) {
+          return node;
+        }
+        const effect = node.data.effect as {
+          chains: { order: number; gain: number; muted: boolean }[];
+        };
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            effect: {
+              ...effect,
+              chains: effect.chains.map((chain) =>
+                chain.order === 0
+                  ? { ...chain, muted: true }
+                  : { ...chain, gain: 2 }
+              ),
+            },
+          },
+        } as typeof node;
+      }),
+    };
+    const reheal = accepted(
+      removeNodesHealed(configured, [splitNode?.id ?? ""])
+    );
+    const into = (target: string) =>
+      reheal.edges.find(
+        (edge) => edge.source === "src-a" && edge.target === target
+      );
+    expect(into("compressor")).toMatchObject({ muted: true });
+    expect(into("delay")).toMatchObject({ gain: 2, muted: false });
+  });
+
   test("refuses a heal louder than one cable can be, rather than turn it down", () => {
     const { graph } = inserted(
       patch(radio("a")),

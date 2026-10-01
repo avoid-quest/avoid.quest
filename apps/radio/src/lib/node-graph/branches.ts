@@ -160,6 +160,11 @@ export function branchBasePan(node: SplitNode, handle: string): number {
   return branchChain(node, handle)?.pan ?? 0;
 }
 
+/** Whether the configured chain under a branch cable is soloed. */
+export function branchBaseSolo(node: SplitNode, handle: string): boolean {
+  return branchChain(node, handle)?.solo === true;
+}
+
 /** The audio cables leaving a split, in port order: its branches. */
 export function branchCables(
   graph: Pick<NodeGraph, "edges">,

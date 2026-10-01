@@ -953,14 +953,19 @@ export function rewireTargets(
     ...graph,
     edges: graph.edges.filter((entry) => entry.id !== edgeId),
   };
-  const kind = parseHandleId(edge[`${end}Handle`])?.kind;
+  // The end that stays put decides which ports fit: audio may move between
+  // a normal input and a key (sidechain) input, as a drag can.
+  const fixed = parseHandleId(
+    edge[end === "source" ? "targetHandle" : "sourceHandle"]
+  )?.kind;
+  const canTake = (port: NodePort) =>
+    fixed !== undefined &&
+    (end === "source"
+      ? port.direction === "out" && kindsPatch(port.kind, fixed)
+      : port.direction === "in" && kindsPatch(fixed, port.kind));
   return graph.nodes.flatMap((node) =>
     getNodeDefinition(node.type)
-      .ports.filter(
-        (port) =>
-          port.direction === (end === "source" ? "out" : "in") &&
-          port.kind === kind
-      )
+      .ports.filter(canTake)
       .map((port) => {
         const handle = portHandleId(port);
         const connection: Connection = {

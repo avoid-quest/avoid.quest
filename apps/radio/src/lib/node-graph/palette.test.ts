@@ -14,6 +14,7 @@ import {
   type PaletteNodeEntry,
   paletteEntries,
   resetEffect,
+  rewireTargets,
   templatePatch,
 } from "./palette";
 import {
@@ -741,6 +742,43 @@ describe("resetEffect", () => {
     });
 
     expect(reset).toEqual({ ...effect, enabled: false });
+  });
+});
+
+describe("rewireTargets", () => {
+  // KEXP → Compressor (keyed by Radio 4) → Speakers, Radio 4 → Speakers.
+  const duck = buildNodeGraphFromTemplate("duck", {
+    saved: [
+      radio("kexp", { name: "KEXP", order: 0 }),
+      radio("r4", { name: "BBC Radio 4", order: 1 }),
+    ],
+  });
+  const reasons = (graph: typeof duck, edgeId: string) =>
+    Object.fromEntries(
+      rewireTargets(graph, edgeId, "target").map((entry) => [
+        entry.key,
+        entry.reason,
+      ])
+    );
+
+  test("an audio cable's destination can move onto a free key input", () => {
+    const unkeyed = {
+      ...duck,
+      edges: duck.edges.filter((edge) => edge.id !== "src-r4->duck"),
+    };
+    expect(reasons(unkeyed, "src-r4->speakers")).toMatchObject({
+      "duck in:sidechain:key": null,
+    });
+  });
+
+  test("a key cable's destination can move back onto a normal input", () => {
+    const unrouted = {
+      ...duck,
+      edges: duck.edges.filter((edge) => edge.id !== "src-r4->speakers"),
+    };
+    expect(reasons(unrouted, "src-r4->duck")).toMatchObject({
+      [`${SPEAKERS_NODE_ID} ${AUDIO_IN_HANDLE}`]: null,
+    });
   });
 });
 

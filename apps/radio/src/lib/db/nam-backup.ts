@@ -43,9 +43,13 @@ export type NamModelExport = {
   missing: string[] | undefined;
 };
 
+/**
+ * A local model's bytes, or null when this browser has none. A storage
+ * error rejects rather than reading as missing.
+ */
 async function readLocalModel(model: NeuralAmpConfig): Promise<string | null> {
   const id = model.modelId as string;
-  const data = model.modelData ?? (await getNamModel(id).catch(() => null));
+  const data = model.modelData ?? (await getNamModel(id));
   if (!data) {
     return null;
   }
@@ -60,6 +64,7 @@ async function readLocalModel(model: NeuralAmpConfig): Promise<string | null> {
  * File backups carry every local model, including unwired and nested FX.
  * One whose bytes are gone is listed as missing rather than failing the
  * backup, so stations, settings and the rest of the patch still export.
+ * One that can't be read fails it: the bytes may still be here.
  */
 export async function exportNamModels(
   graph: NodeGraph | null
@@ -168,10 +173,7 @@ export async function prepareImportedNamModels(
   const entries = await Promise.all(
     localModels(graph).map(async (model) => {
       const id = model.modelId as string;
-      const bytes =
-        backup?.[id] ??
-        model.modelData ??
-        (await getNamModel(id).catch(() => null));
+      const bytes = backup?.[id] ?? model.modelData ?? (await getNamModel(id));
       if (!bytes) {
         if (absent.has(id)) {
           return null;

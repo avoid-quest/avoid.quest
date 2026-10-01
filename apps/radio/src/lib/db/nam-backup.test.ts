@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   collectLocalNamModelIds,
   createLocalNamModelId,
@@ -168,6 +168,23 @@ describe("NAM file-backup assets", () => {
     expect(amp.data.effect.modelId).toBeNull();
     expect(amp.data.effect.modelData).toBeNull();
     await imported.rollback();
+  });
+
+  test("a model that can't be read fails the backup rather than going missing", async () => {
+    const graph = modelGraph(createLocalNamModelId());
+    const store = await import("@/lib/audio/dsp/effects/nam-model-store");
+    const read = spyOn(store, "getNamModel").mockRejectedValue(
+      new Error("UnknownError")
+    );
+
+    try {
+      await expect(exportNamModels(graph)).rejects.toThrow("UnknownError");
+      await expect(
+        prepareImportedNamModels(graph, undefined, [graphModelId(graph)])
+      ).rejects.toThrow("UnknownError");
+    } finally {
+      read.mockRestore();
+    }
   });
 
   test("legacy graph-only backups use an available local model explicitly", async () => {

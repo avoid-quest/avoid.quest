@@ -44,6 +44,7 @@ import type { ValidateOptions } from "@/lib/node-graph/validate";
 import { platformSourceIcon } from "../platform-source-icon";
 import { formatLocation } from "../station-row";
 import { effectNodeWidth } from "./effect-node";
+import { MERGE_WIDTH_PX } from "./merge-node";
 import { type NativeNodeType, nativeNodeWidth } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
 import { useNodeDevices } from "./use-node-devices";
@@ -75,6 +76,9 @@ function drawnWidth(type: NodeType): number {
   }
   if (isNativeNodeType(type)) {
     return nativeNodeWidth(type);
+  }
+  if (type === "merge") {
+    return MERGE_WIDTH_PX;
   }
   return STATION_WIDTH;
 }

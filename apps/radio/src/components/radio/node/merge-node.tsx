@@ -22,7 +22,7 @@ export type MergeFlowNode = FlowNode<MergeNodeData, "merge">;
 
 const MAX_INPUTS = getNodeDefinition("merge").ports[0]?.max ?? 8;
 /** Room for the title, the badge and the menu. */
-const MERGE_WIDTH_PX = 176;
+export const MERGE_WIDTH_PX = 176;
 
 const ROLE_HINTS: Record<MergeRole, string> = {
   bus: BUS_MERGE_MESSAGE,

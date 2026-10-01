@@ -80,6 +80,7 @@ let undoNodeGraph: typeof import("@/lib/node-graph/node-store")["undoNodeGraph"]
 let buildNodeGraphFromTemplate: typeof import("@/lib/node-graph/templates")["buildNodeGraphFromTemplate"];
 let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
 let nativeNodeWidth: typeof import("./native-strip-nodes")["nativeNodeWidth"];
+let MERGE_WIDTH_PX: typeof import("./merge-node")["MERGE_WIDTH_PX"];
 
 beforeAll(async () => {
   ({ NodePalette, isCanvasKey, usePaletteShortcut } = await import(
@@ -91,6 +92,7 @@ beforeAll(async () => {
   ({ buildNodeGraphFromTemplate } = await import("@/lib/node-graph/templates"));
   ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
   ({ nativeNodeWidth } = await import("./native-strip-nodes"));
+  ({ MERGE_WIDTH_PX } = await import("./merge-node"));
 });
 
 type Request = import("./node-palette").PaletteRequest;
@@ -565,5 +567,30 @@ describe("isCanvasKey", () => {
 
     const pan = store.state.graph?.nodes.find((node) => node.type === "pan");
     expect(pan?.position).toEqual({ x: -400 - nativeNodeWidth("pan"), y: 320 });
+  });
+
+  test("a right-edge drop lands a Merge's output port at the cursor too", () => {
+    const store = seededStore();
+    const view = render(
+      <PaletteHarness
+        initial={{
+          edge: "right",
+          from: { handle: "in:audio:main", node: "speakers", type: "target" },
+          position: { x: -400, y: 320 },
+        }}
+        store={store}
+      />
+    );
+
+    const search = view.getByRole("searchbox", {
+      name: "Search nodes and stations",
+    });
+    fireEvent.change(search, { target: { value: "merge" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    const merge = store.state.graph?.nodes.find(
+      (node) => node.type === "merge"
+    );
+    expect(merge?.position).toEqual({ x: -400 - MERGE_WIDTH_PX, y: 320 });
   });
 });

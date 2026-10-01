@@ -43,10 +43,15 @@ export function localAudioUrls(radio: Radio | null | undefined): string[] {
   ];
 }
 
-/** The directory picker includes subfolders; natural path order becomes play order. */
+/**
+ * The directory picker includes subfolders; natural path order becomes play order.
+ * Probing stops once `isCurrent` turns false: the playlist then holds only the
+ * files probed so far, for the caller to discard and release.
+ */
 export async function loadLocalAudioPlaylist(
   files: readonly File[],
-  loadFile: (file: File) => Promise<FileAudioMetadata> = extractFileMetadata
+  loadFile: (file: File) => Promise<FileAudioMetadata> = extractFileMetadata,
+  isCurrent: () => boolean = () => true
 ): Promise<Radio> {
   const ordered = files
     .filter(isAudioFile)
@@ -59,6 +64,9 @@ export async function loadLocalAudioPlaylist(
     );
   const loaded: FileAudioMetadata[] = [];
   for (const file of ordered) {
+    if (!isCurrent()) {
+      break;
+    }
     try {
       // biome-ignore lint/performance/noAwaitInLoops: probe one file at a time to bound browser media resources
       loaded.push(await loadFile(file));

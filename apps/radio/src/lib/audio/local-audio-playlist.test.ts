@@ -82,4 +82,25 @@ describe("local folder playlist", () => {
       )
     ).rejects.toThrow("No playable audio files");
   });
+
+  test("stops probing once the load is superseded, returning what it probed", async () => {
+    const probed: string[] = [];
+    const radio = await loadLocalAudioPlaylist(
+      [
+        file("Mix/1.mp3"),
+        file("Mix/2.mp3"),
+        file("Mix/3.mp3"),
+        file("Mix/4.mp3"),
+      ],
+      (picked) => {
+        probed.push(picked.name);
+        return probe(picked);
+      },
+      () => probed.length < 2
+    );
+
+    expect(probed).toEqual(["1.mp3", "2.mp3"]);
+    // The caller discards a superseded playlist and releases these URLs.
+    expect(localAudioUrls(radio)).toEqual(["blob:Mix/1.mp3", "blob:Mix/2.mp3"]);
+  });
 });

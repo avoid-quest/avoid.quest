@@ -27,6 +27,7 @@ import {
 import {
   createDjDeckModule,
   type DjDeckAudioAdapter,
+  type DjDeckHandle,
   type DjDeckPlatformAdapter,
 } from "./dj-deck";
 import {
@@ -887,6 +888,54 @@ describe("DjDeckModule", () => {
     expect(audio.releaseFileUrl).toHaveBeenCalledWith(
       "blob:https://radio.example/2.mp3"
     );
+  });
+
+  test("stops probing a folder once a newer source owns the Deck", async () => {
+    const audio = createAudioAdapter();
+    let deck: DjDeckHandle | null = null;
+    let newerLoad: Promise<unknown> | null = null;
+    audio.loadFile = mock((file: File) => {
+      if (file.name === "2.mp3") {
+        newerLoad =
+          deck?.load({
+            radio: { name: "Station", streamUrl: "https://radio.example/live" },
+            type: "radio",
+          }) ?? null;
+      }
+      return Promise.resolve({
+        displayName: file.name,
+        duration: 10,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "audio/mpeg",
+        objectUrl: `blob:https://radio.example/${file.name}`,
+      });
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    deck = module.deck("deck-a");
+
+    await deck.load({
+      files: ["1.mp3", "2.mp3", "3.mp3", "4.mp3"].map(
+        (name) => new File(["audio"], name)
+      ),
+      type: "files",
+    });
+    await newerLoad;
+
+    expect(audio.loadFile).toHaveBeenCalledTimes(2);
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/1.mp3"
+    );
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/2.mp3"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.name).toBe("Station");
   });
 
   test("tells the file form when a parsed folder fails to activate", async () => {

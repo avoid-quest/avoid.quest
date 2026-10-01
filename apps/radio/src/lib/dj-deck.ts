@@ -1353,7 +1353,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<DjDeckSourceResult> {
     let radio: Radio | null = null;
     try {
-      radio = await loadLocalAudioPlaylist(files, options.audio.loadFile);
+      radio = await loadLocalAudioPlaylist(files, options.audio.loadFile, () =>
+        isLoadCurrent(deckId, loadGeneration)
+      );
       if (!isLoadCurrent(deckId, loadGeneration)) {
         return loaded();
       }

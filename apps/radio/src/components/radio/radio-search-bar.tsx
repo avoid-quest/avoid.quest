@@ -186,6 +186,9 @@ function usePastedLink(
   const [isLoading, setIsLoading] = useState(false);
   // The submission in flight; a later query or pick aborts it.
   const pending = useRef<AbortController | null>(null);
+  // So does unmounting: a deleted Station's link must not fill a new one
+  // that takes its id.
+  useEffect(() => () => pending.current?.abort(), []);
   const url =
     onSubmitUrl && PASTED_URL.test(query.trim()) ? query.trim() : null;
   const submit = () => {

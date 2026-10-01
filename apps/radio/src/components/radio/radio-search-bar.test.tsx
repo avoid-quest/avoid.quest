@@ -185,6 +185,27 @@ describe("RadioSearchBar pasted links", () => {
     });
   });
 
+  test("unmounting aborts a link still loading", async () => {
+    const load = deferred<string | null>();
+    let signal: AbortSignal | null = null;
+    const { search, type, view } = renderSearch({
+      onSubmitUrl: (_url, next) => {
+        signal = next;
+        return load.promise;
+      },
+    });
+
+    type(LINK);
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect((signal as AbortSignal | null)?.aborted).toBe(false);
+    view.unmount();
+    expect((signal as AbortSignal | null)?.aborted).toBe(true);
+    await act(async () => {
+      load.resolve(null);
+      await load.promise;
+    });
+  });
+
   test("a link that loads clears the search", async () => {
     const { search, type } = renderSearch({ onSubmitUrl: async () => null });
 

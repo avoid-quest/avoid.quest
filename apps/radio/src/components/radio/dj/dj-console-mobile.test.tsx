@@ -11,11 +11,6 @@ mock.module("./deck/deck-panel", () => ({
   },
 }));
 
-mock.module("@/lib/stores/dj-runtime-store", () => ({
-  useDeckAPeakLevel: () => ({ left: 0.1, right: 0.2 }),
-  useDeckBPeakLevel: () => ({ left: 0.3, right: 0.4 }),
-}));
-
 mock.module("@/components/settings/settings-button", () => ({
   SettingsButton: () => <button type="button">settings</button>,
 }));

@@ -360,10 +360,12 @@ function DeckPanelInner({
   const handleCancelPickSource = () => setIsPickingSource(false);
 
   // A new source arrived (from the picker or a drop): close the picker.
+  // Keyed on the source's identity, not the record: every channel write
+  // (a fader on either deck, say) hands the deck a new `radio` object.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs whenever the deck's source changes
   useEffect(() => {
     setIsPickingSource(false);
-  }, [radio]);
+  }, [radio?.id, radio?.streamUrl]);
 
   // A different source replaced the one being changed (a dropped file, say):
   // close the change forms too. Moving to the next track of the same item

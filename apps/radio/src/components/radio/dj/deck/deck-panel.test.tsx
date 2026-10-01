@@ -1,0 +1,163 @@
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+// @ts-expect-error jsdom types are not installed in this workspace.
+import { JSDOM } from "jsdom";
+import type { Radio } from "@/lib/audio";
+import {
+  DECK_A_CHANNEL_ID,
+  DECK_B_CHANNEL_ID,
+  initializePlaybackSessions,
+  updatePlaybackChannel,
+} from "@/lib/collections/playback-sessions";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: "https://radio.test",
+});
+
+class ObserverStub {
+  disconnect() {
+    // JSDOM does not perform layout.
+  }
+
+  observe() {
+    // JSDOM does not perform layout.
+  }
+
+  unobserve() {
+    // JSDOM does not perform layout.
+  }
+}
+
+Object.defineProperty(dom.window, "matchMedia", {
+  configurable: true,
+  value: (query: string) => ({
+    addEventListener: () => undefined,
+    addListener: () => undefined,
+    matches: false,
+    media: query,
+    removeEventListener: () => undefined,
+    removeListener: () => undefined,
+  }),
+});
+
+for (const [key, value] of Object.entries({
+  cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+  document: dom.window.document,
+  Element: dom.window.Element,
+  fetch: () => Promise.reject(new Error("offline")),
+  getComputedStyle: dom.window.getComputedStyle,
+  HTMLElement: dom.window.HTMLElement,
+  IntersectionObserver: ObserverStub,
+  MutationObserver: dom.window.MutationObserver,
+  Node: dom.window.Node,
+  navigator: dom.window.navigator,
+  ResizeObserver: ObserverStub,
+  requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+  window: dom.window,
+})) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
+Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+  configurable: true,
+  value: true,
+  writable: true,
+});
+
+const STATION: Radio = {
+  id: "station-a",
+  name: "Station A",
+  streamUrl: "https://radio.test/a.mp3",
+};
+
+let DeckPanel: typeof import("./deck-panel")["DeckPanel"];
+
+beforeAll(async () => {
+  // The mobile console test replaces this module with mock.module, which
+  // leaks across files in one `bun test` process. The query suffix loads a
+  // real instance.
+  ({ DeckPanel } = (await import(
+    `./deck-panel.tsx?${"unmocked"}`
+  )) as typeof import("./deck-panel"));
+});
+
+function setDeckRadio(channelId: string, radio: Radio | null) {
+  updatePlaybackChannel("dj", channelId, (draft) => {
+    draft.radio = radio;
+  });
+}
+
+function renderDeckA() {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <DeckPanel deckId="deck-a" />
+    </QueryClientProvider>
+  );
+}
+
+function isPickerOpen(view: ReturnType<typeof renderDeckA>) {
+  return view.queryByRole("tab", { name: "Other sources" }) !== null;
+}
+
+const CHANGE_SOURCE = /change source/i;
+
+function openSourcePicker(view: ReturnType<typeof renderDeckA>) {
+  fireEvent.click(view.getByRole("button", { name: CHANGE_SOURCE }));
+  expect(isPickerOpen(view)).toBeTrue();
+}
+
+describe("DeckPanel source picker", () => {
+  beforeEach(async () => {
+    await initializePlaybackSessions();
+    setDeckRadio(DECK_A_CHANNEL_ID, STATION);
+  });
+
+  afterEach(() => {
+    cleanup();
+    setDeckRadio(DECK_A_CHANNEL_ID, null);
+  });
+
+  test("stays open while either deck's channel settings change", () => {
+    const view = renderDeckA();
+    openSourcePicker(view);
+
+    act(() => {
+      updatePlaybackChannel("dj", DECK_B_CHANNEL_ID, (draft) => {
+        draft.volume = 0.3;
+      });
+      updatePlaybackChannel("dj", DECK_A_CHANNEL_ID, (draft) => {
+        draft.volume = 0.5;
+      });
+    });
+
+    expect(isPickerOpen(view)).toBeTrue();
+  });
+
+  test("closes when a different source lands on the deck", () => {
+    const view = renderDeckA();
+    openSourcePicker(view);
+
+    act(() => {
+      setDeckRadio(DECK_A_CHANNEL_ID, {
+        id: "station-b",
+        name: "Station B",
+        streamUrl: "https://radio.test/b.mp3",
+      });
+    });
+
+    expect(isPickerOpen(view)).toBeFalse();
+  });
+});

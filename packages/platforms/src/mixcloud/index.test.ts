@@ -4,7 +4,11 @@ import cryptkeeper from "./fixtures/cloudcast-cryptkeeper.json";
 import notFound from "./fixtures/cloudcast-not-found.json";
 import restricted from "./fixtures/cloudcast-restricted-tracklist.json";
 import searchFixture from "./fixtures/search-cloudcast.json";
-import { getMixcloudItem, toMixcloudItemResponse } from "./index";
+import {
+  getMixcloudItem,
+  MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
+  toMixcloudItemResponse,
+} from "./index";
 import { searchMixcloud } from "./search";
 
 const SHOW_URL = "https://www.mixcloud.com/dholbach/cryptkeeper/";
@@ -87,7 +91,7 @@ describe("getMixcloudItem", () => {
     await expect(
       getMixcloudItem("https://www.mixcloud.com/dholbach/")
     ).resolves.toEqual({
-      error: "Unsupported Mixcloud URL: only show links can be played",
+      error: MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
       success: false,
     });
     expect(requests).toHaveLength(0);

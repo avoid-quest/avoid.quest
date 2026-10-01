@@ -314,7 +314,17 @@ export const loadSpotifyMetadata = createServerFn({ method: "POST" })
         run: async () => {
           const result = await getSpotifyMetadata(data.url);
           if (!result.success) {
-            throw providerError("spotify", result.error);
+            // An artist or podcast link, or a share link to one, is the
+            // user's to change; it is no provider failure.
+            throw result.unsupported
+              ? new AppError({
+                  category: "validation",
+                  code: "SPOTIFY_UNSUPPORTED_URL",
+                  expected: true,
+                  safeMessage: result.error,
+                  status: 400,
+                })
+              : providerError("spotify", result.error);
           }
           return { metadata: result.metadata };
         },

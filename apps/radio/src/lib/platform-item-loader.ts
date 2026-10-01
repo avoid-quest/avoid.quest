@@ -1,4 +1,13 @@
 import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
+import {
+  isMixcloudShowUrl,
+  MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
+} from "@avoid.quest/platforms/mixcloud";
+import {
+  needsSpotifyResolution,
+  parseSpotifyRef,
+  SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
+} from "@avoid.quest/platforms/spotify/detect";
 import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
 import type { Radio } from "@/lib/audio";
 import { resolveClientStaticAudio } from "@/lib/audio/client-static-audio-resolver";
@@ -116,14 +125,27 @@ async function resolveExternalPlatform(
   }
 }
 
-function unsupportedPlatform(): PlatformItemPayloadResult {
-  return {
-    error: {
-      code: "PLATFORM_UNSUPPORTED_URL",
-      message: "Unsupported platform URL",
-    },
-    ok: false,
-  };
+function unsupportedPlatform(
+  message = "Unsupported platform URL"
+): PlatformItemPayloadResult {
+  return { error: { code: "PLATFORM_UNSUPPORTED_URL", message }, ok: false };
+}
+
+/**
+ * Why a Spotify or Mixcloud page the radio doesn't play (an artist, a
+ * profile) can't load, said before asking the server; null for the rest.
+ * A share link is only known once the server follows it.
+ */
+function unplayablePageMessage(platform: string | null, url: string) {
+  if (
+    platform === "spotify" &&
+    !(parseSpotifyRef(url) || needsSpotifyResolution(url))
+  ) {
+    return SPOTIFY_UNSUPPORTED_LINK_MESSAGE;
+  }
+  return platform === "mixcloud" && !isMixcloudShowUrl(url)
+    ? MIXCLOUD_UNSUPPORTED_LINK_MESSAGE
+    : null;
 }
 
 export function createPlatformItemLoader({
@@ -140,6 +162,10 @@ export function createPlatformItemLoader({
     }
     const result = await resolvePlatformStation(url, async (normalizedUrl) => {
       const platform = detectPlayablePlatformFromUrl(normalizedUrl);
+      const unplayable = unplayablePageMessage(platform, normalizedUrl);
+      if (unplayable) {
+        return unsupportedPlatform(unplayable);
+      }
       if (platform === "static-audio") {
         return await resolveStaticAudioItem(normalizedUrl, resolveStaticAudio);
       }

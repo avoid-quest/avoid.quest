@@ -6,13 +6,20 @@
  * and the audio from the YouTube upload that best matches it. See RESEARCH.md.
  */
 
-import { needsSpotifyResolution, parseSpotifyRef } from "./detect.js";
+import {
+  needsSpotifyResolution,
+  parseSpotifyRef,
+  SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
+} from "./detect.js";
 import { parseSpotifyEmbedPage, SPOTIFY_EMBED_BASE_URL } from "./metadata.js";
 import {
   resolveSpotifyItemStream,
   type SpotifyItemStreamOptions,
 } from "./mirror.js";
-import { resolveSpotifyShortLink } from "./short-link.js";
+import {
+  resolveSpotifyShortLink,
+  SpotifyUnsupportedLinkError,
+} from "./short-link.js";
 import type {
   SpotifyItemError,
   SpotifyItemResponse,
@@ -30,6 +37,7 @@ export {
   normalizeSpotifyUrl,
   parseSpotifyRef,
   parseSpotifyTrackPlaceholder,
+  SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
 } from "./detect.js";
 export type { SpotifyCandidateScore } from "./match.js";
 export {
@@ -59,6 +67,7 @@ export type { SpotifyShortLinkOptions } from "./short-link.js";
 export {
   findSpotifyLinkInPage,
   resolveSpotifyShortLink,
+  SpotifyUnsupportedLinkError,
 } from "./short-link.js";
 export type {
   SpotifyItemError,
@@ -92,6 +101,14 @@ export type SpotifyItemOptions = SpotifyMetadataOptions &
 
 function createErrorResponse(message: string): SpotifyItemError {
   return { error: message, success: false };
+}
+
+function unsupportedLinkResponse(): SpotifyItemError {
+  return {
+    error: SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
+    success: false,
+    unsupported: true,
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -143,9 +160,7 @@ export async function getSpotifyMetadata(
       : url;
     const ref = parseSpotifyRef(link);
     if (!ref) {
-      return createErrorResponse(
-        "Unsupported Spotify URL: only track, album and playlist links can be played"
-      );
+      return unsupportedLinkResponse();
     }
 
     const embedHtml = await fetchSpotifyPage(
@@ -155,6 +170,9 @@ export async function getSpotifyMetadata(
     );
     return parseSpotifyEmbedPage(ref, embedHtml);
   } catch (error) {
+    if (error instanceof SpotifyUnsupportedLinkError) {
+      return unsupportedLinkResponse();
+    }
     return createErrorResponse(
       `Failed to get Spotify item: ${errorMessage(error)}`
     );

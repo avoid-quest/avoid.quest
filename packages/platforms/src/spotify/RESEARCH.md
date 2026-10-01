@@ -103,9 +103,9 @@ duration or track list.
   `https://open.spotify.com/playlist/432nsnOM9L55tkiOFnHbI2?si=…`. Without
   `_p`, it sends a `307` straight to that URL. The resolver handles both.
 - Expired or unknown codes redirect to `https://open.spotify.com/` or to an
-  App Store landing page. Both are reported as "does not point to a track,
-  album or playlist". `spotify.link/h5TbcGLLkhb` and `spotify.link/T1vKH6Kr9ib`
-  behaved this way.
+  App Store landing page. Both are reported as an unsupported link, like an
+  artist link (`SPOTIFY_UNSUPPORTED_LINK_MESSAGE`). `spotify.link/h5TbcGLLkhb`
+  and `spotify.link/T1vKH6Kr9ib` behaved this way.
 - `spotify:track:<id>`, `spotify:album:<id>`, `spotify:playlist:<id>` and the
   legacy `spotify:user:<user>:playlist:<id>` are parsed locally, as are
   `/intl-xx/` prefixes, `/embed/` paths and `?si=` parameters.

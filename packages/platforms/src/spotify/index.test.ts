@@ -9,6 +9,7 @@ import {
   resolveSpotifyShortLink,
   resolveSpotifyTrackStream,
   SPOTIFY_NO_MATCH_ERROR,
+  SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
 } from "./index";
 import type { SpotifyYouTubeCandidate, SpotifyYouTubeSource } from "./types";
 
@@ -120,9 +121,9 @@ describe("getSpotifyMetadata", () => {
         { fetchImpl: spotifyFetch(requests) }
       )
     ).resolves.toEqual({
-      error:
-        "Unsupported Spotify URL: only track, album and playlist links can be played",
+      error: SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
       success: false,
+      unsupported: true,
     });
     expect(requests).toEqual([]);
   });
@@ -445,9 +446,7 @@ describe("resolveSpotifyShortLink", () => {
     ) as unknown as typeof fetch;
     await expect(
       resolveSpotifyShortLink("https://spotify.link/abc", { fetchImpl })
-    ).rejects.toThrow(
-      "Spotify short link does not point to a track, album or playlist"
-    );
+    ).rejects.toThrow(SPOTIFY_UNSUPPORTED_LINK_MESSAGE);
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
@@ -457,9 +456,7 @@ describe("resolveSpotifyShortLink", () => {
     ) as unknown as typeof fetch;
     await expect(
       resolveSpotifyShortLink("https://spotify.link/abc", { fetchImpl })
-    ).rejects.toThrow(
-      "Spotify short link does not point to a track, album or playlist"
-    );
+    ).rejects.toThrow(SPOTIFY_UNSUPPORTED_LINK_MESSAGE);
   });
 
   test("rejects links that leave Spotify or land on a non-item page", async () => {
@@ -467,8 +464,7 @@ describe("resolveSpotifyShortLink", () => {
       mock(() =>
         Promise.resolve(Response.redirect(location, 302))
       ) as unknown as typeof fetch;
-    const message =
-      "Spotify short link does not point to a track, album or playlist";
+    const message = SPOTIFY_UNSUPPORTED_LINK_MESSAGE;
     await expect(
       resolveSpotifyShortLink("https://spotify.link/abc", {
         fetchImpl: redirectTo("https://evil.example/track"),
@@ -482,6 +478,24 @@ describe("resolveSpotifyShortLink", () => {
     await expect(
       resolveSpotifyShortLink("https://open.spotify.com/track/x")
     ).rejects.toThrow("Invalid Spotify short link");
+  });
+
+  test("a share link to an artist reads as unsupported, not as a failure", async () => {
+    const fetchImpl = mock(() =>
+      Promise.resolve(
+        Response.redirect(
+          "https://open.spotify.com/artist/0gxyHStUsqpMadRV0Di1Qt",
+          302
+        )
+      )
+    ) as unknown as typeof fetch;
+    await expect(
+      getSpotifyMetadata("https://spotify.link/abc", { fetchImpl })
+    ).resolves.toEqual({
+      error: SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
+      success: false,
+      unsupported: true,
+    });
   });
 });
 
@@ -506,8 +520,7 @@ describe("playable resolver", () => {
     expect(result).toEqual({
       error: {
         code: "provider-resolution-failed",
-        message:
-          "Unsupported Spotify URL: only track, album and playlist links can be played",
+        message: SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
         platform: "spotify",
       },
       success: false,

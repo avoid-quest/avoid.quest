@@ -3,6 +3,7 @@ import {
   getSpotifyUrl,
   needsSpotifyResolution,
   parseSpotifyRef,
+  SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
 } from "./detect.js";
 import { isSpotifyShortLinkHostname } from "./url-policy.js";
 
@@ -18,8 +19,13 @@ export type SpotifyShortLinkOptions = {
   signal?: AbortSignal;
 };
 
-const NOT_AN_ITEM_MESSAGE =
-  "Spotify short link does not point to a track, album or playlist";
+/** A share link that resolves, but not to a track, album or playlist. */
+export class SpotifyUnsupportedLinkError extends Error {
+  constructor() {
+    super(SPOTIFY_UNSUPPORTED_LINK_MESSAGE);
+    this.name = "SpotifyUnsupportedLinkError";
+  }
+}
 
 async function readBoundedText(response: Response): Promise<string> {
   if (!response.body) {
@@ -108,7 +114,7 @@ export async function resolveSpotifyShortLink(
           isSpotifyShortLinkHostname(next.hostname)
         )
       ) {
-        throw new Error(NOT_AN_ITEM_MESSAGE);
+        throw new SpotifyUnsupportedLinkError();
       }
       current = next.href;
       continue;
@@ -122,7 +128,7 @@ export async function resolveSpotifyShortLink(
     }
     const resolved = findSpotifyLinkInPage(await readBoundedText(response));
     if (!resolved) {
-      throw new Error(NOT_AN_ITEM_MESSAGE);
+      throw new SpotifyUnsupportedLinkError();
     }
     return resolved;
   }

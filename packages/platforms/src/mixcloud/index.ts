@@ -1,4 +1,8 @@
-import { getMixcloudShowUrl, parseMixcloudShowUrl } from "./detect.js";
+import {
+  getMixcloudShowUrl,
+  MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
+  parseMixcloudShowUrl,
+} from "./detect.js";
 import {
   DEFAULT_MIXCLOUD_STREAM_PROTOCOLS,
   type MixcloudStreamInfo,
@@ -16,6 +20,7 @@ export {
   getMixcloudShowUrl,
   isMixcloudShowUrl,
   isMixcloudUrl,
+  MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
   normalizeMixcloudUrl,
   parseMixcloudShowUrl,
 } from "./detect.js";
@@ -191,9 +196,7 @@ export async function getMixcloudItem(
 ): Promise<MixcloudItemResponse> {
   const show = parseMixcloudShowUrl(url);
   if (!show) {
-    return createErrorResponse(
-      "Unsupported Mixcloud URL: only show links can be played"
-    );
+    return createErrorResponse(MIXCLOUD_UNSUPPORTED_LINK_MESSAGE);
   }
 
   try {

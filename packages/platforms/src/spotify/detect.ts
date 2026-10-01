@@ -7,6 +7,13 @@ import {
   SPOTIFY_OPEN_HOST,
 } from "./url-policy.js";
 
+/**
+ * Why a Spotify link other than a track, album or playlist (an artist, a
+ * podcast, a share link to either) doesn't play, as the user reads it.
+ */
+export const SPOTIFY_UNSUPPORTED_LINK_MESSAGE =
+  "This Spotify link isn't a track, album or playlist, so it can't play here.";
+
 export type SpotifyRef = {
   type: SpotifyItemType;
   id: string;

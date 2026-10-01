@@ -6,6 +6,10 @@ import {
 
 export { isMixcloudUrl } from "./url-policy.js";
 
+/** Why a Mixcloud link other than a show doesn't play, as the user reads it. */
+export const MIXCLOUD_UNSUPPORTED_LINK_MESSAGE =
+  "This Mixcloud link isn't a show, so it can't play here.";
+
 export type MixcloudShowRef = {
   username: string;
   slug: string;

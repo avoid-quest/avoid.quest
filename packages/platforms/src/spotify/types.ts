@@ -66,6 +66,8 @@ export type SpotifyItemResult = {
 export type SpotifyItemError = {
   success: false;
   error: string;
+  /** The link is not a track, album or playlist: nothing failed. */
+  unsupported?: true;
 };
 
 export type SpotifyItemResponse = SpotifyItemResult | SpotifyItemError;

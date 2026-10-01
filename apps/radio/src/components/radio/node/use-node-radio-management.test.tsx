@@ -75,9 +75,12 @@ mock.module("@/lib/hooks/use-discovered-station-actions", () => ({
 }));
 
 let useNodeRadioManagement: typeof import("./use-node-radio-management")["useNodeRadioManagement"];
+let beginSourceRequest: typeof import("./use-node-radio-management")["beginSourceRequest"];
 
 beforeAll(async () => {
-  ({ useNodeRadioManagement } = await import("./use-node-radio-management"));
+  ({ beginSourceRequest, useNodeRadioManagement } = await import(
+    "./use-node-radio-management"
+  ));
 });
 
 type Management = ReturnType<typeof useNodeRadioManagement>;
@@ -461,5 +464,110 @@ describe("useNodeRadioManagement", () => {
     expect(
       store.state.graph?.nodes.find((node) => node.id === slotId)
     ).toMatchObject({ data: { radio: { id: "yt-abc" } }, type: "platform" });
+  });
+  test("a pasted stream that loads after a newer pick does not replace it", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const slotId =
+      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
+      "";
+    let finishLoad: () => void = () => undefined;
+    const loaded = new Promise<void>((resolve) => {
+      finishLoad = resolve;
+    });
+    loaders.createSession.mockImplementationOnce(async () => {
+      await loaded;
+      return {
+        data: {
+          radio: {
+            name: "stream.example",
+            streamUrl: "https://stream.example/live",
+          },
+        },
+        ok: true as const,
+      };
+    });
+
+    let failure: string | null = "unset";
+    await act(async () => {
+      const pasted = hook
+        .current()
+        .fillStationFromUrl(slotId, "https://stream.example/live")
+        .then((result) => {
+          failure = result;
+        });
+      await hook.current().fillStation(slotId, kexp);
+      finishLoad();
+      await pasted;
+    });
+
+    expect(failure).toBeNull();
+    expect(station(slotId)?.data.radio?.id).toBe("kexp");
+  });
+
+  test("a Track's stream link yields to a newer pick from its other view", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const slotId =
+      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
+      "";
+    let finishLoad: () => void = () => undefined;
+    const loaded = new Promise<void>((resolve) => {
+      finishLoad = resolve;
+    });
+    loaders.createSession.mockImplementationOnce(async () => {
+      await loaded;
+      return {
+        data: {
+          radio: {
+            name: "stream.example",
+            streamUrl: "https://stream.example/live",
+          },
+        },
+        ok: true as const,
+      };
+    });
+
+    // The patch's Track submits a link; the inspector's then picks a track.
+    const streamRequest = beginSourceRequest(slotId);
+    await act(async () => {
+      const pasted = hook
+        .current()
+        .fillStationFromUrl(
+          slotId,
+          "https://stream.example/live",
+          streamRequest
+        );
+      const pickRequest = beginSourceRequest(slotId);
+      await hook.current().fillSource(slotId, discovered, pickRequest);
+      finishLoad();
+      await pasted;
+    });
+
+    expect(streamRequest()).toBe(false);
+    expect(station(slotId)?.data.radio?.id).toBe("rg_lagos");
+  });
+
+  test("an aborted pasted link never commits", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const slotId =
+      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
+      "";
+    const controller = new AbortController();
+
+    await act(async () => {
+      const pasted = hook
+        .current()
+        .fillStationFromUrl(
+          slotId,
+          "https://stream.example/live",
+          beginSourceRequest(slotId, controller.signal)
+        );
+      controller.abort();
+      await pasted;
+    });
+
+    expect(station(slotId)?.data.radio ?? null).toBeNull();
   });
 });

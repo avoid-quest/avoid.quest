@@ -8,7 +8,7 @@ import {
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
 import { setTrackSearchPlatform } from "@/lib/node-graph/graph-edits";
@@ -39,6 +39,7 @@ import {
   type SourceTransportProps,
   useSourceLane,
 } from "./source-node-frame";
+import { beginSourceRequest } from "./use-node-radio-management";
 
 /**
  * Track Node
@@ -276,31 +277,34 @@ export function TrackNodeContent({
   const [loadError, setLoadError] = useState<string | null>(null);
   const radio = data.radio as Radio | null;
   // The search stays open while a `yt:` pick resolves; a later pick, link
-  // or platform supersedes it, so only the latest request fills the Track.
-  const loadRequest = useRef(0);
+  // or platform, here or in the other view of this Track, supersedes it,
+  // so only the latest request fills the Track or reports its error.
+  const reportLoadFailure = (isCurrent: () => boolean) => (cause: unknown) => {
+    if (isCurrent()) {
+      setLoadError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
 
-  const handleLoad = async (picked: Radio) => {
-    loadRequest.current += 1;
-    const request = loadRequest.current;
+  const handleLoad = async (picked: Radio, isCurrent: () => boolean) => {
     setLoadError(null);
     const loaded = await prepareSourceRadio(picked);
-    if (request !== loadRequest.current) {
+    if (!isCurrent()) {
       return;
     }
     if ("error" in loaded) {
       setLoadError(loaded.error);
       return;
     }
-    await actions.fillSource(id, loaded.radio);
+    await actions.fillSource(id, loaded.radio, isCurrent);
   };
   // A radio stream hands off: the Track becomes a Station playing it.
-  const handleStreamLink = async (url: string) => {
-    loadRequest.current += 1;
+  const handleStreamLink = async (url: string, isCurrent: () => boolean) => {
     setLoadError(null);
-    setLoadError(await actions.fillStationFromUrl(id, url));
+    const failure = await actions.fillStationFromUrl(id, url, isCurrent);
+    if (isCurrent()) {
+      setLoadError(failure);
+    }
   };
-  const reportLoadFailure = (cause: unknown) =>
-    setLoadError(cause instanceof Error ? cause.message : String(cause));
 
   return (
     <TrackNodeBody
@@ -310,11 +314,12 @@ export function TrackNodeContent({
       isPlaying={lane.isPlaying}
       muted={data.muted}
       onLoad={(picked) => {
-        handleLoad(picked).catch(reportLoadFailure);
+        const isCurrent = beginSourceRequest(id);
+        handleLoad(picked, isCurrent).catch(reportLoadFailure(isCurrent));
       }}
       onRemove={() => actions.removeNode(id)}
       onSearchPlatformChange={(platform) => {
-        loadRequest.current += 1;
+        beginSourceRequest(id);
         commitNodeGraph(
           (graph) => setTrackSearchPlatform(graph, id, platform),
           store,
@@ -322,7 +327,8 @@ export function TrackNodeContent({
         );
       }}
       onStreamLink={(url) => {
-        handleStreamLink(url).catch(reportLoadFailure);
+        const isCurrent = beginSourceRequest(id);
+        handleStreamLink(url, isCurrent).catch(reportLoadFailure(isCurrent));
       }}
       onToggleMute={lane.onToggleMute}
       onTogglePlayPause={lane.onTogglePlayPause}

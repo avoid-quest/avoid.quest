@@ -35,6 +35,24 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
 type StationPlayback = Pick<NodePlayback, "flush" | "setPlaying">;
 
+/** The latest fill request per source node, shared by the patch and inspector. */
+const sourceRequests = new Map<string, number>();
+
+/**
+ * Starts filling a source node, superseding any earlier fill of it still
+ * loading (a pick, pasted link or platform change, from either view).
+ * Resolves the returned check after each await: false means a newer request
+ * or an aborted `signal` owns the node, so this one must not commit.
+ */
+export function beginSourceRequest(
+  nodeId: string,
+  signal?: AbortSignal
+): () => boolean {
+  const request = (sourceRequests.get(nodeId) ?? 0) + 1;
+  sourceRequests.set(nodeId, request);
+  return () => sourceRequests.get(nodeId) === request && !signal?.aborted;
+}
+
 type UseNodeRadioManagementOptions = {
   /** Every saved station, hidden ones included, so snapshots follow hides. */
   savedRadios?: Radio[];
@@ -124,7 +142,14 @@ export function useNodeRadioManagement({
   };
 
   /** Fills an empty Station slot, or swaps a Station's radio, and starts it. */
-  const fillStation = async (nodeId: string, radio: Radio) => {
+  const fillStation = async (
+    nodeId: string,
+    radio: Radio,
+    isCurrent = beginSourceRequest(nodeId)
+  ) => {
+    if (!isCurrent()) {
+      return;
+    }
     const committed = commitNodeGraph(
       (current) => setStationRadio(current, nodeId, radio),
       store,
@@ -140,7 +165,14 @@ export function useNodeRadioManagement({
    * that plays it (a radio link in a Track hands off to a Station), and
    * starts it.
    */
-  const fillSource = async (nodeId: string, radio: Radio) => {
+  const fillSource = async (
+    nodeId: string,
+    radio: Radio,
+    isCurrent = beginSourceRequest(nodeId)
+  ) => {
+    if (!isCurrent()) {
+      return;
+    }
     const committed = commitNodeGraph(
       (current) => setSourceRadio(current, nodeId, radio),
       store,
@@ -154,19 +186,24 @@ export function useNodeRadioManagement({
   /**
    * A link pasted into a Station's search: a platform link loads as a DJ
    * deck would (a YouTube link makes it a Track), anything else is a radio
-   * stream, kept as a session station. Resolves to why it failed, or null.
+   * stream, kept as a session station. Resolves to why it failed, or null,
+   * also when a newer request superseded it before it loaded.
    */
   const fillStationFromUrl = async (
     nodeId: string,
-    url: string
+    url: string,
+    isCurrent = beginSourceRequest(nodeId)
   ): Promise<string | null> => {
     const loaded = detectPlatformFromUrl(url)
       ? await loadSourceUrl(url, loaders)
       : await loadStreamStation(url, loaders);
+    if (!isCurrent()) {
+      return null;
+    }
     if ("error" in loaded) {
       return loaded.error;
     }
-    await fillSource(nodeId, loaded.radio);
+    await fillSource(nodeId, loaded.radio, isCurrent);
     return null;
   };
 
@@ -176,7 +213,10 @@ export function useNodeRadioManagement({
     });
 
   const selectDiscoveredForStation = (nodeId: string, radio: Radio) => {
-    selectDiscoveredStation(radio, (resolved) => fillStation(nodeId, resolved));
+    const isCurrent = beginSourceRequest(nodeId);
+    selectDiscoveredStation(radio, (resolved) =>
+      fillStation(nodeId, resolved, isCurrent)
+    );
   };
 
   const removeStations = (radio: Radio) => {

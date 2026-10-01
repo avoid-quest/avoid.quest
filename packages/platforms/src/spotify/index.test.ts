@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createPlayablePlatformResolver, toPlayableSources } from "../playable";
 import youtubeSearch from "./fixtures/youtube-search.json";
 import {
+  buildSpotifyYouTubeQuery,
   getSpotifyItem,
   getSpotifyMetadata,
   resolveSpotifyItemStream,
@@ -10,6 +11,8 @@ import {
   resolveSpotifyTrackStream,
   SPOTIFY_NO_MATCH_ERROR,
   SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
+  scoreYouTubeCandidate,
+  toSpotifyMatchTrack,
 } from "./index";
 import type { SpotifyYouTubeCandidate, SpotifyYouTubeSource } from "./types";
 
@@ -375,6 +378,60 @@ describe("resolveSpotifyItemStream", () => {
     }
     expect(result.streamUrl).toBe("https://media.example/Rgrt_8mXrK8.webm");
     expect(result.metadata.youtubeVideoId).toBe("Rgrt_8mXrK8");
+  });
+});
+
+describe("toSpotifyMatchTrack", () => {
+  const trackInfo = (name: string, artist: string, duration: number) => ({
+    artist,
+    duration,
+    name,
+    spotifyId: "0000000000000000000000",
+    streamUrl: "spotify:track:0000000000000000000000",
+    url: "https://open.spotify.com/track/0000000000000000000000",
+  });
+
+  test("searches a collection track by its whole artist credit", () => {
+    expect(
+      buildSpotifyYouTubeQuery(
+        toSpotifyMatchTrack(trackInfo("EARFQUAKE", "Tyler, The Creator", 190))
+      )
+    ).toBe("Tyler, The Creator EARFQUAKE");
+  });
+
+  test("treats the channel named after the whole credit as official", () => {
+    const track = toSpotifyMatchTrack(
+      trackInfo("EARFQUAKE", "Tyler, The Creator", 190)
+    );
+    const upload = {
+      duration: 190,
+      title: "EARFQUAKE",
+      videoId: "x0000000000",
+    };
+    const official = scoreYouTubeCandidate(track, {
+      ...upload,
+      author: "Tyler, The Creator",
+    });
+    const namesake = scoreYouTubeCandidate(track, {
+      ...upload,
+      author: "Bonnie Tyler",
+    });
+    expect(official.rejection).toBeUndefined();
+    expect(official.score).toBeGreaterThan(namesake.score + 0.1);
+  });
+
+  test("still credits the primary artist of a multi-artist credit in full", () => {
+    const track = toSpotifyMatchTrack(
+      trackInfo("Get Lucky", "Daft Punk, Pharrell Williams", 248)
+    );
+    expect(
+      scoreYouTubeCandidate(track, {
+        author: "Daft Punk",
+        duration: 248,
+        title: "Daft Punk - Get Lucky (Official Audio)",
+        videoId: "x0000000000",
+      }).score
+    ).toBeGreaterThanOrEqual(0.98);
   });
 });
 

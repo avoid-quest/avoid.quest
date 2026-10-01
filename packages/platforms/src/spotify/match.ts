@@ -143,9 +143,12 @@ export function cleanSpotifyTitle(title: string): string {
   return cleaned || title.trim();
 }
 
-/** The YouTube search query for a Spotify track: primary artist and title. */
+/**
+ * The YouTube search query for a Spotify track: the primary artist, or the
+ * whole credit when it was split, and the title.
+ */
 export function buildSpotifyYouTubeQuery(track: SpotifyMatchTrack): string {
-  const artist = track.artists[0]?.trim() ?? "";
+  const artist = (track.artistCredit ?? track.artists[0])?.trim() ?? "";
   const query = `${artist} ${cleanSpotifyTitle(track.name)}`.trim();
   return query.slice(0, MAX_QUERY_LENGTH);
 }
@@ -201,15 +204,17 @@ function scoreArtist(
 
 function scoreOfficial(
   candidate: SpotifyYouTubeCandidate,
-  primaryArtist: string
+  track: SpotifyMatchTrack
 ): number {
   const author = candidate.author.trim();
   if (TOPIC_AUTHOR_PATTERN.test(author)) {
     return OFFICIAL_TOPIC;
   }
   const normalizedAuthor = normalize(author);
+  const officialNames = [track.artists[0] ?? "", track.artistCredit ?? ""];
   if (
-    (normalizedAuthor && normalizedAuthor === normalize(primaryArtist)) ||
+    (normalizedAuthor &&
+      officialNames.some((name) => normalize(name) === normalizedAuthor)) ||
     VEVO_AUTHOR_PATTERN.test(normalizedAuthor.replaceAll(" ", ""))
   ) {
     return OFFICIAL_CHANNEL;
@@ -307,7 +312,7 @@ export function scoreYouTubeCandidate(
     return reject("artist does not match", durationDelta);
   }
 
-  const officialScore = scoreOfficial(candidate, track.artists[0] ?? "");
+  const officialScore = scoreOfficial(candidate, track);
   const score =
     WEIGHT_DURATION * durationScore +
     WEIGHT_TITLE * titleScore +

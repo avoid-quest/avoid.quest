@@ -55,14 +55,19 @@ function errorMessage(error: unknown): string {
 export function toSpotifyMatchTrack(
   track: SpotifyTrackInfo | SpotifyMetadata
 ): SpotifyMatchTrack {
-  const artists =
-    "artists" in track && track.artists?.length
-      ? track.artists
-      : (track.artist
-          ?.split(ARTIST_CREDIT_SEPARATOR)
-          .map((artist) => artist.trim())
-          .filter(Boolean) ?? []);
-  return { artists, duration: track.duration, name: track.name ?? "" };
+  const matchTrack = { duration: track.duration, name: track.name ?? "" };
+  if ("artists" in track && track.artists?.length) {
+    return { ...matchTrack, artists: track.artists };
+  }
+  // Collection tracks only carry the credit, so it is split here.
+  const artistCredit = track.artist?.trim() ?? "";
+  const artists = artistCredit
+    .split(ARTIST_CREDIT_SEPARATOR)
+    .map((artist) => artist.trim())
+    .filter(Boolean);
+  return artists.length > 1
+    ? { ...matchTrack, artistCredit, artists }
+    : { ...matchTrack, artists };
 }
 
 async function searchCandidates(

@@ -81,6 +81,11 @@ export type SpotifyMatchTrack = {
   name: string;
   /** Individual artist names, primary artist first. */
   artists: readonly string[];
+  /**
+   * The unsplit credit, when `artists` was split from one ("Tyler, The
+   * Creator" reads as two artists but may be one).
+   */
+  artistCredit?: string;
   /** Seconds. */
   duration?: number;
 };

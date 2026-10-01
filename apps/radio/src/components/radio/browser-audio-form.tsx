@@ -146,7 +146,8 @@ export function BrowserAudioForm({
         {loading ? <Spinner /> : <MonitorIcon />}Share tab audio
       </Button>
       {onCancel ? (
-        <Button onClick={onCancel} size="sm" variant="ghost">
+        // A share already underway would still land after a Cancel.
+        <Button disabled={loading} onClick={onCancel} size="sm" variant="ghost">
           Cancel
         </Button>
       ) : null}

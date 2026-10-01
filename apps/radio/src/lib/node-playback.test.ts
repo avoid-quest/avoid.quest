@@ -2973,6 +2973,54 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(writes.every(Boolean)).toBe(true);
   });
 
+  test("a shared tab whose capture did not open is stopped, not left sharing", async () => {
+    insertNodeSession(
+      wired(
+        [mic("tab", { capture: "display", deviceId: "display" }), speakers],
+        ["tab>speakers"]
+      )
+    );
+    const stopped: string[] = [];
+    const track = {
+      kind: "audio",
+      readyState: "live",
+      stop: () => stopped.push("audio"),
+    };
+    const stream = {
+      getAudioTracks: () => [track],
+      getTracks: () => [track],
+    } as unknown as MediaStream;
+    const original = globalThis.navigator;
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { mediaDevices: { getDisplayMedia: async () => stream } },
+    });
+    try {
+      const harness = createHarness();
+      Object.assign(harness.context.audio, {
+        // The engine's start came back without an open capture.
+        getDeviceSource: mock(() => ({
+          channelCount: 2,
+          cleanup: () => undefined,
+          getDiagnostics: () => null,
+          isActive: false,
+        })),
+        playDeviceSound: mock(async () => undefined),
+      });
+      await harness.playback.activate();
+
+      await harness.playback.setPlaying("tab", true);
+
+      expect(harness.context.audio.playDeviceSound).toHaveBeenCalledTimes(1);
+      expect(stopped).toEqual(["audio"]);
+    } finally {
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: original,
+      });
+    }
+  });
+
   test.each([0, 0.2])(
     "Go live seeds the saved fader %s before capture",
     async (volume) => {

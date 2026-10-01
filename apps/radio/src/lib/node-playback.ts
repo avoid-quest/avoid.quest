@@ -425,8 +425,12 @@ function laneFailure(
 /** A device start through AudioManager, as DJ decks make it. */
 function deviceInputAudio(ctx: PlaybackActionContext): DeviceInputAudio {
   return {
-    getDeviceChannelCount: (soundId) =>
-      ctx.audio.getDeviceSource(soundId)?.channelCount ?? null,
+    // Only an open capture has channels; a start that didn't open one
+    // reads null, so a shared tab's stream is stopped, as on a DJ deck.
+    getDeviceChannelCount: (soundId) => {
+      const capture = ctx.audio.getDeviceSource(soundId);
+      return capture?.isActive ? capture.channelCount : null;
+    },
     startDevice: (soundId, deviceId, constraints, channelSelection) =>
       ctx.audio.playDeviceSound(
         soundId,

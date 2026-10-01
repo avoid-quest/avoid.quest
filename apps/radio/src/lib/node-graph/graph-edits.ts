@@ -30,7 +30,7 @@ import {
   isEffectNodeType,
   portHandleId,
 } from "./catalogue";
-import { compile, isStationLive } from "./compile";
+import { compile, isRadioSourceLive } from "./compile";
 import {
   type EffectNodeType,
   type GraphEdge,
@@ -40,7 +40,7 @@ import {
   type NodeGraph,
   type TrackSearchPlatform,
 } from "./schema";
-import { sourceTypeForRadio } from "./sources";
+import { isLocalFileGone, sourceTypeForRadio } from "./sources";
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
@@ -742,26 +742,32 @@ function removeNodeHealed(
 }
 
 /**
- * The patch with every Station playing: an empty or hidden one has no lane,
- * so its routes are compiled as though it did.
+ * The patch with every Station, Track and File playing: an empty, hidden or
+ * re-pick one has no lane, so its routes are compiled as though it did.
  */
 function withEveryStationLive(graph: NodeGraph): NodeGraph {
   return {
     ...graph,
-    nodes: graph.nodes.map((node) =>
-      isStation(node) && !isStationLive(node)
-        ? {
-            ...node,
-            data: {
-              ...node.data,
-              radio: {
-                ...(node.data.radio ?? { name: "", streamUrl: "" }),
-                enabled: true,
-              },
-            },
-          }
-        : node
-    ),
+    nodes: graph.nodes.map((node) => {
+      if (!isRadioSourceNode(node) || isRadioSourceLive(node)) {
+        return node;
+      }
+      const radio = {
+        ...(node.data.radio ?? { name: "", streamUrl: "" }),
+        enabled: true,
+      };
+      // A local file not picked in this page stays dormant whatever its
+      // record says; a blank stream stands in for it.
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          radio: isLocalFileGone(radio)
+            ? { enabled: true, name: radio.name, streamUrl: "" }
+            : radio,
+        },
+      } as GraphNode;
+    }),
   };
 }
 

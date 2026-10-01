@@ -1029,7 +1029,9 @@ function Canvas({
         return;
       }
       event.preventDefault();
-      const edit = SERIES_PARALLEL_EDITS[key](current, selected);
+      const edit = SERIES_PARALLEL_EDITS[key](current, selected, {
+        profile: env.profile,
+      });
       if (!edit.ok) {
         toast(edit.message);
         return;
@@ -1039,7 +1041,7 @@ function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [env.profile]);
 
   // A canvas that goes mid-drag leaves no ports lit behind it.
   useEffect(

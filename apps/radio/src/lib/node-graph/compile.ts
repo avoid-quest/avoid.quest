@@ -30,6 +30,7 @@ import type {
   FxCompositeConfig,
 } from "@/lib/audio/dsp/effects/types";
 import {
+  isEffectChainActive,
   isEffectContainer,
   MAX_EFFECT_TREE_DEPTH,
 } from "@/lib/audio/dsp/routing/effect-tree";
@@ -1033,6 +1034,40 @@ function keyEffects(
   return visit(effects);
 }
 
+/**
+ * The effects that hear the lane, in tree order, as the runtime looks for a
+ * key (`findSidechainChannelId` in channel-effects.ts): enabled, and not
+ * inside a switched-off container or a muted, silent or unsoloed chain.
+ */
+function activeEffects(
+  effects: readonly EffectConfig[],
+  into: EffectConfig[] = []
+): EffectConfig[] {
+  for (const effect of effects) {
+    if (!effect.enabled) {
+      continue;
+    }
+    into.push(effect);
+    if (isEffectContainer(effect)) {
+      const hasSolo = effect.chains.some((chain) => chain.solo);
+      for (const chain of effect.chains) {
+        if (chain.gain !== 0 && isEffectChainActive(chain, hasSolo)) {
+          activeEffects(chain.effects, into);
+        }
+      }
+    }
+  }
+  return into;
+}
+
+/** The lane channel the runtime keys this tree from, or null. */
+function boundKeyChannel(effects: readonly EffectConfig[]): string | null {
+  return (
+    activeEffects(effects).find((effect) => effect.sidechain)?.sidechain
+      ?.channelId ?? null
+  );
+}
+
 type Prepared = {
   graph: CompileGraph;
   byId: Map<string, GraphNode>;
@@ -1232,19 +1267,21 @@ function lowerLane(
 
 /**
  * official only when every enabled effect maps to openDAW, the page is
- * cross-origin isolated and the lane still fits under the channel cap.
+ * cross-origin isolated and the `added` channels the lane needs still fit
+ * under the channel cap.
  */
 function estimateBackend(
   effects: readonly EffectConfig[],
   env: CompileEnv,
-  monitoringChannels: number
+  monitoringChannels: number,
+  added: number
 ): LaneBackend | null {
   if (!hasEnabledEffects(effects)) {
     return null;
   }
   return env.crossOriginIsolated &&
     canUseOfficialOpenDawRuntime(effects) &&
-    monitoringChannels + LANE_CHANNELS <= MONITORING_CHANNEL_CAP
+    monitoringChannels + added <= MONITORING_CHANNEL_CAP
     ? "official"
     : "compat";
 }
@@ -1268,6 +1305,9 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   const lanes = new Map<string, LanePlan>();
   const edges = new Map<string, EdgePlan>();
   let monitoringChannels = 0;
+  // Lane channels holding an openDAW input: an official lane's own, and the
+  // lane keying it, which the runtime registers whatever its own backend.
+  const monitored = new Set<string>();
   // An empty Station is a search slot, a hidden one is disabled, and an
   // Audio input with no device has nothing to capture: no lane, but their
   // cables survive. Only a source with a lane can solo.
@@ -1290,13 +1330,23 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       sinkIds
     );
     const effects = keyEffects(lowered.effects, keys.get(node.id) ?? new Map());
-    const backend = estimateBackend(effects, env, monitoringChannels);
+    const channelId = laneChannelId(node.id);
+    const inputs = new Set(
+      [channelId, boundKeyChannel(effects)].filter(
+        (id): id is string => id !== null && !monitored.has(id)
+      )
+    );
+    const added = inputs.size * LANE_CHANNELS;
+    const backend = estimateBackend(effects, env, monitoringChannels, added);
     if (backend === "official") {
-      monitoringChannels += LANE_CHANNELS;
+      monitoringChannels += added;
+      for (const id of inputs) {
+        monitored.add(id);
+      }
     }
     lanes.set(node.id, {
       backend,
-      channelId: laneChannelId(node.id),
+      channelId,
       cueListen: source.cueListen,
       effects,
       filter: lowered.lowerer.filter,
@@ -1414,9 +1464,13 @@ export function idleKeys(
   plan: EnginePlan
 ): Map<string, string> {
   const inLane = new Map<string, EffectConfig>();
+  const active = new Set<EffectConfig>();
   const laneOf = new Map<string, LanePlan>();
   for (const lane of plan.lanes.values()) {
     effectsById(lane.effects, inLane);
+    for (const effect of activeEffects(lane.effects)) {
+      active.add(effect);
+    }
     for (const id of lane.nodes) {
       laneOf.set(id, lane);
     }
@@ -1442,6 +1496,9 @@ export function idleKeys(
     if (channelId && effect?.sidechain?.channelId === channelId) {
       if (!effect.enabled) {
         idle.set(edge.id, "Switch the effect on to use its key");
+      } else if (!active.has(effect)) {
+        // The runtime binds no key under an off Split or a silent branch.
+        idle.set(edge.id, "Its branch is off, so the key isn't used");
       }
       continue;
     }

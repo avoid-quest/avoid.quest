@@ -1782,6 +1782,42 @@ describe("compile: key cables", () => {
     ).toEqual({ "talk~>off": "Switch the effect on to use its key" });
   });
 
+  test("idleKeys flags a key on an FX in a branch the runtime skips", () => {
+    // The runtime binds no key under an off Split or a silent branch.
+    const patchWith = (
+      split: Partial<EffectConfig>,
+      branch: { gain?: number; muted?: boolean }
+    ) =>
+      graph(
+        [
+          station("music"),
+          station("talk"),
+          fx("split", "fxComposite", { enabled: true, ...split }),
+          fx("comp", "compressor", { enabled: true }),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          audio("music", "split"),
+          audio("split", "comp", { from: "branch-1", ...branch }),
+          audio("split", "merge", { from: "branch-2" }),
+          audio("comp", "merge"),
+          audio("merge", "speakers"),
+          key("talk", "comp"),
+        ]
+      );
+    const idle = (patch: NodeGraph) =>
+      idleKeys(patch, compile(patch, ENV)).get("talk~>comp");
+    expect(idle(patchWith({}, {}))).toBeUndefined();
+    for (const patch of [
+      patchWith({ enabled: false }, {}),
+      patchWith({}, { muted: true }),
+      patchWith({}, { gain: 0 }),
+    ]) {
+      expect(idle(patch)).toBe("Its branch is off, so the key isn't used");
+    }
+  });
+
   test("idleKeys flags a refused second key from the keying lane", () => {
     const patch = graph(
       [
@@ -1892,6 +1928,57 @@ describe("compile: backend estimate", () => {
       "compat",
     ]);
     expect(plan.budget.monitoringChannels).toBe(MONITORING_CHANNEL_CAP);
+  });
+
+  test("a dry lane keying an official lane counts toward the cap", () => {
+    // The runtime registers the keying lane as an openDAW input as well.
+    const plan = build(
+      [
+        station("talk"),
+        ...["s1", "s2", "s3"].flatMap((id) => [
+          station(id),
+          fx(`${id}-comp`, "compressor", { enabled: true }),
+        ]),
+        station("music"),
+        fx("duck", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("talk", "speakers"),
+        ...["s1", "s2", "s3"].flatMap((id) => [
+          audio(id, `${id}-comp`),
+          audio(`${id}-comp`, "speakers"),
+        ]),
+        audio("music", "duck"),
+        audio("duck", "speakers"),
+        key("talk", "duck"),
+      ]
+    );
+    expect(lane(plan, "talk").backend).toBeNull();
+    expect(lane(plan, "music").backend).toBe("compat");
+    expect(plan.budget.monitoringChannels).toBe(6);
+  });
+
+  test("a keying lane that is official itself counts once", () => {
+    const plan = build(
+      [
+        station("music"),
+        fx("duck", "compressor", { enabled: true }),
+        station("talk"),
+        fx("talk-comp", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "duck"),
+        audio("duck", "speakers"),
+        audio("talk", "talk-comp"),
+        audio("talk-comp", "speakers"),
+        key("talk", "duck"),
+      ]
+    );
+    expect(lane(plan, "music").backend).toBe("official");
+    expect(lane(plan, "talk").backend).toBe("official");
+    expect(plan.budget.monitoringChannels).toBe(4);
   });
 
   test("radio-only FX force compat, and a dry lane has no FX runtime", () => {

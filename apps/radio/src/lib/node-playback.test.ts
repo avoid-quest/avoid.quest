@@ -2899,6 +2899,11 @@ describe("Node Playback key cables", () => {
   });
 });
 
+/** A shared browser tab's video track, as Chromium reports it. */
+const BROWSER_TAB_VIDEO = {
+  getSettings: () => ({ displaySurface: "browser" }),
+};
+
 describe("Node Playback audio inputs and output devices", () => {
   function mic(id: string, data: Record<string, unknown> = {}): NodeInput {
     return {
@@ -3203,6 +3208,7 @@ describe("Node Playback audio inputs and output devices", () => {
     const stream = {
       getAudioTracks: () => [track],
       getTracks: () => [track],
+      getVideoTracks: () => [BROWSER_TAB_VIDEO],
     } as unknown as MediaStream;
     const original = globalThis.navigator;
     Object.defineProperty(globalThis, "navigator", {
@@ -3299,6 +3305,7 @@ describe("Node Playback audio inputs and output devices", () => {
       const silent = {
         getAudioTracks: () => [],
         getTracks: () => [],
+        getVideoTracks: () => [BROWSER_TAB_VIDEO],
       } as unknown as MediaStream;
       Object.defineProperty(globalThis, "navigator", {
         configurable: true,
@@ -3374,6 +3381,7 @@ describe("Node Playback audio inputs and output devices", () => {
       picker.resolve({
         getAudioTracks: () => [{ readyState: "live" }],
         getTracks: () => [],
+        getVideoTracks: () => [BROWSER_TAB_VIDEO],
       } as unknown as MediaStream);
       await start;
 
@@ -3410,6 +3418,7 @@ describe("Node Playback audio inputs and output devices", () => {
       Promise.resolve({
         getAudioTracks: () => [{ readyState: "live" }],
         getTracks: () => [],
+        getVideoTracks: () => [BROWSER_TAB_VIDEO],
       } as unknown as MediaStream)
     );
     Object.defineProperty(globalThis, "navigator", {

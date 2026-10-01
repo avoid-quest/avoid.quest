@@ -225,6 +225,11 @@ function createContext(): PlaybackActionContext {
   };
 }
 
+/** A shared browser tab's video track, as Chromium reports it. */
+const BROWSER_TAB_VIDEO = {
+  getSettings: () => ({ displaySurface: "browser" }),
+};
+
 function withDisplayMedia(
   getDisplayMedia: () => Promise<MediaStream>
 ): () => void {
@@ -1277,6 +1282,7 @@ describe("DjDeckModule", () => {
     const stream = {
       getAudioTracks: () => [{ readyState: "live" }],
       getTracks: () => [],
+      getVideoTracks: () => [BROWSER_TAB_VIDEO],
     } as unknown as MediaStream;
     const getDisplayMedia = mock(() => Promise.resolve(stream));
     const restoreNavigator = withDisplayMedia(getDisplayMedia);

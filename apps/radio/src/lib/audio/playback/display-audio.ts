@@ -47,7 +47,8 @@ export function stopCapturedAudio(stream: MediaStream): void {
  * Only another tab's audio may be shared. Screen (system) and window audio
  * can contain this page's own output, which the mixer would then play back
  * into the capture: a feedback loop. The options below are hints, so a
- * capture of any surface other than a browser tab is refused afterwards.
+ * capture not reported as a browser tab is refused afterwards, including one
+ * whose surface is unknown. Only Chromium shares tab audio, and it reports it.
  *
  * Must run before awaiting engine setup, while the user's gesture is active.
  */
@@ -85,7 +86,7 @@ export async function requestDisplayAudio(): Promise<MediaStream> {
     throw pickerError(error);
   }
   const surface = stream.getVideoTracks?.()[0]?.getSettings?.().displaySurface;
-  if (surface && surface !== "browser") {
+  if (surface !== "browser") {
     stopCapturedAudio(stream);
     throw new DisplayAudioError(
       "Share a browser tab. Screen and window audio can include this mixer and feed back into it."

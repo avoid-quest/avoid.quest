@@ -15,7 +15,7 @@ afterEach(() =>
   })
 );
 
-function capture(displaySurface = "browser") {
+function capture(displaySurface: string | null = "browser") {
   const tracks = ["audio", "video"].map((kind) => {
     const listeners = new Set<() => void>();
     return {
@@ -27,7 +27,9 @@ function capture(displaySurface = "browser") {
         }
       },
       getSettings: () =>
-        kind === "video" ? { displaySurface } : { channelCount: 2 },
+        kind === "video"
+          ? { displaySurface: displaySurface ?? undefined }
+          : { channelCount: 2 },
       kind,
       label: kind,
       readyState: "live",
@@ -107,7 +109,7 @@ describe("browser audio capture", () => {
     );
   });
 
-  test.each(["monitor", "window"])(
+  test.each(["monitor", "window", null])(
     "a %s share is refused and released so the mixer cannot capture its own output",
     async (surface) => {
       const { stream, tracks } = capture(surface);

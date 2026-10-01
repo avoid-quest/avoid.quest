@@ -159,7 +159,7 @@ function InputSourceRow({
           >
             <StationRowSubtitle>
               {isDisplay
-                ? "Shared tab / computer audio"
+                ? "Shared tab audio"
                 : inputSubtitle(devices.permissionState, unplugged, isLive)}
             </StationRowSubtitle>
           </StationRowText>

@@ -1210,7 +1210,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       loadGeneration,
       {
         description: intent.capture
-          ? "Shared tab / computer audio"
+          ? "Shared tab audio"
           : "Device input (mic/line-in)",
         enabled: true,
         id: `device-input-${side}`,

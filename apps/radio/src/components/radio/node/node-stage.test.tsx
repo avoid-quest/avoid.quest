@@ -279,9 +279,7 @@ describe("NodeStage", () => {
     const sources = await waitFor(() =>
       view.getByRole("list", { name: "Sources" })
     );
-    expect(
-      within(sources).getByText("Shared tab / computer audio")
-    ).toBeTruthy();
+    expect(within(sources).getByText("Shared tab audio")).toBeTruthy();
     fireEvent.click(
       within(sources).getByRole("button", { name: "Go live Spotify" })
     );

@@ -198,7 +198,7 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
     id: -11 - index,
     pendingPlatform: source.id,
     radio: {
-      description: "Share audio from a browser tab or computer",
+      description: "Share audio from another browser tab",
       enabled: true,
       id: -11 - index,
       name: source.name,

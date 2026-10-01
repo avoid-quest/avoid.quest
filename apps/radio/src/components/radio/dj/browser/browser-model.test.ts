@@ -12,7 +12,7 @@ describe("DJ browser model", () => {
       "YouTube",
       "Audio file",
       "Audio input",
-      "Browser / computer audio",
+      "Browser tab audio",
       "Spotify",
       "Mixcloud",
       "Radio episodes / shows",

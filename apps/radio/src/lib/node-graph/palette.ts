@@ -460,7 +460,7 @@ export type PaletteOptions = ValidateOptions & {
    */
   sinkSelection?: boolean;
   /**
-   * Whether the browser can share a tab's or the computer's audio
+   * Whether the browser can share another tab's audio
    * (`getDisplayMedia`). Without it, as on iOS and Android, no shared-audio
    * source is offered. Defaults to what this browser can do.
    */
@@ -472,7 +472,7 @@ export type PaletteOptions = ValidateOptions & {
   swap?: string | null;
 };
 
-/** Whether this browser can share a tab's or the computer's audio. */
+/** Whether this browser can share another tab's audio. */
 function canCaptureDisplayAudio(): boolean {
   return (
     typeof globalThis.navigator?.mediaDevices?.getDisplayMedia === "function"

@@ -48,7 +48,7 @@ for (const [key, value] of Object.entries({
   });
 }
 
-// Shared tab or computer audio is offered where the browser can share it.
+// Shared tab audio is offered where the browser can share it.
 Object.defineProperty(dom.window.navigator, "mediaDevices", {
   configurable: true,
   value: {
@@ -247,7 +247,7 @@ describe("NodePalette", () => {
       "Bandcamp",
       "File",
       "Audio input",
-      "Browser / computer audio",
+      "Browser tab audio",
       "Spotify",
       "Mixcloud",
       "Radio episodes / shows",
@@ -437,7 +437,7 @@ describe("NodePalette devices", () => {
       "Audio input",
       "Default - Desk mic",
       "Desk mic",
-      "Browser / computer audio",
+      "Browser tab audio",
       "Spotify",
       "Mixcloud",
       "Radio episodes / shows",

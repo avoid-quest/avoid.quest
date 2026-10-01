@@ -217,7 +217,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
       formatLocation(entry.radio.placeTitle, entry.radio.countryTitle) ||
       "Station";
   } else if (entry.device?.capture === "display") {
-    description = "Share audio from another tab, window or computer";
+    description = "Share audio from another browser tab";
   } else if (entry.device) {
     description = entry.type === "deviceIn" ? "Audio input" : "Output device";
   }

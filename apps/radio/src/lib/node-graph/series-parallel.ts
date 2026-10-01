@@ -16,7 +16,7 @@
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { branchIndex } from "./branches";
 import { isEffectNodeType } from "./catalogue";
-import { newIssue, uniqueId } from "./graph-edits";
+import { freshNodeId, newIssue, uniqueId } from "./graph-edits";
 import type { NodeSelection } from "./node-store";
 import { createPaletteNode } from "./palette";
 import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
@@ -139,10 +139,13 @@ export function seriesToParallel(
     return { message: NEEDS_SERIES, ok: false };
   }
   const [first, second, link] = pair;
-  const nodeIds = new Set(graph.nodes.map((node) => node.id));
-  const splitId = uniqueId(SPLIT_TYPE, nodeIds);
-  nodeIds.add(splitId);
-  const mergeId = uniqueId("merge", nodeIds);
+  // A deleted Split keeps its MIDI mappings for Undo, so a new one never
+  // takes its id; a Merge has no MIDI targets.
+  const splitId = freshNodeId(SPLIT_TYPE);
+  const mergeId = uniqueId(
+    "merge",
+    new Set(graph.nodes.map((node) => node.id))
+  );
   const { x, y } = first.position;
   const branchX = x + COLUMN_PX;
   const split = createPaletteNode(SPLIT_TYPE, splitId, { x, y });

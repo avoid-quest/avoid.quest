@@ -34,6 +34,7 @@ import { endLabel, portName } from "./describe";
 import {
   connectNodes,
   findStationNode,
+  freshNodeId,
   insertNodeOnEdge,
   isSwappableType,
   newIssue,
@@ -738,10 +739,9 @@ function isRadioSourceType(type: NodeType): boolean {
 }
 
 function nodeIdFor(graph: NodeGraph, type: NodeType): string {
-  // Deleted nodes keep their MIDI bindings for Undo; new instances must not reuse them.
   return type === "speakers"
     ? uniqueId(SPEAKERS_NODE_ID, new Set(graph.nodes.map((node) => node.id)))
-    : `${type}-${crypto.randomUUID()}`;
+    : freshNodeId(type);
 }
 
 export type AddPaletteNodeOptions = ValidateOptions & {

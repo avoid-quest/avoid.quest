@@ -63,13 +63,22 @@ const series: NodeGraph = nodeGraphSchema.parse({
 
 const both = { edges: [], nodes: ["comp", "echo"] };
 
+/** A generated Split's id is fresh each time; it reads as its type. */
+function named(id: string): string {
+  return id.startsWith("fxComposite-") ? "fxComposite" : id;
+}
+
 function wiring(graph: NodeGraph): string[] {
   return graph.edges
     .map(
       (edge) =>
-        `${edge.source}.${edge.sourceHandle.split(":")[2]} → ${edge.target}`
+        `${named(edge.source)}.${edge.sourceHandle.split(":")[2]} → ${named(edge.target)}`
     )
     .sort();
+}
+
+function splitId(graph: NodeGraph): string {
+  return graph.nodes.find((node) => node.type === "fxComposite")?.id ?? "";
 }
 
 function byId(edges: readonly GraphEdge[]): GraphEdge[] {
@@ -99,7 +108,7 @@ describe("seriesToParallel (P)", () => {
     // The cable into the pair keeps its level; the one out keeps its id.
     expect(graph.edges.find((edge) => edge.id === "kexp->comp")).toMatchObject({
       gain: 0.5,
-      target: "fxComposite",
+      target: splitId(graph),
     });
     expect(
       graph.edges.find((edge) => edge.id === "echo->speakers")?.source
@@ -210,8 +219,9 @@ describe("parallelToSeries (S)", () => {
   });
 
   test("finds the region from its Split or its Merge too", () => {
-    for (const nodes of [["fxComposite"], ["merge"], ["echo"]]) {
-      const result = parallelToSeries(parallel(), { edges: [], nodes });
+    const graph = parallel();
+    for (const nodes of [[splitId(graph)], ["merge"], ["echo"]]) {
+      const result = parallelToSeries(graph, { edges: [], nodes });
       expect(result.ok && wiring(result.graph)).toEqual(wiring(series));
     }
   });
@@ -232,7 +242,7 @@ describe("parallelToSeries (S)", () => {
     ).toMatchObject({
       gain: 0.4,
       muted: true,
-      source: "fxComposite",
+      source: splitId(p.graph),
       sourceHandle: "out:audio:branch-2",
       target: "echo",
     });
@@ -250,9 +260,10 @@ describe("parallelToSeries (S)", () => {
   });
 
   test("refuses two cables fanning out of one Split port", () => {
+    const graph = parallel();
     const fanned = nodeGraphSchema.parse({
-      ...parallel(),
-      edges: parallel().edges.map((edge) =>
+      ...graph,
+      edges: graph.edges.map((edge) =>
         edge.id === "comp->echo"
           ? { ...edge, sourceHandle: "out:audio:branch-1" }
           : edge
@@ -264,6 +275,21 @@ describe("parallelToSeries (S)", () => {
         "Select a Split whose two branches are one FX each, joined by a Merge",
       ok: false,
     });
+  });
+});
+
+describe("P after S", () => {
+  test("a new Split never takes a removed one's id, so its MIDI stays dormant", () => {
+    const first = parallel();
+    const back = parallelToSeries(first, both);
+    if (!back.ok) {
+      throw new Error(back.message);
+    }
+
+    const again = seriesToParallel(back.graph, both);
+
+    expect(again.ok && splitId(again.graph)).toStartWith("fxComposite-");
+    expect(again.ok && splitId(again.graph)).not.toBe(splitId(first));
   });
 });
 

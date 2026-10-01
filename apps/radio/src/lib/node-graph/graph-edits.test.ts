@@ -1151,18 +1151,20 @@ describe("duplicateNodes", () => {
       SPEAKERS_NODE_ID,
     ]);
 
-    expect(nodeIds).toEqual(["src-a-2", "compressor-2"]);
+    const [stationCopy, copyId = ""] = nodeIds;
+    expect(stationCopy).toBe("src-a-2");
+    expect(copyId).toStartWith("compressor-");
     expect(graph.nodes.slice(0, start.nodes.length)).toEqual(start.nodes);
-    const copy = graph.nodes.find((node) => node.id === "compressor-2");
+    const copy = graph.nodes.find((node) => node.id === copyId);
     const original = start.nodes.find((node) => node.id === "compressor");
     expect(copy?.position).toEqual({
       x: (original?.position.x ?? 0) + DUPLICATE_OFFSET_PX,
       y: (original?.position.y ?? 0) + DUPLICATE_OFFSET_PX,
     });
-    expect(effectIn(graph, "compressor-2").id).toBe("compressor-2");
+    expect(effectIn(graph, copyId).id).toBe(copyId);
     expect(cables(graph).slice(start.edges.length)).toEqual([
-      "src-a-2->compressor-2: src-a-2 out:audio:main -> compressor-2 in:audio:main",
-      "compressor-2->speakers: compressor-2 out:audio:main -> speakers in:audio:main",
+      `src-a-2->${copyId}: src-a-2 out:audio:main -> ${copyId} in:audio:main`,
+      `${copyId}->speakers: ${copyId} out:audio:main -> speakers in:audio:main`,
     ]);
     expect(validate(graph)).toEqual([]);
     expect([...compile(graph, ENV).lanes.keys()]).toEqual(["src-a", "src-a-2"]);
@@ -1199,10 +1201,27 @@ describe("duplicateNodes", () => {
 
     const { graph, nodeIds } = duplicateNodes(start, ["compressor"]);
 
-    expect(nodeIds).toEqual(["compressor-2"]);
+    const [copyId = ""] = nodeIds;
+    expect(nodeIds).toHaveLength(1);
     expect(graph.edges).toEqual(start.edges);
-    const edit = insertNodeOnEdge(graph, "compressor-2", "src-b->speakers");
+    const edit = insertNodeOnEdge(graph, copyId, "src-b->speakers");
     expect(edit.ok).toBe(true);
+  });
+
+  test("a copy never takes a deleted copy's id, so its MIDI stays dormant", () => {
+    const start = inserted(
+      patch(radio("a")),
+      "compressor",
+      "src-a->speakers"
+    ).graph;
+    const first = duplicateNodes(start, ["compressor"]);
+    const deleted = removeNodes(first.graph, first.nodeIds);
+    expect(deleted.nodes).toEqual(start.nodes);
+
+    const second = duplicateNodes(deleted, ["compressor"]);
+
+    expect(second.nodeIds).toHaveLength(1);
+    expect(second.nodeIds).not.toEqual(first.nodeIds);
   });
 
   test("a copy fed only through its key is not wired on", () => {

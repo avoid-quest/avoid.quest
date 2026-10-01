@@ -98,6 +98,14 @@ export function uniqueId(base: string, taken: ReadonlySet<string>): string {
   return id;
 }
 
+/**
+ * A new node's id that no other node ever had: a deleted node keeps its
+ * MIDI mappings for Undo, keyed by its id, so a new one must not take it.
+ */
+export function freshNodeId(type: GraphNode["type"]): string {
+  return `${type}-${crypto.randomUUID()}`;
+}
+
 /** Same saved or session id; without ids on both sides, the same stream. */
 function isSameRadio(snapshot: Radio, radio: Radio): boolean {
   if (snapshot.id !== undefined && radio.id !== undefined) {
@@ -1230,7 +1238,9 @@ function fedCopies(
 }
 
 /**
- * `Cmd+D`: copies nodes with new ids, offset down and right. Cables between
+ * `Cmd+D`: copies nodes with new ids, offset down and right. An FX or
+ * other module copy gets an id no node ever had, so MIDI learned on a
+ * deleted copy stays dormant. Cables between
  * the copied nodes come along, and so does each cable out of a copy that
  * has sound to send, where it still fits: a copied Station comes wired to
  * Speakers like its original (a Doppelgänger), but a copy can't take an
@@ -1252,10 +1262,15 @@ export function duplicateNodes(
   const taken = new Set(graph.nodes.map((node) => node.id));
   const copyOf = new Map<string, string>();
   const copies = originals.map((node): GraphNode => {
-    const id =
-      isRadioSourceNode(node) && node.data.radio
-        ? stationNodeId(node.data.radio as Radio, taken)
-        : uniqueId(node.type === "station" ? "src-slot" : node.type, taken);
+    let id: string;
+    if (isRadioSourceNode(node) && node.data.radio) {
+      id = stationNodeId(node.data.radio as Radio, taken);
+    } else if (node.type === "station") {
+      id = uniqueId("src-slot", taken);
+    } else {
+      // Like a palette node: a deleted copy's MIDI mappings stay for Undo.
+      id = freshNodeId(node.type);
+    }
     taken.add(id);
     copyOf.set(node.id, id);
     const position = {

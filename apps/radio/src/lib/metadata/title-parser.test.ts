@@ -155,14 +155,17 @@ describe("parseRadioTitle junk handling", () => {
   });
 
   test("trims edges in linear time on long inner separator runs", () => {
-    const spaced = `a${" ".repeat(20_000)}b`;
-    const dashed = `a${" -".repeat(10_000)}b`;
-    const tabbed = `a${"\t".repeat(20_000)}b`;
+    // At this length the quadratic regexes took seconds per title, and a
+    // linear parse takes milliseconds for all three, so the bound leaves a
+    // wide margin either way for a slow or busy machine.
+    const spaced = `a${" ".repeat(50_000)}b`;
+    const dashed = `a${" -".repeat(25_000)}b`;
+    const tabbed = `a${"\t".repeat(50_000)}b`;
     const startedAt = performance.now();
     const results = [spaced, dashed, tabbed].map((title) =>
       parseRadioTitle(title, { stationNames: ["Station"] })
     );
-    expect(performance.now() - startedAt).toBeLessThan(50);
+    expect(performance.now() - startedAt).toBeLessThan(1000);
 
     expect(results).toEqual([
       { artist: null, rawTitle: spaced, title: spaced },

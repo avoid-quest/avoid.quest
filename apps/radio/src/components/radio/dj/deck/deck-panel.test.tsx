@@ -14,6 +14,7 @@ import type { Radio } from "@/lib/audio";
 import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
+  getPlaybackChannel,
   initializePlaybackSessions,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
@@ -120,14 +121,28 @@ function openSourcePicker(view: ReturnType<typeof renderDeckA>) {
 }
 
 describe("DeckPanel source picker", () => {
+  // The DJ session outlives each test, so what a test writes is put back.
+  let volumesBefore = new Map<string, number>();
+
   beforeEach(async () => {
     await initializePlaybackSessions();
+    volumesBefore = new Map(
+      [DECK_A_CHANNEL_ID, DECK_B_CHANNEL_ID].map((channelId) => [
+        channelId,
+        getPlaybackChannel("dj", channelId)?.volume ?? 1,
+      ])
+    );
     setDeckRadio(DECK_A_CHANNEL_ID, STATION);
   });
 
   afterEach(() => {
     cleanup();
     setDeckRadio(DECK_A_CHANNEL_ID, null);
+    for (const [channelId, volume] of volumesBefore) {
+      updatePlaybackChannel("dj", channelId, (draft) => {
+        draft.volume = volume;
+      });
+    }
   });
 
   test("stays open while either deck's channel settings change", () => {

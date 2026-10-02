@@ -295,6 +295,7 @@ describe("match scoring", () => {
 
   test.each([
     ["The The", "The The - Topic", "This Is the Day"],
+    ["The The", "THE THE", "This Is the Day"],
     ["The The", "Uploader", "The The - This Is the Day"],
     ["!!!", "!!! - Topic", "Heart of Hearts"],
     ["!!!", "Uploader", "!!! (Chk Chk Chk) - Heart of Hearts"],
@@ -322,6 +323,22 @@ describe("match scoring", () => {
       ).rejection
     ).toBe("artist does not match");
   });
+
+  test.each([
+    ["The", "End", "The Beatles - Topic", "The End"],
+    ["The", "End", "Uploader", "The End"],
+    ["!!!", "Heart of Hearts", "Uploader", "Heart of Hearts - Wow !!!"],
+  ])(
+    "does not find %s in a longer channel name or title",
+    (artist, name, author, title) => {
+      expect(
+        scoreYouTubeCandidate(
+          { artists: [artist], duration: 300, name },
+          { author, duration: 300, title, videoId: "a0000000000" }
+        ).rejection
+      ).toBe("artist does not match");
+    }
+  );
 
   test("accepts full artist credits in the channel or title", () => {
     for (const { artists, author, title } of [

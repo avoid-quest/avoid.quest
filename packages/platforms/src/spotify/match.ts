@@ -56,6 +56,8 @@ const TITLE_HEAD_NOTE_PATTERN =
   /\b(?:(?:19|20)\d{2}\s+)?remaster(?:ed)?(?:\s+(?:19|20)\d{2})?\b|\bm\/v\b/giu;
 const OFFICIAL_TITLE_PATTERN = /\bofficial\s+(?:audio|video|music\s+video)\b/iu;
 const TOPIC_AUTHOR_PATTERN = /\s-\stopic$/iu;
+// "Artist - Title": the dash after the artist.
+const TITLE_ARTIST_SEPARATOR_PATTERN = /\s+[-–—]\s+/u;
 const VEVO_AUTHOR_PATTERN = /vevo$/iu;
 
 // Words in a YouTube title that never describe the studio recording.
@@ -185,29 +187,27 @@ function weightedCoverage(
 /** Where an artist is looked up: the channel name and the title. */
 type ArtistHaystack = {
   tokens: ReadonlySet<string>;
-  /** Normalized and lowercased channel name and title. */
-  texts: readonly string[];
+  /**
+   * The artist names the upload states whole, normalized and lowercased:
+   * its channel name without " - Topic", and the artist of an
+   * "Artist - Title" title.
+   */
+  names: ReadonlySet<string>;
 };
 
-const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}]/u;
-
-/** Whether `text` has `name`, not as part of a longer word. */
-function containsName(text: string, name: string): boolean {
-  let index = text.indexOf(name);
-  while (index !== -1) {
-    const before = text[index - 1] ?? "";
-    const after = text[index + name.length] ?? "";
-    if (
-      !(
-        WORD_CHARACTER_PATTERN.test(before) ||
-        WORD_CHARACTER_PATTERN.test(after)
-      )
-    ) {
-      return true;
-    }
-    index = text.indexOf(name, index + 1);
+/** The whole artist names `candidate` states, as `ArtistHaystack.names`. */
+function statedArtistNames(candidate: SpotifyYouTubeCandidate): Set<string> {
+  const title = candidate.title.replace(TITLE_BRACKET_GROUP_PATTERN, " ");
+  const separator = title.search(TITLE_ARTIST_SEPARATOR_PATTERN);
+  const names = [candidate.author.trim().replace(TOPIC_AUTHOR_PATTERN, "")];
+  if (separator > 0) {
+    names.push(title.slice(0, separator));
   }
-  return false;
+  return new Set(
+    names
+      .flatMap((name) => [normalize(name), name.trim().toLowerCase()])
+      .filter(Boolean)
+  );
 }
 
 function artistCoverage(artist: string, haystack: ArtistHaystack): number {
@@ -217,11 +217,10 @@ function artistCoverage(artist: string, haystack: ArtistHaystack): number {
   if (tokens.length > 0) {
     return tokens.every((token) => haystack.tokens.has(token)) ? 1 : 0;
   }
-  // A name with no other words ("The The", "!!!") must appear whole.
+  // A name with no other words ("The The", "!!!") must be the whole
+  // channel or title artist: "The" is not the artist of "The End".
   const name = normalize(artist) || artist.trim().toLowerCase();
-  return name && haystack.texts.some((text) => containsName(text, name))
-    ? 1
-    : 0;
+  return name && haystack.names.has(name) ? 1 : 0;
 }
 
 function scoreArtist(
@@ -343,10 +342,7 @@ export function scoreYouTubeCandidate(
 
   // Artist, looked up in the channel name and the title.
   const artistHaystack = {
-    texts: [candidate.author, candidate.title].flatMap((text) => [
-      normalize(text),
-      text.toLowerCase(),
-    ]),
+    names: statedArtistNames(candidate),
     tokens: new Set([...youtubeTitleTokens, ...tokenize(candidate.author)]),
   };
   const artistScore = scoreArtist(track.artists, artistHaystack);

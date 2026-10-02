@@ -10,7 +10,7 @@
  *   from the route entries and preloads in the TanStack Start manifest;
  * - no client chunk imports it lazily.
  *
- * It also fails when another vendor only lazy features use (see
+ * It also fails when a vendor used only by lazy features (see
  * LAZY_VENDORS) loads eagerly with the page.
  */
 

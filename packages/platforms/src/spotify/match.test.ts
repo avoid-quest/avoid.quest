@@ -245,6 +245,55 @@ describe("match scoring", () => {
   });
 
   test.each([
+    ["Yesterday - Remastered 2009", "The Beatles", 125],
+    ["Help! - Remastered 2009", "The Beatles", 139],
+    ["Dreams - 2004 Remaster", "Fleetwood Mac", 257],
+  ])("matches the identical Topic upload of %s", (name, artist, duration) => {
+    expect(
+      scoreYouTubeCandidate(
+        { artists: [artist], duration, name },
+        {
+          author: `${artist} - Topic`,
+          duration,
+          title: name,
+          videoId: "x0000000000",
+        }
+      ).rejection
+    ).toBeUndefined();
+  });
+
+  test.each([
+    [
+      "Gangnam Style (강남스타일)",
+      "PSY",
+      "PSY - GANGNAM STYLE(강남스타일) M/V",
+    ],
+    ["Hello", "Adele", "Hello by Adele"],
+    ["Yesterday", "The Beatles", "The Beatles - Yesterday Remastered 2009"],
+  ])("does not count notes in %s as extra words", (name, artist, title) => {
+    expect(
+      scoreYouTubeCandidate(
+        { artists: [artist], duration: 240, name },
+        { author: "Uploader", duration: 240, title, videoId: "x0000000000" }
+      ).rejection
+    ).toBeUndefined();
+  });
+
+  test("still rejects a longer title that only adds by", () => {
+    expect(
+      scoreYouTubeCandidate(
+        { artists: ["U2"], duration: 276, name: "One" },
+        {
+          author: "Uploader",
+          duration: 276,
+          title: "One Love by U2",
+          videoId: "x0000000000",
+        }
+      ).rejection
+    ).toBe("title has extra words");
+  });
+
+  test.each([
     ["The The", "The The - Topic", "This Is the Day"],
     ["The The", "Uploader", "The The - This Is the Day"],
     ["!!!", "!!! - Topic", "Heart of Hearts"],

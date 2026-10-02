@@ -51,6 +51,9 @@ const TITLE_NOISE_SUFFIX_PATTERN =
 const TITLE_BRACKET_GROUP_PATTERN = /[([][^)\]]*[)\]]/gu;
 // " | Vevo", " // Album", "#shorts": trailing notes.
 const TITLE_TAIL_PATTERN = /\s+(?:\||\/\/)\s.*$|#.*$/u;
+// "Remastered 2009", "2004 Remaster", "M/V": notes outside brackets.
+const TITLE_HEAD_NOTE_PATTERN =
+  /\b(?:(?:19|20)\d{2}\s+)?remaster(?:ed)?(?:\s+(?:19|20)\d{2})?\b|\bm\/v\b/giu;
 const OFFICIAL_TITLE_PATTERN = /\bofficial\s+(?:audio|video|music\s+video)\b/iu;
 const TOPIC_AUTHOR_PATTERN = /\s-\stopic$/iu;
 const VEVO_AUTHOR_PATTERN = /vevo$/iu;
@@ -110,6 +113,8 @@ const NOISE_WORDS = new Set([
   "visualizer",
   "with",
 ]);
+// Words that join a title to its artist ("Hello by Adele").
+const TITLE_HEAD_FILLER_WORDS = new Set(["by"]);
 
 export type SpotifyCandidateScore = {
   candidate: SpotifyYouTubeCandidate;
@@ -153,11 +158,12 @@ export function buildSpotifyYouTubeQuery(track: SpotifyMatchTrack): string {
   return query.slice(0, MAX_QUERY_LENGTH);
 }
 
-/** A YouTube title without its bracketed and trailing notes. */
+/** A YouTube title without its bracketed, remaster and trailing notes. */
 function titleHead(title: string): string {
   return title
     .replace(TITLE_BRACKET_GROUP_PATTERN, " ")
-    .replace(TITLE_TAIL_PATTERN, "");
+    .replace(TITLE_TAIL_PATTERN, "")
+    .replace(TITLE_HEAD_NOTE_PATTERN, " ");
 }
 
 function weightedCoverage(
@@ -311,7 +317,8 @@ export function scoreYouTubeCandidate(
   const headSongTokens = tokenize(titleHead(candidate.title)).filter(
     (token) =>
       isSongToken(token) &&
-      (spotifyTitleSet.has(token) || !VERSION_WORDS.has(token))
+      (spotifyTitleSet.has(token) ||
+        !(VERSION_WORDS.has(token) || TITLE_HEAD_FILLER_WORDS.has(token)))
   );
   if (titlePrecision(headSongTokens) < MIN_TITLE_HEAD_PRECISION) {
     return reject("title has extra words", durationDelta);

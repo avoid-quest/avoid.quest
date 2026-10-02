@@ -7,7 +7,13 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { initializePlaybackSessions } from "@/lib/collections/playback-sessions";
@@ -134,8 +140,7 @@ describe("MixerChannel", () => {
 
       // Leading call now; the trailing one lands after the throttle window.
       expect(change).toHaveBeenCalledTimes(1);
-      await act(() => Bun.sleep(50));
-      expect(change).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(change).toHaveBeenCalledTimes(2));
     } finally {
       change.mockRestore();
     }

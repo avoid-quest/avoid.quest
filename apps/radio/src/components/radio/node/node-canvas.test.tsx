@@ -299,7 +299,7 @@ describe("NodeCanvas", () => {
     try {
       act(() => {
         nodeStoreModule.commitNodeGraph((graph) =>
-          graphEdits.setEffectParams(graph, "fx0", { threshold: -30 } as never)
+          graphEdits.setEffectParams(graph, "fx0", { threshold: -30 })
         );
       });
 

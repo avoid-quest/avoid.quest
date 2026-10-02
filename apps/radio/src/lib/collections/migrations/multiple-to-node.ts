@@ -271,7 +271,11 @@ export function migrateMultipleSession(
         // back, and it stays.
         insert.isPersisted.promise.then(
           () => {
-            if (sessions.state.has(LEGACY_MULTIPLE_SESSION_ID)) {
+            // Only the record Node was built from: a newer one another tab
+            // wrote meanwhile is not in Node, and no backup holds it either.
+            // An unchanged row reads back as the same object, and any
+            // write replaces it.
+            if (sessions.state.get(LEGACY_MULTIPLE_SESSION_ID) === multiple) {
               sessions.delete(LEGACY_MULTIPLE_SESSION_ID);
             }
           },

@@ -616,36 +616,43 @@ describe("migrateMultipleSession", () => {
     expect(storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY)).not.toBeNull();
   });
 
+  /**
+   * The session collection, except that a Node insert lands in memory and
+   * its write to storage settles with `persisted`.
+   */
+  function sessionsPersistingOn(persisted: Promise<void>) {
+    return {
+      delete: (id: never) => playbackSessionsCollection.delete(id),
+      insert: (
+        record: Parameters<typeof playbackSessionsCollection.insert>[0]
+      ) => {
+        playbackSessionsCollection.insert(record);
+        return { isPersisted: { promise: persisted } };
+      },
+      get state() {
+        return playbackSessionsCollection.state;
+      },
+    } as unknown as typeof playbackSessionsCollection;
+  }
+
+  /** A storage too full for the backup. */
+  const fullStorage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("QuotaExceededError");
+    },
+  };
+
   for (const stored of [true, false]) {
     test(`without a backup, multiple ${stored ? "goes once Node is stored" : "stays when Node cannot be stored"}`, async () => {
       const originalWarn = console.warn;
       console.warn = mock(() => undefined);
       await insertMultiple([{ radio: radio("kexp") }]);
       const persisted = Promise.withResolvers<void>();
-      // The insert lands in memory; its write to storage settles later.
-      const sessions = {
-        delete: (id: never) => playbackSessionsCollection.delete(id),
-        insert: (
-          record: Parameters<typeof playbackSessionsCollection.insert>[0]
-        ) => {
-          playbackSessionsCollection.insert(record);
-          return { isPersisted: { promise: persisted.promise } };
-        },
-        get state() {
-          return playbackSessionsCollection.state;
-        },
-      } as unknown as typeof playbackSessionsCollection;
+      const sessions = sessionsPersistingOn(persisted.promise);
 
       try {
-        migrateMultipleSession(
-          { ...collections, sessions },
-          {
-            getItem: () => null,
-            setItem: () => {
-              throw new Error("QuotaExceededError");
-            },
-          }
-        );
+        migrateMultipleSession({ ...collections, sessions }, fullStorage);
         expect(hasMultiple()).toBe(true);
 
         if (stored) {
@@ -660,6 +667,29 @@ describe("migrateMultipleSession", () => {
       expect(hasMultiple()).toBe(!stored);
     });
   }
+
+  test("without a backup, a newer multiple written meanwhile stays", async () => {
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+    await insertMultiple([{ radio: radio("kexp") }]);
+    const persisted = Promise.withResolvers<void>();
+    const sessions = sessionsPersistingOn(persisted.promise);
+    let newer: ReturnType<typeof multipleRecord>;
+
+    try {
+      migrateMultipleSession({ ...collections, sessions }, fullStorage);
+      // A tab still on Multiple stores a newer session before Node is
+      // stored. Node was built from the older one, and no backup holds it.
+      newer = await insertMultiple([{ radio: radio("nts") }], 0.4);
+      persisted.resolve();
+      await settle();
+    } finally {
+      console.warn = originalWarn;
+    }
+    expect(
+      playbackSessionsCollection.state.get(LEGACY_MULTIPLE_SESSION_ID)
+    ).toMatchObject(newer);
+  });
 });
 
 describe("initializePlaybackSessions", () => {

@@ -18,30 +18,53 @@ import {
 
 export type NamModelBackup = Record<string, string>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A newer release's patch is kept as stored and never parsed, but its local
+ * models still belong in a backup: that release reads them back. Its shape
+ * is walked leniently, so one we don't know yields fewer models, not a throw.
+ */
 function graphNamModels(graph: NodeGraph | null): NeuralAmpConfig[] {
   const models: NeuralAmpConfig[] = [];
-  // A newer release's patch is kept as stored; its shape is not ours to read.
-  if (getNodeGraphReadOnlyVersion(graph) !== null) {
+  const readOnly = getNodeGraphReadOnlyVersion(graph) !== null;
+  const nodes: unknown = graph?.nodes;
+  if (!Array.isArray(nodes)) {
     return models;
   }
-  for (const node of graph?.nodes ?? []) {
+  for (const node of nodes) {
     if (
-      EFFECT_NODE_TYPES.some((type) => type === node.type) &&
-      "effect" in node.data
+      !(
+        isRecord(node) &&
+        EFFECT_NODE_TYPES.some((type) => type === node.type) &&
+        isRecord(node.data) &&
+        isRecord(node.data.effect)
+      )
     ) {
+      continue;
+    }
+    try {
       visitEffectTree([node.data.effect as EffectConfig], (effect) => {
         if (effect.type === "neuralAmp") {
           models.push(effect);
         }
       });
+    } catch (error) {
+      if (!readOnly) {
+        throw error;
+      }
     }
   }
   return models;
 }
 
 function localModels(graph: NodeGraph | null): NeuralAmpConfig[] {
-  return graphNamModels(graph).filter((model) =>
-    model.modelId?.startsWith("local-nam:")
+  return graphNamModels(graph).filter(
+    (model) =>
+      typeof model.modelId === "string" &&
+      model.modelId.startsWith("local-nam:")
   );
 }
 

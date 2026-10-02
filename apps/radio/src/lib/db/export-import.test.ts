@@ -1227,21 +1227,44 @@ describe("Node patch backups", () => {
     expect(undoNodeGraph()).toBe(false);
   });
 
-  test("a backup does not read into a future patch it cannot parse", async () => {
-    const session = buildNodeSessionFromGraph(
-      buildNodeGraphFromTemplate("starter")
-    );
-    // A later release may change any shape, `nodes` included.
-    const graph = { nodes: { amp: { type: "neuralAmp" } }, version: 3 };
-    writeLegacyRecord(playbackSessionsCollection, { ...session, graph });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  // A later release may change any shape, `nodes` included.
+  test.each([
+    ["`nodes` that is not a list", { nodes: { amp: { type: "neuralAmp" } } }],
+    [
+      "FX nodes of another shape",
+      {
+        nodes: [
+          null,
+          { type: "neuralAmp" },
+          { data: { effect: "amp" }, type: "neuralAmp" },
+          {
+            data: { effect: { chains: 7, type: "fxComposite" } },
+            type: "fxComposite",
+          },
+          {
+            data: { effect: { modelId: 7, type: "neuralAmp" } },
+            type: "neuralAmp",
+          },
+        ],
+      },
+    ],
+  ])(
+    "a backup does not fail on a future patch with %s",
+    async (_label, shape) => {
+      const session = buildNodeSessionFromGraph(
+        buildNodeGraphFromTemplate("starter")
+      );
+      const graph = { ...shape, version: 3 };
+      writeLegacyRecord(playbackSessionsCollection, { ...session, graph });
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const exported = await createDatabaseExport();
+      const exported = await createDatabaseExport();
 
-    expect(exported.sessions?.node?.graph).toEqual(graph);
-    expect(exported.namModels).toBeUndefined();
-    expect(exported.missingNamModels).toBeUndefined();
-  });
+      expect(exported.sessions?.node?.graph).toEqual(graph);
+      expect(exported.namModels).toBeUndefined();
+      expect(exported.missingNamModels).toBeUndefined();
+    }
+  );
 
   const invalidGraphs: [string, unknown, RegExp][] = [
     [
@@ -1368,6 +1391,24 @@ describe("local NAM file backups", () => {
       version: 2,
     });
   }
+
+  test("a backup keeps the local models of a future patch", async () => {
+    const session = buildNodeSessionFromGraph(
+      buildNodeGraphFromTemplate("starter")
+    );
+    const modelId = createLocalNamModelId();
+    await saveNamModel(modelId, bytes);
+    const graph = { ...patchWithModel(modelId), version: 3 };
+    writeLegacyRecord(playbackSessionsCollection, { ...session, graph });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const exported = await createDatabaseExport();
+
+    expect(exported.sessions?.node?.graph).toEqual(graph);
+    expect(exported.namModels).toEqual({ [modelId]: bytes });
+    expect(exported.missingNamModels).toBeUndefined();
+    await deleteNamModel(modelId);
+  });
 
   test("a backup with Node data is version 3, a library-only one version 2", async () => {
     seedLocalPatch();

@@ -183,7 +183,8 @@ function installOtherTabWindow() {
         }
       }
     },
-    write: (key: string) => {
+    /** Another tab writes `key`, or clears localStorage when it is null. */
+    write: (key: string | null) => {
       for (const listener of listeners) {
         listener({ key, storageArea: localStorage });
       }
@@ -759,6 +760,29 @@ describe("initializePlaybackSessions", () => {
       expect((JSON.parse(backup ?? "{}") as MultipleBackup).session).toEqual(
         record
       );
+    } finally {
+      stopLegacyMultipleListeners();
+      otherTab.restore();
+    }
+  });
+
+  test("leaves a kept multiple record when another tab clears storage", async () => {
+    // A clear is no write of a Multiple record, and the collection's sync
+    // ignores it, so the step would run on records this tab still holds.
+    const otherTab = installOtherTabWindow();
+    try {
+      await initializePlaybackSessions();
+      await settle();
+      // A record an earlier run kept, for want of room for its backup.
+      await insertMultiple([{ radio: radio("kexp") }], 0.2);
+
+      otherTab.write(null);
+      await Promise.resolve();
+
+      expect(hasMultiple()).toBe(true);
+      expect(
+        otherTab.localStorage.getItem(MULTIPLE_BACKUP_STORAGE_KEY)
+      ).toBeNull();
     } finally {
       stopLegacyMultipleListeners();
       otherTab.restore();

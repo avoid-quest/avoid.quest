@@ -587,23 +587,20 @@ function restoreNodeSessionRadios(): void {
 }
 
 /**
- * Calls `listener` after another tab writes the local-storage collection
- * stored under `storageKey`, once this tab's collection holds the write. A
- * tab's own writes never call it, rolled-back ones included: the browser
- * sends storage events only to the other tabs.
+ * Calls `listener` after a storage event for a localStorage key `hears`;
+ * the key is null when another tab cleared localStorage. A tab's own
+ * writes never call it, rolled-back ones included: the browser sends
+ * storage events only to the other tabs.
  */
-export function subscribeToOtherTabStorageWrites(
-  storageKey: string,
+function subscribeToOtherTabStorageEvents(
+  hears: (key: string | null) => boolean,
   listener: () => void
 ): () => void {
   if (typeof window === "undefined") {
     return () => undefined;
   }
   const onStorage = (event: StorageEvent) => {
-    if (
-      event.storageArea !== window.localStorage ||
-      (event.key !== null && event.key !== storageKey)
-    ) {
+    if (event.storageArea !== window.localStorage || !hears(event.key)) {
       return;
     }
     // The collection's own storage listener syncs the write first.
@@ -613,12 +610,31 @@ export function subscribeToOtherTabStorageWrites(
   return () => window.removeEventListener("storage", onStorage);
 }
 
-/** Calls `listener` after another tab writes the playback sessions. */
+/**
+ * Calls `listener` after another tab writes the local-storage collection
+ * stored under `storageKey`, once this tab's collection holds the write.
+ * Another tab clearing localStorage writes nothing, and the collection's
+ * sync ignores it, so it does not call it either.
+ */
+export function subscribeToOtherTabStorageWrites(
+  storageKey: string,
+  listener: () => void
+): () => void {
+  return subscribeToOtherTabStorageEvents(
+    (key) => key === storageKey,
+    listener
+  );
+}
+
+/**
+ * Calls `listener` after another tab writes the playback sessions or
+ * clears localStorage.
+ */
 export function subscribeToOtherTabSessionWrites(
   listener: () => void
 ): () => void {
-  return subscribeToOtherTabStorageWrites(
-    PLAYBACK_SESSIONS_STORAGE_KEY,
+  return subscribeToOtherTabStorageEvents(
+    (key) => key === null || key === PLAYBACK_SESSIONS_STORAGE_KEY,
     listener
   );
 }

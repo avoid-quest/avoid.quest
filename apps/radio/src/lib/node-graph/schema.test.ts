@@ -218,6 +218,17 @@ describe("migrateNodeGraph", () => {
       Q: 25,
       type: "lowpass",
     });
+    // Zero and below are clamped too rather than failing the whole patch.
+    for (const value of [0, -5]) {
+      expect(filtered({ frequency: value, Q: value })).toEqual({
+        frequency: 20,
+        Q: 0.1,
+        type: "lowpass",
+      });
+    }
+    // Not a number at all: there is nothing to clamp.
+    expect(filtered({ frequency: Number.NaN })).toBeNull();
+    expect(filtered({ Q: Number.POSITIVE_INFINITY })).toBeNull();
   });
 
   test("keeps a pinned flag and the viewport", () => {

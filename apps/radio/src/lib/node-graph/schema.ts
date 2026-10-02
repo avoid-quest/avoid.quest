@@ -319,12 +319,12 @@ const speakersNodeSchema = z.object({
   type: z.literal("speakers"),
 });
 
-/** A number pulled into `[min, max]` rather than refused. */
+/**
+ * A number pulled into `[min, max]` rather than refused. `z.number()`
+ * still refuses NaN and the infinities, which have no place to clamp to.
+ */
 function clampedNumber(min: number, max: number) {
-  return z
-    .number()
-    .positive()
-    .transform((value) => Math.min(max, Math.max(min, value)));
+  return z.number().transform((value) => Math.min(max, Math.max(min, value)));
 }
 
 const filterNodeSchema = z.object({

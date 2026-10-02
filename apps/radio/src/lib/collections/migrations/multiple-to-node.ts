@@ -256,7 +256,7 @@ export function migrateMultipleSession(
     const backedUp = backupMultipleRecord(multiple, mode, storage);
     try {
       // The insert validates the new record.
-      sessions.insert(
+      const insert = sessions.insert(
         buildNodeSessionFromMultipleRecord(
           multiple,
           createKeptRadioTest(
@@ -265,6 +265,25 @@ export function migrateMultipleSession(
           )
         )
       );
+      if (storage && !backedUp) {
+        // The backup did not fit, so nothing else holds it: it goes only
+        // once Node is stored. A full store refuses the insert and rolls it
+        // back, and it stays.
+        insert.isPersisted.promise.then(
+          () => {
+            if (sessions.state.has(LEGACY_MULTIPLE_SESSION_ID)) {
+              sessions.delete(LEGACY_MULTIPLE_SESSION_ID);
+            }
+          },
+          (error: unknown) => {
+            console.warn(
+              "[multiple-to-node] Could not store the Node session",
+              error
+            );
+          }
+        );
+        return;
+      }
     } catch (error) {
       // Never block startup on an old record: init builds Node from the
       // Starter patch when "node" is missing.

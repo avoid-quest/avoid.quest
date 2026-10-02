@@ -615,6 +615,51 @@ describe("migrateMultipleSession", () => {
     expect(hasMultiple()).toBe(false);
     expect(storage.getItem(MULTIPLE_BACKUP_STORAGE_KEY)).not.toBeNull();
   });
+
+  for (const stored of [true, false]) {
+    test(`without a backup, multiple ${stored ? "goes once Node is stored" : "stays when Node cannot be stored"}`, async () => {
+      const originalWarn = console.warn;
+      console.warn = mock(() => undefined);
+      await insertMultiple([{ radio: radio("kexp") }]);
+      const persisted = Promise.withResolvers<void>();
+      // The insert lands in memory; its write to storage settles later.
+      const sessions = {
+        delete: (id: never) => playbackSessionsCollection.delete(id),
+        insert: (
+          record: Parameters<typeof playbackSessionsCollection.insert>[0]
+        ) => {
+          playbackSessionsCollection.insert(record);
+          return { isPersisted: { promise: persisted.promise } };
+        },
+        get state() {
+          return playbackSessionsCollection.state;
+        },
+      } as unknown as typeof playbackSessionsCollection;
+
+      try {
+        migrateMultipleSession(
+          { ...collections, sessions },
+          {
+            getItem: () => null,
+            setItem: () => {
+              throw new Error("QuotaExceededError");
+            },
+          }
+        );
+        expect(hasMultiple()).toBe(true);
+
+        if (stored) {
+          persisted.resolve();
+        } else {
+          persisted.reject(new Error("QuotaExceededError"));
+        }
+        await settle();
+      } finally {
+        console.warn = originalWarn;
+      }
+      expect(hasMultiple()).toBe(!stored);
+    });
+  }
 });
 
 describe("initializePlaybackSessions", () => {

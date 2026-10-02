@@ -1,4 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -9,11 +10,11 @@ import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
   type CompileEnv,
-  compile,
   type EnginePlan,
   idleKeys,
   type LanePlan,
 } from "@/lib/node-graph/compile";
+import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 import { nodeLabel } from "@/lib/node-graph/describe";
 import {
   type GraphNode,
@@ -289,7 +290,7 @@ export function NodeRack({
 }) {
   const actions = useNodeActions();
   const [detectedEnv] = useState(detectNodePlaybackEnv);
-  const plan = compile(graph, env ?? detectedEnv);
+  const plan = compiledPlan(graph, env ?? detectedEnv);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const groups = groupLanes(plan, nodesById);
   const keyedBy = keyingStations(graph, plan);

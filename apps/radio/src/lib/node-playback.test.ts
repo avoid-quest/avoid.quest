@@ -311,6 +311,8 @@ type Harness = {
   store: NodeStore;
 };
 
+const harnessPlaybacks = new Set<NodePlayback>();
+
 function createHarness(
   options: {
     backendBadges?: NodeBackendBadgeStore;
@@ -358,6 +360,7 @@ function createHarness(
     sinkStatuses: options.sinkStatuses ?? new Store<NodeSinkStatuses>({}),
     store,
   });
+  harnessPlaybacks.add(playback);
   return {
     context,
     effectsChange,
@@ -471,6 +474,11 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  for (const playback of harnessPlaybacks) {
+    playback.flush();
+  }
+  harnessPlaybacks.clear();
+  await Promise.resolve();
   stopLegacyMultipleListeners();
   await resetCollections();
   resetAllPlaybackRuntime();

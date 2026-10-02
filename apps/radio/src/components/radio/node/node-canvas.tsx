@@ -1,11 +1,12 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { type ExternalToast, toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
-import { compile, idleKeys, mergeRoles } from "@/lib/node-graph/compile";
+import { idleKeys, mergeRoles } from "@/lib/node-graph/compile";
 import {
   connectNodes,
   insertNodeOnEdge,
@@ -555,7 +556,7 @@ function Canvas({
   const validateOptions = { profile: env.profile };
   // The compiler's verdict on each Merge, for its in-lane badge, and on
   // each key cable, for its idle tag.
-  const plan = compile(graph, env);
+  const plan = compiledPlan(graph, env);
   const roles = mergeRoles(graph, plan);
 
   const nodes = toFlowNodes(graph, {

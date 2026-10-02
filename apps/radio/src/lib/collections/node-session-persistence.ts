@@ -1,0 +1,47 @@
+import { createPacedMutations, type Transaction } from "@tanstack/react-db";
+import { Throttler } from "@tanstack/react-pacer";
+import {
+  playbackSessionsCollection,
+  updatePlaybackSession,
+} from "./playback-sessions";
+
+/** Keep live edits optimistic; write at most every 250 ms and flush on release. */
+export function createNodeSessionPersistence(
+  onError: (error: unknown) => void = console.error
+) {
+  const throttler = new Throttler((commit: () => unknown) => commit(), {
+    leading: true,
+    trailing: true,
+    wait: 250,
+  });
+  const mutate = createPacedMutations<
+    Parameters<typeof updatePlaybackSession>[1]
+  >({
+    mutationFn: ({ transaction }) => {
+      playbackSessionsCollection.utils.acceptMutations(transaction);
+      return Promise.resolve();
+    },
+    onMutate: (updater) => updatePlaybackSession("node", updater),
+    strategy: {
+      _type: "throttle",
+      cleanup: () => throttler.cancel(),
+      execute: (commit) => throttler.maybeExecute(commit),
+      options: { leading: true, trailing: true, wait: 250 },
+    },
+  });
+  let pending: Transaction | undefined;
+  return {
+    flush: () => throttler.flush(),
+    update(updater: Parameters<typeof updatePlaybackSession>[1]) {
+      const transaction = mutate(updater);
+      if (pending !== transaction) {
+        pending = transaction;
+        transaction.isPersisted.promise.catch(onError);
+      }
+    },
+    async whenSettled() {
+      throttler.flush();
+      await pending?.isPersisted.promise;
+    },
+  };
+}

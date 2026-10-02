@@ -1,3 +1,5 @@
+import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
+import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 /**
  * Node Playback
  *
@@ -85,6 +87,7 @@ import {
   getPlaybackSession,
   hydrateNodeGraphNamModels,
   type PlaybackChannelRecord,
+  type PlaybackSessionRecord,
   subscribeToOtherTabSessionWrites,
   takeOtherTabNodeGraph,
   updatePlaybackSession,
@@ -98,7 +101,6 @@ import { findNextTrack } from "@/lib/dj-actions-playlist";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import {
   type ChannelSelectionPlan,
-  compile,
   type EnginePlan,
   type LaneBackend,
   type LanePlan,
@@ -1752,20 +1754,31 @@ function createNodePlayback(
     }
   };
 
+  const persistence = createNodeSessionPersistence(
+    warn("Could not save a patch change")
+  );
+
   /** Writes `graph` with its derived channels in one session update. */
   const storePatch = (graph: NodeGraph, next: EnginePlan) => {
     const previousChannels = getPlaybackSession("node")?.channels ?? [];
     const channels = deriveNodeChannels(next, previousChannels);
     if (graph !== adoptedGraph) {
-      updatePlaybackSession("node", (draft) => {
+      const write = (draft: PlaybackSessionRecord) => {
         draft.graph = graph;
         draft.channels = channels;
-      });
+      };
+      if (store.state.history.present === graph) {
+        persistence.flush();
+        updatePlaybackSession("node", write);
+      } else {
+        persistence.update(write);
+      }
     } else if (isSameStored(channels, previousChannels)) {
       // Another tab's patch is stored, with these channels: writing it back
       // would only echo it to that tab.
       return;
     } else {
+      persistence.flush();
       updatePlaybackSession("node", (draft) => {
         draft.channels = channels;
       });
@@ -1784,7 +1797,7 @@ function createNodePlayback(
     if (!graph || isReadOnly()) {
       return;
     }
-    const next = compile(graph, getEnv());
+    const next = compiledPlan(graph, getEnv());
     storePatch(graph, next);
     // Undo and template loads change volumes too; mute restores the latest.
     for (const [laneId, lane] of next.lanes) {
@@ -1825,7 +1838,13 @@ function createNodePlayback(
   };
 
   const onStoreChange = () => {
-    if (!active || batch || store.state.graph === observedGraph) {
+    if (!active || batch) {
+      return;
+    }
+    if (store.state.graph === observedGraph) {
+      if (store.state.history.present === observedGraph) {
+        persistence.flush();
+      }
       return;
     }
     batch = new Promise<void>((resolve) => {
@@ -1840,6 +1859,7 @@ function createNodePlayback(
   /** Ops can start more work (a re-add after a fade), so settle to empty. */
   const whenSettled = async (): Promise<void> => {
     await batch;
+    await persistence.whenSettled();
     if (inFlight.size === 0) {
       return;
     }
@@ -1898,7 +1918,23 @@ function createNodePlayback(
       .catch(warn("Could not take in another tab's patch"));
   };
 
+  const flushBeforeLeave = () => {
+    applyPendingCommit();
+    persistence.flush();
+  };
+  const flushWhenHidden = () => {
+    if (globalThis.document?.hidden) {
+      flushBeforeLeave();
+    }
+  };
+
   const stopListening = () => {
+    persistence.flush();
+    globalThis.removeEventListener?.("pagehide", flushBeforeLeave);
+    globalThis.document?.removeEventListener(
+      "visibilitychange",
+      flushWhenHidden
+    );
     active = false;
     subscription?.unsubscribe();
     subscription = null;
@@ -1945,6 +1981,7 @@ function createNodePlayback(
   };
 
   const setMasterVolume = (volume: number) => {
+    persistence.flush();
     if (isReadOnly()) {
       return;
     }
@@ -2092,6 +2129,11 @@ function createNodePlayback(
       adoptedGraph = null;
       active = true;
       subscription = store.subscribe(onStoreChange);
+      globalThis.addEventListener?.("pagehide", flushBeforeLeave);
+      globalThis.document?.addEventListener(
+        "visibilitychange",
+        flushWhenHidden
+      );
       stopOtherTabWrites = otherTabWrites(onOtherTabWrite);
       if (migration.status !== "ok") {
         return;
@@ -2119,6 +2161,7 @@ function createNodePlayback(
       }
     },
     async deactivate() {
+      persistence.flush();
       // A commit still queued in this tick's batch would be dropped once
       // listening stops; persist it so the next activation loads it.
       const pendingGraph = store.state.graph;
@@ -2127,7 +2170,7 @@ function createNodePlayback(
         updatePlaybackSession("node", (draft) => {
           draft.graph = pendingGraph;
           draft.channels = deriveNodeChannels(
-            compile(pendingGraph, getEnv()),
+            compiledPlan(pendingGraph, getEnv()),
             previousChannels
           );
         });
@@ -2135,7 +2178,10 @@ function createNodePlayback(
       stopListening();
       await releaseAll();
     },
-    flush: applyPendingCommit,
+    flush() {
+      applyPendingCommit();
+      persistence.flush();
+    },
     jumpToCue(nodeId) {
       const lane = plan.lanes.get(nodeId);
       const node = findSource(store.state.graph, nodeId);

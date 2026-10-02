@@ -1,6 +1,6 @@
 # --- PREPARE: prune monorepo ---
 
-FROM node:24-alpine AS prepare
+FROM node:24-bookworm-slim AS prepare
 
 RUN npm i -g turbo@2.11.6
 
@@ -10,9 +10,9 @@ RUN turbo prune @avoid.quest/discord-bot --docker
 
 # --- BASE: bun + native build tools ---
 
-FROM node:24-alpine AS base
+FROM node:24-bookworm-slim AS base
 
-RUN apk add --no-cache python3 make g++ curl bash unzip
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
 
@@ -27,7 +27,10 @@ WORKDIR /app
 COPY --from=prepare /app/out/json/ .
 COPY --from=prepare /app/out/bun.lock ./bun.lock
 RUN printf '[install]\nlinker = "hoisted"' > bunfig.toml
-RUN bun install --frozen-lockfile
+# Opus 0.10 compiles its ARM64 NEON sources without enabling their declarations.
+# Keep the upstream native codec; expose those declarations for source builds.
+RUN if [ "$(uname -m)" = "aarch64" ]; then export CFLAGS="-DOPUS_ARM_MAY_HAVE_NEON_INTR"; fi; \
+    bun install --frozen-lockfile
 
 COPY --from=prepare /app/out/full/ .
 RUN cd apps/discord-bot && bun x tsup
@@ -41,15 +44,18 @@ WORKDIR /app
 COPY --from=prepare /app/out/json/ .
 COPY --from=prepare /app/out/bun.lock ./bun.lock
 RUN printf '[install]\nlinker = "hoisted"' > bunfig.toml
-RUN bun install --frozen-lockfile --omit dev
+# Opus 0.10 compiles its ARM64 NEON sources without enabling their declarations.
+# Keep the upstream native codec; expose those declarations for source builds.
+RUN if [ "$(uname -m)" = "aarch64" ]; then export CFLAGS="-DOPUS_ARM_MAY_HAVE_NEON_INTR"; fi; \
+    bun install --frozen-lockfile --omit dev
 
 # --- RUNTIME ---
 
-FROM node:24-alpine AS runtime
+FROM node:24-bookworm-slim AS runtime
 
-RUN apk add --no-cache ffmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
-RUN adduser -D -u 1001 botuser
+RUN useradd --create-home --uid 1001 botuser
 
 WORKDIR /app
 

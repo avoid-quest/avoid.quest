@@ -267,6 +267,81 @@ describe("NodeCanvas", () => {
     ).toEqual(start?.position);
   });
 
+  test("a knob turned right after a nudge is an undo step of its own", async () => {
+    const view = mountGraph(
+      schema.nodeGraphSchema.parse({
+        edges: [],
+        nodes: [
+          {
+            data: {
+              effect: catalogue.createNodeEffectConfig("compressor", "comp"),
+            },
+            id: "comp",
+            position: { x: 0, y: 0 },
+            type: "compressor",
+          },
+          {
+            data: {},
+            id: "speakers",
+            position: { x: 400, y: 0 },
+            type: "speakers",
+          },
+        ],
+        version: 2,
+      })
+    );
+    const compressor = () => {
+      const found = nodeStoreModule.nodeStore.state.graph?.nodes.find(
+        (entry) => entry.id === "comp"
+      );
+      if (!found) {
+        throw new Error("The Compressor is gone");
+      }
+      const { effect } = found.data as { effect: { threshold: number } };
+      return { position: found.position, threshold: effect.threshold };
+    };
+    const start = compressor();
+    const turnKnob = (threshold: number) =>
+      nodeStoreModule.commitNodeGraph((graph) =>
+        graphEdits.setEffectParams(graph, "comp", { threshold })
+      );
+    const node = view.container.querySelector(
+      '.react-flow__node[data-id="comp"]'
+    ) as HTMLElement;
+    act(() => {
+      node.focus();
+      fireEvent.keyDown(node, { key: "Enter" });
+    });
+    act(() => {
+      fireEvent.keyDown(node, { key: "ArrowRight" });
+    });
+    const nudged = compressor().position;
+    // The knob drag starts before the nudge settles and outlasts it.
+    act(() => {
+      turnKnob(-30);
+    });
+    await act(
+      () => new Promise((resolve) => setTimeout(resolve, NUDGE_SETTLE_MS + 50))
+    );
+    act(() => {
+      turnKnob(-40);
+      nodeStoreModule.snapshotNodeGraph();
+    });
+
+    expect(nudged).not.toEqual(start.position);
+    act(() => {
+      expect(nodeStoreModule.undoNodeGraph()).toBe(true);
+    });
+    expect(compressor()).toEqual({
+      position: nudged,
+      threshold: start.threshold,
+    });
+    act(() => {
+      expect(nodeStoreModule.undoNodeGraph()).toBe(true);
+    });
+    expect(compressor()).toEqual(start);
+  });
+
   test("a knob tick on one FX re-renders that FX's node alone", async () => {
     const fxIds = ["fx0", "fx1", "fx2", "fx3"];
     mountGraph(

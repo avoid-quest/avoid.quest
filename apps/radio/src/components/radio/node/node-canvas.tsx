@@ -20,7 +20,6 @@ import {
   commitNodeGraph,
   nodeStore,
   setNodeSelection,
-  snapshotNodeGraph,
   useNodeGraph,
   useNodeSelection,
 } from "@/lib/node-graph/node-store";
@@ -231,9 +230,9 @@ function fitPatch(
 }
 
 /**
- * Arrow-key nudges of a selected node are one undo step, taken once the
- * keys have been still this long: a held arrow repeats about 30 times a
- * second, and a step per nudge would push the whole undo history out.
+ * Arrow-key nudges of a selected node less than this far apart are one undo
+ * step: a held arrow repeats about 30 times a second, and a step per nudge
+ * would push the whole undo history out.
  */
 export const NUDGE_SETTLE_MS = 300;
 
@@ -347,36 +346,34 @@ function takeNudges(
   return nudged;
 }
 
-type NudgeTimer = ReturnType<typeof setTimeout>;
+/** The last arrow-key nudge: the patch it left, and when. */
+type NudgeRun = { graph: NodeGraph; at: number };
 
 /**
- * Moves nudged nodes, if any, now, and takes the run's undo step once the
- * keys settle.
+ * Moves nudged nodes, if any. A nudge is an undo step at once, so no later
+ * edit (a knob dragged right after) can fold into it. The next nudge of a
+ * run joins that step while nothing else has been committed since.
  */
 function nudgeNodes(
   nudged: ReadonlyMap<string, Point>,
-  timer: RefObject<NudgeTimer | null>
+  run: RefObject<NudgeRun | null>
 ): void {
   if (nudged.size === 0) {
     return;
   }
-  commitNodeGraph((latest) => moveNodes(latest, nudged), nodeStore);
-  const pending = timer.current;
-  if (pending !== null) {
-    clearTimeout(pending);
-  }
-  timer.current = setTimeout(() => takeNudgeStep(timer), NUDGE_SETTLE_MS);
-}
-
-/** Takes the pending nudge step now, if there is one. */
-function takeNudgeStep(timer: RefObject<NudgeTimer | null>): void {
-  const pending = timer.current;
-  if (pending === null) {
-    return;
-  }
-  clearTimeout(pending);
-  timer.current = null;
-  snapshotNodeGraph(nodeStore);
+  const at = performance.now();
+  const last = run.current;
+  const continues =
+    last !== null &&
+    at - last.at < NUDGE_SETTLE_MS &&
+    nodeStore.state.graph === last.graph;
+  commitNodeGraph(
+    (latest) => moveNodes(latest, nudged),
+    nodeStore,
+    continues ? "amend" : "snapshot"
+  );
+  const { graph } = nodeStore.state;
+  run.current = graph ? { at, graph } : null;
 }
 
 function foldNodeChange(batch: NodeChangeBatch, change: FlowNodeChange) {
@@ -531,7 +528,7 @@ function Canvas({
   // The nodes React Flow is dragging. A node it lets go of without having
   // dragged it was nudged with the arrow keys.
   const draggingRef = useRef<Set<string>>(new Set());
-  const nudgeTimerRef = useRef<NudgeTimer | null>(null);
+  const nudgeRunRef = useRef<NudgeRun | null>(null);
   // The cable a dragged node would go into if let go now: state to
   // highlight it, a ref for the drop, which reads it in the same event.
   const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
@@ -675,7 +672,7 @@ function Canvas({
         "snapshot"
       );
     }
-    nudgeNodes(nudged, nudgeTimerRef);
+    nudgeNodes(nudged, nudgeRunRef);
     const removalAccepted = removeCanvasNodes(removed, validateOptions);
     const selectedNodes = (
       removalAccepted ? [...selected] : [...current.nodes]
@@ -1121,12 +1118,10 @@ function Canvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [env.profile]);
 
-  // A canvas that goes mid-drag leaves no ports lit behind it, and one
-  // that goes mid-nudge takes that step rather than dropping it.
+  // A canvas that goes mid-drag leaves no ports lit behind it.
   useEffect(
     () => () => {
       clearConnectionHints();
-      takeNudgeStep(nudgeTimerRef);
     },
     []
   );

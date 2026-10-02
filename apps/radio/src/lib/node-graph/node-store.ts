@@ -44,11 +44,14 @@ export type NodeStore = Store<NodeStoreState>;
 /**
  * How a commit meets the undo stack:
  * - "snapshot": an undo step of its own (connect, delete, add, template);
+ * - "amend": joins the newest step when nothing was committed or undone
+ *   since it was taken, else a step of its own like "snapshot"; the caller
+ *   checks that step is its own (the next arrow-key nudge of a run);
  * - "rebase": applied to every snapshot too, for edits that follow live
  *   records (a rename, a hide), so no undo brings a stale record back;
  * - default: folds into the next snapshot (a fader mid-drag).
  */
-export type NodeCommitHistory = "snapshot" | "rebase";
+export type NodeCommitHistory = "snapshot" | "amend" | "rebase";
 
 /** Snapshots kept for undo. */
 export const NODE_HISTORY_LIMIT = 100;
@@ -192,7 +195,9 @@ export function commitNodeGraph(
   }
   store.setState((state) => {
     const next = { ...state, graph };
-    if (history === "snapshot") {
+    if (history === "amend" && joinsNewestStep(state)) {
+      next.history = { ...state.history, present: graph };
+    } else if (history === "snapshot" || history === "amend") {
       // Anything uncommitted before the edit is its own step first.
       const before = checkpoint(state);
       next.history = checkpoint({ ...state, graph, history: before });
@@ -202,6 +207,11 @@ export function commitNodeGraph(
     return { ...next, selection: pruneSelection(state.selection, graph) };
   });
   return true;
+}
+
+/** The graph is the newest step, with nothing committed or undone since. */
+function joinsNewestStep({ graph, history }: NodeStoreState): boolean {
+  return graph === history.present && history.future.length === 0;
 }
 
 /**

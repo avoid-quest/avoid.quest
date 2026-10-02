@@ -265,6 +265,48 @@ describe("node store undo", () => {
     expect(store.state.graph).toBe(graph);
   });
 
+  test("an amended edit joins the newest step", () => {
+    const store = createNodeStore(graph);
+    const nudge = (x: number) =>
+      commitNodeGraph(
+        (current) => moveNodes(current, new Map([["src-a", { x, y: 0 }]])),
+        store,
+        x === 5 ? "snapshot" : "amend"
+      );
+    for (const x of [5, 10, 15]) {
+      nudge(x);
+    }
+
+    expect(store.state.history.past).toHaveLength(1);
+    undoNodeGraph(store);
+    expect(store.state.graph).toBe(graph);
+  });
+
+  test("an amend after an uncommitted edit or an undo is a step of its own", () => {
+    const store = createNodeStore(graph);
+    const moveTo = (x: number) => (current: NodeGraph) =>
+      moveNodes(current, new Map([["src-a", { x, y: 0 }]]));
+    commitNodeGraph(moveTo(5), store, "snapshot");
+    const nudged = store.state.graph;
+    commitNodeGraph(
+      (current) => setStationVolume(current, "src-a", 0.4),
+      store
+    );
+    commitNodeGraph(moveTo(10), store, "amend");
+
+    undoNodeGraph(store);
+    expect(volumeOf(store, "src-a")).toBe(0.4);
+    undoNodeGraph(store);
+    expect(store.state.graph).toBe(nudged);
+
+    undoNodeGraph(store);
+    commitNodeGraph(moveTo(20), store, "amend");
+    undoNodeGraph(store);
+    expect(store.state.graph).toBe(graph);
+    expect(redoNodeGraph(store)).toBe(true);
+    expect(redoNodeGraph(store)).toBe(false);
+  });
+
   test("a new edit clears redo", () => {
     const store = createNodeStore(graph);
     commitNodeGraph(

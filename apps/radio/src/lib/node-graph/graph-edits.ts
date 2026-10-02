@@ -1027,8 +1027,9 @@ function healBranch(
 /**
  * A healed cable's branch pan: the cable in's (an outer split's branch)
  * plus the deleted split's. Only a cable out of a split shows pan and
- * solo, so one out of anything else gets neither; the cable in keeps its
- * own solo, and a deleted split's solo becomes mutes instead.
+ * solo, so one out of anything else gets neither (a panned branch is
+ * refused before it gets here); the cable in keeps its own solo, and a
+ * deleted split's solo becomes mutes instead.
  */
 function healedBranch(
   upstream: GraphEdge,
@@ -1057,7 +1058,8 @@ function healedBranch(
  * keeps its level: its chain gain and mute, its pan when the cable in
  * comes out of a split that can show it, and its solo as a mute on each
  * branch it silenced. A heal that would not validate or compile is left
- * out; so is one louder than a cable can be, which `loud` reports unless
+ * out; so is one louder than a cable can be, which `loud` reports, and a
+ * panned branch whose cable in can't pan, which `panned` reports, unless
  * an end of it goes too.
  */
 function removeNodeHealed(
@@ -1065,7 +1067,7 @@ function removeNodeHealed(
   nodeId: string,
   removing: ReadonlySet<string>,
   options?: ValidateOptions
-): { graph: NodeGraph; loud: boolean } {
+): { graph: NodeGraph; loud: boolean; panned: boolean } {
   const ins = graph.edges.filter(
     (edge) => edge.target === nodeId && edge.source !== nodeId
   );
@@ -1076,7 +1078,9 @@ function removeNodeHealed(
   const removed = nodeOf(nodeId);
   let next = removeNodes(graph, [nodeId]);
   let loud = false;
+  let panned = false;
   for (const upstream of ins) {
+    const keepsPan = isSplitNode(nodeOf(upstream.source));
     const kind = parseHandleId(upstream.targetHandle)?.kind;
     const heals = outs.flatMap((downstream) =>
       kind && kind === parseHandleId(downstream.sourceHandle)?.kind
@@ -1088,6 +1092,12 @@ function removeNodeHealed(
       const gain = upstream.gain * downstream.gain * branch.gain;
       if (gain > MAX_EDGE_GAIN) {
         loud ||= !(
+          removing.has(upstream.source) || removing.has(downstream.target)
+        );
+        continue;
+      }
+      if (!keepsPan && (branch.pan ?? 0) !== 0) {
+        panned ||= !(
           removing.has(upstream.source) || removing.has(downstream.target)
         );
         continue;
@@ -1114,7 +1124,7 @@ function removeNodeHealed(
       );
     }
   }
-  return { graph: next, loud };
+  return { graph: next, loud, panned };
 }
 
 /** A device id for an empty Audio input, so its routes compile. */
@@ -1161,10 +1171,11 @@ function withEveryStationLive(graph: NodeGraph): NodeGraph {
  * Removes nodes together, each healing the path through it. Refuses the
  * whole edit if an existing source-to-output route is lost while both ends
  * remain, an empty or hidden Station's or a device-less Audio input's
- * included, so it still plays once filled, shown or set, or if a heal would need a cable louder than one can be,
- * which would change the level. Explicit cable deletions and removal of a
- * source or output are still allowed; a failed heal must not silently
- * disconnect another lane.
+ * included, so it still plays once filled, shown or set, or if a heal
+ * would need a cable louder than one can be, which would change the level,
+ * or would drop a Split branch's pan onto a cable that can't pan. Explicit
+ * cable deletions and removal of a source or output are still allowed; a
+ * failed heal must not silently disconnect another lane.
  */
 export function removeNodesHealed(
   graph: NodeGraph,
@@ -1178,6 +1189,13 @@ export function removeNodesHealed(
     if (healed.loud) {
       return {
         message: `Those nodes can't be removed without changing a level: the cables around them add up past ${MAX_EDGE_GAIN}×. Turn one down first.`,
+        ok: false,
+      };
+    }
+    if (healed.panned) {
+      return {
+        message:
+          "That Split can't be removed without changing the mix: a branch is panned, and a plain cable can't pan. Centre it first.",
         ok: false,
       };
     }

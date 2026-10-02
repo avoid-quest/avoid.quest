@@ -1104,16 +1104,16 @@ describe("removeNodesHealed", () => {
     const splitNode = split.graph.nodes.find(
       (node) => node.type === "fxComposite"
     );
-    const panned = {
+    const soloed = {
       ...split.graph,
       edges: split.graph.edges.map((edge) =>
         edge.source === splitNode?.id && edge.target === "compressor"
-          ? { ...edge, pan: -0.5, solo: true }
+          ? { ...edge, solo: true }
           : edge
       ),
     };
 
-    const healed = accepted(removeNodesHealed(panned, [splitNode?.id ?? ""]));
+    const healed = accepted(removeNodesHealed(soloed, [splitNode?.id ?? ""]));
 
     // A Station's cables draw no branch controls, so they carry none.
     expect(
@@ -1141,6 +1141,77 @@ describe("removeNodesHealed", () => {
       { muted: false, solo: false },
       { muted: true, solo: false },
     ]);
+  });
+
+  test("refuses to delete a split whose branch pan a plain cable would drop", () => {
+    const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
+    const two = inserted(one.graph, "delay", "compressor->speakers");
+    const split = seriesToParallel(two.graph, {
+      edges: [],
+      nodes: ["compressor", "delay"],
+    });
+    if (!split.ok) {
+      throw new Error(split.message);
+    }
+    const splitId =
+      split.graph.nodes.find((node) => node.type === "fxComposite")?.id ?? "";
+    const withCablePan = (pan: number) => ({
+      ...split.graph,
+      edges: split.graph.edges.map((edge) =>
+        edge.source === splitId && edge.target === "compressor"
+          ? { ...edge, pan }
+          : edge
+      ),
+    });
+    // A pan learned onto the Split's own chain, as MIDI sets it.
+    const withChainPan = (graph: NodeGraph, pan: number) => ({
+      ...graph,
+      nodes: graph.nodes.map((node) => {
+        if (node.id !== splitId || !("effect" in node.data)) {
+          return node;
+        }
+        const effect = node.data.effect as {
+          chains: { order: number; pan?: number }[];
+        };
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            effect: {
+              ...effect,
+              chains: effect.chains.map((chain) =>
+                chain.order === 0 ? { ...chain, pan } : chain
+              ),
+            },
+          },
+        } as typeof node;
+      }),
+    });
+    const refusal = {
+      message:
+        "That Split can't be removed without changing the mix: a branch is panned, and a plain cable can't pan. Centre it first.",
+      ok: false as const,
+    };
+
+    expect(removeNodesHealed(withCablePan(-0.5), [splitId])).toEqual(refusal);
+    expect(
+      removeNodesHealed(withChainPan(split.graph, 0.75), [splitId])
+    ).toEqual(refusal);
+    // A centred branch, or pans that cancel out, heals as before.
+    for (const centred of [
+      withCablePan(0),
+      withChainPan(withCablePan(0.5), -0.5),
+    ]) {
+      const healed = accepted(removeNodesHealed(centred, [splitId]));
+      expect(
+        healed.edges.filter((edge) => edge.source === "src-a").length
+      ).toBe(2);
+      expect(healed.edges.some((edge) => edge.pan !== undefined)).toBe(false);
+    }
+    // With the station going too, there is no path left to re-centre.
+    expect(removeNodesHealed(withCablePan(-0.5), [splitId, "src-a"]).ok).toBe(
+      true
+    );
   });
 
   test("deleting a nested split hands its pan to the outer split's cables", () => {

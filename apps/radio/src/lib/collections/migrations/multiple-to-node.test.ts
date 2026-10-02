@@ -44,11 +44,19 @@ const collections = {
 function createMemoryStorage() {
   const state = new Map<string, string>();
   return {
+    clear: () => state.clear(),
     getItem: (key: string) => state.get(key) ?? null,
+    key: (index: number) => [...state.keys()][index] ?? null,
+    get length() {
+      return state.size;
+    },
+    removeItem: (key: string) => {
+      state.delete(key);
+    },
     setItem: mock((key: string, value: string) => {
       state.set(key, value);
     }),
-  };
+  } satisfies Storage;
 }
 
 function radio(id: string, name = id.toUpperCase()): Radio {
@@ -139,36 +147,45 @@ function createOtherTabWrites() {
 
 /**
  * A window whose storage events reach this tab's listeners, until
- * `restore`. Collections keep their in-memory storage.
+ * `restore`. Its localStorage is also the global one the migration backs
+ * up to; the collections keep their in-memory storage.
  */
 function installOtherTabWindow() {
   type StorageListener = (
     event: Pick<StorageEvent, "key" | "storageArea">
   ) => void;
   const listeners = new Set<StorageListener>();
-  const localStorage = { getItem: () => null };
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: {
+  const localStorage = createMemoryStorage();
+  const globals = {
+    localStorage,
+    window: {
       addEventListener: (_type: string, listener: StorageListener) =>
         listeners.add(listener),
       localStorage,
       removeEventListener: (_type: string, listener: StorageListener) =>
         listeners.delete(listener),
     },
-  });
+  };
+  const descriptors = Object.keys(globals).map(
+    (key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const
+  );
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+  }
   return {
+    localStorage,
     restore: () => {
-      if (descriptor) {
-        Object.defineProperty(globalThis, "window", descriptor);
-      } else {
-        Reflect.deleteProperty(globalThis, "window");
+      for (const [key, descriptor] of descriptors) {
+        if (descriptor) {
+          Object.defineProperty(globalThis, key, descriptor);
+        } else {
+          Reflect.deleteProperty(globalThis, key);
+        }
       }
     },
     write: (key: string) => {
       for (const listener of listeners) {
-        listener({ key, storageArea: localStorage as unknown as Storage });
+        listener({ key, storageArea: localStorage });
       }
     },
   };
@@ -729,12 +746,19 @@ describe("initializePlaybackSessions", () => {
       await settle();
       const node = getPlaybackSession("node");
 
-      await insertMultiple([{ radio: radio("kexp") }], 0.2);
+      // The other tab's record, as the collection's own sync takes it in.
+      const record = await insertMultiple([{ radio: radio("kexp") }], 0.2);
+      expect(hasMultiple()).toBe(true);
       otherTab.write(PLAYBACK_SESSIONS_STORAGE_KEY);
       await Promise.resolve();
 
       expect(hasMultiple()).toBe(false);
       expect(getPlaybackSession("node")).toEqual(node);
+      // Backed up to localStorage before it went.
+      const backup = otherTab.localStorage.getItem(MULTIPLE_BACKUP_STORAGE_KEY);
+      expect((JSON.parse(backup ?? "{}") as MultipleBackup).session).toEqual(
+        record
+      );
     } finally {
       stopLegacyMultipleListeners();
       otherTab.restore();

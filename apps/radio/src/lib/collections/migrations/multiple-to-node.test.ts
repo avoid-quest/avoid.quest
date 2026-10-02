@@ -766,8 +766,11 @@ describe("initializePlaybackSessions", () => {
   });
 
   test("leaves a multiple record this tab's own write brings back", async () => {
-    // A write that fails to persist rolls back in this tab, and sends no
-    // storage event; re-running the step on it would fail again.
+    // Storage events reach only the other tabs, so no write of this tab's
+    // re-runs the step: re-running it on a write that failed to persist
+    // and rolled back would only fail again. Here the write persists;
+    // "a store too full for Node keeps Multiple and settles" below has
+    // localStorage refuse it.
     const otherTab = installOtherTabWindow();
     try {
       await initializePlaybackSessions();
@@ -777,6 +780,10 @@ describe("initializePlaybackSessions", () => {
       await Promise.resolve();
 
       expect(hasMultiple()).toBe(true);
+      // The step never ran: it would have backed the record up.
+      expect(
+        otherTab.localStorage.getItem(MULTIPLE_BACKUP_STORAGE_KEY)
+      ).toBeNull();
     } finally {
       stopLegacyMultipleListeners();
       otherTab.restore();

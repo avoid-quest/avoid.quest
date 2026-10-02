@@ -18,6 +18,10 @@ import {
   initializePlaybackSessions,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import {
+  resetPlaybackChannelRuntime,
+  setPlaybackChannelSoundId,
+} from "@/lib/stores/playback-runtime-store";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -52,11 +56,13 @@ Object.defineProperty(dom.window, "matchMedia", {
 
 for (const [key, value] of Object.entries({
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+  DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
   Element: dom.window.Element,
   fetch: () => Promise.reject(new Error("offline")),
   getComputedStyle: dom.window.getComputedStyle,
   HTMLElement: dom.window.HTMLElement,
+  HTMLFormElement: dom.window.HTMLFormElement,
   IntersectionObserver: ObserverStub,
   MutationObserver: dom.window.MutationObserver,
   Node: dom.window.Node,
@@ -101,6 +107,45 @@ function setDeckRadio(channelId: string, radio: Radio | null) {
   });
 }
 
+let soundsLanded = 0;
+
+/**
+ * Puts `radio` on deck A as a load that commits does: the deck's old sound
+ * goes and a new one plays the source.
+ */
+function landSource(radio: Radio) {
+  resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
+  setDeckRadio(DECK_A_CHANNEL_ID, radio);
+  soundsLanded += 1;
+  setPlaybackChannelSoundId(
+    DECK_A_CHANNEL_ID,
+    `left_${radio.id}:${soundsLanded}`
+  );
+}
+
+/** A device or shared-tab source as deck A's device load builds it. */
+function deviceSource(
+  device: { deviceId: string; deviceLabel: string } & (
+    | { capture: "display"; sourceUrl: string }
+    | { capture?: undefined }
+  )
+): Radio {
+  return {
+    enabled: true,
+    id: "device-input-left",
+    name: device.deviceLabel,
+    platformMetadata: {
+      ...device,
+      channelCount: 2,
+      channelSelection: { left: 0, right: 1 },
+      itemType: "track",
+      platform: "device-input",
+      url: "",
+    },
+    streamUrl: "",
+  };
+}
+
 function renderDeckA() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
@@ -114,6 +159,7 @@ function isPickerOpen(view: ReturnType<typeof renderDeckA>) {
 }
 
 const CHANGE_SOURCE = /change source/i;
+const CHANGE_DEVICE = /change device/i;
 
 function openSourcePicker(view: ReturnType<typeof renderDeckA>) {
   fireEvent.click(view.getByRole("button", { name: CHANGE_SOURCE }));
@@ -137,6 +183,7 @@ describe("DeckPanel source picker", () => {
 
   afterEach(() => {
     cleanup();
+    resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
     setDeckRadio(DECK_A_CHANNEL_ID, null);
     for (const [channelId, volume] of volumesBefore) {
       updatePlaybackChannel("dj", channelId, (draft) => {
@@ -171,6 +218,26 @@ describe("DeckPanel source picker", () => {
         name: "Station B",
         streamUrl: "https://radio.test/b.mp3",
       });
+    });
+
+    expect(isPickerOpen(view)).toBeFalse();
+  });
+
+  test("closes when another device source lands under the deck's device id", () => {
+    landSource(
+      deviceSource({
+        capture: "display",
+        deviceId: "display",
+        deviceLabel: "Shared tab",
+        sourceUrl: "https://radio.test/show",
+      })
+    );
+    const view = renderDeckA();
+    fireEvent.click(view.getByRole("button", { name: CHANGE_DEVICE }));
+    expect(isPickerOpen(view)).toBeTrue();
+
+    act(() => {
+      landSource(deviceSource({ deviceId: "mic", deviceLabel: "Microphone" }));
     });
 
     expect(isPickerOpen(view)).toBeFalse();

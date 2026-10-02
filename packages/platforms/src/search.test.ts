@@ -120,4 +120,50 @@ describe("createExternalPlatformSearchWorkflow", () => {
       "bandcamp",
     ]);
   });
+
+  test("searches Mixcloud only when an adapter is configured", async () => {
+    const emptyAdapters = {
+      bandcamp: { search: mock(async () => []) },
+      radiogarden: { search: mock(async () => []) },
+      soundcloud: { search: mock(async () => []) },
+      youtube: { search: mock(async () => []) },
+    };
+    const withoutMixcloud = createExternalPlatformSearchWorkflow({
+      adapters: emptyAdapters,
+    });
+    await expect(
+      withoutMixcloud.search({ platform: "all", query: "jazz" })
+    ).resolves.toEqual([]);
+    await expect(
+      withoutMixcloud.search({ platform: "mixcloud", query: "jazz" })
+    ).rejects.toThrow("Mixcloud search is not configured");
+
+    const mixcloudSearch = mock(async () => [
+      {
+        artist: "dholbach",
+        duration: 3723,
+        id: "dholbach/cryptkeeper",
+        title: "Cryptkeeper",
+        url: "https://www.mixcloud.com/dholbach/cryptkeeper/",
+      },
+    ]);
+    const withMixcloud = createExternalPlatformSearchWorkflow({
+      adapters: { ...emptyAdapters, mixcloud: { search: mixcloudSearch } },
+    });
+    await expect(
+      withMixcloud.search({ platform: "all", query: "jazz" })
+    ).resolves.toEqual([
+      {
+        artist: "dholbach",
+        duration: 3723,
+        id: "mc-dholbach/cryptkeeper",
+        platform: "mixcloud",
+        thumbnail: undefined,
+        title: "Cryptkeeper",
+        type: "show",
+        url: "https://www.mixcloud.com/dholbach/cryptkeeper/",
+      },
+    ]);
+    expect(mixcloudSearch).toHaveBeenCalledWith("jazz");
+  });
 });

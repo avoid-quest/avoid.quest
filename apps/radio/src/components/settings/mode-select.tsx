@@ -4,16 +4,22 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@avoid.quest/ui/components/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { LayersIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
+import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "@/lib/hooks/use-settings";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import { playerModes } from "@/lib/types";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
 const modeIcons = {
   dj: SwordsIcon,
-  multiple: LayersIcon,
+  node: CableIcon,
   single: ListMusicIcon,
 } as const;
 
@@ -35,7 +41,7 @@ export function ModeSelect({ className }: { className?: string }) {
       );
       await modeLifecycleRequests.requestMode(value);
     } catch {
-      toast.error("Failed to update mode");
+      toast.error("Couldn't switch mode");
     }
   };
 
@@ -45,28 +51,37 @@ export function ModeSelect({ className }: { className?: string }) {
 
   return (
     <ToggleGroup
+      aria-label="Playback mode"
       className={cn("w-full max-w-xs", className)}
       onValueChange={handleModeChange}
       type="single"
-      value={settings?.player.mode || "single"}
+      value={normalizePlayerMode(settings?.player.mode)}
       variant="outline"
     >
       {playerModes.map((mode) => {
         const Icon = modeIcons[mode.value];
         return (
-          <ToggleGroupItem
-            aria-label={mode.label}
-            className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
-            disabled={isTransitioning}
-            key={mode.value}
-            title={mode.label}
-            value={mode.value}
-          >
-            <Icon className="size-3.5" />
-            <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
+          <Tooltip key={mode.value}>
+            {/* Item outside the tooltip, so its on/off data-state is kept. */}
+            <ToggleGroupItem
+              aria-label={mode.label}
+              asChild
+              className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
+              disabled={isTransitioning}
+              value={mode.value}
+            >
+              <TooltipTrigger>
+                <Icon className="size-3.5" />
+                <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
+                  {mode.label}
+                </span>
+              </TooltipTrigger>
+            </ToggleGroupItem>
+            {/* Names the icon only while the label is hidden. */}
+            <TooltipContent className="sm:hidden" side="bottom" sideOffset={6}>
               {mode.label}
-            </span>
-          </ToggleGroupItem>
+            </TooltipContent>
+          </Tooltip>
         );
       })}
     </ToggleGroup>

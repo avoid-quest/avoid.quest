@@ -14,6 +14,7 @@ const ERROR_RETRY_INTERVAL_MS = 60_000;
 const UNSUPPORTED_RETRY_INTERVAL_MS = 60_000;
 const MIN_REFRESH_INTERVAL_MS = 30_000;
 const MAX_REFRESH_INTERVAL_MS = 60 * 60_000;
+const PREVIEW_MIN_REFRESH_INTERVAL_MS = 5 * 60_000;
 
 function refreshAfterMs(
   response: RadioMetadataResponse | undefined
@@ -40,6 +41,26 @@ export function radioMetadataRefreshInterval(
   return delay === null
     ? POLL_INTERVAL_MS
     : Math.max(MIN_REFRESH_INTERVAL_MS, delay - (now - dataUpdatedAt));
+}
+
+/**
+ * List rows don't poll, but they shouldn't show a show that ended hours ago
+ * either: refetch once the server's deadline passes (at most every 5 min, and
+ * only for stations that returned metadata with a deadline).
+ */
+export function radioMetadataPreviewRefreshInterval(
+  response: RadioMetadataResponse | undefined,
+  dataUpdatedAt: number,
+  now: number
+): number | false {
+  const delay = refreshAfterMs(response);
+  if (!response?.ok || delay === null) {
+    return false;
+  }
+  return Math.max(
+    PREVIEW_MIN_REFRESH_INTERVAL_MS,
+    delay - (now - dataUpdatedAt)
+  );
 }
 
 export const radioMetadataKeys = {
@@ -155,16 +176,23 @@ export function useRadioMetadata({
       return fetchRadioMetadata(streamUrl, metadataConfig);
     },
     queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
-    refetchInterval:
-      enabled && poll
-        ? (current) =>
-            radioMetadataRefreshInterval(
-              current.state.data,
-              current.state.dataUpdatedAt,
-              Date.now(),
-              current.state.error !== null
-            )
-        : false,
+    refetchInterval: (current) => {
+      if (!enabled) {
+        return false;
+      }
+      return poll
+        ? radioMetadataRefreshInterval(
+            current.state.data,
+            current.state.dataUpdatedAt,
+            Date.now(),
+            current.state.error !== null
+          )
+        : radioMetadataPreviewRefreshInterval(
+            current.state.data,
+            current.state.dataUpdatedAt,
+            Date.now()
+          );
+    },
     refetchOnReconnect: poll,
     refetchOnWindowFocus: poll,
     retry: 1,

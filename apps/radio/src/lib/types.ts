@@ -20,7 +20,7 @@ export type SingleModeSettings = Settings & {
 
 export const playerModes = [
   { icon: "list-music", label: "Single", value: "single" },
-  { icon: "square-stack", label: "Multiple", value: "multiple" },
+  { icon: "cable", label: "Node", value: "node" },
   { icon: "swords", label: "DJ", value: "dj" },
 ] as const;
 
@@ -29,6 +29,22 @@ export type DatabaseExport = {
   exportDate: string;
   radios: Radio[];
   settings: Settings;
+  /** Local NAM bytes referenced by the file backup's Node patch. */
+  namModels?: Record<string, string>;
+  /**
+   * Local NAM models the patch names whose bytes were gone when the backup
+   * was made. Their FX import without a model.
+   */
+  missingNamModels?: string[];
+  /**
+   * Playback sessions a file backup carries: the Node patch, or a Multiple
+   * session from a release before Node, which imports as a Node patch. Both
+   * stay untrusted until the import parses them.
+   */
+  sessions?: {
+    node?: { graph: unknown; masterVolume?: number };
+    multiple?: unknown;
+  };
 };
 
 export type ImportMode = "replace" | "merge";
@@ -48,6 +64,10 @@ export function generateId(): string {
 }
 
 export type ImportPreview = {
+  nodePatch?: {
+    masterVolume: number;
+    replacesNewerVersion: boolean;
+  };
   newRadios: number;
   updatedRadios: number;
   unchangedRadios: number;

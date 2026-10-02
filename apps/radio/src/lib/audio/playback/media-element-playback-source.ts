@@ -295,7 +295,21 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   setPlaybackRate(rate: number): void {
     const clampedRate = Math.max(0.5, Math.min(2, rate));
     this.playbackRate = clampedRate;
+    // A load resets the rate to the default one; keep them together.
+    this.audio.defaultPlaybackRate = clampedRate;
     this.audio.playbackRate = clampedRate;
+  }
+
+  /**
+   * Key lock. The element keeps it across loads. Older WebKit (Safari
+   * before 17) only reads the prefixed property.
+   */
+  setPreservesPitch(preservesPitch: boolean): void {
+    this.audio.preservesPitch = preservesPitch;
+    const webkit = this.audio as { webkitPreservesPitch?: boolean };
+    if ("webkitPreservesPitch" in webkit) {
+      webkit.webkitPreservesPitch = preservesPitch;
+    }
   }
 
   getPlaybackRate(): number {
@@ -314,9 +328,20 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     }
   }
 
-  async refreshUrl(input: PlaybackInput, seekPosition?: number): Promise<void> {
+  /**
+   * Loads `input` in place of the current stream at `seekPosition`. It plays
+   * on only if it was playing and no pause, play or load came meanwhile.
+   * Resolves whether it is meant to play now.
+   */
+  async refreshUrl(
+    input: PlaybackInput,
+    seekPosition?: number
+  ): Promise<boolean> {
     const shouldResume = this.shouldResumeAfterLoad || !this.audio.paused;
-    await this.load(input);
+    const loading = this.load(input);
+    // The load drops the old intent first; any later pause or play moves it.
+    const { playbackIntent } = this;
+    await loading;
 
     if (
       seekPosition !== undefined &&
@@ -326,9 +351,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       this.seek(seekPosition);
     }
 
-    if (shouldResume) {
+    if (shouldResume && playbackIntent === this.playbackIntent) {
       await this.play();
     }
+    return this.shouldResumeAfterLoad;
   }
 
   private async loadSource(

@@ -16,7 +16,7 @@ export class CheapReverbEffect {
   private wet = 1;
   private filteredL = 0;
   private filteredR = 0;
-  private readonly dampState = [0, 0, 0, 0];
+  private readonly dampState: number[] = [0, 0, 0, 0];
 
   constructor(sampleRate: number) {
     this.delays = [0.0297, 0.0371, 0.0411, 0.0437].map(

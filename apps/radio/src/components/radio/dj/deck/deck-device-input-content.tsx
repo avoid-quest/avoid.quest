@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+import { Accordion } from "@avoid.quest/ui/components/accordion";
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
@@ -10,12 +11,6 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@avoid.quest/ui/components/tabs";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -25,10 +20,13 @@ import { InfoIcon, MicIcon, MicOffIcon } from "lucide-react";
 import { useMemo } from "react";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { ChannelSelection } from "@/lib/audio";
+import { BrowserAudioHelp } from "../../browser-audio-form";
 import { DeckChannelStrip } from "./deck-channel-strip";
 import { useDeckContext } from "./deck-context";
 import { DeckFooter } from "./deck-footer";
+import { DeckMenu } from "./deck-header";
 import {
+  AccordionSection,
   buildChannelOptions,
   deserializeSelection,
   serializeSelection,
@@ -67,6 +65,8 @@ export function DeviceInputContent({
     removeEffect,
     reorderEffects,
     setEffectsTempo,
+    radio,
+    reset,
   } = useDeckContext();
   const isMobile = useIsMobile();
 
@@ -89,9 +89,19 @@ export function DeviceInputContent({
           className="shrink-0"
           variant={isPlaying ? "default" : "secondary"}
         >
-          {isPlaying ? "LIVE" : "MUTED"}
+          {isPlaying ? "Live" : "Muted"}
         </Badge>
+        <DeckMenu
+          className="md:hidden"
+          deckId={deckId}
+          onReset={reset}
+          radio={radio}
+        />
       </div>
+      {radio?.platformMetadata?.platform === "device-input" &&
+      radio.platformMetadata.capture === "display" ? (
+        <BrowserAudioHelp url={radio.platformMetadata.sourceUrl} />
+      ) : null}
       <div className="flex items-center gap-2">
         <span className="flex w-16 shrink-0 items-center gap-1 font-medium text-muted-foreground text-xs">
           Channel
@@ -112,7 +122,11 @@ export function DeviceInputContent({
           onValueChange={handleChannelSelectionChange}
           value={selectedKey}
         >
-          <SelectTrigger className="h-7 flex-1 text-xs">
+          <SelectTrigger
+            aria-label="Input channels"
+            className="flex-1"
+            size="xs"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -125,7 +139,7 @@ export function DeviceInputContent({
         </Select>
       </div>
       <Button
-        className="w-full"
+        className="h-7 w-full text-xs"
         disabled={isLoading}
         onClick={onToggleMute}
         size="sm"
@@ -133,60 +147,57 @@ export function DeviceInputContent({
       >
         {isPlaying ? (
           <>
-            <MicOffIcon className="mr-2 size-4" />
+            <MicOffIcon />
             Mute
           </>
         ) : (
           <>
-            <MicIcon className="mr-2 size-4" />
-            Go Live
+            <MicIcon />
+            Go live
           </>
         )}
       </Button>
-      <DeckChannelStrip />
     </>
   );
 
+  // Same effects section as a loaded deck.
   const effectsPanel = (
-    <EffectChain
-      deckId={deckId}
-      effects={effects}
-      onAddEffect={addEffect}
-      onRemoveEffect={removeEffect}
-      onReorderEffects={reorderEffects}
-      onTempoChange={setEffectsTempo}
-      onUpdateEffect={updateEffect}
-      tempo={effectsTempo}
-    />
+    <Accordion
+      className="w-full min-w-0"
+      defaultValue={["effects"]}
+      type="multiple"
+    >
+      <AccordionSection
+        title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}
+        value="effects"
+      >
+        <EffectChain
+          deckId={deckId}
+          effects={effects}
+          onAddEffect={addEffect}
+          onRemoveEffect={removeEffect}
+          onReorderEffects={reorderEffects}
+          onTempoChange={setEffectsTempo}
+          onUpdateEffect={updateEffect}
+          tempo={effectsTempo}
+        />
+      </AccordionSection>
+    </Accordion>
   );
 
   if (isMobile) {
+    // Phones have no mixer column, so the deck carries its channel strip.
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <Tabs className="flex h-full min-h-0 flex-col" defaultValue="source">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="source">Source</TabsTrigger>
-            <TabsTrigger value="effects">Effects</TabsTrigger>
-          </TabsList>
-          <TabsContent
-            className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden"
-            value="source"
-          >
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="flex w-full min-w-0 max-w-full flex-col gap-3 pr-0 sm:pr-3">
-                {sharedControls}
-              </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5 sm:gap-2">
+            {sharedControls}
+            <div className="rounded-md border border-border/50 bg-muted/30 px-2 py-2">
+              <DeckChannelStrip />
             </div>
-          </TabsContent>
-          <TabsContent
-            className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden"
-            value="effects"
-          >
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              {effectsPanel}
-            </div>
-          </TabsContent>
-        </Tabs>
+            {effectsPanel}
+          </div>
+        </div>
         <DeckFooter
           isDeviceInput
           onChangeDevice={onChangeDevice}

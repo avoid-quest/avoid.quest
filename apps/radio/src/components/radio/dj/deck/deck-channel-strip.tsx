@@ -1,12 +1,18 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+import { Slider } from "@avoid.quest/ui/components/slider";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
+import { StripPanKnob, StripSpeedKnob } from "../../node/source-strip";
 import { ChannelSlider } from "../shared/channel-slider";
-import {
-  formatChannelFilter,
-  formatPan,
-  formatPercent,
-  formatSpeed,
-} from "../shared/format-utils";
+import { formatChannelFilter, formatPercent } from "../shared/format-utils";
 import { useDeckContext } from "./deck-context";
 
+const MAX_VOLUME = 1.585;
+
+/**
+ * Channel controls inside a deck (used on phones and device-input decks,
+ * where there is no mixer column). Volume is a fader; the rest are knobs.
+ * Pan and speed are the shared source strip's knobs, as a Node source's.
+ */
 export function DeckChannelStrip({ className }: { className?: string }) {
   const {
     volume,
@@ -23,34 +29,38 @@ export function DeckChannelStrip({ className }: { className?: string }) {
   } = useDeckContext();
 
   const prefix = `${deckId}:`;
+  const deckLabel = deckId === "deck-a" ? "A" : "B";
+  const handleVolume = ([value]: number[]) => setVolume(value ?? 1);
 
   return (
     <div className={className}>
-      <div className="space-y-1">
+      <MidiControlWrapper targetId={`${prefix}volume`}>
+        <div className="flex h-7 items-center gap-2 [@media(pointer:coarse)]:h-10">
+          <span className="w-8 shrink-0 font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+            vol
+          </span>
+          <div className="min-w-0 flex-1" style={{ touchAction: "none" }}>
+            <Slider
+              aria-label={`Deck ${deckLabel} volume`}
+              defaultMarkerValue={1}
+              defaultValue={[1]}
+              max={MAX_VOLUME}
+              min={0}
+              onValueChange={handleVolume}
+              snapToDefault
+              step={0.01}
+              value={[volume]}
+              variant="fader"
+            />
+          </div>
+          <span className="w-12 shrink-0 text-right font-mono text-[10px] tabular-nums">
+            {formatPercent(volume)}
+          </span>
+        </div>
+      </MidiControlWrapper>
+      <div className="flex items-start justify-around pt-1">
         <ChannelSlider
-          defaultValue={1}
-          formatValue={formatPercent}
-          label="VOL"
-          max={1.585}
-          min={0}
-          onChange={setVolume}
-          step={0.01}
-          targetId={`${prefix}volume`}
-          value={volume}
-        />
-        <ChannelSlider
-          defaultValue={0}
-          fillFromDefault
-          formatValue={formatPan}
-          label="PAN"
-          max={1}
-          min={-1}
-          onChange={setPan}
-          step={0.01}
-          targetId={`${prefix}pan`}
-          value={pan}
-        />
-        <ChannelSlider
+          ariaLabel={`Deck ${deckLabel} filter`}
           defaultValue={0}
           fillFromDefault
           formatValue={formatChannelFilter}
@@ -63,19 +73,8 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           value={channelFilter}
         />
         <ChannelSlider
+          ariaLabel={`Deck ${deckLabel} effects mix`}
           defaultValue={1}
-          fillFromDefault
-          formatValue={formatSpeed}
-          label="SPD"
-          max={2.0}
-          min={0.5}
-          onChange={setSpeed}
-          step={0.01}
-          targetId={`${prefix}speed`}
-          value={speed}
-        />
-        <ChannelSlider
-          defaultValue={0}
           formatValue={formatPercent}
           label="FX"
           max={1}
@@ -84,6 +83,20 @@ export function DeckChannelStrip({ className }: { className?: string }) {
           step={0.01}
           targetId={`${prefix}effects-drywet`}
           value={effectsDryWet}
+        />
+        <StripPanKnob
+          ariaLabel={`Deck ${deckLabel} pan`}
+          label="PAN"
+          onChange={setPan}
+          targetId={`${prefix}pan`}
+          value={pan}
+        />
+        <StripSpeedKnob
+          ariaLabel={`Deck ${deckLabel} speed`}
+          label="SPD"
+          onChange={setSpeed}
+          targetId={`${prefix}speed`}
+          value={speed}
         />
       </div>
     </div>

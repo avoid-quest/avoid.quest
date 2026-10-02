@@ -18,6 +18,7 @@ import { JSDOM } from "jsdom";
 import type { Radio } from "@/lib/audio";
 import {
   radioMetadataKeys,
+  radioMetadataPreviewRefreshInterval,
   radioMetadataRefreshInterval,
 } from "@/lib/hooks/use-radio-metadata";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
@@ -74,14 +75,14 @@ afterEach(cleanup);
 
 let RadioNowPlaying: typeof import("./radio-now-playing")["RadioNowPlaying"];
 let NowPlayingPanel: typeof import("./single/single-player-now-playing")["NowPlayingPanel"];
-let MultipleRadioCard: typeof import("./multiple/multiple-radio-card")["MultipleRadioCard"];
+let StationNodeBody: typeof import("./node/station-node")["StationNodeBody"];
 let StationList: typeof import("./single/single-player-station-list")["StationList"];
 let useRadioMetadata: typeof import("@/lib/hooks/use-radio-metadata")["useRadioMetadata"];
 
 beforeAll(async () => {
   ({ RadioNowPlaying } = await import("./radio-now-playing"));
   ({ NowPlayingPanel } = await import("./single/single-player-now-playing"));
-  ({ MultipleRadioCard } = await import("./multiple/multiple-radio-card"));
+  ({ StationNodeBody } = await import("./node/station-node"));
   ({ StationList } = await import("./single/single-player-station-list"));
   ({ useRadioMetadata } = await import("@/lib/hooks/use-radio-metadata"));
 });
@@ -161,6 +162,40 @@ test("polls at the server's remaining cache lifetime in the browser's clock", ()
       1000
     )
   ).toBe(3_600_000);
+});
+
+test("refreshes previews after the server deadline, never faster than 5 minutes", () => {
+  const ok = (refreshAfterMs: number) => ({
+    data: metadata,
+    ok: true as const,
+    refreshAfterMs,
+  });
+  // A show ending in an hour: refetch when it ends.
+  expect(radioMetadataPreviewRefreshInterval(ok(3_600_000), 0, 0)).toBe(
+    3_600_000
+  );
+  // Short deadlines (e.g. per-track ICY) are held to the 5-minute floor.
+  expect(radioMetadataPreviewRefreshInterval(ok(60_000), 0, 0)).toBe(300_000);
+  // Time already spent counts toward the deadline.
+  expect(radioMetadataPreviewRefreshInterval(ok(3_600_000), 0, 3_000_000)).toBe(
+    600_000
+  );
+  // No metadata, or no deadline: no background requests.
+  expect(
+    radioMetadataPreviewRefreshInterval(
+      { error: { code: "X", message: "" }, ok: false } as never,
+      0,
+      0
+    )
+  ).toBeFalse();
+  expect(radioMetadataPreviewRefreshInterval(undefined, 0, 0)).toBeFalse();
+  expect(
+    radioMetadataPreviewRefreshInterval(
+      { data: metadata, ok: true } as never,
+      0,
+      0
+    )
+  ).toBeFalse();
 });
 
 test("gates preview requests and refreshes metadata when polling starts", async () => {
@@ -265,7 +300,7 @@ test("keeps a fresh preview through playback and refreshes after its deadline", 
 
 describe("RadioNowPlaying", () => {
   for (const variant of ["featured", "compact"] as const) {
-    test(`attaches player genres to featured artwork and keeps full Details in ${variant} mode`, () => {
+    test(`shows player genres under the subtitle and full Details in ${variant} mode`, () => {
       const view = render(
         <RadioNowPlaying
           metadata={{
@@ -276,37 +311,31 @@ describe("RadioNowPlaying", () => {
           variant={variant}
         />
       );
-      const playerGenres = view.queryByRole("list", { name: "Genres" });
+      const playerGenres = view.getByRole("list");
+      const artworkButton = view.getByRole("button", {
+        name: "Details for Current Show",
+      });
+      expect(artworkButton.contains(playerGenres)).toBe(false);
+      expect(
+        view.getByText("Host Name").parentElement?.contains(playerGenres)
+      ).toBe(true);
+      const visiblePills = within(playerGenres)
+        .getAllByRole("listitem")
+        .map((pill) => pill.textContent);
       if (variant === "featured") {
-        const artworkButton = view.getByRole("button", {
-          name: "Details for Current Show",
-        });
-        expect(artworkButton.parentElement?.contains(playerGenres)).toBe(true);
-        expect(artworkButton.querySelector("ul")).toBeNull();
-        expect(
-          view.getByText("Host Name").parentElement?.contains(playerGenres)
-        ).toBe(false);
-        expect(view.getByText("2 more genres in Details")).toBeTruthy();
+        expect(visiblePills).toEqual(["Art Pop", "Downtempo", "R&B / Soul"]);
         expect(view.getByText("Example Radio").nextElementSibling).toBe(
           view.getByRole("heading", { name: "Current Show" })
         );
       } else {
-        expect(playerGenres).toBeNull();
-        const fullGenreDescription = view.getByText(
-          "Genres: Art Pop, Downtempo, R&B / Soul"
-        );
-        expect(fullGenreDescription.classList.contains("sr-only")).toBe(true);
-        expect(
-          fullGenreDescription.parentElement?.querySelector("[aria-hidden]")
-            ?.textContent
-        ).toBe("Art Pop");
+        expect(visiblePills).toEqual(["Art Pop", "+22 more genres in Details"]);
       }
 
       fireEvent.click(
         view.getByRole("button", { name: "Details for Current Show" })
       );
       const details = within(view.getByRole("dialog"));
-      const genres = details.getByRole("list", { name: "Genres" });
+      const genres = details.getByRole("list");
       const pills = within(genres).getAllByRole("listitem");
       expect(pills.map((pill) => pill.textContent)).toEqual([
         "Art Pop",
@@ -330,13 +359,11 @@ describe("RadioNowPlaying", () => {
           variant="featured"
         />
       );
-      expect(view.queryByRole("list", { name: "Genres" })).toBeNull();
+      expect(view.queryByRole("list")).toBeNull();
       fireEvent.click(
         view.getByRole("button", { name: "Details for Current Show" })
       );
-      expect(
-        within(view.getByRole("dialog")).queryByRole("list", { name: "Genres" })
-      ).toBeNull();
+      expect(within(view.getByRole("dialog")).queryByRole("list")).toBeNull();
     });
   }
 
@@ -598,11 +625,13 @@ describe("RadioNowPlaying", () => {
       <QueryClientProvider client={client}>
         <StationList
           currentRadioId={listedRadio.id}
+          isPlaying={false}
           onDelete={noop}
           onEdit={noop}
           onSave={noop}
           onSelect={noop}
           onToggle={noop}
+          onTogglePlayPause={noop}
           radios={[listedRadio]}
           searchBar={null}
           sessionRadios={[]}
@@ -622,7 +651,7 @@ describe("RadioNowPlaying", () => {
     expect(view.getByText("Current show description.")).toBeTruthy();
   });
 
-  test("makes the same show details available from an idle Multiple card", () => {
+  test("makes the same show details available from an idle Station node", () => {
     const client = new QueryClient();
     client.setQueryData(
       radioMetadataKeys.stream(radio.streamUrl, radio.metadataConfig),
@@ -633,20 +662,19 @@ describe("RadioNowPlaying", () => {
     );
     const view = render(
       <QueryClientProvider client={client}>
-        <MultipleRadioCard
+        <StationNodeBody
+          error={null}
+          isLoading={false}
+          isPlaying={false}
+          muted
+          onSelectDiscovered={noop}
+          onSelectLocal={noop}
           onToggleMute={noop}
           onTogglePlayPause={noop}
           onVolumeChange={noop}
-          playerState={{
-            error: null,
-            id: "test-radio",
-            isLoading: false,
-            isMuted: true,
-            isPlaying: false,
-            radio,
-            volume: 0,
-          }}
           radio={radio}
+          radios={[radio]}
+          volume={0}
         />
       </QueryClientProvider>
     );

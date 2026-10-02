@@ -22,6 +22,7 @@ function stereoBalanceGains(volume: number, pan: number): [number, number] {
 }
 
 type EffectConfigData = {
+  signalGain: number;
   enabled: boolean;
   inputGain: number;
   outputGain: number;
@@ -217,6 +218,7 @@ export class EffectSource {
       outputGain:
         typeof config.outputGain === "number" ? config.outputGain : 1.0,
       raw: { ...fullConfig },
+      signalGain: typeof config.signalGain === "number" ? config.signalGain : 1,
     });
     this.insertEffectAtOrder(effectId, order);
     return true;
@@ -241,6 +243,9 @@ export class EffectSource {
     const existingConfig = this.effectConfigs.get(effectId);
     if (existingConfig) {
       Object.assign(existingConfig.raw, config);
+      // Updates carry the effect's full config, and the compiler omits
+      // signalGain once a leading trim moves to another effect.
+      existingConfig.raw.signalGain = config.signalGain;
       if (processor instanceof ContainerEffect) {
         processor.configure(existingConfig.raw as EffectConfig);
       }
@@ -249,6 +254,8 @@ export class EffectSource {
       } else if (typeof config.enabled === "number") {
         existingConfig.enabled = config.enabled !== 0;
       }
+      existingConfig.signalGain =
+        typeof config.signalGain === "number" ? config.signalGain : 1;
       if (typeof config.inputGain === "number") {
         existingConfig.inputGain = config.inputGain;
       }
@@ -340,6 +347,13 @@ export class EffectSource {
         effect.setSidechainInput?.(this.sidechainChannels);
       } else {
         effect.setSidechainInput?.(null);
+      }
+
+      if (config.signalGain !== 1) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
+          current[0][i] = (current[0][i] ?? 0) * config.signalGain;
+          current[1][i] = (current[1][i] ?? 0) * config.signalGain;
+        }
       }
 
       const needsDryMix = config.dryWet < 1.0;

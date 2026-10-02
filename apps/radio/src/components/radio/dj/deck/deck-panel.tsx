@@ -1,7 +1,6 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
-import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
+import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChannelSelection,
@@ -10,13 +9,12 @@ import type {
   Radio,
 } from "@/lib/audio";
 import { isAudioFile } from "@/lib/audio/file-metadata";
+import type { BrowserAudioSource } from "@/lib/audio/playback/display-audio";
 import { channelEffects } from "@/lib/channel-effects";
 import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
-import { isPlatformRadio } from "@/lib/external-url";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
 import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
-import { usePeakLevel } from "@/lib/hooks/use-peak-level";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
@@ -25,14 +23,13 @@ import {
   isFileMetadata,
   isStaticAudioMetadata,
 } from "@/lib/platform-types";
-import {
-  setDeckAPeakLevel,
-  setDeckBPeakLevel,
-} from "@/lib/stores/dj-runtime-store";
+import { setDjError } from "@/lib/stores/dj-runtime-store";
+import { BrowserAudioForm } from "../../browser-audio-form";
 import { DeviceForm } from "../device-form";
 import { DjRadioList } from "../dj-radio-list";
 import { ExternalSearch } from "../external-search";
 import { FileForm } from "../file-form";
+import { describeFileLoadFailure } from "../file-load-failure";
 import { type DeckContextValue, DeckProvider } from "./deck-context";
 import { DeviceInputContent } from "./deck-device-input-content";
 import { DeckEmpty } from "./deck-empty";
@@ -40,6 +37,7 @@ import { DeckHeader } from "./deck-header";
 import { LoadedDeckContent } from "./deck-loaded-content";
 import {
   calculateHasTracklist,
+  getChangeSourceSearchPlatform,
   isStreamingMetadata,
   resolveDeckPanelContentKind,
 } from "./deck-panel-helpers";
@@ -115,8 +113,6 @@ function DeckPanelInner({
   deckState,
   radios,
 }: DeckPanelInnerProps) {
-  const { isOver, setNodeRef } = useDroppable({ id: deckId });
-
   const {
     radio,
     isPlaying,
@@ -152,14 +148,6 @@ function DeckPanelInner({
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);
-  const peakLevel = usePeakLevel(soundId);
-
-  // Publish peak levels to runtime store for mixer VU meters
-  const setPeakLevel =
-    deckId === "deck-a" ? setDeckAPeakLevel : setDeckBPeakLevel;
-  useEffect(() => {
-    setPeakLevel(peakLevel);
-  }, [peakLevel, setPeakLevel]);
 
   // Throttle channel strip setters
   const throttledSetPan = useThrottledParam(setPan);
@@ -191,14 +179,17 @@ function DeckPanelInner({
 
   const deckSide = deckId === "deck-a" ? "left" : "right";
   const [isChangingUrl, setIsChangingUrl] = useState(false);
+  const [isPickingSource, setIsPickingSource] = useState(false);
   const [isChangingDevice, setIsChangingDevice] = useState(false);
   const [isChangingFile, setIsChangingFile] = useState(false);
-  const isMobile = useIsMobile();
 
   const isDeviceInput = radio?.platformMetadata?.platform === "device-input";
   const isFileSource =
     isFileMetadata(radio?.platformMetadata) ||
     isStaticAudioMetadata(radio?.platformMetadata);
+  const changeSourceSearchPlatform = getChangeSourceSearchPlatform(
+    radio?.platformMetadata
+  );
   const effectiveMetadata = metadata || radio?.platformMetadata;
   const hasTracklist = calculateHasTracklist(effectiveMetadata);
   const streamingMeta = isStreamingMetadata(effectiveMetadata)
@@ -215,22 +206,36 @@ function DeckPanelInner({
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const fileDragCounter = useRef(0);
 
+  /** Load a file or remote file; resolves to why it failed, or null. */
+  const loadFile = async (
+    intent:
+      | { file: File; type: "file" }
+      | { files: readonly File[]; type: "files" }
+      | { type: "static-audio-url"; url: string }
+  ): Promise<string | null> => {
+    const result = await loadSource(intent);
+    return result.type === "failed" ? result.message : null;
+  };
+  const handleLoadFile = (file: File) => loadFile({ file, type: "file" });
+  const handleLoadFiles = (files: readonly File[]) =>
+    loadFile({ files, type: "files" });
+  const handleLoadRemoteUrl = (url: string) =>
+    loadFile({ type: "static-audio-url", url });
+
+  // A file dropped on the deck has no form to report to, so the mixer does.
   const handleFileDrop = useCallback(
     (file: File) => {
-      loadSource({ file, type: "file" }).catch((error) => {
-        console.error("[dj] Failed to load file source:", error);
-      });
+      loadSource({ file, type: "file" })
+        .then((result) => {
+          if (result.type === "failed") {
+            setDjError(describeFileLoadFailure(result.message), deckId);
+          }
+        })
+        .catch((error) => {
+          console.error("[dj] Failed to load file source:", error);
+        });
     },
-    [loadSource]
-  );
-
-  const handleLoadRemoteUrl = useCallback(
-    (url: string) => {
-      loadSource({ type: "static-audio-url", url }).catch((error) => {
-        console.error("[dj] Failed to load static audio URL:", error);
-      });
-    },
-    [loadSource]
+    [deckId, loadSource]
   );
 
   // Native drag handlers
@@ -318,14 +323,21 @@ function DeckPanelInner({
       );
   };
   const handleCancelFileChange = () => setIsChangingFile(false);
-  const handleFileChanged = (file: File) => {
-    setIsChangingFile(false);
-    handleFileDrop(file);
+  // Keep the change form open until the new file loads, so a failure shows
+  // in the form with what the user typed still there.
+  const closeFileChangeOnLoad = async (
+    loading: Promise<string | null>
+  ): Promise<string | null> => {
+    const failure = await loading;
+    if (!failure) {
+      setIsChangingFile(false);
+    }
+    return failure;
   };
-  const handleRemoteUrlChanged = (url: string) => {
-    setIsChangingFile(false);
-    handleLoadRemoteUrl(url);
-  };
+  const handleFileChanged = (file: File) =>
+    closeFileChangeOnLoad(handleLoadFile(file));
+  const handleRemoteUrlChanged = (url: string) =>
+    closeFileChangeOnLoad(handleLoadRemoteUrl(url));
   const handleCancelUrlChange = () => setIsChangingUrl(false);
   const handleCancelDeviceChange = () => setIsChangingDevice(false);
   const handleChangeDevice = () => setIsChangingDevice(true);
@@ -339,10 +351,33 @@ function DeckPanelInner({
   const handleChangeSource = () => {
     if (isFileSource) {
       setIsChangingFile(true);
-    } else {
+    } else if (changeSourceSearchPlatform) {
       setIsChangingUrl(true);
+    } else {
+      setIsPickingSource(true);
     }
   };
+  const handleCancelPickSource = () => setIsPickingSource(false);
+
+  // A new source arrived (from the picker or a drop): close the picker.
+  // Keyed on the source's identity and the sound playing it, not the
+  // record: every channel write (a fader on either deck, say) hands the
+  // deck a new `radio` object. A device or shared tab keeps the deck's id
+  // and has no stream URL, but every load that commits plays on a new sound.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs whenever the deck's source changes
+  useEffect(() => {
+    setIsPickingSource(false);
+  }, [radio?.id, radio?.streamUrl, soundId]);
+
+  // A different source replaced the one being changed (a dropped file, say):
+  // close the change forms too. Moving to the next track of the same item
+  // keeps the source, and the form, as they are.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs whenever the deck's source is replaced
+  useEffect(() => {
+    setIsChangingUrl(false);
+    setIsChangingFile(false);
+    setIsChangingDevice(false);
+  }, [radio?.id]);
 
   // Build the DeckContext value for child components
   const contextValue: DeckContextValue = {
@@ -365,7 +400,6 @@ function DeckPanelInner({
     metadata: effectiveMetadata,
     pan,
     pause,
-    peakLevel,
     play,
     radio,
     removeEffect,
@@ -393,7 +427,23 @@ function DeckPanelInner({
   let content: React.ReactNode;
   const contentKind = resolveDeckPanelContentKind(!!radio, pendingPlatform);
 
-  if (contentKind === "pending-device") {
+  if (contentKind === "pending-browser") {
+    content = (
+      <BrowserAudioForm
+        onCancel={cancelPendingSource}
+        onLoad={async (sourceUrl, deviceLabel) => {
+          await loadSource({
+            capture: "display",
+            deviceId: "display",
+            deviceLabel,
+            sourceUrl,
+            type: "device-input",
+          });
+        }}
+        source={pendingPlatform as BrowserAudioSource}
+      />
+    );
+  } else if (contentKind === "pending-device") {
     content = (
       <DeviceForm
         onCancel={cancelPendingSource}
@@ -404,13 +454,15 @@ function DeckPanelInner({
     content = (
       <FileForm
         onCancel={cancelPendingSource}
-        onLoad={handleFileDrop}
+        onLoad={handleLoadFile}
+        onLoadFiles={handleLoadFiles}
         onLoadUrl={handleLoadRemoteUrl}
       />
     );
   } else if (contentKind === "pending-external" && pendingPlatform) {
     const searchPlatform =
       pendingPlatform === "bandcamp" ||
+      pendingPlatform === "mixcloud" ||
       pendingPlatform === "soundcloud" ||
       pendingPlatform === "youtube" ||
       pendingPlatform === "radiogarden"
@@ -430,22 +482,33 @@ function DeckPanelInner({
         <FileForm
           onCancel={handleCancelFileChange}
           onLoad={handleFileChanged}
+          onLoadFiles={(files) => closeFileChangeOnLoad(handleLoadFiles(files))}
           onLoadUrl={handleRemoteUrlChanged}
         />
       );
-    } else if (isChangingUrl && isPlatformRadio(radio)) {
-      const editPlatform = radio.platformMetadata?.platform;
-      const searchPlatform =
-        editPlatform === "bandcamp" ||
-        editPlatform === "soundcloud" ||
-        editPlatform === "youtube" ||
-        editPlatform === "radiogarden"
-          ? editPlatform
-          : ("all" as const);
+    } else if (isPickingSource) {
+      content = (
+        <div className="flex h-full min-h-0 flex-col gap-2">
+          <div className="min-h-0 flex-1">
+            <DjRadioList deckId={deckId} radios={radios} />
+          </div>
+          <div className="flex justify-end border-border/50 border-t pt-2">
+            <Button
+              className="h-7 text-xs"
+              onClick={handleCancelPickSource}
+              size="sm"
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      );
+    } else if (isChangingUrl && changeSourceSearchPlatform) {
       content = (
         <ExternalSearch
-          initialPlatform={searchPlatform}
-          key={searchPlatform}
+          initialPlatform={changeSourceSearchPlatform}
+          key={changeSourceSearchPlatform}
           onCancel={handleCancelUrlChange}
           onLoad={handleUrlChanged}
         />
@@ -470,7 +533,11 @@ function DeckPanelInner({
             deviceLabel={deviceMeta.deviceLabel ?? radio.name}
             isLoading={isLoading}
             isPlaying={isPlaying}
-            onChangeDevice={handleChangeDevice}
+            onChangeDevice={
+              deviceMeta.capture === "display"
+                ? () => setIsPickingSource(true)
+                : handleChangeDevice
+            }
             onChannelSelectionChange={setChannelSelection}
             onClear={handleClear}
             onToggleMute={handleToggleMute}
@@ -479,28 +546,22 @@ function DeckPanelInner({
       );
     } else {
       // Normal deck (streaming/file)
-      const onChangeUrl = isPlatformRadio(radio)
-        ? handleChangeSource
-        : undefined;
-
       content = (
         <DeckProvider value={contextValue}>
-          <LoadedDeckContent onChangeUrl={onChangeUrl} onClear={handleClear} />
+          <LoadedDeckContent
+            onChangeUrl={handleChangeSource}
+            onClear={handleClear}
+          />
         </DeckProvider>
       );
     }
-  } else if (isMobile) {
-    content = (
-      <div className="flex h-full min-h-0 flex-col gap-2">
-        <DjRadioList radios={radios} />
-      </div>
-    );
   } else {
     content = (
       <DeckEmpty
         addEffect={addEffect}
+        deckId={deckId}
         effects={effects}
-        onFileDrop={handleFileDrop}
+        radios={radios}
         removeEffect={removeEffect}
         reorderEffects={reorderEffects}
         updateEffect={updateEffect}
@@ -513,16 +574,14 @@ function DeckPanelInner({
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: DnD drop zone for native file drag
     <div
       className={cn(
-        "flex h-full min-h-0 w-full flex-col border-border/50 transition-colors",
-        isOver ? "bg-primary/5" : "",
-        isFileDragOver ? "bg-violet-500/5 ring-2 ring-violet-500/50" : "",
+        "relative flex h-full min-h-0 w-full flex-col border-border/50 transition-colors",
+        isFileDragOver ? "bg-primary/5 ring-2 ring-primary/50" : "",
         className
       )}
       onDragEnter={handleNativeDragEnter}
       onDragLeave={handleNativeDragLeave}
       onDragOver={handleNativeDragOver}
       onDrop={handleNativeDrop}
-      ref={setNodeRef}
     >
       <DeckHeader deckId={deckId} onReset={reset} radio={radio} />
       <div className="flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden px-1.5 pb-1.5 sm:px-2 sm:pb-2">

@@ -3,7 +3,10 @@ import {
   type PlaybackSessionId,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { settingsCollection } from "@/lib/collections/settings";
+import {
+  type SettingsRecord,
+  settingsCollection,
+} from "@/lib/collections/settings";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
 
 async function resetPlaybackSessions() {
@@ -69,6 +72,8 @@ describe("mode lifecycle requests", () => {
 
     await requests.requestMode("");
     await requests.requestMode("unknown");
+    // Retired with Multiple; callers normalise it to "node" first.
+    await requests.requestMode("multiple");
 
     expect(switchTo).not.toHaveBeenCalled();
   });
@@ -91,13 +96,38 @@ describe("mode lifecycle requests", () => {
       },
     });
 
-    await requests.requestMode("multiple");
+    await requests.requestMode("node");
 
-    expect(switchTo).toHaveBeenCalledWith("multiple");
+    expect(switchTo).toHaveBeenCalledWith("node");
+  });
+
+  test("does not re-request the mode already being switched to", async () => {
+    const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
+    const requests = createModeLifecycleRequests({
+      manager: {
+        activateInitialMode: mock(
+          async (_mode: PlaybackSessionId) => undefined
+        ),
+        getSnapshot: mock(() => ({
+          currentMode: "single" as const,
+          error: null,
+          phase: "deactivating" as const,
+          requestedMode: "node" as const,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
+        switchTo,
+      },
+    });
+
+    await requests.requestMode("node");
+    await requests.requestMode("dj");
+
+    expect(switchTo).toHaveBeenCalledTimes(1);
+    expect(switchTo).toHaveBeenCalledWith("dj");
   });
 
   test("cancels stale runtime synchronization after settings change", async () => {
-    insertPlaybackSession("multiple");
+    insertPlaybackSession("node");
     insertSettings("dj");
     const activateInitialMode = mock(
       async (_mode: PlaybackSessionId) => undefined
@@ -117,9 +147,74 @@ describe("mode lifecycle requests", () => {
       },
     });
 
-    await requests.synchronizeMode("multiple");
+    await requests.synchronizeMode("node");
 
     expect(activateInitialMode).not.toHaveBeenCalled();
+    expect(switchTo).not.toHaveBeenCalled();
+  });
+
+  test("switches to a legacy stored mode's replacement without committing", async () => {
+    insertPlaybackSession("node");
+    const switchTo = mock(
+      async (_mode: PlaybackSessionId, _options?: { commit?: boolean }) =>
+        undefined
+    );
+    const requests = createModeLifecycleRequests({
+      // Another tab wrote "multiple" while this one plays Single.
+      getCurrentSettings: () =>
+        ({
+          id: "app-settings",
+          player: { mode: "multiple", restoreStateOnLoad: true },
+        }) as unknown as SettingsRecord,
+      manager: {
+        activateInitialMode: mock(
+          async (_mode: PlaybackSessionId) => undefined
+        ),
+        getSnapshot: mock(() => ({
+          currentMode: "single" as const,
+          error: null,
+          phase: "active" as const,
+          requestedMode: null,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
+        switchTo,
+      },
+    });
+
+    await requests.synchronizeMode("node");
+
+    expect(switchTo).toHaveBeenCalledWith("node", { commit: false });
+  });
+
+  test("activates a legacy stored mode as its replacement without committing", async () => {
+    insertPlaybackSession("node");
+    const activateInitialMode = mock(
+      async (_mode: PlaybackSessionId) => undefined
+    );
+    const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
+    const requests = createModeLifecycleRequests({
+      // A "multiple" the settings step could not rewrite.
+      getCurrentSettings: () =>
+        ({
+          id: "app-settings",
+          player: { mode: "multiple", restoreStateOnLoad: true },
+        }) as unknown as SettingsRecord,
+      manager: {
+        activateInitialMode,
+        getSnapshot: mock(() => ({
+          currentMode: null,
+          error: null,
+          phase: "inactive" as const,
+          requestedMode: null,
+        })),
+        subscribe: mock((_listener: () => void) => () => undefined),
+        switchTo,
+      },
+    });
+
+    await requests.synchronizeMode("node");
+
+    expect(activateInitialMode).toHaveBeenCalledWith("node");
     expect(switchTo).not.toHaveBeenCalled();
   });
 });

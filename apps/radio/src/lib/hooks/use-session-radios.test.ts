@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { wasSessionRadioEvicted } from "@/lib/collections/session-radios";
 import {
   addSessionRadio,
   getSessionRadios,
@@ -93,6 +94,53 @@ describe("session radios", () => {
     expect(radios[0]?.streamUrl).toBe("https://radio.example/20-duplicate.mp3");
     expect(radios.at(-1)?.id).toBe("rg_1");
     expect(radios.some((radio) => radio.id === "rg_0")).toBe(false);
+  });
+
+  test("keeps only the newest eviction tombstones", async () => {
+    await sessionRadiosCollection.stateWhenReady();
+
+    for (let index = 0; index < 140; index += 1) {
+      addSessionRadio({
+        id: `rg_${index}`,
+        name: `Session ${index}`,
+        streamUrl: `https://radio.example/${index}.mp3`,
+      });
+    }
+
+    // 120 were evicted; the oldest 20 tombstones are forgotten.
+    expect(wasSessionRadioEvicted("rg_19")).toBe(false);
+    expect(wasSessionRadioEvicted("rg_20")).toBe(true);
+    expect(wasSessionRadioEvicted("rg_119")).toBe(true);
+    expect(wasSessionRadioEvicted("rg_120")).toBe(false);
+  });
+
+  test("still adds a radio when the eviction tombstones can't be stored", async () => {
+    await sessionRadiosCollection.stateWhenReady();
+    const { setItem } = sessionStorage;
+    const originalWarn = console.warn;
+    console.warn = mock(() => undefined);
+    sessionStorage.setItem = (key, value) => {
+      if (key === "radio-session-radios-evicted") {
+        throw new Error("QuotaExceededError");
+      }
+      setItem.call(sessionStorage, key, value);
+    };
+
+    try {
+      for (let index = 0; index < 21; index += 1) {
+        addSessionRadio({
+          id: `rg_${index}`,
+          name: `Session ${index}`,
+          streamUrl: `https://radio.example/${index}.mp3`,
+        });
+      }
+    } finally {
+      sessionStorage.setItem = setItem;
+      console.warn = originalWarn;
+    }
+
+    expect(getSessionRadios()[0]?.id).toBe("rg_20");
+    expect(getSessionRadios()).toHaveLength(20);
   });
 
   test("refreshes a Radio Browser session record when its resolved stream changes", async () => {

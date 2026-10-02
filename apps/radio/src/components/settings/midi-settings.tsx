@@ -5,8 +5,17 @@
  * Connected device list, preset selector, mapping table with learn mode.
  */
 
-import { Alert, AlertDescription } from "@avoid.quest/ui/components/alert";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@avoid.quest/ui/components/alert";
 import { Button } from "@avoid.quest/ui/components/button";
+import {
+  Field,
+  FieldLabel,
+  FieldTitle,
+} from "@avoid.quest/ui/components/field";
 import {
   Select,
   SelectContent,
@@ -23,6 +32,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useMidiControlSnapshot } from "@/lib/hooks/use-midi";
 import { usePlayerMode } from "@/lib/hooks/use-settings";
 import {
@@ -31,6 +41,10 @@ import {
   type MidiActionDescriptor,
   type MidiMapping,
 } from "@/lib/midi";
+
+/** Same row layout as the Playback tab's AudioSettingRow. */
+const SETTING_ROW_CLASS =
+  "py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center";
 
 function formatMapping(mapping: MidiMapping | undefined): string {
   if (!mapping) {
@@ -43,9 +57,20 @@ function formatMapping(mapping: MidiMapping | undefined): string {
   return `${typeLabel} ${mapping.control} ch.${mapping.channel + 1}${transformInfo}`;
 }
 
+/** The DJ groups listed under their own titles above any others. */
+const DJ_ACTION_GROUPS = new Set([
+  "deck-a",
+  "deck-b",
+  "mixer",
+  "deck-a-effects",
+  "deck-b-effects",
+]);
+
 type MappingRowProps = {
   targetId: string;
   label: string;
+  /** The group, e.g. "Deck A", so buttons read "Learn Deck A Play/Pause". */
+  group: string;
   mapping: MidiMapping | undefined;
   isLearning: boolean;
   isLearningTarget: boolean;
@@ -57,6 +82,7 @@ type MappingRowProps = {
 function MappingRow({
   targetId,
   label,
+  group,
   mapping,
   isLearning,
   isLearningTarget,
@@ -70,6 +96,7 @@ function MappingRow({
   const handleRemove = () => {
     onRemove(targetId);
   };
+  const target = `${group} ${label}`;
 
   return (
     <div className="flex items-center gap-2 py-1.5">
@@ -80,10 +107,11 @@ function MappingRow({
           mapping ? "text-foreground" : "text-muted-foreground"
         )}
       >
-        {formatMapping(mapping)}
+        {isLearningTarget ? "Move a control…" : formatMapping(mapping)}
       </span>
       {isLearningTarget ? (
         <Button
+          aria-label={`Cancel learning ${target}`}
           className="h-7 w-14 animate-pulse text-xs"
           onClick={onStopLearn}
           size="sm"
@@ -93,6 +121,7 @@ function MappingRow({
         </Button>
       ) : (
         <Button
+          aria-label={`Learn ${target}`}
           className="h-7 w-14 text-xs"
           disabled={isLearning}
           onClick={handleStartLearn}
@@ -103,10 +132,11 @@ function MappingRow({
         </Button>
       )}
       <Button
-        className="h-7 w-7 p-0"
+        aria-label={`Remove mapping for ${target}`}
+        className="size-7"
         disabled={!mapping || isLearning}
         onClick={handleRemove}
-        size="sm"
+        size="icon"
         variant="ghost"
       >
         <XIcon className="size-3.5" />
@@ -144,9 +174,7 @@ function MappingGroup({
 
   return (
     <div className="space-y-1">
-      <h4 className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-        {title}
-      </h4>
+      <h4 className="font-medium text-sm">{title}</h4>
       <div className="divide-y border-y">
         {targetIds.map((id) => {
           const action = actions.find((a) => a.targetId === id);
@@ -156,6 +184,7 @@ function MappingGroup({
           const mapping = mappings.find((m) => m.targetId === id);
           return (
             <MappingRow
+              group={title}
               isLearning={isLearning}
               isLearningTarget={learningTarget === id}
               key={id}
@@ -207,6 +236,14 @@ export function MidiSettings() {
   const deckBEffectTargets = actions
     .filter((a) => a.group === "deck-b-effects")
     .map((a) => a.targetId);
+  // Anything else is named by its owner, e.g. a node's title in Node mode.
+  const otherGroups = [
+    ...new Set(
+      actions
+        .map((a) => a.group)
+        .filter((group) => !DJ_ACTION_GROUPS.has(group))
+    ),
+  ];
 
   const handleConnect = () => {
     control.connect().catch(() => undefined);
@@ -217,6 +254,23 @@ export function MidiSettings() {
   const handlePresetChange = (presetId: string) => {
     control.change({ presetId, type: "load-preset" });
   };
+  const [confirmClear, setConfirmClear] = useState(false);
+  useEffect(() => {
+    if (!confirmClear) {
+      return;
+    }
+    const handle = setTimeout(() => setConfirmClear(false), 4000);
+    return () => clearTimeout(handle);
+  }, [confirmClear]);
+  const handleClearAllClick = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    setConfirmClear(false);
+    handleClearMappings();
+  };
+
   const handleClearMappings = () => {
     control.change({ type: "clear-mappings" });
   };
@@ -232,17 +286,14 @@ export function MidiSettings() {
 
   if (!isSupported) {
     return (
-      <div className="space-y-3">
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-          <p className="font-mono text-xs uppercase tracking-wider">
-            Web MIDI not supported
-          </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/60">
-            MIDI controller support requires a Chromium-based browser (Chrome,
-            Edge, Opera). Firefox and Safari do not support the Web MIDI API.
-          </p>
-        </div>
-      </div>
+      <Alert className="py-2.5">
+        <InfoIcon />
+        <AlertTitle>Web MIDI not supported</AlertTitle>
+        <AlertDescription className="text-xs">
+          MIDI controller support requires a Chromium-based browser (Chrome,
+          Edge, Opera). Firefox and Safari do not support the Web MIDI API.
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -250,46 +301,46 @@ export function MidiSettings() {
 
   return (
     <div className="space-y-5">
-      {playerMode !== "dj" && (
+      {playerMode === "single" && (
         <Alert className="py-2.5">
           <InfoIcon />
           <AlertDescription className="text-xs">
-            MIDI mappings are applied in DJ mode.
+            MIDI mappings are applied in DJ and Node modes.
           </AlertDescription>
         </Alert>
       )}
 
       {!permissionGranted && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-          <p className="mb-2 text-xs">
+        <Alert className="py-2.5">
+          <InfoIcon />
+          <AlertDescription className="text-xs">
             Grant MIDI permission to detect controllers and receive MIDI
             messages.
-          </p>
-          <Button
-            disabled={isLoading}
-            onClick={handleConnect}
-            size="sm"
-            variant="outline"
-          >
-            {isLoading ? "Requesting..." : "Grant MIDI Permission"}
-          </Button>
-        </div>
+            <Button
+              className="mt-1"
+              disabled={isLoading}
+              onClick={handleConnect}
+              size="sm"
+              variant="outline"
+            >
+              {isLoading ? "Requesting…" : "Grant MIDI permission"}
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="divide-y border-y">
-        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
-          <label className="text-sm" htmlFor="midi-enabled">
-            Enable MIDI
-          </label>
+        <Field className={SETTING_ROW_CLASS} orientation="horizontal">
+          <FieldLabel htmlFor="midi-enabled">Enable MIDI</FieldLabel>
           <Switch
             checked={enabled}
             id="midi-enabled"
             onCheckedChange={handleEnabledChange}
           />
-        </div>
+        </Field>
 
-        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-start">
-          <h4 className="text-sm">Connected devices</h4>
+        <Field className={SETTING_ROW_CLASS} orientation="horizontal">
+          <FieldTitle>Connected devices</FieldTitle>
           <div className="flex min-w-0 items-start gap-2">
             {connectedDevices.length === 0 ? (
               <p className="min-w-0 flex-1 text-muted-foreground text-xs">
@@ -331,16 +382,16 @@ export function MidiSettings() {
               </Button>
             ) : null}
           </div>
-        </div>
+        </Field>
 
-        <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
-          <h4 className="text-sm">Preset</h4>
+        <Field className={SETTING_ROW_CLASS} orientation="horizontal">
+          <FieldLabel htmlFor="midi-preset">Preset</FieldLabel>
           <Select
             onValueChange={handlePresetChange}
             value={activePresetId ?? undefined}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a preset..." />
+            <SelectTrigger className="w-full" id="midi-preset">
+              <SelectValue placeholder="Select a preset…" />
             </SelectTrigger>
             <SelectContent>
               {MIDI_PRESETS.map((preset) => (
@@ -353,31 +404,29 @@ export function MidiSettings() {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </Field>
       </div>
 
       {/* Mapping table */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-            Mappings
-          </h4>
+          <h4 className="font-medium text-sm">Mappings</h4>
           <Button
             className="h-7 text-xs"
             disabled={mappings.length === 0 || isLearning}
-            onClick={handleClearMappings}
+            onClick={handleClearAllClick}
             size="sm"
-            variant="ghost"
+            variant={confirmClear ? "destructive" : "ghost"}
           >
-            <Trash2Icon className="mr-1.5 size-3" />
-            Clear All
+            <Trash2Icon className="size-3" />
+            {confirmClear ? "Clear all mappings?" : "Clear all"}
           </Button>
         </div>
 
         <div className="grid gap-x-6 gap-y-5 lg:grid-cols-2 2xl:grid-cols-3">
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -389,7 +438,7 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -401,7 +450,7 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
@@ -413,27 +462,44 @@ export function MidiSettings() {
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
             onStartLearn={handleStartLearn}
             onStopLearn={handleStopLearn}
             targetIds={deckAEffectTargets}
-            title="Deck A Effects"
+            title="Deck A effects"
           />
 
           <MappingGroup
             actions={actions}
-            isLearning={isLearning}
+            isLearning={isLearning || !permissionGranted}
             learningTarget={learningTarget}
             mappings={mappings}
             onRemove={handleRemoveMapping}
             onStartLearn={handleStartLearn}
             onStopLearn={handleStopLearn}
             targetIds={deckBEffectTargets}
-            title="Deck B Effects"
+            title="Deck B effects"
           />
+
+          {otherGroups.map((group) => (
+            <MappingGroup
+              actions={actions}
+              isLearning={isLearning || !permissionGranted}
+              key={group}
+              learningTarget={learningTarget}
+              mappings={mappings}
+              onRemove={handleRemoveMapping}
+              onStartLearn={handleStartLearn}
+              onStopLearn={handleStopLearn}
+              targetIds={actions
+                .filter((a) => a.group === group)
+                .map((a) => a.targetId)}
+              title={group}
+            />
+          ))}
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@
  */
 
 import { safeDisconnect } from "../utils.js";
+import { DisplayAudioError } from "./display-audio.js";
 
 /**
  * Channel selection for routing device input channels to stereo output.
@@ -47,6 +48,8 @@ export type DeviceSourceCallbacks = {
  * Audio constraints for device capture
  */
 export type DeviceAudioConstraints = {
+  /** A browser-selected stream, acquired during the initiating gesture. */
+  stream?: MediaStream;
   echoCancellation?: boolean;
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
@@ -107,6 +110,16 @@ function getCaptureState(stream: MediaStream): CaptureState {
 }
 
 /**
+ * Sharing may have stopped while the engine was set up; its ended event
+ * already fired, so check the track state directly.
+ */
+function assertSharingLive(stream: MediaStream): void {
+  if (!stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    throw new DisplayAudioError("Audio sharing ended. Share the tab again.");
+  }
+}
+
+/**
  * DeviceSource
  *
  * Captures audio from a specific audio input device and provides it as a Web Audio node.
@@ -123,11 +136,13 @@ export class DeviceSource {
   private _permissionState: DevicePermissionState = "prompt";
   private _currentDeviceId: string | null = null;
   private deviceChangeHandler: (() => void) | null = null;
+  private startRevision = 0;
 
   // Channel routing
   private _channelSelection: ChannelSelection = { left: 0, right: 1 };
   private _channelCount = 2;
   private diagnostics: DeviceSourceDiagnostics | null = null;
+  private trackEndCleanup: (() => void) | null = null;
   private diagnosticsTrack: MediaStreamTrack | null = null;
   private splitter: ChannelSplitterNode | null = null;
   private merger: ChannelMergerNode | null = null;
@@ -406,14 +421,13 @@ export class DeviceSource {
     deviceId?: string,
     constraints: DeviceAudioConstraints = {}
   ): Promise<void> {
-    if (this._isActive) {
-      // If already active with same device, do nothing
-      if (deviceId === this._currentDeviceId) {
-        return;
-      }
-      // Otherwise stop current and restart with new device
-      this.stop();
+    if (this._isActive && deviceId === this._currentDeviceId) {
+      return;
     }
+    // Release the previous capture, including an acquisition still pending.
+    this.stop();
+    this.startRevision += 1;
+    const revision = this.startRevision;
 
     const mergedConstraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
     const supportsLatency = Boolean(
@@ -442,14 +456,29 @@ export class DeviceSource {
     try {
       // Use 'exact' for device selection to ensure the correct device is captured
       // If the device is unavailable, NotFoundError is thrown and handled by handleStartError
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: initialRequest,
-      });
+      const stream =
+        constraints.stream ??
+        (await navigator.mediaDevices.getUserMedia({
+          audio: initialRequest,
+        }));
+      if (revision !== this.startRevision) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
       const { audioTrack, capabilities, settings } = getCaptureState(stream);
       this.stream = stream;
+      if (constraints.stream) {
+        assertSharingLive(stream);
+      }
+      this.watchTrackEnd(stream);
 
       this._permissionState = "granted";
       this.callbacks.onPermissionChange?.("granted");
+      if (revision !== this.startRevision) {
+        return;
+      }
 
       // Get actual device ID and channel count from track settings.
       // Match openDAW's capture policy: request at most stereo and use the
@@ -480,9 +509,30 @@ export class DeviceSource {
       this._isActive = true;
       this.callbacks.onActive?.();
     } catch (error) {
+      if (revision !== this.startRevision) {
+        return;
+      }
+      this.stop();
       this.handleStartError(error);
       throw error;
     }
+  }
+
+  /**
+   * The browser ends a capture's tracks when its device is unplugged, the
+   * mic permission is revoked or a shared tab or screen stops sharing: the
+   * capture stops then, rather than read as live with no audio.
+   */
+  private watchTrackEnd(stream: MediaStream): void {
+    const ended = () => this.stop();
+    for (const track of stream.getTracks()) {
+      track.addEventListener?.("ended", ended);
+    }
+    this.trackEndCleanup = () => {
+      for (const track of stream.getTracks()) {
+        track.removeEventListener?.("ended", ended);
+      }
+    };
   }
 
   /**
@@ -529,11 +579,13 @@ export class DeviceSource {
    * Stop capturing and release resources
    */
   stop(): void {
+    this.startRevision += 1;
     this.diagnostics = null;
     this.diagnosticsTrack = null;
-    if (!this._isActive) {
-      return;
-    }
+    const wasActive = this._isActive;
+
+    this.trackEndCleanup?.();
+    this.trackEndCleanup = null;
 
     // Stop all tracks in the stream
     if (this.stream) {
@@ -555,7 +607,9 @@ export class DeviceSource {
 
     this._isActive = false;
     this._currentDeviceId = null;
-    this.callbacks.onInactive?.();
+    if (wasActive) {
+      this.callbacks.onInactive?.();
+    }
   }
 
   /**

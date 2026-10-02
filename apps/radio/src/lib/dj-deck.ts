@@ -14,9 +14,15 @@ import {
   revokeFileObjectUrl,
 } from "@/lib/audio/file-metadata";
 import {
-  inferStreamFormat,
-  type StreamFormat,
-} from "@/lib/audio/playback/stream-format";
+  loadLocalAudioPlaylist,
+  localAudioUrls,
+} from "@/lib/audio/local-audio-playlist";
+import {
+  isDisplayAudioCancel,
+  requestDisplayAudio,
+  stopCapturedAudio,
+} from "@/lib/audio/playback/display-audio";
+import type { StreamFormat } from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import {
   type ChannelEffects,
@@ -30,6 +36,11 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { getAudioSettings } from "@/lib/collections/settings";
 import {
+  type DeviceInputAudio,
+  startDeviceInput as startDeviceCapture,
+} from "@/lib/device-input-playback";
+import {
+  captureDjError,
   clearDjErrorSurface,
   reportDjErrorSurface,
 } from "@/lib/dj/dj-error-surface";
@@ -48,11 +59,16 @@ import {
 import { getMixer } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
+import {
+  type LazyTrackRequest,
+  lazyTrackRequest,
+  refreshPlatformStream,
+} from "@/lib/platform-stream-refresh";
 import type { Platform } from "@/lib/platform-types";
 import {
   isDeviceInputMetadata,
   isFileMetadata,
-  isRadioBrowserMetadata,
+  isSpotifyMetadata,
   isYouTubeMetadata,
 } from "@/lib/platform-types";
 import {
@@ -64,6 +80,12 @@ import {
   toRuntimeAudioError,
 } from "@/lib/playback-action-errors.js";
 import {
+  repeatAtEnd,
+  seekSound,
+  setPlaybackRate,
+  streamFormatOf,
+} from "@/lib/source-strip";
+import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
@@ -72,6 +94,14 @@ import {
 } from "@/lib/stores/playback-runtime-store";
 import { generateId } from "@/lib/types";
 
+/** Whether a device source captures on load; a stream was already acquired. */
+type CaptureOnLoad = boolean | MediaStream;
+
+function isDisplayCapture(radio: Radio | null): boolean {
+  const metadata = radio?.platformMetadata;
+  return isDeviceInputMetadata(metadata) && metadata.capture === "display";
+}
+
 export type DeckId = "deck-a" | "deck-b";
 export type DeckSide = "left" | "right";
 
@@ -79,8 +109,13 @@ export type DjDeckLoadIntent =
   | DeckSourceLoadIntent
   | { type: "library"; radio: Radio };
 
+/**
+ * `failed` is returned only for file and remote-file loads, whose form shows
+ * `message` itself; every other failure is reported in the mixer.
+ */
 export type DjDeckLoadResult =
   | DeckSourceLoadResult
+  | { type: "failed"; message: string }
   | { type: "pending-platform"; platform: Platform };
 
 export type DjDeckTransportIntent =
@@ -137,7 +172,7 @@ export type DjDeckAudioAdapter = {
     soundId: string,
     selection: ChannelSelection
   ) => void;
-  startDevice: (soundId: string, deviceId: string) => Promise<void>;
+  startDevice: DeviceInputAudio["startDevice"];
   transport: (
     soundId: string,
     intent:
@@ -160,17 +195,15 @@ export type DjDeckHandle = {
   change: (change: DjDeckChange) => void;
 };
 
-export type DjDeckPendingSource = {
-  deckId: DeckId;
-  platform: Platform;
-} | null;
+/** The source form each Deck has open, if any. */
+export type DjDeckPendingSources = Readonly<Record<DeckId, Platform | null>>;
 
 export type DjDeckModule = {
   deck: (deckId: DeckId) => DjDeckHandle;
   deactivate: () => void;
   pendingSource: {
-    cancel: () => void;
-    getSnapshot: () => DjDeckPendingSource;
+    cancel: (deckId: DeckId) => void;
+    getSnapshot: () => DjDeckPendingSources;
     subscribe: (listener: () => void) => () => void;
   };
 };
@@ -182,6 +215,18 @@ type DjDeckModuleOptions = {
   output: OutputRouting;
   platform: DjDeckPlatformAdapter;
 };
+
+type DjDeckSourceResult = Exclude<
+  DjDeckLoadResult,
+  { type: "pending-platform" }
+>;
+
+/** Where a source load reports a failure. */
+type ReportSourceFailure = (
+  message: string,
+  code: string,
+  error?: unknown
+) => void;
 
 type DeckRuntime = {
   bindingCleanup: (() => void) | null;
@@ -231,77 +276,8 @@ function createLocalFileRadio(
   };
 }
 
-function getTrackFormat(radio: Radio, streamUrl: string): StreamFormat {
-  const metadata = radio.platformMetadata;
-  if (metadata && "tracks" in metadata && metadata.tracks) {
-    const track = metadata.tracks.find((item) => item.streamUrl === streamUrl);
-    if (track && "format" in track && track.format) {
-      return track.format;
-    }
-  }
-  if (streamUrl === radio.streamUrl && radio.streamFormat) {
-    return radio.streamFormat;
-  }
-  if (
-    streamUrl === radio.streamUrl &&
-    isRadioBrowserMetadata(metadata) &&
-    metadata.hls
-  ) {
-    return "hls";
-  }
-  return inferStreamFormat(streamUrl);
-}
-
-type StreamRefreshRequest = {
-  failureCode: string;
-  failureMessage: string;
-  resolution: PlatformStreamResolutionInput;
-};
-
-function getRefreshRequest(radio: Radio): StreamRefreshRequest | null {
-  const metadata = radio.platformMetadata;
-  const videoId = isYouTubeMetadata(metadata)
-    ? (metadata.videoId ??
-      metadata.tracks?.find((track) => track.streamUrl === radio.streamUrl)
-        ?.videoId)
-    : undefined;
-  if (videoId) {
-    return {
-      failureCode: "DJ_YOUTUBE_REFRESH_FAILED",
-      failureMessage: "Failed to refresh YouTube stream - please reload",
-      resolution: {
-        platform: "youtube",
-        radio,
-        reason: "stream-refresh",
-        videoId,
-      },
-    };
-  }
-  if (
-    metadata?.platform !== "bandcamp" &&
-    metadata?.platform !== "soundcloud"
-  ) {
-    return null;
-  }
-  const canonicalUrl = metadata.url.trim();
-  if (!canonicalUrl) {
-    return null;
-  }
-  const providerName =
-    metadata.platform === "bandcamp" ? "Bandcamp" : "SoundCloud";
-  return {
-    failureCode: `DJ_${metadata.platform.toUpperCase()}_REFRESH_FAILED`,
-    failureMessage: `Failed to refresh ${providerName} stream - please reload`,
-    resolution: {
-      canonicalUrl,
-      platform: metadata.platform,
-      radio,
-      reason: "stream-refresh",
-    },
-  };
-}
-
-function createBrowserAudioAdapter(
+/** Exported for the shared strip test; the module builds its own. */
+export function createBrowserAudioAdapter(
   context: PlaybackActionContext
 ): DjDeckAudioAdapter {
   return {
@@ -332,7 +308,7 @@ function createBrowserAudioAdapter(
         context.audio.setPan(soundId, channel.pan);
       }
       if (channel.speed !== 1) {
-        context.audio.setPlaybackRate(soundId, channel.speed);
+        setPlaybackRate(context.audio, soundId, channel.speed);
       }
       if (channel.channelFilter !== 0) {
         context.audio.setChannelFilter(soundId, channel.channelFilter);
@@ -342,6 +318,15 @@ function createBrowserAudioAdapter(
       }
     },
     change(soundId, change) {
+      // Pan and filters live on the sound's audio nodes, which exist only once
+      // it has started playing; applyStrip sets the saved values then.
+      const needsNodes =
+        change.type === "pan" ||
+        change.type === "channel-filter" ||
+        change.type === "filter";
+      if (needsNodes && !context.audio.getPostFaderNode(soundId)) {
+        return;
+      }
       switch (change.type) {
         case "channel-filter":
           context.audio.setChannelFilter(soundId, change.value);
@@ -360,7 +345,7 @@ function createBrowserAudioAdapter(
           context.audio.setPan(soundId, change.pan);
           break;
         case "speed":
-          context.audio.setPlaybackRate(soundId, change.speed);
+          setPlaybackRate(context.audio, soundId, change.speed);
           break;
         case "volume":
           context.audioEngine.volume.setChannelVolume(soundId, change.volume);
@@ -373,7 +358,9 @@ function createBrowserAudioAdapter(
     },
     getCueTap: (soundId) => context.audio.getPreFaderNode(soundId),
     getDeviceChannelCount: (soundId) =>
-      context.audio.getDeviceSource(soundId)?.channelCount ?? null,
+      context.audio.getDeviceSource(soundId)?.isActive
+        ? (context.audio.getDeviceSource(soundId)?.channelCount ?? null)
+        : null,
     loadFile: extractFileMetadata,
     refresh: (soundId, streamUrl, position, streamFormat) =>
       context.audioEngine.playback.refreshStreamUrl(
@@ -386,8 +373,13 @@ function createBrowserAudioAdapter(
     resume: context.resumeAudioContext,
     setDeviceChannelSelection: (soundId, selection) =>
       context.audio.setDeviceChannelSelection(soundId, selection),
-    startDevice: (soundId, deviceId) =>
-      context.audio.playDeviceSound(soundId, deviceId),
+    startDevice: (soundId, deviceId, constraints, channelSelection) =>
+      context.audio.playDeviceSound(
+        soundId,
+        deviceId,
+        constraints,
+        channelSelection
+      ),
     async transport(soundId, intent) {
       switch (intent.type) {
         case "pause":
@@ -397,7 +389,7 @@ function createBrowserAudioAdapter(
           await context.audioEngine.playback.play(soundId, intent.volume);
           return;
         case "seek":
-          context.audioEngine.playback.seek(soundId, intent.position);
+          seekSound(context.audioEngine.playback, soundId, intent.position);
           return;
         default: {
           const exhaustive: never = intent;
@@ -434,6 +426,53 @@ function reportOutputError(error: unknown, deckId: DeckId): void {
   );
 }
 
+const LAZY_TRACK_FAILURES = {
+  spotify: [
+    "Failed to match Spotify track on YouTube",
+    "DJ_SPOTIFY_RESOLVE_FAILED",
+  ],
+  youtube: ["Failed to resolve YouTube stream", "DJ_YOUTUBE_RESOLVE_FAILED"],
+} as const satisfies Record<
+  LazyTrackRequest["platform"],
+  readonly [string, string]
+>;
+
+/**
+ * Keeps a lazy track's resolved URL, and a Spotify track's match, on the
+ * track, so the next track after it is found and an expired stream renews.
+ */
+function keepLazyTrackStream(
+  radio: Radio,
+  request: LazyTrackRequest,
+  resolved: PlatformStreamResolution
+): void {
+  const metadata = radio.platformMetadata;
+  if (request.platform === "spotify") {
+    if (!isSpotifyMetadata(metadata)) {
+      return;
+    }
+    const track =
+      metadata.itemType === "track"
+        ? metadata
+        : metadata.tracks?.find(
+            (candidate) => candidate.spotifyId === request.spotifyId
+          );
+    if (track?.spotifyId === request.spotifyId) {
+      track.streamUrl = resolved.streamUrl;
+      track.youtubeVideoId = resolved.youtubeVideoId ?? track.youtubeVideoId;
+    }
+    return;
+  }
+  const track = isYouTubeMetadata(metadata)
+    ? metadata.tracks?.find(
+        (candidate) => candidate.videoId === request.videoId
+      )
+    : undefined;
+  if (track) {
+    track.streamUrl = resolved.streamUrl;
+  }
+}
+
 export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   const releasedFileUrls = new Set<string>();
   let outputErrorCleanup: (() => void) | null = null;
@@ -442,23 +481,26 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       reportDjErrorSurface(error.message, "DJ_OUTPUT_ROUTER_ERROR", error);
     });
   };
-  let pendingSourceSnapshot: DjDeckPendingSource = null;
+  let pendingSources: DjDeckPendingSources = {
+    "deck-a": null,
+    "deck-b": null,
+  };
   const pendingSourceListeners = new Set<() => void>();
-  const setPendingSource = (next: DjDeckPendingSource): void => {
-    if (
-      pendingSourceSnapshot?.deckId === next?.deckId &&
-      pendingSourceSnapshot?.platform === next?.platform
-    ) {
+  const setPendingSource = (
+    deckId: DeckId,
+    platform: Platform | null
+  ): void => {
+    if (pendingSources[deckId] === platform) {
       return;
     }
-    pendingSourceSnapshot = next;
+    pendingSources = { ...pendingSources, [deckId]: platform };
     for (const listener of pendingSourceListeners) {
       listener();
     }
   };
   const pendingSource: DjDeckModule["pendingSource"] = {
-    cancel: () => setPendingSource(null),
-    getSnapshot: () => pendingSourceSnapshot,
+    cancel: (deckId) => setPendingSource(deckId, null),
+    getSnapshot: () => pendingSources,
     subscribe(listener) {
       pendingSourceListeners.add(listener);
       return () => pendingSourceListeners.delete(listener);
@@ -514,7 +556,6 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     runtimes[deckId].loadGeneration === generation;
 
   const beginSourceLoad = (deckId: DeckId): number => {
-    setPendingSource(null);
     const loadGeneration = beginLoad(deckId);
     clearDjErrorSurface(deckId);
     return loadGeneration;
@@ -544,6 +585,27 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       radio,
       deckId
     );
+  };
+
+  /**
+   * The gain a Deck should start at: its own volume scaled by the crossfader,
+   * so a Deck on the muted side stays silent while it buffers.
+   */
+  const mixedVolume = (deckId: DeckId): number => {
+    const left = getPlaybackChannel("dj", "deck-a");
+    const right = getPlaybackChannel("dj", "deck-b");
+    const own = deckId === "deck-a" ? left : right;
+    const volume = own?.volume ?? 1;
+    const mixer = getMixer();
+    if (!mixer) {
+      return volume;
+    }
+    const [leftVolume, rightVolume] = calculateDjCrossfadeVolumes(
+      mixer.crossfadePosition,
+      left?.volume ?? 1,
+      right?.volume ?? 1
+    );
+    return deckId === "deck-a" ? leftVolume : rightVolume;
   };
 
   const applyCrossfade = (): void => {
@@ -676,14 +738,22 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     metadata: Extract<
       NonNullable<Radio["platformMetadata"]>,
       { platform: "device-input" }
-    >
+    >,
+    stream?: MediaStream
   ): Promise<void> => {
-    await options.audio.startDevice(soundId, metadata.deviceId);
-    if (!isCurrent(deckId, generation)) {
-      return;
-    }
-    options.audio.setDeviceChannelSelection(soundId, metadata.channelSelection);
-    const channelCount = options.audio.getDeviceChannelCount(soundId);
+    const { playGeneration } = runtimes[deckId];
+    // Seed the fader before the capture can reach the output.
+    applyCrossfade();
+    // The same start Node mode's Audio input lanes use.
+    const channelCount = await startDeviceCapture(
+      options.audio,
+      soundId,
+      stream ? { ...metadata, stream } : metadata,
+      () =>
+        isCurrent(deckId, generation) &&
+        runtimes[deckId].playGeneration === playGeneration,
+      (isLoading) => setPlaybackChannelRuntime(deckId, () => ({ isLoading }))
+    );
     if (channelCount === null) {
       return;
     }
@@ -700,11 +770,21 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     generation: number,
     soundId: string,
     radio: Radio,
-    wasPlaying: boolean
+    wasPlaying: boolean,
+    captureOnLoad: CaptureOnLoad
   ): Promise<void> => {
     const metadata = radio.platformMetadata;
     if (isDeviceInputMetadata(metadata)) {
-      await startDeviceInput(deckId, generation, soundId, metadata);
+      if (captureOnLoad === false) {
+        return;
+      }
+      await startDeviceInput(
+        deckId,
+        generation,
+        soundId,
+        metadata,
+        captureOnLoad === true ? undefined : captureOnLoad
+      );
       if (isCurrent(deckId, generation)) {
         applyCrossfade();
       }
@@ -715,7 +795,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     await options.audio.transport(soundId, {
       type: "play",
-      volume: getPlaybackChannel("dj", deckId)?.volume ?? 1,
+      volume: mixedVolume(deckId),
     });
     applyCrossfade();
   };
@@ -732,9 +812,11 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     previous: Radio | null,
     radio: Radio | null
   ): void => {
-    const previousUrl = getLocalFileUrl(previous);
-    if (previousUrl && previousUrl !== getLocalFileUrl(radio)) {
-      releaseFileUrl(previousUrl);
+    const retained = new Set(localAudioUrls(radio));
+    for (const url of localAudioUrls(previous)) {
+      if (!retained.has(url)) {
+        releaseFileUrl(url);
+      }
     }
   };
 
@@ -747,6 +829,15 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         .change(effectsRef(deckId), { type: "set-dry-wet", value: 1 })
         .catch(reportEffectsError),
     ]);
+  };
+
+  /** Eject: drop the source but keep effects and channel settings. */
+  const clearPersistedSource = (deckId: DeckId): void => {
+    updatePlaybackChannel("dj", deckId, (draft) => {
+      draft.radio = null;
+      draft.repeat = false;
+      draft.autoplay = true;
+    });
   };
 
   const resetPersistedState = async (
@@ -797,13 +888,26 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     );
   };
 
+  /**
+   * Put `radio` on the Deck. A source that commits closes the Deck's open
+   * source form; one that is superseded or fails leaves it open.
+   */
   const commitRadio = async (
     deckId: DeckId,
     loadGeneration: number,
     radio: Radio | null,
-    playbackPolicy: "paused" | "preserve" = "preserve"
+    playbackPolicy: "paused" | "preserve" = "preserve",
+    captureOnLoad: CaptureOnLoad = true
   ): Promise<void> => {
+    // A pre-acquired capture the Deck did not adopt must not keep sharing.
+    // Stopping one the Deck already released is a no-op.
+    const releaseCapture = () => {
+      if (typeof captureOnLoad === "object") {
+        stopCapturedAudio(captureOnLoad);
+      }
+    };
     if (!isLoadCurrent(deckId, loadGeneration)) {
+      releaseCapture();
       return;
     }
     const generation = beginGeneration(deckId);
@@ -813,8 +917,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       getPlaybackChannelRuntime(deckId).isPlaying;
     deactivateDeck(deckId);
     if (!radio) {
-      await resetPersistedState(deckId, true);
+      clearPersistedSource(deckId);
       releaseReplacedFile(previous, null);
+      setPendingSource(deckId, null);
       return;
     }
     const soundId = soundIdFor(deckId, radio, generation);
@@ -830,6 +935,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       });
       if (!isCurrent(deckId, generation)) {
         activationCleanup();
+        releaseCapture();
         return;
       }
       runtimes[deckId].bindingCleanup = activationCleanup;
@@ -845,15 +951,19 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         generation,
         soundId,
         radio,
-        wasPlaying
+        wasPlaying,
+        captureOnLoad
       );
       if (!isCurrent(deckId, generation)) {
         activationCleanup();
+        releaseCapture();
         releaseReplacedFile(previous, radio);
         return;
       }
       releaseReplacedFile(previous, radio);
+      setPendingSource(deckId, null);
     } catch (error) {
+      releaseCapture();
       if (!isCurrent(deckId, generation)) {
         activationCleanup?.();
         releaseReplacedFile(previous, radio);
@@ -863,66 +973,66 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
   };
 
-  const reportYouTubeResolutionFailure = (
-    deckId: DeckId,
-    radio: Radio,
-    error?: unknown
-  ): void =>
-    reportDjErrorSurface(
-      "Failed to resolve YouTube stream",
-      "DJ_YOUTUBE_RESOLVE_FAILED",
-      error,
-      radio,
-      deckId
-    );
+  const surfaceSourceFailure =
+    (deckId: DeckId, radio: Radio | null): ReportSourceFailure =>
+    (message, code, error) =>
+      reportDjErrorSurface(message, code, error, radio, deckId);
 
-  const resolveYouTubeTrack = async (
+  /** Resolves a lazy `yt:` or `spotify:track:` track for this load. */
+  const resolveLazyTrack = async (
     deckId: DeckId,
     loadGeneration: number,
     radio: Radio,
-    sourceUrl: string
+    request: LazyTrackRequest,
+    onFailure: ReportSourceFailure
   ): Promise<PlatformStreamResolution | null> => {
-    const videoId = sourceUrl.slice(3);
+    const [failureMessage, failureCode] = LAZY_TRACK_FAILURES[request.platform];
+    const reportLazyFailure = (error?: unknown) =>
+      onFailure(failureMessage, failureCode, error);
     let resolved: PlatformStreamResolution | null = null;
     try {
       resolved = await options.platform.resolveStream({
-        platform: "youtube",
+        ...request,
         radio,
         reason: "initial-load",
-        videoId,
       });
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
-        reportYouTubeResolutionFailure(deckId, radio, error);
+        reportLazyFailure(error);
       }
       return null;
     }
     if (!(isLoadCurrent(deckId, loadGeneration) && resolved)) {
       if (isLoadCurrent(deckId, loadGeneration)) {
-        reportYouTubeResolutionFailure(deckId, radio);
+        reportLazyFailure();
       }
       return null;
     }
-    const metadata = radio.platformMetadata;
-    const track = isYouTubeMetadata(metadata)
-      ? metadata.tracks?.find((candidate) => candidate.videoId === videoId)
-      : undefined;
-    if (track) {
-      track.streamUrl = resolved.streamUrl;
-    }
-    return resolved;
+    keepLazyTrackStream(radio, request, resolved);
+    return {
+      streamFormat: resolved.streamFormat,
+      streamUrl: resolved.streamUrl,
+    };
   };
 
   const resolveTrack = async (
     deckId: DeckId,
     loadGeneration: number,
     radio: Radio,
-    sourceUrl: string
+    sourceUrl: string,
+    onFailure = surfaceSourceFailure(deckId, radio)
   ): Promise<PlatformStreamResolution | null> => {
-    const resolved = sourceUrl.startsWith("yt:")
-      ? await resolveYouTubeTrack(deckId, loadGeneration, radio, sourceUrl)
+    const request = lazyTrackRequest(sourceUrl);
+    const resolved = request
+      ? await resolveLazyTrack(
+          deckId,
+          loadGeneration,
+          radio,
+          request,
+          onFailure
+        )
       : {
-          streamFormat: getTrackFormat(radio, sourceUrl),
+          streamFormat: streamFormatOf(radio, sourceUrl),
           streamUrl: sourceUrl,
         };
     if (!resolved) {
@@ -930,13 +1040,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     const validation = validatePlaybackStreamUrl(resolved.streamUrl);
     if (!validation.ok) {
-      reportDjErrorSurface(
-        "Invalid stream URL",
-        "DJ_INVALID_STREAM_URL",
-        undefined,
-        radio,
-        deckId
-      );
+      onFailure("Invalid stream URL", "DJ_INVALID_STREAM_URL");
       return null;
     }
     return { ...resolved, streamUrl: validation.normalizedUrl };
@@ -951,7 +1055,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     const { generation } = runtimes[deckId];
     runtimes[deckId].playGeneration += 1;
     const { playGeneration } = runtimes[deckId];
-    const { radio, volume } = channel;
+    const { radio } = channel;
     const { soundId } = runtime;
     const stillCurrent = () =>
       isCurrent(deckId, generation) &&
@@ -959,18 +1063,32 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       getPlaybackChannelRuntime(deckId).soundId === soundId &&
       getPlaybackChannel("dj", deckId)?.radio?.streamUrl === radio.streamUrl;
     try {
+      if (
+        isDeviceInputMetadata(radio.platformMetadata) &&
+        options.audio.getDeviceChannelCount(soundId) === null
+      ) {
+        await startDeviceInput(
+          deckId,
+          generation,
+          soundId,
+          radio.platformMetadata
+        );
+      }
       await options.audio.resume();
       if (!stillCurrent()) {
         return;
       }
-      await options.audio.transport(soundId, { type: "play", volume });
+      await options.audio.transport(soundId, {
+        type: "play",
+        volume: mixedVolume(deckId),
+      });
       if (!stillCurrent()) {
         return;
       }
       clearDjErrorSurface(deckId);
       applyCrossfade();
     } catch (error) {
-      if (stillCurrent()) {
+      if (stillCurrent() && !isDisplayAudioCancel(error)) {
         reportFailure(
           deckId,
           "DJ_PLAY_DECK_FAILED",
@@ -997,55 +1115,34 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     radio: Radio,
     position: number
   ): Promise<void> {
-    const request = getRefreshRequest(radio);
-    if (!request) {
-      return;
-    }
-    try {
-      const resolved = await options.platform.resolveStream(request.resolution);
-      if (
-        !isCurrent(deckId, generation) ||
-        getPlaybackChannelRuntime(deckId).soundId !== soundId
-      ) {
-        return;
-      }
-      if (!resolved) {
-        reportDjErrorSurface(
-          request.failureMessage,
-          request.failureCode,
-          undefined,
-          radio,
-          deckId
-        );
-        return;
-      }
-      const validation = validatePlaybackStreamUrl(resolved.streamUrl);
-      if (!validation.ok) {
-        throw new Error("Invalid refreshed stream URL");
-      }
-      await options.audio.refresh(
-        soundId,
-        validation.normalizedUrl,
-        position,
-        resolved.streamFormat
-      );
-      if (!isCurrent(deckId, generation)) {
-        return;
-      }
-      setPlaybackChannelRuntime(deckId, () => ({ error: null }));
-      clearDjErrorSurface(deckId);
-      applyCrossfade();
-    } catch (error) {
-      if (isCurrent(deckId, generation)) {
+    await refreshPlatformStream(radio, soundId, position, {
+      isCurrent: () =>
+        isCurrent(deckId, generation) &&
+        getPlaybackChannelRuntime(deckId).soundId === soundId,
+      onFailed: (request, error) =>
         reportFailure(
           deckId,
           "DJ_STREAM_REFRESH_FAILED",
           request.failureMessage,
           error,
           radio
-        );
-      }
-    }
+        ),
+      onRefreshed: () => {
+        setPlaybackChannelRuntime(deckId, () => ({ error: null }));
+        clearDjErrorSurface(deckId);
+        applyCrossfade();
+      },
+      onUnresolved: (request) =>
+        reportDjErrorSurface(
+          request.failureMessage,
+          request.failureCode,
+          undefined,
+          radio,
+          deckId
+        ),
+      refresh: options.audio.refresh,
+      resolveStream: options.platform.resolveStream,
+    });
   }
 
   const isContinuationCurrent = (
@@ -1060,20 +1157,23 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     deckId: DeckId,
     generation: number,
     soundId: string,
-    radio: Radio,
-    volume: number
+    radio: Radio
   ): Promise<void> {
     runtimes[deckId].stripRestored = false;
     try {
-      await options.audio.transport(soundId, { position: 0, type: "seek" });
-      if (!isContinuationCurrent(deckId, generation, soundId)) {
-        return;
+      const repeated = await repeatAtEnd({
+        isCurrent: () => isContinuationCurrent(deckId, generation, soundId),
+        play: () =>
+          options.audio.transport(soundId, {
+            type: "play",
+            volume: mixedVolume(deckId),
+          }),
+        seek: () =>
+          options.audio.transport(soundId, { position: 0, type: "seek" }),
+      });
+      if (repeated) {
+        applyCrossfade();
       }
-      await options.audio.transport(soundId, { type: "play", volume });
-      if (!isContinuationCurrent(deckId, generation, soundId)) {
-        return;
-      }
-      applyCrossfade();
     } catch (error) {
       if (isContinuationCurrent(deckId, generation, soundId)) {
         reportFailure(
@@ -1099,13 +1199,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       return;
     }
     if (channel.repeat) {
-      await repeatAfterEnd(
-        deckId,
-        generation,
-        soundId,
-        channel.radio,
-        channel.volume
-      );
+      await repeatAfterEnd(deckId, generation, soundId, channel.radio);
       return;
     }
     if (!channel.autoplay) {
@@ -1141,7 +1235,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<DjDeckLoadResult> {
     const intent = getDeckLibrarySourceIntent(radio);
     if (intent.type === "pending-platform") {
-      setPendingSource({ deckId, platform: intent.platform });
+      setPendingSource(deckId, intent.platform);
       return intent;
     }
     return await loadSource(deckId, intent.source);
@@ -1153,57 +1247,95 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     intent: Extract<DjDeckLoadIntent, { type: "device-input" }>
   ): Promise<DeckSourceLoadResult> {
     const side = sideForDeck(deckId);
-    await commitRadio(deckId, loadGeneration, {
-      description: "Device input (mic/line-in)",
-      enabled: true,
-      id: `device-input-${side}`,
-      name: intent.deviceLabel,
-      platformMetadata: {
-        channelCount: 2,
-        channelSelection: { left: 0, right: 1 },
-        deviceId: intent.deviceId,
-        deviceLabel: intent.deviceLabel,
-        itemType: "track",
-        platform: "device-input",
-        url: "",
+    // Open the picker before replacing the Deck, while the gesture is active,
+    // so a cancelled or audio-less share leaves the current source in place.
+    const stream =
+      intent.capture === "display" ? await requestDisplayAudio() : undefined;
+    await commitRadio(
+      deckId,
+      loadGeneration,
+      {
+        description: intent.capture
+          ? "Shared tab audio"
+          : "Device input (mic/line-in)",
+        enabled: true,
+        id: `device-input-${side}`,
+        name: intent.deviceLabel,
+        platformMetadata: {
+          ...(intent.capture
+            ? { capture: intent.capture, sourceUrl: intent.sourceUrl }
+            : {}),
+          channelCount: 2,
+          channelSelection: { left: 0, right: 1 },
+          deviceId: intent.deviceId,
+          deviceLabel: intent.deviceLabel,
+          itemType: "track",
+          platform: "device-input",
+          url: "",
+        },
+        streamUrl: "",
       },
-      streamUrl: "",
-    });
+      "preserve",
+      stream ?? true
+    );
     return loaded();
   }
+
+  /** A file the Deck could not load, for its form to show. */
+  const fileLoadFailed = (
+    deckId: DeckId,
+    message: string,
+    code: string,
+    error?: unknown
+  ): DjDeckSourceResult => {
+    captureDjError(message, code, error, null, deckId);
+    return { message, type: "failed" };
+  };
+
+  /**
+   * A current load that left the Deck empty failed to activate; commitRadio
+   * already reported it, so only tell the form.
+   */
+  const activationFailed = (
+    deckId: DeckId,
+    loadGeneration: number
+  ): DjDeckSourceResult | null =>
+    isLoadCurrent(deckId, loadGeneration) &&
+    !getPlaybackChannel("dj", deckId)?.radio
+      ? { message: "the deck couldn't play it", type: "failed" }
+      : null;
 
   async function loadFileIntent(
     deckId: DeckId,
     loadGeneration: number,
     file: File
-  ): Promise<DeckSourceLoadResult> {
+  ): Promise<DjDeckSourceResult> {
     let unownedUrl: string | null = null;
     try {
       const metadata = await options.audio.loadFile(file);
       unownedUrl = metadata.objectUrl;
-      if (isLoadCurrent(deckId, loadGeneration)) {
-        await commitRadio(
-          deckId,
-          loadGeneration,
-          createLocalFileRadio(deckId, metadata)
-        );
-        if (
-          getLocalFileUrl(getPlaybackChannel("dj", deckId)?.radio ?? null) ===
-          metadata.objectUrl
-        ) {
-          unownedUrl = null;
-        }
+      if (!isLoadCurrent(deckId, loadGeneration)) {
+        return loaded();
       }
+      await commitRadio(
+        deckId,
+        loadGeneration,
+        createLocalFileRadio(deckId, metadata)
+      );
+      if (
+        getLocalFileUrl(getPlaybackChannel("dj", deckId)?.radio ?? null) ===
+        metadata.objectUrl
+      ) {
+        unownedUrl = null;
+      }
+      return activationFailed(deckId, loadGeneration) ?? loaded();
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
-        const message =
-          error instanceof Error ? error.message : "Failed to load audio file";
-        reportDjErrorSurface(
-          message,
+        return fileLoadFailed(
+          deckId,
+          error instanceof Error ? error.message : "Failed to load audio file",
           "DJ_LOCAL_FILE_LOAD_FAILED",
-          error,
-          null,
-          deckId
+          error
         );
       }
     } finally {
@@ -1214,61 +1346,118 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     return loaded();
   }
 
+  async function loadFilesIntent(
+    deckId: DeckId,
+    loadGeneration: number,
+    files: readonly File[]
+  ): Promise<DjDeckSourceResult> {
+    let radio: Radio | null = null;
+    try {
+      radio = await loadLocalAudioPlaylist(files, options.audio.loadFile, () =>
+        isLoadCurrent(deckId, loadGeneration)
+      );
+      if (!isLoadCurrent(deckId, loadGeneration)) {
+        return loaded();
+      }
+      await commitRadio(deckId, loadGeneration, radio);
+      const failed = activationFailed(deckId, loadGeneration);
+      if (failed) {
+        return failed;
+      }
+      if (isLoadCurrent(deckId, loadGeneration)) {
+        updatePlaybackChannel("dj", deckId, (draft) => {
+          draft.autoplay = true;
+        });
+      }
+      return loaded();
+    } catch (error) {
+      return isLoadCurrent(deckId, loadGeneration)
+        ? fileLoadFailed(
+            deckId,
+            error instanceof Error ? error.message : "Failed to load folder",
+            "DJ_FOLDER_LOAD_FAILED",
+            error
+          )
+        : loaded();
+    } finally {
+      releaseUnownedFolderUrls(deckId, radio);
+    }
+  }
+
+  /** Releases a picked folder's URLs unless the Deck now plays them. */
+  function releaseUnownedFolderUrls(deckId: DeckId, radio: Radio | null) {
+    const owned = new Set(
+      localAudioUrls(getPlaybackChannel("dj", deckId)?.radio)
+    );
+    for (const url of localAudioUrls(radio)) {
+      if (!owned.has(url)) {
+        releaseFileUrl(url);
+      }
+    }
+  }
+
   async function pausePlayingSource(deckId: DeckId): Promise<void> {
     if (getPlaybackChannelRuntime(deckId).isPlaying) {
       await pause(deckId);
     }
   }
 
+  /** Resolve a remote file link to a playable Radio, or say why it can't. */
+  async function resolveStaticUrl(
+    deckId: DeckId,
+    loadGeneration: number,
+    url: string
+  ): Promise<{ radio: Radio; type: "resolved" } | DjDeckSourceResult> {
+    const result = await options.platform.loadItem(url);
+    if (!isLoadCurrent(deckId, loadGeneration)) {
+      return loaded();
+    }
+    if (!result.success) {
+      return fileLoadFailed(deckId, result.error, result.code);
+    }
+    const failures: Parameters<ReportSourceFailure>[] = [];
+    const resolved = await resolveTrack(
+      deckId,
+      loadGeneration,
+      result.radio,
+      result.radio.streamUrl,
+      (...reported) => failures.push(reported)
+    );
+    const [failure] = failures;
+    if (!isLoadCurrent(deckId, loadGeneration)) {
+      return loaded();
+    }
+    if (!resolved) {
+      return failure ? fileLoadFailed(deckId, ...failure) : loaded();
+    }
+    return { radio: { ...result.radio, ...resolved }, type: "resolved" };
+  }
+
   async function loadStaticUrlIntent(
     deckId: DeckId,
     loadGeneration: number,
     url: string
-  ): Promise<DeckSourceLoadResult> {
+  ): Promise<DjDeckSourceResult> {
     try {
-      const result = await options.platform.loadItem(url);
-      if (!isLoadCurrent(deckId, loadGeneration)) {
-        return loaded();
-      }
-      if (!result.success) {
-        reportDjErrorSurface(
-          result.error,
-          result.code,
-          undefined,
-          null,
-          deckId
-        );
-        return loaded();
-      }
-      const resolved = await resolveTrack(
-        deckId,
-        loadGeneration,
-        result.radio,
-        result.radio.streamUrl
-      );
-      if (!(resolved && isLoadCurrent(deckId, loadGeneration))) {
-        return loaded();
+      const resolution = await resolveStaticUrl(deckId, loadGeneration, url);
+      if (resolution.type !== "resolved") {
+        return resolution;
       }
       await pausePlayingSource(deckId);
       if (!isLoadCurrent(deckId, loadGeneration)) {
         return loaded();
       }
-      await commitRadio(
-        deckId,
-        loadGeneration,
-        { ...result.radio, ...resolved },
-        "paused"
-      );
+      await commitRadio(deckId, loadGeneration, resolution.radio, "paused");
+      return activationFailed(deckId, loadGeneration) ?? loaded();
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
-        reportDjErrorSurface(
+        return fileLoadFailed(
+          deckId,
           error instanceof Error
             ? error.message
             : "Failed to resolve audio URL",
           "DJ_STATIC_AUDIO_RESOLVE_FAILED",
-          error,
-          null,
-          deckId
+          error
         );
       }
     }
@@ -1280,6 +1469,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     loadGeneration: number,
     intent: Extract<DjDeckLoadIntent, { type: "track" | "track-url" }>
   ): Promise<DeckSourceLoadResult> {
+    if (isDeviceInputMetadata(intent.radio?.platformMetadata)) {
+      await commitRadio(deckId, loadGeneration, intent.radio, "paused", false);
+      return loaded();
+    }
     if (!intent.radio) {
       await commitRadio(deckId, loadGeneration, null);
       return loaded();
@@ -1309,14 +1502,23 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   async function loadSource(
     deckId: DeckId,
     intent: DeckSourceLoadIntent
-  ): Promise<DeckSourceLoadResult> {
+  ): Promise<DjDeckSourceResult> {
     const loadGeneration = beginSourceLoad(deckId);
     switch (intent.type) {
       case "radio":
-        await commitRadio(deckId, loadGeneration, intent.radio);
+        // Restored/library shares return paused: the picker needs a gesture.
+        await commitRadio(
+          deckId,
+          loadGeneration,
+          intent.radio,
+          "preserve",
+          !isDisplayCapture(intent.radio)
+        );
         return loaded();
       case "device-input":
         return await loadDeviceIntent(deckId, loadGeneration, intent);
+      case "files":
+        return await loadFilesIntent(deckId, loadGeneration, intent.files);
       case "file":
         return await loadFileIntent(deckId, loadGeneration, intent.file);
       case "static-audio-url":
@@ -1370,7 +1572,31 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     const loadGeneration = beginSourceLoad(deckId);
     await resetPersistedState(deckId, false);
+    if (isDisplayCapture(radio)) {
+      // Reloading would end the share and reopen the picker, outside the
+      // click once the reset awaited: reset the shared capture in place.
+      resetLiveStrip(deckId, loadGeneration);
+      return;
+    }
     await commitRadio(deckId, loadGeneration, radio);
+  };
+
+  const resetLiveStrip = (deckId: DeckId, loadGeneration: number): void => {
+    const channel = getPlaybackChannel("dj", deckId);
+    if (!(channel && isLoadCurrent(deckId, loadGeneration))) {
+      return;
+    }
+    const strip: DjDeckAudioChange[] = [
+      { muted: channel.muted, type: "mute" },
+      { pan: channel.pan, type: "pan" },
+      { speed: channel.speed, type: "speed" },
+      { type: "channel-filter", value: channel.channelFilter },
+      { filter: channel.filter as FilterConfig, type: "filter" },
+    ];
+    for (const input of strip) {
+      changeActiveSound(deckId, input);
+    }
+    applyCrossfade();
   };
 
   const changeActiveSound = (
@@ -1519,12 +1745,11 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   return {
     deactivate() {
-      pendingSource.cancel();
       for (const deckId of ["deck-a", "deck-b"] as const) {
-        const fileUrl = getLocalFileUrl(
-          getPlaybackChannel("dj", deckId)?.radio ?? null
-        );
-        if (fileUrl) {
+        setPendingSource(deckId, null);
+        for (const fileUrl of localAudioUrls(
+          getPlaybackChannel("dj", deckId)?.radio
+        )) {
           releaseFileUrl(fileUrl);
         }
         beginLoad(deckId);

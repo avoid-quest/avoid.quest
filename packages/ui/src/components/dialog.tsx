@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -13,6 +14,7 @@ import {
 } from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import type * as React from "react";
+import { useRef } from "react";
 
 function Dialog({ ...props }: React.ComponentProps<typeof Root>) {
   return <Root data-slot="dialog" {...props} />;
@@ -46,14 +48,52 @@ function DialogOverlay({
   );
 }
 
+/**
+ * Where focus should go back to when a dialog closes. A dialog opened from a
+ * menu item has no trigger of its own, and the item is gone by then, so use
+ * the button that opened the menu.
+ */
+function getReturnFocusTarget(active: Element | null): HTMLElement | null {
+  if (!(active instanceof HTMLElement) || active === document.body) {
+    return null;
+  }
+  const menu = active.closest<HTMLElement>("[role=menu]");
+  if (menu?.id) {
+    const menuTrigger = document.querySelector<HTMLElement>(
+      `[aria-controls="${CSS.escape(menu.id)}"]`
+    );
+    if (menuTrigger) {
+      return menuTrigger;
+    }
+  }
+  return active;
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof Content> & {
   showCloseButton?: boolean;
 }) {
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const handleOpenAutoFocus = (event: Event) => {
+    returnFocusRef.current = getReturnFocusTarget(document.activeElement);
+    onOpenAutoFocus?.(event);
+  };
+  const handleCloseAutoFocus = (event: Event) => {
+    onCloseAutoFocus?.(event);
+    const target = returnFocusRef.current;
+    if (event.defaultPrevented || !target?.isConnected) {
+      return;
+    }
+    event.preventDefault();
+    target.focus();
+  };
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -63,6 +103,8 @@ function DialogContent({
           className
         )}
         data-slot="dialog-content"
+        onCloseAutoFocus={handleCloseAutoFocus}
+        onOpenAutoFocus={handleOpenAutoFocus}
         {...props}
       >
         {children}

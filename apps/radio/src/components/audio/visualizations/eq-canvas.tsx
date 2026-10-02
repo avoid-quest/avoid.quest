@@ -48,7 +48,6 @@ const BAND_COLORS = {
   midBell: "rgba(34, 197, 94, 0.4)",
 };
 
-const TOTAL_CURVE_COLOR = "rgba(255, 255, 255, 0.9)";
 const GRID_COLOR = "rgba(128, 128, 128, 0.2)";
 const ZERO_LINE_COLOR = "rgba(128, 128, 128, 0.4)";
 
@@ -235,7 +234,8 @@ export const EQCanvas = memo(function EQCanvasComponent({
 
       drawGrid(dc);
       drawBandCurves(dc, curveResult.bands);
-      drawStrokeCurve(dc, curveResult.totalDb, TOTAL_CURVE_COLOR);
+      // The canvas carries text-foreground, so the curve follows the theme.
+      drawStrokeCurve(dc, curveResult.totalDb, getComputedStyle(canvas).color);
     };
 
     draw();
@@ -248,13 +248,24 @@ export const EQCanvas = memo(function EQCanvasComponent({
       draw();
     });
     resizeObserver.observe(canvas);
+    // next-themes switches the theme class on <html>; redraw in the new colours.
+    const themeObserver = new MutationObserver(draw);
+    themeObserver.observe(document.documentElement, {
+      attributeFilter: ["class"],
+    });
 
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      themeObserver.disconnect();
+    };
   }, [curveResult, frequencies, minDb, maxDb]);
 
   return (
     <canvas
-      className={cn("h-24 w-full rounded bg-background/50", className)}
+      className={cn(
+        "h-24 w-full rounded bg-background/50 text-foreground",
+        className
+      )}
       ref={canvasRef}
     />
   );

@@ -1,12 +1,6 @@
 import type { Radio } from "@/lib/audio";
-import {
-  useDeckAPeakLevel,
-  useDeckBPeakLevel,
-} from "@/lib/stores/dj-runtime-store";
-import { BrowserPanel } from "./browser/browser-panel";
 import { DeckPanel } from "./deck/deck-panel";
 import { MixerPanel } from "./mixer/mixer-panel";
-import { DeckPeakMeter } from "./shared/peak-meter";
 
 type DjConsoleProps = {
   radios: Radio[];
@@ -37,24 +31,15 @@ export function DjConsole({
   onDeckACueChange,
   onDeckBCueChange,
 }: DjConsoleProps) {
-  const deckAPeakLevel = useDeckAPeakLevel();
-  const deckBPeakLevel = useDeckBPeakLevel();
-
   return (
-    <div className="grid h-full min-h-0 w-full grid-rows-[1fr_auto] overflow-hidden rounded-lg border border-border/50 bg-card/50">
-      {/* Main row: Deck A | VU A | Mixer | VU B | Deck B */}
-      <div className="grid min-h-0 grid-cols-[1fr_auto_280px_auto_1fr]">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50">
+      {/* Deck A | VU A | Mixer | VU B | Deck B */}
+      <div className="grid min-h-0 flex-1 grid-cols-[1fr_21rem_1fr]">
         {/* Deck A */}
         <DeckPanel
           className="min-h-0 overflow-hidden"
           deckId="deck-a"
           radios={radios}
-        />
-
-        {/* VU A — inner edge */}
-        <DeckPeakMeter
-          className="border-border/50 border-l"
-          peakLevel={deckAPeakLevel}
         />
 
         {/* Mixer */}
@@ -72,12 +57,6 @@ export function DjConsole({
           onMasterVolumeChange={onMasterVolumeChange}
         />
 
-        {/* VU B — inner edge */}
-        <DeckPeakMeter
-          className="border-border/50 border-r"
-          peakLevel={deckBPeakLevel}
-        />
-
         {/* Deck B */}
         <DeckPanel
           className="min-h-0 overflow-hidden"
@@ -85,9 +64,6 @@ export function DjConsole({
           radios={radios}
         />
       </div>
-
-      {/* Browser row */}
-      <BrowserPanel radios={radios} />
     </div>
   );
 }

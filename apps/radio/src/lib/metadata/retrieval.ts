@@ -19,12 +19,14 @@ import {
   selectIcecastSource,
 } from "./icecast-status";
 import {
+  decodeIcyHeader,
   normalizeIcyMetadata,
   parseIcyMetadataBlock,
   parseIcyMetaInt,
   readFirstIcyMetadataBlock,
 } from "./icy-parser";
 import { tryLylApi } from "./lyl-provider";
+import { isPlaceholderMetadataValue } from "./title-parser";
 import type {
   RadioMetadataConfig,
   RadioMetadataErrorCode,
@@ -155,6 +157,10 @@ export function validationErrorForReason(
   }
 }
 
+function withoutPlaceholder(value: string | null): string | null {
+  return isPlaceholderMetadataValue(value) ? null : value;
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
@@ -205,7 +211,10 @@ export function createRadioMetadataRetrieval({
       return null;
     }
 
-    const icy = normalizeIcyMetadata(parseIcyMetadataBlock(block));
+    const stationName = decodeIcyHeader(response.headers.get("icy-name"));
+    const icy = normalizeIcyMetadata(parseIcyMetadataBlock(block), {
+      stationNames: [stationName],
+    });
     if (!icy) {
       return null;
     }
@@ -219,14 +228,18 @@ export function createRadioMetadataRetrieval({
         bitrate:
           Number.parseInt(response.headers.get("icy-br") ?? "", 10) || null,
         expiresAt,
-        genre: response.headers.get("icy-genre"),
+        genre: withoutPlaceholder(
+          decodeIcyHeader(response.headers.get("icy-genre"))
+        ),
         itemUrl: null,
         rawTitle: icy.rawTitle,
         resolvedUrl: response.url || undefined,
         sampledAt,
         source: "icy",
-        stationDescription: response.headers.get("icy-description"),
-        stationName: response.headers.get("icy-name"),
+        stationDescription: decodeIcyHeader(
+          response.headers.get("icy-description")
+        ),
+        stationName: withoutPlaceholder(stationName),
         streamUrl,
         title: icy.title,
       },

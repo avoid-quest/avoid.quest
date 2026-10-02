@@ -3,8 +3,6 @@ import type {
   SearchPlatform,
   UnifiedSearchResult,
 } from "@avoid.quest/platforms";
-import { Button } from "@avoid.quest/ui/components/button";
-import { Input } from "@avoid.quest/ui/components/input";
 import {
   Select,
   SelectContent,
@@ -14,9 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
-import { Loader2Icon, SearchIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
+import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { useExternalSearch } from "@/lib/hooks/use-external-search";
+import { SearchField } from "../../search-field";
 import { createSearchRequestGuard } from "./search-request-guard";
 
 type SearchInputProps = {
@@ -31,31 +30,53 @@ type SearchInputProps = {
   onYoutubeFilterChange: (filter: "songs" | "videos") => void;
   searchContextKey: string;
   locked?: boolean;
+  /**
+   * Whether the platform select (or the locked platform's badge) shows.
+   * Off where the caller picks the platform itself, e.g. Node's chips.
+   */
+  showPlatform?: boolean;
+  /** Return true when the query was handled as a direct link. */
+  onDirectLink?: (url: string) => boolean;
 };
 
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
   all: "Tracks from all platforms",
   bandcamp: "Tracks & albums from independent artists",
+  mixcloud: "DJ mixes, radio shows & podcasts",
   radiogarden: "40,000+ radio stations worldwide",
   soundcloud: "Tracks, mixes & DJ sets",
   youtube: "Music videos & audio",
 };
 
 const PLATFORM_LABELS: Record<SearchPlatform, string> = {
-  all: "All Platforms",
+  all: "All platforms",
   bandcamp: "Bandcamp",
+  mixcloud: "Mixcloud",
   radiogarden: "Radio Garden",
   soundcloud: "SoundCloud",
   youtube: "YouTube",
 };
 
-const PLATFORM_DOT_COLORS: Record<SearchPlatform, string> = {
-  all: "#3b82f6",
-  bandcamp: "#629aa0",
-  radiogarden: "#00d084",
-  soundcloud: "#ff7700",
-  youtube: "#ff0000",
-};
+const PLATFORM_OPTIONS = [
+  "bandcamp",
+  "mixcloud",
+  "radiogarden",
+  "soundcloud",
+  "youtube",
+] as const satisfies SearchPlatform[];
+
+function PlatformDot({ platform }: { platform: SearchPlatform }) {
+  return (
+    <span
+      className="size-2 shrink-0 rounded-full"
+      style={{
+        backgroundColor: getPlatformSourceColor(
+          platform === "all" ? "external" : platform
+        ),
+      }}
+    />
+  );
+}
 
 export function SearchInput({
   platform,
@@ -69,6 +90,8 @@ export function SearchInput({
   onYoutubeFilterChange,
   searchContextKey,
   locked,
+  showPlatform = true,
+  onDirectLink,
 }: SearchInputProps) {
   const [query, setQuery] = useState("");
   const { mutate: search, isPending, reset } = useExternalSearch();
@@ -82,6 +105,10 @@ export function SearchInput({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!query.trim()) {
+      return;
+    }
+    if (onDirectLink?.(query.trim())) {
+      setQuery("");
       return;
     }
     onClearResults();
@@ -116,111 +143,75 @@ export function SearchInput({
   const handleYoutubeFilterChange = (value: string) =>
     onYoutubeFilterChange(value as "songs" | "videos");
 
+  const platformControl = locked ? (
+    <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input px-3 text-xs dark:bg-input/30">
+      <PlatformDot platform={platform} />
+      <span className="truncate">{PLATFORM_LABELS[platform]}</span>
+    </div>
+  ) : (
+    <Select onValueChange={handlePlatformChange} value={platform}>
+      <SelectTrigger
+        aria-label="Platform"
+        className="w-[120px] shrink-0 text-xs"
+        size="sm"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>Search</SelectLabel>
+          <SelectItem value="all">All platforms</SelectItem>
+        </SelectGroup>
+        <SelectGroup>
+          <SelectLabel>One platform</SelectLabel>
+          {PLATFORM_OPTIONS.map((option) => (
+            <SelectItem key={option} value={option}>
+              <span className="flex items-center gap-1.5">
+                <PlatformDot platform={option} />
+                {PLATFORM_LABELS[option]}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
       <div className="flex gap-2">
-        {locked ? (
-          <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs">
-            <span
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: PLATFORM_DOT_COLORS[platform] }}
-            />
-            <span className="truncate">{PLATFORM_LABELS[platform]}</span>
-          </div>
-        ) : (
-          <Select onValueChange={handlePlatformChange} value={platform}>
-            <SelectTrigger className="h-8 w-[120px] shrink-0 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel className="text-[10px]">
-                  Search Platform
-                </SelectLabel>
-                <SelectItem value="all">All Platforms</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel className="text-[10px]">Individual</SelectLabel>
-                <SelectItem value="bandcamp">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2 rounded-full"
-                      style={{ backgroundColor: "#629aa0" }}
-                    />
-                    Bandcamp
-                  </span>
-                </SelectItem>
-                <SelectItem value="radiogarden">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2 rounded-full"
-                      style={{ backgroundColor: "#00d084" }}
-                    />
-                    Radio Garden
-                  </span>
-                </SelectItem>
-                <SelectItem value="soundcloud">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2 rounded-full"
-                      style={{ backgroundColor: "#ff7700" }}
-                    />
-                    SoundCloud
-                  </span>
-                </SelectItem>
-                <SelectItem value="youtube">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2 rounded-full"
-                      style={{ backgroundColor: "#ff0000" }}
-                    />
-                    YouTube
-                  </span>
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        )}
+        {showPlatform ? platformControl : null}
 
-        <div className="relative flex-1">
-          <SearchIcon className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-8 pl-8 text-xs"
-            disabled={isPending}
-            onChange={handleQueryChange}
-            placeholder="Search tracks, albums..."
-            value={query}
-          />
-        </div>
-
-        <Button
-          className="h-8 shrink-0 px-3"
-          disabled={isPending || !query.trim()}
-          size="sm"
-          type="submit"
-        >
-          {isPending ? (
-            <Loader2Icon className="size-3 animate-spin" />
-          ) : (
-            <SearchIcon className="size-3" />
-          )}
-        </Button>
+        <SearchField
+          aria-label="Search or paste a link"
+          className="min-w-0 flex-1"
+          isSearching={isPending}
+          maxLength={2048}
+          onChange={handleQueryChange}
+          placeholder="Search, or paste a link"
+          readOnly={isPending}
+          value={query}
+        />
       </div>
 
       {/* Platform hint */}
-      <p className="text-[10px] text-muted-foreground/70">
+      <p className="text-muted-foreground text-xs">
         {PLATFORM_HINTS[platform]}
       </p>
 
       {/* Platform-specific filters */}
       {platform === "bandcamp" && (
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs">Type:</span>
+          <span className="text-muted-foreground text-xs">Type</span>
           <Select
             onValueChange={handleBandcampFilterChange}
             value={bandcampFilter === "" ? "all" : bandcampFilter}
           >
-            <SelectTrigger className="h-6 w-[90px] text-xs">
+            <SelectTrigger
+              aria-label="Result type"
+              className="w-[90px]"
+              size="xs"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -234,12 +225,16 @@ export function SearchInput({
 
       {platform === "youtube" && (
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs">Type:</span>
+          <span className="text-muted-foreground text-xs">Type</span>
           <Select
             onValueChange={handleYoutubeFilterChange}
             value={youtubeFilter}
           >
-            <SelectTrigger className="h-6 w-[90px] text-xs">
+            <SelectTrigger
+              aria-label="Result type"
+              className="w-[90px]"
+              size="xs"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -49,7 +49,7 @@ export function validateManualWebsiteImportUrl(
     return {
       error: {
         code: "MISSING_WEBSITE_URL",
-        message: "Please enter a URL",
+        message: "Enter a URL",
       },
       ok: false,
     };
@@ -59,7 +59,7 @@ export function validateManualWebsiteImportUrl(
     return {
       error: {
         code: "INVALID_WEBSITE_URL",
-        message: "Please enter a valid URL",
+        message: "Enter a valid URL",
       },
       ok: false,
     };
@@ -90,14 +90,8 @@ function createDraftFromMetadata(
 
 function createSafeFailure(
   code: ManualWebsiteImportErrorCode,
-  fallbackMessage: string,
-  error: unknown
+  message: string
 ): ManualWebsiteImportResult<never> {
-  const message =
-    error instanceof Error && error.message.trim()
-      ? `${fallbackMessage}: ${error.message}`
-      : fallbackMessage;
-
   return {
     error: {
       code,
@@ -162,11 +156,10 @@ export function createManualWebsiteImportWorkflow({
       let fetched: FetchWebsiteResult;
       try {
         fetched = await fetchWebsiteContent(validatedUrl.data);
-      } catch (error) {
+      } catch {
         return createSafeFailure(
           "WEBSITE_FETCH_FAILED",
-          "Failed to fetch website data",
-          error
+          "Couldn't reach that site"
         );
       }
 
@@ -176,11 +169,10 @@ export function createManualWebsiteImportWorkflow({
           parseWebsiteHtml(fetched.html),
           validatedUrl.data
         );
-      } catch (error) {
+      } catch {
         return createSafeFailure(
           "WEBSITE_PARSE_FAILED",
-          "Failed to parse website data",
-          error
+          "Couldn't read that site"
         );
       }
 

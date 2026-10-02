@@ -22,6 +22,20 @@ type AudioNodes = {
 
 type SoundOutputMode = "audio-graph" | "native";
 
+/** Connects a node to the main bus and returns its disconnect. */
+type MainOutputConnect = (source: AudioNode, realtime: boolean) => () => void;
+
+/**
+ * Routes a sound's fader output somewhere before the main bus. It receives
+ * the fader node and the main-bus connect, runs synchronously inside the
+ * graph connect, and returns its own disconnect.
+ */
+type SoundOutputConnector = (
+  source: AudioNode,
+  realtime: boolean,
+  connectMain: MainOutputConnect
+) => () => void;
+
 type SoundInstance = {
   radio: Radio;
   sourceId: string;
@@ -77,5 +91,12 @@ function createSoundInstance(
   };
 }
 
-export type { AudioNodes, FilterConfig, SoundInstance, SoundOutputMode };
+export type {
+  AudioNodes,
+  FilterConfig,
+  MainOutputConnect,
+  SoundInstance,
+  SoundOutputConnector,
+  SoundOutputMode,
+};
 export { createAudioNodes, createSoundInstance };

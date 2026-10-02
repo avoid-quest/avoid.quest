@@ -9,8 +9,13 @@ import {
   getPlaybackChannel,
   playbackSessionsCollection,
   updatePlaybackChannel,
+  updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
-import { reportDjErrorSurface } from "@/lib/dj/dj-error-surface";
+import {
+  clearDjErrorSurface,
+  reportDjErrorSurface,
+} from "@/lib/dj/dj-error-surface";
+import { calculateDjCrossfadeVolumes } from "@/lib/dj-crossfade";
 import { getDjError } from "@/lib/stores/dj-runtime-store";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
@@ -22,9 +27,14 @@ import {
 import {
   createDjDeckModule,
   type DjDeckAudioAdapter,
+  type DjDeckHandle,
   type DjDeckPlatformAdapter,
 } from "./dj-deck";
-import { PLATFORM_ITEMS } from "./dj-library-sources";
+import {
+  BANDCAMP_PLATFORM_ID,
+  PLATFORM_ITEMS,
+  STATIC_AUDIO_PLATFORM_ID,
+} from "./dj-library-sources";
 import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
@@ -216,6 +226,45 @@ function createContext(): PlaybackActionContext {
   };
 }
 
+/** A shared browser tab's video track, as Chromium reports it. */
+const BROWSER_TAB_VIDEO = {
+  getSettings: () => ({ displaySurface: "browser" }),
+};
+
+function withDisplayMedia(
+  getDisplayMedia: () => Promise<MediaStream>
+): () => void {
+  const original = globalThis.navigator;
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { mediaDevices: { getDisplayMedia } },
+  });
+  return () =>
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: original,
+    });
+}
+
+function sharedRadio(): Radio {
+  return {
+    id: "device-input-left",
+    name: "Browser tab audio",
+    platformMetadata: {
+      capture: "display",
+      channelCount: 2,
+      channelSelection: { left: 0, right: 1 },
+      deviceId: "display",
+      deviceLabel: "Browser tab audio",
+      itemType: "track",
+      platform: "device-input",
+      sourceUrl: "https://www.nts.live/shows/test",
+      url: "",
+    },
+    streamUrl: "",
+  };
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   insertDjSession();
@@ -305,14 +354,17 @@ describe("DjDeckModule", () => {
     });
 
     expect(module.pendingSource.getSnapshot()).toEqual({
-      deckId: "deck-a",
-      platform: "external",
+      "deck-a": "external",
+      "deck-b": null,
     });
     expect(listener).toHaveBeenCalledTimes(1);
 
-    module.pendingSource.cancel();
+    module.pendingSource.cancel("deck-a");
 
-    expect(module.pendingSource.getSnapshot()).toBeNull();
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": null,
+      "deck-b": null,
+    });
     expect(listener).toHaveBeenCalledTimes(2);
 
     unsubscribe();
@@ -523,12 +575,42 @@ describe("DjDeckModule", () => {
     });
     expect(audio.startDevice).toHaveBeenCalledWith(
       "left_device-input-left:1",
-      "interface-1"
-    );
-    expect(audio.setDeviceChannelSelection).toHaveBeenCalledWith(
-      "left_device-input-left:1",
+      "interface-1",
+      undefined,
       { left: 0, right: 1 }
     );
+    expect(audio.setDeviceChannelSelection).not.toHaveBeenCalled();
+  });
+
+  test("seeds a crossfaded input fader before opening capture", async () => {
+    updatePlaybackSession("dj", (draft) => {
+      draft.crossfadePosition = 1;
+    });
+    const audio = createAudioAdapter();
+    let faderBeforeCapture: unknown = null;
+    audio.startDevice = mock(() => {
+      faderBeforeCapture = (
+        audio.change as ReturnType<typeof mock>
+      ).mock.calls.at(-1);
+      return Promise.resolve();
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    await module.deck("deck-a").load({
+      deviceId: "interface-1",
+      deviceLabel: "Interface",
+      type: "device-input",
+    });
+    expect(audio.startDevice).toHaveBeenCalledTimes(1);
+    expect(faderBeforeCapture).toEqual([
+      "left_device-input-left:1",
+      { type: "volume", volume: calculateDjCrossfadeVolumes(1, 1, 1)[0] },
+    ]);
   });
 
   test("ignores a stale device completion after a newer source owns the Deck", async () => {
@@ -622,6 +704,281 @@ describe("DjDeckModule", () => {
     expect(audio.activeSounds).toEqual(new Set([currentSoundId]));
   });
 
+  test("restores a shared display source paused without opening the picker", async () => {
+    const getDisplayMedia = mock(() =>
+      Promise.reject(new Error("Must not open the picker without a gesture"))
+    );
+    const restoreNavigator = withDisplayMedia(getDisplayMedia);
+    try {
+      const audio = createAudioAdapter();
+      const module = createDjDeckModule({
+        audio,
+        context: createContext(),
+        effects: createEffects(),
+        output: createOutput(),
+        platform: createPlatform(),
+      });
+      const shared: Radio = {
+        id: "device-input-left",
+        name: "Browser tab audio",
+        platformMetadata: {
+          capture: "display",
+          channelCount: 2,
+          channelSelection: { left: 0, right: 1 },
+          deviceId: "display",
+          deviceLabel: "Browser tab audio",
+          itemType: "track",
+          platform: "device-input",
+          sourceUrl: "https://www.nts.live/shows/test",
+          url: "",
+        },
+        streamUrl: "",
+      };
+
+      await module.deck("deck-a").load({ radio: shared, type: "radio" });
+
+      expect(getDisplayMedia).not.toHaveBeenCalled();
+      expect(audio.startDevice).not.toHaveBeenCalled();
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(shared);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+        "left_device-input-left:1"
+      );
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test("keeps the current source when the display picker is cancelled", async () => {
+    const restoreNavigator = withDisplayMedia(() =>
+      Promise.reject(new DOMException("Cancelled", "NotAllowedError"))
+    );
+    try {
+      const audio = createAudioAdapter();
+      const module = createDjDeckModule({
+        audio,
+        context: createContext(),
+        effects: createEffects(),
+        output: createOutput(),
+        platform: createPlatform(),
+      });
+      const deck = module.deck("deck-a");
+      const station: Radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/one.mp3",
+      };
+      await deck.load({ radio: station, type: "radio" });
+
+      await expect(
+        deck.load({
+          capture: "display",
+          deviceId: "display",
+          deviceLabel: "Browser tab audio",
+          sourceUrl: "https://www.nts.live/shows/test",
+          type: "device-input",
+        })
+      ).rejects.toThrow("Sharing was cancelled");
+
+      expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(station);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(
+        "left_station-1:1"
+      );
+      expect(audio.activeSounds).toEqual(new Set(["left_station-1:1"]));
+      expect(audio.startDevice).not.toHaveBeenCalled();
+    } finally {
+      restoreNavigator();
+    }
+  });
+
+  test.each([
+    ["a cancelled picker reports nothing", "NotAllowedError", null],
+    [
+      "a missing tab-audio API reports its own advice",
+      null,
+      "Tab audio sharing is unavailable. Use desktop Chrome or Edge, or an audio input device.",
+    ],
+  ] as const)(
+    "Go live on a restored share: %s",
+    async (_name, domError, message) => {
+      const restoreNavigator =
+        domError === null
+          ? (() => {
+              const original = globalThis.navigator;
+              Object.defineProperty(globalThis, "navigator", {
+                configurable: true,
+                value: { mediaDevices: {} },
+              });
+              return () =>
+                Object.defineProperty(globalThis, "navigator", {
+                  configurable: true,
+                  value: original,
+                });
+            })()
+          : withDisplayMedia(() =>
+              Promise.reject(new DOMException("Permission denied", domError))
+            );
+      try {
+        const context = createContext();
+        const module = createDjDeckModule({
+          audio: createAudioAdapter(),
+          context,
+          effects: createEffects(),
+          output: createOutput(),
+          platform: createPlatform(),
+        });
+        const deck = module.deck("deck-a");
+        await deck.load({ radio: sharedRadio(), type: "radio" });
+
+        await deck.transport({ type: "play" });
+
+        if (message === null) {
+          expect(context.reportError).not.toHaveBeenCalled();
+        } else {
+          expect(context.reportError).toHaveBeenCalledWith(
+            expect.objectContaining({ userMessage: message })
+          );
+        }
+      } finally {
+        restoreNavigator();
+      }
+    }
+  );
+
+  test("retains every folder track across track changes and releases the folder on replacement", async () => {
+    const audio = createAudioAdapter();
+    audio.loadFile = mock((file) =>
+      Promise.resolve({
+        displayName: file.name,
+        duration: 10,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "audio/mpeg",
+        objectUrl: `blob:https://radio.example/${file.name}`,
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      files: [new File(["audio"], "2.mp3"), new File(["audio"], "1.mp3")],
+      type: "files",
+    });
+    const channel = getPlaybackChannel("dj", "deck-a");
+    expect(channel?.autoplay).toBe(true);
+    expect(channel?.radio?.platformMetadata?.platform).toBe("static-audio");
+    const radio = channel?.radio as Radio;
+    await deck.load({
+      radio,
+      streamUrl: "blob:https://radio.example/2.mp3",
+      type: "track-url",
+    });
+    expect(audio.releaseFileUrl).not.toHaveBeenCalled();
+    await deck.load({
+      radio: { name: "Station", streamUrl: "https://radio.example/live" },
+      type: "radio",
+    });
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/1.mp3"
+    );
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/2.mp3"
+    );
+  });
+
+  test("stops probing a folder once a newer source owns the Deck", async () => {
+    const audio = createAudioAdapter();
+    let deck: DjDeckHandle | null = null;
+    let newerLoad: Promise<unknown> | null = null;
+    audio.loadFile = mock((file: File) => {
+      if (file.name === "2.mp3") {
+        newerLoad =
+          deck?.load({
+            radio: { name: "Station", streamUrl: "https://radio.example/live" },
+            type: "radio",
+          }) ?? null;
+      }
+      return Promise.resolve({
+        displayName: file.name,
+        duration: 10,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "audio/mpeg",
+        objectUrl: `blob:https://radio.example/${file.name}`,
+      });
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+    deck = module.deck("deck-a");
+
+    await deck.load({
+      files: ["1.mp3", "2.mp3", "3.mp3", "4.mp3"].map(
+        (name) => new File(["audio"], name)
+      ),
+      type: "files",
+    });
+    await newerLoad;
+
+    expect(audio.loadFile).toHaveBeenCalledTimes(2);
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/1.mp3"
+    );
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/2.mp3"
+    );
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.name).toBe("Station");
+  });
+
+  test("tells the file form when a parsed folder fails to activate", async () => {
+    const audio = createAudioAdapter();
+    audio.loadFile = mock((file) =>
+      Promise.resolve({
+        displayName: file.name,
+        duration: 10,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: "audio/mpeg",
+        objectUrl: `blob:https://radio.example/${file.name}`,
+      })
+    );
+    audio.activate = mock(() => {
+      throw new Error("decoder unavailable");
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+
+    const result = await module.deck("deck-a").load({
+      files: [new File(["audio"], "1.mp3"), new File(["audio"], "2.mp3")],
+      type: "files",
+    });
+
+    expect(result).toEqual({
+      message: "the deck couldn't play it",
+      type: "failed",
+    });
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/1.mp3"
+    );
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/2.mp3"
+    );
+  });
+
   test("keeps a file URL until a replacement source commits", async () => {
     const audio = createAudioAdapter();
     audio.loadFile = mock(() =>
@@ -659,6 +1016,44 @@ describe("DjDeckModule", () => {
     });
 
     expect(audio.releaseFileUrl).toHaveBeenCalledTimes(1);
+    expect(audio.releaseFileUrl).toHaveBeenCalledWith(
+      "blob:https://radio.example/local"
+    );
+  });
+
+  test("tells the file form when a parsed file fails to activate", async () => {
+    const audio = createAudioAdapter();
+    audio.loadFile = mock(() =>
+      Promise.resolve({
+        displayName: "Local",
+        duration: 120,
+        fileName: "local.mp3",
+        fileSize: 1024,
+        mimeType: "audio/mpeg",
+        objectUrl: "blob:https://radio.example/local",
+      })
+    );
+    audio.activate = mock(() => {
+      throw new Error("decoder unavailable");
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+
+    const result = await module.deck("deck-a").load({
+      file: new File(["audio"], "local.mp3", { type: "audio/mpeg" }),
+      type: "file",
+    });
+
+    expect(result).toEqual({
+      message: "the deck couldn't play it",
+      type: "failed",
+    });
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toBeNull();
     expect(audio.releaseFileUrl).toHaveBeenCalledWith(
       "blob:https://radio.example/local"
     );
@@ -932,6 +1327,68 @@ describe("DjDeckModule", () => {
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:2"]));
   });
 
+  test("Reset on a shared tab keeps the share and resets its strip in place", async () => {
+    const stream = {
+      getAudioTracks: () => [{ readyState: "live" }],
+      getTracks: () => [],
+      getVideoTracks: () => [BROWSER_TAB_VIDEO],
+    } as unknown as MediaStream;
+    const getDisplayMedia = mock(() => Promise.resolve(stream));
+    const restoreNavigator = withDisplayMedia(getDisplayMedia);
+    try {
+      const audio = createAudioAdapter();
+      const { change, effects } = createPersistingEffects();
+      const module = createDjDeckModule({
+        audio,
+        context: createContext(),
+        effects,
+        output: createOutput(),
+        platform: createPlatform(),
+      });
+      const deck = module.deck("deck-a");
+      await deck.load({
+        capture: "display",
+        deviceId: "display",
+        deviceLabel: "Browser tab audio",
+        sourceUrl: "https://www.nts.live/shows/test",
+        type: "device-input",
+      });
+      const { soundId } = getPlaybackChannelRuntime("deck-a");
+      updatePlaybackChannel("dj", "deck-a", (draft) => {
+        draft.muted = true;
+        draft.pan = 0.25;
+        draft.volume = 0.4;
+      });
+
+      await deck.transport({ type: "reset" });
+
+      expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+      expect(audio.startDevice).toHaveBeenCalledTimes(1);
+      expect(getPlaybackChannelRuntime("deck-a").soundId).toBe(soundId);
+      expect(audio.activeSounds).toEqual(new Set([soundId as string]));
+      expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
+        muted: false,
+        pan: 0,
+        radio: { platformMetadata: { capture: "display" } },
+        volume: 1,
+      });
+      expect(audio.change).toHaveBeenCalledWith(soundId, {
+        muted: false,
+        type: "mute",
+      });
+      expect(audio.change).toHaveBeenCalledWith(soundId, {
+        pan: 0,
+        type: "pan",
+      });
+      expect(change).toHaveBeenCalledWith(
+        { channelId: "deck-a", sessionId: "dj" },
+        { tree: [], type: "replace" }
+      );
+    } finally {
+      restoreNavigator();
+    }
+  });
+
   test("persists both Effects resets before yielding to a newer change", async () => {
     const effects = createEffects();
     const { change } = effects;
@@ -1025,7 +1482,7 @@ describe("DjDeckModule", () => {
     );
   });
 
-  test("clears a Deck source and Effects through the same interface", async () => {
+  test("ejecting a Deck source keeps its effects and channel settings", async () => {
     const audio = createAudioAdapter();
     const { change, effects } = createPersistingEffects();
     const module = createDjDeckModule({
@@ -1052,17 +1509,13 @@ describe("DjDeckModule", () => {
     await deck.load({ radio: null, type: "radio" });
 
     expect(getPlaybackChannel("dj", "deck-a")).toMatchObject({
-      effects: [],
-      effectsDryWet: 1,
+      effects: [expect.objectContaining({ id: "delay-1" })],
+      effectsDryWet: 0.3,
       radio: null,
     });
-    expect(change).toHaveBeenCalledWith(
+    expect(change).not.toHaveBeenCalledWith(
       { channelId: "deck-a", sessionId: "dj" },
       { tree: [], type: "replace" }
-    );
-    expect(change).toHaveBeenCalledWith(
-      { channelId: "deck-a", sessionId: "dj" },
-      { type: "set-dry-wet", value: 1 }
     );
     expect(getPlaybackChannelRuntime("deck-a").soundId).toBeNull();
     expect(audio.activeSounds).toEqual(new Set());
@@ -1150,7 +1603,7 @@ describe("DjDeckModule", () => {
     });
     expect(audio.transport).toHaveBeenCalledWith("left_station-1:1", {
       type: "play",
-      volume: 1,
+      volume: calculateDjCrossfadeVolumes(0.5, 1, 1)[0],
     });
     expect(audio.activeSounds).toEqual(new Set(["left_station-1:1"]));
   });
@@ -1332,6 +1785,154 @@ describe("DjDeckModule", () => {
       "https://radio.example/second.mp3"
     );
     expect(platform.resolveStream).toHaveBeenCalledTimes(1);
+  });
+
+  test("continues a Spotify album by matching its next track on YouTube", async () => {
+    const audio = createAudioAdapter();
+    const platform = createPlatform();
+    platform.resolveStream = mock(() =>
+      Promise.resolve({
+        streamFormat: "progressive" as const,
+        streamUrl: "https://radio.example/aerodynamic.webm",
+        youtubeVideoId: "L93-7vRfxNs",
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    const radio: Radio = {
+      id: "album-1",
+      name: "Discovery",
+      platformMetadata: {
+        itemType: "album",
+        platform: "spotify",
+        spotifyId: "2noRn2Aes5aoNVsU6iWThc",
+        tracks: [
+          {
+            artist: "Daft Punk",
+            name: "One More Time",
+            spotifyId: "0DiWol3AO6WpXZgp0goxAV",
+            streamUrl: "https://radio.example/one-more-time.webm",
+            url: "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV",
+            youtubeVideoId: "FGBhQbmPwH8",
+          },
+          {
+            artist: "Daft Punk",
+            name: "Aerodynamic",
+            spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+            streamUrl: "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+            url: "https://open.spotify.com/track/1NeLwFETswx8Fzxl2AFl91",
+          },
+        ],
+        url: "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc",
+      },
+      streamUrl: "https://radio.example/one-more-time.webm",
+    };
+    await module.deck("deck-a").load({ radio, type: "radio" });
+
+    audio.emit("left_album-1:1", {
+      error: null,
+      hasEnded: true,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(platform.resolveStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "spotify",
+        reason: "initial-load",
+        spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+      })
+    );
+    const playing = getPlaybackChannel("dj", "deck-a")?.radio;
+    expect(playing?.streamUrl).toBe("https://radio.example/aerodynamic.webm");
+    expect(playing).not.toHaveProperty("youtubeVideoId");
+    const tracks =
+      playing?.platformMetadata?.platform === "spotify"
+        ? playing.platformMetadata.tracks
+        : [];
+    expect(tracks?.[1]).toMatchObject({
+      streamUrl: "https://radio.example/aerodynamic.webm",
+      youtubeVideoId: "L93-7vRfxNs",
+    });
+  });
+
+  test("keeps a direct Spotify track's match for stream refresh", async () => {
+    const audio = createAudioAdapter();
+    const platform = createPlatform();
+    platform.resolveStream = mock(() =>
+      Promise.resolve({
+        streamFormat: "progressive" as const,
+        streamUrl: "https://radio.example/matched.webm",
+        youtubeVideoId: "Rgrt_8mXrK8",
+      })
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    await module.deck("deck-a").load({
+      autoPlay: false,
+      radio: {
+        id: "spotify-track",
+        name: "Get Lucky",
+        platformMetadata: {
+          itemType: "track",
+          platform: "spotify",
+          spotifyId: "2Foc5Q5nqNiosCNqttzHof",
+          url: "https://open.spotify.com/track/2Foc5Q5nqNiosCNqttzHof",
+        },
+        streamUrl: "spotify:track:2Foc5Q5nqNiosCNqttzHof",
+      },
+      type: "track",
+    });
+    expect(
+      getPlaybackChannel("dj", "deck-a")?.radio?.platformMetadata
+    ).toMatchObject({
+      streamUrl: "https://radio.example/matched.webm",
+      youtubeVideoId: "Rgrt_8mXrK8",
+    });
+
+    audio.emit("left_spotify-track:1", {
+      error: {
+        code: "STREAM_INTERRUPTED",
+        id: "expired-spotify",
+        message: "expired",
+        position: 42,
+        timestamp: Date.now(),
+      },
+      hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+      volume: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(platform.resolveStream).toHaveBeenCalledTimes(2);
+    expect(platform.resolveStream).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        platform: "youtube",
+        reason: "stream-refresh",
+        videoId: "Rgrt_8mXrK8",
+      })
+    );
+    expect(audio.refresh).toHaveBeenCalledWith(
+      "left_spotify-track:1",
+      "https://radio.example/matched.webm",
+      42,
+      "progressive"
+    );
   });
 
   test("refreshes an interrupted provider stream only for its owning generation", async () => {
@@ -1617,5 +2218,244 @@ describe("DjDeckModule", () => {
         userMessage: "Failed to play deck-a",
       })
     );
+  });
+});
+
+describe("DjDeckModule crossfaded starts", () => {
+  const station = (id: string): Radio => ({
+    id,
+    name: id,
+    streamUrl: `https://radio.example/${id}.mp3`,
+  });
+  const playing: AudioState = {
+    error: null,
+    hasEnded: false,
+    isBuffering: false,
+    isLoading: false,
+    isPlaying: true,
+    volume: 1,
+  };
+  const playVolumes = (audio: DjDeckAudioAdapter, soundId: string) =>
+    (audio.transport as ReturnType<typeof mock>).mock.calls
+      .filter(
+        ([calledSoundId, intent]) =>
+          calledSoundId === soundId && intent.type === "play"
+      )
+      .map(([, intent]) => intent.volume as number);
+  const setCrossfader = (position: number) =>
+    updatePlaybackSession("dj", (draft) => {
+      draft.crossfadePosition = position;
+    });
+  const createModule = (audio: DjDeckAudioAdapter) =>
+    createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: createPlatform(),
+    });
+
+  test("starts a Deck silent when the crossfader sits on the other side", async () => {
+    setCrossfader(1);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-a");
+    await deck.load({ radio: station("one"), type: "radio" });
+
+    await deck.transport({ type: "play" });
+
+    const [volume] = playVolumes(audio, "left_one:1");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+
+  test("starts Deck B silent when the crossfader sits fully on A", async () => {
+    setCrossfader(0);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-b");
+    await deck.load({ radio: station("two"), type: "radio" });
+
+    await deck.transport({ type: "play" });
+
+    const [volume] = playVolumes(audio, "right_two:1");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+
+  test("restarts a playing Deck on a new source at its crossfaded gain", async () => {
+    setCrossfader(1);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-a");
+    await deck.load({ radio: station("one"), type: "radio" });
+    audio.emit("left_one:1", playing);
+
+    await deck.load({ radio: station("two"), type: "radio" });
+
+    const [volume] = playVolumes(audio, "left_two:2");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+
+  test("repeats an ended Deck at its crossfaded gain", async () => {
+    setCrossfader(1);
+    const audio = createAudioAdapter();
+    const deck = createModule(audio).deck("deck-a");
+    await deck.load({ radio: station("one"), type: "radio" });
+    deck.change({ enabled: true, type: "repeat" });
+
+    audio.emit("left_one:1", { ...playing, hasEnded: true, isPlaying: false });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [volume] = playVolumes(audio, "left_one:1");
+    expect(volume).toBeCloseTo(0, 6);
+  });
+});
+
+describe("DjDeckModule pending sources", () => {
+  const platformItem = (id: number): Radio => {
+    const item = PLATFORM_ITEMS.find((radio) => radio.id === id);
+    if (!item) {
+      throw new Error(`Expected platform item ${id}`);
+    }
+    return item;
+  };
+  const station = (id: string): Radio => ({
+    id,
+    name: id,
+    streamUrl: `https://radio.example/${id}.mp3`,
+  });
+  const createModule = (
+    audio: DjDeckAudioAdapter = createAudioAdapter(),
+    platform: DjDeckPlatformAdapter = createPlatform()
+  ) =>
+    createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+
+  test("keeps one Deck's source form open while the other Deck loads, ejects and resets", async () => {
+    const module = createModule();
+    await module
+      .deck("deck-a")
+      .load({ radio: platformItem(BANDCAMP_PLATFORM_ID), type: "library" });
+    await module
+      .deck("deck-b")
+      .load({ radio: platformItem(STATIC_AUDIO_PLATFORM_ID), type: "library" });
+
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": "bandcamp",
+      "deck-b": "static-audio",
+    });
+
+    await module.deck("deck-b").load({ radio: station("two"), type: "radio" });
+    await module.deck("deck-b").transport({ type: "reset" });
+    await module
+      .deck("deck-b")
+      .load({ autoPlay: false, radio: null, type: "track" });
+
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": "bandcamp",
+      "deck-b": null,
+    });
+
+    module.pendingSource.cancel("deck-b");
+    expect(module.pendingSource.getSnapshot()["deck-a"]).toBe("bandcamp");
+
+    module.deactivate();
+    expect(module.pendingSource.getSnapshot()).toEqual({
+      "deck-a": null,
+      "deck-b": null,
+    });
+  });
+
+  test("keeps a Deck's file form open until the remote file commits", async () => {
+    let finishLoad: ((radio: Radio) => void) | null = null;
+    const platform = createPlatform();
+    platform.loadItem = mock(
+      () =>
+        new Promise<Awaited<ReturnType<DjDeckPlatformAdapter["loadItem"]>>>(
+          (resolve) => {
+            finishLoad = (radio) => resolve({ radio, success: true });
+          }
+        )
+    );
+    const module = createModule(createAudioAdapter(), platform);
+    const deck = module.deck("deck-b");
+    await deck.load({
+      radio: platformItem(STATIC_AUDIO_PLATFORM_ID),
+      type: "library",
+    });
+
+    const loading = deck.load({
+      type: "static-audio-url",
+      url: "https://audio.example/track.mp3",
+    });
+    await Promise.resolve();
+
+    expect(module.pendingSource.getSnapshot()["deck-b"]).toBe("static-audio");
+
+    (finishLoad as ((radio: Radio) => void) | null)?.({
+      id: "remote-track",
+      name: "Remote track",
+      streamUrl: "https://audio.example/track.mp3",
+    });
+
+    expect(await loading).toEqual({ type: "loaded" });
+    expect(getPlaybackChannel("dj", "deck-b")?.radio?.id).toBe("remote-track");
+    expect(module.pendingSource.getSnapshot()["deck-b"]).toBeNull();
+  });
+
+  test("returns a remote file failure to the form instead of the mixer", async () => {
+    clearDjErrorSurface();
+    const platform = createPlatform();
+    platform.loadItem = mock(() =>
+      Promise.resolve({
+        code: "STATIC_AUDIO_CLIENT_RESOLUTION_FAILED",
+        error: "Failed to fetch",
+        success: false as const,
+      })
+    );
+    const module = createModule(createAudioAdapter(), platform);
+    const deck = module.deck("deck-b");
+    await deck.load({
+      radio: platformItem(STATIC_AUDIO_PLATFORM_ID),
+      type: "library",
+    });
+
+    const result = await deck.load({
+      type: "static-audio-url",
+      url: "https://audio.example/missing.mp3",
+    });
+
+    expect(result).toEqual({ message: "Failed to fetch", type: "failed" });
+    expect(module.pendingSource.getSnapshot()["deck-b"]).toBe("static-audio");
+    expect(getDjError()).toBeNull();
+    expect(getPlaybackChannel("dj", "deck-b")?.radio).toBeNull();
+  });
+
+  test("returns a local file failure to the form instead of the mixer", async () => {
+    clearDjErrorSurface();
+    const audio = createAudioAdapter();
+    audio.loadFile = mock(() =>
+      Promise.reject(new Error("Unsupported audio format"))
+    );
+    const module = createModule(audio);
+    const deck = module.deck("deck-a");
+    await deck.load({
+      radio: platformItem(STATIC_AUDIO_PLATFORM_ID),
+      type: "library",
+    });
+
+    const result = await deck.load({
+      file: new File(["noise"], "noise.bin"),
+      type: "file",
+    });
+
+    expect(result).toEqual({
+      message: "Unsupported audio format",
+      type: "failed",
+    });
+    expect(module.pendingSource.getSnapshot()["deck-a"]).toBe("static-audio");
+    expect(getDjError()).toBeNull();
   });
 });

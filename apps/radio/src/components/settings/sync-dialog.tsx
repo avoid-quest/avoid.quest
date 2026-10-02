@@ -109,13 +109,12 @@ function getDescription(changes: SyncChanges) {
   const hasUpdates = changes.updates.length > 0;
   const hasAdditions = changes.additions.length > 0;
 
+  const updated = `${changes.updates.length} updated`;
+  const added = `${changes.additions.length} new`;
   if (hasUpdates && hasAdditions) {
-    return `${changes.updates.length} radio(s) updated, ${changes.additions.length} new radio(s) available`;
+    return `${updated}, ${added}`;
   }
-  if (hasUpdates) {
-    return `${changes.updates.length} radio(s) have updated metadata`;
-  }
-  return `${changes.additions.length} new radio(s) available`;
+  return hasUpdates ? updated : added;
 }
 
 export function SyncDialog({
@@ -186,13 +185,12 @@ export function SyncDialog({
   };
 
   const totalSelected = selectedUpdates.size + selectedAdditions.size;
-  const totalChanges = changes.updates.length + changes.additions.length;
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-hidden p-4 sm:p-6">
         <DialogHeader className="shrink-0 pr-8 sm:pr-0">
-          <DialogTitle>Radio Updates Available</DialogTitle>
+          <DialogTitle>Station updates</DialogTitle>
           <DialogDescription>{getDescription(changes)}</DialogDescription>
         </DialogHeader>
 
@@ -202,7 +200,7 @@ export function SyncDialog({
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
                   <RefreshCwIcon className="size-4" />
-                  Updated Radios
+                  Updated stations
                 </h4>
                 <div className="space-y-2">
                   {changes.updates.map((update) => (
@@ -221,7 +219,7 @@ export function SyncDialog({
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
                   <PlusIcon className="size-4" />
-                  New Radios
+                  New stations
                 </h4>
                 <div className="space-y-2">
                   {changes.additions.map((radio) => (
@@ -238,20 +236,16 @@ export function SyncDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="shrink-0 gap-2 sm:gap-0">
-          <Button
-            className="w-full sm:w-auto"
-            onClick={handleSkip}
-            variant="outline"
-          >
+        <DialogFooter className="shrink-0">
+          <Button onClick={handleSkip} size="sm" variant="outline">
             Skip
           </Button>
           <Button
-            className="w-full sm:w-auto"
             disabled={totalSelected === 0}
             onClick={handleApply}
+            size="sm"
           >
-            Apply Selected ({totalSelected}/{totalChanges})
+            Apply ({totalSelected})
           </Button>
         </DialogFooter>
       </DialogContent>

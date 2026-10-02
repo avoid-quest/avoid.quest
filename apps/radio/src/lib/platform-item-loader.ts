@@ -1,9 +1,26 @@
 import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
+import {
+  isMixcloudShowUrl,
+  MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
+} from "@avoid.quest/platforms/mixcloud";
+import {
+  needsSpotifyResolution,
+  parseSpotifyRef,
+  SPOTIFY_UNSUPPORTED_LINK_MESSAGE,
+} from "@avoid.quest/platforms/spotify/detect";
 import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
 import type { Radio } from "@/lib/audio";
 import { resolveClientStaticAudio } from "@/lib/audio/client-static-audio-resolver";
 import { inferStreamFormat } from "@/lib/audio/playback/stream-format";
-import { type PlatformItem, resolvePlatformItem } from "@/lib/platform-client";
+import {
+  browserAudioRadio,
+  detectBrowserAudioSource,
+} from "@/lib/browser-audio-links";
+import {
+  type PlatformItem,
+  resolvePlatformItem,
+  resolveSpotifyItem,
+} from "@/lib/platform-client";
 import { resolvePlatformStation } from "@/lib/stations/external-station-workflow";
 import { getYouTubeClient } from "@/lib/youtube";
 
@@ -11,9 +28,19 @@ type PlatformItemPayloadResult =
   | { data: PlatformItem; ok: true }
   | { error: { code: string; message: string }; ok: false };
 
+type PlatformItemLoadOptions = {
+  /** Stops a Spotify match, which can run many YouTube requests. */
+  signal?: AbortSignal;
+};
+
 type PlatformItemLoaderDependencies = {
   getYouTubeClient: () => Pick<YouTubeClient, "resolveItem">;
   resolvePlatformItem: (url: string) => Promise<PlatformItem>;
+  /** Spotify metadata from the server, matched to YouTube in the browser. */
+  resolveSpotifyItem: (
+    url: string,
+    options?: PlatformItemLoadOptions
+  ) => Promise<PlatformItem>;
   resolveStaticAudio: (url: string) => Promise<PlatformItem>;
 };
 
@@ -106,26 +133,48 @@ async function resolveExternalPlatform(
   }
 }
 
-function unsupportedPlatform(): PlatformItemPayloadResult {
-  return {
-    error: {
-      code: "PLATFORM_UNSUPPORTED_URL",
-      message: "Unsupported platform URL",
-    },
-    ok: false,
-  };
+function unsupportedPlatform(
+  message = "Unsupported platform URL"
+): PlatformItemPayloadResult {
+  return { error: { code: "PLATFORM_UNSUPPORTED_URL", message }, ok: false };
+}
+
+/**
+ * Why a Spotify or Mixcloud page the radio doesn't play (an artist, a
+ * profile) can't load, said before asking the server; null for the rest.
+ * A share link is only known once the server follows it.
+ */
+function unplayablePageMessage(platform: string | null, url: string) {
+  if (
+    platform === "spotify" &&
+    !(parseSpotifyRef(url) || needsSpotifyResolution(url))
+  ) {
+    return SPOTIFY_UNSUPPORTED_LINK_MESSAGE;
+  }
+  return platform === "mixcloud" && !isMixcloudShowUrl(url)
+    ? MIXCLOUD_UNSUPPORTED_LINK_MESSAGE
+    : null;
 }
 
 export function createPlatformItemLoader({
   getYouTubeClient: getClient,
   resolvePlatformItem: resolveExternalItem,
+  resolveSpotifyItem: resolveSpotify,
   resolveStaticAudio,
 }: PlatformItemLoaderDependencies): (
-  url: string
+  url: string,
+  options?: PlatformItemLoadOptions
 ) => Promise<LoadPlatformItemResult> {
-  return async (url) => {
+  return async (url, { signal } = {}) => {
+    if (detectBrowserAudioSource(url)) {
+      return { radio: browserAudioRadio(url), success: true };
+    }
     const result = await resolvePlatformStation(url, async (normalizedUrl) => {
       const platform = detectPlayablePlatformFromUrl(normalizedUrl);
+      const unplayable = unplayablePageMessage(platform, normalizedUrl);
+      if (unplayable) {
+        return unsupportedPlatform(unplayable);
+      }
       if (platform === "static-audio") {
         return await resolveStaticAudioItem(normalizedUrl, resolveStaticAudio);
       }
@@ -134,12 +183,18 @@ export function createPlatformItemLoader({
       }
       if (
         platform === "bandcamp" ||
+        platform === "mixcloud" ||
         platform === "radiogarden" ||
         platform === "soundcloud"
       ) {
         return await resolveExternalPlatform(
           normalizedUrl,
           resolveExternalItem
+        );
+      }
+      if (platform === "spotify") {
+        return await resolveExternalPlatform(normalizedUrl, (spotifyUrl) =>
+          resolveSpotify(spotifyUrl, { signal })
         );
       }
       return unsupportedPlatform();
@@ -158,6 +213,8 @@ export function createPlatformItemLoader({
 export const loadPlatformItem = createPlatformItemLoader({
   getYouTubeClient,
   resolvePlatformItem,
+  resolveSpotifyItem: (url, { signal } = {}) =>
+    resolveSpotifyItem(url, { signal, youtube: getYouTubeClient() }),
   resolveStaticAudio: async (url) => {
     const resolved = await resolveClientStaticAudio(url);
     return {

@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@avoid.quest/ui/components/card";
-import { Toggle } from "@avoid.quest/ui/components/toggle";
+import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import type {
   DraggableAttributes,
@@ -85,20 +85,18 @@ export function EffectItem({
   return (
     <Card
       className={cn(
-        "w-full gap-0 border py-0 transition-all duration-200",
+        "w-full gap-0 rounded-md border-border/50 py-0 shadow-none transition-all duration-200",
         isDragging && "scale-[0.98] opacity-50 shadow-lg",
-        effect.enabled
-          ? "border-primary/20 bg-primary/5"
-          : "opacity-60 grayscale-[30%]",
-        isExpanded && "shadow-md"
+        effect.enabled && "border-primary/20 bg-primary/5"
       )}
     >
-      <CardHeader className="flex! items-center! justify-between! flex-row! gap-3 pt-4 pb-3">
+      <CardHeader className="flex! items-center! justify-between! flex-row! gap-2 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Drag Handle */}
-          <div
+          <button
+            aria-label={`Reorder ${effectName}`}
             className={cn(
-              "cursor-grab touch-manipulation rounded-md p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground active:cursor-grabbing",
+              "cursor-grab touch-manipulation rounded-md p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
               isDragging && "bg-primary/20 text-primary"
             )}
             ref={dragHandleRef}
@@ -108,41 +106,41 @@ export function EffectItem({
               WebkitTouchCallout: "none",
               WebkitUserSelect: "none",
             }}
+            type="button"
             {...dragHandleAttributes}
             {...dragHandleListeners}
           >
-            <GripVerticalIcon className="size-4" />
-          </div>
+            <GripVerticalIcon className="size-3.5" />
+          </button>
 
           {/* Icon */}
           <div
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-md transition-colors",
+              "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
               effect.enabled
                 ? "bg-primary/10 text-primary"
                 : "bg-muted text-muted-foreground"
             )}
           >
-            <Icon className="size-4" />
+            <Icon className="size-3.5" />
           </div>
 
           {/* Title */}
           <CardTitle
             className={cn(
-              "cursor-pointer truncate font-medium text-sm transition-colors hover:text-foreground",
+              "min-w-0 flex-1 font-medium text-sm",
               !effect.enabled && "text-muted-foreground"
             )}
-            onClick={onExpand}
           >
-            {effectName}
+            <button
+              aria-expanded={isExpanded}
+              className="block w-full truncate text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onExpand}
+              type="button"
+            >
+              {effectName}
+            </button>
           </CardTitle>
-
-          {/* Bypassed badge */}
-          {!effect.enabled && (
-            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-              Bypassed
-            </span>
-          )}
         </div>
 
         {/** biome-ignore lint/a11y/noNoninteractiveElementInteractions: just a toggle */}
@@ -153,42 +151,35 @@ export function EffectItem({
           onPointerDown={stopPropagation}
           onTouchStart={stopPropagation}
         >
-          <Toggle
+          <Switch
             aria-label={`${effectName} enabled`}
-            className={cn(
-              "transition-all",
-              effect.enabled && "bg-primary text-primary-foreground"
-            )}
-            onPressedChange={handleEnabledChange}
-            pressed={effect.enabled}
-            size="sm"
-          >
-            {effect.enabled ? "ON" : "OFF"}
-          </Toggle>
+            checked={effect.enabled}
+            onCheckedChange={handleEnabledChange}
+          />
           <Button
             aria-label={`Reset ${effectName}`}
-            className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="size-7 text-muted-foreground"
             onClick={handleReset}
-            size="sm"
+            size="icon"
             title="Reset to defaults"
             variant="ghost"
           >
-            <RotateCcwIcon className="size-4" />
+            <RotateCcwIcon className="size-3.5" />
           </Button>
           <Button
             aria-label={`Remove ${effectName}`}
-            className="h-8 w-8 p-0 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             onClick={onRemove}
-            size="sm"
+            size="icon"
             variant="ghost"
           >
-            <XIcon className="size-4" />
+            <XIcon className="size-3.5" />
           </Button>
         </div>
       </CardHeader>
 
       {isExpanded ? (
-        <CardContent className="space-y-4 border-t bg-muted/30 pt-4 pb-4">
+        <CardContent className="space-y-4 border-border/50 border-t bg-muted/30 pt-4 pb-4">
           <EffectVisualization effect={effect} />
           <EffectParams
             deckId={deckId}

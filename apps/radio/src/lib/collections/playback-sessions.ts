@@ -3,6 +3,7 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+import { effectConfigSchema } from "@/lib/audio/dsp/effects/effect-config-schema";
 import {
   collectLocalNamModelIds,
   createLocalNamModelId,
@@ -10,16 +11,9 @@ import {
   getNamModel,
   saveNamModel,
 } from "@/lib/audio/dsp/effects/nam-model-store";
-import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
-import {
-  EFFECT_TYPES,
-  type EffectChainConfig,
-  type EffectConfig,
-  OPENDAW_TIDAL_FRACTIONS,
-} from "@/lib/audio/dsp/effects/types";
+import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   DEFAULT_EFFECT_TEMPO,
-  isValidFrequencySplitShape,
   normalizeEffectTree,
   normalizeTempoBpm,
   updateEffectInTree,
@@ -27,15 +21,41 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
+import {
+  getRetainedNodeGraphs,
+  type NodeStoreState,
+  nodeStore,
+} from "@/lib/node-graph/node-store";
+import {
+  EFFECT_NODE_TYPES,
+  getNodeGraphReadOnlyVersion,
+  isRadioSourceNode,
+  type NodeGraph,
+  nodeGraphSchema,
+} from "@/lib/node-graph/schema";
+import { nodeSessionRecord } from "@/lib/node-graph/session-record";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
+import {
+  migrateMultipleSession,
+  watchLegacyMultipleWrites,
+} from "./migrations/multiple-to-node";
+import { migrateNodeGraphSession } from "./migrations/node-graph-v2";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
-import { isSessionRadio, sessionRadiosCollection } from "./session-radios";
+import {
+  addSessionRadio,
+  isSessionRadio,
+  sessionRadiosCollection,
+  wasSessionRadioEvicted,
+  wasSessionRadioRemoved,
+} from "./session-radios";
 import { settingsCollection } from "./settings";
 
-const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
+export const PLAYBACK_SESSIONS_STORAGE_KEY = "radio-app-playback-sessions";
 const SETTINGS_ID = "app-settings";
 
-export const PLAYBACK_SESSION_IDS = ["single", "multiple", "dj"] as const;
+export const PLAYBACK_SESSION_IDS = ["single", "node", "dj"] as const;
 export type PlaybackSessionId = (typeof PLAYBACK_SESSION_IDS)[number];
 
 export const SINGLE_ACTIVE_CHANNEL_ID = "single-a";
@@ -83,175 +103,12 @@ const filterConfigSchema = z.object({
   ]),
 });
 
-const effectSidechainSchema = z.object({
-  channelId: z.string().min(1),
-});
-
-let effectConfigSchema: z.ZodType<EffectConfig>;
-
-function closestTidalDivision(rate: number): string {
-  const period = 1 / Math.max(0.001, rate);
-  const secondsPerBeat = 60 / DEFAULT_EFFECT_TEMPO;
-  return OPENDAW_TIDAL_FRACTIONS.reduce(
-    (best, division) => {
-      const [numerator = 1, denominator = 4] = division.split("/").map(Number);
-      const [bestNumerator = 1, bestDenominator = 4] = best
-        .split("/")
-        .map(Number);
-      const duration = secondsPerBeat * 4 * (numerator / denominator);
-      const bestDuration =
-        secondsPerBeat * 4 * (bestNumerator / bestDenominator);
-      return Math.abs(duration - period) < Math.abs(bestDuration - period)
-        ? division
-        : best;
-    },
-    "1/4" as (typeof OPENDAW_TIDAL_FRACTIONS)[number]
-  );
-}
-
-function migrateLegacyDelay(config: Record<string, unknown>): void {
-  if (config.delayMusical === undefined) {
-    config.delayMusical =
-      config.tempoSync === true && typeof config.tempoDivision === "string"
-        ? config.tempoDivision
-        : "Off";
-  }
-  if (config.delayMillis === undefined) {
-    config.delayMillis =
-      config.tempoSync === true
-        ? 0
-        : Math.max(0, Number(config.delayTime ?? 0.3)) * 1000;
-  }
-  if (config.cross === undefined) {
-    config.cross =
-      typeof config.crossFeedback === "number" ? config.crossFeedback : 0;
-  }
-}
-
-function migrateLegacyCompressor(config: Record<string, unknown>): void {
-  for (const [native, legacy] of [
-    ["automakeup", "autoMakeup"],
-    ["autoattack", "autoAttack"],
-    ["autorelease", "autoRelease"],
-  ] as const) {
-    if (config[native] === undefined && config[legacy] !== undefined) {
-      config[native] = config[legacy];
-    }
-  }
-}
-
-function migrateLegacyPlateReverb(
-  config: Record<string, unknown>
-): Record<string, unknown> {
-  const { preDelay, ...migrated } = config;
-  if (migrated.preDelayMillis === undefined && typeof preDelay === "number") {
-    migrated.preDelayMillis = preDelay / 48;
-  }
-  return migrated;
-}
-
-function migrateLegacyEffectConfig(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
-  }
-  const migrated = { ...value } as Record<string, unknown>;
-  if (migrated.type === "delay") {
-    migrateLegacyDelay(migrated);
-  } else if (migrated.type === "plateReverb") {
-    return migrateLegacyPlateReverb(migrated);
-  } else if (
-    migrated.type === "tidal" &&
-    migrated.rateDivision === undefined &&
-    typeof migrated.rate === "number"
-  ) {
-    migrated.rateDivision = closestTidalDivision(migrated.rate);
-  } else if (migrated.type === "compressor") {
-    migrateLegacyCompressor(migrated);
-  }
-  return migrated;
-}
-
-const effectChainConfigSchema: z.ZodType<EffectChainConfig> = z.lazy(() =>
-  z.object({
-    effects: z.array(effectConfigSchema),
-    gain: z.number(),
-    id: z.string(),
-    muted: z.boolean(),
-    name: z.string(),
-    order: z.number(),
-    pan: z.number(),
-    solo: z.boolean(),
-  })
-);
-
-effectConfigSchema = z.lazy(() =>
-  z.preprocess(
-    migrateLegacyEffectConfig,
-    z
-      .object({
-        chains: z.array(effectChainConfigSchema).optional(),
-        crossoverFrequencies: z.array(z.number()).optional(),
-        dryWet: z.number(),
-        enabled: z.boolean(),
-        id: z.string(),
-        inputGain: z.number(),
-        order: z.number(),
-        outputGain: z.number(),
-        sidechain: effectSidechainSchema.optional(),
-        type: z.enum(EFFECT_TYPES),
-      })
-      .passthrough()
-      .superRefine((value, context) => {
-        if (
-          (value.type === "fxComposite" ||
-            value.type === "stereoSplit" ||
-            value.type === "frequencySplit") &&
-          !value.chains
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: `${value.type} requires child chains`,
-            path: ["chains"],
-          });
-        }
-        if (value.type === "stereoSplit" && value.chains?.length !== 2) {
-          context.addIssue({
-            code: "custom",
-            message: "Stereo Split requires left and right chains",
-            path: ["chains"],
-          });
-        }
-        if (
-          value.type === "frequencySplit" &&
-          !isValidFrequencySplitShape(
-            value.chains ?? [],
-            value.crossoverFrequencies ?? []
-          )
-        ) {
-          context.addIssue({
-            code: "custom",
-            message:
-              "Frequency Split requires 2–4 bands with ascending crossovers",
-            path: ["chains"],
-          });
-        }
-      })
-      .transform(
-        (value) =>
-          ({
-            ...createDefaultEffectConfig(value.type, value.id, value.order),
-            ...value,
-          }) as EffectConfig
-      )
-  )
-);
-
 const playbackChannelRoleSchema = z.enum([
   "single-primary",
   "single-secondary",
   "deck-a",
   "deck-b",
-  "multiple",
+  "node",
 ]);
 
 const playbackChannelSchema = z.object({
@@ -277,6 +134,7 @@ const playbackSessionSchema = z
     activeChannelId: z.string().nullable().default(null),
     channels: z.array(playbackChannelSchema),
     crossfadePosition: z.number().default(0.5),
+    graph: nodeGraphSchema.optional(),
     headphoneVolume: z.number().default(1),
     id: z.enum(PLAYBACK_SESSION_IDS),
     masterVolume: z.number().default(1),
@@ -332,7 +190,8 @@ export function createDefaultChannel(
   };
 }
 
-function normalizeRadio(value: unknown): Radio | null {
+/** A channel radio as the session schema accepts it, or null. */
+export function normalizeRadio(value: unknown): Radio | null {
   const parsed = radioSchema.safeParse(value);
   return parsed.success ? (parsed.data as Radio | null) : null;
 }
@@ -555,27 +414,6 @@ function readLegacyDjState(): {
   };
 }
 
-export function buildMultipleSessionFromRadios(
-  radios: Array<Radio & { enabled?: boolean; order?: number }>
-): PlaybackSessionRecord {
-  const enabledRadios = radios
-    .filter((radio) => radio.enabled)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-  return {
-    activeChannelId: null,
-    channels: enabledRadios.map((radio, index) => ({
-      ...createDefaultChannel(getMultipleChannelId(radio), "multiple", index),
-      radio,
-    })),
-    crossfadePosition: 0.5,
-    headphoneVolume: 1,
-    id: "multiple",
-    masterVolume: 1,
-    tempo: DEFAULT_EFFECT_TEMPO,
-  };
-}
-
 function buildSingleSessionFromLegacy(): PlaybackSessionRecord {
   return buildSingleSessionFromLegacyState(readLegacySingleState());
 }
@@ -584,15 +422,19 @@ function buildDjSessionFromLegacy(): PlaybackSessionRecord {
   return buildDjSessionFromLegacyState(readLegacyDjState());
 }
 
-function buildMultipleSessionFromEnabledRadios(): PlaybackSessionRecord {
-  return buildMultipleSessionFromRadios(
-    Array.from(radiosCollection.state.values()) as Array<
-      Radio & { enabled?: boolean; order?: number }
-    >
-  );
+/**
+ * The Starter patch, for a new node session: one empty Station slot wired to
+ * Speakers. "All my stations" and the other templates stay in the Templates
+ * menu.
+ */
+function buildDefaultNodeSession(): PlaybackSessionRecord {
+  return nodeSessionRecord(buildNodeGraphFromTemplate("starter"));
 }
 
 function upsertSession(session: PlaybackSessionRecord): void {
+  if (session.id === "node" && getNodeSessionReadOnlyVersion() !== null) {
+    return;
+  }
   const existing = playbackSessionsCollection.state.get(session.id);
   if (existing) {
     playbackSessionsCollection.update(session.id, (draft) => {
@@ -603,30 +445,182 @@ function upsertSession(session: PlaybackSessionRecord): void {
   playbackSessionsCollection.insert(session);
 }
 
-function pruneStaleMultipleSessionChannels(): void {
-  const multipleSession = playbackSessionsCollection.state.get("multiple");
-  if (!multipleSession) {
-    return;
-  }
+/** Ids of the session radios Stations in `graph` hold. */
+function collectGraphSessionRadioIds(
+  graph: NodeGraph | null | undefined
+): Set<string> {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  return new Set(
+    nodes.flatMap((node) => {
+      const radio = isRadioSourceNode(node) ? (node.data.radio as Radio) : null;
+      return radio && isSessionOnlyRadio(radio) ? [String(radio.id)] : [];
+    })
+  );
+}
 
+/**
+ * Registers every session radio a Station in `graph` holds back into this
+ * tab's session radios. The patch stores the whole radio, so a station
+ * picked from search and never saved keeps playing in a new tab, as it
+ * does after a reload; without this its Station stayed filled with no
+ * lane behind it.
+ *
+ * One this tab removed on purpose, or let go to make room for newer ones,
+ * stays out while the patch keeps holding it. A Station that comes back
+ * with this write (Undo after deleting it in Node, say) registers its radio
+ * again; `previous` is the patch the write replaces, and `onlyReturning`
+ * limits registration to those.
+ */
+function registerNodeSessionRadios(
+  graph: NodeGraph,
+  previous?: NodeGraph | null,
+  onlyReturning = false
+): void {
   const sessionRadioIds = readStoredSessionRadioIds();
-  const channels = multipleSession.channels.filter((channel) => {
-    if (!isSessionOnlyRadio(channel.radio)) {
-      return true;
+  const previousIds = previous ? collectGraphSessionRadioIds(previous) : null;
+  for (const node of graph.nodes) {
+    const radio = isRadioSourceNode(node) ? (node.data.radio as Radio) : null;
+    if (!(radio && isSessionOnlyRadio(radio))) {
+      continue;
     }
+    const id = String(radio.id);
+    if (sessionRadioIds.has(id)) {
+      continue;
+    }
+    const returning = previousIds !== null && !previousIds.has(id);
+    if (
+      returning ||
+      !(
+        onlyReturning ||
+        wasSessionRadioRemoved(id) ||
+        wasSessionRadioEvicted(id)
+      )
+    ) {
+      addSessionRadio(radio);
+      sessionRadioIds.add(id);
+    }
+  }
+}
 
-    return sessionRadioIds.has(String(channel.radio?.id));
-  });
+/** Persist a prevalidated patch without importing the graph compiler at startup. */
+export function persistPreparedNodeSession(
+  graph: NodeGraph,
+  prepared: PlaybackSessionRecord
+): NodeGraph {
+  registerNodeSessionRadios(
+    graph,
+    playbackSessionsCollection.state.get("node")?.graph
+  );
+  holdNodeNamModels(collectSessionNamModelIds(prepared));
+  if (playbackSessionsCollection.state.has("node")) {
+    const previousModelIds = collectReleasableNamModelIds(
+      playbackSessionsCollection.state.get("node")
+    );
+    updatePlaybackSessionRecord("node", (draft) => {
+      draft.graph = prepared.graph;
+      draft.channels = prepared.channels;
+      draft.activeChannelId = prepared.activeChannelId;
+      draft.masterVolume = prepared.masterVolume;
+    });
+    scheduleNamModelCleanup(previousModelIds);
+  } else {
+    playbackSessionsCollection.insert(prepared);
+  }
+  return prepared.graph as NodeGraph;
+}
 
-  if (channels.length === multipleSession.channels.length) {
+/** Registers the stored patch's session radios in this tab. */
+function restoreNodeSessionRadios(): void {
+  if (getNodeSessionReadOnlyVersion() !== null) {
     return;
   }
+  const graph = playbackSessionsCollection.state.get("node")?.graph;
+  if (graph) {
+    registerNodeSessionRadios(graph);
+  }
+}
 
-  replacePlaybackChannels("multiple", channels);
+/**
+ * Calls `listener` after a storage event for a localStorage key `hears`;
+ * the key is null when another tab cleared localStorage. A tab's own
+ * writes never call it, rolled-back ones included: the browser sends
+ * storage events only to the other tabs.
+ */
+function subscribeToOtherTabStorageEvents(
+  hears: (key: string | null) => boolean,
+  listener: () => void
+): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+  const onStorage = (event: StorageEvent) => {
+    if (event.storageArea !== window.localStorage || !hears(event.key)) {
+      return;
+    }
+    // The collection's own storage listener syncs the write first.
+    queueMicrotask(listener);
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
+}
+
+/**
+ * Calls `listener` after another tab writes the local-storage collection
+ * stored under `storageKey`, once this tab's collection holds the write.
+ * Another tab clearing localStorage writes nothing, and the collection's
+ * sync ignores it, so it does not call it either.
+ */
+export function subscribeToOtherTabStorageWrites(
+  storageKey: string,
+  listener: () => void
+): () => void {
+  return subscribeToOtherTabStorageEvents(
+    (key) => key === storageKey,
+    listener
+  );
+}
+
+/**
+ * Calls `listener` after another tab writes the playback sessions or
+ * clears localStorage.
+ */
+export function subscribeToOtherTabSessionWrites(
+  listener: () => void
+): () => void {
+  return subscribeToOtherTabStorageEvents(
+    (key) => key === null || key === PLAYBACK_SESSIONS_STORAGE_KEY,
+    listener
+  );
+}
+
+/**
+ * Takes another tab's Node patch into this tab's editor, with `load`
+ * replacing the editor document and its history. Its session-only
+ * stations register here as an Undo's would (`previous` is the stored
+ * patch the other tab replaced), and the history `load` drops releases no
+ * NAM model: the other tab's own history may still bring one back.
+ */
+export function takeOtherTabNodeGraph(
+  graph: NodeGraph,
+  previous: NodeGraph | null,
+  load: () => void
+): void {
+  if (previous) {
+    registerNodeSessionRadios(graph, previous, true);
+  }
+  releasingDroppedNodeHistory = false;
+  try {
+    load();
+  } finally {
+    releasingDroppedNodeHistory = true;
+  }
 }
 
 export const playbackSessionsCollection = createCollection(
   localStorageCollectionOptions({
+    // Keep rows resident: the app reads `.state` outside live queries, and
+    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+    gcTime: 0,
     getKey: (item) => item.id,
     id: "playback-sessions",
     schema: playbackSessionSchema,
@@ -653,22 +647,86 @@ function updatePlaybackSessionRecord(
   updateRecord.call(playbackSessionsCollection, id, updater);
 }
 
+/**
+ * FX configs a Node graph holds. A bypassed or unwired FX node never reaches
+ * a lane, so the derived channels alone would let its NAM model be deleted.
+ */
+function collectGraphEffects(
+  graph: NodeGraph | null | undefined
+): EffectConfig[] {
+  if (getNodeGraphReadOnlyVersion(graph) !== null) {
+    return [];
+  }
+  return (
+    graph?.nodes.flatMap((node) =>
+      EFFECT_NODE_TYPES.some((type) => type === node.type) &&
+      "effect" in node.data
+        ? [node.data.effect as EffectConfig]
+        : []
+    ) ?? []
+  );
+}
+
 function collectSessionNamModelIds(
   session: PlaybackSessionRecord | undefined
 ): Set<string> {
+  // A retired record kept for a later migration run loads unvalidated.
+  const channels = Array.isArray(session?.channels) ? session.channels : [];
+  return new Set([
+    ...channels.flatMap((channel) =>
+      Array.isArray(channel?.effects)
+        ? [...collectLocalNamModelIds(channel.effects)]
+        : []
+    ),
+    ...collectLocalNamModelIds(collectGraphEffects(session?.graph)),
+  ]);
+}
+
+/**
+ * Local NAM models of the Node patch this tab holds: the ones it loaded at
+ * startup, wrote, or kept in its editor and history. Another tab's patch
+ * reaches this one only through storage, and this tab's next write can
+ * replace that record, but the models it added are not this tab's to
+ * delete: they may still be on that tab's canvas.
+ */
+const heldNodeNamModelIds = new Set<string>();
+
+function holdNodeNamModels(modelIds: Iterable<string>): void {
+  for (const modelId of modelIds) {
+    heldNodeNamModelIds.add(modelId);
+  }
+}
+
+/** The models a write replacing `session` may release. */
+function collectReleasableNamModelIds(
+  session: PlaybackSessionRecord | undefined
+): Set<string> {
+  const modelIds = collectSessionNamModelIds(session);
+  if (session?.id !== "node") {
+    return modelIds;
+  }
   return new Set(
-    session?.channels.flatMap((channel) => [
-      ...collectLocalNamModelIds(channel.effects),
-    ]) ?? []
+    [...modelIds].filter((modelId) => heldNodeNamModelIds.has(modelId))
+  );
+}
+
+function collectRetainedNamModelIds(
+  state: NodeStoreState = nodeStore.state
+): Set<string> {
+  return new Set(
+    [...getRetainedNodeGraphs(state)].flatMap((graph) => [
+      ...collectLocalNamModelIds(collectGraphEffects(graph)),
+    ])
   );
 }
 
 function collectReferencedNamModelIds(): Set<string> {
-  return new Set(
-    [...playbackSessionsCollection.state.values()].flatMap((session) => [
+  return new Set([
+    ...collectRetainedNamModelIds(),
+    ...[...playbackSessionsCollection.state.values()].flatMap((session) => [
       ...collectSessionNamModelIds(session),
-    ])
-  );
+    ]),
+  ]);
 }
 
 function scheduleNamModelCleanup(candidates: Iterable<string>): void {
@@ -677,6 +735,10 @@ function scheduleNamModelCleanup(candidates: Iterable<string>): void {
     return;
   }
   queueMicrotask(() => {
+    // This release cannot determine all references in a future graph.
+    if (getNodeSessionReadOnlyVersion() !== null) {
+      return;
+    }
     deleteUnreferencedNamModels(pending, collectReferencedNamModelIds()).catch(
       (error) =>
         console.warn(
@@ -686,6 +748,23 @@ function scheduleNamModelCleanup(candidates: Iterable<string>): void {
     );
   });
 }
+
+// History eviction and reset can release models without changing a session.
+let observedNodeState = nodeStore.state;
+/** False while another tab's patch replaces the editor's history. */
+let releasingDroppedNodeHistory = true;
+holdNodeNamModels(collectRetainedNamModelIds(observedNodeState));
+nodeStore.subscribe((state) => {
+  const previous = observedNodeState;
+  observedNodeState = state;
+  holdNodeNamModels(collectRetainedNamModelIds(state));
+  if (
+    releasingDroppedNodeHistory &&
+    (previous.graph !== state.graph || previous.history !== state.history)
+  ) {
+    scheduleNamModelCleanup(collectRetainedNamModelIds(previous));
+  }
+});
 
 function collectNamModels(
   effects: readonly EffectConfig[]
@@ -738,13 +817,44 @@ async function externalizeChannelNamModels(
   }, effects);
 }
 
+/**
+ * Loads the models FX nodes that reach no lane hold, so wiring one later
+ * finds its bytes: the audio adapter reads local models from the cache.
+ */
+async function hydrateGraphNamModels(): Promise<void> {
+  await hydrateNodeGraphNamModels(
+    [...playbackSessionsCollection.state.values()].map(
+      (session) => session.graph
+    )
+  );
+}
+
+/** Loads the local NAM models `graphs` hold into the model cache. */
+export async function hydrateNodeGraphNamModels(
+  graphs: readonly (NodeGraph | null | undefined)[]
+): Promise<void> {
+  const modelIds = graphs.flatMap((graph) => [
+    ...collectLocalNamModelIds(collectGraphEffects(graph)),
+  ]);
+  await Promise.all(
+    [...new Set(modelIds)].map((modelId) =>
+      getNamModel(modelId).catch(() => null)
+    )
+  );
+}
+
 async function externalizeStoredNamModels(): Promise<void> {
+  await hydrateGraphNamModels();
   const channels = [...playbackSessionsCollection.state.values()].flatMap(
     (session) =>
-      session.channels.map((channel) => ({
-        channel,
-        sessionId: session.id,
-      }))
+      // A retired record left for a later migration run cannot be updated.
+      PLAYBACK_SESSION_IDS.includes(session.id) &&
+      getNodeGraphReadOnlyVersion(session.graph) === null
+        ? session.channels.map((channel) => ({
+            channel,
+            sessionId: session.id,
+          }))
+        : []
   );
   const updates = await Promise.all(
     channels.map(async ({ channel, sessionId }) => {
@@ -754,11 +864,25 @@ async function externalizeStoredNamModels(): Promise<void> {
   );
   for (const { channel, effects, sessionId } of updates) {
     if (effects.some((effect, index) => effect !== channel.effects[index])) {
+      if (sessionId === "node") {
+        holdNodeNamModels(collectLocalNamModelIds(effects));
+      }
       updatePlaybackChannel(sessionId, channel.id, (draft) => {
         draft.effects = effects;
       });
     }
   }
+}
+
+let stopWatchingLegacyWrites: (() => void) | null = null;
+
+/**
+ * Stops the cross-tab Multiple listeners that `initializePlaybackSessions`
+ * starts, so a test can write Multiple records without them converting.
+ */
+export function stopLegacyMultipleListeners(): void {
+  stopWatchingLegacyWrites?.();
+  stopWatchingLegacyWrites = null;
 }
 
 export async function initializePlaybackSessions(): Promise<void> {
@@ -768,6 +892,23 @@ export async function initializePlaybackSessions(): Promise<void> {
     settingsCollection.stateWhenReady(),
     sessionRadiosCollection.stateWhenReady(),
   ]);
+
+  // Before any update: a stale "multiple" record would fail validation.
+  const legacyCollections = {
+    radios: radiosCollection,
+    sessionRadios: sessionRadiosCollection,
+    sessions: playbackSessionsCollection,
+  };
+  const hasStoredNodeGraph = Boolean(
+    playbackSessionsCollection.state.get("node")?.graph
+  );
+  migrateMultipleSession(legacyCollections);
+  // Likewise a node session a v1 release stored: its graph is upgraded
+  // before restoreNodeSessionRadios or restore update it.
+  migrateNodeGraphSession(playbackSessionsCollection);
+  // The patch this tab starts from is its own to garbage-collect.
+  holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
+  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
 
   const settings = settingsCollection.state.get(SETTINGS_ID);
   const shouldRestore = settings?.player.restoreStateOnLoad !== false;
@@ -780,33 +921,41 @@ export async function initializePlaybackSessions(): Promise<void> {
 
   if (!shouldRestore) {
     upsertSession(buildSingleSessionFromLegacyState());
-    upsertSession(buildMultipleSessionFromEnabledRadios());
+    // Playback starts paused; disabling restoration must not erase a patch.
+    if (!hasStoredNodeGraph) {
+      upsertSession(buildDefaultNodeSession());
+    }
     upsertSession(buildDjSessionFromLegacyState());
     scheduleNamModelCleanup(discardedModelIds);
   } else if (playbackSessionsCollection.state.size === 0) {
     upsertSession(buildSingleSessionFromLegacy());
-    upsertSession(buildMultipleSessionFromEnabledRadios());
+    upsertSession(buildDefaultNodeSession());
     upsertSession(buildDjSessionFromLegacy());
   } else {
     if (!playbackSessionsCollection.state.has("single")) {
       upsertSession(buildSingleSessionFromLegacy());
     }
-    if (!playbackSessionsCollection.state.has("multiple")) {
-      upsertSession(buildMultipleSessionFromEnabledRadios());
+    if (!playbackSessionsCollection.state.has("node")) {
+      upsertSession(buildDefaultNodeSession());
     }
     if (!playbackSessionsCollection.state.has("dj")) {
       upsertSession(buildDjSessionFromLegacy());
     }
   }
 
-  pruneStaleMultipleSessionChannels();
+  restoreNodeSessionRadios();
 
-  const activeMode = settings?.player.mode ?? "single";
+  const activeMode = normalizePlayerMode(settings?.player.mode);
   const activeSession = playbackSessionsCollection.state.get(activeMode);
   if (activeSession) {
-    playbackSessionsCollection.update(activeMode, (draft) => {
-      draft.masterVolume = draft.masterVolume ?? 1;
-    });
+    try {
+      updatePlaybackSession(activeMode, (draft) => {
+        draft.masterVolume = draft.masterVolume ?? 1;
+      });
+    } catch (error) {
+      // A patch the v2 step kept unread, for want of a backup, fails it.
+      console.warn("[playback-sessions] Could not touch the session", error);
+    }
   }
 }
 
@@ -816,15 +965,27 @@ export function getPlaybackSession(
   return playbackSessionsCollection.state.get(id);
 }
 
+/** Stored graphs load without schema validation, including future versions. */
+export function getNodeSessionReadOnlyVersion(): number | null {
+  return getNodeGraphReadOnlyVersion(getPlaybackSession("node")?.graph);
+}
+
 export function updatePlaybackSession(
   id: PlaybackSessionId,
   updater: PlaybackSessionUpdater
 ): void {
   const existing = getPlaybackSession(id);
-  if (existing) {
-    const previousModelIds = collectSessionNamModelIds(existing);
+  if (
+    existing &&
+    !(id === "node" && getNodeSessionReadOnlyVersion() !== null)
+  ) {
+    const previousModelIds = collectReleasableNamModelIds(existing);
     updatePlaybackSessionRecord(id, updater);
     scheduleNamModelCleanup(previousModelIds);
+    const graph = id === "node" ? getPlaybackSession("node")?.graph : null;
+    if (graph && graph !== existing.graph) {
+      registerNodeSessionRadios(graph, existing.graph, true);
+    }
   }
 }
 
@@ -833,7 +994,7 @@ export function deletePlaybackSession(id: PlaybackSessionId): void {
   if (!existing) {
     return;
   }
-  const previousModelIds = collectSessionNamModelIds(existing);
+  const previousModelIds = collectReleasableNamModelIds(existing);
   playbackSessionsCollection.delete(id);
   scheduleNamModelCleanup(previousModelIds);
 }
@@ -890,21 +1051,6 @@ export function removePlaybackChannel(
   });
 }
 
-export function replacePlaybackChannels(
-  sessionId: PlaybackSessionId,
-  channels: PlaybackChannelRecord[]
-): void {
-  updatePlaybackSession(sessionId, (draft) => {
-    draft.channels = channels;
-    if (
-      draft.activeChannelId &&
-      !channels.some((channel) => channel.id === draft.activeChannelId)
-    ) {
-      draft.activeChannelId = null;
-    }
-  });
-}
-
 export function setPlaybackSessionActiveChannel(
   sessionId: PlaybackSessionId,
   channelId: string | null
@@ -923,8 +1069,10 @@ export function setPlaybackSessionTempo(
   });
 }
 
-export function getMultipleChannelId(
-  radio: Pick<Radio, "id" | "name">
-): string {
-  return `multi:${String(radio.id ?? radio.name)}`;
+/**
+ * Channel id of the lane a Node-mode source node plays on. The managed sound
+ * id is then `node:n:<nodeId>`, which the graph compiler also emits.
+ */
+export function getNodeChannelId(nodeId: string): string {
+  return `n:${nodeId}`;
 }

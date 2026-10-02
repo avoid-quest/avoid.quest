@@ -3,9 +3,11 @@ import {
   initializePlaybackSessions,
   initializeRadios,
   initializeSettings,
+  type PlaybackSessionId,
   radiosCollection,
   settingsCollection,
 } from "./collections";
+import { LEGACY_MULTIPLE_SESSION_ID } from "./collections/migrations/legacy-records";
 
 const SETTINGS_ID = "app-settings";
 
@@ -32,7 +34,15 @@ export const resetAllSettings = async (): Promise<void> => {
     settingsCollection.delete(SETTINGS_ID);
   }
 
-  for (const sessionId of ["single", "multiple", "dj"] as const) {
+  // "multiple" goes too, so a record left by the pre-Node mode cannot survive
+  // a reset.
+  const sessionIds: PlaybackSessionId[] = [
+    "single",
+    "node",
+    "dj",
+    LEGACY_MULTIPLE_SESSION_ID,
+  ];
+  for (const sessionId of sessionIds) {
     deletePlaybackSession(sessionId);
   }
 

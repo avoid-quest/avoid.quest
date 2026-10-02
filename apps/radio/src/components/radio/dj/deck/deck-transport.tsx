@@ -1,16 +1,15 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
+import { Slider } from "@avoid.quest/ui/components/slider";
+import { Toggle } from "@avoid.quest/ui/components/toggle";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  ListMusicIcon,
-  Music2Icon,
-  PauseIcon,
-  PlayIcon,
-  Repeat1Icon,
-} from "lucide-react";
+import { ListMusicIcon, Music2Icon, Repeat1Icon } from "lucide-react";
+import { useState } from "react";
 import { RadioNowPlaying } from "@/components/radio/radio-now-playing";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { formatTime } from "../shared/format-utils";
 import { useDeckContext } from "./deck-context";
+import { DeckMenu } from "./deck-header";
 
 function TransportArtwork({
   artworkUrl,
@@ -24,7 +23,7 @@ function TransportArtwork({
   isPlaying: boolean;
 }) {
   return (
-    <div className="relative size-11 shrink-0 overflow-hidden rounded border border-border/50 bg-black/20">
+    <div className="relative size-11 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
       {artworkUrl ? (
         <img
           alt={title}
@@ -46,48 +45,40 @@ function TransportArtwork({
 }
 
 function TransportPlayButton({
+  label,
   isPlaying,
   isLoading,
   isBuffering,
   onPlayPause,
 }: {
+  label: string;
   isPlaying: boolean;
   isLoading: boolean;
   isBuffering: boolean;
   onPlayPause: () => void;
 }) {
-  let icon = <PlayIcon className="ml-0.5 size-3.5" />;
-  const playPauseLabel = isPlaying ? "Pause" : "Play";
-  if (isLoading) {
-    icon = (
-      <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-    );
-  } else if (isPlaying) {
-    icon = <PauseIcon className="size-3.5" />;
-  }
-
   return (
-    <button
-      aria-label={isLoading ? "Loading" : playPauseLabel}
-      className={cn(
-        "relative flex size-9 shrink-0 items-center justify-center rounded-full transition-all",
-        "bg-primary text-primary-foreground shadow-sm",
-        "hover:bg-primary/90 hover:shadow-md",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-        "disabled:pointer-events-none disabled:opacity-50",
-        isPlaying && "bg-primary/90"
-      )}
-      disabled={isLoading}
-      onClick={onPlayPause}
-      type="button"
-    >
-      {icon}
+    <span className="relative shrink-0 rounded-full">
+      <PlayPauseButton
+        className="size-9 rounded-full"
+        iconClassName="size-3.5"
+        inline
+        isLoading={isLoading}
+        isPlaying={isPlaying}
+        label={label}
+        onClick={onPlayPause}
+        size="icon"
+        variant={isPlaying && !isLoading ? "outline" : "default"}
+      />
       {isBuffering && isPlaying ? (
         <span className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-muted-foreground/40" />
       ) : null}
-    </button>
+    </span>
   );
 }
+
+const transportToggleClassName =
+  "size-7 min-w-7 p-0 text-muted-foreground [@media(pointer:coarse)]:size-9";
 
 function TransportToggles({
   autoplay,
@@ -104,43 +95,31 @@ function TransportToggles({
   setAutoplay: (autoplay: boolean) => void;
   setRepeat: (repeat: boolean) => void;
 }) {
-  const handleRepeatToggle = () => setRepeat(!repeat);
-  const handleAutoplayToggle = () => setAutoplay(!autoplay);
-
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       {isSeekable ? (
-        <button
-          aria-label={repeat ? "Disable repeat" : "Enable repeat"}
-          className={cn(
-            "flex size-6 items-center justify-center rounded-full transition-all",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            repeat
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          )}
-          onClick={handleRepeatToggle}
-          type="button"
+        <Toggle
+          aria-label="Repeat"
+          className={transportToggleClassName}
+          onPressedChange={setRepeat}
+          pressed={repeat}
+          size="sm"
+          title="Repeat"
         >
-          <Repeat1Icon className="size-3" />
-        </button>
+          <Repeat1Icon className="size-3.5" />
+        </Toggle>
       ) : null}
       {hasTracklist ? (
-        <button
-          aria-label={autoplay ? "Disable autoplay" : "Enable autoplay"}
-          className={cn(
-            "flex size-6 items-center justify-center rounded-full transition-all",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            autoplay
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          )}
-          onClick={handleAutoplayToggle}
-          title={autoplay ? "Autoplay enabled" : "Autoplay disabled"}
-          type="button"
+        <Toggle
+          aria-label="Autoplay next track"
+          className={transportToggleClassName}
+          onPressedChange={setAutoplay}
+          pressed={autoplay}
+          size="sm"
+          title="Autoplay next track"
         >
-          <ListMusicIcon className="size-3" />
-        </button>
+          <ListMusicIcon className="size-3.5" />
+        </Toggle>
       ) : null}
     </div>
   );
@@ -163,13 +142,14 @@ export function DeckTransport({
     autoplay,
     hasTracklist,
     isSeekable,
-    deckSide,
     metadata,
     play,
     pause,
     setRepeat,
     setAutoplay,
     seek,
+    deckId,
+    reset,
   } = useDeckContext();
 
   const handlePlayPause = isPlaying ? pause : play;
@@ -182,20 +162,23 @@ export function DeckTransport({
   const title =
     metadata && "name" in metadata ? metadata.name || radio.name : radio.name;
 
-  const isRight = deckSide === "right";
   const isRadioSource =
     !metadata ||
     metadata.platform === "radiogarden" ||
     metadata.platform === "radio-browser" ||
     Boolean(nowPlaying);
+  // Live time sits inside the card so starting playback doesn't shift the deck.
+  const liveTime =
+    isRadioSource && trackProgress && !Number.isFinite(trackProgress.duration)
+      ? trackProgress.position
+      : null;
 
   return (
     <div className={cn("flex w-full min-w-0 flex-col gap-1.5", className)}>
       <div
         className={cn(
           "flex w-full min-w-0 items-center gap-2.5 rounded-md border border-border/50 bg-muted/30 p-2 transition-colors",
-          isRadioSource && isPlaying && !isLoading && "border-foreground/40",
-          isRight && "flex-row-reverse"
+          isRadioSource && isPlaying && !isLoading && "border-foreground/40"
         )}
       >
         {isRadioSource ? (
@@ -214,10 +197,17 @@ export function DeckTransport({
           />
         )}
 
+        {liveTime === null ? null : (
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+            {formatTime(liveTime)}
+          </span>
+        )}
+
         <TransportPlayButton
           isBuffering={isBuffering}
           isLoading={isLoading}
           isPlaying={isPlaying}
+          label={deckId === "deck-a" ? "deck A" : "deck B"}
           onPlayPause={handlePlayPause}
         />
 
@@ -233,37 +223,26 @@ export function DeckTransport({
 
         {/* Title + progress */}
         {!isRadioSource && (
-          <div
-            className={cn(
-              "flex min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden",
-              isRight && "items-end"
-            )}
-          >
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden">
             <span
-              className={cn(
-                "block w-full overflow-hidden truncate text-ellipsis whitespace-nowrap font-semibold text-sm leading-tight",
-                isRight && "text-right"
-              )}
+              className="block w-full truncate font-semibold text-sm leading-tight"
               title={title}
             >
               {title}
             </span>
-            <TransportProgress
-              isBuffering={isBuffering}
-              isPlaying={isPlaying}
-              onSeek={seek}
-              trackProgress={trackProgress}
-            />
+            <TransportProgress onSeek={seek} trackProgress={trackProgress} />
           </div>
         )}
-      </div>
-      {isRadioSource ? (
-        <TransportProgress
-          isBuffering={isBuffering}
-          isPlaying={isPlaying}
-          onSeek={seek}
-          trackProgress={trackProgress}
+
+        <DeckMenu
+          className="md:hidden"
+          deckId={deckId}
+          onReset={reset}
+          radio={radio}
         />
+      </div>
+      {isRadioSource && liveTime === null ? (
+        <TransportProgress onSeek={seek} trackProgress={trackProgress} />
       ) : null}
     </div>
   );
@@ -271,13 +250,9 @@ export function DeckTransport({
 
 function TransportProgress({
   trackProgress,
-  isBuffering,
-  isPlaying,
   onSeek,
 }: {
   trackProgress?: { position: number; duration: number };
-  isBuffering: boolean;
-  isPlaying: boolean;
   onSeek: (position: number) => void;
 }) {
   if (!trackProgress) {
@@ -302,60 +277,45 @@ function TransportProgress({
   return (
     <SeekableProgress
       duration={trackProgress.duration}
-      isBuffering={isBuffering}
-      isPlaying={isPlaying}
       onSeek={onSeek}
       position={trackProgress.position}
     />
   );
 }
 
-function SeekableProgress({
+/** A seek bar with position and duration; it seeks once, on release. */
+export function SeekableProgress({
   duration,
   position,
-  isBuffering,
-  isPlaying,
   onSeek,
 }: {
   duration: number;
   position: number;
-  isBuffering: boolean;
-  isPlaying: boolean;
   onSeek: (position: number) => void;
 }) {
-  const progress = (position / duration) * 100;
-  const handleBarClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const nextPosition = (clickX / rect.width) * duration;
-    onSeek(Math.max(0, Math.min(nextPosition, duration)));
+  // Follow the pointer while dragging; seek once, on release.
+  const [dragPosition, setDragPosition] = useState<number | null>(null);
+  const shownPosition = dragPosition ?? position;
+  const handleDrag = ([value]: number[]) => setDragPosition(value ?? 0);
+  const handleCommit = ([value]: number[]) => {
+    setDragPosition(null);
+    onSeek(Math.max(0, Math.min(value ?? 0, duration)));
   };
 
-  let fillColor = "bg-primary/60";
-  if (isBuffering) {
-    fillColor = "bg-muted-foreground/70";
-  } else if (isPlaying) {
-    fillColor = "bg-primary";
-  }
-
   return (
-    <div className="w-full space-y-0.5">
-      <button
+    <div className="w-full space-y-1">
+      <Slider
         aria-label="Seek position"
-        className="relative h-1.5 w-full cursor-pointer overflow-hidden rounded-full bg-muted-foreground/20"
-        onClick={handleBarClick}
-        type="button"
-      >
-        <div
-          className={cn(
-            "pointer-events-none h-full rounded-full transition-all duration-300 ease-out",
-            fillColor
-          )}
-          style={{ width: `${progress}%` }}
-        />
-      </button>
+        max={duration}
+        min={0}
+        onValueChange={handleDrag}
+        onValueCommit={handleCommit}
+        resetValue={[0]}
+        step={1}
+        value={[shownPosition]}
+      />
       <div className="flex justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
-        <span>{formatTime(position)}</span>
+        <span>{formatTime(shownPosition)}</span>
         <span>{formatTime(duration)}</span>
       </div>
     </div>

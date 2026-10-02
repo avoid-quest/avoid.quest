@@ -53,6 +53,10 @@ function applyUniversalParams(
     }
   }
 
+  if (typeof config.signalGain === "number") {
+    result.signalGain = config.signalGain;
+  }
+
   if (typeof config.inputGain === "number") {
     result.inputGain = config.inputGain;
   }

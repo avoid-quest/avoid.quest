@@ -14,7 +14,7 @@ import {
  * Updates are throttled at 250ms intervals to balance accuracy and performance.
  *
  * For live streams, duration will be Infinity.
- * For finite tracks (Bandcamp, SoundCloud), both position and duration are available.
+ * For finite tracks (Bandcamp, SoundCloud, Mixcloud...), both position and duration are available.
  */
 export function useTrackProgress(soundId: string | null): TrackProgress {
   const activeSoundIdRef = useRef(soundId);

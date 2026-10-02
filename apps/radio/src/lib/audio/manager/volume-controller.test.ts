@@ -75,4 +75,34 @@ describe("VolumeController", () => {
     expect(gain.setValueAtTime.mock.calls[0]?.[1]).toBe(0.5);
     expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0.25, 0.5, 0.02);
   });
+
+  test("a paused device input keeps its gain muted through a volume curve", () => {
+    const sound = createSoundInstance(radio, "deck-a");
+    sound.isDeviceInput = true;
+    sound.playing = false;
+    const gain = {
+      cancelScheduledValues: mock(() => undefined),
+      setTargetAtTime: mock(() => undefined),
+      setValueAtTime: mock(() => undefined),
+      setValueCurveAtTime: mock(() => undefined),
+      value: 0.0001,
+    };
+    sound.nodes = {
+      gain: { gain },
+    } as unknown as NonNullable<typeof sound.nodes>;
+    const volume = new VolumeController({
+      getContext: () => ({ currentTime: 0 }) as AudioContext,
+      getSound: (soundId) => (soundId === "deck-a" ? sound : null),
+      getSounds: () => [["deck-a", sound]],
+      notifyListeners: () => undefined,
+    });
+
+    volume.scheduleVolumeCurve("deck-a", new Float32Array([0, 1]), 1000);
+    volume.scheduleVolumeCurve("deck-a", new Float32Array([1]), 0);
+
+    expect(sound.volume).toBe(1);
+    expect(gain.setValueCurveAtTime).not.toHaveBeenCalled();
+    expect(gain.setValueAtTime).not.toHaveBeenCalled();
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0.0001, 0, 0.05);
+  });
 });

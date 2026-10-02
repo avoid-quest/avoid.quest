@@ -8,7 +8,15 @@ import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { platformMetadataSchema } from "./schemas";
 
 const SESSION_RADIOS_STORAGE_KEY = "radio-session-radios";
+const REMOVED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-removed";
+const EVICTED_SESSION_RADIOS_STORAGE_KEY = "radio-session-radios-evicted";
 const MAX_SESSION_RADIOS = 20;
+/**
+ * Removed or evicted ids kept per list, newest last; older ones are
+ * forgotten. A tombstone only matters while a patch still holds the radio,
+ * and a patch holds far fewer than this.
+ */
+const MAX_SESSION_RADIO_TOMBSTONES = 100;
 let lastAddedAt = 0;
 
 const memorySessionStorage = new Map<string, string>();
@@ -111,6 +119,9 @@ function parseSessionRadiosStorage(data: string): unknown {
 
 export const sessionRadiosCollection = createCollection(
   localStorageCollectionOptions({
+    // Keep rows resident: the app reads `.state` outside live queries, and
+    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+    gcTime: 0,
     getKey: (item) => String(item.id),
     id: "session-radios",
     parser: {
@@ -168,9 +179,70 @@ export function getSessionRadios(): Radio[] {
   return getOrderedSessionRadioRecords().map(toSessionRadio);
 }
 
+function readSessionRadioIds(key: string): Set<string> {
+  try {
+    const parsed = JSON.parse(
+      sessionStorageApi.getItem(key) ?? "[]"
+    ) as unknown;
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === "string")
+        : []
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeSessionRadioIds(key: string, ids: Set<string>): void {
+  try {
+    if (ids.size === 0) {
+      sessionStorageApi.removeItem(key);
+      return;
+    }
+    sessionStorageApi.setItem(
+      key,
+      JSON.stringify([...ids].slice(-MAX_SESSION_RADIO_TOMBSTONES))
+    );
+  } catch (error) {
+    // A full or blocked storage loses the tombstones, not the radio change.
+    console.warn("[session-radios] Could not store removed radios", error);
+  }
+}
+
+function forgetSessionRadioId(key: string, id: string): void {
+  const ids = readSessionRadioIds(key);
+  if (ids.delete(id)) {
+    writeSessionRadioIds(key, ids);
+  }
+}
+
+/**
+ * Whether this tab removed the session radio `id` on purpose, so a patch
+ * that still holds it doesn't register it back.
+ */
+export function wasSessionRadioRemoved(id: string | number): boolean {
+  return readSessionRadioIds(REMOVED_SESSION_RADIOS_STORAGE_KEY).has(
+    String(id)
+  );
+}
+
+/**
+ * Whether the session radio `id` left this tab's list to make room for newer
+ * ones, so a patch that still holds it doesn't register it back and push
+ * out another.
+ */
+export function wasSessionRadioEvicted(id: string | number): boolean {
+  return readSessionRadioIds(EVICTED_SESSION_RADIOS_STORAGE_KEY).has(
+    String(id)
+  );
+}
+
 export function addSessionRadio(radio: Radio): void {
   const record = toSessionRadioRecord(radio);
   const id = String(record.id);
+  forgetSessionRadioId(REMOVED_SESSION_RADIOS_STORAGE_KEY, id);
+  forgetSessionRadioId(EVICTED_SESSION_RADIOS_STORAGE_KEY, id);
   if (sessionRadiosCollection.state.has(id)) {
     sessionRadiosCollection.update(id, (draft) => {
       Object.assign(draft, record);
@@ -180,11 +252,16 @@ export function addSessionRadio(radio: Radio): void {
 
   sessionRadiosCollection.insert(record);
 
-  for (const staleRadio of getOrderedSessionRadioRecords().slice(
-    MAX_SESSION_RADIOS
-  )) {
-    sessionRadiosCollection.delete(String(staleRadio.id));
+  const evicted = getOrderedSessionRadioRecords().slice(MAX_SESSION_RADIOS);
+  if (evicted.length === 0) {
+    return;
   }
+  const evictedIds = readSessionRadioIds(EVICTED_SESSION_RADIOS_STORAGE_KEY);
+  for (const staleRadio of evicted) {
+    sessionRadiosCollection.delete(String(staleRadio.id));
+    evictedIds.add(String(staleRadio.id));
+  }
+  writeSessionRadioIds(EVICTED_SESSION_RADIOS_STORAGE_KEY, evictedIds);
 }
 
 export function removeSessionRadio(id: string | number): void {
@@ -192,4 +269,8 @@ export function removeSessionRadio(id: string | number): void {
   if (sessionRadiosCollection.state.has(key)) {
     sessionRadiosCollection.delete(key);
   }
+  writeSessionRadioIds(
+    REMOVED_SESSION_RADIOS_STORAGE_KEY,
+    readSessionRadioIds(REMOVED_SESSION_RADIOS_STORAGE_KEY).add(key)
+  );
 }

@@ -1,0 +1,650 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+import { Button } from "@avoid.quest/ui/components/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@avoid.quest/ui/components/dropdown-menu";
+import { Knob } from "@avoid.quest/ui/components/knob";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@avoid.quest/ui/components/select";
+import { Switch } from "@avoid.quest/ui/components/switch";
+import { cn } from "@avoid.quest/ui/lib/utils";
+import {
+  type LucideIcon,
+  MoreHorizontalIcon,
+  ReplaceIcon,
+  RotateCcwIcon,
+  SlidersHorizontalIcon,
+  Trash2Icon,
+} from "lucide-react";
+import {
+  type ComponentType,
+  type CSSProperties,
+  createContext,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+  type SyntheticEvent,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
+import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
+import {
+  getNodeDefinition,
+  isShipped,
+  type NodePort as PortDefinition,
+  portHandleId,
+} from "@/lib/node-graph/catalogue";
+import { portName } from "@/lib/node-graph/describe";
+import type { NodeType } from "@/lib/node-graph/schema";
+import type { Verdict } from "@/lib/node-graph/validate";
+import type { Position, useUpdateNodeInternals } from "./flow-adapter";
+
+/**
+ * Module Frame
+ *
+ * The chrome FX and native strip nodes share: a flat card of fixed width,
+ * a header with an icon tile, the title, an optional enable switch and a
+ * menu, and a body of 64 px control columns. Each control has a sans label
+ * above an uncaptioned knob, so no mono caps reach node chrome.
+ */
+
+/** React Flow skips drag, pan and wheel zoom on these, so controls work. */
+export const INTERACTIVE = "nodrag nopan nowheel";
+
+/**
+ * Keeps a node control's keys on the node: an arrow turns a knob instead of
+ * moving the node, and Enter, Escape or Delete don't select, deselect or
+ * delete it. A menu or select portals out of the node but still bubbles
+ * through React, so its keys stop here too. Chords like Cmd+Z go on to the
+ * app's shortcuts, so undo works from a focused knob.
+ */
+export function keepControlKeys(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key.length === 1) {
+    return;
+  }
+  event.stopPropagation();
+}
+
+/** One control column: the shared Knob's own width (w-16). */
+export const CONTROL_COLUMN_PX = 64;
+/** A body shows at most this many columns: the first layout row. */
+export const MAX_CONTROL_COLUMNS = 4;
+const COLUMN_GAP_PX = 8;
+const BODY_PADDING_PX = 16;
+/** A fader release lands after the 32 ms param throttle's trailing call. */
+export const RELEASE_DELAY_MS = 48;
+/**
+ * A wheel turn is one undo step, taken once the wheel has been still this
+ * long: a trackpad sends dozens of ticks a second, and a step per tick
+ * would push the whole undo history out in a few seconds of scrolling.
+ */
+export const WHEEL_SETTLE_MS = 300;
+
+/** The control a gesture is on: a knob or slider, else the element itself. */
+function gestureControl(event: SyntheticEvent): EventTarget | null {
+  const { target } = event;
+  return target instanceof Element
+    ? (target.closest('[role="slider"]') ?? target)
+    : target;
+}
+
+type PendingStep = {
+  control: EventTarget | null;
+  release: () => void;
+  timer: ReturnType<typeof setTimeout>;
+  wheel: boolean;
+};
+
+/** Takes the pending step now, if there is one. */
+function takeStep(pending: RefObject<PendingStep | null>): void {
+  const step = pending.current;
+  if (!step) {
+    return;
+  }
+  clearTimeout(step.timer);
+  pending.current = null;
+  step.release();
+}
+
+/**
+ * Where a group of controls takes its undo steps. A pointer or key release
+ * takes one once the knob throttle's trailing call has landed; a wheel turn
+ * takes one once the wheel settles. A step still pending when the next
+ * gesture starts, or when the wheel moves to another control, is taken
+ * there and then, so each gesture is its own step. A wheel listener on a
+ * control stops the event, so the wheel is heard in the capture phase.
+ */
+export function useReleaseStep(onRelease: () => void) {
+  const pending = useRef<PendingStep | null>(null);
+  const flush = () => takeStep(pending);
+  const schedule = (event: SyntheticEvent, wheel: boolean) => {
+    const control = gestureControl(event);
+    const step = pending.current;
+    if (step?.wheel && wheel && step.control === control) {
+      clearTimeout(step.timer);
+    } else {
+      flush();
+    }
+    pending.current = {
+      control,
+      release: onRelease,
+      timer: setTimeout(flush, wheel ? WHEEL_SETTLE_MS : RELEASE_DELAY_MS),
+      wheel,
+    };
+  };
+  // A step still pending when the controls go is taken, not dropped.
+  useEffect(() => () => takeStep(pending), []);
+  return {
+    onKeyDownCapture: flush,
+    onKeyUp: (event: SyntheticEvent) => schedule(event, false),
+    onPointerDownCapture: flush,
+    onPointerUp: (event: SyntheticEvent) => schedule(event, false),
+    onWheelCapture: (event: SyntheticEvent) => schedule(event, true),
+  };
+}
+
+/** The node width for `columns` controls, never narrower than `minColumns`. */
+export function moduleWidth(columns: number, minColumns: number): number {
+  const count = Math.min(MAX_CONTROL_COLUMNS, Math.max(minColumns, columns, 1));
+  return (
+    BODY_PADDING_PX + count * CONTROL_COLUMN_PX + (count - 1) * COLUMN_GAP_PX
+  );
+}
+
+export function ModuleFrame({
+  width,
+  on,
+  selected = false,
+  children,
+}: {
+  width: number;
+  /** An enabled effect: the canon `border-primary/20 bg-primary/5`. */
+  on: boolean;
+  selected?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border bg-card text-card-foreground",
+        on ? "border-primary/20" : "border-border/50",
+        selected && "border-ring"
+      )}
+      style={{ width }}
+    >
+      {/* The tint sits on an opaque card so cables never show through. */}
+      <div className={cn("rounded-[inherit]", on && "bg-primary/5")}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function ModuleHeader({
+  icon: Icon,
+  title,
+  on,
+  badge,
+  enabled,
+  onEnabledChange,
+  onInspect,
+  onReset,
+  onSwap,
+  onRemove,
+}: {
+  icon: LucideIcon;
+  title: string;
+  on: boolean;
+  badge?: ReactNode;
+  /** Set on effects: the header carries their enable switch. */
+  enabled?: boolean;
+  onEnabledChange?: (enabled: boolean) => void;
+  /** Opens every param in the inspector. */
+  onInspect?: () => void;
+  /** Set when the node has params to put back; a Merge has none. */
+  onReset?: () => void;
+  /** Set on an FX that can become another effect, keeping its cables. */
+  onSwap?: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex h-8 items-center gap-1.5 pr-1 pl-2">
+      <span
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-sm",
+          on ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+        )}
+      >
+        <Icon aria-hidden="true" className="size-3.5" />
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate font-medium text-xs",
+          enabled === false && "text-muted-foreground"
+        )}
+        title={title}
+      >
+        {title}
+      </span>
+      {badge}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
+      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
+      <div
+        className={cn("flex shrink-0 items-center gap-1", INTERACTIVE)}
+        onKeyDown={keepControlKeys}
+      >
+        {onEnabledChange && enabled !== undefined ? (
+          <Switch
+            aria-label={`${title} on`}
+            checked={enabled}
+            onCheckedChange={onEnabledChange}
+          />
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={`Options for ${title}`}
+              className="size-6 text-muted-foreground"
+              size="icon"
+              variant="ghost"
+            >
+              <MoreHorizontalIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onInspect ? (
+              <DropdownMenuItem onClick={onInspect}>
+                <SlidersHorizontalIcon />
+                All settings
+              </DropdownMenuItem>
+            ) : null}
+            {onSwap ? (
+              <DropdownMenuItem onClick={onSwap}>
+                <ReplaceIcon />
+                Swap effect…
+              </DropdownMenuItem>
+            ) : null}
+            {onReset ? (
+              <DropdownMenuItem onClick={onReset}>
+                <RotateCcwIcon />
+                Reset to defaults
+              </DropdownMenuItem>
+            ) : null}
+            {onInspect || onSwap || onReset ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem onClick={onRemove} variant="destructive">
+              <Trash2Icon />
+              Remove
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The body's control row. Keys stay here (`keepControlKeys`): an arrow on a
+ * focused knob turns it instead of moving the node, and Delete or C don't
+ * reach the canvas.
+ * A pointer or key release, or a wheel turn once it settles, is where the
+ * patch takes an undo step (`useReleaseStep`).
+ */
+export function ModuleControls({
+  onRelease,
+  children,
+}: {
+  onRelease: () => void;
+  children: ReactNode;
+}) {
+  const release = useReleaseStep(onRelease);
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself
+    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
+    <div
+      className={cn(
+        "flex items-start gap-x-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
+        INTERACTIVE
+      )}
+      onKeyDown={keepControlKeys}
+      {...release}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A control column: its sans label above the control. */
+function ControlColumn({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+      <span
+        className="w-full truncate text-center text-[10px] text-muted-foreground leading-none"
+        title={label}
+      >
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+export type ModuleKnobProps = {
+  label: string;
+  /** Accessible name, e.g. "Compressor threshold". */
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  wheelStep?: number;
+  defaultValue?: number;
+  bipolar?: boolean;
+  scale?: "linear" | "log";
+  format: (value: number) => string;
+  description?: string;
+  /** Right-click learns MIDI for it: `node:<nodeId>:<paramKey>`. */
+  midiTargetId?: string;
+  onChange: (value: number) => void;
+};
+
+/**
+ * The shared Knob without its caption, throttled like every param knob,
+ * and MIDI-learnable when it has a target. A stored value the patch
+ * accepts but the knob's range leaves out (a 5 Hz Filter, a -60 dB Gain
+ * from an import) widens the knob to take it in, so it reads true and the
+ * first turn moves from it rather than jumping to the range's end. The
+ * widened range stays while the knob shows, so it never shifts mid-turn.
+ */
+export function ModuleKnob({
+  label,
+  name,
+  value,
+  min,
+  max,
+  step = 0.01,
+  wheelStep,
+  defaultValue,
+  bipolar,
+  scale,
+  format,
+  description,
+  midiTargetId,
+  onChange,
+}: ModuleKnobProps) {
+  const throttledOnChange = useThrottledParam(onChange);
+  // The furthest values seen outside the range; none, while inside it.
+  const [stray, setStray] = useState({
+    high: Number.NEGATIVE_INFINITY,
+    low: Number.POSITIVE_INFINITY,
+  });
+  const low = value < min ? Math.min(stray.low, value) : stray.low;
+  const high = value > max ? Math.max(stray.high, value) : stray.high;
+  if (low !== stray.low || high !== stray.high) {
+    setStray({ high, low });
+  }
+  const knob = (
+    <Knob
+      ariaLabel={name}
+      bipolar={bipolar ?? (defaultValue !== undefined && min < 0 && max > 0)}
+      defaultValue={defaultValue}
+      format={format}
+      max={Math.max(max, high)}
+      min={Math.min(min, low)}
+      onChange={throttledOnChange}
+      scale={scale}
+      size={36}
+      step={step}
+      title={description ? `${label}: ${description}` : label}
+      value={value}
+      wheelStep={wheelStep}
+    />
+  );
+  return (
+    <ControlColumn label={label}>
+      {midiTargetId ? (
+        <MidiControlWrapper targetId={midiTargetId}>{knob}</MidiControlWrapper>
+      ) : (
+        knob
+      )}
+    </ControlColumn>
+  );
+}
+
+export function ModuleSelect({
+  label,
+  name,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  /** `short` is what the 64 px trigger shows, e.g. "Low" for "Low-pass". */
+  options: readonly { value: string; label: string; short?: string }[];
+  onChange: (value: string) => void;
+}) {
+  const selected = options.find((option) => option.value === value);
+  return (
+    <ControlColumn label={label}>
+      <Select onValueChange={onChange} value={value}>
+        <SelectTrigger
+          aria-label={name}
+          className="w-full gap-1 px-1.5 text-[10px] data-[size=xs]:px-1.5 data-[size=xs]:text-[10px] [&_svg:not([class*='size-'])]:size-3"
+          size="xs"
+          title={selected?.label}
+        >
+          <SelectValue>{selected?.short ?? selected?.label}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </ControlColumn>
+  );
+}
+
+export function ModuleSwitch({
+  label,
+  name,
+  checked,
+  description,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  checked: boolean;
+  description?: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <ControlColumn label={label}>
+      <div className="flex h-9 items-center" title={description}>
+        <Switch
+          aria-label={name}
+          checked={checked}
+          onCheckedChange={onChange}
+        />
+      </div>
+    </ControlColumn>
+  );
+}
+
+/**
+ * "Threshold" on a Compressor reads as "Compressor threshold"; a control
+ * named like its node (Pan's pan) reads as the node.
+ */
+export function controlName(title: string, label: string): string {
+  if (label.toLowerCase() === title.toLowerCase()) {
+    return title;
+  }
+  return `${title} ${label.length > 1 ? label.toLowerCase() : label}`;
+}
+
+export type NodePortProps = {
+  /** The node type the port belongs to, for when it ships. */
+  type: NodeType;
+  port: PortDefinition;
+  /** The native title: "Audio out", "Key input". */
+  label: string;
+  ariaLabel: string;
+  position: Position;
+  style?: CSSProperties;
+  className?: string;
+};
+
+/**
+ * What a port's handle takes from its cables and the drag. It starts a
+ * cable if it is an output, or an input with room left under its `max`.
+ * While a cable is dragged (`hint` set), a port the cable may end on lights
+ * up (`node-port-accept`) and every other port locks (`node-port-locked`),
+ * its title saying why.
+ */
+export function nodePortState({
+  type,
+  port,
+  label,
+  cables,
+  hint,
+}: Pick<NodePortProps, "type" | "port" | "label"> & {
+  cables: number;
+  hint: Verdict | undefined;
+}) {
+  const definition = getNodeDefinition(type);
+  const shipped = isShipped(port.ship ?? definition.ship, "v1");
+  const room = cables < port.max;
+  return {
+    className: cn(
+      hint?.ok && "node-port-accept",
+      hint?.ok === false && "node-port-locked"
+    ),
+    isConnectableEnd: hint ? hint.ok : shipped && room,
+    isConnectableStart: shipped && (port.direction === "out" || room),
+    title: hint?.ok === false ? hint.message : label,
+  };
+}
+
+/**
+ * React Flow's Position, and the canvas's port, handed down by the canvas.
+ * Node bodies and their controls also render in the Stage, Rack and
+ * inspector, which load without React Flow, so this module only imports
+ * its types; ports render on the canvas, inside `FlowPortsProvider`.
+ */
+export type FlowPorts = {
+  Position: typeof Position;
+  /** Re-measures a node's handles; React Flow does not see new ones itself. */
+  updateNodeInternals: ReturnType<typeof useUpdateNodeInternals>;
+  /** `NodePort` on the canvas: a Handle with React Flow's port hooks. */
+  Port: ComponentType<NodePortProps>;
+};
+
+const FlowPortsContext = createContext<FlowPorts | null>(null);
+
+export const FlowPortsProvider = FlowPortsContext.Provider;
+
+/**
+ * One port as a React Flow handle, typed by its handle id and `data-kind`,
+ * with `nodePortState` deciding what it takes. Every node draws its ports
+ * through this, Station and Speakers included. Off the canvas it draws
+ * nothing.
+ */
+export function NodePort(props: NodePortProps) {
+  const flow = useContext(FlowPortsContext);
+  if (!flow) {
+    return null;
+  }
+  const { Port } = flow;
+  return <Port {...props} />;
+}
+
+/**
+ * A node's shipped ports as React Flow handles: inputs down the left edge,
+ * outputs down the right, spread evenly, each a `NodePort`. A key input
+ * wears the amber ring (`data-kind="sidechain"`).
+ * A split shows only the outputs it has in use (`outputIds`),
+ * named for its branches (`outputLabel`), and re-measures its handles
+ * whenever they change so cables land on the moved and new ports.
+ */
+export function ModulePorts({
+  type,
+  title,
+  nodeId,
+  outputIds,
+  outputLabel = portName,
+}: {
+  type: NodeType;
+  title: string;
+  /** Set with `outputIds`: the node whose handles come and go. */
+  nodeId?: string;
+  outputIds?: readonly string[];
+  /** Names each output; inputs keep their catalogue names. */
+  outputLabel?: (port: PortDefinition) => string;
+}) {
+  const flow = useContext(FlowPortsContext);
+  const shown = outputIds?.join(" ");
+  useEffect(() => {
+    if (flow && nodeId && shown !== undefined) {
+      flow.updateNodeInternals(nodeId);
+    }
+  }, [flow, nodeId, shown]);
+  if (!flow) {
+    return null;
+  }
+  const { Position: Side } = flow;
+  const definition = getNodeDefinition(type);
+  const ports = definition.ports.filter(
+    (port) =>
+      isShipped(port.ship ?? definition.ship, "v1") &&
+      (port.direction === "in" || !outputIds || outputIds.includes(port.id))
+  );
+  const inputs = ports.filter((port) => port.direction === "in");
+  const outputs = ports.filter((port) => port.direction === "out");
+  const handles = (side: typeof inputs, position: Position) =>
+    side.map((port, index) => {
+      const name =
+        port.direction === "out" ? outputLabel(port) : portName(port);
+      return (
+        <NodePort
+          ariaLabel={`${title} ${name.toLowerCase()}`}
+          key={portHandleId(port)}
+          label={name}
+          port={port}
+          position={position}
+          style={
+            side.length > 1
+              ? { top: `${((index + 1) / (side.length + 1)) * 100}%` }
+              : undefined
+          }
+          type={type}
+        />
+      );
+    });
+  return (
+    <>
+      {handles(inputs, Side.Left)}
+      {handles(outputs, Side.Right)}
+    </>
+  );
+}

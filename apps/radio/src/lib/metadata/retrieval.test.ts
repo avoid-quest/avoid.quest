@@ -6,7 +6,11 @@ function jsonResponse(data: unknown): Response {
   return Response.json(data);
 }
 
-function icyResponse(rawTitle: string, metaInt = 4): Response {
+function icyResponse(
+  rawTitle: string,
+  metaInt = 4,
+  headers: Record<string, string> = { "icy-name": "Gatto Misterioso" }
+): Response {
   const metadata = new TextEncoder().encode(`StreamTitle='${rawTitle}';`);
   const blockLength = Math.ceil(metadata.byteLength / 16) * 16;
   const body = new Uint8Array(metaInt + 1 + blockLength);
@@ -14,10 +18,7 @@ function icyResponse(rawTitle: string, metaInt = 4): Response {
   body[metaInt] = blockLength / 16;
   body.set(metadata, metaInt + 1);
   return new Response(body, {
-    headers: {
-      "icy-metaint": String(metaInt),
-      "icy-name": "Gatto Misterioso",
-    },
+    headers: { ...headers, "icy-metaint": String(metaInt) },
   });
 }
 
@@ -380,5 +381,87 @@ describe("radio metadata retrieval", () => {
       ok: true,
     });
     expect(calls).toEqual(["https://metadata.example/stats?sid=2&json=1"]);
+  });
+
+  test.each([
+    [
+      { "icy-genre": "various", "icy-name": "LibreTime!" },
+      "radio - Rotation",
+      { artist: null, genre: null, stationName: null, title: "Rotation" },
+    ],
+    [
+      { "icy-genre": "Jazz", "icy-name": "78cxy6wkxtzuv" },
+      "DJ Green Giant - DJ Green Giant",
+      {
+        artist: null,
+        genre: "Jazz",
+        stationName: null,
+        title: "DJ Green Giant",
+      },
+    ],
+    [
+      { "icy-genre": "The Art of Listening", "icy-name": "Resonance Extra" },
+      "x.y FM #12 - Resonance EXTRA",
+      {
+        artist: null,
+        genre: "The Art of Listening",
+        stationName: "Resonance Extra",
+        title: "x.y FM #12",
+      },
+    ],
+  ])(
+    "drops ICY placeholder values: %j",
+    async (headers, rawTitle, expected) => {
+      const streamUrl = "https://radio.example/live";
+      const retrieval = createRadioMetadataRetrieval({
+        fetchFollowingPublicRedirects: createMetadataUpstreamFetch(() =>
+          Promise.resolve(icyResponse(rawTitle, 4, headers))
+        ),
+        now: () => 1000,
+      });
+
+      const response = await retrieval.retrieve(streamUrl, { kind: "icy" });
+
+      expect(response).toMatchObject({
+        data: { ...expected, source: "icy" },
+        ok: true,
+      });
+    }
+  );
+
+  test("drops Icecast status placeholder values", async () => {
+    const retrieval = createRadioMetadataRetrieval({
+      fetchFollowingPublicRedirects: createMetadataUpstreamFetch(() =>
+        Promise.resolve(
+          jsonResponse({
+            icestats: {
+              source: {
+                artist: "radio",
+                genre: "various",
+                listenurl: "https://radio.example/live",
+                server_name: "LibreTime!",
+                title: "Rotation",
+              },
+            },
+          })
+        )
+      ),
+      now: () => 1000,
+    });
+
+    const response = await retrieval.retrieve("https://radio.example/live", {
+      kind: "icecast-status",
+    });
+
+    expect(response).toMatchObject({
+      data: {
+        artist: null,
+        genre: null,
+        source: "icecast-status-json",
+        stationName: null,
+        title: "Rotation",
+      },
+      ok: true,
+    });
   });
 });

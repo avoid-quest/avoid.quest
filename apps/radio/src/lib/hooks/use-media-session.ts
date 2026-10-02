@@ -8,17 +8,32 @@ import {
 } from "@/lib/metadata/display";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
 
+const ASCII_PUNCTUATION: [RegExp, string][] = [
+  [/[\u2010-\u2015\u2212]/g, "-"],
+  [/[\u2018\u2019\u201A\u2032]/g, "'"],
+  [/[\u201C\u201D\u201E\u00AB\u00BB\u2033]/g, '"'],
+  [/\u2026/g, "..."],
+  [/[\u00B7\u2022]/g, "-"],
+];
+
 /**
  * Sanitizes a string for safe use in AVRCP/Bluetooth metadata.
- * Strips non-Latin characters, collapses whitespace, falls back to "Radio".
+ * Accented letters keep their base letter and typographic punctuation
+ * becomes ASCII; other non-Latin characters are dropped. Collapses
+ * whitespace, falls back to "Radio".
  */
 export function sanitizeForBluetooth(str: string): string {
   if (!str || str.trim().length === 0) {
     return "Radio";
   }
 
+  let ascii = str.normalize("NFKD").replace(/\p{M}/gu, "");
+  for (const [pattern, replacement] of ASCII_PUNCTUATION) {
+    ascii = ascii.replace(pattern, replacement);
+  }
+
   // Keep only ASCII letters, numbers, and basic punctuation/spaces
-  const sanitized = str.replace(/[^\x20-\x7E]/g, "").trim();
+  const sanitized = ascii.replace(/[^\x20-\x7E]/g, "").trim();
 
   // Collapse multiple spaces into one
   const collapsed = sanitized.replace(/\s+/g, " ");
@@ -33,7 +48,7 @@ type MediaSessionOptions =
       isPlaying: boolean;
       metadata?: RadioNowPlaying | null;
     }
-  | { mode: "multiple"; radios: Radio[]; playingCount: number }
+  | { mode: "node"; radios: Radio[]; playingCount: number }
   | {
       mode: "dj";
       deckA: Radio | null;
@@ -41,13 +56,20 @@ type MediaSessionOptions =
       isPlaying: boolean;
     };
 
+const NODE_PATCH_TITLE = "Node patch";
+
+/** "2 stations playing"; plain ASCII, so it is safe for AVRCP as is. */
+function formatPlayingCount(count: number): string {
+  return `${count} ${count === 1 ? "station" : "stations"} playing`;
+}
+
 function buildTitle(options: MediaSessionOptions): string {
   if (options.mode === "single") {
     return formatRadioDocumentTitle(options);
   }
-  if (options.mode === "multiple") {
+  if (options.mode === "node") {
     return options.playingCount > 0
-      ? `Multiple stations${RADIO_DOCUMENT_TITLE_SUFFIX}`
+      ? `${NODE_PATCH_TITLE} (${options.playingCount})${RADIO_DOCUMENT_TITLE_SUFFIX}`
       : IDLE_RADIO_DOCUMENT_TITLE;
   }
   // dj
@@ -97,8 +119,15 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
     }
     return new MediaMetadata(metadata);
   }
-  if (options.mode === "multiple") {
-    return new MediaMetadata({ title: "Multiple stations" });
+  if (options.mode === "node") {
+    return new MediaMetadata(
+      options.playingCount > 0
+        ? {
+            artist: formatPlayingCount(options.playingCount),
+            title: NODE_PATCH_TITLE,
+          }
+        : { title: NODE_PATCH_TITLE }
+    );
   }
   // dj
   const deckInfo = buildDjDeckInfo(options.deckA, options.deckB);
@@ -109,7 +138,7 @@ function buildMetadata(options: MediaSessionOptions): MediaMetadata | null {
 }
 
 function isAnyPlaying(options: MediaSessionOptions): boolean {
-  if (options.mode === "multiple") {
+  if (options.mode === "node") {
     return options.playingCount > 0;
   }
   return options.isPlaying;

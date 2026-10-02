@@ -14,6 +14,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { build, defineConfig, type Plugin } from "vite";
+import { gitChangelogPlugin } from "./git-changelog.ts";
 import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const WORKLET_OUT_DIR = ".worklet-build";
@@ -90,6 +91,29 @@ const VENDOR_CHUNK_GROUPS: Array<{
   {
     match: (id) => id.includes("/node_modules/@opendaw/"),
     name: "vendor-audio",
+  },
+  {
+    match: (id) =>
+      id.includes("/node_modules/@xyflow/") ||
+      id.includes("/node_modules/classcat/") ||
+      id.includes("/node_modules/d3-") ||
+      // React Flow's own zustand 4; the app's zustand 5 is unused in src.
+      id.includes("/node_modules/zustand/"),
+    // Node mode's canvas only. Kept apart so it loads with the lazy canvas
+    // chunk instead of joining the eager shared vendor chunk.
+    name: "vendor-xyflow",
+  },
+  {
+    match: (id) => id.includes("/node_modules/react-resizable-panels/"),
+    // Node mode's shell only. Apart from vendor-xyflow, which the shell must
+    // not import statically, and out of the eager shared vendor chunk.
+    name: "vendor-resizable",
+  },
+  {
+    match: (id) => id.includes("/node_modules/@radix-ui/react-popover/"),
+    // Node mode's branch edges and the What's new popover only, both lazy.
+    // The popper and dismissable layer it uses stay shared with the menus.
+    name: "vendor-popover",
   },
   {
     match: (id) =>
@@ -327,7 +351,17 @@ export default defineConfig({
     minify: "esbuild",
     rollupOptions: {
       output: {
-        manualChunks: manualVendorChunks,
+        codeSplitting: {
+          groups: [
+            // Capture the shared preload helper before a lazy vendor absorbs its dependencies.
+            {
+              name: "vite-preload-helper",
+              priority: 20,
+              test: /\0vite\/preload-helper\.js$/,
+            },
+            { name: manualVendorChunks, priority: 10 },
+          ],
+        },
       },
     },
     // "hidden" generates source maps for Sentry upload but omits
@@ -340,6 +374,7 @@ export default defineConfig({
   plugins: [
     audioWorkletPlugin(),
     openDawAssetsPlugin(),
+    gitChangelogPlugin(),
     cloudflare({
       viteEnvironment: { name: "ssr" },
     }),
@@ -351,6 +386,9 @@ export default defineConfig({
       ? sentryTanstackStart({
           authToken: sentryAuthToken,
           autoInstrumentMiddleware: false,
+          // Tracing is off (`tracesSampleRate: 0`), so skip the server-side
+          // dependency instrumentation that Sentry v11 injects at build time.
+          buildTimeInstrumentation: false,
           org: sentryOrg,
           project: sentryProject,
           release: { name: sentryReleaseName },

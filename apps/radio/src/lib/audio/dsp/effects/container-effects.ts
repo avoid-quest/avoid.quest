@@ -253,6 +253,13 @@ export class ContainerEffect implements EffectProcessor {
       if (!config.enabled) {
         continue;
       }
+      const signalGain = config.signalGain ?? 1;
+      if (signalGain !== 1) {
+        for (let i = fromIndex; i < toIndex; i += 1) {
+          current[0][i] = (current[0][i] ?? 0) * signalGain;
+          current[1][i] = (current[1][i] ?? 0) * signalGain;
+        }
+      }
       if (config.dryWet < 1) {
         copy(current, chain.dry, fromIndex, toIndex);
       }

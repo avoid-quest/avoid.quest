@@ -5,19 +5,59 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 ## Features
 
 - **3 Playback Modes**
-  - **Multiple**: several stations simultaneously with independent volume/controls
   - **Single**: focused single-station player with crossfade transitions
+  - **Node**: a patch canvas (React Flow) where Station nodes are cabled into a Speakers node with Play all and master volume; `/` opens the node palette, and edits are undoable. On phones the Stage and Rack tabs list every source with play and volume. Node replaced Multiple: a stored Multiple session, mode or backup becomes a Node patch with the same stations, order and levels
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
 - **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, and Radio Browser/Radio Garden stations
-- **External inputs**: device audio input (mic/line-in), local file playback
+- **External inputs**: device audio input (mic/line-in), local files and folder playlists, shared browser tab audio in Node and DJ
 - **PWA**: installable, service worker, offline shell
 - **Persistence**: TanStack DB collections backed by localStorage — radios, settings, playback sessions
-- **Visualizations**: spectrum analyser, waveform display, level/peak meters
+- **Visualizations**: peak meters, EQ and compressor curves
 - **Media Session API**: lock screen controls, AVRCP Bluetooth metadata
 - **MIDI**: configurable controller mappings for all DJ actions
 - **Import/Export**: JSON config, shareable URL (lz-string compressed)
 - **Theme**: dark/light mode
+
+## Local folders and shared audio
+
+In Node, add **File**; in DJ, choose **Audio file**. **Browse folder** imports
+playable files from every subfolder into a playlist in natural filename order.
+Unsupported files are skipped. Enable autoplay to continue through the list;
+DJ enables it when loading a folder. Files stay on the device and must be picked
+again after a reload.
+
+Both modes offer **Browser tab audio** and **Radio episodes / shows** as
+shared-tab sources. Open the source in another tab, play it there, then use
+**Go live** (Node) or **Share tab audio** (DJ), choose that tab and enable
+**Share tab audio** in the browser picker. Pasted supported station archive
+links load the same shared-audio source; direct audio-file and playlist URLs
+retain the normal seekable player. Tracks, shows and seeking are controlled in
+the source tab. Sharing is never restored automatically. Spotify and Mixcloud
+are not shared tabs: they play as tracks (see
+[Mixcloud and Spotify tracks](#mixcloud-and-spotify-tracks)). A Spotify or
+Mixcloud tab saved by an earlier release still loads as Browser tab audio under
+its name.
+
+This uses the browser's `getDisplayMedia`, with desktop Chrome/Edge recommended.
+Only another browser tab can be shared: window, screen and system audio can
+contain the mixer's own output and feed it back, so they are excluded from the
+picker and refused if chosen. For desktop software, use a virtual audio input
+device instead. Protected playback may be silent. Only the selected tab's audio
+reaches the mixer; the picker requires a video track, but the app does not
+render, record or upload it. See Chrome's
+[screen-sharing controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls)
+for browser capture capabilities.
+
+## Mixcloud and Spotify tracks
+
+Mixcloud shows play like SoundCloud tracks: search Mixcloud or paste a show
+link. The server resolves the show and the browser plays its HLS stream
+directly. Spotify has no search: paste a track, album or playlist link. The
+server reads Spotify's public metadata and the browser plays the matching
+YouTube upload, matching album and playlist tracks as they play. Other
+Spotify pages (artists, podcasts) and Mixcloud pages other than shows don't
+play. See `packages/platforms/src/{mixcloud,spotify}/RESEARCH.md`.
 
 ## Tech Stack
 
@@ -34,7 +74,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 
 | Route | Description |
 |-------|-------------|
-| `/` | Main player — switches between Multiple / Single / DJ mode |
+| `/` | Main player — switches between Single / Node / DJ mode |
 | `/import` | Batch import radios from a URL or JSON |
 | `/api/feedback` | GitHub issue feedback endpoint |
 | `/api/radio-metadata` | Metadata lookup for configured radio streams |
@@ -62,6 +102,10 @@ deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
 `YOUTUBE_PROVIDER_RESEARCH.md` for the release probes and caveats.
 
 ## Architecture
+
+When changing Node Mode graph rules, playback, persistence or editing, read the
+[current v1 contract and source map](src/components/radio/NODE_MODE_PROPOSAL.md).
+It links to historical design and future roadmap material only when those are needed.
 
 ### State layers
 

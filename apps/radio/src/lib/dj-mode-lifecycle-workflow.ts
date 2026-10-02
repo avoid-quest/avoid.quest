@@ -1,4 +1,5 @@
 import { fadeOut, type Radio } from "@/lib/audio";
+import { localAudioUrls } from "@/lib/audio/local-audio-playlist";
 import {
   DECK_A_CHANNEL_ID,
   DECK_B_CHANNEL_ID,
@@ -91,7 +92,8 @@ async function restoreDjDeckRadio(
     return;
   }
 
-  if (radio.platformMetadata?.platform === "local-file") {
+  // A picked file or folder's object URLs die with deactivation or a reload.
+  if (localAudioUrls(radio).length > 0) {
     await decks.deck(deckId).load({ radio: null, type: "radio" });
     return;
   }

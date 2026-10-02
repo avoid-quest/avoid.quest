@@ -1,0 +1,150 @@
+/*
+ * Node mode: React Flow's structural styles in the base layer, so Tailwind
+ * utilities still win, plus the five signal tokens. Signal kind reads from
+ * the dash pattern first and colour second: idle audio is the achromatic
+ * Wire, and emerald appears only on live cables.
+ */
+@import "@xyflow/react/dist/base.css" layer(base);
+
+:root {
+  --node-wire: var(--muted-foreground);
+  --node-mod: #2563eb;
+  --node-key: #b45309;
+  --node-live: #047857;
+  --node-clip: var(--destructive);
+}
+
+.dark {
+  --node-mod: #3b82f6;
+  --node-key: #fbbf24;
+  --node-live: #34d399;
+}
+
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-node-border-default: 1px solid var(--border);
+  --xy-node-border-selected-default: 1px solid var(--ring);
+  --xy-edge-stroke-default: var(--node-wire);
+  --xy-edge-stroke-width-default: 2;
+  --xy-edge-stroke-selected-default: var(--foreground);
+  --xy-connectionline-stroke-default: var(--node-wire);
+  --xy-connectionline-stroke-width-default: 2;
+  --xy-handle-background-color-default: var(--background);
+  --xy-selection-background-color-default: color-mix(
+    in oklab,
+    var(--ring) 8%,
+    transparent
+  );
+  --xy-selection-border-default: 1px dashed var(--ring);
+}
+
+@layer components {
+  /* Ports: a 10 px dot on the node edge with a 20 px hit target (28 px on
+     touch). The dot is border-box, so the target insets from its 6 px
+     padding box. Labels come from the native title on hover. React Flow
+     lets a port take the pointer only while it can start or end a cable;
+     every port takes it here, so a full or locked port still shows its
+     title, and a cable let go or tapped on it says why it was refused. */
+  .react-flow__handle.node-port {
+    width: 10px;
+    height: 10px;
+    pointer-events: all;
+    border: 2px solid var(--node-wire);
+    border-radius: 9999px;
+  }
+
+  .react-flow__handle.node-port::before {
+    position: absolute;
+    inset: -7px;
+    content: "";
+    border-radius: 9999px;
+  }
+
+  @media (pointer: coarse) {
+    .react-flow__handle.node-port::before {
+      inset: -11px;
+    }
+  }
+
+  /* A sidechain (key) input: the Key amber ring. */
+  .react-flow__handle.node-port[data-kind="sidechain"] {
+    border-color: var(--node-key);
+  }
+
+  .react-flow__handle.node-port.node-port-live {
+    background-color: var(--node-live);
+    border-color: var(--node-live);
+  }
+
+  .react-flow__handle.node-port.valid,
+  .react-flow__handle.node-port.connectingto {
+    border-color: var(--foreground);
+  }
+
+  /* While a cable is dragged, every port it may end on grows a foreground
+     ring, a key keeping its amber, and every other port fades and locks.
+     The port the cable leaves stays as it is. */
+  .react-flow__handle.node-port.node-port-accept {
+    border-color: var(--foreground);
+    box-shadow: 0 0 0 2px
+      color-mix(in oklab, var(--foreground) 25%, transparent);
+    scale: 1.3;
+    transition: scale 120ms ease-out;
+  }
+
+  .react-flow__handle.node-port.node-port-accept[data-kind="sidechain"] {
+    border-color: var(--node-key);
+  }
+
+  .react-flow__handle.node-port.node-port-locked:not(.connectingfrom) {
+    cursor: not-allowed;
+    opacity: 0.3;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .react-flow__handle.node-port.node-port-accept {
+      transition: none;
+    }
+  }
+
+  .react-flow__node:focus-visible {
+    outline: none;
+  }
+
+  .react-flow__node:focus-visible > * {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* A cable carrying a playing Station. */
+  .react-flow__edge.node-edge-live .react-flow__edge-path {
+    stroke: var(--node-live);
+    stroke-width: 2.5;
+  }
+
+  /* A key (sidechain) cable: the Key amber in long dashes. A playing
+     station thickens it, and one that keys nothing fades. */
+  .react-flow__edge.node-edge-key .react-flow__edge-path {
+    stroke: var(--node-key);
+    stroke-dasharray: 6 4;
+  }
+
+  .react-flow__edge.node-edge-key-live .react-flow__edge-path {
+    stroke-width: 2.5;
+  }
+
+  .react-flow__edge.node-edge-key-idle .react-flow__edge-path {
+    opacity: 0.45;
+  }
+
+  .react-flow__edge.selected .react-flow__edge-path,
+  .react-flow__edge:focus-visible .react-flow__edge-path {
+    stroke: var(--foreground);
+  }
+
+  /* The cable a dragged node goes into if let go now. */
+  .react-flow__edge.node-edge-insert .react-flow__edge-path {
+    opacity: 1;
+    stroke: var(--foreground);
+    stroke-width: 3;
+  }
+}

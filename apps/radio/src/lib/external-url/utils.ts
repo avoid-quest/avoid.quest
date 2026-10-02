@@ -1,4 +1,5 @@
 import type { Radio } from "@/lib/audio";
+import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
 import type { PlatformMetadata } from "@/lib/platform-types";
 
 function getBandcampDescription(
@@ -38,6 +39,27 @@ function getSoundCloudDescription(
   }
 }
 
+function getMixcloudDescription(
+  metadata: PlatformMetadata
+): string | undefined {
+  if (metadata.platform !== "mixcloud") {
+    return;
+  }
+  return metadata.artist || "Mixcloud Show";
+}
+
+function getSpotifyDescription(metadata: PlatformMetadata): string | undefined {
+  if (metadata.platform !== "spotify") {
+    return;
+  }
+  const labels = {
+    album: "Spotify Album",
+    playlist: "Spotify Playlist",
+    track: "Spotify Track",
+  } as const;
+  return metadata.artist || labels[metadata.itemType];
+}
+
 function getYouTubeDescription(metadata: PlatformMetadata): string | undefined {
   if (metadata.platform !== "youtube") {
     return;
@@ -71,9 +93,11 @@ function getRadioBrowserDescription(
 function getDescription(metadata: PlatformMetadata): string | undefined {
   return (
     getBandcampDescription(metadata) ??
+    getMixcloudDescription(metadata) ??
     getRadioBrowserDescription(metadata) ??
     getRadioGardenDescription(metadata) ??
     getSoundCloudDescription(metadata) ??
+    getSpotifyDescription(metadata) ??
     getYouTubeDescription(metadata)
   );
 }
@@ -170,6 +194,19 @@ export function getPlatformItemTypeLabel(metadata: PlatformMetadata): string {
     return labels[metadata.itemType];
   }
 
+  if (metadata.platform === "mixcloud") {
+    return "Show";
+  }
+
+  if (metadata.platform === "spotify") {
+    const labels: Record<typeof metadata.itemType, string> = {
+      album: "Album",
+      playlist: "Playlist",
+      track: "Track",
+    };
+    return labels[metadata.itemType];
+  }
+
   if (metadata.platform === "radiogarden") {
     return "Radio Station";
   }
@@ -210,7 +247,7 @@ export class PlatformModeError extends Error {
 
   constructor(platform: string, mode: string) {
     super(
-      `${platform} tracks are only supported in DJ mode. Switch to DJ mode to play this track.`
+      `${platform} tracks play in DJ and Node modes. Switch to one of them to play this track.`
     );
     this.name = "PlatformModeError";
     this.platform = platform;
@@ -221,28 +258,34 @@ export class PlatformModeError extends Error {
 /**
  * Validate that a radio can be played in the given mode
  * @param radio The radio to validate
- * @param mode Current player mode ("single", "multiple", or "dj")
- * @throws PlatformModeError if the radio is a platform track and mode is not "dj"
+ * @param mode Playback session the radio would play in
+ * @throws PlatformModeError if the radio is a platform track and mode is
+ * Single; DJ decks and Node mode's Track nodes play them
  */
 export function validateRadioForMode(
   radio: Radio | null,
-  mode: "single" | "multiple" | "dj"
+  mode: PlaybackSessionId
 ): void {
   if (!radio) {
     return;
   }
 
-  // Platform radios (SoundCloud/Bandcamp/YouTube) only work in DJ mode
-  // Radio Garden stations are live streams — they work in all modes
+  // Platform radios (SoundCloud/Bandcamp/YouTube/Mixcloud/Spotify) need a
+  // stream refresh when their URL expires, which DJ decks and Node lanes run
+  // and Single does not. Radio Garden stations are live streams — they work
+  // in all modes
   const djOnlyPlatforms: Record<string, string> = {
     bandcamp: "Bandcamp",
+    mixcloud: "Mixcloud",
     soundcloud: "SoundCloud",
+    spotify: "Spotify",
     youtube: "YouTube",
   };
   const platformKey = radio.platformMetadata?.platform ?? "";
   if (
     isPlatformRadio(radio) &&
     mode !== "dj" &&
+    mode !== "node" &&
     platformKey in djOnlyPlatforms
   ) {
     const platform = djOnlyPlatforms[platformKey] ?? "External";

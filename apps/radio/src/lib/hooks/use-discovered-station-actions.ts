@@ -6,7 +6,11 @@ import { notifyStationSave } from "@/lib/stations/station-save-notification";
 export function useDiscoveredStationActions(
   onSelected: (radio: Radio) => void | Promise<void>
 ) {
-  const selectDiscoveredStation = (radio: Radio) => {
+  /** `onPicked` overrides `onSelected` for this pick, e.g. one Station slot. */
+  const selectDiscoveredStation = (
+    radio: Radio,
+    onPicked: (radio: Radio) => void | Promise<void> = onSelected
+  ) => {
     stationIntake
       .createSession({ origin: "discovery", radio })
       .then((result) => {
@@ -14,11 +18,11 @@ export function useDiscoveredStationActions(
           toast.error(result.error.message);
           return;
         }
-        return onSelected(result.data.radio);
+        return onPicked(result.data.radio);
       })
       .catch((error: unknown) => {
         toast.error(
-          error instanceof Error ? error.message : "Failed to select station"
+          error instanceof Error ? error.message : "Couldn't open station"
         );
       });
   };
@@ -31,14 +35,11 @@ export function useDiscoveredStationActions(
           toast.error(result.error.message);
           return;
         }
-        notifyStationSave(
-          result.data,
-          `Saved "${result.data.radio.name}" to collection`
-        );
+        notifyStationSave(result.data, `Saved "${result.data.radio.name}"`);
       })
       .catch((error: unknown) => {
         toast.error(
-          error instanceof Error ? error.message : "Failed to save station"
+          error instanceof Error ? error.message : "Couldn't save station"
         );
       });
   };

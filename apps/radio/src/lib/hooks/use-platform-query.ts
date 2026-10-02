@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import type { Radio } from "@/lib/audio";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
 
@@ -7,33 +8,60 @@ export const platformKeys = {
   item: (url: string) => [...platformKeys.all, "item", url] as const,
 };
 
-type UsePlatformLoadOptions = {
+export type PlatformLoadCallbacks = {
   onSuccess?: (radio: Radio) => void;
   onError?: (error: string, code?: string) => void;
 };
 
-export function usePlatformLoad(options: UsePlatformLoadOptions = {}) {
+/**
+ * Resolve a platform link into a Radio.
+ *
+ * Callbacks go with each `load` call, not the hook: TanStack Query drops them
+ * once the caller unmounts or starts a newer load, so a pick the user
+ * cancelled never reaches a deck. That load is aborted too, so a Spotify
+ * match stops searching YouTube for nobody.
+ */
+export function usePlatformLoad() {
   const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: loadPlatformItem,
-    onError: (error) => {
-      options.onError?.(
-        error instanceof Error ? error.message : "Failed to load platform item"
-      );
-    },
+  const controllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => controllerRef.current?.abort(), []);
+  const mutation = useMutation({
+    mutationFn: ({ signal, url }: { signal: AbortSignal; url: string }) =>
+      loadPlatformItem(url, { signal }),
     onSuccess: (result) => {
-      if (result.success) {
-        const url = result.radio.platformMetadata?.url;
-        if (url) {
-          queryClient.setQueryData(platformKeys.item(url), result.radio);
-        }
-        options.onSuccess?.(result.radio);
-      } else {
-        options.onError?.(result.error, result.code);
+      const url = result.success ? result.radio.platformMetadata?.url : null;
+      if (result.success && url) {
+        queryClient.setQueryData(platformKeys.item(url), result.radio);
       }
     },
   });
+
+  const load = (url: string, callbacks: PlatformLoadCallbacks = {}) => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    mutation.mutate(
+      { signal: controller.signal, url },
+      {
+        onError: (error) => {
+          callbacks.onError?.(
+            error instanceof Error
+              ? error.message
+              : "Failed to load platform item"
+          );
+        },
+        onSuccess: (result) => {
+          if (result.success) {
+            callbacks.onSuccess?.(result.radio);
+          } else {
+            callbacks.onError?.(result.error, result.code);
+          }
+        },
+      }
+    );
+  };
+
+  return { isPending: mutation.isPending, load };
 }
 
 export function usePlatformItem(url: string | null) {

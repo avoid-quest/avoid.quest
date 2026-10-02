@@ -1,4 +1,4 @@
-import { parseRadioTitle } from "./title-parser";
+import { isPlaceholderMetadataValue, parseRadioTitle } from "./title-parser";
 import type { RadioNowPlaying } from "./types";
 
 type IcecastSource = {
@@ -25,6 +25,12 @@ export function getIcecastStatusUrl(streamUrl: string): string {
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** Icecast status repeats the source's ICY fields, placeholders included. */
+function asMeaningfulString(value: unknown): string | null {
+  const text = asString(value);
+  return isPlaceholderMetadataValue(text) ? null : text;
 }
 
 function asNumber(value: unknown): number | null {
@@ -89,8 +95,11 @@ export function normalizeIcecastSource(input: {
   expiresAt: number;
 }): RadioNowPlaying | null {
   const rawTitle = asString(input.source.title);
-  const parsedTitle = parseRadioTitle(rawTitle);
-  const artist = asString(input.source.artist) ?? parsedTitle.artist;
+  const stationName = asMeaningfulString(input.source.server_name);
+  const parsedTitle = parseRadioTitle(rawTitle, {
+    stationNames: [asString(input.source.server_name)],
+  });
+  const artist = asMeaningfulString(input.source.artist) ?? parsedTitle.artist;
   const { title } = parsedTitle;
 
   if (!(title || artist)) {
@@ -103,14 +112,14 @@ export function normalizeIcecastSource(input: {
     artworkUrl: null,
     bitrate: asNumber(input.source.bitrate),
     expiresAt: input.expiresAt,
-    genre: asString(input.source.genre),
+    genre: asMeaningfulString(input.source.genre),
     itemUrl: null,
     rawTitle: parsedTitle.rawTitle,
     resolvedUrl: input.resolvedUrl,
     sampledAt: input.sampledAt,
     source: "icecast-status-json",
     stationDescription: asString(input.source.server_description),
-    stationName: asString(input.source.server_name),
+    stationName,
     streamUrl: input.streamUrl,
     title,
   };

@@ -307,12 +307,7 @@ export class DattorroReverb {
 
       // Advance all delay line indices
       for (const d of this.delays) {
-        if (
-          d &&
-          d[1] !== undefined &&
-          d[2] !== undefined &&
-          d[3] !== undefined
-        ) {
+        if (d[1] !== undefined && d[2] !== undefined && d[3] !== undefined) {
           d[1] = (d[1] + 1) & d[3];
           d[2] = (d[2] + 1) & d[3];
         }

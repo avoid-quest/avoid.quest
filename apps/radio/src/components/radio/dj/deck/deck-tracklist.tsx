@@ -56,15 +56,57 @@ function getTrackKey(track: PlatformTrack) {
 }
 
 export function DeckTracklist({ className }: { className?: string }) {
-  const { tracks, currentTrackIndex, hasTracklist } = useDeckContext();
+  const { tracks, currentTrackIndex, hasTracklist, loadTrack } =
+    useDeckContext();
 
   if (!(hasTracklist && tracks) || tracks.length === 0) {
     return null;
   }
 
   return (
+    <TracklistView
+      className={className}
+      currentTrackIndex={currentTrackIndex}
+      onPlayTrack={loadTrack}
+      tracks={tracks}
+    />
+  );
+}
+
+type TracklistViewProps = {
+  tracks: PlatformTrack[];
+  currentTrackIndex: number;
+  /** Plays a track by its play URL; errors are surfaced by the caller. */
+  onPlayTrack: (url: string) => Promise<unknown>;
+  className?: string;
+};
+
+/**
+ * An album's or playlist's tracks with previous and next, the current one
+ * marked. Presentational: a DJ deck and a Node Track each say what a pick
+ * plays.
+ */
+export function TracklistView({
+  tracks,
+  currentTrackIndex,
+  onPlayTrack,
+  className,
+}: TracklistViewProps) {
+  const playUrl = (url: string) => {
+    if (url) {
+      onPlayTrack(url).catch(() => {
+        // Errors are surfaced by deck actions/telemetry.
+      });
+    }
+  };
+
+  return (
     <div className={cn("space-y-1.5", className)}>
-      <TracklistNavigation />
+      <TracklistNavigation
+        currentTrackIndex={currentTrackIndex}
+        onPlay={playUrl}
+        tracks={tracks}
+      />
       <ScrollArea className="h-40 rounded-md border border-border/50">
         <div className="space-y-0.5 p-1">
           {tracks.map((track, index) => (
@@ -72,6 +114,7 @@ export function DeckTracklist({ className }: { className?: string }) {
               index={index}
               isCurrent={index === currentTrackIndex}
               key={getTrackKey(track)}
+              onPlay={playUrl}
               track={track}
             />
           ))}
@@ -81,65 +124,46 @@ export function DeckTracklist({ className }: { className?: string }) {
   );
 }
 
-function TracklistNavigation() {
-  const { tracks, currentTrackIndex, loadTrack } = useDeckContext();
-
-  const handleNavigate = (direction: -1 | 1) => {
-    if (!tracks) {
-      return;
-    }
-    const url = findTrackPlayUrlInDirection(
-      tracks,
-      currentTrackIndex,
-      direction
-    );
-    if (url) {
-      loadTrack(url).catch(() => {
-        // Errors are surfaced by deck actions/telemetry.
-      });
-    }
-  };
-  const handlePrevious = () => handleNavigate(-1);
-  const handleNext = () => handleNavigate(1);
-
-  if (!tracks) {
-    return null;
-  }
-
+function TracklistNavigation({
+  tracks,
+  currentTrackIndex,
+  onPlay,
+}: {
+  tracks: PlatformTrack[];
+  currentTrackIndex: number;
+  onPlay: (url: string) => void;
+}) {
   const nextUrl = findTrackPlayUrlInDirection(tracks, currentTrackIndex, 1);
   const previousUrl = findTrackPlayUrlInDirection(
     tracks,
     currentTrackIndex,
     -1
   );
-  const hasNext = Boolean(nextUrl);
-  const hasPrevious = Boolean(previousUrl);
+  const handlePrevious = () => onPlay(previousUrl);
+  const handleNext = () => onPlay(nextUrl);
 
   return (
     <div className="flex items-center gap-1">
       <Button
         aria-label="Previous track"
-        className="h-6 w-6 p-0"
-        disabled={!hasPrevious}
+        className="size-7 [@media(pointer:coarse)]:size-9"
+        disabled={!previousUrl}
         onClick={handlePrevious}
-        size="sm"
+        size="icon"
         variant="ghost"
       >
         <ChevronLeftIcon className="size-3.5" />
       </Button>
       <Button
         aria-label="Next track"
-        className="h-6 w-6 p-0"
-        disabled={!hasNext}
+        className="size-7 [@media(pointer:coarse)]:size-9"
+        disabled={!nextUrl}
         onClick={handleNext}
-        size="sm"
+        size="icon"
         variant="ghost"
       >
         <ChevronRightIcon className="size-3.5" />
       </Button>
-      <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
-        {currentTrackIndex + 1}/{tracks.length}
-      </span>
     </div>
   );
 }
@@ -148,36 +172,29 @@ function TrackRow({
   track,
   index,
   isCurrent,
+  onPlay,
 }: {
   track: PlatformTrack;
   index: number;
   isCurrent: boolean;
+  onPlay: (url: string) => void;
 }) {
-  const { loadTrack } = useDeckContext();
-
-  const handlePlay = () => {
-    const url = getTrackPlayUrl(track);
-    if (url) {
-      loadTrack(url).catch(() => {
-        // Errors are surfaced by deck actions/telemetry.
-      });
-    }
-  };
+  const handlePlay = () => onPlay(getTrackPlayUrl(track));
 
   return (
     <button
       className={cn(
-        "flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50",
-        isCurrent && "bg-primary/10"
+        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        isCurrent && "bg-muted/40 font-medium"
       )}
       onClick={handlePlay}
       type="button"
     >
       <div className="flex size-4 shrink-0 items-center justify-center">
         {isCurrent ? (
-          <PlayIcon className="size-2.5 text-primary" />
+          <PlayIcon aria-label="Current track" className="size-2.5" />
         ) : (
-          <span className="font-mono text-[9px] text-muted-foreground">
+          <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
             {index + 1}
           </span>
         )}
@@ -188,7 +205,7 @@ function TrackRow({
         </div>
       </div>
       {track.duration ? (
-        <span className="shrink-0 font-mono text-[9px] text-muted-foreground tabular-nums">
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           {formatPlatformDuration(track.duration)}
         </span>
       ) : null}

@@ -49,15 +49,15 @@ const feedbackCategoryLabels: Record<
   (typeof FEEDBACK_CATEGORIES)[number],
   string
 > = {
-  bug: "🐛 Bug report",
-  idea: "💡 Feature idea",
-  question: "❓ Question",
+  bug: "Bug report",
+  idea: "Feature idea",
+  question: "Question",
 };
 
 const feedbackCopy = {
   categoryLabel: "Type",
   messageLabel: "Message",
-  sendingLabel: "Sending...",
+  sendingLabel: "Sending…",
   sendLabel: "Send feedback",
   successMessage: "Feedback sent",
   title: "Radio feedback",
@@ -87,16 +87,15 @@ function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
       <TooltipTrigger asChild>
         <Button
           aria-label={viewModel.copy.triggerLabel}
-          className="text-muted-foreground hover:text-foreground"
           onClick={viewModel.show}
           size="icon"
           type="button"
           variant="ghost"
         >
-          <MessageCircleMore className="size-4" />
+          <MessageCircleMore className="size-3.5" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent sideOffset={6}>
+      <TooltipContent side="bottom" sideOffset={6}>
         {viewModel.copy.triggerLabel}
       </TooltipContent>
     </Tooltip>
@@ -130,13 +129,8 @@ function FeedbackForm({ children, viewModel }: FeedbackFormSlotProps) {
 
 function FeedbackHeader({ viewModel }: FeedbackHeaderSlotProps) {
   return (
-    <DialogHeader className="border-border/60 border-b pb-4">
-      <DialogTitle
-        className="text-center font-mono text-foreground/90 text-sm uppercase tracking-wider"
-        id={viewModel.titleId}
-      >
-        {viewModel.copy.title}
-      </DialogTitle>
+    <DialogHeader>
+      <DialogTitle id={viewModel.titleId}>{viewModel.copy.title}</DialogTitle>
     </DialogHeader>
   );
 }
@@ -155,6 +149,18 @@ function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
   return (
     <>
       <div className="grid gap-2">
+        <Label htmlFor={viewModel.bodyId}>{viewModel.copy.messageLabel}</Label>
+        <Textarea
+          className="min-h-32 resize-none bg-background/60"
+          disabled={viewModel.isSubmitting}
+          id={viewModel.bodyId}
+          onChange={handleBodyChange}
+          placeholder="Describe what happened, what you expected, or what would make radio better."
+          required
+          value={viewModel.body}
+        />
+      </div>
+      <div className="grid gap-2">
         <Label htmlFor="feedback-contact-email">Email (optional)</Label>
         <Input
           autoComplete="email"
@@ -169,23 +175,15 @@ function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
           value={contactEmail}
         />
       </div>
-      <div className="grid gap-2">
-        <Label htmlFor={viewModel.bodyId}>{viewModel.copy.messageLabel}</Label>
-        <Textarea
-          className="min-h-32 resize-none bg-background/60"
-          disabled={viewModel.isSubmitting}
-          id={viewModel.bodyId}
-          onChange={handleBodyChange}
-          placeholder="Describe what happened, what you expected, or what would make radio better."
-          required
-          value={viewModel.body}
-        />
-      </div>
     </>
   );
 }
 
 function FeedbackCategoryField({ viewModel }: FeedbackCategoryFieldSlotProps) {
+  if (viewModel.categories.length === 0) {
+    return null;
+  }
+
   return (
     <div className="grid gap-2">
       <Label htmlFor={viewModel.categoryId}>
@@ -234,7 +232,7 @@ function FeedbackStatusOutput({ viewModel }: FeedbackStatusOutputSlotProps) {
 
 function FeedbackActions({ viewModel }: FeedbackActionsSlotProps) {
   return (
-    <DialogFooter className="border-border/60 border-t pt-4">
+    <DialogFooter>
       <FeedbackCancelAction viewModel={viewModel} />
       <FeedbackSubmitAction viewModel={viewModel} />
     </DialogFooter>
@@ -246,6 +244,7 @@ function FeedbackCancelAction({ viewModel }: FeedbackCancelActionSlotProps) {
     <Button
       disabled={viewModel.isSubmitting}
       onClick={viewModel.close}
+      size="sm"
       type="button"
       variant="outline"
     >
@@ -259,6 +258,7 @@ function FeedbackSubmitAction({ viewModel }: FeedbackSubmitActionSlotProps) {
     <Button
       aria-busy={viewModel.isSubmitting}
       disabled={!viewModel.canSubmit}
+      size="sm"
       type="submit"
     >
       {viewModel.isSubmitting

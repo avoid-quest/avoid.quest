@@ -3,6 +3,9 @@ import type {
   BandcampItemResult,
   BandcampMetadata,
   BandcampTrackInfo,
+  MixcloudItemError,
+  MixcloudItemResult,
+  MixcloudMetadata,
   RadioGardenItemError,
   RadioGardenItemResult,
   RadioGardenMetadata,
@@ -10,6 +13,10 @@ import type {
   SoundCloudItemResult,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
+  SpotifyItemError,
+  SpotifyItemResult,
+  SpotifyMetadata,
+  SpotifyTrackInfo,
   YouTubeItemError,
   YouTubeItemResult,
   YouTubeMetadata,
@@ -24,6 +31,11 @@ export type {
   BandcampItemType,
   BandcampMetadata,
   BandcampTrackInfo,
+  MixcloudItemError,
+  MixcloudItemResponse,
+  MixcloudItemResult,
+  MixcloudItemType,
+  MixcloudMetadata,
   RadioGardenItemError,
   RadioGardenItemResponse,
   RadioGardenItemResult,
@@ -35,6 +47,12 @@ export type {
   SoundCloudItemType,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
+  SpotifyItemError,
+  SpotifyItemResponse,
+  SpotifyItemResult,
+  SpotifyItemType,
+  SpotifyMetadata,
+  SpotifyTrackInfo,
   YouTubeItemError,
   YouTubeItemResponse,
   YouTubeItemResult,
@@ -49,6 +67,8 @@ import type { ChannelSelection } from "@/lib/audio";
 
 // Device input metadata
 export type DeviceInputMetadata = {
+  capture?: "display";
+  sourceUrl?: string;
   platform: "device-input";
   itemType: "track";
   url: "";
@@ -135,6 +155,10 @@ export type RadioBrowserMetadata = {
   url: string;
   stationUuid: string;
   hls: boolean;
+  /** As Radio Browser listed it at discovery, e.g. "MP3"; the media element can't tell. */
+  codec?: string;
+  /** kbps, as Radio Browser listed it at discovery. */
+  bitrate?: number;
 };
 
 export function isRadioBrowserMetadata(
@@ -149,6 +173,12 @@ export function isYouTubeMetadata(
   return metadata?.platform === "youtube";
 }
 
+export function isSpotifyMetadata(
+  metadata: PlatformMetadata | undefined | null
+): metadata is SpotifyMetadata {
+  return metadata?.platform === "spotify";
+}
+
 // Re-export for convenience
 export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 
@@ -161,13 +191,19 @@ export type Platform =
   | "youtube"
   | "device-input"
   | "static-audio"
+  | "browser-audio"
+  | "spotify"
+  | "mixcloud"
+  | "radio-shows"
   | "external"
   | "local-file"; // deprecated, use "static-audio"
 export type PlatformMetadata =
   | BandcampMetadata
+  | MixcloudMetadata
   | RadioBrowserMetadata
   | RadioGardenMetadata
   | SoundCloudMetadata
+  | SpotifyMetadata
   | YouTubeMetadata
   | DeviceInputMetadata
   | StaticAudioMetadata
@@ -175,6 +211,7 @@ export type PlatformMetadata =
 export type PlatformTrack =
   | BandcampTrackInfo
   | SoundCloudTrackInfo
+  | SpotifyTrackInfo
   | YouTubeTrackInfo
   | StaticAudioTrack;
 export type StaticAudioItemResult = {
@@ -191,14 +228,18 @@ export type StaticAudioItemResponse =
   | StaticAudioItemError;
 export type PlatformItemResult =
   | BandcampItemResult
+  | MixcloudItemResult
   | RadioGardenItemResult
   | SoundCloudItemResult
+  | SpotifyItemResult
   | YouTubeItemResult
   | StaticAudioItemResult;
 export type PlatformItemError =
   | BandcampItemError
+  | MixcloudItemError
   | RadioGardenItemError
   | SoundCloudItemError
+  | SpotifyItemError
   | YouTubeItemError
   | StaticAudioItemError;
 export type PlatformItemResponse = PlatformItemResult | PlatformItemError;

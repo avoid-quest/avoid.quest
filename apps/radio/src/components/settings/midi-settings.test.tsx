@@ -38,6 +38,12 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 });
 
 mock.module("@/lib/hooks/use-settings", () => ({
+  // Node mode's Output device reads the main output from here.
+  useAudioSettings: () => ({
+    cueOutputId: null,
+    delay: { cueDelayMs: 0, mainDelayMs: 0 },
+    mainOutputId: "default",
+  }),
   usePlayerMode: () => "single",
 }));
 
@@ -61,8 +67,30 @@ test("keeps MIDI settings available outside DJ mode in Chromium", () => {
   const view = render(<MidiSettings />);
 
   expect(view.queryByText("Web MIDI not supported")).toBeNull();
-  expect(view.getByText("MIDI mappings are applied in DJ mode.")).toBeTruthy();
-  expect(view.getByText("Grant MIDI Permission")).toBeTruthy();
+  expect(
+    view.getByText("MIDI mappings are applied in DJ and Node modes.")
+  ).toBeTruthy();
+  expect(view.getByText("Grant MIDI permission")).toBeTruthy();
   expect(view.getAllByText("Play/Pause")).toHaveLength(2);
   expect(view.getByText("Crossfader")).toBeTruthy();
+});
+
+test("lists node params under the node's title", () => {
+  const binding = getMidiControl().bindActions();
+  binding.update([
+    {
+      dispatch: () => undefined,
+      group: "Compressor 2",
+      label: "Threshold",
+      targetId: "node:comp-2:threshold",
+      type: "continuous",
+    },
+  ]);
+
+  const view = render(<MidiSettings />);
+
+  expect(view.getByRole("heading", { name: "Compressor 2" })).toBeTruthy();
+  expect(view.getByText("Threshold")).toBeTruthy();
+  // The DJ groups keep their own titles.
+  expect(view.queryByRole("heading", { name: "deck-a" })).toBeNull();
 });

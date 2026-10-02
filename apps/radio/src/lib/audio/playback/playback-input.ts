@@ -1,3 +1,4 @@
+import { validateMixcloudStreamUrl } from "@avoid.quest/platforms/mixcloud/url-policy";
 import {
   isSoundCloudCorsAllowedCdnHostname,
   validateSoundCloudCdnUrl,
@@ -35,14 +36,22 @@ export function toPlaybackInput(radio: Radio): PlaybackInput {
     soundCloudValidation.ok &&
     soundCloudValidation.parsed.protocol === "https:" &&
     isSoundCloudCorsAllowedCdnHostname(soundCloudValidation.parsed.hostname);
+  // Mixcloud's stream hosts send ACAO * (see mixcloud/RESEARCH.md).
+  const isTrustedMixcloudHls =
+    radio.platformMetadata?.platform === "mixcloud" &&
+    validateMixcloudStreamUrl(src).ok;
   const allowNativeHls =
     format === "hls" &&
-    (isSameOriginPlaybackPath(src) || isTrustedSoundCloudHls);
+    (isSameOriginPlaybackPath(src) ||
+      isTrustedSoundCloudHls ||
+      isTrustedMixcloudHls);
+  // Spotify plays the matched YouTube upload's stream.
+  const isYouTubeStream =
+    radio.platformMetadata?.platform === "youtube" ||
+    radio.platformMetadata?.platform === "spotify";
   return {
     ...(allowNativeHls ? { allowNativeHls: true } : {}),
-    ...(radio.platformMetadata?.platform === "youtube"
-      ? { credentials: "omit" as const }
-      : {}),
+    ...(isYouTubeStream ? { credentials: "omit" as const } : {}),
     format,
     src,
   };

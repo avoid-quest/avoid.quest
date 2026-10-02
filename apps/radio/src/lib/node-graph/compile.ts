@@ -1,3 +1,4 @@
+import { laneChannelId, laneSoundId } from "./identifiers";
 /**
  * Node Graph Compiler
  *
@@ -311,13 +312,7 @@ function laneSourceOf(node: GraphNode): LiveSource | null {
   return null;
 }
 
-export function laneChannelId(nodeId: string): string {
-  return `n:${nodeId}`;
-}
-
-export function laneSoundId(nodeId: string): string {
-  return `node:${laneChannelId(nodeId)}`;
-}
+export { laneChannelId, laneSoundId } from "./identifiers";
 
 /** Node types this compiler lowers; later layers add theirs. */
 const COMPILED_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([

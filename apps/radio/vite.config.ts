@@ -351,7 +351,17 @@ export default defineConfig({
     minify: "esbuild",
     rollupOptions: {
       output: {
-        manualChunks: manualVendorChunks,
+        codeSplitting: {
+          groups: [
+            // Capture the shared preload helper before a lazy vendor absorbs its dependencies.
+            {
+              name: "vite-preload-helper",
+              priority: 20,
+              test: /\0vite\/preload-helper\.js$/,
+            },
+            { name: manualVendorChunks, priority: 10 },
+          ],
+        },
       },
     },
     // "hidden" generates source maps for Sentry upload but omits

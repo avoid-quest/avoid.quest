@@ -12,7 +12,7 @@
 
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
-import { laneChannelId } from "@/lib/node-graph/compile";
+import { laneChannelId } from "@/lib/node-graph/identifiers";
 import {
   createDefaultChannel,
   type PlaybackChannelRecord,

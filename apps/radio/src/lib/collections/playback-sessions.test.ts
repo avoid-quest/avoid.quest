@@ -22,14 +22,13 @@ import {
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
-import {
-  buildNodeGraphFromTemplate,
-  buildNodeSessionFromTemplate,
-} from "@/lib/node-graph/templates";
+import { buildNodeSessionFromTemplate } from "@/lib/node-graph/template-sessions";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import {
   LEGACY_MULTIPLE_SESSION_ID,
   writeLegacyRecord,
 } from "./migrations/legacy-records";
+import { writeNodeSessionGraph } from "./node-session-graph";
 import {
   buildDjSessionFromLegacyState,
   buildSingleSessionFromLegacyState,
@@ -49,7 +48,6 @@ import {
   takeOtherTabNodeGraph,
   updatePlaybackChannel,
   updatePlaybackSession,
-  writeNodeSessionGraph,
 } from "./playback-sessions";
 import { radiosCollection } from "./radios";
 import {

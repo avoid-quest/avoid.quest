@@ -15,14 +15,17 @@
 
 import type { Radio } from "@/lib/audio/playback/types";
 import { isSessionRadio } from "@/lib/collections/session-radios";
-import type { NodeGraph } from "@/lib/node-graph/schema";
+import { laneChannelId } from "@/lib/node-graph/identifiers";
+import { isRadioSourceNode, type NodeGraph } from "@/lib/node-graph/schema";
+import { nodeSessionRecord } from "@/lib/node-graph/session-record";
+import { isLocalFileGone } from "@/lib/node-graph/sources";
 import {
-  buildNodeSessionFromGraph,
   buildStationPatch,
   type StationSeed,
 } from "@/lib/node-graph/templates";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
+  createDefaultChannel,
   normalizeRadio,
   PLAYBACK_SESSIONS_STORAGE_KEY,
   type PlaybackSessionRecord,
@@ -153,10 +156,26 @@ export function buildNodeSessionFromMultipleRecord(
     Number.isFinite(record.masterVolume)
       ? Math.max(0, record.masterVolume)
       : 1;
-  return buildNodeSessionFromGraph(
-    buildNodeGraphFromMultipleRecord(record, isKept),
-    masterVolume
-  );
+  const graph = buildNodeGraphFromMultipleRecord(record, isKept);
+  // Multiple produces only direct Station lanes with default strips: no FX or branching to compile.
+  const channels = graph.nodes
+    .flatMap((node) =>
+      isRadioSourceNode(node) &&
+      node.data.radio &&
+      node.data.radio.enabled !== false &&
+      !isLocalFileGone(node.data.radio)
+        ? [
+            {
+              ...createDefaultChannel(laneChannelId(node.id), "node", 0),
+              muted: node.data.muted,
+              radio: node.data.radio,
+              volume: node.data.volume,
+            },
+          ]
+        : []
+    )
+    .map((channel, order) => ({ ...channel, order }));
+  return nodeSessionRecord(graph, channels, masterVolume);
 }
 
 /**

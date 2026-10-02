@@ -18,7 +18,7 @@ if (process.env.AVOID_QUEST_PERSISTENCE_SCENARIO === "1") {
   const { playbackSessionsCollection, PLAYBACK_SESSIONS_STORAGE_KEY } =
     await import("./playback-sessions");
   const { buildNodeSessionFromTemplate } = await import(
-    "@/lib/node-graph/templates"
+    "@/lib/node-graph/template-sessions"
   );
   const { createNodeSessionPersistence } = await import(
     "./node-session-persistence"

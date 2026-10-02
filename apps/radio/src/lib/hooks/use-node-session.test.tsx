@@ -29,7 +29,7 @@ for (const [key, value] of Object.entries({
   });
 }
 
-let buildNodeSessionFromTemplate: typeof import("@/lib/node-graph/templates")["buildNodeSessionFromTemplate"];
+let buildNodeSessionFromTemplate: typeof import("@/lib/node-graph/template-sessions")["buildNodeSessionFromTemplate"];
 let playbackSessionsCollection: typeof import("@/lib/collections/playback-sessions")["playbackSessionsCollection"];
 let resetAllPlaybackRuntime: typeof import("@/lib/stores/playback-runtime-store")["resetAllPlaybackRuntime"];
 let setPlaybackChannelRuntime: typeof import("@/lib/stores/playback-runtime-store")["setPlaybackChannelRuntime"];
@@ -37,7 +37,7 @@ let useNodeSession: typeof import("./use-node-session")["useNodeSession"];
 
 beforeAll(async () => {
   ({ buildNodeSessionFromTemplate } = await import(
-    "@/lib/node-graph/templates"
+    "@/lib/node-graph/template-sessions"
   ));
   ({ playbackSessionsCollection } = await import(
     "@/lib/collections/playback-sessions"

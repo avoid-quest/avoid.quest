@@ -10,7 +10,6 @@ import {
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
-import { getNodePlayback } from "./node-playback.js";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
 
@@ -159,17 +158,21 @@ export function createModeLifecycleRegistry({
     fadeOutDurationMs,
     fadeOutSound,
   });
-  const node = getNodePlayback({
-    ctx,
-    fadeOutDurationMs,
-    fadeOutSound,
-  });
+  const loadNode = async () =>
+    (await import("./node-playback.js")).getNodePlayback({
+      ctx,
+      fadeOutDurationMs,
+      fadeOutSound,
+    });
   return {
     dj: createLifecycle(
       () => djWorkflow.activate(),
       () => djWorkflow.deactivate()
     ),
-    node: createLifecycle(node.activate, node.deactivate),
+    node: createLifecycle(
+      async () => (await loadNode()).activate(),
+      async () => (await loadNode()).deactivate()
+    ),
     single: createLifecycle(single.activate, single.deactivate),
   };
 }

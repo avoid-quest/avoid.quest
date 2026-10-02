@@ -3,9 +3,9 @@ import type { Radio } from "@/lib/audio/playback/types";
 import { parsePlaybackSessionRecord } from "@/lib/collections/playback-sessions";
 import { compile } from "./compile";
 import { DEFAULT_STATION_STRIP, nodeGraphSchema } from "./schema";
+import { buildNodeSessionFromTemplate } from "./template-sessions";
 import {
   buildNodeGraphFromTemplate,
-  buildNodeSessionFromTemplate,
   DUCK_NODE_ID,
   NODE_TEMPLATE_IDS,
   SPEAKERS_NODE_ID,

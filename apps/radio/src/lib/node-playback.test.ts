@@ -76,10 +76,8 @@ import {
   localFileRadio,
   releaseUnusedLocalFileUrls,
 } from "@/lib/node-graph/sources";
-import {
-  buildNodeGraphFromTemplate,
-  buildNodeSessionFromGraph,
-} from "@/lib/node-graph/templates";
+import { buildNodeSessionFromGraph } from "@/lib/node-graph/template-sessions";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import type { Profile } from "@/lib/node-graph/validate";
 import {
   getPlaybackChannelRuntime,

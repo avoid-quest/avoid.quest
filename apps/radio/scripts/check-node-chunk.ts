@@ -29,6 +29,12 @@ const LAZY_VENDORS = [
   { markers: ['"data-separator"'], name: "react-resizable-panels" },
   // Node mode's branch edges and the What's new popover.
   { markers: ["PopoverTrigger"], name: "Radix Popover" },
+  // Audio effects load the Studio runtime on demand.
+  { markers: ["WasmEngine.ensureReady must succeed"], name: "openDAW Studio" },
+];
+const NODE_ENGINE_MARKERS = [
+  "This Merge joins branches from different splits",
+  '"replaceLaneEffects"',
 ];
 const STATIC_IMPORT =
   /(?:^|[;}\s])(?:import|export)\s*(?:[\w$*{}\s,]+?\s*from\s*)?["']\.\/([^"']+\.js)["']/g;
@@ -36,6 +42,8 @@ const DYNAMIC_IMPORT = /import\(\s*["']\.\/([^"']+\.js)["']\s*\)/g;
 const MAPPED_DEP = /["'](?:\/assets\/|assets\/)?([\w.-]+\.js)["']/g;
 const MANIFEST_ASSET = /\/assets\/([\w.-]+\.js)/g;
 const SCRIPT_FILE = /\.m?js$/;
+const HOME_FEATURE_CHUNK =
+  /^(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-)/;
 
 function listFiles(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
@@ -103,6 +111,27 @@ if (manifest) {
         failures.push(`${vendor.name} in ${name} loads eagerly with the page`);
       }
     }
+  }
+
+  // Import/export can compile a patch; opening Single or DJ must not load the Node engine.
+  const { routes } = (await import(manifest)).tsrStartManifest();
+  const homeQueue = [
+    ...routes.__root__.preloads,
+    ...routes["/"].preloads,
+    ...[...chunks.keys()].filter((name) => HOME_FEATURE_CHUNK.test(name)),
+  ].map((name: string) => name.replace("/assets/", ""));
+  const home = new Set<string>();
+  while (homeQueue.length > 0) {
+    const name = homeQueue.pop() ?? "";
+    if (home.has(name) || !chunks.has(name)) {
+      continue;
+    }
+    home.add(name);
+    const source = chunks.get(name) ?? "";
+    if (NODE_ENGINE_MARKERS.some((marker) => source.includes(marker))) {
+      failures.push(`Node graph engine in ${name} loads with Single/DJ`);
+    }
+    homeQueue.push(...matches(source, STATIC_IMPORT));
   }
 } else {
   failures.push("TanStack Start manifest not found in dist/server");

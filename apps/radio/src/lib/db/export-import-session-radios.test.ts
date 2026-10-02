@@ -9,10 +9,8 @@ import {
   settingsCollection,
 } from "@/lib/collections";
 import { loadNodeGraph, nodeStore } from "@/lib/node-graph/node-store";
-import {
-  buildNodeGraphFromTemplate,
-  buildNodeSessionFromGraph,
-} from "@/lib/node-graph/templates";
+import { buildNodeSessionFromGraph } from "@/lib/node-graph/template-sessions";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import type { DatabaseExport } from "@/lib/types";
 import { mergeImportedData, replaceImportedData } from "./export-import";
 

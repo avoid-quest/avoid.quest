@@ -10,15 +10,11 @@
  *   music dips whenever the talk speaks;
  * - "blank": Speakers only.
  *
- * `buildNodeSessionFromTemplate` also compiles the patch, so the session it
- * returns carries the derived lane channels and passes the session schema.
+ * Session compilation lives in template-sessions.ts, loaded only with Node.
  */
 
-import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
-import type { PlaybackSessionRecord } from "@/lib/collections/playback-sessions";
 import { createNodeEffectConfig } from "./catalogue";
-import { type CompileEnv, compile } from "./compile";
 import {
   type GraphEdge,
   type GraphNode,
@@ -26,7 +22,6 @@ import {
   type NodeGraph,
   stripForType,
 } from "./schema";
-import { deriveNodeChannels } from "./session-channels";
 
 export const NODE_TEMPLATE_IDS = [
   "starter",
@@ -342,35 +337,4 @@ export function buildNodeGraphFromTemplate(
       return exhaustive;
     }
   }
-}
-
-/** The `"node"` playback session for a template, lane channels included. */
-export function buildNodeSessionFromTemplate(
-  template: NodeTemplateId,
-  sources: NodeTemplateSources = {},
-  env: CompileEnv = { crossOriginIsolated: false }
-): PlaybackSessionRecord {
-  return buildNodeSessionFromGraph(
-    buildNodeGraphFromTemplate(template, sources),
-    sources.masterVolume,
-    env
-  );
-}
-
-/** The `"node"` playback session holding `graph`, lane channels included. */
-export function buildNodeSessionFromGraph(
-  graph: NodeGraph,
-  masterVolume = 1,
-  env: CompileEnv = { crossOriginIsolated: false }
-): PlaybackSessionRecord {
-  return {
-    activeChannelId: null,
-    channels: deriveNodeChannels(compile(graph, env)),
-    crossfadePosition: 0.5,
-    graph,
-    headphoneVolume: 1,
-    id: "node",
-    masterVolume,
-    tempo: DEFAULT_EFFECT_TEMPO,
-  };
 }

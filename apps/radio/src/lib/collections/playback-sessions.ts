@@ -21,7 +21,6 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
-import { compile } from "@/lib/node-graph/compile";
 import {
   getRetainedNodeGraphs,
   type NodeStoreState,
@@ -34,11 +33,8 @@ import {
   type NodeGraph,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
-import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
-import {
-  buildNodeSessionFromGraph,
-  buildNodeSessionFromTemplate,
-} from "@/lib/node-graph/templates";
+import { nodeSessionRecord } from "@/lib/node-graph/session-record";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   migrateMultipleSession,
@@ -432,7 +428,7 @@ function buildDjSessionFromLegacy(): PlaybackSessionRecord {
  * menu.
  */
 function buildDefaultNodeSession(): PlaybackSessionRecord {
-  return buildNodeSessionFromTemplate("starter");
+  return nodeSessionRecord(buildNodeGraphFromTemplate("starter"));
 }
 
 function upsertSession(session: PlaybackSessionRecord): void {
@@ -506,53 +502,11 @@ function registerNodeSessionRadios(
   }
 }
 
-/** Prepares and validates the entire session without writing or collecting models. */
-export function prepareNodeSessionGraph(
+/** Persist a prevalidated patch without importing the graph compiler at startup. */
+export function persistPreparedNodeSession(
   graph: NodeGraph,
-  masterVolume?: number
-): PlaybackSessionRecord {
-  const session = playbackSessionsCollection.state.get("node");
-  if (!session) {
-    return playbackSessionsCollection.validateData(
-      buildNodeSessionFromGraph(graph, masterVolume),
-      "insert"
-    );
-  }
-  const channels = deriveNodeChannels(
-    compile(graph, { crossOriginIsolated: false }),
-    session.channels
-  );
-  return playbackSessionsCollection.validateData(
-    {
-      ...session,
-      activeChannelId: channels.some(
-        (channel) => channel.id === session.activeChannelId
-      )
-        ? session.activeChannelId
-        : null,
-      channels,
-      graph,
-      masterVolume: masterVolume ?? session.masterVolume,
-    },
-    "insert"
-  );
-}
-
-/**
- * Writes `graph` as the node session's patch, with its derived lane
- * channels, in one update, or inserts the session when there is none.
- * Session-only sources are registered in this tab. A newer stored patch is
- * left untouched unless an explicit backup import replaces it.
- */
-export function writeNodeSessionGraph(
-  graph: NodeGraph,
-  masterVolume?: number,
-  { replaceReadOnly = false }: { replaceReadOnly?: boolean } = {}
-): NodeGraph | null {
-  if (!replaceReadOnly && getNodeSessionReadOnlyVersion() !== null) {
-    return null;
-  }
-  const prepared = prepareNodeSessionGraph(graph, masterVolume);
+  prepared: PlaybackSessionRecord
+): NodeGraph {
   registerNodeSessionRadios(
     graph,
     playbackSessionsCollection.state.get("node")?.graph

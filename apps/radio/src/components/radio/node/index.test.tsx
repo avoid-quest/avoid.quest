@@ -80,7 +80,7 @@ const { playbackSessionsCollection } = await import(
   "@/lib/collections/playback-sessions"
 );
 const { buildNodeSessionFromTemplate } = await import(
-  "@/lib/node-graph/templates"
+  "@/lib/node-graph/template-sessions"
 );
 const { loadNodeGraph } = await import("@/lib/node-graph/node-store");
 const { getNodePlayback } = await import("@/lib/node-playback");

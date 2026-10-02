@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
-import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
+import { buildNodeSessionFromTemplate } from "@/lib/node-graph/template-sessions";
 import {
   getPlaybackSession,
   playbackSessionsCollection,

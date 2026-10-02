@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
 import { DEFAULT_STATION_STRIP } from "@/lib/node-graph/schema";
-import { buildNodeSessionFromTemplate } from "@/lib/node-graph/templates";
+import {
+  buildNodeSessionFromGraph,
+  buildNodeSessionFromTemplate,
+} from "@/lib/node-graph/template-sessions";
 import {
   createDefaultChannel,
   getPlaybackSession,
@@ -489,6 +492,40 @@ describe("migrateMultipleSession", () => {
       radio("kexp"),
       valid,
     ]);
+  });
+
+  test("the compiler-free migration derives the same session as the full compiler", () => {
+    const stations: MultipleStation[] = [
+      { muted: true, order: 2, radio: radio("nts"), volume: 0.2 },
+      { order: 1, radio: { ...radio("hidden"), enabled: false } },
+      { order: 0, radio: radio("kexp"), volume: 0.8 },
+      {
+        radio: {
+          ...radio("file"),
+          platformMetadata: {
+            displayName: "File",
+            duration: 10,
+            fileName: "file.mp3",
+            fileSize: 100,
+            itemType: "track",
+            mimeType: "audio/mpeg",
+            objectUrl: "blob:expired-file",
+            platform: "local-file",
+            url: "",
+          },
+          streamUrl: "blob:expired-file",
+        },
+      },
+    ];
+    for (const record of [null, multipleRecord(stations, 0.6)]) {
+      const session = buildNodeSessionFromMultipleRecord(record, () => true);
+      if (!session.graph) {
+        throw new Error("Migration must produce a graph");
+      }
+      expect(session).toEqual(
+        buildNodeSessionFromGraph(session.graph, session.masterVolume)
+      );
+    }
   });
 
   test("still deletes multiple when the node insert fails", () => {

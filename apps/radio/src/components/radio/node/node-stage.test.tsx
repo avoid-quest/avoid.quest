@@ -69,7 +69,7 @@ let NodeStage: typeof import("./node-stage")["NodeStage"];
 let compile: typeof import("@/lib/node-graph/compile")["compile"];
 let deriveNodeChannels: typeof import("@/lib/node-graph/session-channels")["deriveNodeChannels"];
 let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
-let buildNodeSessionFromTemplate: typeof import("@/lib/node-graph/templates")["buildNodeSessionFromTemplate"];
+let buildNodeSessionFromTemplate: typeof import("@/lib/node-graph/template-sessions")["buildNodeSessionFromTemplate"];
 let playbackSessionsCollection: typeof import("@/lib/collections/playback-sessions")["playbackSessionsCollection"];
 let resetAllPlaybackRuntime: typeof import("@/lib/stores/playback-runtime-store")["resetAllPlaybackRuntime"];
 let setPlaybackChannelRuntime: typeof import("@/lib/stores/playback-runtime-store")["setPlaybackChannelRuntime"];
@@ -80,7 +80,7 @@ beforeAll(async () => {
   ({ deriveNodeChannels } = await import("@/lib/node-graph/session-channels"));
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ buildNodeSessionFromTemplate } = await import(
-    "@/lib/node-graph/templates"
+    "@/lib/node-graph/template-sessions"
   ));
   ({ playbackSessionsCollection } = await import(
     "@/lib/collections/playback-sessions"
@@ -301,7 +301,7 @@ describe("NodeStage", () => {
   test("a File to pick again after a reload shows, and opens its File", async () => {
     const { NodeActionsProvider } = await import("./node-actions");
     const { buildNodeSessionFromGraph } = await import(
-      "@/lib/node-graph/templates"
+      "@/lib/node-graph/template-sessions"
     );
     const { forgetLocalFileUrls, localFileRadio } = await import(
       "@/lib/node-graph/sources"

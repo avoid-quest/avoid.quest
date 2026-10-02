@@ -38,10 +38,8 @@ import {
   type NodeGraphInput,
   nodeGraphSchema,
 } from "@/lib/node-graph/schema";
-import {
-  buildNodeGraphFromTemplate,
-  buildNodeSessionFromGraph,
-} from "@/lib/node-graph/templates";
+import { buildNodeSessionFromGraph } from "@/lib/node-graph/template-sessions";
+import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import type { DatabaseExport } from "@/lib/types";
 import {
   createDatabaseExport,

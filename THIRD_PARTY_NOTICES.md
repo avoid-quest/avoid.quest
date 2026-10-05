@@ -119,6 +119,10 @@ The FFmpeg JavaScript wrapper packages' omitted license files are supplied from
 [their upstream MIT license](LICENSES/ffmpeg-wasm.txt); radio does not ship a
 separate FFmpeg core WASM binary.
 
+The GitHub mark is from [GitHub Octicons](https://github.com/primer/octicons),
+Copyright (c) 2026 GitHub Inc.; its [MIT license](LICENSES/octicons-MIT.txt) is
+preserved. The mark identifies the repository link; it does not imply endorsement.
+
 ## Fonts and assets
 
 Marketing bundles `@fontsource/geist-sans` and `@fontsource/geist-mono` **5.3.0**,

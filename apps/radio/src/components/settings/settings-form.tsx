@@ -1,4 +1,5 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+
 import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
   FieldLabel,
   FieldTitle,
 } from "@avoid.quest/ui/components/field";
+import GitHubIcon from "@avoid.quest/ui/components/github-icon";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
 import {
@@ -23,7 +25,6 @@ import {
 } from "@avoid.quest/ui/components/toggle-group";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import {
-  CodeXmlIcon,
   DatabaseIcon,
   type LucideIcon,
   MonitorIcon,
@@ -348,9 +349,13 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         title="Version"
       />
       <div className="flex flex-wrap items-center gap-3 py-3 text-muted-foreground text-xs">
-        <Button asChild size="sm" variant="ghost">
-          <a href="https://github.com/avoid-quest/avoid.quest">
-            <CodeXmlIcon aria-hidden="true" className="size-3.5" /> GitHub
+        <Button asChild size="icon" variant="ghost">
+          <a
+            aria-label="avoid.quest on GitHub"
+            href="https://github.com/avoid-quest/avoid.quest"
+            title="GitHub"
+          >
+            <GitHubIcon className="size-4" />
           </a>
         </Button>
         <a

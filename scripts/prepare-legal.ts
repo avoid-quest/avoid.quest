@@ -112,7 +112,7 @@ for (const file of [
   writeFileSync(path.join(out, file), readFileSync(path.join(root, file)));
 }
 
-let sourceLinks = "";
+let sourceRevision: string | undefined;
 if (app === "radio") {
   const revision =
     process.env.SOURCE_REVISION ??
@@ -146,19 +146,8 @@ if (app === "radio") {
   } finally {
     rmSync(staging, { force: true, recursive: true });
   }
-  sourceLinks = `<p>Build revision: <code>${revision}</code></p><p><a href="source.tar.gz">Download this version's source</a> · <a href="https://github.com/avoid-quest/avoid.quest/tree/${revision}">Browse this revision on GitHub</a></p>`;
+  sourceRevision = revision;
 }
-writeFileSync(
-  path.join(out, "index.html"),
-  `<!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>avoid.quest — Source and licenses</title>
-<style>body{font:1rem/1.6 system-ui;max-width:48rem;margin:3rem auto;padding:0 1rem}a:focus-visible{outline:3px solid currentColor;outline-offset:3px}</style>
-<h1>Source and licenses</h1>
-<p>Original avoid.quest code is MIT. The combined radio application incorporating openDAW is AGPL-3.0-or-later. Third-party components retain their licenses. This software comes without warranty.</p>
-${sourceLinks}
-<ul><li><a href="LICENSE">MIT license</a></li><li><a href="LICENSES/AGPL-3.0-or-later.txt">AGPL-3.0-or-later license</a></li><li><a href="LICENSING.md">License scope</a></li><li><a href="THIRD_PARTY_NOTICES.md">Attribution, upstream source links and build instructions</a></li><li><a href="dependencies.txt">Dependency copyright and license notices</a></li><li><a href="LICENSES/opendaw-rust-dependencies.txt">WASM dependency notices and sources</a></li></ul>
-<p><a href="https://github.com/andremichelle/openDAW/archive/88113f892cea2fa9495289a9c166b6fe0f93ce69.tar.gz">Download corresponding openDAW source (including the WASM engine and device plugins)</a></p>
-<p><a href="/">Back to the site</a></p></html>`
-);
+writeFileSync(path.join(out, "build.json"), JSON.stringify({ sourceRevision }));
+
 console.log(`Prepared ${app} licenses for ${visited.size} packages`);

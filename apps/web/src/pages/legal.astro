@@ -1,0 +1,14 @@
+---
+import { LegalPage } from "@avoid.quest/ui/components/legal-page";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = true;
+---
+
+<Layout title="Source and licenses — avoid.quest">
+  <LegalPage />
+  <footer slot="footer" class="flex h-16 items-center justify-end p-4">
+    <ThemeToggle />
+  </footer>
+</Layout>

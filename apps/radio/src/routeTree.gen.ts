@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ImportRouteImport } from './routes/import'
+import { Route as LegalRouteImport } from './routes/legal'
 import { Route as ManifestRouteImport } from './routes/manifest'
 import { Route as PlaylistDotm3uRouteImport } from './routes/playlist[.]m3u'
 import { Route as TunnelRouteImport } from './routes/tunnel'
@@ -27,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const ImportRoute = ImportRouteImport.update({
   id: '/import',
   path: '/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalRoute = LegalRouteImport.update({
+  id: '/legal',
+  path: '/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ManifestRoute = ManifestRouteImport.update({
@@ -68,6 +74,7 @@ const ApiStationsDotjsonRoute = ApiStationsDotjsonRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
+  '/legal': typeof LegalRoute
   '/manifest': typeof ManifestRoute
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
+  '/legal': typeof LegalRoute
   '/manifest': typeof ManifestRoute
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
+  '/legal': typeof LegalRoute
   '/manifest': typeof ManifestRoute
   '/playlist.m3u': typeof PlaylistDotm3uRoute
   '/tunnel': typeof TunnelRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/import'
+    | '/legal'
     | '/manifest'
     | '/playlist.m3u'
     | '/tunnel'
@@ -115,6 +125,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/import'
+    | '/legal'
     | '/manifest'
     | '/playlist.m3u'
     | '/tunnel'
@@ -126,6 +137,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/import'
+    | '/legal'
     | '/manifest'
     | '/playlist.m3u'
     | '/tunnel'
@@ -138,6 +150,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ImportRoute: typeof ImportRoute
+  LegalRoute: typeof LegalRoute
   ManifestRoute: typeof ManifestRoute
   PlaylistDotm3uRoute: typeof PlaylistDotm3uRoute
   TunnelRoute: typeof TunnelRoute
@@ -161,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/import'
       fullPath: '/import'
       preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal': {
+      id: '/legal'
+      path: '/legal'
+      fullPath: '/legal'
+      preLoaderRoute: typeof LegalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/manifest': {
@@ -218,6 +238,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ImportRoute: ImportRoute,
+  LegalRoute: LegalRoute,
   ManifestRoute: ManifestRoute,
   PlaylistDotm3uRoute: PlaylistDotm3uRoute,
   TunnelRoute: TunnelRoute,

@@ -1,5 +1,5 @@
 ---
-import CodeIcon from "@avoid.quest/ui/components/code-icon";
+import GitHubIcon from "@avoid.quest/ui/components/github-icon";
 import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
 import ThemeToggle from "../components/ThemeToggle.astro";
 import Layout from "../layouts/Layout.astro";
@@ -22,6 +22,18 @@ export const prerender = true;
       >
         <span class="text-primary underline-offset-4 group-hover:underline">radio</span>
         <span class="text-muted-foreground">— enhanced web player</span>
+      </a>
+
+      <a
+        href="https://couch.avoid.quest"
+        target="_blank"
+        rel="noopener"
+        data-umami-event="homepage-link-click"
+        data-umami-event-destination="couch"
+        class="group inline-flex items-baseline justify-center gap-1.5 px-2 py-1 text-sm sm:text-[0.95rem]"
+      >
+        <span class="text-primary underline-offset-4 group-hover:underline">couch</span>
+        <span class="text-muted-foreground">— multiplayer media center</span>
       </a>
 
       <a
@@ -51,8 +63,8 @@ export const prerender = true;
   </div>
 
   <footer slot="footer" class="flex h-16 w-full items-center justify-end p-4">
-    <a href="https://github.com/avoid-quest/avoid.quest" aria-label="avoid.quest on GitHub" class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-muted-foreground text-xs outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
-      <CodeIcon aria-hidden="true" className="size-4" /> GitHub
+    <a href="https://github.com/avoid-quest/avoid.quest" aria-label="avoid.quest on GitHub" class="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
+      <GitHubIcon className="size-4" />
     </a>
     <a href="/legal/" class="rounded-md px-2 py-1 text-muted-foreground text-xs outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50">Licenses</a>
     <ThemeToggle />

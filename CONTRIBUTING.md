@@ -23,8 +23,12 @@ bun run --filter @avoid.quest/radio build
 ```
 
 Run the relevant `cf-typegen` script for Cloudflare binding changes. Do not
-manually deploy or upload unless a maintainer requests it. Existing Cloudflare
-Workers Builds provide PR build checks and previews; no separate CI is needed.
+manually deploy or upload unless a maintainer requests it. The repository-owned
+[PR validation workflow](.github/workflows/pr-validation.yml) runs lint,
+typechecks, tests, and builds without private credentials. Cloudflare Workers
+Builds continue to provide their existing build checks and previews. See
+[validation and merge review](DEVELOPMENT.md#pr-validation) for coverage and
+the remaining manual merge gate.
 
 Original contributions you have the right to license are submitted under MIT.
 Changes to third-party derived files retain their applicable licenses; the

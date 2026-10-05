@@ -34,9 +34,9 @@ Keep runtime prompts, app prompts, chat prompts, and product-behavior prompts un
 </repo_invariants>
 
 <radio_changelog>
-The in-app "What's new" list uses explicit `Changelog:` lines from git history (`apps/radio/git-changelog.ts`).
-- Write very short updates for listeners: one concrete change per line, in everyday language. Omit internal changes.
-- Add `Changelog: <text>` to the commit body. Preserve these lines above the squashed commit list when merging; commit titles alone are not listed.
+Commit messages touching `apps/radio` are user-facing: the in-app "What's new" list is built from git history at build time (`apps/radio/git-changelog.ts`). Every `feat` commit is listed by its subject, minus the type prefix and `(#123)`; a squash merge uses the PR title as that subject.
+- Write `feat` commit subjects and radio PR titles as short sentences a listener understands.
+- In the commit message body, add `Changelog: <user-facing text>` to reword an entry or to list a user-visible `fix`, and `Changelog: skip` on internal `feat` commits (schemas, compilers, refactors). In a squash merge, only `Changelog:` lines above the list of squashed commits apply to the PR's entry.
 </radio_changelog>
 
 <validation_contract>

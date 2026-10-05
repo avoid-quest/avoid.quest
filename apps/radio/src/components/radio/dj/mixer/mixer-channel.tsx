@@ -153,7 +153,7 @@ function ChannelBody({
             style={{ touchAction: "none" }}
             title="Volume. Double-click the handle for 100%."
           >
-            <span className="font-mono text-[10px] tabular-nums">
+            <span className="w-8 shrink-0 text-center font-mono text-[10px] tabular-nums">
               {formatPercent(deck.volume)}
             </span>
             <Slider

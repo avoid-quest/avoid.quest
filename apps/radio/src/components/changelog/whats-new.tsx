@@ -4,7 +4,7 @@ import { Skeleton } from "@avoid.quest/ui/components/skeleton";
 import { CHANGELOG_STORAGE_KEY } from "@/lib/const";
 import { useSettings } from "@/lib/hooks/use-settings";
 
-/** Listener-facing Changelog notes from git; see `git-changelog.ts`. */
+/** Changes come from merged `feat` commits; see `git-changelog.ts`. */
 export function WhatsNew() {
   const { data: settings } = useSettings();
 

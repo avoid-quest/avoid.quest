@@ -60,7 +60,7 @@ export function MixerMaster({
           title="Master volume. Double-click the handle for 100%."
         >
           <div className="flex h-full min-h-0 flex-col items-center gap-1">
-            <span className="font-mono text-[10px] tabular-nums">
+            <span className="w-8 shrink-0 text-center font-mono text-[10px] tabular-nums">
               {formatPercent(masterVolume)}
             </span>
             <Slider

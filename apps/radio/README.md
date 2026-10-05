@@ -148,15 +148,21 @@ No secret manager or custom variable is required to start the radio app. Set
 `GIT_FEEDBACK_GITHUB_TOKEN` through the standard Cloudflare local environment
 only when exercising feedback submission locally.
 
-### Build-time (Sentry sourcemap upload)
+### Build-time (Sentry client and sourcemap upload)
 
 ```
-VITE_RADIO_SENTRY_DSN # Optional public browser DSN; also used by /tunnel fallback validation
+VITE_RADIO_SENTRY_DSN # Optional browser DSN override; also used by /tunnel fallback validation
 SENTRY_AUTH_TOKEN   # Required for sourcemap upload
 SENTRY_ORG          # Sentry organization slug
 SENTRY_PROJECT      # Sentry project slug
 SENTRY_RELEASE      # Optional: defaults to radio@<version>
 ```
+
+Production builds use the committed public radio DSN when the override is
+missing, empty, or whitespace-only. Development stays disabled unless a DSN
+override is provided. Production-built previews use the same default project;
+provide an override to send those events to a separate project. The `/tunnel`
+fallback uses the same selected browser DSN.
 
 If any required Sentry build vars are missing, production builds print one
 warning and skip the upload step. The app still builds with hidden source maps;

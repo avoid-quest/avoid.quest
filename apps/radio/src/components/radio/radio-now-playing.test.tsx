@@ -454,7 +454,7 @@ describe("RadioNowPlaying", () => {
     expect(view.getByText("Static station description.")).toBeTruthy();
   });
 
-  test("keeps broadcast and station information together without dropping either description", () => {
+  test("labels show copy neutrally and keeps separate station information", () => {
     const view = render(
       <RadioNowPlaying
         metadata={{ ...metadata, bitrate: 192 }}
@@ -471,14 +471,17 @@ describe("RadioNowPlaying", () => {
       view.getByRole("button", { name: "Details for Current Show" })
     );
     const details = within(view.getByRole("dialog"));
+    expect(details.getByRole("heading", { name: "Description" })).toBeTruthy();
+    expect(
+      details.getByRole("heading", { level: 3, name: "Example Radio" })
+    ).toBeTruthy();
     expect(details.getByText("Current show description.")).toBeTruthy();
     expect(details.getByText("Static station description.")).toBeTruthy();
     expect(details.getByText("Berlin, Germany")).toBeTruthy();
-    expect(
-      details
-        .getByRole("link", { name: "Station website" })
-        .getAttribute("href")
-    ).toBe("https://radio.example/");
+    const stationLink = details.getByRole("link", { name: "Station website" });
+    expect(stationLink.getAttribute("href")).toBe("https://radio.example/");
+    expect(stationLink.getAttribute("target")).toBe("_blank");
+    expect(stationLink.getAttribute("rel")).toBe("noopener noreferrer");
     expect(
       details
         .getByText("Stream information")
@@ -497,12 +500,65 @@ describe("RadioNowPlaying", () => {
     ).toBeTruthy();
   });
 
+  for (const identity of [
+    { artist: "Track Artist", title: "Track Title" },
+    { artist: "Track Artist", title: null },
+    { artist: null, title: null },
+  ]) {
+    test(`labels provider station copy neutrally with identity ${JSON.stringify(identity)}`, () => {
+      const description = "Independent community radio broadcasting worldwide.";
+      const view = render(
+        <RadioNowPlaying
+          metadata={{
+            ...metadata,
+            ...identity,
+            stationDescription: description,
+          }}
+          radio={radio}
+        />
+      );
+      fireEvent.click(
+        view.getByRole("button", {
+          name: `Details for ${identity.title ?? identity.artist ?? radio.name}`,
+        })
+      );
+      const details = within(view.getByRole("dialog"));
+      expect(
+        details.getByRole("heading", { name: "Description" })
+      ).toBeTruthy();
+      expect(details.getByText(description)).toBeTruthy();
+      expect(details.getByText("Static station description.")).toBeTruthy();
+      expect(
+        details.queryByRole("heading", { name: "About this broadcast" })
+      ).toBeNull();
+    });
+  }
+
+  for (const description of [null, "", " \n "]) {
+    test(`omits empty provider description ${JSON.stringify(description)}`, () => {
+      const view = render(
+        <RadioNowPlaying
+          metadata={{ ...metadata, stationDescription: description }}
+          radio={radio}
+        />
+      );
+      fireEvent.click(
+        view.getByRole("button", { name: "Details for Current Show" })
+      );
+      const details = within(view.getByRole("dialog"));
+      expect(
+        details.queryByRole("heading", { name: "Description" })
+      ).toBeNull();
+      expect(details.getByText("Static station description.")).toBeTruthy();
+    });
+  }
+
   test("does not repeat identical descriptions or render unsafe station links", () => {
     const view = render(
       <RadioNowPlaying
         metadata={{
           ...metadata,
-          stationDescription: "Static station description.",
+          stationDescription: "  Static station description. \n",
         }}
         radio={{ ...radio, websiteUrl: "javascript:alert(1)" }}
       />
@@ -512,9 +568,7 @@ describe("RadioNowPlaying", () => {
     );
     const details = within(view.getByRole("dialog"));
     expect(details.getAllByText("Static station description.")).toHaveLength(1);
-    expect(
-      details.queryByRole("heading", { name: "About this broadcast" })
-    ).toBeNull();
+    expect(details.queryByRole("heading", { name: "Description" })).toBeNull();
     expect(details.queryByRole("link", { name: "Station website" })).toBeNull();
   });
 

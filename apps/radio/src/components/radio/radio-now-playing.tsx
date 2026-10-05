@@ -416,9 +416,7 @@ function NowPlayingDetails({
         </div>
         {hasSeparateDescription ? (
           <section className="space-y-2">
-            <h3 className="font-medium text-sm">
-              {hasNowPlaying ? "About this broadcast" : "About the station"}
-            </h3>
+            <h3 className="font-medium text-sm">Description</h3>
             <p
               className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed"
               dir="auto"

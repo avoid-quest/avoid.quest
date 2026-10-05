@@ -1,0 +1,240 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
+import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+// @ts-expect-error jsdom types are not installed in this workspace.
+import { JSDOM } from "jsdom";
+import type { EffectConfig } from "@/lib/audio";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
+  url: "https://radio.test",
+});
+
+class ObserverStub {
+  disconnect() {
+    // JSDOM does not perform layout.
+  }
+
+  observe() {
+    // JSDOM does not perform layout.
+  }
+
+  unobserve() {
+    // JSDOM does not perform layout.
+  }
+}
+
+for (const [key, value] of Object.entries({
+  CustomEvent: dom.window.CustomEvent,
+  cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+  DocumentFragment: dom.window.DocumentFragment,
+  document: dom.window.document,
+  Element: dom.window.Element,
+  getComputedStyle: dom.window.getComputedStyle,
+  HTMLElement: dom.window.HTMLElement,
+  HTMLFormElement: dom.window.HTMLFormElement,
+  MutationObserver: dom.window.MutationObserver,
+  Node: dom.window.Node,
+  navigator: dom.window.navigator,
+  ResizeObserver: ObserverStub,
+  requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+  SVGElement: dom.window.SVGElement,
+  window: dom.window,
+})) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
+Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+  configurable: true,
+  value: true,
+  writable: true,
+});
+
+// React DOM checks for input events when it loads, so it loads after the DOM.
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
+
+// Radix Select measures and scrolls, and knobs capture the pointer, which
+// JSDOM does not do.
+for (const [key, value] of Object.entries({
+  hasPointerCapture: (): boolean => false,
+  releasePointerCapture: (): void => undefined,
+  scrollIntoView: (): void => undefined,
+  setPointerCapture: (): void => undefined,
+})) {
+  Object.defineProperty(dom.window.HTMLElement.prototype, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
+let EffectParams: typeof import("./effect-params")["EffectParams"];
+let ParamSlider: typeof import("./param-slider")["ParamSlider"];
+let createDefaultEffectConfig: typeof import("@/lib/audio/dsp/effects/registry")["createDefaultEffectConfig"];
+let effectConfigSchema: typeof import("@/lib/audio/dsp/effects/effect-config-schema")["effectConfigSchema"];
+let nodeEffectConfigSchema: typeof import("@/lib/audio/dsp/effects/effect-config-schema")["nodeEffectConfigSchema"];
+
+beforeAll(async () => {
+  ({ EffectParams } = await import("./effect-params"));
+  ({ ParamSlider } = await import("./param-slider"));
+  ({ createDefaultEffectConfig } = await import(
+    "@/lib/audio/dsp/effects/registry"
+  ));
+  ({ effectConfigSchema, nodeEffectConfigSchema } = await import(
+    "@/lib/audio/dsp/effects/effect-config-schema"
+  ));
+});
+
+afterEach(cleanup);
+
+const noop = () => undefined;
+
+/** Every MIDI learn target the rendered params expose. */
+function midiTargets(
+  effect: EffectConfig,
+  props: Partial<Parameters<typeof EffectParams>[0]> = {}
+): string[] {
+  const view = render(
+    <EffectParams effect={effect} onUpdate={noop} {...props} />
+  );
+  const targets = [...view.container.querySelectorAll("[data-midi-target]")]
+    .map((element) => element.getAttribute("data-midi-target") ?? "")
+    .sort();
+  cleanup();
+  return targets;
+}
+
+describe("EffectParams MIDI targets", () => {
+  test("a midiTargetPrefix addresses each param as <prefix>:<paramKey>", () => {
+    const compressor = createDefaultEffectConfig("compressor", "c1", 0);
+    const targets = midiTargets(compressor, { midiTargetPrefix: "node:abc" });
+
+    expect(targets).toContain("node:abc:threshold");
+    expect(targets).toContain("node:abc:ratio");
+    // The shared mix row follows the same prefix.
+    expect(targets).toContain("node:abc:dryWet");
+    expect(targets.every((target) => target.startsWith("node:abc:"))).toBe(
+      true
+    );
+  });
+
+  test("the EQ and declarative renderers take the prefix too", () => {
+    const eq = midiTargets(createDefaultEffectConfig("revamp", "eq", 0), {
+      midiTargetPrefix: "node:eq",
+    });
+    expect(eq.length).toBeGreaterThan(0);
+    expect(eq.every((target) => target.startsWith("node:eq:"))).toBe(true);
+
+    const werkstatt = midiTargets(
+      createDefaultEffectConfig("werkstatt", "w", 0),
+      { midiTargetPrefix: "node:w" }
+    );
+    expect(werkstatt).toContain("node:w:dryWet");
+  });
+
+  test("a container's branches are node:<nodeId>:chain:<chainId>:…", () => {
+    const split = createDefaultEffectConfig("fxComposite", "split", 0);
+    const chainIds = (split as { chains: { id: string }[] }).chains.map(
+      (chain) => chain.id
+    );
+    const targets = midiTargets(split, { midiTargetPrefix: "node:split" });
+
+    expect(chainIds.length).toBeGreaterThan(0);
+    for (const chainId of chainIds) {
+      expect(targets).toContain(`node:split:chain:${chainId}:gain`);
+      expect(targets).toContain(`node:split:chain:${chainId}:pan`);
+    }
+  });
+
+  test("DJ callers without the prop keep their deck targets", () => {
+    const compressor = createDefaultEffectConfig("compressor", "fx1", 0);
+    const deck = midiTargets(compressor, {
+      deckId: "deck-a",
+      effectId: "fx1",
+    });
+
+    expect(deck).toContain("deck-a:effect:fx1:threshold");
+    expect(deck).toContain("deck-a:effect:fx1:dryWet");
+    expect(
+      deck.every((target) => target.startsWith("deck-a:effect:fx1:"))
+    ).toBe(true);
+
+    const split = createDefaultEffectConfig("fxComposite", "split", 0);
+    const [chain] = (split as { chains: { id: string }[] }).chains;
+    expect(
+      midiTargets(split, { deckId: "deck-b", effectId: "split" })
+    ).toContain(`deck-b:effect:split:chain:${chain?.id}:gain`);
+
+    // Without a deck or a prefix, nothing is learnable.
+    expect(midiTargets(compressor)).toEqual([]);
+  });
+});
+
+describe("EffectParams selects", () => {
+  test.each([
+    ["vocoder", "Bands", "12 bands", { bandCount: 12 }],
+    ["fold", "Oversample", "4x", { oversample: 4 }],
+  ] as const)(
+    "a numeric %s select commits a number the schemas accept",
+    async (type, label, option, expected) => {
+      const onUpdate = mock((_config: Partial<EffectConfig>) => undefined);
+      const effect = createDefaultEffectConfig(type, "fx", 0);
+      const view = render(<EffectParams effect={effect} onUpdate={onUpdate} />);
+
+      fireEvent.keyDown(view.getByRole("combobox", { name: label }), {
+        key: "Enter",
+      });
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+      fireEvent.click(view.getByRole("option", { name: option }));
+
+      expect(onUpdate).toHaveBeenCalledWith(expected);
+      const updated = { ...effect, ...expected };
+      expect(effectConfigSchema.safeParse(updated).success).toBe(true);
+      expect(nodeEffectConfigSchema.safeParse(updated).success).toBe(true);
+    }
+  );
+});
+
+describe("ParamSlider", () => {
+  function drag(slider: HTMLElement, type: string, clientY: number) {
+    fireEvent(
+      slider,
+      new dom.window.PointerEvent(type, {
+        bubbles: true,
+        buttons: 1,
+        cancelable: true,
+        clientY,
+        pointerId: 1,
+      })
+    );
+  }
+
+  test("frequency knobs sweep logarithmically, so bass is a short drag away", () => {
+    const onChange = mock((_value: number) => undefined);
+    const view = render(
+      <ParamSlider
+        defaultValue={20}
+        formatKey="frequency"
+        label="Freq"
+        max={20_000}
+        min={20}
+        onChange={onChange}
+        step={1}
+        value={20}
+      />
+    );
+    const slider = view.getByRole("slider", { name: "Freq" });
+
+    drag(slider, "pointerdown", 200);
+    drag(slider, "pointermove", 190);
+
+    const [value] = onChange.mock.calls.at(-1) ?? [];
+    expect(value).toBeGreaterThan(20);
+    expect(value).toBeLessThan(200);
+  });
+});

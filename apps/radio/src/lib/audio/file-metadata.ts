@@ -83,10 +83,11 @@ export function extractFileMetadata(file: File): Promise<FileAudioMetadata> {
     };
 
     const onLoaded = () => {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
       cleanup();
       resolve({
         displayName: getDisplayName(file.name),
-        duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+        duration,
         fileName: file.name,
         fileSize: file.size,
         mimeType: file.type || "audio/unknown",

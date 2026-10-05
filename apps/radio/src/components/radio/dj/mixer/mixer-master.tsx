@@ -1,8 +1,10 @@
-// biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+import { Knob } from "@avoid.quest/ui/components/knob";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { HeadphonesIcon, Volume2Icon } from "lucide-react";
+import { HeadphonesIcon } from "lucide-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useMasterPeakLevel } from "@/lib/hooks/use-master-peak-level";
+import { formatPercent } from "../shared/format-utils";
 import { PeakMeter } from "../shared/peak-meter";
 
 type MixerMasterProps = {
@@ -13,6 +15,10 @@ type MixerMasterProps = {
   onHeadphoneVolumeChange: (volume: number) => void;
 };
 
+/**
+ * The master strip between the two channels: cue volume where the channel
+ * knobs sit, then the master fader with its meter, in the same rows.
+ */
 export function MixerMaster({
   masterVolume,
   headphoneVolume,
@@ -23,68 +29,67 @@ export function MixerMaster({
   const masterPeak = useMasterPeakLevel();
   const handleMasterVolumeChange = ([value]: number[]) =>
     onMasterVolumeChange((value ?? 0) / 100);
-  const handleHeadphoneVolumeChange = ([value]: number[]) =>
-    onHeadphoneVolumeChange((value ?? 0) / 100);
 
   return (
-    <div className="space-y-3">
-      {/* Master VU meters */}
-      <div className="space-y-1.5">
-        <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-          Master
-        </span>
-        <PeakMeter
-          left={masterPeak.left}
-          orientation="horizontal"
-          right={masterPeak.right}
-        />
+    <div className="row-span-4 grid grid-rows-subgrid justify-items-center">
+      <div />
+      <div className="flex items-start">
+        {isCueActive ? (
+          <MidiControlWrapper targetId="mixer:headphone-volume">
+            <div className="flex flex-col items-center">
+              <Knob
+                defaultValue={1}
+                format={formatPercent}
+                label="cue"
+                max={1}
+                min={0}
+                onChange={onHeadphoneVolumeChange}
+                size={36}
+                title={`Cue volume: ${formatPercent(headphoneVolume)}`}
+                value={headphoneVolume}
+              />
+              <HeadphonesIcon className="size-3 text-muted-foreground" />
+            </div>
+          </MidiControlWrapper>
+        ) : null}
       </div>
-
-      {/* Master Volume */}
       <MidiControlWrapper targetId="mixer:master-volume">
-        <div className="flex items-center gap-2">
-          <Volume2Icon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-            Vol
-          </span>
-          <Slider
-            className="h-2 flex-1"
-            defaultValue={[100]}
-            max={100}
-            min={0}
-            onValueChange={handleMasterVolumeChange}
-            step={1}
-            value={[masterVolume * 100]}
-          />
-          <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-            {Math.round(masterVolume * 100)}%
-          </span>
-        </div>
-      </MidiControlWrapper>
-
-      {/* Headphone Volume */}
-      {isCueActive ? (
-        <MidiControlWrapper targetId="mixer:headphone-volume">
-          <div className="flex items-center gap-2">
-            <HeadphonesIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
-              Cue
+        <div
+          className="flex h-full min-h-0 items-stretch gap-2"
+          style={{ touchAction: "none" }}
+          title="Master volume. Double-click the handle for 100%."
+        >
+          <div className="flex h-full min-h-0 flex-col items-center gap-1">
+            <span className="w-8 shrink-0 text-center font-mono text-[10px] tabular-nums">
+              {formatPercent(masterVolume)}
             </span>
             <Slider
-              className="h-2 flex-1"
+              aria-label="Master volume"
+              className="min-h-0 flex-1"
+              defaultMarkerValue={100}
               defaultValue={[100]}
               max={100}
               min={0}
-              onValueChange={handleHeadphoneVolumeChange}
+              onValueChange={handleMasterVolumeChange}
+              orientation="vertical"
               step={1}
-              value={[headphoneVolume * 100]}
+              value={[masterVolume * 100]}
+              variant="fader"
             />
-            <span className="w-9 shrink-0 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-              {Math.round(headphoneVolume * 100)}%
+            <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+              out
             </span>
           </div>
-        </MidiControlWrapper>
-      ) : null}
+          <div className="flex w-4 py-5">
+            <PeakMeter
+              className="w-full"
+              left={masterPeak.left}
+              right={masterPeak.right}
+            />
+          </div>
+        </div>
+      </MidiControlWrapper>
+      <div />
     </div>
   );
 }

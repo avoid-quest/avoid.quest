@@ -22,6 +22,19 @@ describe("validatePlaybackStreamUrl", () => {
     });
   });
 
+  test("accepts unmatched Spotify tracks and no other Spotify URI", () => {
+    expect(
+      validatePlaybackStreamUrl(" spotify:track:4Z1olDl8aym5xZYZAat672 ")
+    ).toEqual({
+      normalizedUrl: "spotify:track:4Z1olDl8aym5xZYZAat672",
+      ok: true,
+    });
+    expect(
+      isValidPlaybackStreamUrl("spotify:album:2noRn2Aes5aoNVsU6iWThc")
+    ).toBeFalse();
+    expect(isValidPlaybackStreamUrl("spotify:track:short")).toBeFalse();
+  });
+
   test("rejects reserved deck-side tokens", () => {
     expect(validatePlaybackStreamUrl("right")).toEqual({
       ok: false,

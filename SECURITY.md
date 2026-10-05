@@ -1,17 +1,14 @@
-# Security Policy
+# Reporting a security vulnerability
 
-## Reporting Vulnerabilities
+Email [info@avoid.quest](mailto:info@avoid.quest) with the subject
+“avoid.quest security report”. Please report suspected vulnerabilities privately,
+rather than through public GitHub issues or radio's Feedback form.
 
-Do not open a public issue for suspected vulnerabilities.
+Include the affected page or component, steps to reproduce, and the potential
+impact. Share only the minimum information needed; do not include other people's
+personal data or live credentials. Test only systems and accounts you are
+authorized to test.
 
-Report security issues through GitHub's private vulnerability reporting for this
-repository. If that option is unavailable, contact the repository owner through a
-private GitHub message path and include:
-
-- Affected app, package, route, or dependency
-- Steps to reproduce
-- Potential impact
-- Any suggested mitigation
-
-We will acknowledge valid reports as soon as practical and coordinate disclosure
-after a fix is available.
+We will review the report and coordinate disclosure after a fix is available.
+For ordinary bugs and feature ideas, use
+[GitHub issues](https://github.com/avoid-quest/avoid.quest/issues/new/choose).

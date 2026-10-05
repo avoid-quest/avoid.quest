@@ -41,7 +41,6 @@ type DeckContextValue = {
   setEffectsTempo: (tempo: number) => void;
   // Derived data
   trackProgress: { position: number; duration: number } | undefined;
-  peakLevel: { left: number; right: number };
   metadata: PlatformMetadata | undefined;
   currentTrackIndex: number;
   // Streaming helpers

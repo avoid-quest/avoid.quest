@@ -129,3 +129,6 @@ export const settings: Settings = {
     restoreStateOnLoad: true,
   },
 };
+
+/** When this browser last opened the "What's new" list. */
+export const CHANGELOG_STORAGE_KEY = "radio-changelog-seen";

@@ -1,9 +1,11 @@
 import PQueue from "p-queue";
 import { fadeOut, type Radio } from "@/lib/audio";
+import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
 import {
   createDefaultChannel,
   getPlaybackChannel,
   getPlaybackSession,
+  type PlaybackChannelRecord,
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
   setPlaybackSessionActiveChannel,
@@ -11,12 +13,14 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
 import { validateRadioForMode } from "@/lib/external-url/utils";
+import { isSameStation } from "@/lib/stations/external-station-workflow";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import {
   clearManagedPlaybackErrors,
+  getChannelPlayVolume,
   getReadyManagedPlaybackSession,
   playManagedSound,
   restoreManagedChannels,
@@ -39,13 +43,42 @@ import {
   isSameRadio,
 } from "./playback-actions-shared.js";
 
+/** A Station switch that failed while the previous Station resumed. */
+export type SingleSelectionFailure = {
+  message: string;
+  station: Radio;
+};
+
+type SelectStationOptions = {
+  onSwitchFailed?: (failure: SingleSelectionFailure) => void;
+  play?: boolean;
+};
+
 export type SinglePlayback = {
   activate: () => Promise<void>;
   deactivate: () => Promise<void>;
   reconcileRouting: () => Promise<void>;
-  selectStation: (station: Radio) => Promise<void>;
+  /**
+   * Points the current Channel at the Station's current record: another
+   * record of the same Station (e.g. its Saved copy) without restarting it,
+   * or the same record edited to a new stream, which reconnects to it.
+   */
+  rebindStation: (station: Radio) => Promise<void>;
+  /** Stops and deselects the current Station when it no longer exists. */
+  releaseStation: (station: Radio) => Promise<void>;
+  /**
+   * Selects a Station, keeping the current play state unless `play` asks to
+   * start it. When the switch fails and the previous Station resumes,
+   * `onSwitchFailed` gets the failure; other failures surface as the Channel
+   * error.
+   */
+  selectStation: (
+    station: Radio,
+    options?: SelectStationOptions
+  ) => Promise<void>;
   setPlaying: (playing: boolean) => Promise<void>;
   setVolume: (volume: number) => void;
+  toggleMute: () => void;
 };
 
 type FadeOutSound = (
@@ -194,11 +227,43 @@ function getSelectionChannel() {
   );
 }
 
+/** The Channel already holds this Station with a live sound. */
+function isSelected(
+  channel: PlaybackChannelRecord | null,
+  station: Radio
+): boolean {
+  return Boolean(
+    channel &&
+      isSameRadio(channel.radio, station) &&
+      getPlaybackChannelRuntime(channel.id).soundId
+  );
+}
+
+function createSingleSound(
+  channel: PlaybackChannelRecord,
+  station: Radio,
+  soundId: string | undefined,
+  ctx: PlaybackActionContext
+): string {
+  const createdSoundId = createManagedSound(
+    "single",
+    channel.id,
+    station,
+    soundId,
+    ctx
+  );
+  if (channel.muted) {
+    ctx.channels.setMuted("single", channel.id, true);
+  }
+  return createdSoundId;
+}
+
 async function selectStation(
   station: Radio,
   selection: SelectionState,
   ctx: PlaybackActionContext,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onSwitchFailed?: (failure: SingleSelectionFailure) => void
 ): Promise<void> {
   if (signal.aborted) {
     throw abortReason(signal);
@@ -206,7 +271,9 @@ async function selectStation(
   validateRadioForMode(station, "single");
 
   const channel = getSelectionChannel();
-  if (!channel || isSameRadio(channel.radio, station)) {
+  // A superseded switch restores the previous record without its sound, so a
+  // queued switch back to it must recreate the sound rather than stop here.
+  if (!channel || isSelected(channel, station)) {
     return;
   }
 
@@ -215,19 +282,13 @@ async function selectStation(
   setPlaybackSessionActiveChannel("single", channel.id);
   let playbackAttempted = false;
   try {
-    const soundId = createManagedSound(
-      "single",
-      channel.id,
-      station,
-      undefined,
-      ctx
-    );
+    const soundId = createSingleSound(channel, station, undefined, ctx);
     if (!selection.playbackIntent) {
       return;
     }
     playbackAttempted = true;
     await waitForAbortable(
-      playManagedSound("single", soundId, channel.volume, ctx),
+      playManagedSound("single", soundId, getChannelPlayVolume(channel), ctx),
       signal
     );
     if (signal.aborted) {
@@ -239,20 +300,71 @@ async function selectStation(
     if (signal.aborted) {
       throw abortReason(signal);
     }
-    if (channel.radio && selection.rollbackSoundId) {
-      const restoredSoundId = createManagedSound(
+    await fallBackFromFailedSwitch({
+      channel,
+      ctx,
+      error,
+      onSwitchFailed,
+      // Paused while the switch was pending: fall back quietly.
+      quiet: !selection.playbackIntent && playbackAttempted,
+      selection,
+      station,
+    });
+  }
+}
+
+/**
+ * Whether two records of a Station play through the same sound: an edit to
+ * its stream, stream format or a platform detail that changes how it loads
+ * needs a new one, as a Node lane's does.
+ */
+function loadsTheSame(current: Radio, edited: Radio): boolean {
+  return (
+    JSON.stringify([current.streamUrl, toPlaybackInput(current)]) ===
+    JSON.stringify([edited.streamUrl, toPlaybackInput(edited)])
+  );
+}
+
+/** Moves the selected Station's sound to the stream its record now has. */
+async function reconnectEditedStation(
+  station: Radio,
+  selection: SelectionState,
+  ctx: PlaybackActionContext,
+  signal: AbortSignal
+): Promise<void> {
+  const channel = getSelectionChannel();
+  if (
+    !channel?.radio ||
+    channel.radio.id !== station.id ||
+    loadsTheSame(channel.radio, station)
+  ) {
+    return;
+  }
+  validateRadioForMode(station, "single");
+  const { soundId } = getPlaybackChannelRuntime(channel.id);
+  const edited = { ...channel, radio: station };
+  upsertPlaybackChannel("single", edited);
+  if (!soundId) {
+    return;
+  }
+  cleanupManagedChannel(channel.id, ctx);
+  const nextSoundId = createSingleSound(edited, station, soundId, ctx);
+  if (!selection.playbackIntent) {
+    return;
+  }
+  try {
+    await waitForAbortable(
+      playManagedSound(
         "single",
-        channel.id,
-        channel.radio,
-        selection.rollbackSoundId,
+        nextSoundId,
+        getChannelPlayVolume(edited),
         ctx
-      );
-      if (selection.playbackIntent) {
-        await playManagedSound("single", restoredSoundId, channel.volume, ctx);
-      }
-    }
-    if (!selection.playbackIntent && playbackAttempted) {
-      return;
+      ),
+      signal
+    );
+  } catch (error) {
+    if (signal.aborted) {
+      throw abortReason(signal);
     }
     throw reportPlaybackActionError(ctx.reportError, {
       cause: error,
@@ -261,6 +373,60 @@ async function selectStation(
       mode: "single",
       radio: station,
     });
+  }
+}
+
+/** Restores the previous Station after a failed switch and reports it. */
+async function fallBackFromFailedSwitch({
+  channel,
+  ctx,
+  error,
+  onSwitchFailed,
+  quiet,
+  selection,
+  station,
+}: {
+  channel: PlaybackChannelRecord;
+  ctx: PlaybackActionContext;
+  error: unknown;
+  onSwitchFailed?: (failure: SingleSelectionFailure) => void;
+  quiet: boolean;
+  selection: SelectionState;
+  station: Radio;
+}): Promise<void> {
+  const reportedError = quiet
+    ? null
+    : reportPlaybackActionError(ctx.reportError, {
+        cause: error,
+        channelId: channel.id,
+        code: "PLAY_ERROR",
+        mode: "single",
+        radio: station,
+      });
+  if (!(channel.radio && selection.rollbackSoundId)) {
+    if (reportedError) {
+      throw reportedError;
+    }
+    return;
+  }
+  // The previous Station comes back, so the failure belongs to the Station
+  // that failed rather than inline under the one that resumes.
+  if (reportedError) {
+    onSwitchFailed?.({ message: reportedError.userMessage, station });
+  }
+  const restoredSoundId = createSingleSound(
+    channel,
+    channel.radio,
+    selection.rollbackSoundId,
+    ctx
+  );
+  if (selection.playbackIntent) {
+    await playManagedSound(
+      "single",
+      restoredSoundId,
+      getChannelPlayVolume(channel),
+      ctx
+    );
   }
 }
 
@@ -280,12 +446,17 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
 
   const { isPlaying: shouldResume, soundId } = runtime;
   cleanupManagedChannel(channel.id, ctx);
-  createManagedSound("single", channel.id, channel.radio, soundId, ctx);
+  createSingleSound(channel, channel.radio, soundId, ctx);
   if (!shouldResume) {
     return;
   }
   try {
-    await playManagedSound("single", soundId, channel.volume, ctx);
+    await playManagedSound(
+      "single",
+      soundId,
+      getChannelPlayVolume(channel),
+      ctx
+    );
   } catch (error) {
     throw reportPlaybackActionError(ctx.reportError, {
       cause: error,
@@ -304,6 +475,48 @@ function createSinglePlayback(
 ): SinglePlayback {
   const selection = new SelectionCoordinator();
   let playingRevision = 0;
+  // What Unmute restores after the volume slider was dragged down to zero.
+  let unmutedVolume = 1;
+
+  const setPlaying = async (playing: boolean) => {
+    playingRevision += 1;
+    const revision = playingRevision;
+    clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
+    selection.updatePlaybackIntent(playing);
+    const channel = getSelectionChannel();
+    try {
+      await setManagedChannelPlaying(
+        "single",
+        channel ?? undefined,
+        playing,
+        ctx
+      );
+    } catch (error) {
+      if (revision === playingRevision) {
+        const reportedError = reportPlaybackActionError(ctx.reportError, {
+          cause: error,
+          channelId: channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
+          code: "PLAY_ERROR",
+          mode: "single",
+          radio: channel?.radio ?? undefined,
+        });
+        setManagedPlaybackError(
+          channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
+          reportedError,
+          channel?.radio ?? undefined
+        );
+      }
+    }
+  };
+
+  const setMuted = (channelId: string, muted: boolean, volume: number) => {
+    ctx.channels.setMuted("single", channelId, muted);
+    if (!muted) {
+      // The engine restores its own pre-mute gain, which is unset after a
+      // reload; re-apply the persisted Channel volume instead.
+      ctx.channels.setVolume("single", channelId, volume);
+    }
+  };
 
   return {
     async activate() {
@@ -335,6 +548,33 @@ function createSinglePlayback(
         cleanupOrphanedSounds(soundIds, ctx, "single");
       });
     },
+    async rebindStation(station) {
+      const channel = getSelectionChannel();
+      if (!channel?.radio) {
+        return;
+      }
+      if (channel.radio.id !== station.id) {
+        if (isSameStation(channel.radio, station)) {
+          upsertPlaybackChannel("single", { ...channel, radio: station });
+        }
+        return;
+      }
+      if (loadsTheSame(channel.radio, station)) {
+        return;
+      }
+      playingRevision += 1;
+      clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
+      const runtime = getPlaybackChannelRuntime(channel.id);
+      // Still connecting counts as playing, so an edit then resumes it.
+      const resume = runtime.isPlaying || runtime.isLoading;
+      try {
+        await selection.runSelection(resume, null, (signal, state) =>
+          reconnectEditedStation(station, state, ctx, signal)
+        );
+      } catch (error) {
+        setManagedPlaybackError(channel.id, error, station);
+      }
+    },
     async reconcileRouting() {
       try {
         await selection.runAfterCurrent(() => reconcileRouting(ctx));
@@ -346,19 +586,41 @@ function createSinglePlayback(
         throw error;
       }
     },
-    async selectStation(station) {
+    async releaseStation(station) {
+      if (!isSameRadio(getSelectionChannel()?.radio, station)) {
+        return;
+      }
+      playingRevision += 1;
+      // Queued as a selection so an in-flight connect to it is abandoned.
+      await selection.runSelection(false, null, () => {
+        const channel = getSelectionChannel();
+        if (channel && isSameRadio(channel.radio, station)) {
+          cleanupManagedChannel(channel.id, ctx);
+          upsertPlaybackChannel("single", { ...channel, radio: null });
+        }
+        return Promise.resolve();
+      });
+    },
+    async selectStation(station, { onSwitchFailed, play = false } = {}) {
       const channel = getSelectionChannel();
-      if (channel && isSameRadio(channel.radio, station)) {
+      if (channel && isSelected(channel, station)) {
+        if (play && !getPlaybackChannelRuntime(channel.id).isPlaying) {
+          await setPlaying(true);
+        }
         return;
       }
       playingRevision += 1;
       clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
       const runtime = channel ? getPlaybackChannelRuntime(channel.id) : null;
+      if (play) {
+        selection.updatePlaybackIntent(true);
+      }
       try {
         await selection.runSelection(
-          runtime?.isPlaying ?? false,
+          play || (runtime?.isPlaying ?? false),
           runtime?.soundId ?? null,
-          (signal, state) => selectStation(station, state, ctx, signal)
+          (signal, state) =>
+            selectStation(station, state, ctx, signal, onSwitchFailed)
         );
       } catch (error) {
         setManagedPlaybackError(
@@ -368,42 +630,32 @@ function createSinglePlayback(
         );
       }
     },
-    async setPlaying(playing) {
-      playingRevision += 1;
-      const revision = playingRevision;
-      clearManagedPlaybackErrors(SINGLE_CHANNEL_IDS);
-      selection.updatePlaybackIntent(playing);
-      const channel = getSelectionChannel();
-      try {
-        await setManagedChannelPlaying(
-          "single",
-          channel ?? undefined,
-          playing,
-          ctx
-        );
-      } catch (error) {
-        if (revision === playingRevision) {
-          const reportedError = reportPlaybackActionError(ctx.reportError, {
-            cause: error,
-            channelId: channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
-            code: "PLAY_ERROR",
-            mode: "single",
-            radio: channel?.radio ?? undefined,
-          });
-          setManagedPlaybackError(
-            channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
-            reportedError,
-            channel?.radio ?? undefined
-          );
-        }
-      }
-    },
+    setPlaying,
     setVolume(volume) {
-      ctx.channels.setVolume(
-        "single",
-        getSelectionChannel()?.id ?? SINGLE_ACTIVE_CHANNEL_ID,
-        volume
-      );
+      const channel = getSelectionChannel();
+      const channelId = channel?.id ?? SINGLE_ACTIVE_CHANNEL_ID;
+      const audibleVolume = volume > 0 ? volume : channel?.volume;
+      if (audibleVolume && audibleVolume > 0) {
+        unmutedVolume = audibleVolume;
+      }
+      if (volume > 0 && channel?.muted) {
+        ctx.channels.setMuted("single", channelId, false);
+      }
+      ctx.channels.setVolume("single", channelId, volume);
+    },
+    toggleMute() {
+      const channel = getSelectionChannel();
+      if (!channel) {
+        return;
+      }
+      // A slider dragged to zero, or a session muted before the flag
+      // existed, stored volume 0 instead.
+      const volume = channel.volume > 0 ? channel.volume : unmutedVolume;
+      if (channel.muted || channel.volume === 0) {
+        setMuted(channel.id, false, volume);
+        return;
+      }
+      setMuted(channel.id, true, volume);
     },
   };
 }

@@ -2,11 +2,11 @@
   "name": "@avoid.quest/web",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "astro build",
-    "cf-build": "astro build",
+    "build": "bun ../../scripts/prepare-legal.ts web && astro build",
+    "cf-build": "bun run build",
     "cf-deploy": "wrangler deploy",
     "cf-upload": "wrangler versions upload",
     "deploy": "bun run build && wrangler deploy",
@@ -16,12 +16,12 @@
     "typecheck": "astro check && tsc --noEmit"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^14.2.5",
-    "@astrojs/react": "^6.0.4",
+    "@astrojs/cloudflare": "^14.3.3",
+    "@astrojs/react": "^7.0.0",
     "@avoid.quest/ui": "workspace:*",
     "@fontsource/geist-mono": "^5.3.0",
     "@fontsource/geist-sans": "^5.3.0",
-    "astro": "^7.2.7",
+    "astro": "^7.3.5",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
@@ -33,7 +33,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "typescript": "catalog:",
-    "vite": "^8.2.2",
+    "vite": "^8.3.2",
     "wrangler": "catalog:"
   }
 }

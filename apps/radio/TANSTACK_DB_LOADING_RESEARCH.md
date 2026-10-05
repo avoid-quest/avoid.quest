@@ -18,7 +18,8 @@ default rows until `RootShell`'s post-paint effect. `Radios` simultaneously:
 
 - discards `isLoading` / `isReady` from the radios and settings live queries;
 - converts missing radios to `[]` and missing settings to the default
-  `multiple` mode; and
+  `multiple` mode (historical: Node has since replaced Multiple, and an
+  unknown or legacy mode now normalises through `normalizePlayerMode`); and
 - wraps the lazy mode chunk in `<Suspense fallback={null}>`
   (`src/components/radio/index.tsx:52-72`).
 
@@ -76,7 +77,9 @@ shell was all the browser could show until client hydration
    [Start fallback timing](https://tanstack.com/start/latest/docs/framework/react/guide/selective-ssr#fallback-rendering)).
 3. Replace the mode chunk's `fallback={null}` with single, multiple, and DJ
    layout-matched skeletons. This covers JavaScript chunk latency independently
-   of DB readiness.
+   of DB readiness. (Multiple is gone; the skeletons are now single, node and
+   DJ, and the node one's canvas part is also the fallback for the lazy React
+   Flow canvas.)
 4. Preserve live-query readiness in the radio/settings/session hooks. If the
    loader is not the single bootstrap gate, render the skeleton while any
    required query is not ready and render an error boundary when the status is
@@ -93,3 +96,10 @@ shell was all the browser could show until client hydration
 Chrome refresh measurements moved first meaningful fallback from a roughly
 994 ms empty interval to the first frame. Warm usable-mode medians are now about
 423 ms (single), 440 ms (multiple), and 456 ms (DJ) in the local Vite runtime.
+
+The Multiple figure is historical: Multiple mode was removed when Node replaced
+it, and it has not been re-measured. Node mode loads the `node-*.js` chunk
+(`src/components/radio/node/index.tsx`, through `loadNodeRadios` in
+`src/components/radio/radio-mode-loader.ts`). The canvas follows in the lazy
+`node-canvas-*.js` and `vendor-xyflow-*.js` client chunks, which
+`scripts/check-node-chunk.ts` keeps out of the eager and Worker bundles.

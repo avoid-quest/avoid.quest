@@ -24,6 +24,22 @@ import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 
+/** Shared by every station menu so the copy action and its toast read the same. */
+export async function copyStreamUrl(radio: Radio) {
+  try {
+    await navigator.clipboard.writeText(radio.streamUrl);
+    toast.success("Stream URL copied");
+  } catch {
+    toast.error("Couldn't copy stream URL");
+  }
+}
+
+export function openStationWebsite(radio: Radio) {
+  if (radio.websiteUrl?.trim()) {
+    window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
+  }
+}
+
 type RadioItemActionsProps = {
   radio: Radio;
   onEdit?: (radio: Radio) => void;
@@ -56,11 +72,23 @@ export function RadioItemActions({
     setIsUpdating(true);
     try {
       const newEnabled = !radio.enabled;
-      updateRadio(String(radio.id), { enabled: newEnabled });
+      const id = String(radio.id);
+      updateRadio(id, { enabled: newEnabled });
       onToggle(radio, newEnabled);
-      toast.success(`${radio.name} ${newEnabled ? "enabled" : "disabled"}`);
+      toast.success(
+        newEnabled ? `Showing "${radio.name}"` : `Hid "${radio.name}"`,
+        {
+          action: {
+            label: "Undo",
+            onClick: () => {
+              updateRadio(id, { enabled: !newEnabled });
+              onToggle(radio, !newEnabled);
+            },
+          },
+        }
+      );
     } catch {
-      toast.error("Failed to toggle radio");
+      toast.error("Couldn't update station");
     } finally {
       setIsUpdating(false);
     }
@@ -81,21 +109,14 @@ export function RadioItemActions({
     onSave?.(radio);
   };
 
-  const handleCopyStreamLink = async (event: React.MouseEvent) => {
+  const handleCopyStreamLink = (event: React.MouseEvent) => {
     event.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(radio.streamUrl);
-      toast.success("Stream link copied to clipboard");
-    } catch {
-      toast.error("Failed to copy stream link");
-    }
+    copyStreamUrl(radio);
   };
 
   const handleGoToWebsite = (event: React.MouseEvent) => {
     event.stopPropagation();
-    if (radio.websiteUrl) {
-      window.open(radio.websiteUrl, "_blank", "noopener,noreferrer");
-    }
+    openStationWebsite(radio);
   };
   const handleStopPropagation = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -106,35 +127,35 @@ export function RadioItemActions({
       <DropdownMenuTrigger asChild>
         <Button
           aria-label={`Options for ${radio.name}`}
-          className="h-8 w-8 p-0"
+          className="size-7"
           disabled={disabled || isUpdating}
           onClick={handleStopPropagation}
-          size="sm"
+          size="icon"
           variant="ghost"
         >
-          <MoreHorizontalIcon className="size-4" />
+          <MoreHorizontalIcon />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {isSession && onSave ? (
           <>
             <DropdownMenuItem onClick={handleSave}>
-              <BookmarkPlusIcon className="mr-2 size-4" />
-              Save to Collection
+              <BookmarkPlusIcon />
+              Save
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         ) : null}
 
         <DropdownMenuItem onClick={handleCopyStreamLink}>
-          <CopyIcon className="mr-2 size-4" />
-          Copy Stream Link
+          <CopyIcon />
+          Copy stream URL
         </DropdownMenuItem>
 
-        {radio.websiteUrl?.trim() !== "" && (
+        {Boolean(radio.websiteUrl?.trim()) && (
           <DropdownMenuItem onClick={handleGoToWebsite}>
-            <ExternalLinkIcon className="mr-2 size-4" />
-            Go to Website
+            <ExternalLinkIcon />
+            Website
           </DropdownMenuItem>
         )}
 
@@ -143,7 +164,7 @@ export function RadioItemActions({
             <DropdownMenuSeparator />
 
             <DropdownMenuItem onClick={handleEdit}>
-              <PencilIcon className="mr-2 size-4" />
+              <PencilIcon />
               Edit
             </DropdownMenuItem>
 
@@ -151,13 +172,13 @@ export function RadioItemActions({
               <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
                 {radio.enabled ? (
                   <>
-                    <ToggleRightIcon className="mr-2 size-4" />
-                    Disable
+                    <ToggleRightIcon />
+                    Hide
                   </>
                 ) : (
                   <>
-                    <ToggleLeftIcon className="mr-2 size-4" />
-                    Enable
+                    <ToggleLeftIcon />
+                    Show
                   </>
                 )}
               </DropdownMenuItem>
@@ -167,18 +188,15 @@ export function RadioItemActions({
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem
-          className="text-destructive focus:text-destructive"
-          onClick={handleDelete}
-        >
+        <DropdownMenuItem onClick={handleDelete} variant="destructive">
           {isSession ? (
             <>
-              <XIcon className="mr-2 size-4" />
+              <XIcon />
               Remove
             </>
           ) : (
             <>
-              <Trash2Icon className="mr-2 size-4" />
+              <Trash2Icon />
               Delete
             </>
           )}

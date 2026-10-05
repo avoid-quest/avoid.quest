@@ -25,6 +25,23 @@ const soundcloudMetadataSchema = z
   })
   .passthrough();
 
+const mixcloudMetadataSchema = z
+  .object({
+    itemType: z.literal("show"),
+    platform: z.literal("mixcloud"),
+    url: z.string(),
+  })
+  .passthrough();
+
+const spotifyMetadataSchema = z
+  .object({
+    itemType: z.enum(["track", "album", "playlist"]),
+    platform: z.literal("spotify"),
+    spotifyId: z.string(),
+    url: z.string(),
+  })
+  .passthrough();
+
 const youtubeMetadataSchema = z
   .object({
     itemType: z.enum(["video", "playlist"]),
@@ -35,10 +52,12 @@ const youtubeMetadataSchema = z
 
 const deviceInputMetadataSchema = z
   .object({
+    capture: z.literal("display").optional(),
     deviceId: z.string(),
     deviceLabel: z.string(),
     itemType: z.literal("track"),
     platform: z.literal("device-input"),
+    sourceUrl: z.string().optional(),
     url: z.literal(""),
   })
   .passthrough();
@@ -82,9 +101,11 @@ const fileMetadataSchema = z
 export const platformMetadataSchema = z
   .discriminatedUnion("platform", [
     bandcampMetadataSchema,
+    mixcloudMetadataSchema,
     radioBrowserMetadataSchema,
     radioGardenMetadataSchema,
     soundcloudMetadataSchema,
+    spotifyMetadataSchema,
     youtubeMetadataSchema,
     deviceInputMetadataSchema,
     staticAudioMetadataSchema,

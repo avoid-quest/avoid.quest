@@ -22,7 +22,6 @@ type CompressorCanvasProps = {
 
 const GRID_COLOR = "rgba(128, 128, 128, 0.2)";
 const UNITY_LINE_COLOR = "rgba(128, 128, 128, 0.4)";
-const CURVE_COLOR = "rgba(59, 130, 246, 0.9)";
 const THRESHOLD_COLOR = "rgba(239, 68, 68, 0.6)";
 const GR_METER_COLOR = "rgba(34, 197, 94, 0.8)";
 
@@ -150,8 +149,10 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Draw compressor transfer curve
-      ctx.strokeStyle = CURVE_COLOR;
+      // Draw compressor transfer curve. The canvas carries text-foreground,
+      // so the curve follows the theme like the EQ curve.
+      const foreground = getComputedStyle(canvas).color;
+      ctx.strokeStyle = foreground;
       ctx.lineWidth = 2;
       ctx.beginPath();
 
@@ -184,8 +185,8 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
         ctx.fillStyle = GR_METER_COLOR;
         ctx.fillRect(w - grWidth - 4, 4, grWidth, grHeight);
 
-        // GR label
-        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+        // GR label, in the theme's foreground
+        ctx.fillStyle = foreground;
         ctx.font = "10px monospace";
         ctx.textAlign = "right";
         ctx.fillText(`${gainReduction.toFixed(1)} dB`, w - grWidth - 8, 14);
@@ -202,15 +203,24 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
       draw();
     });
     resizeObserver.observe(canvas);
+    // next-themes switches the theme class on <html>; redraw in the new colours.
+    const themeObserver = new MutationObserver(draw);
+    themeObserver.observe(document.documentElement, {
+      attributeFilter: ["class"],
+    });
 
     return () => {
       resizeObserver.disconnect();
+      themeObserver.disconnect();
     };
   }, [config, gainReduction, minDb, maxDb]);
 
   return (
     <canvas
-      className={cn("h-24 w-full rounded bg-background/50", className)}
+      className={cn(
+        "h-24 w-full rounded bg-background/50 text-foreground",
+        className
+      )}
       ref={canvasRef}
     />
   );

@@ -7,6 +7,7 @@ import {
 } from "@/lib/external-platform-search-workflow";
 import {
   searchBandcamp,
+  searchMixcloud,
   searchRadioGarden,
   searchSoundCloud,
 } from "@/lib/platform-client";
@@ -18,6 +19,9 @@ const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   adapters: {
     bandcamp: {
       search: searchBandcamp,
+    },
+    mixcloud: {
+      search: searchMixcloud,
     },
     radiogarden: {
       search: searchRadioGarden,

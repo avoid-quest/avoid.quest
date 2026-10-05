@@ -3,11 +3,11 @@ import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
-import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import {
   Select,
@@ -37,7 +37,6 @@ import {
   FeedbackWidget,
 } from "git-feedback/react";
 import { MessageCircleMore } from "lucide-react";
-import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
 import {
   type FEEDBACK_CATEGORIES,
@@ -49,37 +48,20 @@ const feedbackCategoryLabels: Record<
   (typeof FEEDBACK_CATEGORIES)[number],
   string
 > = {
-  bug: "🐛 Bug report",
-  idea: "💡 Feature idea",
-  question: "❓ Question",
+  bug: "Bug report",
+  idea: "Feature idea",
+  question: "Question",
 };
 
 const feedbackCopy = {
   categoryLabel: "Type",
   messageLabel: "Message",
-  sendingLabel: "Sending...",
+  sendingLabel: "Sending…",
   sendLabel: "Send feedback",
   successMessage: "Feedback sent",
   title: "Radio feedback",
   triggerLabel: "Feedback",
 };
-
-type ContactEmailContextValue = {
-  readonly contactEmail: string;
-  readonly setContactEmail: (email: string) => void;
-};
-
-const ContactEmailContext = createContext<ContactEmailContextValue | null>(
-  null
-);
-
-function useContactEmail() {
-  const context = useContext(ContactEmailContext);
-  if (!context) {
-    throw new Error("ContactEmailContext is missing");
-  }
-  return context;
-}
 
 function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
   return (
@@ -87,16 +69,15 @@ function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
       <TooltipTrigger asChild>
         <Button
           aria-label={viewModel.copy.triggerLabel}
-          className="text-muted-foreground hover:text-foreground"
           onClick={viewModel.show}
           size="icon"
           type="button"
           variant="ghost"
         >
-          <MessageCircleMore className="size-4" />
+          <MessageCircleMore className="size-3.5" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent sideOffset={6}>
+      <TooltipContent side="bottom" sideOffset={6}>
         {viewModel.copy.triggerLabel}
       </TooltipContent>
     </Tooltip>
@@ -130,62 +111,43 @@ function FeedbackForm({ children, viewModel }: FeedbackFormSlotProps) {
 
 function FeedbackHeader({ viewModel }: FeedbackHeaderSlotProps) {
   return (
-    <DialogHeader className="border-border/60 border-b pb-4">
-      <DialogTitle
-        className="text-center font-mono text-foreground/90 text-sm uppercase tracking-wider"
-        id={viewModel.titleId}
-      >
-        {viewModel.copy.title}
-      </DialogTitle>
+    <DialogHeader>
+      <DialogTitle id={viewModel.titleId}>{viewModel.copy.title}</DialogTitle>
+      <DialogDescription>
+        Your feedback becomes a public GitHub issue, including your radio mode,
+        app version and browser details. Don’t include email addresses, private
+        links or secrets. Report security issues to info@avoid.quest instead.
+      </DialogDescription>
     </DialogHeader>
   );
 }
 
 function FeedbackMessageField({ viewModel }: FeedbackMessageFieldSlotProps) {
-  const { contactEmail, setContactEmail } = useContactEmail();
-  const handleContactEmailChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    setContactEmail(event.target.value);
-  };
   const handleBodyChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     viewModel.setBody(event.target.value);
   };
 
   return (
-    <>
-      <div className="grid gap-2">
-        <Label htmlFor="feedback-contact-email">Email (optional)</Label>
-        <Input
-          autoComplete="email"
-          className="bg-background/60"
-          disabled={viewModel.isSubmitting}
-          id="feedback-contact-email"
-          inputMode="email"
-          maxLength={254}
-          onChange={handleContactEmailChange}
-          placeholder="you@example.com"
-          type="email"
-          value={contactEmail}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor={viewModel.bodyId}>{viewModel.copy.messageLabel}</Label>
-        <Textarea
-          className="min-h-32 resize-none bg-background/60"
-          disabled={viewModel.isSubmitting}
-          id={viewModel.bodyId}
-          onChange={handleBodyChange}
-          placeholder="Describe what happened, what you expected, or what would make radio better."
-          required
-          value={viewModel.body}
-        />
-      </div>
-    </>
+    <div className="grid gap-2">
+      <Label htmlFor={viewModel.bodyId}>{viewModel.copy.messageLabel}</Label>
+      <Textarea
+        className="min-h-32 resize-none bg-background/60"
+        disabled={viewModel.isSubmitting}
+        id={viewModel.bodyId}
+        onChange={handleBodyChange}
+        placeholder="Describe what happened, what you expected, or what would make radio better."
+        required
+        value={viewModel.body}
+      />
+    </div>
   );
 }
 
 function FeedbackCategoryField({ viewModel }: FeedbackCategoryFieldSlotProps) {
+  if (viewModel.categories.length === 0) {
+    return null;
+  }
+
   return (
     <div className="grid gap-2">
       <Label htmlFor={viewModel.categoryId}>
@@ -234,7 +196,7 @@ function FeedbackStatusOutput({ viewModel }: FeedbackStatusOutputSlotProps) {
 
 function FeedbackActions({ viewModel }: FeedbackActionsSlotProps) {
   return (
-    <DialogFooter className="border-border/60 border-t pt-4">
+    <DialogFooter>
       <FeedbackCancelAction viewModel={viewModel} />
       <FeedbackSubmitAction viewModel={viewModel} />
     </DialogFooter>
@@ -246,6 +208,7 @@ function FeedbackCancelAction({ viewModel }: FeedbackCancelActionSlotProps) {
     <Button
       disabled={viewModel.isSubmitting}
       onClick={viewModel.close}
+      size="sm"
       type="button"
       variant="outline"
     >
@@ -259,6 +222,7 @@ function FeedbackSubmitAction({ viewModel }: FeedbackSubmitActionSlotProps) {
     <Button
       aria-busy={viewModel.isSubmitting}
       disabled={!viewModel.canSubmit}
+      size="sm"
       type="submit"
     >
       {viewModel.isSubmitting
@@ -269,40 +233,30 @@ function FeedbackSubmitAction({ viewModel }: FeedbackSubmitActionSlotProps) {
 }
 
 export function AppFeedback() {
-  const [contactEmail, setContactEmail] = useState("");
   const mode = usePlayerMode();
   const handleAfterSubmit = () => {
-    setContactEmail("");
     toast.success(feedbackCopy.successMessage);
   };
-  const getUntrustedMetadata = () => {
-    const email = contactEmail.trim();
-    return {
-      ...(email ? { contactEmail: email } : {}),
-      mode,
-    };
-  };
+  const getUntrustedMetadata = () => ({ mode });
 
   return (
-    <ContactEmailContext.Provider value={{ contactEmail, setContactEmail }}>
-      <FeedbackWidget
-        components={{
-          Actions: FeedbackActions,
-          CancelAction: FeedbackCancelAction,
-          CategoryField: FeedbackCategoryField,
-          Dialog: FeedbackDialog,
-          Form: FeedbackForm,
-          Header: FeedbackHeader,
-          MessageField: FeedbackMessageField,
-          StatusOutput: FeedbackStatusOutput,
-          SubmitAction: FeedbackSubmitAction,
-          Trigger: FeedbackTrigger,
-        }}
-        copy={feedbackCopy}
-        endpoint={FEEDBACK_ENDPOINT}
-        onAfterSubmit={handleAfterSubmit}
-        untrustedMetadata={getUntrustedMetadata}
-      />
-    </ContactEmailContext.Provider>
+    <FeedbackWidget
+      components={{
+        Actions: FeedbackActions,
+        CancelAction: FeedbackCancelAction,
+        CategoryField: FeedbackCategoryField,
+        Dialog: FeedbackDialog,
+        Form: FeedbackForm,
+        Header: FeedbackHeader,
+        MessageField: FeedbackMessageField,
+        StatusOutput: FeedbackStatusOutput,
+        SubmitAction: FeedbackSubmitAction,
+        Trigger: FeedbackTrigger,
+      }}
+      copy={feedbackCopy}
+      endpoint={FEEDBACK_ENDPOINT}
+      onAfterSubmit={handleAfterSubmit}
+      untrustedMetadata={getUntrustedMetadata}
+    />
   );
 }

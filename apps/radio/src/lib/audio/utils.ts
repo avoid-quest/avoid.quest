@@ -16,6 +16,18 @@ export function isSinkIdSupported(): boolean {
 }
 
 /**
+ * Check if an `<audio>` element can choose its output device
+ * (`HTMLMediaElement.setSinkId`), which ships apart from
+ * `AudioContext.setSinkId`: Firefox has only this one.
+ */
+export function isMediaElementSinkIdSupported(): boolean {
+  if (typeof HTMLMediaElement === "undefined") {
+    return false;
+  }
+  return "setSinkId" in HTMLMediaElement.prototype;
+}
+
+/**
  * Safely disconnect an AudioNode from all destinations,
  * ignoring "already disconnected" errors.
  */

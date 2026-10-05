@@ -123,7 +123,7 @@ function createTestDecks(onLoad: () => void = () => undefined): DjDeckModule & {
     load,
     pendingSource: {
       cancel: mock(() => undefined),
-      getSnapshot: mock(() => null),
+      getSnapshot: mock(() => ({ "deck-a": null, "deck-b": null })),
       subscribe: mock(() => () => undefined),
     },
   };
@@ -206,6 +206,52 @@ describe("createDjModeLifecycleWorkflow", () => {
     );
     expect(setHeadphoneVolume).toHaveBeenCalledWith(0.65);
     expect(activationOrder.slice(0, 2)).toEqual(["headphone", "deck"]);
+  });
+
+  test("clears a local folder's deck instead of restoring its revoked URLs", async () => {
+    await playbackSessionsCollection.stateWhenReady();
+    const localPlaylist = {
+      id: "local-playlist-1",
+      name: "Folder",
+      platformMetadata: {
+        displayName: "Folder",
+        duration: 10,
+        fileName: "Folder",
+        fileSize: 100,
+        isLocal: true,
+        itemType: "playlist",
+        mimeType: "audio/mpeg",
+        platform: "static-audio",
+        streamUrl: "blob:https://radio.example/one",
+        tracks: [{ streamUrl: "blob:https://radio.example/one", title: "One" }],
+        url: "",
+      },
+      streamUrl: "blob:https://radio.example/one",
+    } satisfies Radio;
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: [
+        {
+          ...createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0),
+          radio: localPlaylist,
+        },
+      ],
+      crossfadePosition: 0.5,
+      headphoneVolume: 0.5,
+      id: "dj",
+      masterVolume: 0.7,
+    });
+    const context = createTestContext();
+    context.getMainOutputRouter = () =>
+      ({ setHeadphoneVolume: () => undefined }) as unknown as OutputRouting;
+    const decks = createTestDecks();
+    const workflow = createDjModeLifecycleWorkflow({ ctx: context, decks });
+
+    await workflow.activate();
+
+    expect(decks.load).toHaveBeenCalledTimes(1);
+    expect(decks.load).toHaveBeenCalledWith({ radio: null, type: "radio" });
+    expect(getPlaybackChannel("dj", DECK_A_CHANNEL_ID)?.radio).toBeNull();
   });
 
   test("clears stale surfaced errors during activation even when no decks restore", async () => {

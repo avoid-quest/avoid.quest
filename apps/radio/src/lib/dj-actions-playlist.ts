@@ -4,6 +4,7 @@ import {
   type StreamFormat,
 } from "@/lib/audio/playback/stream-format";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
+import { isCollectionItem } from "@/lib/external-url/metadata-helpers";
 
 type PlaylistTrack = {
   format?: StreamFormat;
@@ -26,19 +27,6 @@ function getTrackStreamUrl(track: PlaylistTrack, platform: string): string {
   }
 
   return "";
-}
-
-function isSupportedCollectionItem(
-  platform: string,
-  itemType: string | undefined
-): boolean {
-  return (
-    (platform === "bandcamp" &&
-      (itemType === "album" || itemType === "collection")) ||
-    (platform === "soundcloud" && itemType === "playlist") ||
-    (platform === "youtube" && itemType === "playlist") ||
-    (platform === "static-audio" && itemType === "playlist")
-  );
 }
 
 function findPlayableTrackStreamUrl(
@@ -101,11 +89,20 @@ const findNextTrack = (
   }
 
   const { tracks, platform, itemType } = platformMetadata;
-  if (!isSupportedCollectionItem(platform, itemType) || tracks.length === 0) {
+  if (!isCollectionItem(platform, itemType) || tracks.length === 0) {
     return null;
   }
 
-  const currentIndex = findCurrentTrackIndex(tracks, radio.streamUrl, platform);
+  const occurrence =
+    platformMetadata.platform === "spotify"
+      ? platformMetadata.currentTrackIndex
+      : undefined;
+  const currentIndex =
+    occurrence !== undefined &&
+    Number.isInteger(occurrence) &&
+    tracks[occurrence]?.streamUrl === radio.streamUrl
+      ? occurrence
+      : findCurrentTrackIndex(tracks, radio.streamUrl, platform);
   const searchStartIndex = currentIndex === -1 ? 0 : currentIndex + 1;
   return findPlayableTrackStreamUrl(tracks, platform, searchStartIndex);
 };

@@ -12,19 +12,20 @@ import { Textarea } from "@avoid.quest/ui/components/textarea";
 import type { ChangeEvent } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import type { EffectConfig } from "@/lib/audio";
-import type {
-  CheckboxParamDef,
-  EffectSchema,
-  GroupParamDef,
-  ParamDef,
-  SelectParamDef,
-  SliderParamDef,
-  TextParamDef,
+import {
+  type CheckboxParamDef,
+  type EffectSchema,
+  type GroupParamDef,
+  type ParamDef,
+  parseSelectValue,
+  type SelectParamDef,
+  type SliderParamDef,
+  type TextParamDef,
 } from "@/lib/audio/dsp/effects/schema";
-import { ParamCheckbox } from "./param-checkbox";
 import { ParamGroup } from "./param-group";
 import { ParamSelect } from "./param-select";
 import { ParamSlider } from "./param-slider";
+import { ParamSwitch } from "./param-switch";
 import { UniversalParams } from "./universal-params";
 
 type DeclarativeParamsProps = {
@@ -87,6 +88,7 @@ function SliderControl({
       onChange={updateValue}
       step={param.step}
       value={value}
+      wheelStep={param.wheelStep}
     />
   );
 
@@ -119,9 +121,7 @@ function SelectControl({
   const value = getEffectValue(ctx.effect, param.key);
   const stringValue = String(value);
   function updateValue(nextValue: string) {
-    const parsed =
-      param.valueType === "number" ? Number.parseInt(nextValue, 10) : nextValue;
-    ctx.onUpdate({ [param.key]: parsed });
+    ctx.onUpdate({ [param.key]: parseSelectValue(param, nextValue) });
   }
 
   return (
@@ -148,7 +148,7 @@ function CheckboxControl({
   }
 
   return (
-    <ParamCheckbox
+    <ParamSwitch
       checked={checked}
       description={param.description}
       id={`${ctx.effect.id}-${param.key}`}
@@ -175,9 +175,15 @@ function TextControl({
   }
 
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{param.label}</Label>
+    <div className="basis-full space-y-1">
+      <Label
+        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
+        htmlFor={id}
+      >
+        {param.label}
+      </Label>
       <Control
+        className={param.multiline ? "text-xs" : "h-7 text-xs"}
         id={id}
         onChange={updateText}
         placeholder={param.placeholder}
@@ -272,7 +278,7 @@ export function DeclarativeParams({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-wrap items-start gap-x-2 gap-y-3">
       {schema.params.map((param) => (
         <ParamControl
           ctx={ctx}

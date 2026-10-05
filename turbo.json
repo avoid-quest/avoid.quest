@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "agentGuidance": false,
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -73,6 +74,25 @@
       "cache": false,
       "dependsOn": ["^preview"],
       "persistent": true
+    },
+    "@avoid.quest/radio#build": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "env": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_RELEASE",
+        "SOURCE_REVISION"
+      ],
+      "outputs": ["dist/**"]
     }
-  }
+  },
+  "globalDependencies": [
+    "scripts/prepare-legal.ts",
+    "LICENSE",
+    "LICENSES/**",
+    "LICENSING.md",
+    "THIRD_PARTY_NOTICES.md"
+  ]
 }

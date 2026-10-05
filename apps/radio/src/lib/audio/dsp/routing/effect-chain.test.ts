@@ -371,6 +371,31 @@ describe("EffectChain", () => {
     expect(outputL[0]).toBeCloseTo(inputValue * 2);
   });
 
+  test.each([0, 0.5, 1])(
+    "signal trim includes dry audio at mix %p",
+    (dryWet) => {
+      const chain = new EffectChain({ sampleRate: 48_000 });
+      const config = {
+        ...createMockConfig("effect", 0),
+        dryWet,
+        signalGain: 0.5,
+      };
+      chain.addEffect("effect", "delay", new MockGainProcessor(2), config);
+      const outputL = new Float32Array(128);
+      const outputR = new Float32Array(128);
+      chain.process(
+        new Float32Array(128).fill(0.2),
+        new Float32Array(128).fill(0.2),
+        outputL,
+        outputR,
+        0,
+        128
+      );
+      expect(outputL[0]).toBeCloseTo(0.1 * (1 - dryWet + 2 * dryWet));
+      expect(outputR[0]).toBeCloseTo(outputL[0] ?? 0);
+    }
+  );
+
   test("process applies output gain", () => {
     const chain = new EffectChain({ sampleRate: 44_100 });
 

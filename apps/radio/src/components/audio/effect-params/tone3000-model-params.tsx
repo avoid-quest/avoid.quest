@@ -3,6 +3,7 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Label } from "@avoid.quest/ui/components/label";
 import { type ChangeEvent, useEffect, useState } from "react";
+import { InlineError } from "@/components/radio/inline-error";
 import type { EffectConfig } from "@/lib/audio";
 import {
   deleteNamModel,
@@ -71,6 +72,7 @@ export function Tone3000ModelParams({
   onUpdate,
 }: Tone3000ModelParamsProps) {
   const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loader] = useState(createNamModelLoader);
   loader.synchronize(
     JSON.stringify([effect.modelId, effect.modelUrl, effect.modelData])
@@ -85,9 +87,13 @@ export function Tone3000ModelParams({
         return;
       }
       onUpdate(model);
+      setError(null);
       setStatus(`Loaded ${model.modelName} locally.`);
     } catch (cause) {
-      setStatus(cause instanceof Error ? cause.message : "Invalid NAM model.");
+      setStatus(null);
+      setError(
+        cause instanceof Error ? cause.message : "Couldn't load that NAM model."
+      );
     }
   }
 
@@ -121,7 +127,13 @@ export function Tone3000ModelParams({
           {effect.modelName ?? "No local model selected"}
         </p>
         {effect.modelId ? (
-          <Button onClick={clearModel} size="sm" type="button" variant="ghost">
+          <Button
+            className="h-7 text-xs"
+            onClick={clearModel}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
             Clear
           </Button>
         ) : null}
@@ -132,6 +144,7 @@ export function Tone3000ModelParams({
         bundled.
       </p>
       {status === null ? null : <p className="text-xs">{status}</p>}
+      {error === null ? null : <InlineError>{error}</InlineError>}
     </div>
   );
 }

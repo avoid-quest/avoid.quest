@@ -10,6 +10,11 @@ import {
   normalizeBandcampUrl,
 } from "@avoid.quest/platforms/bandcamp";
 import {
+  getMixcloudItem,
+  isMixcloudUrl,
+  normalizeMixcloudUrl,
+} from "@avoid.quest/platforms/mixcloud";
+import {
   extractChannelId,
   isRadioGardenUrl,
 } from "@avoid.quest/platforms/radiogarden";
@@ -20,6 +25,11 @@ import {
   normalizeSoundCloudUrl,
   resolveShortLink,
 } from "@avoid.quest/platforms/soundcloud";
+import {
+  getSpotifyMetadata,
+  isSpotifyUrl,
+  type SpotifyMetadata,
+} from "@avoid.quest/platforms/spotify";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { workerMetadataCache } from "@/lib/metadata/edge-cache";
@@ -60,7 +70,9 @@ async function normalizePlatformUrl(url: string): Promise<string> {
     if (needsResolution(normalizedUrl)) {
       normalizedUrl = await resolveShortLink(normalizedUrl);
     }
-    return normalizeBandcampUrl(normalizeSoundCloudUrl(normalizedUrl));
+    return normalizeBandcampUrl(
+      normalizeMixcloudUrl(normalizeSoundCloudUrl(normalizedUrl))
+    );
   } catch (error) {
     throw appErrorFromCause(error, {
       category: "dependency",
@@ -73,13 +85,15 @@ async function normalizePlatformUrl(url: string): Promise<string> {
 }
 
 function providerError(
-  platform: "bandcamp" | "radiogarden" | "soundcloud",
+  platform: "bandcamp" | "mixcloud" | "radiogarden" | "soundcloud" | "spotify",
   message: string
 ): AppError {
   const codes = {
     bandcamp: "BANDCAMP_ITEM_LOAD_FAILED",
+    mixcloud: "MIXCLOUD_ITEM_LOAD_FAILED",
     radiogarden: "RADIO_GARDEN_ITEM_LOAD_FAILED",
     soundcloud: "SOUNDCLOUD_ITEM_LOAD_FAILED",
+    spotify: "SPOTIFY_METADATA_LOAD_FAILED",
   } as const;
 
   return new AppError({
@@ -116,6 +130,25 @@ async function resolveSoundCloudItem(
     throw providerError(
       "soundcloud",
       result.error || "Failed to resolve SoundCloud item"
+    );
+  }
+  return {
+    format: result.format,
+    metadata: result.metadata,
+    streamUrl: result.streamUrl,
+  };
+}
+
+// HLS first: its URLs carry no signature, and older progressive files are
+// served as audio/mpeg although they hold M4A (see mixcloud/RESEARCH.md).
+async function resolveMixcloudItem(url: string): Promise<ResolvedPlatformItem> {
+  const result = await getMixcloudItem(url, {
+    streamProtocols: ["hls", "progressive"],
+  });
+  if (!result.success) {
+    throw providerError(
+      "mixcloud",
+      result.error || "Failed to resolve Mixcloud item"
     );
   }
   return {
@@ -178,6 +211,10 @@ function resolvePlatformItem(
     return resolveSoundCloudItem(normalizedUrl);
   }
 
+  if (isMixcloudUrl(normalizedUrl)) {
+    return resolveMixcloudItem(normalizedUrl);
+  }
+
   if (isRadioGardenUrl(normalizedUrl)) {
     return resolveRadioGardenItem(normalizedUrl);
   }
@@ -187,7 +224,7 @@ function resolvePlatformItem(
     code: "PLATFORM_UNSUPPORTED_URL",
     expected: true,
     safeMessage:
-      "Unsupported server-side URL. Please enter a Bandcamp, SoundCloud, or Radio Garden URL.",
+      "Unsupported server-side URL. Please enter a Bandcamp, SoundCloud, Mixcloud or Radio Garden URL.",
     status: 400,
   });
 }
@@ -239,6 +276,57 @@ export const loadPlatformItem = createServerFn({ method: "POST" })
           }
 
           return item;
+        },
+      })
+  );
+
+const LoadSpotifyMetadataSchema = z.object({
+  url: z
+    .string()
+    .min(1, "URL is required")
+    .max(2048, "URL too long")
+    .refine(isSpotifyUrl, { message: "Not a Spotify link" }),
+});
+
+export type LoadSpotifyMetadataResponse = AppResult<{
+  metadata: SpotifyMetadata;
+}>;
+
+/**
+ * A Spotify track, album or playlist's metadata, short links resolved. Its
+ * pages send no CORS headers, so this runs here; the browser then plays it
+ * through the matching YouTube upload with its own YouTube client.
+ */
+export const loadSpotifyMetadata = createServerFn({ method: "POST" })
+  .middleware([rateLimitMiddleware("load-spotify-metadata")])
+  .validator(LoadSpotifyMetadataSchema)
+  .handler(
+    ({ data }): Promise<LoadSpotifyMetadataResponse> =>
+      runServerFn({
+        fallback: {
+          category: "dependency",
+          code: "SPOTIFY_METADATA_LOAD_FAILED",
+          expected: false,
+          safeMessage: "Failed to load Spotify item",
+          status: 500,
+        },
+        operation: "loadSpotifyMetadata",
+        run: async () => {
+          const result = await getSpotifyMetadata(data.url);
+          if (!result.success) {
+            // An artist or podcast link, or a share link to one, is the
+            // user's to change; it is no provider failure.
+            throw result.unsupported
+              ? new AppError({
+                  category: "validation",
+                  code: "SPOTIFY_UNSUPPORTED_URL",
+                  expected: true,
+                  safeMessage: result.error,
+                  status: 400,
+                })
+              : providerError("spotify", result.error);
+          }
+          return { metadata: result.metadata };
         },
       })
   );

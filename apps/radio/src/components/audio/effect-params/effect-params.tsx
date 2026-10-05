@@ -1,8 +1,11 @@
-import type { EffectConfig } from "@/lib/audio";
+import type { EffectConfig, RevampConfig } from "@/lib/audio";
 import { getEffectSchema } from "@/lib/audio/dsp/effects/schema";
 import { ContainerParams } from "./container-params";
 import { DeclarativeParams } from "./declarative-params";
+import { EFFECT_LAYOUTS } from "./effect-layouts";
+import { RevampParams } from "./revamp-params";
 import { SidechainParams } from "./sidechain-params";
+import { TailoredParams } from "./tailored-params";
 import { Tone3000ModelParams } from "./tone3000-model-params";
 import { WerkstattParams } from "./werkstatt-params";
 
@@ -11,6 +14,11 @@ type EffectParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  /**
+   * Where MIDI learn targets start, e.g. `node:<nodeId>` in Node mode. DJ
+   * decks leave it unset and get `<deckId>:effect:<effectId>`.
+   */
+  midiTargetPrefix?: string;
 };
 
 export function EffectParams({
@@ -18,6 +26,7 @@ export function EffectParams({
   onUpdate,
   deckId,
   effectId,
+  midiTargetPrefix,
 }: EffectParamsProps) {
   const schema = getEffectSchema(effect.type);
 
@@ -35,20 +44,52 @@ export function EffectParams({
         deckId={deckId}
         effect={effect}
         effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
         onUpdate={onUpdate}
+      />
+    );
+  }
+
+  const layout = EFFECT_LAYOUTS[effect.type];
+  let params: React.ReactNode;
+  if (effect.type === "revamp") {
+    params = (
+      <RevampParams
+        deckId={deckId}
+        effect={effect as RevampConfig}
+        effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
+        onUpdate={onUpdate}
+      />
+    );
+  } else if (layout) {
+    params = (
+      <TailoredParams
+        deckId={deckId}
+        effect={effect}
+        effectId={effectId}
+        layout={layout}
+        midiTargetPrefix={midiTargetPrefix}
+        onUpdate={onUpdate}
+        schema={schema}
+      />
+    );
+  } else {
+    params = (
+      <DeclarativeParams
+        deckId={deckId}
+        effect={effect}
+        effectId={effectId}
+        midiTargetPrefix={midiTargetPrefix}
+        onUpdate={onUpdate}
+        schema={schema}
       />
     );
   }
 
   return (
     <div className="space-y-4">
-      <DeclarativeParams
-        deckId={deckId}
-        effect={effect}
-        effectId={effectId}
-        onUpdate={onUpdate}
-        schema={schema}
-      />
+      {params}
       {(effect.type === "compressor" ||
         effect.type === "gate" ||
         effect.type === "vocoder") && (

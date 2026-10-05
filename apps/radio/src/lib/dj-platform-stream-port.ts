@@ -1,9 +1,14 @@
+import {
+  resolveSpotifyTrackStream,
+  toSpotifyMatchTrack,
+} from "@avoid.quest/platforms/spotify/mirror";
 import type { Radio } from "@/lib/audio";
 import {
   inferStreamFormat,
   type StreamFormat,
 } from "@/lib/audio/playback/stream-format";
 import { resolvePlatformItem } from "@/lib/platform-client";
+import { isSpotifyMetadata } from "@/lib/platform-types";
 import { getYouTubeClient } from "@/lib/youtube";
 
 type StreamResolutionReason =
@@ -18,20 +23,31 @@ type YouTubeStreamResolutionInput = {
   radio: Radio;
 };
 
+/** A Spotify track of `radio`, matched to a YouTube upload. */
+type SpotifyStreamResolutionInput = {
+  platform: "spotify";
+  reason: StreamResolutionReason;
+  spotifyId: string;
+  radio: Radio;
+};
+
 type CanonicalPlatformStreamResolutionInput = {
   canonicalUrl: string;
-  platform: "bandcamp" | "soundcloud";
+  platform: "bandcamp" | "mixcloud" | "soundcloud";
   reason: "stream-refresh";
   radio: Radio;
 };
 
 type PlatformStreamResolutionInput =
   | CanonicalPlatformStreamResolutionInput
+  | SpotifyStreamResolutionInput
   | YouTubeStreamResolutionInput;
 
 type PlatformStreamResolution = {
   streamFormat: StreamFormat;
   streamUrl: string;
+  /** The upload a Spotify track was matched to, to renew it by. */
+  youtubeVideoId?: string;
 };
 
 type SelectedCollectionStream = {
@@ -72,6 +88,36 @@ function resolvedStream(
   return { streamFormat, streamUrl };
 }
 
+async function resolveSpotifyStream(
+  input: SpotifyStreamResolutionInput,
+  getClient: typeof getYouTubeClient
+): Promise<PlatformStreamResolution | null> {
+  const metadata = input.radio.platformMetadata;
+  if (!isSpotifyMetadata(metadata)) {
+    return null;
+  }
+  const track =
+    metadata.itemType === "track" && metadata.spotifyId === input.spotifyId
+      ? metadata
+      : metadata.tracks?.find((item) => item.spotifyId === input.spotifyId);
+  if (!track) {
+    return null;
+  }
+  try {
+    const stream = await resolveSpotifyTrackStream(toSpotifyMatchTrack(track), {
+      youtube: getClient(),
+    });
+    return stream.success
+      ? {
+          ...resolvedStream(stream.streamUrl),
+          youtubeVideoId: stream.match.videoId,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveDjPlatformStreamUrl(
   input: PlatformStreamResolutionInput,
   dependencies: {
@@ -90,7 +136,13 @@ export async function resolveDjPlatformStreamUrl(
         return null;
       }
     }
+    case "spotify":
+      return await resolveSpotifyStream(
+        input,
+        dependencies.getYouTubeClient ?? getYouTubeClient
+      );
     case "bandcamp":
+    case "mixcloud":
     case "soundcloud": {
       try {
         const resolved = await (
@@ -121,4 +173,5 @@ export type {
   CanonicalPlatformStreamResolutionInput,
   PlatformStreamResolution,
   PlatformStreamResolutionInput,
+  SpotifyStreamResolutionInput,
 };

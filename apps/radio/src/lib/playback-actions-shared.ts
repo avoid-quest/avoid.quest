@@ -109,3 +109,39 @@ export function cleanupManagedChannel(
 ): void {
   ctx.channels.deactivate(channelId);
 }
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Runs `task` over `items` with at most `limit` in flight, yielding to the
+ * browser between items so a batch of stream starts cannot starve the page.
+ */
+export async function runWithConcurrency<T>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+  shouldContinue: () => boolean = () => true
+): Promise<void> {
+  let index = 0;
+  const runNext = async (): Promise<void> => {
+    if (!shouldContinue()) {
+      return;
+    }
+    const item = items[index];
+    index += 1;
+    if (item === undefined) {
+      return;
+    }
+    await task(item);
+    if (!shouldContinue()) {
+      return;
+    }
+    await yieldToBrowser();
+    return runNext();
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, runNext)
+  );
+}

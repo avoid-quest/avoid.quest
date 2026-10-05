@@ -12,6 +12,7 @@ import {
   shouldUseNativeSinglePlayback,
 } from "@/lib/collections/settings";
 import { validateRadioForMode } from "@/lib/external-url/utils";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
@@ -29,7 +30,7 @@ import {
 export type ManagedPlaybackSessionId = Exclude<PlaybackSessionId, "dj">;
 
 const PLAYBACK_MODE_LABELS = {
-  multiple: "Multiple",
+  node: "Node",
   single: "Single",
 } satisfies Record<ManagedPlaybackSessionId, string>;
 
@@ -73,11 +74,23 @@ export async function getReadyManagedPlaybackSession(
   return session;
 }
 
+/**
+ * Platforms restore never prepares: a local file's blob URL died with the
+ * page, and a device input would open the mic without a gesture.
+ */
+const UNRESTORED_PLATFORMS: ReadonlySet<string> = new Set([
+  "local-file",
+  "device-input",
+]);
+
 function isRestorableRadio(
   radio: Radio | null,
   sessionId: ManagedPlaybackSessionId
 ): radio is Radio {
-  if (!radio || radio.platformMetadata?.platform === "local-file") {
+  if (
+    !radio ||
+    UNRESTORED_PLATFORMS.has(radio.platformMetadata?.platform ?? "")
+  ) {
     return false;
   }
   try {
@@ -107,6 +120,13 @@ export function restoreManagedChannels(
       ctx.channels.setMuted(sessionId, channel.id, channel.muted);
     }
   }
+}
+
+/** A muted Channel starts silent; its volume stays for when it is unmuted. */
+export function getChannelPlayVolume(
+  channel: Pick<PlaybackChannelRecord, "muted" | "volume">
+): number {
+  return channel.muted ? 0 : channel.volume;
 }
 
 export async function playManagedSound(
@@ -144,6 +164,14 @@ export async function setManagedChannelPlaying(
     if (runtime.soundId) {
       ctx.audio.pauseSound(runtime.soundId);
     }
+    // A pause during connect abandons it; don't leave the Channel loading.
+    if (runtime.isLoading || runtime.isBuffering || runtime.isPlaying) {
+      setPlaybackChannelRuntime(channel.id, () => ({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      }));
+    }
     return;
   }
 
@@ -159,7 +187,12 @@ export async function setManagedChannelPlaying(
     );
     ctx.channels.setMuted(sessionId, channel.id, channel.muted);
   }
-  await playManagedSound(sessionId, soundId, channel.volume, ctx);
+  await playManagedSound(
+    sessionId,
+    soundId,
+    getChannelPlayVolume(channel),
+    ctx
+  );
 }
 
 export function clearManagedPlaybackErrors(
@@ -189,7 +222,8 @@ export function setManagedSessionMasterVolume(
   updatePlaybackSession(sessionId, (draft) => {
     draft.masterVolume = volume;
   });
-  if ((getSettings()?.player.mode ?? "single") === sessionId) {
+  // A legacy "multiple" that failed its rewrite still runs Node.
+  if (normalizePlayerMode(getSettings()?.player.mode) === sessionId) {
     ctx.audio.setGlobalVolume(volume);
   }
 }

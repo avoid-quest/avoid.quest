@@ -34,6 +34,8 @@ export type SliderParamDef<TKey extends string = string> = {
   min: number;
   max: number;
   step: number;
+  /** Whole-value wheel steps for discrete parameters; continuous parameters use 0.01. */
+  wheelStep?: number;
   description?: string;
 };
 
@@ -107,4 +109,12 @@ export function defineEffect<TType extends EffectType>(
   definition: EffectDefinition<TType>
 ): EffectDefinition<TType> {
   return definition;
+}
+
+/** A select's chosen option as the config stores it: numeric selects hold numbers. */
+export function parseSelectValue(
+  param: SelectParamDef,
+  value: string
+): string | number {
+  return param.valueType === "number" ? Number(value) : value;
 }

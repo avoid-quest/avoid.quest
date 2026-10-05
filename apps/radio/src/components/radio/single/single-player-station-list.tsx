@@ -6,33 +6,25 @@ import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
+import { EmptyHint } from "../empty-hint";
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import { RadioLogo } from "../radio-logo";
 import { RadioNowPlayingDetailsButton } from "../radio-now-playing";
-
-function StationLocationLabel({ radio }: { radio: Radio }) {
-  if (radio.placeTitle) {
-    return (
-      <p className="mt-0.5 truncate text-muted-foreground/60 text-xs leading-snug">
-        {radio.placeTitle}, {radio.countryTitle}
-      </p>
-    );
-  }
-  if (radio.description) {
-    return (
-      <p className="mt-0.5 line-clamp-2 text-muted-foreground/60 text-xs leading-snug">
-        {radio.description}
-      </p>
-    );
-  }
-  return null;
-}
+import {
+  StationRowSubtitle,
+  StationRowText,
+  stationFallbackSubtitle,
+  stationRowButtonClassName,
+  stationRowClassName,
+} from "../station-row";
 
 function StationRow({
   radio,
   isCurrent,
+  isPlaying,
   onSelect,
+  onTogglePlayPause,
   onEdit,
   onDelete,
   onSave,
@@ -40,7 +32,9 @@ function StationRow({
 }: {
   radio: Radio;
   isCurrent: boolean;
+  isPlaying: boolean;
   onSelect: (radio: Radio) => void;
+  onTogglePlayPause: () => void;
   onEdit: (radio: Radio) => void;
   onDelete: (radio: Radio) => void;
   onSave: (radio: Radio) => void;
@@ -54,63 +48,74 @@ function StationRow({
     poll: false,
     radio,
   });
-  const handleSelect = () => onSelect(radio);
+  const handleSelect = () => {
+    if (isCurrent) {
+      onTogglePlayPause();
+    } else {
+      onSelect(radio);
+    }
+  };
 
   return (
     <div
       className={cn(
-        "group flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors",
-        "hover:bg-muted/40",
+        stationRowClassName,
+        isCurrent && "bg-muted/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
       ref={elementRef}
     >
       <button
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        aria-current={isCurrent ? "true" : undefined}
+        className={stationRowButtonClassName}
         onClick={handleSelect}
         type="button"
       >
-        <RadioLogo logoUrl={radio.logoUrl} name={radio.name} size="md" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p
-              className={cn(
-                "truncate text-sm leading-snug",
-                isCurrent && "font-semibold"
-              )}
-            >
-              {radio.name}
-            </p>
-            {isCurrent ? (
-              <span title="Selected">
-                <AudioLinesIcon aria-hidden className="size-3.5" />
-                <span className="sr-only">Selected</span>
-              </span>
-            ) : null}
-          </div>
+        <RadioLogo
+          decorative
+          logoUrl={radio.logoUrl}
+          name={radio.name}
+          size="md"
+        />
+        <StationRowText
+          indicator={
+            isCurrent && isPlaying ? (
+              <AudioLinesIcon
+                aria-label="Playing"
+                className="size-3.5 shrink-0"
+                role="img"
+              />
+            ) : null
+          }
+          isCurrent={isCurrent}
+          title={radio.name}
+        >
           <RadioListItemMetadata
-            fallback={<StationLocationLabel radio={radio} />}
+            fallback={
+              <StationRowSubtitle>
+                {stationFallbackSubtitle(radio)}
+              </StationRowSubtitle>
+            }
             metadata={metadata}
             radio={radio}
           />
-        </div>
+        </StationRowText>
       </button>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-0.5",
+          !isSession &&
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 [@media(pointer:coarse)]:opacity-60"
+        )}
+      >
         <RadioNowPlayingDetailsButton metadata={metadata} radio={radio} />
-        <div
-          className={cn(
-            !isSession &&
-              "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-          )}
-        >
-          <RadioItemActions
-            onDelete={onDelete}
-            onEdit={onEdit}
-            onSave={onSave}
-            onToggle={onToggle}
-            radio={radio}
-          />
-        </div>
+        <RadioItemActions
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onSave={onSave}
+          onToggle={onToggle}
+          radio={radio}
+        />
       </div>
     </div>
   );
@@ -120,7 +125,9 @@ export function StationList({
   radios,
   sessionRadios,
   currentRadioId,
+  isPlaying,
   onSelect,
+  onTogglePlayPause,
   onEdit,
   onDelete,
   onSave,
@@ -130,7 +137,9 @@ export function StationList({
   radios: Radio[] | undefined;
   sessionRadios: Radio[];
   currentRadioId: string | number | undefined;
+  isPlaying: boolean;
   onSelect: (radio: Radio) => void;
+  onTogglePlayPause: () => void;
   onEdit: (radio: Radio) => void;
   onDelete: (radio: Radio) => void;
   onSave: (radio: Radio) => void;
@@ -138,23 +147,15 @@ export function StationList({
   searchBar: React.ReactNode;
 }) {
   const allRadios = [
-    ...(radios ?? []),
-    ...sessionRadios.filter((sr) => !radios?.some((r) => r.id === sr.id)),
+    ...sessionRadios,
+    ...(radios ?? []).filter(
+      (r) => !sessionRadios.some((sr) => sr.id === r.id)
+    ),
   ];
 
   return (
-    <div className="flex min-h-0 w-full flex-col border-border/50 lg:w-80 lg:shrink-0 lg:border-r xl:w-96">
-      <div className="flex flex-col gap-2 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-foreground/80 text-xs uppercase tracking-wider">
-            Stations
-          </span>
-          <span className="text-[10px] text-muted-foreground/50">
-            {allRadios.length}
-          </span>
-        </div>
-        {searchBar}
-      </div>
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col border-border/50 lg:w-80 lg:flex-none lg:border-r xl:w-96">
+      <div className="px-3 py-2">{searchBar}</div>
 
       <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         {allRadios.length > 0 ? (
@@ -162,23 +163,20 @@ export function StationList({
             {allRadios.map((radio) => (
               <StationRow
                 isCurrent={currentRadioId === radio.id}
+                isPlaying={isPlaying}
                 key={radio.id}
                 onDelete={onDelete}
                 onEdit={onEdit}
                 onSave={onSave}
                 onSelect={onSelect}
                 onToggle={onToggle}
+                onTogglePlayPause={onTogglePlayPause}
                 radio={radio}
               />
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
-            <AudioLinesIcon className="mb-3 size-8 text-muted-foreground/20" />
-            <p className="font-mono text-muted-foreground/40 text-xs uppercase tracking-wider">
-              No stations enabled
-            </p>
-          </div>
+          <EmptyHint className="py-10">Search to add a station</EmptyHint>
         )}
       </ScrollArea>
     </div>

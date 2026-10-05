@@ -52,3 +52,6 @@ temp
 
 apps/openDAW
 .wrangler/
+
+# Generated source and license distribution
+apps/*/public/legal/

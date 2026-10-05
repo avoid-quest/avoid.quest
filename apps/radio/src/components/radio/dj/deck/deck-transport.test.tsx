@@ -25,7 +25,6 @@ const deckContextMock = {
   metadata: undefined as PlatformMetadata | undefined,
   pan: 0,
   pause: () => undefined,
-  peakLevel: { left: 0, right: 0 },
   play: async () => undefined,
   radio: {
     name: LONG_TITLE,
@@ -95,10 +94,7 @@ describe("DeckTransport", () => {
     expect(
       html.includes("flex-1 flex-col justify-center gap-0.5 overflow-hidden")
     ).toBeTrue();
-    expect(html.includes("block w-full")).toBeTrue();
-    expect(html.includes("overflow-hidden")).toBeTrue();
-    expect(html.includes("text-ellipsis")).toBeTrue();
-    expect(html.includes("whitespace-nowrap")).toBeTrue();
+    expect(html.includes("block w-full truncate")).toBeTrue();
     expect(html.includes(`title="${LONG_TITLE}"`)).toBeTrue();
     expect(html.includes("Details for")).toBeFalse();
   });
@@ -148,7 +144,7 @@ describe("DeckTransport", () => {
       expect(html.includes("Details for Current Show")).toBeTrue();
       expect(html.includes('src="https://example.com/show.jpg"')).toBeTrue();
       expect(html.includes('href="https://example.com/show"')).toBeTrue();
-      expect(html.includes('aria-label="Play"')).toBeTrue();
+      expect(html.includes('aria-label="Play deck A"')).toBeTrue();
     });
   }
 });

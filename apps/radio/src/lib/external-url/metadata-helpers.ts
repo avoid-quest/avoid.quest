@@ -1,16 +1,33 @@
 import type { Platform, PlatformMetadata } from "@/lib/platform-types";
 
+const COLLECTION_ITEM_TYPES: Readonly<Record<string, readonly string[]>> = {
+  bandcamp: ["album", "artist", "collection"],
+  soundcloud: ["playlist", "user"],
+  spotify: ["album", "playlist"],
+  "static-audio": ["playlist"],
+  youtube: ["playlist"],
+};
+
+/**
+ * Whether a platform item plays as a tracklist: albums, playlists, a Bandcamp
+ * artist's or a SoundCloud user's tracks. A Mixcloud show is one recording. The deck's tracklist, its current
+ * track and autoplay-next all use this.
+ */
+export function isCollectionItem(
+  platform: string,
+  itemType: string | undefined
+): boolean {
+  return (
+    itemType !== undefined &&
+    (COLLECTION_ITEM_TYPES[platform]?.includes(itemType) ?? false)
+  );
+}
+
 /**
  * Check if a platform item is a collection (album/playlist)
  */
 export function isCollection(metadata: PlatformMetadata): boolean {
-  return (
-    (metadata.platform === "bandcamp" &&
-      (metadata.itemType === "album" || metadata.itemType === "collection")) ||
-    (metadata.platform === "soundcloud" && metadata.itemType === "playlist") ||
-    (metadata.platform === "youtube" && metadata.itemType === "playlist") ||
-    (metadata.platform === "static-audio" && metadata.itemType === "playlist")
-  );
+  return isCollectionItem(metadata.platform, metadata.itemType);
 }
 
 /**
@@ -23,6 +40,7 @@ export function getCurrentTrackIndex(
   if (
     metadata.platform === "device-input" ||
     metadata.platform === "local-file" ||
+    metadata.platform === "mixcloud" ||
     metadata.platform === "radio-browser" ||
     metadata.platform === "radiogarden"
   ) {

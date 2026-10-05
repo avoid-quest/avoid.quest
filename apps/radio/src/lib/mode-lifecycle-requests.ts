@@ -3,6 +3,7 @@ import {
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getSettings, type SettingsRecord } from "@/lib/collections/settings";
+import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import {
   type ModeManager,
   type ModeTransitionSnapshot,
@@ -35,6 +36,11 @@ export function createModeLifecycleRequests({
       if (!isPlaybackSessionId(value)) {
         return;
       }
+      // Already on its way there, e.g. the renderer and the cross-tab
+      // settings listener both following one legacy mode write.
+      if (manager.getSnapshot().requestedMode === value) {
+        return;
+      }
 
       await manager.switchTo(value);
     },
@@ -44,7 +50,10 @@ export function createModeLifecycleRequests({
       await waitForPlaybackSession(mode);
 
       const settings = getCurrentSettings();
-      if (settings && settings.player.mode !== mode) {
+      // The settings already name `mode`, so neither path writes them: a
+      // legacy mode the settings step could not rewrite ("multiple") is
+      // synchronized as its replacement.
+      if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
         return;
       }
 
@@ -57,7 +66,7 @@ export function createModeLifecycleRequests({
         return manager.activateInitialMode(mode);
       }
 
-      return manager.switchTo(mode);
+      return manager.switchTo(mode, { commit: false });
     },
   };
 }

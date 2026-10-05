@@ -1,8 +1,18 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 "use client";
 
+import { Alert, AlertDescription } from "@avoid.quest/ui/components/alert";
 import { Button } from "@avoid.quest/ui/components/button";
-import { Label } from "@avoid.quest/ui/components/label";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@avoid.quest/ui/components/collapsible";
+import {
+  Field,
+  FieldLabel,
+  FieldTitle,
+} from "@avoid.quest/ui/components/field";
 import {
   Select,
   SelectContent,
@@ -12,9 +22,11 @@ import {
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import {
+  ChevronDownIcon,
   ClockIcon,
   CopyIcon,
   HeadphonesIcon,
+  InfoIcon,
   type LucideIcon,
   RefreshCwIcon,
   Volume2Icon,
@@ -74,7 +86,7 @@ export function AudioSettings() {
       const current = getAudioSettings();
       setMainOutputId(current.mainOutputId);
       setCueOutputId(current.cueOutputId);
-      toast.error("Failed to apply the main output settings");
+      toast.error("Couldn't switch main output");
     }
   };
 
@@ -85,7 +97,7 @@ export function AudioSettings() {
       setCueOutputId(getAudioSettings().cueOutputId);
     } catch {
       setCueOutputId(getAudioSettings().cueOutputId);
-      toast.error("Failed to apply the CUE output settings");
+      toast.error("Couldn't switch CUE output");
     }
   };
 
@@ -95,7 +107,7 @@ export function AudioSettings() {
       setMainDelayMsState(getDelaySettings().mainDelayMs);
     } catch {
       setMainDelayMsState(getDelaySettings().mainDelayMs);
-      toast.error("Failed to apply the main output settings");
+      toast.error("Couldn't set main delay");
     }
   };
 
@@ -105,7 +117,7 @@ export function AudioSettings() {
       setCueDelayMsState(getDelaySettings().cueDelayMs);
     } catch {
       setCueDelayMsState(getDelaySettings().cueDelayMs);
-      toast.error("Failed to apply the CUE output settings");
+      toast.error("Couldn't set CUE delay");
     }
   };
   const handleMainDelayValues = ([value]: number[]) =>
@@ -115,11 +127,14 @@ export function AudioSettings() {
   const handleAutoLatency = async () => {
     try {
       const detected = await autoCompensateLatency();
-      if (detected !== null) {
+      if (detected === null) {
+        toast.error("Couldn't detect latency");
+      } else {
         setMainDelayMsState(detected);
+        toast.success(`Main delay set to ${Math.round(detected)} ms`);
       }
     } catch {
-      toast.error("Failed to apply the main output settings");
+      toast.error("Couldn't detect latency");
     }
   };
   const handleDiagnostic = async () => {
@@ -129,7 +144,7 @@ export function AudioSettings() {
         setDiagnostic(null);
         toast.success("Audio diagnostic copied");
       } catch {
-        toast.error("Could not copy the audio diagnostic");
+        toast.error("Couldn't copy audio diagnostic");
       }
       return;
     }
@@ -139,14 +154,14 @@ export function AudioSettings() {
       setDiagnostic(JSON.stringify(report, null, 2));
       toast.success("Audio diagnostic ready to copy");
     } catch {
-      toast.error("Could not capture the audio diagnostic");
+      toast.error("Couldn't capture audio diagnostic");
     } finally {
       setIsCapturingDiagnostic(false);
     }
   };
   let diagnosticLabel = "Capture audio diagnostic";
   if (isCapturingDiagnostic) {
-    diagnosticLabel = "Capturing 5s...";
+    diagnosticLabel = "Capturing 5s…";
   } else if (diagnostic) {
     diagnosticLabel = "Copy audio diagnostic";
   }
@@ -154,36 +169,42 @@ export function AudioSettings() {
   return (
     <div className="space-y-4">
       {/* Permission request */}
-      {permissionState !== "granted" && (
-        <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-          <p className="mb-2 text-xs">
+      {sinkIdSupported && permissionState !== "granted" && (
+        <Alert className="py-2.5">
+          <InfoIcon />
+          <AlertDescription className="text-xs">
             Grant microphone permission to see device names and select audio
             devices.
-          </p>
-          <Button
-            disabled={isLoading}
-            onClick={requestPermission}
-            size="sm"
-            variant="outline"
-          >
-            {isLoading ? "Requesting..." : "Grant Permission"}
-          </Button>
-        </div>
+            <Button
+              className="mt-1"
+              disabled={isLoading}
+              onClick={requestPermission}
+              size="sm"
+              variant="outline"
+            >
+              {isLoading ? "Requesting…" : "Grant permission"}
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="divide-y">
-        <AudioSettingRow icon={Volume2Icon} title="Main output">
+        <AudioSettingRow
+          controlId={sinkIdSupported ? "main-output" : undefined}
+          icon={Volume2Icon}
+          title="Main output"
+        >
           {sinkIdSupported ? (
             <div className="flex min-w-0 gap-2">
               <Select
                 onValueChange={handleMainOutputChange}
                 value={mainOutputId}
               >
-                <SelectTrigger className="min-w-0 flex-1">
+                <SelectTrigger className="min-w-0 flex-1" id="main-output">
                   <SelectValue placeholder="Select output device" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">System Default</SelectItem>
+                  <SelectItem value="default">System default</SelectItem>
                   {outputDevices
                     .filter(
                       (device) =>
@@ -213,16 +234,15 @@ export function AudioSettings() {
               )}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">
-              Output device selection not supported in this browser. Audio will
-              play through system default.
-            </p>
+            <p className="text-muted-foreground text-sm">System default</p>
           )}
         </AudioSettingRow>
 
         <AudioSettingRow icon={ClockIcon} title="Main delay">
           <div className="flex min-w-0 items-center gap-3">
             <Slider
+              aria-label="Main delay"
+              aria-valuetext={`${mainDelayMs} ms`}
               className="min-w-24 flex-1"
               defaultValue={[0]}
               max={500}
@@ -232,7 +252,7 @@ export function AudioSettings() {
               value={[mainDelayMs]}
             />
             <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-              {mainDelayMs}ms
+              {mainDelayMs} ms
             </span>
             <Button
               onClick={handleAutoLatency}
@@ -245,17 +265,21 @@ export function AudioSettings() {
           </div>
         </AudioSettingRow>
 
-        <AudioSettingRow icon={HeadphonesIcon} title="CUE output">
+        <AudioSettingRow
+          controlId={sinkIdSupported ? "cue-output" : undefined}
+          icon={HeadphonesIcon}
+          title="CUE output"
+        >
           {sinkIdSupported ? (
             <Select
               onValueChange={handleCueOutputChange}
               value={cueOutputId ?? "none"}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="min-w-0 flex-1" id="cue-output">
                 <SelectValue placeholder="Select CUE output" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None (CUE Disabled)</SelectItem>
+                <SelectItem value="none">Off</SelectItem>
                 {outputDevices
                   .filter(
                     (device) =>
@@ -279,6 +303,8 @@ export function AudioSettings() {
           <AudioSettingRow icon={ClockIcon} title="CUE delay">
             <div className="flex min-w-0 items-center gap-3">
               <Slider
+                aria-label="CUE delay"
+                aria-valuetext={`${cueDelayMs} ms`}
                 className="min-w-24 flex-1"
                 defaultValue={[0]}
                 max={500}
@@ -288,32 +314,30 @@ export function AudioSettings() {
                 value={[cueDelayMs]}
               />
               <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
-                {cueDelayMs}ms
+                {cueDelayMs} ms
               </span>
             </div>
           </AudioSettingRow>
         )}
       </div>
 
-      <Button
-        disabled={isCapturingDiagnostic}
-        onClick={handleDiagnostic}
-        size="sm"
-        variant="outline"
-      >
-        <CopyIcon className="size-3.5" />
-        {diagnosticLabel}
-      </Button>
-
-      {/* Browser compatibility note */}
-      {!sinkIdSupported && (
-        <div className="border-t pt-3">
-          <p className="text-muted-foreground text-xs">
-            <strong>Note:</strong> Output device selection requires Chrome or
-            Edge. Firefox and Safari use the system default output.
-          </p>
-        </div>
-      )}
+      <Collapsible>
+        <CollapsibleTrigger className="group flex items-center gap-1.5 rounded text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronDownIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+          Troubleshooting
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-3">
+          <Button
+            disabled={isCapturingDiagnostic}
+            onClick={handleDiagnostic}
+            size="sm"
+            variant="outline"
+          >
+            <CopyIcon className="size-3.5" />
+            {diagnosticLabel}
+          </Button>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -321,19 +345,34 @@ export function AudioSettings() {
 function AudioSettingRow({
   title,
   icon: Icon,
+  controlId,
   children,
 }: {
   title: string;
   icon: LucideIcon;
+  /** The labelled control's id, so the title is its accessible name. */
+  controlId?: string;
   children: ReactNode;
 }) {
+  const heading = (
+    <>
+      <Icon className="size-3.5 text-muted-foreground" />
+      {title}
+    </>
+  );
   return (
-    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center">
-      <Label className="flex items-center gap-2 text-sm">
-        <Icon className="size-3.5 text-muted-foreground" />
-        {title}
-      </Label>
+    <Field
+      className="py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] sm:items-center"
+      orientation="horizontal"
+    >
+      {controlId ? (
+        <FieldLabel className="items-center font-medium" htmlFor={controlId}>
+          {heading}
+        </FieldLabel>
+      ) : (
+        <FieldTitle>{heading}</FieldTitle>
+      )}
       {children}
-    </div>
+    </Field>
   );
 }

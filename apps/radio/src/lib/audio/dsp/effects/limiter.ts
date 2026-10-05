@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Derived from openDAW; see THIRD_PARTY_NOTICES.md for attribution and changes.
 /**
  * Master Limiter Effect
  *

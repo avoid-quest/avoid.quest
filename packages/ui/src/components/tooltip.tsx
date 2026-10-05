@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -32,8 +33,21 @@ function Tooltip({ ...props }: React.ComponentProps<typeof Root>) {
   );
 }
 
-function TooltipTrigger({ ...props }: React.ComponentProps<typeof Trigger>) {
-  return <Trigger data-slot="tooltip-trigger" {...props} />;
+function TooltipTrigger({
+  onFocus,
+  ...props
+}: React.ComponentProps<typeof Trigger>) {
+  const handleFocus = (event: React.FocusEvent<HTMLButtonElement>) => {
+    onFocus?.(event);
+    // Focus a closing dialog hands back after a click isn't keyboard focus;
+    // preventing it skips Radix's open-on-focus.
+    if (!event.currentTarget.matches(":focus-visible")) {
+      event.preventDefault();
+    }
+  };
+  return (
+    <Trigger data-slot="tooltip-trigger" onFocus={handleFocus} {...props} />
+  );
 }
 
 function TooltipContent({

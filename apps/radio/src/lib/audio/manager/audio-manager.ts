@@ -11,6 +11,8 @@
  * The CUE tap point is now AFTER effects processing, so headphone monitoring
  * includes the effects but is still independent of the channel fader.
  * Main delay is applied after all sound processing, before final output.
+ * A sound with an output connector (Node mode's lane gain) reaches the main
+ * delay through it instead of directly.
  */
 
 import type {
@@ -49,6 +51,7 @@ import {
   type FilterConfig as AudioManagerFilterConfig,
   createAudioNodes,
   type SoundInstance,
+  type SoundOutputConnector,
   type SoundOutputMode,
 } from "./audio-manager-types.js";
 import {
@@ -72,7 +75,11 @@ export function setWorkletProcessorUrl(url: string): void {
   workletProcessorUrl = url;
 }
 
-export type { FilterConfig } from "./audio-manager-types.js";
+export type {
+  FilterConfig,
+  MainOutputConnect,
+  SoundOutputConnector,
+} from "./audio-manager-types.js";
 
 /**
  * Audio Manager singleton
@@ -90,6 +97,8 @@ export class AudioManager {
 
   private readonly soundRegistry = new SoundRegistry();
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
+  private readonly outputConnectors = new Map<string, SoundOutputConnector>();
+  private readonly deviceStarts = new Map<string, symbol>();
   readonly volume: VolumeController;
   private readonly effects: EffectsController;
   private readonly output: OutputRouting;
@@ -364,15 +373,30 @@ export class AudioManager {
   async playDeviceSound(
     soundId: string,
     deviceId: string,
-    constraints?: DeviceAudioConstraints
+    constraints?: DeviceAudioConstraints,
+    channelSelection?: ChannelSelection
   ): Promise<void> {
     const instance = this.sounds.get(soundId);
     if (!instance) {
       throw new Error(`Sound with id ${soundId} not found`);
     }
 
+    const request = Symbol("device start");
+    this.deviceStarts.set(soundId, request);
+    const isCurrent = () =>
+      this.sounds.get(soundId) === instance &&
+      this.deviceStarts.get(soundId) === request;
+    instance.deviceSource?.cleanup();
+    instance.deviceSource = null;
+
     await this.init();
+    if (!isCurrent()) {
+      return;
+    }
     await resumeAudioContext();
+    if (!isCurrent()) {
+      return;
+    }
 
     const context = getAudioContext();
     if (!context) {
@@ -397,7 +421,7 @@ export class AudioManager {
     }
 
     // Create device source
-    instance.deviceSource = createDeviceSource(
+    const deviceSource = createDeviceSource(
       context,
       soundId,
       createDeviceSourceCallbacks({
@@ -406,15 +430,28 @@ export class AudioManager {
         soundId,
       })
     );
+    instance.deviceSource = deviceSource;
+
+    if (channelSelection) {
+      deviceSource.setChannelSelection(channelSelection);
+    }
 
     // Start capture (onActive callback fires when stream is ready)
-    await instance.deviceSource.start(deviceId, constraints);
+    await deviceSource.start(deviceId, constraints);
+    if (!(isCurrent() && deviceSource.isActive)) {
+      return;
+    }
 
     // Connect through the full audio graph (after start so output node exists)
     const graphConnected = await this.connectAudioGraph(instance);
+    if (!isCurrent()) {
+      return;
+    }
     if (!graphConnected) {
-      console.warn(
-        `[AudioManager] Audio graph connection failed for device ${soundId}`
+      // A capture with no path to the mixer would read as live in silence.
+      deviceSource.stop();
+      throw new Error(
+        "The audio input could not connect to the mixer. Try going live again."
       );
     }
 
@@ -465,7 +502,7 @@ export class AudioManager {
       connectEffectsGraph: (soundId, source, destination, inputChannels) =>
         this.effects.connectGraph(soundId, source, destination, inputChannels),
       connectMainOutput: (source, realtime) =>
-        this.output.connectMain(source, realtime),
+        this.connectMainOutput(instance.sourceId, source, realtime),
       instance,
       notifyListeners: this.notifyListeners,
     });
@@ -473,6 +510,36 @@ export class AudioManager {
       await this.meters.setSoundSource(instance.sourceId, instance.nodes.gain);
     }
     return connected;
+  }
+
+  /**
+   * Route a sound's fader output through `connect` instead of straight to
+   * the main bus, or back to the main bus with `null`. Node mode puts a lane
+   * gain there. It is read the next time the sound's graph connects, so
+   * register it before the sound plays; Single and DJ never register one.
+   */
+  setSoundOutputConnector(
+    soundId: string,
+    connect: SoundOutputConnector | null
+  ): void {
+    if (connect) {
+      this.outputConnectors.set(soundId, connect);
+    } else {
+      this.outputConnectors.delete(soundId);
+    }
+  }
+
+  private connectMainOutput(
+    soundId: string,
+    source: AudioNode,
+    realtime: boolean
+  ): () => void {
+    const connectMain = (node: AudioNode, isRealtime: boolean) =>
+      this.output.connectMain(node, isRealtime);
+    const connect = this.outputConnectors.get(soundId);
+    return connect
+      ? connect(source, realtime, connectMain)
+      : connectMain(source, realtime);
   }
 
   /**
@@ -485,6 +552,9 @@ export class AudioManager {
     }
 
     instance.playing = false;
+    // A pause while connecting abandons the connect; only playback start or an
+    // error would otherwise clear the flag.
+    instance.loading = false;
 
     // Device input: mute gain instead of stopping stream (instant unmute later)
     if (instance.isDeviceInput) {
@@ -500,6 +570,7 @@ export class AudioManager {
 
     notifySoundState(this.notifyListeners, soundId, instance, {
       error: null,
+      isLoading: false,
       isPlaying: false,
     });
   }
@@ -508,12 +579,14 @@ export class AudioManager {
    * Stop a sound
    */
   stopSound(soundId: string): void {
+    this.deviceStarts.delete(soundId);
     const instance = this.sounds.get(soundId);
     if (!instance) {
       return;
     }
 
     instance.playing = false;
+    instance.loading = false;
     instance.playbackSource?.stop();
     instance.deviceSource?.stop();
     this.effects.stopSource(soundId);
@@ -608,7 +681,7 @@ export class AudioManager {
 
   /**
    * Set playback rate for a sound (0.5 to 2.0)
-   * Note: This changes both speed and pitch when the browser transport supports it.
+   * Pitch follows the rate unless key lock (`setKeyLock`) is on.
    */
   setPlaybackRate(soundId: string, rate: number): void {
     const instance = this.sounds.get(soundId);
@@ -630,6 +703,18 @@ export class AudioManager {
 
     const clampedRate = Math.max(0.5, Math.min(2.0, rate));
     instance.playbackSource.setPlaybackRate(clampedRate);
+  }
+
+  /**
+   * Key lock for a sound: on, a speed change keeps the pitch; off, pitch
+   * follows speed like tape. A no-op for live device input.
+   */
+  setKeyLock(soundId: string, keyLock: boolean): void {
+    const instance = this.sounds.get(soundId);
+    if (!instance?.playbackSource || instance.isDeviceInput) {
+      return;
+    }
+    instance.playbackSource.setPreservesPitch(keyLock);
   }
 
   seekSound(soundId: string, position: number): void {
@@ -765,6 +850,11 @@ export class AudioManager {
     desired: DesiredEffectsState
   ): Promise<EffectsRuntimeOutcome> {
     return this.effects.reconcile(soundId, desired);
+  }
+
+  /** The backend a sound's effects last settled on, e.g. a dry fallback. */
+  getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
+    return this.effects.getRuntimeOutcome(soundId);
   }
 
   // ============================================
@@ -929,19 +1019,20 @@ export class AudioManager {
     };
 
     try {
-      await instance.playbackSource.refreshUrl(
+      // A pause while the new URL loads keeps the sound paused.
+      const playing = await instance.playbackSource.refreshUrl(
         toPlaybackInput(refreshedRadio),
         seekPosition
       );
 
       instance.radio = refreshedRadio;
       instance.loading = false;
-      instance.playing = true;
+      instance.playing = playing;
 
       notifySoundState(this.notifyListeners, soundId, instance, {
         error: null,
         isLoading: false,
-        isPlaying: true,
+        isPlaying: playing,
       });
     } catch (error) {
       instance.loading = false;
@@ -1007,6 +1098,7 @@ export class AudioManager {
 
     this.soundRegistry.clear();
     this.listeners.clear();
+    this.outputConnectors.clear();
     this.meters.clear();
     this.volume.clear();
 

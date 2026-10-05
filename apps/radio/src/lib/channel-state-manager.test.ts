@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { shallow } from "@tanstack/react-store";
 import { AudioManager, createDefaultEffectConfig } from "@/lib/audio";
 import {
   createDefaultChannel,
   getPlaybackChannel,
   playbackSessionsCollection,
 } from "@/lib/collections/playback-sessions";
-import { setPlaybackChannelSoundId } from "@/lib/stores/playback-runtime-store";
+import {
+  initialChannelRuntimeState,
+  setPlaybackChannelSoundId,
+} from "@/lib/stores/playback-runtime-store";
 import type { DesiredEffectsState } from "./channel-effects";
 import {
   activateChannel,
   deactivateAllChannels,
+  selectChannelRuntimeView,
   setChannelVolume,
 } from "./channel-state-manager";
 
@@ -32,6 +37,29 @@ afterEach(async () => {
 });
 
 describe("channel state manager", () => {
+  test("leaves meter-rate peak levels out of the channel view", () => {
+    const playing = {
+      ...initialChannelRuntimeState,
+      isPlaying: true,
+      soundId: "left_station-1:1",
+    };
+    const view = selectChannelRuntimeView(playing);
+
+    expect(view).not.toHaveProperty("peakLevel");
+    expect(
+      shallow(
+        view,
+        selectChannelRuntimeView({
+          ...playing,
+          peakLevel: { left: 0.8, right: 0.6 },
+        })
+      )
+    ).toBeTrue();
+    expect(
+      shallow(view, selectChannelRuntimeView({ ...playing, isBuffering: true }))
+    ).toBeFalse();
+  });
+
   test("does not expose an alternate Effects mutation interface", async () => {
     const channelStateManager = await import("./channel-state-manager");
     const alternateEffectsMutations = [

@@ -1,0 +1,18 @@
+name: Bug report
+description: Tell us what went wrong.
+body:
+  - type: markdown
+    attributes:
+      value: "Reports are public. Leave out emails, secrets and private links. For vulnerabilities, follow [SECURITY.md](https://github.com/avoid-quest/avoid.quest/blob/main/SECURITY.md)."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include what you expected and steps to reproduce it.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Where did it happen?
+      description: Site, browser, device and radio mode/version, if relevant.

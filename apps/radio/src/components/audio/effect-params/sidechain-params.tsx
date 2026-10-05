@@ -1,7 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { Label } from "@avoid.quest/ui/components/label";
-import type { ChangeEvent } from "react";
 import type { EffectConfig } from "@/lib/audio";
+import { ParamSelect } from "./param-select";
 
 type SidechainParamsProps = {
   deckId?: "deck-a" | "deck-b";
@@ -9,16 +8,17 @@ type SidechainParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
+/** Radix Select items cannot use an empty value, so the internal input gets a name. */
+const INTERNAL_INPUT = "internal";
+
 export function SidechainParams({
   deckId,
   effect,
   onUpdate,
 }: SidechainParamsProps) {
-  function handleSidechainChange(event: ChangeEvent<HTMLSelectElement>) {
+  function handleSidechainChange(value: string) {
     onUpdate({
-      sidechain: event.target.value
-        ? { channelId: event.target.value }
-        : undefined,
+      sidechain: value === INTERNAL_INPUT ? undefined : { channelId: value },
     } as Partial<EffectConfig>);
   }
 
@@ -32,22 +32,21 @@ export function SidechainParams({
   }
 
   const otherDeck = deckId === "deck-a" ? "deck-b" : "deck-a";
-  const id = `${effect.id}-sidechain`;
 
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>Sidechain input</Label>
-      <select
-        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-        id={id}
+    <div className="space-y-1">
+      <ParamSelect
+        label="Sidechain input"
         onChange={handleSidechainChange}
-        value={effect.sidechain?.channelId ?? ""}
-      >
-        <option value="">Internal input</option>
-        <option value={otherDeck}>
-          {otherDeck === "deck-a" ? "Deck A" : "Deck B"}
-        </option>
-      </select>
+        options={[
+          { label: "Internal input", value: INTERNAL_INPUT },
+          {
+            label: otherDeck === "deck-a" ? "Deck A" : "Deck B",
+            value: otherDeck,
+          },
+        ]}
+        value={effect.sidechain?.channelId ?? INTERNAL_INPUT}
+      />
       <p className="text-muted-foreground text-xs">
         The other live deck is routed into the detector/modulator in-browser.
       </p>

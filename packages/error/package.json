@@ -2,7 +2,7 @@
   "name": "@avoid.quest/error",
   "version": "0.0.1",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -12,6 +12,6 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@sentry/tanstackstart-react": "^10.71.0"
+    "@sentry/tanstackstart-react": "^11.2.0"
   }
 }

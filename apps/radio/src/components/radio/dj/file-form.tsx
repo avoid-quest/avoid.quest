@@ -1,33 +1,77 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
-import { FileAudioIcon, GlobeIcon, Loader2Icon } from "lucide-react";
+import { FileAudioIcon, FolderOpenIcon, GlobeIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { isStaticAudioUrl } from "@/lib/audio/remote-url";
+import { InlineError } from "../inline-error";
+import { describeFileLoadFailure } from "./file-load-failure";
+
+/** Resolves to why the load failed, or null once the source is on the deck. */
+type LoadFile<T> = (source: T) => Promise<string | null>;
 
 type FileFormProps = {
-  onLoad: (file: File) => void;
-  onLoadUrl?: (url: string) => void;
+  onLoad: LoadFile<File>;
+  onLoadUrl?: LoadFile<string>;
+  onLoadFiles?: LoadFile<readonly File[]>;
   onCancel?: () => void;
 };
 
-export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
+export function FileForm({
+  onLoad,
+  onLoadUrl,
+  onLoadFiles,
+  onCancel,
+}: FileFormProps) {
   const [activeTab, setActiveTab] = useState<"file" | "url">("file");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
+
+  // The form stays up while the deck loads; a failure lands here, next to
+  // what the user picked or typed.
+  const load = (loading: Promise<string | null>) => {
+    setError(null);
+    setIsLoading(true);
+    loading
+      .then((failure) => {
+        if (failure) {
+          setError(describeFileLoadFailure(failure));
+        }
+      })
+      .catch((cause: unknown) => {
+        setError(
+          describeFileLoadFailure(
+            cause instanceof Error ? cause.message : String(cause)
+          )
+        );
+      })
+      .finally(() => setIsLoading(false));
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files ?? []);
+    const [file] = files;
+    // Let the same file be picked again after a failed load.
+    event.target.value = "";
     if (!file) {
+      return;
+    }
+
+    // A playlist load filters the selection itself, so an unsupported first
+    // file must not reject the playable ones after it.
+    if (files.length > 1 && onLoadFiles) {
+      load(onLoadFiles(files));
       return;
     }
 
@@ -36,9 +80,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
       return;
     }
 
-    setError(null);
-    setIsLoading(true);
-    onLoad(file);
+    load(onLoad(file));
   };
 
   const handleBrowse = () => {
@@ -49,7 +91,7 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
     const trimmed = urlInput.trim();
 
     if (!trimmed) {
-      setError("Please enter a URL");
+      setError("Enter a URL");
       return;
     }
 
@@ -61,21 +103,21 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
         return;
       }
     } catch {
-      setError("Invalid URL format");
+      setError("Enter a full URL, starting with https://");
       return;
     }
 
     // Validate it's an audio URL
     if (!isStaticAudioUrl(trimmed)) {
       setError(
-        "URL must point to an audio file (.mp3, .wav, etc.) or playlist (.m3u, .pls)"
+        "Link to an audio file (.mp3, .wav…) or a playlist (.m3u, .pls)"
       );
       return;
     }
 
-    setError(null);
-    setIsLoading(true);
-    onLoadUrl?.(trimmed);
+    if (onLoadUrl) {
+      load(onLoadUrl(trimmed));
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
@@ -91,97 +133,119 @@ export function FileForm({ onLoad, onLoadUrl, onCancel }: FileFormProps) {
     setUrlInput(event.target.value);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-4">
-      <div className="w-full max-w-md space-y-4">
-        <div className="flex items-center justify-center gap-2 text-muted-foreground">
-          <FileAudioIcon className="size-5" />
-          <h3 className="font-medium text-sm">Load Audio</h3>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-2">
+      {error ? <InlineError>{error}</InlineError> : null}
 
-        {error ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
-            <p className="text-center text-destructive text-sm">{error}</p>
-          </div>
-        ) : null}
+      <Tabs onValueChange={handleTabChange} value={activeTab}>
+        <TabsList className="w-full">
+          <TabsTrigger className="text-xs" value="file">
+            <FileAudioIcon />
+            Local file
+          </TabsTrigger>
+          <TabsTrigger className="text-xs" value="url">
+            <GlobeIcon />
+            Remote URL
+          </TabsTrigger>
+        </TabsList>
 
-        <Tabs onValueChange={handleTabChange} value={activeTab}>
-          <TabsList className="w-full">
-            <TabsTrigger className="flex-1" value="file">
-              <FileAudioIcon className="mr-2 size-4" />
-              Local File
-            </TabsTrigger>
-            <TabsTrigger className="flex-1" value="url">
-              <GlobeIcon className="mr-2 size-4" />
-              Remote URL
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent className="mt-4 space-y-2" value="file">
-            <input
-              accept="audio/*"
-              className="hidden"
-              onChange={handleFileChange}
-              ref={inputRef}
-              type="file"
-            />
-            <Button
-              className="w-full"
-              disabled={isLoading}
-              onClick={handleBrowse}
-              variant="outline"
-            >
-              {isLoading ? (
-                <Loader2Icon className="mr-2 size-4 animate-spin" />
-              ) : (
-                <FileAudioIcon className="mr-2 size-4" />
-              )}
-              {isLoading ? "Loading..." : "Browse Files"}
-            </Button>
-            <p className="text-center text-muted-foreground text-xs">
-              MP3, WAV, FLAC, OGG, AAC, M4A, WebM
-            </p>
-          </TabsContent>
-
-          <TabsContent className="mt-4 space-y-2" value="url">
-            <Input
-              disabled={isLoading}
-              onChange={handleUrlChange}
-              onKeyDown={handleKeyDown}
-              placeholder="https://example.com/track.mp3"
-              value={urlInput}
-            />
-            <Button
-              className="w-full"
-              disabled={isLoading || !urlInput.trim()}
-              onClick={handleUrlSubmit}
-              variant="outline"
-            >
-              {isLoading ? (
-                <Loader2Icon className="mr-2 size-4 animate-spin" />
-              ) : (
-                <GlobeIcon className="mr-2 size-4" />
-              )}
-              {isLoading ? "Loading..." : "Load URL"}
-            </Button>
-            <p className="text-center text-muted-foreground text-xs">
-              MP3, WAV, OGG, FLAC, M4A + M3U/PLS playlists
-            </p>
-          </TabsContent>
-        </Tabs>
-
-        <div className="flex gap-2">
-          {onCancel ? (
-            <Button
-              className="flex-1"
-              disabled={isLoading}
-              onClick={onCancel}
-              variant="outline"
-            >
-              Cancel
-            </Button>
+        <TabsContent className="space-y-2" tabIndex={-1} value="file">
+          <input
+            accept="audio/*"
+            className="hidden"
+            multiple={!!onLoadFiles}
+            onChange={handleFileChange}
+            ref={inputRef}
+            type="file"
+          />
+          <Button
+            className="h-7 w-full text-xs"
+            disabled={isLoading}
+            onClick={handleBrowse}
+            size="sm"
+            variant="outline"
+          >
+            {isLoading ? <Spinner /> : <FileAudioIcon />}
+            {isLoading ? "Loading…" : "Browse files"}
+          </Button>
+          {onLoadFiles ? (
+            <>
+              <input
+                className="hidden"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  event.target.value = "";
+                  if (files.length) {
+                    load(onLoadFiles(files));
+                  }
+                }}
+                ref={(element) => {
+                  folderRef.current = element;
+                  if (element) {
+                    element.webkitdirectory = true;
+                  }
+                }}
+                type="file"
+              />
+              <Button
+                className="h-7 w-full text-xs"
+                disabled={isLoading}
+                onClick={() => folderRef.current?.click()}
+                size="sm"
+                variant="outline"
+              >
+                <FolderOpenIcon /> Browse folder
+              </Button>
+              <p className="text-center text-muted-foreground text-xs">
+                Includes subfolders. Playable files become a playlist in
+                filename order. Pick again after reloading.
+              </p>
+            </>
           ) : null}
+          <p className="text-center text-muted-foreground text-xs">
+            MP3, WAV, FLAC, OGG, AAC, M4A, WebM
+          </p>
+        </TabsContent>
+
+        <TabsContent className="space-y-2" tabIndex={-1} value="url">
+          <Input
+            aria-label="Audio file URL"
+            className="h-8"
+            disabled={isLoading}
+            onChange={handleUrlChange}
+            onKeyDown={handleKeyDown}
+            placeholder="https://example.com/track.mp3"
+            value={urlInput}
+          />
+          <Button
+            className="h-7 w-full text-xs"
+            disabled={isLoading || !urlInput.trim()}
+            onClick={handleUrlSubmit}
+            size="sm"
+            variant="outline"
+          >
+            {isLoading ? <Spinner /> : <GlobeIcon />}
+            {isLoading ? "Loading…" : "Load URL"}
+          </Button>
+          <p className="text-center text-muted-foreground text-xs">
+            MP3, WAV, OGG, FLAC, M4A + M3U/PLS playlists
+          </p>
+        </TabsContent>
+      </Tabs>
+
+      {onCancel ? (
+        <div className="mt-auto flex justify-end border-border/50 border-t pt-2">
+          <Button
+            className="h-7 text-xs"
+            disabled={isLoading}
+            onClick={onCancel}
+            size="sm"
+            variant="ghost"
+          >
+            Cancel
+          </Button>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

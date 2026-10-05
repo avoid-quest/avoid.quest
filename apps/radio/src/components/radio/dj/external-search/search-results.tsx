@@ -1,27 +1,34 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
-import { Loader2Icon, MusicIcon, PlayIcon } from "lucide-react";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { cn } from "@avoid.quest/ui/lib/utils";
+import { MusicIcon, PlayIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
+import { EmptyHint } from "../../empty-hint";
+import { InlineError } from "../../inline-error";
+import {
+  StationRowSubtitle,
+  StationRowText,
+  stationRowButtonOnlyClassName,
+} from "../../station-row";
 
 type SearchResultsProps = {
   error: string | null;
   onLoad: (radio: Radio) => void;
+  /** Called when a result is picked, before it resolves. */
+  onPick?: () => void;
   results: UnifiedSearchResult[];
-};
-
-const PLATFORM_COLORS = {
-  bandcamp: "#629aa0",
-  radiogarden: "#00d084",
-  soundcloud: "#ff7700",
-  youtube: "#ff0000",
+  showEmpty?: boolean;
 };
 
 const PLATFORM_LABELS = {
   bandcamp: "BC",
+  mixcloud: "MC",
   radiogarden: "RG",
   soundcloud: "SC",
   youtube: "YT",
@@ -30,6 +37,7 @@ const PLATFORM_LABELS = {
 function ResultItem({
   result,
   onLoad,
+  onPick,
   onError,
   isDisabled,
   isLoading,
@@ -37,6 +45,7 @@ function ResultItem({
 }: {
   result: UnifiedSearchResult;
   onLoad: (radio: Radio) => void;
+  onPick?: () => void;
   onError: (message: string) => void;
   isDisabled: boolean;
   isLoading: boolean;
@@ -54,22 +63,22 @@ function ResultItem({
   const handleClick = () => {
     onError("");
     onLoadingChange(true);
+    onPick?.();
     loadItem(result.url);
   };
 
-  const platformColor = PLATFORM_COLORS[result.platform];
+  const platformColor = getPlatformSourceColor(result.platform);
   const platformLabel = PLATFORM_LABELS[result.platform];
   const showLoading = isPending || isLoading;
 
   return (
     <button
-      className="flex w-full items-center gap-2 rounded p-2 text-left transition-colors hover:bg-accent disabled:opacity-50"
+      className={cn(stationRowButtonOnlyClassName, "disabled:opacity-50")}
       disabled={isDisabled}
       onClick={handleClick}
       type="button"
     >
-      {/* Thumbnail */}
-      <div className="relative size-10 shrink-0 overflow-hidden rounded bg-muted">
+      <div className="relative size-10 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
         {result.thumbnail ? (
           <img
             alt=""
@@ -83,45 +92,33 @@ function ResultItem({
             <MusicIcon className="size-4 text-muted-foreground" />
           </div>
         )}
-        {/* Platform badge */}
         <div
-          className="absolute bottom-0 left-0 px-1 font-bold text-[9px] text-white"
+          className="absolute bottom-0 left-0 px-1 font-bold font-mono text-[9px] text-white"
           style={{ backgroundColor: platformColor }}
         >
           {platformLabel}
         </div>
       </div>
 
-      {/* Info */}
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-xs">{result.title}</p>
-        <p className="truncate text-muted-foreground text-xs">
-          {result.artist}
-          {result.duration
-            ? ` · ${formatPlatformDuration(result.duration)}`
-            : ""}
-          {result.type !== "track" && result.type !== "video" && (
-            <span
-              className="ml-1 rounded px-1 py-0.5 text-[10px]"
-              style={{
-                backgroundColor: `${platformColor}20`,
-                color: platformColor,
-              }}
-            >
-              {result.type}
-            </span>
-          )}
-        </p>
-      </div>
+      <StationRowText title={result.title}>
+        <StationRowSubtitle>
+          {[
+            result.artist,
+            result.duration ? formatPlatformDuration(result.duration) : null,
+            result.type === "track" || result.type === "video"
+              ? null
+              : result.type,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </StationRowSubtitle>
+      </StationRowText>
 
-      {/* Action */}
-      <div className="shrink-0">
-        {showLoading ? (
-          <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-        ) : (
-          <PlayIcon className="size-4 text-muted-foreground" />
-        )}
-      </div>
+      {showLoading ? (
+        <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
+      ) : (
+        <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+      )}
     </button>
   );
 }
@@ -130,12 +127,14 @@ function ManagedResultItem({
   result,
   loadingId,
   onLoad,
+  onPick,
   onError,
   onLoadingIdChange,
 }: {
   result: UnifiedSearchResult;
   loadingId: string | null;
   onLoad: (radio: Radio) => void;
+  onPick?: () => void;
   onError: (message: string) => void;
   onLoadingIdChange: (id: string | null) => void;
 }) {
@@ -149,35 +148,46 @@ function ManagedResultItem({
       onError={onError}
       onLoad={onLoad}
       onLoadingChange={handleLoadingChange}
+      onPick={onPick}
       result={result}
     />
   );
 }
 
-export function SearchResults({ error, onLoad, results }: SearchResultsProps) {
+export function SearchResults({
+  error,
+  onLoad,
+  onPick,
+  results,
+  showEmpty = false,
+}: SearchResultsProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Row callbacks stop on unmount, so release their parent loading lock here.
+  if (
+    loadingId !== null &&
+    (error || !results.some((result) => result.id === loadingId))
+  ) {
+    setLoadingId(null);
+  }
+
   if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-center text-destructive text-xs">{error}</p>
-      </div>
-    );
+    return <InlineError>{error}</InlineError>;
   }
 
   if (results.length === 0) {
-    return null;
+    return showEmpty ? (
+      <EmptyHint>Nothing found. Try another search or platform.</EmptyHint>
+    ) : null;
   }
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <div className="space-y-2 pr-3">
-        {!!loadError?.trim() && (
-          <p className="px-2 text-destructive text-xs">{loadError}</p>
-        )}
+      <div className="space-y-2">
+        {!!loadError?.trim() && <InlineError>{loadError}</InlineError>}
 
-        <div className="space-y-0.5">
+        <div className="flex w-0 min-w-full flex-col gap-1">
           {results.map((result) => (
             <ManagedResultItem
               key={result.id}
@@ -185,6 +195,7 @@ export function SearchResults({ error, onLoad, results }: SearchResultsProps) {
               onError={setLoadError}
               onLoad={onLoad}
               onLoadingIdChange={setLoadingId}
+              onPick={onPick}
               result={result}
             />
           ))}

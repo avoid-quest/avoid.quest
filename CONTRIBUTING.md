@@ -1,27 +1,39 @@
 # Contributing
 
-This is a source-available proprietary repository. Contributions are welcome by
-pull request, but submitting a contribution means it may be incorporated into
-avoid.quest under the repository license.
+Found a problem or have an idea? [Open an issue](https://github.com/avoid-quest/avoid.quest/issues/new/choose),
+or use Feedback in radio. Reports are public: leave out contact details, secrets,
+and private listening links. For vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
-## Local Checks
+For code changes, describe the problem and send a focused pull request. See
+[development setup](DEVELOPMENT.md) and the [radio guide](apps/radio/README.md).
+Run from the repository root:
 
-Before opening a pull request, run the checks that match your change:
-
-```bash
-bun install
+```sh
+bun install --frozen-lockfile
 bun run check
 bun run typecheck
 ```
 
-For app or package changes, also run focused validation:
+Also run each changed workspace's build and tests, for example:
 
-```bash
-bun run --filter @avoid.quest/web build
+```sh
+bun run --filter @avoid.quest/web test
 bun run --filter @avoid.quest/radio test
 bun run --filter @avoid.quest/radio build
 ```
 
-For Cloudflare binding or environment type changes, run the relevant
-`cf-typegen` script. Do not run deploy or upload commands unless a maintainer
-explicitly asks for deployment.
+Run the relevant `cf-typegen` script for Cloudflare binding changes. Do not
+manually deploy or upload unless a maintainer requests it. Existing Cloudflare
+Workers Builds provide PR build checks and previews; no separate CI is needed.
+
+Original contributions you have the right to license are submitted under MIT.
+Changes to third-party derived files retain their applicable licenses; the
+combined radio application is distributed under AGPL-3.0-or-later. See
+[licensing scope](LICENSING.md). Keep copyright and license notices, identify
+third-party sources, and do not submit material you lack permission to contribute.
+No copyright assignment is required.
+
+Radio release notes come from git history. Use short listener-facing `feat`
+subjects; put `Changelog: <listener-facing text>` in the commit body to describe
+a fix, or `Changelog: skip` for internal features. In squash PRs these lines must
+appear in the merge body above the list of squashed commits.

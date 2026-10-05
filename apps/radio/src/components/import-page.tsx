@@ -9,8 +9,10 @@ import {
 import { Separator } from "@avoid.quest/ui/components/separator";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { useNavigate } from "@tanstack/react-router";
+import { HomeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
   autoImportFromUrl,
   hasImportDataInUrl,
@@ -48,7 +50,7 @@ export function ImportPage() {
           navigate({ to: "/" });
         }
       } catch {
-        toast.error("Failed to import configuration from URL");
+        toast.error("Couldn't read share link");
         navigate({ to: "/" });
       } finally {
         setIsLoading(false);
@@ -71,10 +73,9 @@ export function ImportPage() {
         await mergeImportedData(importData);
       }
 
-      toast.success("Configuration imported successfully!");
       navigate({ to: "/" });
     } catch {
-      toast.error("Failed to import configuration");
+      // The import library already reports the failure.
     } finally {
       setIsImporting(false);
     }
@@ -92,7 +93,7 @@ export function ImportPage() {
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="space-y-4 text-center">
           <Spinner className="mx-auto" />
-          <p className="text-muted-foreground">Loading configuration...</p>
+          <p className="text-muted-foreground">Loading configuration…</p>
         </div>
       </div>
     );
@@ -101,13 +102,14 @@ export function ImportPage() {
   if (!(importData && importPreview)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <div className="space-y-4 text-center">
-          <h2 className="font-semibold text-xl">No Configuration Found</h2>
-          <p className="text-muted-foreground">
-            This URL doesn't contain a valid configuration to import.
+        <div className="text-center">
+          <h1 className="mb-2 font-semibold text-lg">Nothing to import</h1>
+          <p className="mb-6 text-muted-foreground text-sm">
+            This link doesn't contain stations to import.
           </p>
-          <Button onClick={handleCancel} variant="outline">
-            Go to Home
+          <Button onClick={handleCancel} size="sm">
+            <HomeIcon className="size-3.5" />
+            Go home
           </Button>
         </div>
       </div>
@@ -117,53 +119,51 @@ export function ImportPage() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 p-4">
       <div className="space-y-2 text-center">
-        <h1 className="font-bold text-2xl">Import Configuration</h1>
+        <h1 className="font-semibold text-lg">Import configuration</h1>
         <p className="text-muted-foreground">
           Someone shared their radio configuration with you. Review the changes
           below and choose how to import them.
         </p>
       </div>
 
-      <Card className="border-blue-200 bg-blue-50/50 p-6">
+      <Card className="p-6">
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-blue-500" />
-            <h3 className="font-medium">Import Preview</h3>
-          </div>
+          <h3 className="font-medium">Preview</h3>
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-2 gap-4 text-sm tabular-nums">
             <div>
-              <span className="text-muted-foreground">New radios:</span>
-              <span className="ml-2 font-medium text-green-600">
+              <span className="text-muted-foreground">New:</span>
+              <span className="ml-2 font-medium">
                 {importPreview.newRadios}
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground">Updated radios:</span>
-              <span className="ml-2 font-medium text-blue-600">
+              <span className="text-muted-foreground">Updated:</span>
+              <span className="ml-2 font-medium">
                 {importPreview.updatedRadios}
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground">Unchanged radios:</span>
-              <span className="ml-2 font-medium text-gray-600">
+              <span className="text-muted-foreground">Unchanged:</span>
+              <span className="ml-2 font-medium">
                 {importPreview.unchangedRadios}
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground">Settings changed:</span>
+              <span className="text-muted-foreground">Settings:</span>
               <span className="ml-2 font-medium">
-                {importPreview.settingsChanged ? "Yes" : "No"}
+                {importPreview.settingsChanged ? "Changed" : "No change"}
               </span>
             </div>
           </div>
+          <ImportPatchPreview patch={importPreview.nodePatch} />
         </div>
       </Card>
 
       <Card className="p-6">
         <div className="space-y-4">
           <div>
-            <h3 className="mb-2 font-medium">Import Mode</h3>
+            <h3 className="mb-2 font-medium">Mode</h3>
             <p className="mb-4 text-muted-foreground text-sm">
               Choose how you want to import this configuration:
             </p>
@@ -175,12 +175,10 @@ export function ImportPage() {
                 <RadioGroupItem className="mt-1" id="merge" value="merge" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="merge">
-                    Merge (Recommended)
+                    Merge
                   </Label>
                   <p className="text-muted-foreground text-sm">
-                    Keep your existing radios and settings, add new ones, and
-                    update changed ones. Your custom order and preferences will
-                    be preserved.
+                    Update matching stations, add new ones hidden.
                   </p>
                 </div>
               </div>
@@ -189,11 +187,10 @@ export function ImportPage() {
                 <RadioGroupItem className="mt-1" id="replace" value="replace" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="replace">
-                    Replace All
+                    Replace
                   </Label>
                   <p className="text-muted-foreground text-sm">
-                    Clear all your existing radios and settings, then import the
-                    new configuration. This will remove all your current data.
+                    Overwrite the station list.
                   </p>
                 </div>
               </div>
@@ -208,7 +205,7 @@ export function ImportPage() {
               disabled={isImporting}
               onClick={handleApplyImport}
             >
-              {isImporting ? "Importing..." : "Import Configuration"}
+              {isImporting ? "Importing…" : "Apply import"}
             </Button>
             <Button
               disabled={isImporting}

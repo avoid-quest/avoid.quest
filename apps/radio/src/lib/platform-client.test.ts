@@ -4,6 +4,7 @@ import {
   type PlatformItem,
   preparePlatformItem,
   resolvePlatformItem,
+  resolveSpotifyItem,
   selectBandcampRelayBaseUrl,
 } from "./platform-client";
 
@@ -11,6 +12,9 @@ const BANDCAMP_URL = "https://artist.bandcamp.com/album/release";
 const BANDCAMP_STREAM = "https://t4.bcbits.com/stream/track-one";
 const BANDCAMP_TRACK_STREAM = "https://t4.bcbits.com/stream/track-two";
 const SOUNDCLOUD_URL = "https://soundcloud.com/artist/track";
+const MIXCLOUD_URL = "https://www.mixcloud.com/dholbach/cryptkeeper/";
+const MIXCLOUD_HLS =
+  "https://aod.mixcloud.stream/secure/hls/6/f/c/d/d610.m4a/index.m3u8";
 
 function rangedAudioResponse(body: BodyInit | null = new Uint8Array([0])) {
   return new Response(body, {
@@ -261,6 +265,39 @@ describe("preparePlatformItem", () => {
     );
   });
 
+  test("keeps Mixcloud streams on its stream hosts and rejects others", async () => {
+    const item: PlatformItem = {
+      format: "hls",
+      metadata: {
+        itemType: "show",
+        platform: "mixcloud",
+        streamUrl: MIXCLOUD_HLS,
+        url: MIXCLOUD_URL,
+      },
+      streamUrl: MIXCLOUD_HLS,
+    };
+    expect(await preparePlatformItem(MIXCLOUD_URL, item)).toBe(item);
+
+    const unsafe = [
+      { ...item, streamUrl: "https://evil.example/index.m3u8" },
+      {
+        ...item,
+        metadata: { ...item.metadata, streamUrl: "http://127.0.0.1/a.m4a" },
+      },
+      {
+        ...item,
+        streamUrl: "http://aod.mixcloud.stream/secure/hls/a.m4a/index.m3u8",
+      },
+    ];
+    await Promise.all(
+      unsafe.map((candidate) =>
+        expect(preparePlatformItem(MIXCLOUD_URL, candidate)).rejects.toThrow(
+          "Mixcloud returned an unsafe media URL"
+        )
+      )
+    );
+  });
+
   test("allows public Radio Garden streams and rejects unsafe ones", async () => {
     const requestUrl = "https://radio.garden/listen/station/abc";
     const publicItem: PlatformItem = {
@@ -369,5 +406,79 @@ describe("preparePlatformItem", () => {
     await expect(preparePlatformItem(SOUNDCLOUD_URL, item)).rejects.toThrow(
       "Platform returned mismatched metadata"
     );
+  });
+});
+
+describe("resolveSpotifyItem", () => {
+  const url = "https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc";
+  const metadata = {
+    artist: "Daft Punk",
+    itemType: "album" as const,
+    name: "Discovery",
+    platform: "spotify" as const,
+    spotifyId: "2noRn2Aes5aoNVsU6iWThc",
+    tracks: [
+      {
+        artist: "Daft Punk",
+        duration: 320,
+        name: "One More Time",
+        spotifyId: "0DiWol3AO6WpXZgp0goxAV",
+        streamUrl: "spotify:track:0DiWol3AO6WpXZgp0goxAV",
+        url: "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV",
+      },
+      {
+        artist: "Daft Punk",
+        duration: 212,
+        name: "Aerodynamic",
+        spotifyId: "1NeLwFETswx8Fzxl2AFl91",
+        streamUrl: "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+        url: "https://open.spotify.com/track/1NeLwFETswx8Fzxl2AFl91",
+      },
+    ],
+    url,
+  };
+
+  test("matches the first track on YouTube and keeps the rest lazy", async () => {
+    const loadMetadata = mock(() => Promise.resolve(metadata));
+    const youtube = {
+      resolveStream: mock((videoId: string) =>
+        Promise.resolve(`https://media.example/${videoId}.webm`)
+      ),
+      search: mock(() =>
+        Promise.resolve([
+          {
+            author: "Daft Punk",
+            duration: 320,
+            title: "One More Time",
+            videoId: "FGBhQbmPwH8",
+          },
+        ])
+      ),
+    };
+
+    const item = await resolveSpotifyItem(url, { loadMetadata, youtube });
+
+    expect(loadMetadata).toHaveBeenCalledWith(url);
+    expect(item.streamUrl).toBe("https://media.example/FGBhQbmPwH8.webm");
+    if (item.metadata.platform !== "spotify") {
+      throw new Error("Expected Spotify metadata");
+    }
+    expect(item.metadata.tracks?.map((track) => track.streamUrl)).toEqual([
+      "https://media.example/FGBhQbmPwH8.webm",
+      "spotify:track:1NeLwFETswx8Fzxl2AFl91",
+    ]);
+    expect(item.metadata.tracks?.[0]?.youtubeVideoId).toBe("FGBhQbmPwH8");
+  });
+
+  test("fails when nothing on YouTube matches", async () => {
+    await expect(
+      resolveSpotifyItem(url, {
+        loadMetadata: () => Promise.resolve(metadata),
+        youtube: {
+          resolveStream: () => Promise.reject(new Error("unused")),
+          search: () => Promise.resolve([]),
+        },
+      })
+    ).rejects.toThrow("No playable track found in this Spotify album");
   });
 });

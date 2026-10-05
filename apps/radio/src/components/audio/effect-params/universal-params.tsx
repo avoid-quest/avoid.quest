@@ -17,6 +17,12 @@ type UniversalParamsProps = {
 
 type UniversalParam = (typeof UNIVERSAL_EFFECT_PARAM_DEFS)[number];
 
+const SHORT_LABELS: Record<string, string> = {
+  dryWet: "Mix",
+  inputGain: "In",
+  outputGain: "Out",
+};
+
 function UniversalParamSlider({
   defaultConfig,
   midiTargetPrefix,
@@ -41,7 +47,7 @@ function UniversalParamSlider({
       defaultValue={typeof defaultValue === "number" ? defaultValue : undefined}
       description={param.description}
       formatKey={param.formatKey ?? "default"}
-      label={param.label}
+      label={SHORT_LABELS[param.key] ?? param.label}
       max={param.max}
       min={param.min}
       onChange={updateValue}
@@ -74,7 +80,7 @@ export function UniversalParams({
     (deckId && effectId ? `${deckId}:effect:${effectId}` : undefined);
 
   return (
-    <ParamGroup title="Wrapper">
+    <ParamGroup title="Mix">
       {UNIVERSAL_EFFECT_PARAM_DEFS.map((param) => {
         const value = (effect as unknown as Record<string, unknown>)[param.key];
         if (typeof value !== "number") {

@@ -2,7 +2,7 @@
   "name": "@avoid.quest/discord-bot",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "tsup",
@@ -23,7 +23,7 @@
     "@avoid.quest/config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "^8.5.1",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.15",
     "typescript": "catalog:"
   }
 }

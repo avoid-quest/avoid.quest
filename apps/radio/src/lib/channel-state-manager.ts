@@ -10,19 +10,25 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
 import {
+  type ChannelRuntimeView,
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
   setPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
-  usePlaybackChannelRuntime,
+  usePlaybackChannelRuntimeView,
 } from "@/lib/stores/playback-runtime-store";
 import { channelEffects } from "./channel-effects.js";
 import { toRuntimeAudioError } from "./playback-action-errors.js";
 
 export type ChannelState = PlaybackChannelRecord &
   ReturnType<typeof getPlaybackChannelRuntime>;
+
+export { selectChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
+
+/** A channel as views render it: everything but its meter-rate peak level. */
+export type ChannelViewState = PlaybackChannelRecord & ChannelRuntimeView;
 
 export type ChannelOutputMode = "audio-graph" | "native";
 
@@ -141,8 +147,8 @@ export function getChannelState(
 export function useChannelState(
   sessionId: PlaybackSessionId,
   channelId: string
-): ChannelState | null {
-  const runtime = usePlaybackChannelRuntime(channelId);
+): ChannelViewState | null {
+  const runtime = usePlaybackChannelRuntimeView(channelId);
   const result = useLiveQuery((q) =>
     q
       .from({ session: playbackSessionsCollection })
@@ -152,7 +158,7 @@ export function useChannelState(
   const persisted = persistedSession?.channels.find(
     (channel) => channel.id === channelId
   ) as PlaybackChannelRecord | undefined;
-  return mergeChannelState(persisted, runtime);
+  return persisted ? { ...persisted, ...runtime } : null;
 }
 
 function updateChannel(

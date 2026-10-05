@@ -160,6 +160,7 @@ export type OfficialEffectGroup = {
   config: EffectConfig;
   created: BoxLike[];
   device: BoxLike;
+  signalTrim: BoxLike | null;
   inputTrim: BoxLike | null;
   wrapper: BoxLike | null;
   outputTrim: BoxLike | null;
@@ -579,7 +580,7 @@ function createNestedChains(
             context,
             effect,
             cell.audioEffects,
-            effectIndex * 2
+            effectIndex * 3
           );
           children.push(nested);
           created.push(...nested.created);
@@ -629,8 +630,20 @@ export function createOfficialEffectGroup(
   const created: BoxLike[] = [];
   const children: OfficialEffectGroup[] = [];
   const factory = OPENDAW_FACTORY_KEYS[config.type];
+  const signalTrim =
+    config.signalGain === undefined
+      ? null
+      : createTrim(
+          context,
+          host,
+          index,
+          config.signalGain,
+          "Cable trim",
+          created
+        );
+  const deviceIndex = index + Number(signalTrim !== null);
   if (usesDirectOfficialEffectLayout(config)) {
-    const device = insert(context, host, factory, index);
+    const device = insert(context, host, factory, deviceIndex);
     created.push(device);
     configureDevice(device, config, context.bpm);
     return {
@@ -640,11 +653,12 @@ export function createOfficialEffectGroup(
       device,
       inputTrim: null,
       outputTrim: null,
+      signalTrim,
       wrapper: null,
     };
   }
 
-  const wrapper = insert(context, host, "AudioEffectComposite", index);
+  const wrapper = insert(context, host, "AudioEffectComposite", deviceIndex);
   created.push(wrapper);
   set(wrapper, "label", `Radio wrapper: ${config.type}`);
   set(wrapper, "enabled", config.enabled);
@@ -705,7 +719,7 @@ export function createOfficialEffectGroup(
   const outputTrim = createTrim(
     context,
     host,
-    index + 1,
+    deviceIndex + 1,
     config.type === "crusher" && !config.autoGain
       ? config.outputGain * 10 ** (config.boost / 40)
       : config.outputGain,
@@ -721,6 +735,7 @@ export function createOfficialEffectGroup(
     device,
     inputTrim,
     outputTrim,
+    signalTrim,
     wrapper,
   };
 }
@@ -730,6 +745,9 @@ export function updateOfficialEffectGroup(
   config: EffectConfig,
   bpm: number
 ): void {
+  if (group.signalTrim) {
+    set(group.signalTrim, "volume", db(config.signalGain ?? 1));
+  }
   if (group.wrapper === null) {
     if (!usesDirectOfficialEffectLayout(config)) {
       throw new Error("Direct openDAW effect layout requires unity controls");

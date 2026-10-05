@@ -3,6 +3,8 @@ import type { Radio } from "@/lib/audio";
 import type { RadioRecord } from "@/lib/collections";
 import {
   createStationIntake,
+  findLiveStation,
+  isSameStation,
   type StationIntakeDependencies,
 } from "./external-station-workflow";
 
@@ -14,7 +16,9 @@ function createHarness(options?: {
   const saved = [...(options?.saved ?? [])];
   const session = [...(options?.session ?? [])];
   const addSaved = mock((radio: Omit<RadioRecord, "id">) => {
-    saved.push({ id: `saved-${saved.length + 1}`, ...radio });
+    const id = `saved-${saved.length + 1}`;
+    saved.push({ id, ...radio });
+    return id;
   });
   const updateSaved = mock(
     (id: string, updates: Partial<Omit<RadioRecord, "id" | "order">>) => {
@@ -346,6 +350,7 @@ describe("createStationIntake", () => {
         radio: {
           description: "New station",
           enabled: true,
+          id: "saved-3",
           isSystem: false,
           name: "New Radio",
           streamUrl: "https://radio.example/new",
@@ -737,6 +742,8 @@ describe("createStationIntake", () => {
       expect(result.data.radio).toMatchObject({
         id: "rb_station-1",
         name: "Browser Radio",
+        // Kept for the channel strip's stream details.
+        platformMetadata: { bitrate: 192, codec: "MP3" },
         streamUrl: "https://cdn.radio.example/live.mp3",
       });
     }
@@ -795,7 +802,7 @@ describe("createStationIntake", () => {
       data: {
         order: 1,
         radio: expect.objectContaining({
-          id: "rg_cleanup-pending",
+          id: "saved-1",
           name: "Cleanup pending",
         }),
         sessionCleanupPending: true,
@@ -882,5 +889,77 @@ describe("createStationIntake", () => {
     });
     expect(harness.addSaved).not.toHaveBeenCalled();
     expect(harness.session).toEqual([sessionRadio]);
+  });
+
+  test("returns the Saved record id when promoting a discovered Session station", async () => {
+    const sessionRadio = {
+      id: "rb_station-1",
+      name: "Browser Radio",
+      platformMetadata: {
+        hls: false,
+        itemType: "station" as const,
+        platform: "radio-browser" as const,
+        stationUuid: "station-1",
+        url: "https://radio.example/canonical",
+      },
+      streamUrl: "https://radio.example/live",
+    };
+    const harness = createHarness({ session: [sessionRadio] });
+
+    const result = await harness.intake.save({
+      origin: "discovery",
+      radio: sessionRadio,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.radio.id).toBe("saved-1");
+      expect(harness.saved.map((radio) => radio.id)).toEqual(["saved-1"]);
+    }
+    expect(harness.session).toEqual([]);
+  });
+});
+
+describe("findLiveStation", () => {
+  const stored = {
+    id: "rb_station-1",
+    name: "Old name",
+    platformMetadata: {
+      hls: false,
+      itemType: "station" as const,
+      platform: "radio-browser" as const,
+      stationUuid: "station-1",
+      url: "https://radio.example/canonical",
+    },
+    streamUrl: "https://radio.example/live",
+  };
+
+  test("prefers the record with the same id", () => {
+    const renamed = { ...stored, name: "New name" };
+    const other = { ...stored, id: "saved-1" };
+
+    expect(findLiveStation([other, renamed], stored)).toBe(renamed);
+  });
+
+  test("falls back to another record of the same Station", () => {
+    const saved = {
+      ...stored,
+      id: "saved-1",
+      streamUrl: "https://radio.example/live/",
+    };
+
+    expect(findLiveStation([saved], stored)).toBe(saved);
+    expect(isSameStation(stored, saved)).toBe(true);
+  });
+
+  test("finds nothing once the Station is gone", () => {
+    const unrelated = {
+      id: "saved-2",
+      name: "Unrelated",
+      streamUrl: "https://radio.example/other",
+    };
+
+    expect(findLiveStation([unrelated], stored)).toBeUndefined();
+    expect(isSameStation(stored, unrelated)).toBe(false);
   });
 });

@@ -1,12 +1,17 @@
 import {
+  getChangelogSeenAt,
+  markChangelogSeen,
+} from "@avoid.quest/ui/lib/changelog";
+import {
   createCollection,
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
 import { supportsMediaElementVolumeControl } from "../audio/playback/media-element-volume-control.js";
-import { settings as defaultSettings } from "../const";
+import { CHANGELOG_STORAGE_KEY, settings as defaultSettings } from "../const";
+import { normalizePlayerMode } from "../normalize-player-mode";
 
-const playerModeSchema = z.enum(["multiple", "single", "dj"]);
+const playerModeSchema = z.enum(["node", "single", "dj"]);
 
 const playerSettingsSchema = z.object({
   mode: playerModeSchema.default("single"),
@@ -45,15 +50,30 @@ export type SettingsRecord = z.infer<typeof settingsSchema>;
 
 const SETTINGS_ID = "app-settings";
 
+export const SETTINGS_STORAGE_KEY = "radio-app-settings";
+
+/** The stored mode the settings migration replaced, if it replaced one. */
+let replacedPlayerMode: string | undefined;
+
 export const settingsCollection = createCollection(
   localStorageCollectionOptions({
+    // Keep rows resident: the app reads `.state` outside live queries, and
+    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+    gcTime: 0,
     getKey: (item) => item.id,
     id: "settings",
     schema: settingsSchema,
     startSync: true,
-    storageKey: "radio-app-settings",
+    storageKey: SETTINGS_STORAGE_KEY,
   })
 );
+
+/** The newest What's new entry's date, set by the build; none in tests. */
+function getNewestChangelogDate(): string | undefined {
+  return typeof __CHANGELOG_NEWEST_DATE__ === "string"
+    ? __CHANGELOG_NEWEST_DATE__
+    : undefined;
+}
 
 /**
  * Initialize settings with defaults if empty
@@ -63,6 +83,13 @@ export async function initializeSettings(): Promise<void> {
   const existing = await settingsCollection.stateWhenReady();
 
   if (existing.size === 0) {
+    // A first visit has nothing new to catch up on. Marked before the insert
+    // so anything waiting for settings already sees the mark. A reset keeps
+    // the mark it finds, so unread changes stay unread. The mark is the
+    // newest entry's date, not this browser's clock, which can be off.
+    if (getChangelogSeenAt(CHANGELOG_STORAGE_KEY) === null) {
+      markChangelogSeen(CHANGELOG_STORAGE_KEY, getNewestChangelogDate());
+    }
     settingsCollection.insert({
       id: SETTINGS_ID,
       player: {
@@ -71,6 +98,43 @@ export async function initializeSettings(): Promise<void> {
       },
     });
   }
+
+  migrateLegacyPlayerMode();
+}
+
+/**
+ * Settings step of the Multiple → Node migration. A stored "multiple" becomes
+ * "node", and an unknown mode becomes "single". Settings load unvalidated, so
+ * this runs right after they load, before anything else updates the record.
+ * It also runs when another tab writes a legacy mode back. Idempotent.
+ *
+ * It lives here rather than beside the session step, so the critical settings
+ * chunk does not pull in the graph compiler.
+ */
+export function migrateLegacyPlayerMode(): void {
+  const mode: unknown = getSettings()?.player.mode;
+  if (mode === undefined) {
+    return;
+  }
+  const next = normalizePlayerMode(mode);
+  if (next === mode) {
+    return;
+  }
+  try {
+    settingsCollection.update(SETTINGS_ID, (draft) => {
+      draft.player.mode = next;
+    });
+    replacedPlayerMode ??= String(mode);
+  } catch (error) {
+    // A record stale elsewhere fails validation on update. Readers normalise
+    // the mode, so startup goes on rather than failing here.
+    console.warn("[settings] Could not rewrite the legacy player mode", error);
+  }
+}
+
+/** The mode `migrateLegacyPlayerMode` first replaced, for the backup. */
+export function getReplacedPlayerMode(): string | undefined {
+  return replacedPlayerMode;
 }
 
 /**
@@ -117,7 +181,7 @@ export function setRestoreStateOnLoad(restore: boolean): void {
  */
 export function updatePlayerSettings(
   updater: (player: SettingsRecord["player"]) => Partial<{
-    mode: "single" | "multiple" | "dj";
+    mode: "single" | "node" | "dj";
     restoreStateOnLoad: boolean;
   }>
 ): void {

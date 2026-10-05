@@ -1,14 +1,11 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@avoid.quest/ui/components/dialog";
-import type { DragEndEvent } from "@dnd-kit/core";
+import type {
+  Announcements,
+  DragEndEvent,
+  UniqueIdentifier,
+} from "@dnd-kit/core";
 import {
   closestCenter,
   DndContext,
@@ -25,7 +22,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVerticalIcon, PlusIcon, Volume2Icon } from "lucide-react";
+import { GripVerticalIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
@@ -35,14 +32,18 @@ import {
   updateRadio,
   useAllRadios,
 } from "@/lib/hooks/use-radios";
+import { ConfirmDeleteDialog } from "../radio/confirm-delete-dialog";
 import { RadioItemActions } from "../radio/radio-item-actions";
 import { RadioLogo } from "../radio/radio-logo";
+import { SearchField } from "../radio/search-field";
+import { stationFallbackSubtitle } from "../radio/station-row";
 
 import { RadioDialog } from "./radio-dialog";
 
 type SortableRadioItemProps = {
   radio: Radio;
   disabled?: boolean;
+  sortDisabled?: boolean;
   onToggle: (radio: Radio, enabled: boolean) => void;
   onEdit: (radio: Radio) => void;
   onDelete: (radio: Radio) => void;
@@ -51,6 +52,7 @@ type SortableRadioItemProps = {
 function SortableRadioItem({
   radio,
   disabled,
+  sortDisabled,
   onToggle,
   onEdit,
   onDelete,
@@ -62,7 +64,7 @@ function SortableRadioItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: radio.id?.toString() ?? "" });
+  } = useSortable({ disabled: sortDisabled, id: radio.id?.toString() ?? "" });
 
   const OPACITY_DRAGGING = 0.5;
   const style = {
@@ -78,35 +80,37 @@ function SortableRadioItem({
     <div
       className={`flex items-center gap-2 px-1 py-2 transition-colors ${
         isDragging ? "bg-muted/50" : ""
-      } ${disabled ? "opacity-50" : ""}`}
+      } ${disabled || radio.enabled === false ? "opacity-50" : ""}`}
       ref={setNodeRef}
       style={style}
     >
-      <div
-        className="cursor-grab touch-manipulation text-muted-foreground/50 active:cursor-grabbing"
+      <button
+        aria-label={`Reorder ${radio.name}`}
+        className="cursor-grab touch-manipulation rounded-sm text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+        type="button"
         {...attributes}
         {...listeners}
       >
         <GripVerticalIcon className="size-3.5" />
-      </div>
-      <div className="shrink-0">
-        <RadioLogo
-          className="size-8"
-          fallbackIcon={
-            <Volume2Icon className="size-3 text-muted-foreground/40" />
-          }
-          logoUrl={radio.logoUrl}
-          name={radio.name}
-          size="sm"
-        />
-      </div>
+      </button>
+      <RadioLogo
+        decorative
+        logoUrl={radio.logoUrl}
+        name={radio.name}
+        size="sm"
+      />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm">{radio.name}</div>
-        {radio.description?.trim() !== "" && (
-          <div className="line-clamp-1 text-[10px] text-muted-foreground/60">
-            {radio.description}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm">{radio.name}</span>
+          {radio.enabled === false ? (
+            <span className="shrink-0 text-muted-foreground text-xs">
+              Hidden
+            </span>
+          ) : null}
+        </div>
+        <p className="truncate text-muted-foreground text-xs">
+          {stationFallbackSubtitle(radio)}
+        </p>
       </div>
       <div className="flex items-center gap-1">
         <RadioItemActions
@@ -116,6 +120,7 @@ function SortableRadioItem({
           radio={radio}
         />
         <Checkbox
+          aria-label={`Show ${radio.name} in player`}
           checked={radio.enabled ?? true}
           className="shrink-0"
           disabled={disabled}
@@ -126,13 +131,51 @@ function SortableRadioItem({
   );
 }
 
+const WHITESPACE = /\s+/;
+
+function stationName(radios: Radio[] | undefined, id: UniqueIdentifier) {
+  return (
+    radios?.find((radio) => radio.id?.toString() === String(id))?.name ??
+    "Station"
+  );
+}
+
 export function RadioManagement() {
   const { data: radios } = useAllRadios();
+  // Screen readers hear station names, not record ids, while reordering.
+  const reorderAnnouncements: Announcements = {
+    onDragCancel: ({ active }) =>
+      `Moving ${stationName(radios, active.id)} was cancelled.`,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? `${stationName(radios, active.id)} moved to the place of ${stationName(radios, over.id)}.`
+        : `${stationName(radios, active.id)} was dropped.`,
+    onDragOver: ({ active, over }) =>
+      over
+        ? `${stationName(radios, active.id)} is over ${stationName(radios, over.id)}.`
+        : undefined,
+    onDragStart: ({ active }) => `Picked up ${stationName(radios, active.id)}.`,
+  };
   const [isUpdating, setIsUpdating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
+  const [filter, setFilter] = useState("");
+  const filterTerms = filter.toLowerCase().split(WHITESPACE).filter(Boolean);
+  const isFiltering = filterTerms.length > 0;
+  const visibleRadios = (radios ?? []).filter((radio) => {
+    const haystack = [
+      radio.name,
+      radio.description,
+      radio.placeTitle,
+      radio.countryTitle,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return filterTerms.every((term) => haystack.includes(term));
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -153,9 +196,8 @@ export function RadioManagement() {
     setIsUpdating(true);
     try {
       updateRadio(String(radio.id), { enabled });
-      toast.success(`${radio.name} ${enabled ? "enabled" : "disabled"}`);
     } catch {
-      toast.error("Failed to update radio");
+      toast.error("Couldn't update station");
     } finally {
       setIsUpdating(false);
     }
@@ -170,9 +212,8 @@ export function RadioManagement() {
         .filter((id): id is string => id !== undefined);
 
       reorderRadios(orderedIds);
-      toast.success("Radio order updated");
     } catch {
-      toast.error("Failed to reorder radios");
+      toast.error("Couldn't reorder stations");
     } finally {
       setIsUpdating(false);
     }
@@ -222,16 +263,11 @@ export function RadioManagement() {
     setIsUpdating(true);
     try {
       deleteRadio(String(deleteConfirm.id));
-      toast.success(`"${deleteConfirm.name}" deleted successfully`);
+      toast.success(`Deleted "${deleteConfirm.name}"`);
     } catch {
-      toast.error("Failed to delete radio");
+      toast.error("Couldn't delete station");
     } finally {
       setIsUpdating(false);
-      setDeleteConfirm(null);
-    }
-  };
-  const handleDeleteDialogOpenChange = (open: boolean) => {
-    if (!open) {
       setDeleteConfirm(null);
     }
   };
@@ -240,53 +276,60 @@ export function RadioManagement() {
   };
 
   if (!radios) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <p className="font-mono text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-          Loading...
-        </p>
-      </div>
-    );
+    return <LoadingFallback />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-muted-foreground text-xs">
-          {radios.length} stations
-        </span>
-        <Button
-          className="h-7"
-          onClick={handleAddRadio}
-          size="sm"
-          variant="outline"
-        >
-          <PlusIcon className="mr-1 size-3" />
-          Add Station
+      <div className="flex items-center gap-2">
+        <SearchField
+          aria-label="Filter stations"
+          className="min-w-0 flex-1"
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder={`Filter ${radios.length} stations…`}
+          value={filter}
+        />
+        <Button onClick={handleAddRadio} size="sm" variant="outline">
+          <PlusIcon />
+          Add station
         </Button>
       </div>
       <div style={{ touchAction: "pan-y" }}>
         <DndContext
+          accessibility={{
+            announcements: reorderAnnouncements,
+            screenReaderInstructions: {
+              draggable:
+                "To reorder, press Space or Enter, move with the arrow keys, then press Space or Enter again. Escape cancels.",
+            },
+          }}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           sensors={sensors}
         >
           <SortableContext
-            items={radios.map((radio) => radio.id?.toString() ?? "")}
+            items={visibleRadios.map((radio) => radio.id?.toString() ?? "")}
             strategy={verticalListSortingStrategy}
           >
-            <div className="divide-y border-y">
-              {radios.map((radio) => (
-                <SortableRadioItem
-                  disabled={isUpdating}
-                  key={radio.id}
-                  onDelete={handleDeleteRadio}
-                  onEdit={handleEditRadio}
-                  onToggle={handleToggleRadio}
-                  radio={radio}
-                />
-              ))}
-            </div>
+            {visibleRadios.length > 0 ? (
+              <div className="divide-y border-y">
+                {visibleRadios.map((radio) => (
+                  <SortableRadioItem
+                    disabled={isUpdating}
+                    key={radio.id}
+                    onDelete={handleDeleteRadio}
+                    onEdit={handleEditRadio}
+                    onToggle={handleToggleRadio}
+                    radio={radio}
+                    sortDisabled={isFiltering}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-muted-foreground text-xs">
+                No stations found
+              </p>
+            )}
           </SortableContext>
         </DndContext>
       </div>
@@ -298,33 +341,17 @@ export function RadioManagement() {
         radio={selectedRadio}
       />
 
-      {/* Delete Confirmation Dialog */}
-      {deleteConfirm ? (
-        <Dialog onOpenChange={handleDeleteDialogOpenChange} open>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Radio Station</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete "{deleteConfirm.name}"? This
-                action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button onClick={handleCancelDelete} size="sm" variant="outline">
-                Cancel
-              </Button>
-              <Button
-                disabled={isUpdating}
-                onClick={confirmDelete}
-                size="sm"
-                variant="destructive"
-              >
-                {isUpdating ? "Deleting..." : "Delete"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      ) : null}
+      <ConfirmDeleteDialog
+        onCancel={handleCancelDelete}
+        onConfirm={confirmDelete}
+        radio={deleteConfirm}
+      />
     </div>
+  );
+}
+
+export function LoadingFallback() {
+  return (
+    <p className="py-8 text-center text-muted-foreground text-xs">Loading…</p>
   );
 }

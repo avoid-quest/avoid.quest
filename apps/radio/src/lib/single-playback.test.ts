@@ -6,6 +6,7 @@ import {
   playbackSessionsCollection,
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
+  updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { setMainDelayMs, settingsCollection } from "@/lib/collections/settings";
 import {
@@ -15,7 +16,10 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import type { PlaybackActionContext } from "./playback-action-context";
-import { getSinglePlayback } from "./single-playback";
+import {
+  getSinglePlayback,
+  type SingleSelectionFailure,
+} from "./single-playback";
 
 function station(id: string): Radio {
   return {
@@ -197,7 +201,7 @@ describe("Single Playback", () => {
     );
   });
 
-  test("owns rollback and the safe error when replacement playback fails", async () => {
+  test("rolls back to the previous Station and reports the failed switch", async () => {
     const current = station("current");
     const replacement = station("replacement");
     insertSingleSession(current, true);
@@ -210,23 +214,30 @@ describe("Single Playback", () => {
         : Promise.resolve();
     });
 
-    await getSinglePlayback({ ctx: context }).selectStation(replacement);
+    const onSwitchFailed = mock(
+      (_failure: SingleSelectionFailure) => undefined
+    );
 
+    await getSinglePlayback({ ctx: context }).selectStation(replacement, {
+      onSwitchFailed,
+    });
+
+    expect(onSwitchFailed).toHaveBeenCalledWith({
+      message:
+        "Playback could not start. Check the station stream and try again.",
+      station: replacement,
+    });
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(current);
-    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
-      error: {
-        code: "PLAY_ERROR",
-        message:
-          "Playback could not start. Check the station stream and try again.",
-      },
-      isPlaying: false,
-    });
+    expect(context.audio.playSound).toHaveBeenCalledTimes(2);
+    expect(
+      getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
+    ).toBeNull();
     expect(context.reportError).toHaveBeenCalledTimes(1);
   });
 
-  test("reports sound creation failures for an initially paused selection", async () => {
+  test("reports sound creation failures for an initially paused selection as a failed switch", async () => {
     const current = station("current");
     const replacement = station("replacement");
     insertSingleSession(current);
@@ -245,21 +256,33 @@ describe("Single Playback", () => {
       }
     );
 
-    await getSinglePlayback({ ctx: context }).selectStation(replacement);
+    const onSwitchFailed = mock(
+      (_failure: SingleSelectionFailure) => undefined
+    );
 
+    await getSinglePlayback({ ctx: context }).selectStation(replacement, {
+      onSwitchFailed,
+    });
+
+    expect(onSwitchFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ station: replacement })
+    );
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(current);
     expect(
       getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
-    ).toMatchObject({ code: "PLAY_ERROR" });
+    ).toBeNull();
     expect(context.reportError).toHaveBeenCalledTimes(1);
   });
 
-  test("reports replacement errors on the active Single Channel", async () => {
+  test("reports replacement errors inline when nothing can resume", async () => {
     const current = station("current");
     const replacement = station("replacement");
     insertSingleSession(current, true, SINGLE_STANDBY_CHANNEL_ID);
+    setPlaybackChannelRuntime(SINGLE_STANDBY_CHANNEL_ID, () => ({
+      soundId: null,
+    }));
     const context = createTestContext();
     context.audio.playSound = mock(() =>
       Promise.reject(new Error("replacement failed"))
@@ -310,12 +333,19 @@ describe("Single Playback", () => {
     context.audio.playSound = mock(() => pendingPlay.promise);
     const playback = getSinglePlayback({ ctx: context });
 
-    const selection = playback.selectStation(station("replacement"));
+    const onSwitchFailed = mock(
+      (_failure: SingleSelectionFailure) => undefined
+    );
+
+    const selection = playback.selectStation(station("replacement"), {
+      onSwitchFailed,
+    });
     await Promise.resolve();
     await playback.setPlaying(false);
     pendingPlay.reject(new Error("replacement failed"));
     await selection;
 
+    expect(onSwitchFailed).not.toHaveBeenCalled();
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(current);
@@ -622,5 +652,298 @@ describe("Single Playback", () => {
       isPlaying: false,
       soundId: null,
     });
+  });
+
+  test("pausing a connecting Station settles its loading state", async () => {
+    insertSingleSession(station("current"));
+    setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+      isLoading: true,
+      isPlaying: true,
+    }));
+    const context = createTestContext();
+    context.audio.pauseSound = mock((_soundId: string) => undefined);
+
+    await getSinglePlayback({ ctx: context }).setPlaying(false);
+
+    expect(context.audio.pauseSound).toHaveBeenCalledWith("single:single-a");
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: false,
+    });
+  });
+
+  test("switching back to the previous Station while another connects resumes it", async () => {
+    const current = station("current");
+    insertSingleSession(current, true);
+    const pendingNext = createDeferred();
+    let attempt = 0;
+    const context = createTestContext();
+    context.audio.playSound = mock(() => {
+      attempt += 1;
+      if (attempt === 1) {
+        return pendingNext.promise;
+      }
+      setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+        isPlaying: true,
+      }));
+      return Promise.resolve();
+    });
+    const playback = getSinglePlayback({ ctx: context });
+
+    const switching = playback.selectStation(station("next"));
+    await Promise.resolve();
+    await playback.selectStation(current);
+    await switching;
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(current);
+    expect(context.audio.playSound).toHaveBeenCalledTimes(2);
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
+      error: null,
+      isPlaying: true,
+      soundId: "single:single-a",
+    });
+  });
+
+  test("a play request selects and starts a Station while paused", async () => {
+    insertSingleSession(station("current"));
+    const context = createTestContext();
+
+    await getSinglePlayback({ ctx: context }).selectStation(station("next"), {
+      play: true,
+    });
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(station("next"));
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).isPlaying).toBe(
+      true
+    );
+  });
+
+  test("a play request starts the already selected Station once", async () => {
+    const current = station("current");
+    insertSingleSession(current);
+    const context = createTestContext();
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.selectStation(current, { play: true });
+    await playback.selectStation(current, { play: true });
+
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
+  test("mute is a persisted Channel flag that keeps the Channel volume", () => {
+    insertSingleSession(station("current"), true);
+    const context = createTestContext();
+    context.channels.setMuted = mock((sessionId, channelId, muted) => {
+      updatePlaybackChannel(sessionId, channelId, (draft) => {
+        draft.muted = muted;
+      });
+    });
+    context.channels.setVolume = mock((sessionId, channelId, volume) => {
+      updatePlaybackChannel(sessionId, channelId, (draft) => {
+        draft.volume = volume;
+      });
+    });
+    const playback = getSinglePlayback({ ctx: context });
+
+    playback.toggleMute();
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)
+    ).toMatchObject({ muted: true, volume: 0.42 });
+
+    playback.toggleMute();
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)
+    ).toMatchObject({ muted: false, volume: 0.42 });
+    // Unmuting re-applies the persisted volume, not the audio engine's default.
+    expect(context.channels.setVolume).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      0.42
+    );
+  });
+
+  test("unmuting after dragging the volume to zero restores the last level", () => {
+    insertSingleSession(station("current"));
+    const context = createTestContext();
+    context.channels.setVolume = mock((sessionId, channelId, volume) => {
+      updatePlaybackChannel(sessionId, channelId, (draft) => {
+        draft.volume = volume;
+      });
+    });
+    const playback = getSinglePlayback({ ctx: context });
+
+    playback.setVolume(0.3);
+    playback.setVolume(0);
+    playback.toggleMute();
+
+    expect(context.channels.setVolume).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      0.3
+    );
+  });
+
+  test("raising the volume unmutes the Single Channel", () => {
+    insertSingleSession(station("current"));
+    updatePlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID, (draft) => {
+      draft.muted = true;
+    });
+    const context = createTestContext();
+
+    getSinglePlayback({ ctx: context }).setVolume(0.6);
+
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      false
+    );
+    expect(context.channels.setVolume).toHaveBeenCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      0.6
+    );
+  });
+
+  test("a muted Channel starts silent and a new Station keeps the mute", async () => {
+    insertSingleSession(station("current"));
+    updatePlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID, (draft) => {
+      draft.muted = true;
+    });
+    const context = createTestContext();
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.setPlaying(true);
+    await playback.selectStation(station("next"));
+
+    expect(context.audio.playSound).toHaveBeenNthCalledWith(
+      1,
+      "single:single-a",
+      0
+    );
+    expect(context.audio.playSound).toHaveBeenNthCalledWith(
+      2,
+      "single:single-a",
+      0
+    );
+    expect(context.channels.setMuted).toHaveBeenCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      true
+    );
+  });
+
+  test("rebinds a saved copy of the current Station without restarting it", () => {
+    const discovered = { ...station("rb_live"), id: "rb_live" };
+    insertSingleSession(discovered, true);
+    const saved = { ...discovered, id: "saved-1" };
+    const context = createTestContext();
+
+    getSinglePlayback({ ctx: context }).rebindStation(saved);
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(saved);
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
+      isPlaying: true,
+      soundId: "single:single-a",
+    });
+    expect(context.channels.deactivate).not.toHaveBeenCalled();
+    expect(context.audio.playSound).not.toHaveBeenCalled();
+  });
+
+  test("an edited stream of the selected Station reconnects to it", async () => {
+    const current = station("current");
+    insertSingleSession(current, true);
+    const context = createTestContext();
+    const edited = { ...current, streamUrl: "https://radio.example/new.mp3" };
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.rebindStation(edited);
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(edited);
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      edited,
+      expect.anything()
+    );
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+
+    await playback.rebindStation(edited);
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
+  test("an edit that changes how the selected Station loads reconnects to it", async () => {
+    const current = station("current");
+    insertSingleSession(current, true);
+    const context = createTestContext();
+    // The same URL, now read as HLS.
+    const edited: Radio = { ...current, streamFormat: "hls" };
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.rebindStation(edited);
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(edited);
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      edited,
+      expect.anything()
+    );
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
+  test("an edited stream of a Station still connecting resumes it", async () => {
+    const current = station("current");
+    insertSingleSession(current, false);
+    setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+      isLoading: true,
+    }));
+    const context = createTestContext();
+    const edited = { ...current, streamUrl: "https://radio.example/new.mp3" };
+    const playback = getSinglePlayback({ ctx: context });
+
+    await playback.rebindStation(edited);
+
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+  });
+
+  test("releasing a deleted current Station stops it and clears the selection", async () => {
+    const current = station("current");
+    insertSingleSession(current, true);
+    const context = createTestContext();
+
+    await getSinglePlayback({ ctx: context }).releaseStation(current);
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toBeNull();
+    expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject({
+      isPlaying: false,
+      soundId: null,
+    });
+  });
+
+  test("releasing leaves a different current Station alone", async () => {
+    const current = station("current");
+    insertSingleSession(current, true);
+    const context = createTestContext();
+
+    await getSinglePlayback({ ctx: context }).releaseStation(station("other"));
+
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(current);
+    expect(context.channels.deactivate).not.toHaveBeenCalled();
   });
 });

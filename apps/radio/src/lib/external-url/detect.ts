@@ -1,4 +1,5 @@
 import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
+import { detectBrowserAudioSource } from "@/lib/browser-audio-links";
 import type { Platform } from "@/lib/platform-types";
 
 export {
@@ -16,5 +17,5 @@ export {
  * Detects the platform from a URL string.
  */
 export function detectPlatformFromUrl(url: string): Platform | null {
-  return detectPlayablePlatformFromUrl(url);
+  return detectBrowserAudioSource(url) ?? detectPlayablePlatformFromUrl(url);
 }

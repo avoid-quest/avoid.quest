@@ -3,11 +3,17 @@ import {
   detectPlatformFromUrl,
   needsResolution,
   normalizeBandcampUrl,
+  normalizeMixcloudUrl,
   normalizeSoundCloudUrl,
+  normalizeSpotifyUrl,
 } from "./detect.js";
+import { getMixcloudItem } from "./mixcloud/index.js";
 import { extractChannelId } from "./radiogarden/detect.js";
 import { getRadioGardenItem } from "./radiogarden/index.js";
 import { getSoundCloudItem, resolveShortLink } from "./soundcloud/index.js";
+import { needsSpotifyResolution } from "./spotify/detect.js";
+import { getSpotifyItem, resolveSpotifyShortLink } from "./spotify/index.js";
+import type { SpotifyYouTubeSource } from "./spotify/types.js";
 import { getFilenameFromUrl, isStaticAudioUrl } from "./static-audio.js";
 import type { Platform, PlatformMetadata, PlatformTrack } from "./types.js";
 import { getYouTubeItem, type InvidiousOptions } from "./youtube/index.js";
@@ -77,11 +83,21 @@ export type PlayableSource = {
 
 type NormalizePlayablePlatformUrlOptions = {
   resolveShortLink?: (url: string) => Promise<string>;
+  resolveSpotifyShortLink?: (url: string) => Promise<string>;
+};
+
+/**
+ * Spotify plays through YouTube (see `spotify/RESEARCH.md`), so it needs a
+ * YouTube source. Without one, Spotify links resolve as unsupported.
+ */
+export type PlayableSpotifyOptions = {
+  youtube: SpotifyYouTubeSource | (() => SpotifyYouTubeSource);
 };
 
 type PlayablePlatformResolverOptions<TStaticAudioMetadata> = {
   invidiousOptions?: InvidiousOptions | (() => InvidiousOptions);
   resolveStaticAudioItem?: StaticAudioItemResolver<TStaticAudioMetadata>;
+  spotify?: PlayableSpotifyOptions;
 };
 
 function unsupportedUrlResult(): PlayablePlatformResolutionResult {
@@ -164,6 +180,48 @@ async function resolveSoundCloudPlayableItem<TStaticAudioMetadata>(
     metadata: result.metadata,
     normalizedUrl,
     platform: "soundcloud",
+    streamUrl: result.streamUrl,
+  });
+}
+
+async function resolveMixcloudPlayableItem<TStaticAudioMetadata>(
+  normalizedUrl: string
+): Promise<PlayablePlatformResolutionResult<TStaticAudioMetadata>> {
+  const result = await getMixcloudItem(normalizedUrl);
+  if (!result.success) {
+    return providerError(
+      "mixcloud",
+      result.error || "Failed to resolve Mixcloud item"
+    );
+  }
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "mixcloud",
+    streamUrl: result.streamUrl,
+  });
+}
+
+async function resolveSpotifyPlayableItem<TStaticAudioMetadata>(
+  normalizedUrl: string,
+  spotify: PlayableSpotifyOptions | undefined
+): Promise<PlayablePlatformResolutionResult<TStaticAudioMetadata>> {
+  if (!spotify) {
+    return unsupportedUrlResult();
+  }
+  const youtube =
+    typeof spotify.youtube === "function" ? spotify.youtube() : spotify.youtube;
+  const result = await getSpotifyItem(normalizedUrl, { youtube });
+  if (!result.success) {
+    return providerError(
+      "spotify",
+      result.error || "Failed to resolve Spotify item"
+    );
+  }
+  return providerItemResult<TStaticAudioMetadata>({
+    metadata: result.metadata,
+    normalizedUrl,
+    platform: "spotify",
     streamUrl: result.streamUrl,
   });
 }
@@ -286,7 +344,10 @@ function getPlatformTrackThumbnail(
   track: PlatformTrack,
   artwork?: string
 ): string | undefined {
-  if (platform === "youtube" && "thumbnail" in track) {
+  if (
+    (platform === "youtube" || platform === "spotify") &&
+    "thumbnail" in track
+  ) {
     return track.thumbnail ?? artwork;
   }
   return artwork;
@@ -299,7 +360,7 @@ function hasTracks(
 }
 
 function isCollectionMetadata(metadata: PlatformMetadata): boolean {
-  if (metadata.platform === "radiogarden") {
+  if (metadata.platform === "mixcloud" || metadata.platform === "radiogarden") {
     return false;
   }
   if (metadata.platform === "youtube") {
@@ -312,15 +373,20 @@ export async function normalizePlayablePlatformUrl(
   url: string,
   {
     resolveShortLink: resolve = resolveShortLink,
+    resolveSpotifyShortLink: resolveSpotify = resolveSpotifyShortLink,
   }: NormalizePlayablePlatformUrlOptions = {}
 ): Promise<string> {
   let normalized = url.trim();
 
   if (needsResolution(normalized)) {
     normalized = await resolve(normalized);
+  } else if (needsSpotifyResolution(normalized)) {
+    normalized = await resolveSpotify(normalized);
   }
 
   normalized = normalizeSoundCloudUrl(normalized);
+  normalized = normalizeMixcloudUrl(normalized);
+  normalized = normalizeSpotifyUrl(normalized);
   return normalizeBandcampUrl(normalized);
 }
 
@@ -377,7 +443,8 @@ export function toPlayableSources(
 
   if (isCollectionMetadata(metadata) && hasTracks(metadata)) {
     return metadata.tracks.map((track) => ({
-      artist: metadata.artist ?? "Unknown",
+      artist:
+        ("artist" in track && track.artist) || (metadata.artist ?? "Unknown"),
       duration: track.duration,
       isLiveStream: false,
       platform,
@@ -405,6 +472,7 @@ export function toPlayableSources(
 export function createPlayablePlatformResolver<TStaticAudioMetadata = never>({
   invidiousOptions,
   resolveStaticAudioItem,
+  spotify,
 }: PlayablePlatformResolverOptions<TStaticAudioMetadata> = {}) {
   async function resolveNormalizedItem(
     normalizedUrl: string
@@ -414,8 +482,12 @@ export function createPlayablePlatformResolver<TStaticAudioMetadata = never>({
     switch (platform) {
       case "bandcamp":
         return await resolveBandcampPlayableItem(normalizedUrl);
+      case "mixcloud":
+        return await resolveMixcloudPlayableItem(normalizedUrl);
       case "soundcloud":
         return await resolveSoundCloudPlayableItem(normalizedUrl);
+      case "spotify":
+        return await resolveSpotifyPlayableItem(normalizedUrl, spotify);
       case "youtube":
         return await resolveYouTubePlayableItem(
           normalizedUrl,
@@ -438,6 +510,10 @@ export function createPlayablePlatformResolver<TStaticAudioMetadata = never>({
   async function resolveItem(
     url: string
   ): Promise<PlayablePlatformResolutionResult<TStaticAudioMetadata>> {
+    // Skip short-link resolution for a platform that cannot be played anyway.
+    if (!spotify && detectPlayablePlatformFromUrl(url.trim()) === "spotify") {
+      return unsupportedUrlResult();
+    }
     return resolveNormalizedItem(await normalizePlayablePlatformUrl(url));
   }
 

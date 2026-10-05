@@ -1,7 +1,8 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useDjError } from "@/lib/hooks/use-dj-state";
+import { InlineError } from "../../inline-error";
+import { MixerChannel } from "./mixer-channel";
 import { MixerCrossfader } from "./mixer-crossfader";
-import { MixerCue } from "./mixer-cue";
 import { MixerMaster } from "./mixer-master";
 import { MixerRouting } from "./mixer-routing";
 
@@ -39,54 +40,43 @@ export function MixerPanel({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 w-full flex-col gap-4 border-border/50 border-x p-3",
+        "flex h-full min-h-0 w-full flex-col gap-3 border-border/50 border-x p-3",
         className
       )}
     >
-      {/* Master VU + Volume */}
-      <MixerMaster
-        headphoneVolume={headphoneVolume}
-        isCueActive={isCueActive}
-        masterVolume={masterVolume}
-        onHeadphoneVolumeChange={onHeadphoneVolumeChange}
-        onMasterVolumeChange={onMasterVolumeChange}
-      />
-
-      {/* Crossfader */}
       <MixerCrossfader
         crossfadePosition={crossfadePosition}
         onCrossfadeChange={onCrossfadeChange}
       />
 
-      {/* CUE Controls */}
-      {isCueActive ? (
-        <MixerCue
-          deckACueEnabled={deckACueEnabled}
-          deckBCueEnabled={deckBCueEnabled}
-          onDeckACueChange={onDeckACueChange}
-          onDeckBCueChange={onDeckBCueChange}
+      {/* A | master | B, rows aligned: label, knobs, fader+meter, cue */}
+      <div className="grid min-h-0 flex-1 grid-cols-[1fr_auto_1fr] grid-rows-[auto_auto_minmax(0,1fr)_auto] gap-x-3 gap-y-2 border-border/50 border-t pt-3">
+        <MixerChannel
+          cueEnabled={deckACueEnabled}
+          deckId="deck-a"
+          isCueActive={isCueActive}
+          onCueChange={onDeckACueChange}
         />
-      ) : (
-        <p className="text-center font-mono text-[10px] text-muted-foreground">
-          Enable CUE output in audio settings
-        </p>
-      )}
+        <MixerMaster
+          headphoneVolume={headphoneVolume}
+          isCueActive={isCueActive}
+          masterVolume={masterVolume}
+          onHeadphoneVolumeChange={onHeadphoneVolumeChange}
+          onMasterVolumeChange={onMasterVolumeChange}
+        />
+        <MixerChannel
+          cueEnabled={deckBCueEnabled}
+          deckId="deck-b"
+          isCueActive={isCueActive}
+          onCueChange={onDeckBCueChange}
+        />
+      </div>
 
-      {/* Divider */}
-      <div className="h-px bg-border/50" />
-
-      {/* Audio Routing */}
-      <div className="mt-auto">
+      <div className="border-border/50 border-t pt-2">
         <MixerRouting />
       </div>
 
-      {/* Error Status */}
-      {!!error?.trim() && (
-        <div className="rounded-md bg-destructive/10 p-2 text-center">
-          <div className="font-medium text-destructive text-xs">Error</div>
-          <div className="text-[10px] text-destructive">{error}</div>
-        </div>
-      )}
+      {error?.trim() ? <InlineError>{error}</InlineError> : null}
     </div>
   );
 }

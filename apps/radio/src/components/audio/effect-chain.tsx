@@ -34,6 +34,7 @@ import {
   MAX_EFFECT_TEMPO,
   MIN_EFFECT_TEMPO,
 } from "@/lib/audio/dsp/effects/tempo";
+import { visitEffectTree } from "@/lib/audio/dsp/routing/effect-tree";
 import { EffectItem } from "./effect-item";
 import { EffectPicker } from "./effect-picker";
 
@@ -50,6 +51,20 @@ type EffectChainProps = {
   tempo?: number;
   onTempoChange?: (tempo: number) => void;
 };
+
+/**
+ * Only delay-style effects follow the synced tempo. Containers forward tempo
+ * to their nested chains, so search the whole tree, not just the top level.
+ */
+export function effectsUseTempo(effects: readonly EffectConfig[]): boolean {
+  let usesTempo = false;
+  visitEffectTree(effects, (effect) => {
+    if ("tempoSync" in effect || "preSyncTimeLeft" in effect) {
+      usesTempo = true;
+    }
+  });
+  return usesTempo;
+}
 
 function ignoreEffectUpdate(_config: Partial<EffectConfig>) {
   return null;
@@ -76,12 +91,15 @@ function EffectTempoControl({
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
-      <Label className="flex-1 text-xs" htmlFor={`${deckId}-effects-tempo`}>
-        Synced effect tempo
+    <div className="flex items-center justify-end gap-2">
+      <Label
+        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
+        htmlFor={`${deckId}-effects-tempo`}
+      >
+        Sync tempo
       </Label>
       <Input
-        className="h-8 w-24"
+        className="h-7 w-16 text-xs"
         defaultValue={tempo}
         id={`${deckId}-effects-tempo`}
         key={tempo}
@@ -91,7 +109,9 @@ function EffectTempoControl({
         step={0.1}
         type="number"
       />
-      <span className="text-muted-foreground text-xs">BPM</span>
+      <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+        bpm
+      </span>
     </div>
   );
 }
@@ -110,6 +130,8 @@ export function EffectChain({
   onTempoChange,
 }: EffectChainProps) {
   const [expandedEffectId, setExpandedEffectId] = useState<string | null>(null);
+  // Hide the tempo field unless something in the tree follows it.
+  const usesTempo = effectsUseTempo(effects);
   const [showPicker, setShowPicker] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -157,8 +179,14 @@ export function EffectChain({
     .sort()
     .join(",");
   if (currentIdKey !== prevIdKey) {
+    const added = effects
+      .map((effect) => effect.id)
+      .filter((id) => !localOrder.includes(id));
     setPrevIdKey(currentIdKey);
     setLocalOrder(effects.map((effect) => effect.id));
+    if (added.length === 1 && added[0] !== undefined) {
+      setExpandedEffectId(added[0]);
+    }
   }
 
   const effectsById = new Map(effects.map((e) => [e.id, e]));
@@ -197,7 +225,7 @@ export function EffectChain({
         <div className="font-medium text-muted-foreground text-sm">{title}</div>
       )}
 
-      {tempo !== undefined && onTempoChange !== undefined ? (
+      {tempo !== undefined && onTempoChange !== undefined && usesTempo ? (
         <EffectTempoControl
           deckId={deckId}
           onTempoChange={onTempoChange}
@@ -230,11 +258,6 @@ export function EffectChain({
                 />
               ))}
             </SortableContext>
-            {sortedEffects.length >= 2 && (
-              <p className="py-1 text-center text-muted-foreground text-xs">
-                Drag to reorder
-              </p>
-            )}
           </div>
           <DragOverlay>
             {activeEffect ? (
@@ -255,13 +278,13 @@ export function EffectChain({
       {showAddButton ? (
         <>
           <Button
-            className="w-full"
+            className="h-7 w-full text-xs"
             onClick={openPicker}
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="mr-2 size-4" />
-            Add Effect
+            <PlusIcon className="size-3.5" />
+            Add effect
           </Button>
 
           {showPicker ? (

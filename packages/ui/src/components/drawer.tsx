@@ -4,8 +4,14 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import type { ComponentProps } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
-function Drawer({ ...props }: ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />;
+/** Focus moves into the drawer on open (vaul defaults this off). */
+function Drawer({
+  autoFocus = true,
+  ...props
+}: ComponentProps<typeof DrawerPrimitive.Root>) {
+  return (
+    <DrawerPrimitive.Root autoFocus={autoFocus} data-slot="drawer" {...props} />
+  );
 }
 
 function DrawerHandle({

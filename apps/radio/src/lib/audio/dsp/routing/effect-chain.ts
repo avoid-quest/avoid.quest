@@ -212,7 +212,9 @@ export class EffectChain {
       const target = isLast ? output : temp;
       const [currentL, currentR] = current;
       const [targetL, targetR] = target;
-      const { dryWet, inputGain, outputGain } = effect.config;
+      const { dryWet, outputGain } = effect.config;
+      const inputGain =
+        effect.config.inputGain * (effect.config.signalGain ?? 1);
 
       // Apply input gain
       if (inputGain !== 1.0) {

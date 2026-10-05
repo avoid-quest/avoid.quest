@@ -80,7 +80,8 @@ export type StationCandidate =
 export type StationIntakeDependencies = {
   adapters: ExternalStationResolutionAdapters;
   saved: {
-    add: (radio: Omit<RadioRecord, "id">) => void;
+    /** Stores the record under a new id and returns that id. */
+    add: (radio: Omit<RadioRecord, "id">) => string;
     getAll: () => Iterable<RadioRecord>;
     update: (
       id: string,
@@ -279,6 +280,32 @@ function findStationByIdentity<T extends Radio>(
   return findStationsByIdentity(stations, radio)[0];
 }
 
+/** Whether two records are the same Station: same provider station or stream. */
+export function isSameStation(a: Radio, b: Radio): boolean {
+  return findStationsByIdentity([b], a).length > 0;
+}
+
+/**
+ * Finds the current record of a Station: the same id first, otherwise another
+ * record of the same Station (e.g. the Saved copy of a Session station).
+ */
+export function findLiveStation<T extends Radio>(
+  stations: Iterable<T>,
+  radio: Radio
+): T | undefined {
+  const candidates = Array.from(stations);
+  if (radio.id !== undefined) {
+    const sameId = candidates.find(
+      (station) =>
+        station.id !== undefined && String(station.id) === String(radio.id)
+    );
+    if (sameId) {
+      return sameId;
+    }
+  }
+  return findStationByIdentity(candidates, radio);
+}
+
 function reuseRadioGardenSession(
   candidate: StationCandidate,
   sessions: Iterable<Radio>
@@ -382,6 +409,11 @@ function createRadioBrowserRadio(station: RadioBrowserStation): Radio {
     name: normalizeRequiredString(station.name),
     placeTitle,
     platformMetadata: {
+      // Kept for the channel strip; a saved radio can't learn them later.
+      ...(station.bitrate > 0 ? { bitrate: station.bitrate } : {}),
+      ...(normalizeOptionalString(station.codec)
+        ? { codec: normalizeOptionalString(station.codec) }
+        : {}),
       hls: station.hls,
       itemType: "station",
       platform: "radio-browser",
@@ -682,8 +714,9 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         };
       }
       const order = getNextSavedRadioOrder(dependencies.saved.getAll());
+      let id: string;
       try {
-        dependencies.saved.add(toSavedRadioRecord(radio, order));
+        id = dependencies.saved.add(toSavedRadioRecord(radio, order));
       } catch (error) {
         return {
           error: normalizeWorkflowError(error, {
@@ -694,7 +727,13 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
         };
       }
       return {
-        data: { order, radio, ...tryCleanupSessions(matchingSessions) },
+        data: {
+          order,
+          // The Saved record's id, not the Session copy's, so callers can
+          // find the station they just saved.
+          radio: { ...radio, id },
+          ...tryCleanupSessions(matchingSessions),
+        },
         ok: true,
       };
     },
@@ -707,7 +746,11 @@ export function createBrowserStationIntake(
   return createStationIntake({
     adapters,
     saved: {
-      add: (radio) => radiosCollection.insert({ id: generateId(), ...radio }),
+      add: (radio) => {
+        const id = generateId();
+        radiosCollection.insert({ ...radio, id });
+        return id;
+      },
       getAll: () => radiosCollection.state.values(),
       update: (id, updates) =>
         radiosCollection.update(id, (draft) => {

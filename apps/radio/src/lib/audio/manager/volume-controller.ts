@@ -45,6 +45,15 @@ function sampleScheduledCurve(
   return left + (right - left) * mix;
 }
 
+/**
+ * A paused device input keeps its capture open with the fader muted, so a
+ * volume write must store the level without opening the mic. Going live
+ * restores the gain.
+ */
+function isPausedDeviceInput(instance: SoundInstance): boolean {
+  return instance.isDeviceInput && !instance.playing;
+}
+
 class VolumeController {
   private readonly getSound: (soundId: string) => SoundInstance | null;
   private readonly getSounds: () => Iterable<[string, SoundInstance]>;
@@ -113,7 +122,7 @@ class VolumeController {
     }
 
     const { nodes } = instance;
-    if (!nodes) {
+    if (!nodes || isPausedDeviceInput(instance)) {
       this.setSoundGainTarget(soundId, instance, lastVolume);
       this.notifyVolumeChange(soundId, instance, lastVolume);
       return;
@@ -326,7 +335,9 @@ class VolumeController {
 
     const now = context.currentTime;
     const gainParam = instance.nodes.gain.gain;
-    const targetVolume = this.scaleForGlobalVolume(volume);
+    const targetVolume = isPausedDeviceInput(instance)
+      ? MIN_GAIN
+      : this.scaleForGlobalVolume(volume);
     const activeCurveEndTime = this.volumeCurveEndTimes.get(soundId) ?? 0;
 
     if (activeCurveEndTime > now) {

@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { parseHttpUrl } from "@avoid.quest/platforms/url-policy";
-import { Badge } from "@avoid.quest/ui/components/badge";
+import { Button } from "@avoid.quest/ui/components/button";
 import {
   Dialog,
   DialogClose,
@@ -19,7 +19,9 @@ import {
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
+import { GenreBadges } from "./genre-badges";
 import { RadioLogo } from "./radio-logo";
+import { formatLocation } from "./station-row";
 
 type RadioNowPlayingProps = {
   radio: Radio;
@@ -28,90 +30,6 @@ type RadioNowPlayingProps = {
   variant?: "featured" | "compact";
   className?: string;
 };
-
-function getGenres(genre?: string | null): string[] {
-  return [
-    ...new Set(
-      genre
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    ),
-  ];
-}
-
-function GenreBadges({
-  genre,
-  className,
-  overArtwork = false,
-}: {
-  genre?: string | null;
-  className?: string;
-  overArtwork?: boolean;
-}) {
-  const genres = getGenres(genre);
-  if (genres.length === 0) {
-    return null;
-  }
-  const badgeClassName = cn(
-    "max-w-full whitespace-normal border-foreground/15 bg-transparent px-1.5 py-0 text-left font-normal text-[9px] text-foreground/80 leading-3.5 [overflow-wrap:anywhere]",
-    overArtwork && "border-white/20 bg-black/65 text-white backdrop-blur-sm"
-  );
-
-  return (
-    <ul aria-label="Genres" className={cn("flex flex-wrap gap-1", className)}>
-      {genres.map((value, index) => (
-        <li
-          className={cn(
-            "flex min-w-0 max-w-full",
-            overArtwork && index > 0 && "hidden lg:flex"
-          )}
-          key={value}
-        >
-          <Badge className={badgeClassName} variant="outline">
-            {value}
-          </Badge>
-        </li>
-      ))}
-      {overArtwork && genres.length > 1 ? (
-        <li className="flex lg:hidden">
-          <Badge className={badgeClassName} variant="outline">
-            <span aria-hidden="true">+{genres.length - 1}</span>
-            <span className="sr-only">
-              {genres.length - 1} more genres in Details
-            </span>
-          </Badge>
-        </li>
-      ) : null}
-    </ul>
-  );
-}
-
-function CompactGenreBadge({ genre }: { genre?: string | null }) {
-  const genres = getGenres(genre);
-  const [firstGenre] = genres;
-  if (!firstGenre) {
-    return null;
-  }
-
-  const remaining = genres.length - 1;
-  return (
-    <Badge
-      className="mt-1.5 flex h-4 max-w-full gap-1 border-foreground/10 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none"
-      variant="outline"
-    >
-      <span aria-hidden="true" className="truncate">
-        {firstGenre}
-      </span>
-      {remaining > 0 ? (
-        <span aria-hidden="true" className="shrink-0">
-          +{remaining}
-        </span>
-      ) : null}
-      <span className="sr-only">Genres: {genres.join(", ")}</span>
-    </Badge>
-  );
-}
 
 function Artwork({
   radio,
@@ -147,6 +65,17 @@ function Artwork({
   );
 }
 
+/** Case-insensitive, so "DJ X" and "dj x" count as one name. */
+export function sameText(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  return (
+    Boolean(a && b) &&
+    a?.trim().toLocaleLowerCase() === b?.trim().toLocaleLowerCase()
+  );
+}
+
 function getIdentity(
   radio: Radio,
   metadata: RadioNowPlayingMetadata | null | undefined
@@ -154,12 +83,10 @@ function getIdentity(
   const title = metadata?.title || metadata?.artist || radio.name;
   const hasNowPlaying = Boolean(metadata?.title || metadata?.artist);
   const artist =
-    metadata?.title && metadata.artist !== metadata.title
+    metadata?.title && !sameText(metadata.artist, metadata.title)
       ? metadata.artist
       : null;
-  const location = [radio.placeTitle, radio.countryTitle]
-    .filter(Boolean)
-    .join(", ");
+  const location = formatLocation(radio.placeTitle, radio.countryTitle);
   const subtitle = artist || (hasNowPlaying ? null : location || null);
   return { hasNowPlaying, location, subtitle, title };
 }
@@ -174,17 +101,15 @@ export function RadioNowPlayingDetailsButton({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button
+        <Button
           aria-label={`Details for ${identity.title}`}
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            className
-          )}
+          className={cn("size-7 text-muted-foreground", className)}
+          size="icon"
           title={`View details for ${identity.title}`}
-          type="button"
+          variant="ghost"
         >
           <InfoIcon aria-hidden="true" className="size-3.5" />
-        </button>
+        </Button>
       </DialogTrigger>
       <NowPlayingDetails
         identity={identity}
@@ -221,7 +146,7 @@ export function RadioNowPlaying({
         <div
           className={cn(
             "flex min-w-0 items-center gap-3",
-            featured && "gap-4 lg:flex-col lg:items-center lg:gap-6"
+            featured && "sm:gap-4 lg:flex-col lg:items-center lg:gap-6"
           )}
         >
           <div className="relative shrink-0">
@@ -229,7 +154,7 @@ export function RadioNowPlaying({
               <button
                 aria-label={`Details for ${title}`}
                 className={cn(
-                  "block shrink-0 cursor-pointer rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "block shrink-0 cursor-pointer rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   featured && "rounded-xl lg:rounded-2xl"
                 )}
                 title={`View details for ${title}`}
@@ -238,7 +163,7 @@ export function RadioNowPlaying({
                 <Artwork
                   className={
                     featured
-                      ? "size-28 rounded-xl lg:size-[clamp(15rem,36vh,22rem)] lg:rounded-2xl"
+                      ? "size-20 rounded-xl sm:size-28 lg:size-[clamp(15rem,36vh,22rem)] lg:rounded-2xl"
                       : "size-16 rounded-lg"
                   }
                   metadata={metadata}
@@ -246,13 +171,6 @@ export function RadioNowPlaying({
                 />
               </button>
             </DialogTrigger>
-            {featured ? (
-              <GenreBadges
-                className="pointer-events-none absolute inset-x-2 bottom-2 lg:inset-x-3 lg:bottom-3"
-                genre={metadata?.genre}
-                overArtwork
-              />
-            ) : null}
           </div>
           <div
             className={cn(
@@ -263,10 +181,10 @@ export function RadioNowPlaying({
             {hasNowPlaying ? (
               <p
                 className={cn(
-                  "mb-1 truncate font-medium text-[10px] text-muted-foreground uppercase tracking-wider",
-                  featured &&
-                    "mb-1.5 font-normal text-xs normal-case tracking-[0.01em]"
+                  "mb-0.5 truncate text-muted-foreground text-xs",
+                  featured && "mb-1.5"
                 )}
+                dir="auto"
               >
                 {radio.name}
               </p>
@@ -274,13 +192,14 @@ export function RadioNowPlaying({
             <Heading
               className={cn(
                 "min-w-0 font-semibold text-sm leading-snug",
-                featured && "text-xl leading-tight tracking-tight lg:text-3xl"
+                featured &&
+                  "text-lg leading-tight tracking-tight sm:text-xl lg:text-3xl"
               )}
             >
               {metadata?.itemUrl ? (
                 <a
                   className={cn(
-                    "group flex min-w-0 items-start gap-1 rounded hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "group flex min-w-0 items-start gap-1 rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     featured && "lg:justify-center"
                   )}
                   href={metadata.itemUrl}
@@ -288,7 +207,14 @@ export function RadioNowPlaying({
                   target="_blank"
                   title={title}
                 >
-                  <span className={featured ? "line-clamp-3" : "truncate"}>
+                  <span
+                    className={
+                      featured
+                        ? "line-clamp-3 [overflow-wrap:anywhere]"
+                        : "truncate"
+                    }
+                    dir="auto"
+                  >
                     {title}
                   </span>
                   <ArrowUpRightIcon
@@ -298,7 +224,12 @@ export function RadioNowPlaying({
                 </a>
               ) : (
                 <span
-                  className={featured ? "line-clamp-3" : "block truncate"}
+                  className={
+                    featured
+                      ? "line-clamp-3 [overflow-wrap:anywhere]"
+                      : "block truncate"
+                  }
+                  dir="auto"
                   title={title}
                 >
                   {title}
@@ -311,12 +242,17 @@ export function RadioNowPlaying({
                   "mt-0.5 truncate text-muted-foreground text-xs",
                   featured && "mt-2 text-sm lg:text-base"
                 )}
+                dir="auto"
                 title={subtitle}
               >
                 {subtitle}
               </p>
             ) : null}
-            {featured ? null : <CompactGenreBadge genre={metadata?.genre} />}
+            <GenreBadges
+              className={cn("mt-1.5", featured && "mt-3 lg:justify-center")}
+              genre={metadata?.genre}
+              limit={featured ? 3 : 1}
+            />
             {connectionStatus}
           </div>
         </div>
@@ -357,7 +293,7 @@ function StationInformation({
         </div>
         {websiteUrl ? (
           <a
-            className="inline-flex items-center gap-1 rounded text-muted-foreground text-xs underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1 rounded-sm text-muted-foreground text-xs underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             href={websiteUrl}
             rel="noopener noreferrer"
             target="_blank"
@@ -368,7 +304,10 @@ function StationInformation({
         ) : null}
       </div>
       {description ? (
-        <p className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed">
+        <p
+          className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed"
+          dir="auto"
+        >
           {description}
         </p>
       ) : null}
@@ -404,18 +343,22 @@ function NowPlayingDetails({
 
   return (
     <DialogContent
-      className="gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-3xl"
+      className="gap-0 overflow-hidden p-0 sm:max-w-3xl"
       showCloseButton={false}
     >
       <div className="flex shrink-0 items-center justify-between border-border/50 border-b px-5 py-3 sm:px-8">
         <DialogDescription className="font-medium text-xs">
           {hasNowPlaying ? "Show & station" : "Station details"}
         </DialogDescription>
-        <DialogClose
-          aria-label="Close"
-          className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <XIcon aria-hidden="true" className="size-4" />
+        <DialogClose asChild>
+          <Button
+            aria-label="Close"
+            className="size-7 text-muted-foreground"
+            size="icon"
+            variant="ghost"
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </Button>
         </DialogClose>
       </div>
       <div className="min-h-0 space-y-6 overflow-y-auto overscroll-contain p-5 sm:space-y-8 sm:p-8">
@@ -430,11 +373,17 @@ function NowPlayingDetails({
               {hasNowPlaying ? (
                 <p className="text-muted-foreground text-xs">{radio.name}</p>
               ) : null}
-              <DialogTitle className="break-words text-2xl leading-tight tracking-tight sm:text-3xl">
+              <DialogTitle
+                className="break-words text-2xl leading-tight tracking-tight sm:text-3xl"
+                dir="auto"
+              >
                 {title}
               </DialogTitle>
               {subtitle ? (
-                <p className="break-words text-base text-muted-foreground">
+                <p
+                  className="break-words text-base text-muted-foreground"
+                  dir="auto"
+                >
                   {subtitle}
                 </p>
               ) : null}
@@ -452,15 +401,16 @@ function NowPlayingDetails({
               genre={metadata?.genre}
             />
             {metadata?.itemUrl ? (
-              <a
-                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 py-1.5 font-medium text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                href={metadata.itemUrl}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                Open source page
-                <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
-              </a>
+              <Button asChild className="text-xs" size="sm" variant="outline">
+                <a
+                  href={metadata.itemUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open source page
+                  <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+                </a>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -469,7 +419,10 @@ function NowPlayingDetails({
             <h3 className="font-medium text-sm">
               {hasNowPlaying ? "About this broadcast" : "About the station"}
             </h3>
-            <p className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed">
+            <p
+              className="whitespace-pre-line break-words text-muted-foreground text-sm leading-relaxed"
+              dir="auto"
+            >
               {description}
             </p>
           </section>
@@ -480,7 +433,7 @@ function NowPlayingDetails({
           radio={radio}
         />
         <details className="group border-border/50 border-t pt-5">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-sm text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             Stream information
             <ChevronDownIcon
               aria-hidden="true"

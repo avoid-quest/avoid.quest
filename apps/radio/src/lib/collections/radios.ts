@@ -80,6 +80,9 @@ export type RadioRecord = z.infer<typeof radioSchema>;
 
 export const radiosCollection = createCollection(
   localStorageCollectionOptions({
+    // Keep rows resident: the app reads `.state` outside live queries, and
+    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+    gcTime: 0,
     getKey: (item) => item.id,
     id: "radios",
     schema: radioSchema,

@@ -2,6 +2,7 @@ import type {
   BandcampSearchFilter,
   BandcampSearchResult,
 } from "./bandcamp/search.js";
+import type { MixcloudSearchResult } from "./mixcloud/search.js";
 import type { RadioGardenSearchResult } from "./radiogarden/types.js";
 import type { SoundCloudSearchResult } from "./soundcloud/search.js";
 import type { YouTubeSearchResult } from "./youtube/types.js";
@@ -9,6 +10,7 @@ import type { YouTubeSearchResult } from "./youtube/types.js";
 export type SearchPlatform =
   | "all"
   | "bandcamp"
+  | "mixcloud"
   | "radiogarden"
   | "soundcloud"
   | "youtube";
@@ -19,11 +21,12 @@ export type SearchResultType =
   | "video"
   | "playlist"
   | "artist"
-  | "station";
+  | "station"
+  | "show";
 
 export type UnifiedSearchResult = {
   id: string;
-  platform: "bandcamp" | "radiogarden" | "soundcloud" | "youtube";
+  platform: "bandcamp" | "mixcloud" | "radiogarden" | "soundcloud" | "youtube";
   type: SearchResultType;
   title: string;
   artist: string;
@@ -54,6 +57,13 @@ export type ExternalPlatformSearchAdapters = {
       query: string,
       filter: BandcampSearchFilter
     ) => Promise<BandcampSearchResult[]>;
+  };
+  /**
+   * Optional until every app wires Mixcloud: without it, "all" skips
+   * Mixcloud and a Mixcloud-only search rejects.
+   */
+  mixcloud?: {
+    search: (query: string) => Promise<MixcloudSearchResult[]>;
   };
   radiogarden: {
     search: (query: string) => Promise<RadioGardenSearchResult[]>;
@@ -99,6 +109,7 @@ type ExternalPlatformSearchWorkflowDependencies = {
 
 const ALL_PROVIDER_ORDER = [
   "bandcamp",
+  "mixcloud",
   "radiogarden",
   "soundcloud",
   "youtube",
@@ -108,6 +119,7 @@ const MAX_INTERLEAVE_ROUNDS = 8;
 
 const DEFAULT_ALL_PROVIDER_SEARCH_PARAMS = {
   bandcamp: { bandcampFilter: "t" },
+  mixcloud: {},
   radiogarden: {},
   soundcloud: {},
   youtube: { youtubeFilter: "songs" },
@@ -139,6 +151,21 @@ export function transformSoundCloudResults(
     thumbnail: r.thumbnail,
     title: r.title,
     type: "track" as const,
+    url: r.url,
+  }));
+}
+
+export function transformMixcloudResults(
+  results: MixcloudSearchResult[]
+): UnifiedSearchResult[] {
+  return results.map((r) => ({
+    artist: r.artist,
+    duration: r.duration,
+    id: `mc-${r.id}`,
+    platform: "mixcloud" as const,
+    thumbnail: r.thumbnail,
+    title: r.title,
+    type: "show" as const,
     url: r.url,
   }));
 }
@@ -179,6 +206,10 @@ function resolveAllProviderSearchParams(
       ...DEFAULT_ALL_PROVIDER_SEARCH_PARAMS.bandcamp,
       ...overrides?.bandcamp,
     },
+    mixcloud: {
+      ...DEFAULT_ALL_PROVIDER_SEARCH_PARAMS.mixcloud,
+      ...overrides?.mixcloud,
+    },
     radiogarden: {
       ...DEFAULT_ALL_PROVIDER_SEARCH_PARAMS.radiogarden,
       ...overrides?.radiogarden,
@@ -200,6 +231,7 @@ function createEmptyResultsByProvider(): Record<
 > {
   return {
     bandcamp: [],
+    mixcloud: [],
     radiogarden: [],
     soundcloud: [],
     youtube: [],
@@ -238,6 +270,9 @@ export function createExternalPlatformSearchWorkflow({
   const resolvedAllProviderSearchParams = resolveAllProviderSearchParams(
     allProviderSearchParams
   );
+  const allProviders = ALL_PROVIDER_ORDER.filter(
+    (provider) => provider !== "mixcloud" || adapters.mixcloud
+  );
 
   async function searchProvider(
     provider: SearchablePlatform,
@@ -249,6 +284,12 @@ export function createExternalPlatformSearchWorkflow({
         return transformBandcampResults(
           await adapters.bandcamp.search(query, params.bandcampFilter ?? "")
         );
+      case "mixcloud": {
+        if (!adapters.mixcloud) {
+          throw new Error("Mixcloud search is not configured");
+        }
+        return transformMixcloudResults(await adapters.mixcloud.search(query));
+      }
       case "radiogarden":
         return transformRadioGardenResults(
           await adapters.radiogarden.search(query)
@@ -272,23 +313,21 @@ export function createExternalPlatformSearchWorkflow({
     query: string
   ): Promise<UnifiedSearchResult[]> {
     const providerResults = await Promise.all(
-      ALL_PROVIDER_ORDER.map(
-        async (provider): Promise<ProviderSearchResult> => {
-          try {
-            return {
+      allProviders.map(async (provider): Promise<ProviderSearchResult> => {
+        try {
+          return {
+            provider,
+            results: await searchProvider(
               provider,
-              results: await searchProvider(
-                provider,
-                query,
-                resolvedAllProviderSearchParams[provider]
-              ),
-              status: "fulfilled",
-            };
-          } catch (error) {
-            return { error, provider, status: "rejected" };
-          }
+              query,
+              resolvedAllProviderSearchParams[provider]
+            ),
+            status: "fulfilled",
+          };
+        } catch (error) {
+          return { error, provider, status: "rejected" };
         }
-      )
+      })
     );
 
     const resultsByProvider = createEmptyResultsByProvider();
@@ -310,7 +349,7 @@ export function createExternalPlatformSearchWorkflow({
     const results: UnifiedSearchResult[] = [];
 
     await Promise.all(
-      ALL_PROVIDER_ORDER.map((provider) =>
+      allProviders.map((provider) =>
         searchProvider(
           provider,
           query,

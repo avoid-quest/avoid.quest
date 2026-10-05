@@ -1,4 +1,4 @@
-import { Store, useStore } from "@tanstack/react-store";
+import { Store, shallow, useStore } from "@tanstack/react-store";
 import type { AudioError } from "@/lib/audio";
 
 export type RuntimePeakLevel = { left: number; right: number };
@@ -11,6 +11,8 @@ export type ChannelRuntimeState = {
   error: AudioError | null;
   peakLevel: RuntimePeakLevel;
 };
+
+export type ChannelRuntimeView = Omit<ChannelRuntimeState, "peakLevel">;
 
 type PlaybackRuntimeState = {
   channels: Record<string, ChannelRuntimeState>;
@@ -42,6 +44,22 @@ export function usePlaybackChannelRuntime(channelId: string) {
   return useStore(
     playbackRuntimeStore,
     (state) => state.channels[channelId] ?? initialChannelRuntimeState
+  );
+}
+
+/** Meters read peaks separately; controls only follow transport state. */
+export function selectChannelRuntimeView(
+  runtime: ChannelRuntimeState = initialChannelRuntimeState
+): ChannelRuntimeView {
+  const { error, isBuffering, isLoading, isPlaying, soundId } = runtime;
+  return { error, isBuffering, isLoading, isPlaying, soundId };
+}
+
+export function usePlaybackChannelRuntimeView(channelId: string) {
+  return useStore(
+    playbackRuntimeStore,
+    (state) => selectChannelRuntimeView(state.channels[channelId]),
+    shallow
   );
 }
 

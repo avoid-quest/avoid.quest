@@ -68,7 +68,7 @@ export function DeviceInputContent({
     radio,
     reset,
   } = useDeckContext();
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1024);
 
   const channelOptions = useMemo(
     () => buildChannelOptions(channelCount),
@@ -92,7 +92,7 @@ export function DeviceInputContent({
           {isPlaying ? "Live" : "Muted"}
         </Badge>
         <DeckMenu
-          className="md:hidden"
+          className="lg:hidden"
           deckId={deckId}
           onReset={reset}
           radio={radio}
@@ -186,7 +186,7 @@ export function DeviceInputContent({
   );
 
   if (isMobile) {
-    // Phones have no mixer column, so the deck carries its channel strip.
+    // With no mixer column, the tabbed deck carries its channel strip.
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">

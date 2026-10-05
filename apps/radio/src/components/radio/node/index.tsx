@@ -6,12 +6,6 @@ import {
   type ResizablePanelHandle,
 } from "@avoid.quest/ui/components/resizable";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@avoid.quest/ui/components/tabs";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -29,7 +23,6 @@ import {
   useNodeReadOnlyVersion,
 } from "@/lib/node-graph/node-store";
 import { templatePatch } from "@/lib/node-graph/palette";
-import { isRadioSourceNode, type NodeGraph } from "@/lib/node-graph/schema";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { RadioDialog } from "../../settings/radio-dialog";
@@ -47,7 +40,6 @@ import {
   usePaletteShortcut,
 } from "./node-palette";
 import { NodeRack } from "./node-rack";
-import { NodeStage } from "./node-stage";
 import { NodeToolbar, useUndoShortcuts } from "./node-toolbar";
 import { RewireDialog } from "./rewire-dialog";
 import { useNodeRadioManagement } from "./use-node-radio-management";
@@ -66,38 +58,17 @@ const NodeCanvas = lazy(() =>
 const SPACE_SHORTCUT_IGNORED_TARGETS =
   "input, textarea, select, button, a, summary, [role=slider], [role=menuitem], [role=option], [role=tab], [role=switch], [role=checkbox], [role=radio], [role=combobox], [role=dialog], [role=menu], .react-flow__node, .react-flow__edge";
 
-/** The phone views; Stage is where a phone patch opens. */
-const PHONE_VIEWS = ["stage", "rack", "patch"] as const;
-type PhoneView = (typeof PHONE_VIEWS)[number];
-
-function isPhoneView(value: string): value is PhoneView {
-  return (PHONE_VIEWS as readonly string[]).includes(value);
-}
-
-/**
- * A Station, Track or File with something in it: the Stage and Rack list
- * it ready to play. Anything else added (an empty one, an Audio input to
- * pick a device on, an FX, a routing node, an output) is set up on the
- * Patch.
- */
-function isFilledSource(graph: NodeGraph | null, nodeId: string): boolean {
-  const node = graph?.nodes.find((entry) => entry.id === nodeId);
-  return isRadioSourceNode(node) && node.data.radio !== null;
-}
-
 export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const graph = useNodeGraph();
   const readOnlyVersion = useNodeReadOnlyVersion();
   const savedRadios = useAllRadios();
   const { pauseAll, playAll, playingCount, sources } = useNodeSession();
   const [reveal, setReveal] = useState<{ nodeId: string } | null>(null);
-  const [phoneView, setPhoneView] = useState<PhoneView>("stage");
   const [palette, setPalette] = useState<PaletteRequest | null>(null);
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
   const [rewireEdgeId, setRewireEdgeId] = useState<string | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
   const [portDrop, setPortDrop] = useState<PortDrop | null>(null);
-  const patchWasOpenRef = useRef(false);
   const isPhone = useIsMobile();
   const inspectorPanel = useRef<ResizablePanelHandle | null>(null);
   const inspector = useNodeInspector({
@@ -198,9 +169,6 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       commitNodeGraph(() => edit.graph, nodeStore, "snapshot");
     },
     revealNode: (nodeId) => {
-      if (isPhone) {
-        setPhoneView("patch");
-      }
       setReveal({ nodeId });
     },
     saveDiscoveredStation: management.saveDiscoveredStation,
@@ -213,44 +181,12 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const handleCancelDelete = () => management.setDeleteConfirm(null);
   // A node placed where the user pointed is in view already; one placed in
   // a free spot may not be.
-  // On a phone, anything but a filled source added from the Stage or Rack
-  // shows on neither, so the Patch opens on it for its search, form or
-  // cables.
   const handlePaletteAdded = (nodeId: string, request: PaletteRequest) => {
     if (request.drop && request.from) {
       setPortDrop({ from: request.from, nodeId, y: request.drop.y });
     }
-    if (
-      isPhone &&
-      phoneView !== "patch" &&
-      !isFilledSource(nodeStore.state.graph, nodeId)
-    ) {
-      setPhoneView("patch");
-      setReveal({ nodeId });
-      return;
-    }
     if (!request.position) {
       setReveal({ nodeId });
-    }
-  };
-  // Tapping Patch again fits the patch back in view, as F does. The tab
-  // switches on mouse down, so the press reads which tab was open before.
-  const handlePatchTabPointerDown = () => {
-    patchWasOpenRef.current = phoneView === "patch";
-  };
-  const handlePatchTabClick = () => {
-    const wasOpen: boolean = patchWasOpenRef.current;
-    if (wasOpen) {
-      setReveal(null);
-      setFitRequest((count) => count + 1);
-    }
-  };
-  const handlePhoneViewChange = (value: string) => {
-    if (isPhoneView(value)) {
-      setPhoneView(value);
-      // A Station added from the Stage or Rack is already in view there;
-      // opening the Patch later must fit the view, not pan to a stale add.
-      setReveal(null);
     }
   };
 
@@ -303,56 +239,21 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
             onSaveDiscovered={management.saveDiscoveredStation}
             onSelectDiscovered={management.selectDiscoveredStation}
             onSelectLocal={handleSelectLocal}
-            placeholder="Search to add a station"
+            placeholder={
+              isPhone ? "Search stations" : "Search to add a station"
+            }
             radios={radios ?? []}
           />
           <NodeToolbar
+            isPhone={isPhone}
             onAdd={() => openPalette()}
+            onFitView={() => setFitRequest((count) => count + 1)}
             onLoadTemplate={loadTemplate}
             onRewire={setRewireEdgeId}
           />
         </div>
         {isPhone ? (
-          <Tabs
-            className="min-h-0 flex-1 gap-0"
-            onValueChange={handlePhoneViewChange}
-            value={phoneView}
-          >
-            <div className="px-3 pb-2">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger className="text-xs" value="stage">
-                  Stage
-                </TabsTrigger>
-                <TabsTrigger className="text-xs" value="rack">
-                  Rack
-                </TabsTrigger>
-                <TabsTrigger
-                  className="text-xs"
-                  onClick={handlePatchTabClick}
-                  onPointerDown={handlePatchTabPointerDown}
-                  title="Tap again to fit the patch"
-                  value="patch"
-                >
-                  Patch
-                </TabsTrigger>
-              </TabsList>
-            </div>
-            <TabsContent
-              className="min-h-0 overflow-y-auto px-3 pb-3"
-              value="stage"
-            >
-              <NodeStage />
-            </TabsContent>
-            <TabsContent
-              className="min-h-0 overflow-y-auto px-1.5 pb-3"
-              value="rack"
-            >
-              {rack}
-            </TabsContent>
-            <TabsContent className="min-h-0" value="patch">
-              {canvas}
-            </TabsContent>
-          </Tabs>
+          <div className="min-h-0 flex-1">{canvas}</div>
         ) : (
           <ResizablePanelGroup className="min-h-0 flex-1 border-border/50 border-t">
             <ResizablePanel minSize="50">{canvas}</ResizablePanel>

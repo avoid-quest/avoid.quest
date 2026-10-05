@@ -1,7 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { PauseIcon, PlayIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import {
@@ -45,26 +44,20 @@ function MasterMeter() {
 }
 
 /**
- * The main bus controls the Speakers node and the Stage share: Play all /
- * Pause all, master volume and mute, a meter while anything plays, and
- * Resume when the browser interrupted the audio. Kept free of React Flow so
- * the Stage can render it without the canvas chunk.
+ * The main bus controls shared by Speakers and the phone: master volume
+ * and mute, a meter while anything plays, and Resume when the browser
+ * interrupted the audio. Kept free of React Flow for the phone controls.
  */
 export function NodeMasterControls({ className }: { className?: string }) {
   const {
     masterMuted,
     masterVolume,
-    pauseAll,
-    playAll,
     playingCount,
     setMasterVolume,
-    sources,
     toggleMasterMute,
   } = useNodeSession();
   const contextState = useAudioContextState();
   const isAnyPlaying = playingCount > 0;
-  // Play all plays the Stations; a mic goes live only from its own Go live.
-  const stations = sources.filter((source) => source.kind === "station");
   const needsResume =
     contextState === "interrupted" ||
     (contextState === "suspended" && isAnyPlaying);
@@ -76,25 +69,6 @@ export function NodeMasterControls({ className }: { className?: string }) {
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <Button
-        className="w-full text-xs"
-        disabled={!isAnyPlaying && stations.length === 0}
-        onClick={isAnyPlaying ? pauseAll : playAll}
-        size="sm"
-        variant="outline"
-      >
-        {isAnyPlaying ? (
-          <>
-            <PauseIcon className="size-3.5" />
-            Pause all ({playingCount})
-          </>
-        ) : (
-          <>
-            <PlayIcon className="size-3.5" />
-            Play all ({stations.length})
-          </>
-        )}
-      </Button>
       <VolumeControl
         isMuted={masterMuted}
         onToggleMute={toggleMasterMute}

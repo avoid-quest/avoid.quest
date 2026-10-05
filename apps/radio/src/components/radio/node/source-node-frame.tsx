@@ -2,13 +2,12 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
 import { XIcon } from "lucide-react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import { laneChannelId } from "@/lib/node-graph/compile";
 import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
 import { getNodePlayback } from "@/lib/node-playback";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { usePlaybackChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 import { INTERACTIVE, keepControlKeys } from "./module-frame";
 
 /**
@@ -152,10 +151,7 @@ export function SourceTransport({
  */
 export function useSourceLane(nodeId: string) {
   const playback = getNodePlayback();
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(nodeId)]
-  );
+  const runtime = usePlaybackChannelRuntimeView(laneChannelId(nodeId));
   const isPlaying = runtime?.isPlaying ?? false;
   return {
     error: runtime?.error?.message ?? null,

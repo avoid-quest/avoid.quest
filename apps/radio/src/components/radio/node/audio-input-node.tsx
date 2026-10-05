@@ -1,8 +1,7 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
 import { findPort } from "@/lib/node-graph/catalogue";
 import { laneChannelId } from "@/lib/node-graph/compile";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { usePlaybackChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 import { AudioInputNodeContent } from "./audio-input-content";
 import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
 import type { AudioInputNodeData } from "./flow-elements";
@@ -14,10 +13,7 @@ const AUDIO_OUT = findPort("deviceIn", "out", "audio", "main");
 
 /** The canvas adds the input's audio port to its shared controls. */
 export function AudioInputNode(props: FlowNodeProps<AudioInputFlowNode>) {
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(props.id)]
-  );
+  const runtime = usePlaybackChannelRuntimeView(laneChannelId(props.id));
   const title =
     (props.data.deviceId && props.data.deviceLabel) || "Audio input";
   return (

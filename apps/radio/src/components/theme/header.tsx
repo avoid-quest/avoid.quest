@@ -39,22 +39,24 @@ export function Header() {
 
       <ClientOnly fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
         <Suspense fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
-          <ModeSelect />
+          <ModeSelect className="max-sm:max-w-none" />
         </Suspense>
       </ClientOnly>
 
       {/* One look for every icon button: muted, lit on hover and while open. */}
       <div className="flex shrink-0 items-center gap-1.5 [&_button]:size-7 [&_button]:text-muted-foreground [&_button]:text-xs [&_button]:aria-expanded:bg-accent [&_button]:aria-expanded:text-accent-foreground dark:[&_button]:aria-expanded:bg-accent/50 [&_button_svg]:size-3.5">
-        <ClientOnly>
-          <Suspense fallback={null}>
-            <AppFeedback />
-          </Suspense>
-        </ClientOnly>
-        <ClientOnly fallback={<Skeleton className="size-7" />}>
-          <Suspense fallback={<Skeleton className="size-7" />}>
-            <WhatsNew />
-          </Suspense>
-        </ClientOnly>
+        <div className="hidden sm:contents">
+          <ClientOnly>
+            <Suspense fallback={null}>
+              <AppFeedback />
+            </Suspense>
+          </ClientOnly>
+          <ClientOnly fallback={<Skeleton className="size-7" />}>
+            <Suspense fallback={<Skeleton className="size-7" />}>
+              <WhatsNew />
+            </Suspense>
+          </ClientOnly>
+        </div>
         <ClientOnly fallback={<Skeleton className="size-7" />}>
           <Suspense fallback={<Skeleton className="size-7" />}>
             <SettingsButton />

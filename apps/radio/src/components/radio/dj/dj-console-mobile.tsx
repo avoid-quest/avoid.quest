@@ -83,7 +83,7 @@ export function DjConsoleMobile({
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
       {/* Mini Mixer Bar */}
-      <div className="flex shrink-0 flex-col gap-1 rounded-lg border border-border/50 bg-card/50 p-1.5 sm:gap-1.5 sm:p-2">
+      <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-border/50 bg-card/50 p-2">
         {/* Meters line up over the crossfader track, A left, B right */}
         <MiniMixerMeters />
 
@@ -95,7 +95,7 @@ export function DjConsoleMobile({
           <span className="w-4 shrink-0 font-bold font-mono text-xs">A</span>
           <Slider
             aria-label="Crossfader"
-            className="py-1"
+            className="py-4"
             defaultMarkerValue={50}
             defaultValue={[50]}
             max={100}
@@ -116,6 +116,7 @@ export function DjConsoleMobile({
         <div className="flex items-center gap-2 px-1">
           {isCueActive ? (
             <Button
+              aria-label="Cue deck A"
               aria-pressed={deckACueEnabled}
               className={cn(
                 "shrink-0 gap-1 font-mono text-[10px] uppercase tracking-wider",
@@ -136,7 +137,7 @@ export function DjConsoleMobile({
             <Volume2Icon className="size-3.5 shrink-0 text-muted-foreground" />
             <Slider
               aria-label="Master volume"
-              className="py-1"
+              className="py-2.5"
               defaultMarkerValue={100}
               defaultValue={[100]}
               max={100}
@@ -152,6 +153,7 @@ export function DjConsoleMobile({
           </div>
           {isCueActive ? (
             <Button
+              aria-label="Cue deck B"
               aria-pressed={deckBCueEnabled}
               className={cn(
                 "shrink-0 gap-1 font-mono text-[10px] uppercase tracking-wider",

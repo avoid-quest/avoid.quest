@@ -156,7 +156,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   return (
     <>
       <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row">
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
           <MobileNowPlayingPanel
             actions={currentRadioActions}
             error={error}

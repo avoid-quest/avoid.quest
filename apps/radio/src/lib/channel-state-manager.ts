@@ -1,5 +1,4 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { shallow, useStore } from "@tanstack/react-store";
 import { AudioManager, type AudioState, type FilterConfig } from "@/lib/audio";
 import {
   getPlaybackChannel,
@@ -11,15 +10,14 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
 import {
-  type ChannelRuntimeState,
+  type ChannelRuntimeView,
   getPlaybackChannelRuntime,
   getPlaybackRuntimeChannelIds,
-  initialChannelRuntimeState,
-  playbackRuntimeStore,
   resetPlaybackChannelRuntime,
   setPlaybackChannelPeakLevel,
   setPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
+  usePlaybackChannelRuntimeView,
 } from "@/lib/stores/playback-runtime-store";
 import { channelEffects } from "./channel-effects.js";
 import { toRuntimeAudioError } from "./playback-action-errors.js";
@@ -27,7 +25,7 @@ import { toRuntimeAudioError } from "./playback-action-errors.js";
 export type ChannelState = PlaybackChannelRecord &
   ReturnType<typeof getPlaybackChannelRuntime>;
 
-type ChannelRuntimeView = Omit<ChannelRuntimeState, "peakLevel">;
+export { selectChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 
 /** A channel as views render it: everything but its meter-rate peak level. */
 export type ChannelViewState = PlaybackChannelRecord & ChannelRuntimeView;
@@ -146,27 +144,11 @@ export function getChannelState(
   );
 }
 
-/**
- * The runtime fields a channel view renders. Peak levels change at meter rate
- * and the meters read them from the runtime store themselves, so leaving them
- * out keeps whole decks from re-rendering on every meter tick.
- */
-export function selectChannelRuntimeView(
-  runtime: ChannelRuntimeState = initialChannelRuntimeState
-): ChannelRuntimeView {
-  const { error, isBuffering, isLoading, isPlaying, soundId } = runtime;
-  return { error, isBuffering, isLoading, isPlaying, soundId };
-}
-
 export function useChannelState(
   sessionId: PlaybackSessionId,
   channelId: string
 ): ChannelViewState | null {
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => selectChannelRuntimeView(state.channels[channelId]),
-    shallow
-  );
+  const runtime = usePlaybackChannelRuntimeView(channelId);
   const result = useLiveQuery((q) =>
     q
       .from({ session: playbackSessionsCollection })

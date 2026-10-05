@@ -154,7 +154,7 @@ export function StationList({
   ];
 
   return (
-    <div className="flex min-h-0 w-full flex-col border-border/50 lg:w-80 lg:shrink-0 lg:border-r xl:w-96">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col border-border/50 lg:w-80 lg:flex-none lg:border-r xl:w-96">
       <div className="px-3 py-2">{searchBar}</div>
 
       <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-x-hidden">

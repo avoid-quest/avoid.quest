@@ -92,6 +92,64 @@ function openTemplates(view: ReturnType<typeof render>) {
 }
 
 describe("NodeToolbar templates", () => {
+  test("phone actions fit the canvas and keep templates and undo/redo reachable", () => {
+    const { commitNodeGraph, createNodeStore } = nodeStoreModule;
+    const before = templates.buildNodeGraphFromTemplate("duck", {
+      saved: [kexp],
+    });
+    const store = createNodeStore(before);
+    const onAdd = mock(() => undefined);
+    const onFitView = mock(() => undefined);
+    const view = render(
+      <NodeToolbar
+        isPhone
+        onAdd={onAdd}
+        onFitView={onFitView}
+        onLoadTemplate={(template) =>
+          commitNodeGraph(
+            (current) => templatePatch(current, template, { saved: [kexp] }),
+            store,
+            "snapshot"
+          )
+        }
+        store={store}
+      />
+    );
+    const openActions = () => {
+      act(() => {
+        fireEvent.keyDown(view.getByRole("button", { name: "Patch actions" }), {
+          key: "Enter",
+        });
+      });
+    };
+
+    fireEvent.click(view.getByRole("button", { name: "Add" }));
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    openActions();
+    fireEvent.click(view.getByRole("menuitem", { name: "Fit view" }));
+    expect(onFitView).toHaveBeenCalledTimes(1);
+    openActions();
+    expect(
+      view.getByRole("menuitem", { name: "Undo" }).hasAttribute("data-disabled")
+    ).toBe(true);
+    expect(
+      view.getByRole("menuitem", { name: "Redo" }).hasAttribute("data-disabled")
+    ).toBe(true);
+    fireEvent.click(view.getByRole("menuitem", { name: "BlankSpeakers only" }));
+    const blank = store.state.graph;
+    expect(blank?.nodes).toEqual(
+      templates.buildNodeGraphFromTemplate("blank").nodes
+    );
+
+    openActions();
+    fireEvent.click(view.getByRole("menuitem", { name: "Undo" }));
+    expect(store.state.graph).toEqual(before);
+
+    openActions();
+    fireEvent.click(view.getByRole("menuitem", { name: "Redo" }));
+    expect(store.state.graph).toEqual(blank);
+  });
+
   test("lists Starter, All my stations, Duck and Blank; each replaces the patch as one undo step", () => {
     const { commitNodeGraph, createNodeStore, undoNodeGraph } = nodeStoreModule;
     const before = templates.buildNodeGraphFromTemplate("duck", {

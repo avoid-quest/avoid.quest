@@ -247,24 +247,25 @@ describe("duck", () => {
     expect(plan.lanes.get("src-r4")?.effects).toEqual([]);
   });
 
-  test("picks the station that reads as talk, wherever it is in order", () => {
+  test("prefers Radio BlackOut for voice ahead of other talk stations", () => {
     const graph = buildNodeGraphFromTemplate("duck", {
       saved: [
-        radio("news", { enabled: true, name: "City News", order: 0 }),
-        radio("nts", { enabled: true, name: "NTS 1", order: 1 }),
+        radio("nts", { enabled: true, name: "NTS 1", order: 0 }),
+        radio("news", { enabled: true, name: "City News", order: 1 }),
         radio("fip", { enabled: true, name: "FIP", order: 2 }),
+        radio("blackout", { enabled: true, name: "Radio BlackOut", order: 12 }),
       ],
     });
 
     const key = graph.edges.find(
       (edge) => edge.targetHandle === "in:sidechain:key"
     );
-    expect(key?.source).toBe("src-news");
+    expect(key?.source).toBe("src-blackout");
     expect(
       graph.edges.find((edge) => edge.target === DUCK_NODE_ID && edge !== key)
         ?.source
     ).toBe("src-nts");
-    expect(stationIds(graph)).toEqual(["src-nts", "src-news"]);
+    expect(stationIds(graph)).toEqual(["src-nts", "src-blackout"]);
   });
 
   test("keeps levels, and builds a valid session whose music lane is keyed", () => {

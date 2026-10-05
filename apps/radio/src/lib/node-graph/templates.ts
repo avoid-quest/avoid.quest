@@ -245,13 +245,16 @@ const DUCK_SPEAKERS_X = DUCK_FX_X + 224 + 120;
 /**
  * Two stations and a Compressor: the music plays through the Compressor,
  * the talk plays straight to Speakers and also keys the Compressor. The
- * talk is the first station that reads as talk, else the second; the music
- * is the first of the rest. A missing one is an empty slot to search.
+ * voice is Radio BlackOut when available, then the first station that reads
+ * as talk, else the second; music is the first of the rest. A missing one
+ * is an empty slot to search.
  */
 function duck(sources: NodeTemplateSources): NodeGraph {
   const stations = orderedStations(sources);
   const talkRadio =
-    stations.find((radio) => TALK_STATION.test(radio.name)) ?? stations[1];
+    stations.find((radio) => radio.name.toLowerCase() === "radio blackout") ??
+    stations.find((radio) => TALK_STATION.test(radio.name)) ??
+    stations[1];
   const musicRadio = stations.find((radio) => radio !== talkRadio);
   const taken = new Set([SPEAKERS_NODE_ID, DUCK_NODE_ID]);
   const station = (

@@ -22,9 +22,8 @@ function firstStep(graph: NodeGraph, isPhone: boolean): string {
 }
 
 /**
- * The canvas's one line of direction. Until a source holds a station,
- * Play all has nothing to start, so it says what to do first; after that it
- * points at the cable gesture.
+ * The canvas's one line of direction. Until a source holds something to
+ * play, it says what to do first; after that it points at the cable gesture.
  */
 export function NodeCanvasHint({
   graph,

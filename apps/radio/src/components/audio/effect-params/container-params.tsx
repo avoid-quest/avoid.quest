@@ -27,18 +27,14 @@ import {
   getEffectSchema,
 } from "@/lib/audio/dsp/effects/schema";
 import {
-  isEffectContainer,
   isEffectContainerType,
   MAX_EFFECT_TREE_DEPTH,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import { EffectPicker } from "../effect-picker";
-import { DeclarativeParams } from "./declarative-params";
+import { EffectParams } from "./effect-params";
 import { ParamSelect } from "./param-select";
 import { ParamSlider } from "./param-slider";
-import { SidechainParams } from "./sidechain-params";
-import { Tone3000ModelParams } from "./tone3000-model-params";
 import { UniversalParams } from "./universal-params";
-import { WerkstattParams } from "./werkstatt-params";
 
 type ContainerEffectConfig = Extract<
   EffectConfig,
@@ -223,42 +219,14 @@ function NestedEffect({
       </div>
       {expanded && schema ? (
         <div className="space-y-4 border-t p-3">
-          {isEffectContainer(effect) ? (
-            <ContainerParams
-              deckId={deckId}
-              depth={depth}
-              effect={effect}
-              effectId={effect.id}
-              midiTargetPrefix={midiTargetPrefix}
-              onUpdate={onUpdate}
-            />
-          ) : (
-            <>
-              <DeclarativeParams
-                deckId={deckId}
-                effect={effect}
-                effectId={effect.id}
-                midiTargetPrefix={midiTargetPrefix}
-                onUpdate={onUpdate}
-                schema={schema}
-              />
-              {(effect.type === "compressor" ||
-                effect.type === "gate" ||
-                effect.type === "vocoder") && (
-                <SidechainParams
-                  deckId={deckId}
-                  effect={effect}
-                  onUpdate={onUpdate}
-                />
-              )}
-              {effect.type === "werkstatt" && (
-                <WerkstattParams effect={effect} onUpdate={onUpdate} />
-              )}
-              {effect.type === "neuralAmp" && (
-                <Tone3000ModelParams effect={effect} onUpdate={onUpdate} />
-              )}
-            </>
-          )}
+          <EffectParams
+            deckId={deckId}
+            depth={depth}
+            effect={effect}
+            effectId={effect.id}
+            midiTargetPrefix={midiTargetPrefix}
+            onUpdate={onUpdate}
+          />
         </div>
       ) : null}
     </div>

@@ -119,16 +119,18 @@ depth-limit message as passes: those controls are not implemented.
       Pitch/Speed, Distortion, Limiter, and a flat effect chain. Open the current
       app and confirm IDs, values, and order are retained and tempo defaults to
       120 BPM.
-- [ ] Add Pitch/Speed, Distortion, or Limiter to a chain that already contains
+- [ ] Add and enable Pitch/Speed, Distortion, or Limiter in a chain that contains
       openDAW effects. This deliberately selects the compatibility runtime for
-      the whole chain. Verify all effects remain present, ordered, editable,
-      audible where applicable, and persistent after reload.
-- [ ] Remove the last radio-only effect from that chain and confirm the
+      the whole active tree, including nested containers. Verify effects stay
+      present, ordered, editable, audible where applicable, and persistent
+      after reload.
+- [ ] Disable or remove the last active radio-only effect and confirm the
       stock-only chain reconnects without dropping state or stopping playback.
 
-The radio has no playback-session export/import UI. Do not substitute the
-settings/radio-collection export for this test. Migration and JSON round-trip
-coverage is provided by the focused tests in the validation section.
+DJ sessions are not included in file backups; use reload for the deck tests
+above. File backups include the Node patch and referenced NAM assets; use the
+[current Node contract](src/components/radio/NODE_MODE_PROPOSAL.md) for that
+separate round-trip. Focused schema tests cover DJ migration and JSON parsing.
 
 ## Tone3000 and Werkstatt prerequisites
 
@@ -196,7 +198,8 @@ migration, compatibility processor, and NTS URL normalization:
 bun test \
   apps/radio/src/lib/audio/dsp/effects/opendaw-catalog-completeness.test.ts \
   apps/radio/src/lib/audio/manager/official-opendaw-effect-adapter.test.ts \
-  apps/radio/src/lib/audio/manager/official-opendaw-runtime.test.ts \
+  apps/radio/src/lib/audio/manager/official-opendaw-runtime-performance.test.ts \
+  apps/radio/src/lib/audio/manager/effects-controller.test.ts \
   apps/radio/src/lib/audio/dsp/routing/effect-tree.test.ts \
   apps/radio/src/lib/audio/dsp/routing/effect-tree-routing-coverage.test.ts \
   apps/radio/src/lib/collections/playback-session-effect-migration.test.ts \

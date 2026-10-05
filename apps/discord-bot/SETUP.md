@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-- **Node.js** >= 20
+- **Node.js 24** — matches the Docker runtime and build target. The installed
+  `@discordjs/voice@0.19.2` requires at least Node 22.12.0.
 - **Bun** (package manager)
 - **ffmpeg** — required for audio transcoding
 
@@ -91,7 +92,7 @@ Do not commit plaintext `.env` files, service tokens, or downloaded secret files
 From the monorepo root:
 
 ```sh
-bun install
+bun install --frozen-lockfile
 ```
 
 ---
@@ -114,10 +115,14 @@ With `DISCORD_GUILD_ID` set, commands appear instantly in that server.
 # Development (auto-reload)
 bun run --filter @avoid.quest/discord-bot dev
 
-# Production
+# Production (provide runtime secrets through the hosting environment)
 bun run --filter @avoid.quest/discord-bot build
 bun run --filter @avoid.quest/discord-bot start
 ```
+
+`dev` and `deploy-commands` use Doppler; `start` runs Node directly and expects
+the required variables in its environment. See [package scripts](package.json)
+and the [Docker runtime](Dockerfile).
 
 ---
 

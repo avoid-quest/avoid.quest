@@ -2,8 +2,8 @@
 
 ## Architecture
 
-The radio routes stock-only effect chains through the official client-side
-openDAW engine:
+The radio routes active effect trees supported by openDAW through its official
+client-side engine:
 
 ```text
 deck AudioNode
@@ -24,12 +24,18 @@ WASMs present in the installed openDAW package, and the lazy NAM runtime at
 stable `/opendaw/*` URLs. Development and production builds use the same
 package-derived assets; generated WASM files are not copied into source control.
 
-The radio AudioWorklet remains the compatibility runtime whenever a chain
-contains the radio-only Pitch/Speed, arctangent Distortion, or Limiter. The
-whole mixed chain stays ordered and playable there; radio-only effects are not
-dropped during migration. If the official engine cannot initialize, all live
-graphs reconnect through this compatibility runtime and the app displays a
-warning.
+Runtime selection applies to the whole sound's active effect tree, including
+nested containers. Enabled radio-only Pitch/Speed, arctangent Distortion or
+Limiter selects the radio AudioWorklet compatibility runtime; so does a
+sidechain on an effect other than Compressor, Gate or Vocoder. Disabled effects
+are retained in state but excluded from official adapter input. With no enabled
+effects or zero global wet mix, the effects route bypasses processing. The
+whole mixed tree stays ordered on compatibility; radio-only effects are not
+dropped during migration. See the selection rules in
+[`official-opendaw-mapping.ts`](src/lib/audio/dsp/effects/official-opendaw-mapping.ts)
+and [`effects-controller.ts`](src/lib/audio/manager/effects-controller.ts).
+If the official engine cannot initialize, all live graphs reconnect through
+this compatibility runtime and the app displays a warning.
 
 The live-radio project intentionally does not initialize openDAW soundfont or
 OPFS worker services. Stock effects and Tape monitoring do not need them.
@@ -87,9 +93,10 @@ technical limit and only preserves legacy saved reference maps.
 Playback-session parsing normalizes legacy flat chains and adds the default
 tempo without dropping effect IDs, ordering, radio-only devices, or known
 parameter values. Nested routing, crossover state, sidechain channel IDs, and
-tempo round-trip through the persisted session schema. The app has no playback
-session export/import UI; persistence is verified by reload and focused schema
-tests.
+tempo round-trip through the persisted session schema. DJ sessions persist
+locally; verify them by reload and focused schema tests. File backups include
+the Node graph, master volume and referenced NAM assets, as described in the
+[current Node contract](src/components/radio/NODE_MODE_PROPOSAL.md).
 
 ## Stream compatibility
 

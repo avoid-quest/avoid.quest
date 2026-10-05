@@ -10,12 +10,13 @@
 
 - **config** (`packages/config`): Shared TypeScript configuration.
 - **error** (`packages/error`): Shared error types, `AppError`, and Sentry helpers.
-- **platforms** (`packages/platforms`): Platform scrapers and resolvers for Bandcamp, SoundCloud, YouTube, and Radio Garden.
+- **platforms** (`packages/platforms`): Platform scrapers and resolvers for Bandcamp, SoundCloud, YouTube, Mixcloud, Spotify metadata, and radio directories.
 - **ui** (`packages/ui`): Shared React UI components, shadcn/ui primitives, and branding assets.
 
 ## Tech stack
 
-- **Runtime/package manager**: Bun
+- **Package manager and workspace scripts**: Bun
+- **Bot runtime**: Node.js 24 (see [bot setup](apps/discord-bot/SETUP.md))
 - **Monorepo**: Turborepo
 - **Lint/format**: Ultracite/Biome
 - **Web**: Astro, React islands, Tailwind CSS v4
@@ -27,8 +28,7 @@
 
 ```bash
 bun install --frozen-lockfile # Install dependencies
-bun run secrets:setup # Select the avoid-quest/dev_personal Doppler config
-bun run dev          # Start workspace dev tasks with Doppler-backed app scripts
+bun run --filter @avoid.quest/radio dev # Start radio without credentials
 bun run build        # Build all apps/packages
 bun run typecheck    # Type check all packages
 bun run check        # Lint/format check via Ultracite
@@ -46,13 +46,15 @@ the repository root. The committed `doppler.yaml` preselects the
 `avoid-quest` project and `dev_personal` config, matching Doppler's recommended
 repo-root setup flow for monorepos.
 
-Scoped examples:
+For web or bot development, after Doppler setup:
 
 ```bash
 bun run --filter @avoid.quest/web dev
-bun run --filter @avoid.quest/radio dev
 bun run --filter @avoid.quest/discord-bot dev
 ```
+
+`bun run dev` starts workspace dev tasks; web and radio both default to port
+3000, so use the scoped commands above when working on one app.
 
 Use `bun run secrets:status` to inspect which Doppler project/config is active
 for the repository root. Doppler is the development secrets source of truth; do

@@ -158,11 +158,12 @@ SENTRY_PROJECT      # Sentry project slug
 SENTRY_RELEASE      # Optional: defaults to radio@<version>
 ```
 
-Production builds use the committed public radio DSN when the override is
-missing, empty, or whitespace-only. Development stays disabled unless a DSN
-override is provided. Production-built previews use the same default project;
-provide an override to send those events to a separate project. The `/tunnel`
-fallback uses the same selected browser DSN.
+Production builds use the committed public radio DSN only when served on
+`radio.avoid.quest` and the override is absent. An explicitly empty or
+whitespace-only override disables browser reporting. Development, previews,
+forks and self-hosted deployments stay disabled unless a DSN override is
+provided. The `/tunnel` fallback applies the same hostname policy to the
+request URL; an explicit runtime DSN still takes precedence.
 
 If any required Sentry build vars are missing, production builds print one
 warning and skip the upload step. The app still builds with hidden source maps;

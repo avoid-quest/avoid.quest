@@ -67,14 +67,14 @@ describe("readClientSentryDsn", () => {
     },
     {
       configuredDsn: "",
-      expectedDsn: PRODUCTION_SENTRY_DSN,
-      name: "uses the public radio DSN for an empty production override",
+      expectedDsn: "",
+      name: "allows an empty production override to disable reporting",
       production: true,
     },
     {
       configuredDsn: "   ",
-      expectedDsn: PRODUCTION_SENTRY_DSN,
-      name: "uses the public radio DSN for a blank production override",
+      expectedDsn: "",
+      name: "allows a blank production override to disable reporting",
       production: true,
     },
     {
@@ -86,12 +86,36 @@ describe("readClientSentryDsn", () => {
   ])("$name", async ({ configuredDsn, production, expectedDsn }) => {
     const tunnel = await buildTunnelModule({ configuredDsn, production });
 
-    expect(tunnel.readClientSentryDsn()).toBe(expectedDsn);
+    expect(tunnel.readClientSentryDsn("radio.avoid.quest")).toBe(expectedDsn);
+  });
+
+  test.each([
+    "radio.test",
+    "localhost",
+    "fork.example",
+    "preview-radio.cwav.workers.dev",
+    "radio.avoid.quest.example",
+  ])("does not use the owner's default on %s", async (hostname) => {
+    const tunnel = await buildTunnelModule({ production: true });
+    expect(tunnel.readClientSentryDsn(hostname)).toBe("");
+    const response = await handleSentryTunnelRequest(
+      new Request(`https://${hostname}/tunnel`, { method: "POST" }),
+      { fallbackDsn: tunnel.readClientSentryDsn(hostname) }
+    );
+    expect(response.status).toBe(503);
+  });
+
+  test("allows a self-hosted deployment to opt in to its own DSN", async () => {
+    const tunnel = await buildTunnelModule({
+      configuredDsn: TEST_SENTRY_DSN,
+      production: true,
+    });
+    expect(tunnel.readClientSentryDsn("fork.example")).toBe(TEST_SENTRY_DSN);
   });
 
   test("the production default forwards matching envelopes through the existing tunnel", async () => {
     const tunnel = await buildTunnelModule({ production: true });
-    const dsn = tunnel.readClientSentryDsn();
+    const dsn = tunnel.readClientSentryDsn("radio.avoid.quest");
     const fetchImpl = Object.assign(
       mock((..._args: Parameters<typeof fetch>) =>
         Promise.resolve(new Response(null, { status: 202 }))

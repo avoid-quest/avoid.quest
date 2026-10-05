@@ -1,16 +1,19 @@
 const LEADING_SLASH_PATTERN = /^\//;
-// Public ingestion key; production builds should report without build secrets.
+// Public ingestion key, used only on the first-party production hostname.
 const DEFAULT_CLIENT_SENTRY_DSN =
   "https://444829d47e194352a94b3739c56ca4ee@o4510834344656896.ingest.de.sentry.io/4510834349375568";
 
 export const CLIENT_SENTRY_TUNNEL = "/tunnel";
 export const MAX_TUNNEL_ENVELOPE_BYTES = 1_000_000;
 
-export function readClientSentryDsn(): string {
-  const configuredDsn = import.meta.env.VITE_RADIO_SENTRY_DSN?.trim();
-  return (
-    configuredDsn || (import.meta.env.PROD ? DEFAULT_CLIENT_SENTRY_DSN : "")
-  );
+export function readClientSentryDsn(hostname: string): string {
+  const configuredDsn = import.meta.env.VITE_RADIO_SENTRY_DSN;
+  if (configuredDsn !== undefined) {
+    return configuredDsn.trim();
+  }
+  return import.meta.env.PROD && hostname === "radio.avoid.quest"
+    ? DEFAULT_CLIENT_SENTRY_DSN
+    : "";
 }
 
 export type SentryTunnelTarget = {

@@ -1,5 +1,5 @@
 // biome-ignore lint/performance/noNamespaceImport: namespace import required by Sentry SDK
-import * as Sentry from "@sentry/tanstackstart-react";
+import * as Sentry from "@sentry/core";
 
 export type ErrorCategory =
   | "validation"
@@ -203,11 +203,11 @@ const DATA_COLLECTION = {
   httpBodies: [],
   httpHeaders: { request: PII_HEADER_DENYLIST, response: PII_HEADER_DENYLIST },
   queues: false,
-  urlQueryParams: PII_HEADER_DENYLIST,
+  urlQueryParams: false,
   userInfo: false,
-} satisfies NonNullable<Sentry.BrowserOptions["dataCollection"]>;
+} satisfies NonNullable<Sentry.Options["dataCollection"]>;
 
-function makeBaseSentryOptions(config: {
+export function makeSentryOptions(config: {
   dsn: string;
   environment: string;
   release: string;
@@ -217,17 +217,24 @@ function makeBaseSentryOptions(config: {
   return {
     // v11 attaches synthetic stack traces to messages by default; v10 did not.
     attachStacktrace: false,
+    beforeBreadcrumb(breadcrumb: Sentry.Breadcrumb) {
+      return breadcrumb.category === "console" || breadcrumb.type === "http"
+        ? null
+        : breadcrumb;
+    },
     dataCollection: DATA_COLLECTION,
     dsn: config.dsn,
+    enableLogs: false,
+    enableMetrics: false,
     environment: config.environment,
-    maxBreadcrumbs: 0,
+    maxBreadcrumbs: 50,
     release: config.release,
     sampleRate: 1.0,
     tracesSampleRate: 0,
   } as const;
 }
 
-function shouldDropKnownBrowserApiNoise(
+export function shouldDropKnownBrowserApiNoise(
   event: Sentry.ErrorEvent | Sentry.Event
 ): boolean {
   const values = event.exception?.values;
@@ -246,42 +253,6 @@ function shouldDropKnownBrowserApiNoise(
     (value) =>
       value.mechanism?.type === "auto.browser.browserapierrors.setTimeout"
   );
-}
-
-export function initClientSentry(config: {
-  dsn: string;
-  environment: string;
-  release: string;
-  tunnel?: string;
-}): void {
-  if (!config.dsn) {
-    return;
-  }
-
-  Sentry.init({
-    ...makeBaseSentryOptions(config),
-    beforeSend(event) {
-      if (shouldDropKnownBrowserApiNoise(event)) {
-        return null;
-      }
-      return event;
-    },
-    tunnel: config.tunnel,
-  });
-}
-
-export function initServerSentry(config: {
-  dsn: string;
-  environment: string;
-  release: string;
-}): void {
-  if (!config.dsn) {
-    return;
-  }
-
-  Sentry.init({
-    ...makeBaseSentryOptions(config),
-  });
 }
 
 export function createRequestId(request: Request): string {

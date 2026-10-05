@@ -1,4 +1,4 @@
-import { initClientSentry } from "@avoid.quest/error";
+import { initClientSentry } from "@avoid.quest/error/client";
 import { createRouter } from "@tanstack/react-router";
 import { CLIENT_SENTRY_TUNNEL, readClientSentryDsn } from "@/lib/sentry/tunnel";
 
@@ -15,7 +15,7 @@ export const getRouter = () => {
     initClientSentry({
       dsn: readClientSentryDsn(window.location.hostname),
       environment: import.meta.env.MODE,
-      release: `radio@${__APP_VERSION__}`,
+      release: __SENTRY_RELEASE__,
       tunnel: CLIENT_SENTRY_TUNNEL,
     });
   }

@@ -6,7 +6,8 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "radio",
 	"compatibility_date": "2026-08-26",
-	"main": "@tanstack/react-start/server-entry",
+	"main": "src/server.ts",
+	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": true,
 	"preview_urls": true,
 	"observability": {

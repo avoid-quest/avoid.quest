@@ -73,6 +73,7 @@
       "sampleRate",
       "BUFFER_SIZE",
       "__APP_VERSION__",
+      "__SENTRY_RELEASE__",
       "__CHANGELOG_NEWEST_DATE__"
     ]
   },

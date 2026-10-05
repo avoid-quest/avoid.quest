@@ -69,7 +69,7 @@ play. See the [Mixcloud](../../packages/platforms/src/mixcloud/RESEARCH.md) and
 - **Audio**: Web Audio API, AudioWorklet, HLS.js, HTML5 Audio
 - **UI**: React 19, Tailwind CSS v4, shadcn/ui, Radix UI, dnd-kit
 - **Deploy**: Cloudflare Workers (Wrangler)
-- **Monitoring**: Sentry (client + server, via `/tunnel` route)
+- **Monitoring**: Sentry (browser via `/tunnel`, Worker via its SDK)
 
 ## Routes
 
@@ -155,7 +155,7 @@ Cloudflare rate limiting remains in place.
 Sentry's shared configuration follows its documented
 [`dataCollection` controls](https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/data-management/data-collected/):
 `userInfo: false`, cookies and bodies disabled, and IP-bearing headers/query
-parameters filtered. The app does not explicitly set a Sentry user/IP. Sentry's
+parameters excluded. The app does not explicitly set a Sentry user/IP. Sentry's
 **Prevent Storing of IP Addresses** setting under **Security & Privacy** is an
 additional server-side safeguard. Provider access logs and historical data are
 managed outside this repository and are not verified by these SDK settings.
@@ -226,7 +226,7 @@ VITE_RADIO_SENTRY_DSN # Optional browser DSN override; also used by /tunnel fall
 SENTRY_AUTH_TOKEN   # Required for sourcemap upload
 SENTRY_ORG          # Sentry organization slug
 SENTRY_PROJECT      # Sentry project slug
-SENTRY_RELEASE      # Optional: defaults to radio@<version>
+SENTRY_RELEASE      # Optional browser/Worker/upload release override
 ```
 
 Production builds use the committed public radio DSN only when served on
@@ -247,9 +247,15 @@ RADIO_SENTRY_DSN    # Optional server DSN and primary /tunnel validation target
 SENTRY_DSN          # Optional fallback server DSN name
 ```
 
-Local development works without Sentry variables. In that mode client/server
-Sentry initialization is skipped and `/tunnel` returns 503 until a DSN is
-configured.
+The Worker reads these bindings per request in [`src/server.ts`](src/server.ts).
+`withSentry` isolates request scopes and delivers events through `waitUntil`;
+[`src/start.ts`](src/start.ts) catches TanStack middleware failures. Node
+`--import` initialization does not instrument the deployed Worker.
+
+Local development works without Sentry variables. Browser reporting is disabled,
+the Worker has no active transport, and `/tunnel` returns 503 until a DSN is
+configured. Browser, Worker and source-map upload share the build-time release. Tracing,
+Replay, logs and metrics are disabled; error sampling is 100%.
 
 ## Cloudflare exposure
 

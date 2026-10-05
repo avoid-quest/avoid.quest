@@ -13,7 +13,9 @@ Shared React UI component library for the main avoid.quest workspace.
 ## Usage
 
 ```typescript
-import { Button, Card, Input } from "@avoid.quest/ui/components";
+import { Button } from "@avoid.quest/ui/components/button";
+import { Card } from "@avoid.quest/ui/components/card";
+import { Input } from "@avoid.quest/ui/components/input";
 import { cn } from "@avoid.quest/ui/lib/utils";
 ```
 

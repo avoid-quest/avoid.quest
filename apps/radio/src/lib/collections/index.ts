@@ -1,4 +1,7 @@
-import { initializeCriticalCollections } from "./initialize";
+import {
+  initializeCriticalCollections,
+  preparePlaybackSessions,
+} from "./initialize";
 import type { SyncChanges } from "./radios";
 
 export { initializeCriticalCollections } from "./initialize";
@@ -81,8 +84,7 @@ export {
  */
 export async function initializeCollections(): Promise<SyncChanges | null> {
   const syncChanges = await initializeCriticalCollections();
-  const { initializePlaybackSessions } = await import("./playback-sessions");
-  await initializePlaybackSessions();
+  await preparePlaybackSessions();
 
   return syncChanges;
 }

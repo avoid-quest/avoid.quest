@@ -1,5 +1,6 @@
 import {
   createCollection,
+  createTransaction,
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
@@ -843,8 +844,7 @@ export async function hydrateNodeGraphNamModels(
   );
 }
 
-async function externalizeStoredNamModels(): Promise<void> {
-  await hydrateGraphNamModels();
+function externalizeStoredNamModels() {
   const channels = [...playbackSessionsCollection.state.values()].flatMap(
     (session) =>
       // A retired record left for a later migration run cannot be updated.
@@ -856,12 +856,17 @@ async function externalizeStoredNamModels(): Promise<void> {
           }))
         : []
   );
-  const updates = await Promise.all(
+  return Promise.all(
     channels.map(async ({ channel, sessionId }) => {
       const effects = await externalizeChannelNamModels(channel.effects);
       return { channel, effects, sessionId };
     })
   );
+}
+
+function applyStoredNamModels(
+  updates: Awaited<ReturnType<typeof externalizeStoredNamModels>>
+): void {
   for (const { channel, effects, sessionId } of updates) {
     if (effects.some((effect, index) => effect !== channel.effects[index])) {
       if (sessionId === "node") {
@@ -872,6 +877,25 @@ async function externalizeStoredNamModels(): Promise<void> {
       });
     }
   }
+}
+
+/** Persist each preparation step as one storage write, or roll all its rows back. */
+async function persistSessionPreparation(write: () => void): Promise<void> {
+  const transaction = createTransaction({
+    mutationFn: ({ transaction: pending }) => {
+      playbackSessionsCollection.utils.acceptMutations(pending);
+      return Promise.resolve();
+    },
+  });
+  try {
+    transaction.mutate(write);
+  } catch (error) {
+    transaction.rollback();
+    // Rollback rejects this promise too; consume it before propagating the cause.
+    await transaction.isPersisted.promise.catch(() => undefined);
+    throw error;
+  }
+  await transaction.isPersisted.promise;
 }
 
 let stopWatchingLegacyWrites: (() => void) | null = null;
@@ -885,6 +909,10 @@ export function stopLegacyMultipleListeners(): void {
   stopWatchingLegacyWrites = null;
 }
 
+/**
+ * Applies stored-session policy, including explicit Settings Reset. Page/view
+ * callers use preparePlaybackSessions in initialize.ts to share this work once.
+ */
 export async function initializePlaybackSessions(): Promise<void> {
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
@@ -902,61 +930,64 @@ export async function initializePlaybackSessions(): Promise<void> {
   const hasStoredNodeGraph = Boolean(
     playbackSessionsCollection.state.get("node")?.graph
   );
-  migrateMultipleSession(legacyCollections);
-  // Likewise a node session a v1 release stored: its graph is upgraded
-  // before restoreNodeSessionRadios or restore update it.
-  migrateNodeGraphSession(playbackSessionsCollection);
-  // The patch this tab starts from is its own to garbage-collect.
-  holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
-  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
-
   const settings = settingsCollection.state.get(SETTINGS_ID);
   const shouldRestore = settings?.player.restoreStateOnLoad !== false;
   const discardedModelIds = shouldRestore
     ? []
     : [...collectReferencedNamModelIds()];
-  if (shouldRestore) {
-    await externalizeStoredNamModels();
-  }
-
-  if (!shouldRestore) {
-    upsertSession(buildSingleSessionFromLegacyState());
-    // Playback starts paused; disabling restoration must not erase a patch.
-    if (!hasStoredNodeGraph) {
-      upsertSession(buildDefaultNodeSession());
-    }
-    upsertSession(buildDjSessionFromLegacyState());
-    scheduleNamModelCleanup(discardedModelIds);
-  } else if (playbackSessionsCollection.state.size === 0) {
-    upsertSession(buildSingleSessionFromLegacy());
-    upsertSession(buildDefaultNodeSession());
-    upsertSession(buildDjSessionFromLegacy());
-  } else {
-    if (!playbackSessionsCollection.state.has("single")) {
+  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
+  // Move inline bytes to IndexedDB before a write that adds sessions or grows
+  // a migrated graph. Persist their removal with that write so quota can recover.
+  const modelUpdates = shouldRestore ? await externalizeStoredNamModels() : [];
+  await persistSessionPreparation(() => {
+    migrateMultipleSession(legacyCollections);
+    // Upgrade stored v1 graphs before any validated session update.
+    migrateNodeGraphSession(playbackSessionsCollection);
+    applyStoredNamModels(modelUpdates);
+    if (!shouldRestore) {
+      upsertSession(buildSingleSessionFromLegacyState());
+      // Playback starts paused; disabling restoration must not erase a patch.
+      if (!hasStoredNodeGraph) {
+        upsertSession(buildDefaultNodeSession());
+      }
+      upsertSession(buildDjSessionFromLegacyState());
+    } else if (playbackSessionsCollection.state.size === 0) {
       upsertSession(buildSingleSessionFromLegacy());
-    }
-    if (!playbackSessionsCollection.state.has("node")) {
       upsertSession(buildDefaultNodeSession());
-    }
-    if (!playbackSessionsCollection.state.has("dj")) {
       upsertSession(buildDjSessionFromLegacy());
+    } else {
+      if (!playbackSessionsCollection.state.has("single")) {
+        upsertSession(buildSingleSessionFromLegacy());
+      }
+      if (!playbackSessionsCollection.state.has("node")) {
+        upsertSession(buildDefaultNodeSession());
+      }
+      if (!playbackSessionsCollection.state.has("dj")) {
+        upsertSession(buildDjSessionFromLegacy());
+      }
     }
-  }
 
+    const activeMode = normalizePlayerMode(settings?.player.mode);
+    const activeSession = playbackSessionsCollection.state.get(activeMode);
+    if (activeSession) {
+      try {
+        updatePlaybackSessionRecord(activeMode, (draft) => {
+          draft.masterVolume = draft.masterVolume ?? 1;
+        });
+      } catch (error) {
+        // A patch the v2 step kept unread, for want of a backup, fails it.
+        console.warn("[playback-sessions] Could not touch the session", error);
+      }
+    }
+  });
+
+  // Only committed preparation can release models or declare the page ready.
+  holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
+  scheduleNamModelCleanup(discardedModelIds);
+  if (shouldRestore) {
+    await hydrateGraphNamModels();
+  }
   restoreNodeSessionRadios();
-
-  const activeMode = normalizePlayerMode(settings?.player.mode);
-  const activeSession = playbackSessionsCollection.state.get(activeMode);
-  if (activeSession) {
-    try {
-      updatePlaybackSession(activeMode, (draft) => {
-        draft.masterVolume = draft.masterVolume ?? 1;
-      });
-    } catch (error) {
-      // A patch the v2 step kept unread, for want of a backup, fails it.
-      console.warn("[playback-sessions] Could not touch the session", error);
-    }
-  }
 }
 
 export function getPlaybackSession(

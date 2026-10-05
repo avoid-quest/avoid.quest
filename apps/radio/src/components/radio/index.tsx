@@ -1,4 +1,10 @@
-import { lazy, type ReactElement, Suspense, useEffect } from "react";
+import {
+  type ComponentType,
+  type LazyExoticComponent,
+  lazy,
+  Suspense,
+  useEffect,
+} from "react";
 import type { Radio } from "@/lib/audio";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { useSettings } from "@/lib/hooks/use-settings";
@@ -13,20 +19,28 @@ import {
   loadSingleRadio,
 } from "./radio-mode-loader";
 
-const SingleRadio = lazy(loadSingleRadio);
-const NodeRadios = lazy(loadNodeRadios);
-const DjPlayer = lazy(loadDjPlayer);
+function createLazyMode(
+  mode: PlayerMode,
+  load: typeof loadSingleRadio
+): LazyExoticComponent<ComponentType<{ radios?: Radio[] }>> {
+  return lazy(() =>
+    load().catch((error: unknown) => {
+      // React.lazy caches rejections too. A boundary reset needs a fresh type.
+      radioModeComponents[mode] = createLazyMode(mode, load);
+      throw error;
+    })
+  );
+}
 
-type RadioModeRenderer = (radios: Radio[]) => ReactElement;
-
-const radioModeRenderers = {
-  dj: (radios) => <DjPlayer radios={radios} />,
-  node: (radios) => <NodeRadios radios={radios} />,
-  single: (radios) => <SingleRadio radios={radios} />,
-} satisfies Record<PlayerMode, RadioModeRenderer>;
+const radioModeComponents = {
+  dj: createLazyMode("dj", loadDjPlayer),
+  node: createLazyMode("node", loadNodeRadios),
+  single: createLazyMode("single", loadSingleRadio),
+};
 
 function RadioMode({ mode, radios }: { mode: PlayerMode; radios: Radio[] }) {
-  return radioModeRenderers[mode](radios);
+  const Component = radioModeComponents[mode];
+  return <Component radios={radios} />;
 }
 
 export function Radios() {

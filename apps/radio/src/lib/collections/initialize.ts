@@ -10,3 +10,16 @@ export async function initializeCriticalCollections() {
   ]);
   return syncChanges;
 }
+
+let playbackPreparation: Promise<void> | undefined;
+
+/** Apply page-load restoration once, shared by independently loaded views. */
+export function preparePlaybackSessions(): Promise<void> {
+  playbackPreparation ??= import("./playback-sessions")
+    .then(({ initializePlaybackSessions }) => initializePlaybackSessions())
+    .catch((error: unknown) => {
+      playbackPreparation = undefined;
+      throw error;
+    });
+  return playbackPreparation;
+}

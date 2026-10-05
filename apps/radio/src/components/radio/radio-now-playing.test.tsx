@@ -255,6 +255,7 @@ test("keeps a fresh preview through playback and refreshes after its deadline", 
   const originalNow = Date.now;
   const requests: string[] = [];
   const servedAt = Date.now();
+  let now = servedAt;
   const response = {
     data: { ...metadata, expiresAt: servedAt + 60_000, sampledAt: servedAt },
     ok: true,
@@ -269,6 +270,8 @@ test("keeps a fresh preview through playback and refreshes after its deadline", 
   );
 
   try {
+    // Keep the fixture and query receipt on the same clock, regardless of latency.
+    Date.now = () => now;
     const view = renderHook(({ poll }) => useRadioMetadata({ poll, radio }), {
       initialProps: { poll: false },
       wrapper: ({ children }) => (
@@ -278,14 +281,21 @@ test("keeps a fresh preview through playback and refreshes after its deadline", 
     await waitFor(() => expect(requests).toHaveLength(1));
     await waitFor(() => expect(view.result.current.metadata).toBeTruthy());
     view.rerender({ poll: true });
-    act(() => {
+    await act(() => {
       focusManager.setFocused(false);
       focusManager.setFocused(true);
     });
     expect(requests).toHaveLength(1);
 
-    Date.now = () => servedAt + 60_001;
-    act(() => {
+    now = servedAt + 59_999;
+    await act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    expect(requests).toHaveLength(1);
+
+    now = servedAt + 60_001;
+    await act(() => {
       focusManager.setFocused(false);
       focusManager.setFocused(true);
     });

@@ -134,16 +134,17 @@ blocking; it does not guarantee that every blocker will allow tracking.
 
 The proxy forwards the browser's user agent, Umami session headers, and
 available [Cloudflare location headers](https://docs.umami.is/docs/enable-cloudflare-headers).
-It derives `x-radio-client-ip` from Cloudflare's incoming `CF-Connecting-IP`,
-overwriting any browser-supplied value. [Cloudflare replaces standard IP headers
-on cross-zone subrequests](https://developers.cloudflare.com/rules/transform/request-header-modification/#important-remarks).
-Before enabling production collection, set `CLIENT_IP_HEADER=x-radio-client-ip`
-on the Umami server and preserve that header through its reverse proxy;
-[Umami gives this configured header priority](https://github.com/umami-software/umami/blob/master/src/lib/ip.ts).
-Direct requests without it retain Umami's standard IP-header fallback, including
-the independent Astro integration. Confirm visitor/session attribution in the
-dashboard after deployment. Region/city data needs Cloudflare's visitor location headers
-enabled if desired. The Astro site's analytics setup is independent.
+It sets Umami's built-in `payload.ip` from Cloudflare's incoming
+`CF-Connecting-IP`, replacing any browser-supplied IP. This avoids
+[Cloudflare's cross-zone IP-header rewrite](https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-connecting-ip-in-worker-subrequests).
+[Umami prioritizes `payload.ip` over headers and uses its geo database for that IP](https://github.com/umami-software/umami/blob/master/src/lib/detect.ts).
+No `CLIENT_IP_HEADER` setting or custom header is required on the Umami server.
+When Cloudflare's visitor header is unavailable, the proxy removes any
+client-supplied `payload.ip` and leaves Umami's standard header fallback intact.
+Event fields and session headers are otherwise preserved; malformed JSON and
+invalid payload shapes are rejected before forwarding. Confirm visitor/session
+attribution in the dashboard after deployment. The Astro site's analytics
+setup is independent.
 
 ## Architecture
 

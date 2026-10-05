@@ -2,6 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { handleUmamiRequest, MAX_UMAMI_EVENT_BYTES } from "./umami-proxy";
 
 const ORIGIN = "https://radio.avoid.quest";
+const EVENT_AT_BYTE_LIMIT = JSON.stringify({
+  payload: {
+    padding: "x".repeat(
+      MAX_UMAMI_EVENT_BYTES -
+        JSON.stringify({ payload: { padding: "", url: "/" }, type: "event" })
+          .length
+    ),
+    url: "/",
+  },
+  type: "event",
+});
 
 describe("Umami first-party proxy", () => {
   test("serves only the fixed script without forwarding query targets or cookies", async () => {
@@ -31,11 +42,19 @@ describe("Umami first-party proxy", () => {
     expect(response.headers.has("Set-Cookie")).toBe(false);
   });
 
-  test("preserves event bytes, visitor metadata and Umami's session response", async () => {
-    const body = '{"type":"event","payload":{"url":"/"}}';
+  test("sets the trusted visitor IP while preserving event fields and session metadata", async () => {
+    const event = {
+      payload: {
+        data: { station: "test" },
+        ip: "192.0.2.1",
+        name: "play",
+        url: "/",
+      },
+      type: "event",
+    };
     const response = await handleUmamiRequest(
       new Request(`${ORIGIN}/u/api/send`, {
-        body,
+        body: JSON.stringify(event),
         headers: {
           "CF-Connecting-IP": "203.0.113.42",
           "CF-IPCity": "Rome",
@@ -56,14 +75,16 @@ describe("Umami first-party proxy", () => {
         const upstream = new Request(input, init);
         expect(upstream.url).toBe("https://umami.net-work.studio/api/send");
         expect(upstream.method).toBe("POST");
-        expect(await upstream.text()).toBe(body);
+        await expect(upstream.json()).resolves.toEqual({
+          ...event,
+          payload: { ...event.payload, ip: "203.0.113.42" },
+        });
         expect(Object.fromEntries(upstream.headers)).toEqual({
           "cf-ipcity": "Rome",
           "cf-ipcountry": "IT",
           "cf-region-code": "62",
           "content-type": "application/json",
           "user-agent": "Visitor browser",
-          "x-radio-client-ip": "203.0.113.42",
           "x-umami-cache": "previous-session",
           "x-umami-hostname": "radio.avoid.quest",
           "x-umami-website-id": "3c1fb87b-fc98-4b89-b359-59f386c01ad3",
@@ -76,6 +97,83 @@ describe("Umami first-party proxy", () => {
     expect(await response.text()).toBe(
       '{"cache":"next-session","disabled":false}'
     );
+  });
+
+  test("preserves IPv6 visitor addresses in Umami's built-in field", async () => {
+    const response = await handleUmamiRequest(
+      new Request(`${ORIGIN}/u/api/send`, {
+        body: '{"type":"event","payload":{"url":"/"}}',
+        headers: { "CF-Connecting-IP": "2001:db8::42" },
+        method: "POST",
+      }),
+      async (input, init) => {
+        await expect(new Request(input, init).json()).resolves.toEqual({
+          payload: { ip: "2001:db8::42", url: "/" },
+          type: "event",
+        });
+        return new Response();
+      }
+    );
+    expect(response.status).toBe(200);
+  });
+
+  test("removes browser-supplied IPs when Cloudflare's visitor header is unavailable", async () => {
+    const response = await handleUmamiRequest(
+      new Request(`${ORIGIN}/u/api/send`, {
+        body: '{"type":"event","payload":{"ip":"192.0.2.1","url":"/"}}',
+        headers: {
+          "Content-Type": "application/json",
+          "True-Client-IP": "192.0.2.2",
+          "X-Forwarded-For": "192.0.2.3",
+          "x-radio-client-ip": "192.0.2.4",
+        },
+        method: "POST",
+      }),
+      async (input, init) => {
+        const upstream = new Request(input, init);
+        await expect(upstream.json()).resolves.toEqual({
+          payload: { url: "/" },
+          type: "event",
+        });
+        expect(Object.fromEntries(upstream.headers)).toEqual({
+          "content-type": "application/json",
+        });
+        return new Response();
+      }
+    );
+    expect(response.status).toBe(200);
+  });
+
+  test.each([
+    "{",
+    "null",
+    "[]",
+    "{}",
+    '{"payload":null}',
+    '{"payload":[]}',
+    '{"payload":"event"}',
+  ])("rejects invalid event JSON %s before forwarding", async (body) => {
+    const response = await handleUmamiRequest(
+      new Request(`${ORIGIN}/u/api/send`, { body, method: "POST" }),
+      () => {
+        throw new Error("Invalid events must not be forwarded");
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("rejects invalid UTF-8 before forwarding", async () => {
+    const response = await handleUmamiRequest(
+      new Request(`${ORIGIN}/u/api/send`, {
+        body: new Uint8Array([0xff]),
+        method: "POST",
+      }),
+      () => {
+        throw new Error("Invalid UTF-8 must not be forwarded");
+      }
+    );
+    expect(response.status).toBe(400);
   });
 
   test.each([
@@ -215,7 +313,7 @@ describe("Umami first-party proxy", () => {
   test("accepts an event exactly at the byte limit", async () => {
     const response = await handleUmamiRequest(
       new Request(`${ORIGIN}/u/api/send`, {
-        body: new Uint8Array(MAX_UMAMI_EVENT_BYTES),
+        body: EVENT_AT_BYTE_LIMIT,
         method: "POST",
       }),
       async (input, init) => {
@@ -226,5 +324,20 @@ describe("Umami first-party proxy", () => {
       }
     );
     expect(response.status).toBe(202);
+  });
+
+  test("rejects events that exceed the byte limit after adding the visitor IP", async () => {
+    const response = await handleUmamiRequest(
+      new Request(`${ORIGIN}/u/api/send`, {
+        body: EVENT_AT_BYTE_LIMIT,
+        headers: { "CF-Connecting-IP": "203.0.113.42" },
+        method: "POST",
+      }),
+      () => {
+        throw new Error("Oversized transformed events must not be forwarded");
+      }
+    );
+    expect(response.status).toBe(413);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 });

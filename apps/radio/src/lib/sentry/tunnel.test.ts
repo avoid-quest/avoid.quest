@@ -271,6 +271,10 @@ describe("handleSentryTunnelRequest", () => {
     );
     const request = new Request("https://radio.test/tunnel", {
       body: envelope,
+      headers: {
+        "CF-Connecting-IP": "203.0.113.42",
+        "X-Forwarded-For": "2001:db8::42",
+      },
       method: "POST",
     });
 

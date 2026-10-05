@@ -64,7 +64,7 @@ export async function validateAuthAndRateLimit(
       // Require existing session
       sessionId = getSessionId(cookieHeader);
       if (!sessionId) {
-        logAuthFailure(identifier, ip);
+        logAuthFailure(identifier);
         return problemResponse(
           new AppError({
             category: "auth",
@@ -90,7 +90,7 @@ export async function validateAuthAndRateLimit(
     );
 
     if (!rateLimitResult.allowed) {
-      logRateLimitViolation(sessionId, identifier, ip);
+      logRateLimitViolation(sessionId, identifier);
       return problemResponse(
         new AppError({
           category: "rate_limit",

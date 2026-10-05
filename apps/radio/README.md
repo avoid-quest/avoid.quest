@@ -80,6 +80,35 @@ play. See `packages/platforms/src/{mixcloud,spotify}/RESEARCH.md`.
 | `/api/radio-metadata` | Metadata lookup for configured radio streams |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
+| `/u/script.js` | First-party Umami tracker (GET/HEAD) |
+| `/u/api/send` | First-party Umami event collection (POST) |
+
+### Analytics
+
+The root shell loads Umami once with website ID
+`3c1fb87b-fc98-4b89-b359-59f386c01ad3`. Tracking runs only on
+`radio.avoid.quest`, honors Do Not Track and Umami's `umami.disabled`
+localStorage opt-out, and excludes URL query strings and hashes. Umami handles
+client-side navigation automatically.
+
+Following Umami's [proxy guide](https://docs.umami.is/docs/bypass-ad-blockers)
+and [tracker configuration](https://docs.umami.is/docs/tracker-configuration),
+the script uses `/u/script.js` and `data-host-url="/u"`, so event requests stay
+on `/u/api/send`. The Worker proxies only these two paths to
+`https://umami.net-work.studio`; no credentials or additional bindings are
+needed. Successful scripts are cached for an hour, while collection responses
+and failures are never cached. First-party proxying reduces domain-based
+blocking; it does not guarantee that every blocker will allow tracking.
+
+The proxy forwards the browser's user agent, Umami session headers, and
+available [Cloudflare location headers](https://docs.umami.is/docs/enable-cloudflare-headers).
+It derives `True-Client-IP` from Cloudflare's incoming `CF-Connecting-IP`:
+[Cloudflare replaces the latter across zones](https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-connecting-ip-in-worker-subrequests),
+while [Umami reads `True-Client-IP` first](https://github.com/umami-software/umami/blob/master/src/lib/ip.ts).
+Deployment verification should confirm the upstream reverse proxy preserves
+this header and does not override Umami's IP selection with a different
+`CLIENT_IP_HEADER`. Region/city data needs Cloudflare's visitor location headers
+enabled if desired. The Astro site's analytics setup is independent.
 
 Server functions (TanStack Start `createServerFn`):
 

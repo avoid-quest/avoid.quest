@@ -39,6 +39,16 @@ export function RootShell({ children }: { children: React.ReactNode }) {
       {/* biome-ignore lint/style/noHeadElement: TanStack Router requires <head> in shellComponent */}
       <head>
         <HeadContent />
+        <script
+          data-do-not-track="true"
+          data-domains="radio.avoid.quest"
+          data-exclude-hash="true"
+          data-exclude-search="true"
+          data-host-url="/u"
+          data-website-id="3c1fb87b-fc98-4b89-b359-59f386c01ad3"
+          defer
+          src="/u/script.js"
+        />
       </head>
       <body className={cn("min-h-screen bg-background antialiased")}>
         <ClientOnly>

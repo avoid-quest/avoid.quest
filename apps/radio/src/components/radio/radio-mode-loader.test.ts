@@ -11,6 +11,7 @@ const scenarios = [
   "storage-retry",
   "restore",
   "reset-on-boot",
+  "legacy-during-model-load",
 ] as const;
 const scenario = process.env.AVOID_QUEST_MODE_BOOT_SCENARIO;
 
@@ -57,7 +58,9 @@ if (scenario) {
 
   test(scenario, async () => {
     await settings.initializeSettings();
-    settings.setRestoreStateOnLoad(scenario === "restore");
+    settings.setRestoreStateOnLoad(
+      scenario === "restore" || scenario === "legacy-during-model-load"
+    );
     await sessions.playbackSessionsCollection.stateWhenReady();
 
     const modelId = createLocalNamModelId();
@@ -82,6 +85,50 @@ if (scenario) {
       [...sessions.playbackSessionsCollection.state.values()].map(
         sessions.parsePlaybackSessionRecord
       );
+
+    if (scenario === "legacy-during-model-load") {
+      if (effect.type !== "neuralAmp") {
+        throw new Error("Expected neural amp config");
+      }
+      effect.modelData = '{"model":"inline"}';
+      await sessions.playbackSessionsCollection.insert(seeds).isPersisted
+        .promise;
+      const store = await import("@/lib/audio/dsp/effects/nam-model-store");
+      const { writeLegacyRecord, LEGACY_MULTIPLE_SESSION_ID } = await import(
+        "@/lib/collections/migrations/legacy-records"
+      );
+      const started = Promise.withResolvers<void>();
+      const gate = Promise.withResolvers<void>();
+      const save = spyOn(store, "saveNamModel").mockImplementation(async () => {
+        started.resolve();
+        await gate.promise;
+      });
+      const pending = preparePlaybackSessions();
+      try {
+        await started.promise;
+        writeLegacyRecord(sessions.playbackSessionsCollection, {
+          ...seedNode,
+          id: "multiple",
+        });
+        dom.window.dispatchEvent(
+          new dom.window.StorageEvent("storage", {
+            key: sessions.PLAYBACK_SESSIONS_STORAGE_KEY,
+            storageArea: localStorage,
+          })
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(
+          sessions.playbackSessionsCollection.state.has(
+            LEGACY_MULTIPLE_SESSION_ID
+          )
+        ).toBe(false);
+      } finally {
+        gate.resolve();
+        await pending;
+        save.mockRestore();
+      }
+      return;
+    }
 
     if (
       scenario === "restore" ||

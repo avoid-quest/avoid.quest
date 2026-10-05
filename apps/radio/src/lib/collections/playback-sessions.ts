@@ -977,11 +977,11 @@ export async function initializePlaybackSessions(): Promise<void> {
   // Only committed preparation can release models or declare the page ready.
   holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
   scheduleNamModelCleanup(discardedModelIds);
+  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
   if (shouldRestore) {
     await externalizeStoredNamModels();
   }
   restoreNodeSessionRadios();
-  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
 }
 
 export function getPlaybackSession(

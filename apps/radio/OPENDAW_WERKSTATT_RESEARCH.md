@@ -2,9 +2,13 @@
 
 Research date: **2026-07-23** (Europe/Rome)
 
+This is a historical dependency and design snapshot. For current behavior, read
+[effects implementation](OPENDAW_EFFECTS_IMPLEMENTATION.md); for installed
+versions, check [`package.json`](package.json), [`bun.lock`](../../bun.lock) and the installed package manifests.
+
 ## Source snapshot
 
-The radio currently installs these published packages:
+The radio installed these published packages at the research date:
 
 - `@opendaw/studio-core@0.1.3`
 - `@opendaw/studio-core-wasm@0.0.7`

@@ -5,13 +5,13 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 ## Features
 
 - **3 Playback Modes**
-  - **Single**: focused single-station player with crossfade transitions
+  - **Single**: focused single-station player; switching releases the old sound before loading its replacement
   - **Node**: a patch canvas (React Flow) where Station nodes are cabled into a Speakers node with Play all and master volume; `/` opens the node palette, and edits are undoable. On phones the Stage and Rack tabs list every source with play and volume. Node replaced Multiple: a stored Multiple session, mode or backup becomes a Node patch with the same stations, order and levels
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
-- **Audio DSP**: custom AudioWorklet processor with real-time effects (7-band EQ, compressor, delay, reverb, distortion, bitcrusher, stereo tool, pitch shift)
+- **Audio DSP**: official openDAW effects engine plus a radio AudioWorklet compatibility runtime; see [runtime selection](OPENDAW_EFFECTS_IMPLEMENTATION.md#architecture)
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, and Radio Browser/Radio Garden stations
 - **External inputs**: device audio input (mic/line-in), local files and folder playlists, shared browser tab audio in Node and DJ
-- **PWA**: installable, service worker, offline shell
+- **PWA**: installable with a network-only service worker; no offline shell cache
 - **Persistence**: TanStack DB collections backed by localStorage — radios, settings, playback sessions
 - **Visualizations**: peak meters, EQ and compressor curves
 - **Media Session API**: lock screen controls, AVRCP Bluetooth metadata
@@ -57,14 +57,15 @@ directly. Spotify has no search: paste a track, album or playlist link. The
 server reads Spotify's public metadata and the browser plays the matching
 YouTube upload, matching album and playlist tracks as they play. Other
 Spotify pages (artists, podcasts) and Mixcloud pages other than shows don't
-play. See `packages/platforms/src/{mixcloud,spotify}/RESEARCH.md`.
+play. See the [Mixcloud](../../packages/platforms/src/mixcloud/RESEARCH.md) and
+[Spotify](../../packages/platforms/src/spotify/RESEARCH.md) research.
 
 ## Tech Stack
 
 - **Routing**: TanStack Start + TanStack Router (file-based, SSR disabled for UI routes)
 - **State**: TanStack DB (persisted), TanStack Store (runtime), TanStack Query (platform metadata)
 - **Throttling**: `@tanstack/react-pacer` (`useThrottledCallback`)
-- **DSP**: `@opendaw/lib-dsp` (biquad filters, compressor, spectrum analyser, DSP primitives)
+- **DSP**: official openDAW Rust/WASM engine for supported active effect trees; radio AudioWorklet with `@opendaw/lib-dsp` primitives for compatibility
 - **Audio**: Web Audio API, AudioWorklet, HLS.js, HTML5 Audio
 - **UI**: React 19, Tailwind CSS v4, shadcn/ui, Radix UI, dnd-kit
 - **Deploy**: Cloudflare Workers (Wrangler)
@@ -78,19 +79,29 @@ play. See `packages/platforms/src/{mixcloud,spotify}/RESEARCH.md`.
 | `/import` | Batch import radios from a URL or JSON |
 | `/api/feedback` | GitHub issue feedback endpoint |
 | `/api/radio-metadata` | Metadata lookup for configured radio streams |
+| `/api/radio-blackout-stream` | Dedicated BlackOut audio relay |
+| `/api/stations.json` | Default station catalog |
+| `/playlist.m3u` | Default stations as an M3U playlist |
+| `/legal` | Source and license information |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
 
-Server functions (TanStack Start `createServerFn`):
+Server functions (TanStack Start `createServerFn`; paths relative to `src/`):
 
 | Function file | Description |
 |--------------|-------------|
-| `utils/platform.functions.ts` | Bandcamp, SoundCloud, and Radio Garden metadata/URL resolution |
-| `utils/search.functions.ts` | Bandcamp and SoundCloud search |
+| `utils/platform.functions.ts` | Bandcamp, SoundCloud, Mixcloud and Radio Garden resolution; Spotify metadata |
+| `utils/search.functions.ts` | Bandcamp, SoundCloud and Mixcloud search |
 | `utils/radio-garden.functions.ts` | Radio Garden search and suggestions |
 | `utils/radio-browser.functions.ts` | Shared Radio Browser directory search |
 
-Audio bytes never pass through the app server. Static audio URLs and M3U/PLS
+Most playback streams go directly to the browser. BlackOut is an intentional
+exception: [`/api/radio-blackout-stream`](src/routes/api/radio-blackout-stream.ts)
+relays its fixed upstream audio streams. Metadata retrieval can also briefly
+read stream bytes to extract ICY metadata, including BlackOut's fallback when
+its listening API has no usable result; the bounded probe closes the stream
+and returns metadata, not playback audio (see
+[`retrieval.ts`](src/lib/metadata/retrieval.ts)). Static audio URLs and M3U/PLS
 playlists are resolved directly in the browser. Bandcamp's fresh, validated
 `bcbits.com` media URLs use the curated, release-tested public relay pool
 `seep.eu.org`,
@@ -107,34 +118,46 @@ When changing Node Mode graph rules, playback, persistence or editing, read the
 [current v1 contract and source map](src/components/radio/NODE_MODE_PROPOSAL.md).
 It links to historical design and future roadmap material only when those are needed.
 
+Single replacement is owned by [`single-playback.ts`](src/lib/single-playback.ts).
+It preserves play/pause intent, cancels superseded selections, and attempts to
+restore the previous station after a failed replacement when a prior sound
+existed. There is no overlapping station crossfade.
+
 ### State layers
 
 ```
 ┌─────────────────────────────────────────────┐
 │  TanStack DB (localStorage)                  │
 │  radiosCollection · settingsCollection       │
-│  playbackSessionsCollection                  │
+│  playbackSessionsCollection                 │
 ├─────────────────────────────────────────────┤
 │  TanStack Store (in-memory runtime)          │
-│  djRuntimeStore — isPlaying, isLoading,      │
-│  soundId, peakLevels, drag state             │
+│  playbackRuntimeStore — per-channel         │
+│  transport, soundId, peaks; djUiStore — UI   │
 ├─────────────────────────────────────────────┤
 │  TanStack Query (server state cache)         │
-│  platform metadata, search results           │
+│  platform metadata, search results          │
 └─────────────────────────────────────────────┘
 ```
 
 ### Audio signal path (DJ mode)
 
 ```
-Html5AudioSource / DeviceSource
-  → Pan → Filter → WorkletNode (effects chain)
+Media source → Pan → Filter → Effects backend
+Device input → Filter → Effects backend → Pan
   → PreFaderSend (CUE tap) → Gain (fader)
-  → Analyser → MainDelayNode → Destination (speakers)
+  → Main output (delay for media; direct for device input)
+  → Destination (speakers)
 
 CueBus: PreFaderSend → CueSumNode → CueDelayNode
   → HeadphoneGain → MediaStreamDest → Headphones (setSinkId)
 ```
+
+The effects backend selects bypass, official openDAW, or compatibility for
+the whole active effect tree, including nested containers. See
+[effects architecture and limits](OPENDAW_EFFECTS_IMPLEMENTATION.md) and
+[`audio-manager-graph.ts`](src/lib/audio/manager/audio-manager-graph.ts).
+Meters tap the signal separately from the output path.
 
 ## Environment variables
 
@@ -254,13 +277,15 @@ and [Radio Browser's provider requirements](https://api.radio-browser.info/).
 
 ## Development
 
+Run from the repository root; radio needs no Doppler setup:
+
 ```bash
-bun run dev          # Start dev server (port 3000)
-bun run build        # Production build
-bun run typecheck    # tsc --noEmit
-bun run test         # Run tests (bun test)
-bun run cf-build     # Build the Cloudflare Worker
-bun run cf-deploy    # Build and deploy to Cloudflare Workers
-bun run cf-upload    # Build and upload a version without promoting
-bun run cf-typegen   # Regenerate cloudflare-env.d.ts
+bun run --filter @avoid.quest/radio dev       # Port 3000
+bun run --filter @avoid.quest/radio build
+bun run --filter @avoid.quest/radio typecheck
+bun run --filter @avoid.quest/radio test
+bun run --filter @avoid.quest/radio cf-typegen # Regenerate bindings
 ```
+
+For explicitly requested deployments, see the
+[repository deployment commands](../../DEVELOPMENT.md#cloudflare-deployment).

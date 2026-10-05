@@ -5,6 +5,11 @@ the repository-wide dependency update and the radio Worker's deploy path. It
 does not cover account-side routes, custom domains, or secret values because
 those cannot be inferred from the checkout.
 
+This is the record of that update, including versions and commands evaluated
+then. Use [the development guide](../../DEVELOPMENT.md) for current setup,
+[`package.json`](package.json) and [`bun.lock`](../../bun.lock) for dependency versions, and each app's committed
+config for its current build and deployment path.
+
 ## Dependency update
 
 The repository is a Bun workspace with a single text lockfile and a root

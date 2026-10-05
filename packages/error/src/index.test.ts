@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: namespace required to spy on the Sentry integration
+import * as Sentry from "@sentry/tanstackstart-react";
 import {
   AppError,
   buildPlaybackEventKey,
@@ -13,6 +15,27 @@ import {
   shouldReportToSentry,
   toAppError,
 } from "./index";
+
+const EVENT_ID = "1234567890abcdef1234567890abcdef";
+let captureException: ReturnType<
+  typeof spyOn<typeof Sentry, "captureException">
+>;
+let capturedScope: ReturnType<Sentry.Scope["getScopeData"]> | undefined;
+
+beforeEach(() => {
+  capturedScope = undefined;
+  // Keep real scope handling, but never initialize a client or send telemetry.
+  captureException = spyOn(Sentry, "captureException").mockImplementation(
+    () => {
+      capturedScope = Sentry.getCurrentScope().getScopeData();
+      return EVENT_ID;
+    }
+  );
+});
+
+afterEach(() => {
+  captureException.mockRestore();
+});
 
 describe("AppError", () => {
   test("creates default severity and status from category", () => {
@@ -54,28 +77,87 @@ describe("AppError", () => {
 });
 
 describe("reporting policy", () => {
-  test("does not report expected warning errors", () => {
+  test("reports an unexpected error with its capture metadata", () => {
     const error = new AppError({
-      category: "validation",
-      code: "INVALID_INPUT",
-      expected: true,
-      safeMessage: "Bad input",
+      category: "dependency",
+      code: "DEPENDENCY_FAILED",
+      expected: false,
+      safeMessage: "Service unavailable",
     });
 
-    expect(shouldReportToSentry(error)).toBe(false);
-  });
-
-  test("reports expected critical errors", () => {
-    const error = new AppError({
-      category: "security",
-      code: "SECURITY_BLOCK",
-      expected: true,
-      safeMessage: "Blocked",
-      severity: "critical",
+    expect(
+      captureError(error, {
+        fingerprint: ["dependency", "test"],
+        operation: "api.test",
+        requestId: "req-reportable",
+        surface: "api-route",
+      })
+    ).toBe(EVENT_ID);
+    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(captureException).toHaveBeenCalledWith(error);
+    expect(capturedScope?.tags).toMatchObject({
+      error_category: "dependency",
+      error_code: "DEPENDENCY_FAILED",
+      error_expected: "false",
+      error_severity: "error",
+      operation: "api.test",
+      request_id: "req-reportable",
+      surface: "api-route",
     });
-
-    expect(shouldReportToSentry(error)).toBe(true);
+    expect(capturedScope?.contexts).toMatchObject({
+      app_error: {
+        category: "dependency",
+        code: "DEPENDENCY_FAILED",
+        expected: false,
+        severity: "error",
+        status: 502,
+      },
+      request: { id: "req-reportable" },
+    });
+    expect(capturedScope?.fingerprint).toEqual(["dependency", "test"]);
   });
+
+  test.each(["validation", "auth", "rate_limit", "dependency"] as const)(
+    "does not emit expected %s errors",
+    (category) => {
+      const error = new AppError({
+        category,
+        code: "EXPECTED_FAILURE",
+        expected: true,
+        safeMessage: "Expected failure",
+      });
+
+      expect(shouldReportToSentry(error)).toBe(false);
+      expect(
+        captureError(error, { operation: "test", surface: "ui" })
+      ).toBeUndefined();
+      expect(captureException).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    { category: "dependency", severity: "critical" },
+    { category: "security", severity: "warning" },
+    { category: "infrastructure", severity: "warning" },
+  ] as const)(
+    "emits expected $category errors with $severity severity",
+    ({ category, severity }) => {
+      const error = new AppError({
+        category,
+        code: "EXPECTED_REPORTABLE_FAILURE",
+        expected: true,
+        safeMessage: "Expected reportable failure",
+        severity,
+      });
+
+      expect(shouldReportToSentry(error)).toBe(true);
+      expect(captureError(error, { operation: "test", surface: "ui" })).toBe(
+        EVENT_ID
+      );
+      expect(captureException).toHaveBeenCalledTimes(1);
+      expect(captureException).toHaveBeenCalledWith(error);
+    }
+  );
 });
 
 describe("problem payload", () => {
@@ -171,7 +253,7 @@ describe("dedupe", () => {
     expect(dedupe.hasSeen("key")).toBe(false);
   });
 
-  test("captureError dedupe key returns undefined on duplicate", () => {
+  test("captureError emits the first report and suppresses its duplicate key", () => {
     const baseError = new AppError({
       category: "playback",
       code: "PLAYBACK_FAIL",
@@ -179,21 +261,28 @@ describe("dedupe", () => {
       safeMessage: "Playback failed",
     });
 
-    const first = captureError(baseError, {
-      dedupeKey: "dup-key",
+    const meta = {
+      dedupeKey: crypto.randomUUID(),
       operation: "playback",
-      surface: "ui",
-    });
+      surface: "ui" as const,
+    };
 
-    const second = captureError(baseError, {
-      dedupeKey: "dup-key",
-      operation: "playback",
-      surface: "ui",
-    });
+    expect(captureError(baseError, meta)).toBe(EVENT_ID);
+    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(captureException).toHaveBeenCalledWith(baseError);
 
-    expect(second).toBeUndefined();
-    // First may be undefined in tests without Sentry init, but must not throw.
-    expect(first === undefined || typeof first === "string").toBe(true);
+    expect(
+      captureError(
+        new AppError({
+          category: "playback",
+          code: "PLAYBACK_RETRY_FAILED",
+          expected: false,
+          safeMessage: "Retry failed",
+        }),
+        meta
+      )
+    ).toBeUndefined();
+    expect(captureException).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -247,24 +336,91 @@ describe("playback helpers", () => {
     ).toBe(true);
   });
 
-  test("capturePlaybackError dedupes repeats", () => {
+  test("capturePlaybackError emits the first report and suppresses the same mode and host", () => {
+    const streamHost = `${crypto.randomUUID()}.example.test`;
     const payload = {
       errorCode: "MEDIA_ERROR_4",
       errorMessage: "Unsupported stream format for this browser",
       mode: "single" as const,
-      streamUrl: "https://example.test/live",
+      streamUrl: `https://${streamHost}/private-stream-path?session=synthetic#synthetic-fragment`,
     };
+    const error = new Error(payload.errorMessage);
 
-    const first = capturePlaybackError(
-      new Error(payload.errorMessage),
-      payload
+    expect(capturePlaybackError(error, payload)).toBe(EVENT_ID);
+    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "playback",
+        cause: error,
+        code: "MEDIA_ERROR_4",
+        expected: false,
+        message: payload.errorMessage,
+        severity: "error",
+      })
     );
-    const second = capturePlaybackError(
-      new Error(payload.errorMessage),
-      payload
-    );
+    expect(capturedScope?.tags).toMatchObject({
+      feature: "radio-playback",
+      mode: "single",
+      operation: "playback",
+      retry_phase: "none",
+      stream_host: streamHost,
+      surface: "ui",
+    });
+    expect(capturedScope?.fingerprint).toEqual([
+      "radio-playback",
+      "single",
+      "MEDIA_ERROR_4",
+      streamHost,
+    ]);
+    const captureMetadata = JSON.stringify(capturedScope);
+    expect(captureMetadata).not.toContain("private-stream-path");
+    expect(captureMetadata).not.toContain("session=synthetic");
+    expect(captureMetadata).not.toContain("synthetic-fragment");
 
-    expect(second).toBeUndefined();
-    expect(first === undefined || typeof first === "string").toBe(true);
+    expect(
+      capturePlaybackError(new Error("Fallback failed"), {
+        ...payload,
+        errorCode: "PLAYBACK_FALLBACK_FAILED",
+        errorMessage: "Fallback failed",
+        streamUrl: `https://${streamHost}/fallback`,
+      })
+    ).toBeUndefined();
+    expect(captureException).toHaveBeenCalledTimes(1);
+  });
+
+  test("capturePlaybackError does not emit non-actionable errors", () => {
+    expect(
+      capturePlaybackError(new Error("Unknown failure"), {
+        errorCode: "UNKNOWN",
+        errorMessage: "Unknown failure",
+        mode: "single",
+      })
+    ).toBeUndefined();
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  test("capturePlaybackError does not emit abort errors", () => {
+    const error = new Error("Playback cancelled");
+    error.name = "AbortError";
+
+    expect(
+      capturePlaybackError(error, {
+        errorCode: "SINGLE_PLAY_FAILED",
+        errorMessage: error.message,
+        mode: "single",
+      })
+    ).toBeUndefined();
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  test("capturePlaybackError does not emit aborted operations wrapped in another error", () => {
+    expect(
+      capturePlaybackError(new Error("Wrapped playback failure"), {
+        errorCode: "SINGLE_PLAY_FAILED",
+        errorMessage: "The operation was aborted.",
+        mode: "single",
+      })
+    ).toBeUndefined();
+    expect(captureException).not.toHaveBeenCalled();
   });
 });

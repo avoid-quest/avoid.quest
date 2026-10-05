@@ -2,10 +2,13 @@
 
 ## 0.7.0
 
-- Mix stations and add effects.
-- Play Spotify links and Mixcloud shows.
-- Play music from your computer.
-- Better controls on phones and tablets.
+- Multiple becomes Node: connect stations, songs and effects. Your setup is kept.
+- Spotify and Mixcloud links now work in Node and DJ.
+- Import whole music folders as playlists.
+- Mix sound from another browser tab (Chrome/Edge).
+- Redesigned players, DJ mixer and effect controls.
+- Roomier controls on phones and tablets.
+- Double-click or double-tap knobs and sliders to reset.
 
 ## 0.4.0
 

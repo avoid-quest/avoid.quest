@@ -19,6 +19,7 @@ import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
 import { Route as ApiRadioBlackoutStreamRouteImport } from './routes/api/radio-blackout-stream'
 import { Route as ApiRadioMetadataRouteImport } from './routes/api/radio-metadata'
 import { Route as ApiStationsDotjsonRouteImport } from './routes/api/stations[.]json'
+import { Route as USplatRouteImport } from './routes/u/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +71,11 @@ const ApiStationsDotjsonRoute = ApiStationsDotjsonRouteImport.update({
   path: '/api/stations.json',
   getParentRoute: () => rootRouteImport,
 } as any)
+const USplatRoute = USplatRouteImport.update({
+  id: '/u/$',
+  path: '/u/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/api/radio-blackout-stream': typeof ApiRadioBlackoutStreamRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
+  '/u/$': typeof USplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/api/radio-blackout-stream': typeof ApiRadioBlackoutStreamRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
+  '/u/$': typeof USplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/api/radio-blackout-stream': typeof ApiRadioBlackoutStreamRoute
   '/api/radio-metadata': typeof ApiRadioMetadataRoute
   '/api/stations.json': typeof ApiStationsDotjsonRoute
+  '/u/$': typeof USplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/api/radio-blackout-stream'
     | '/api/radio-metadata'
     | '/api/stations.json'
+    | '/u/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/api/radio-blackout-stream'
     | '/api/radio-metadata'
     | '/api/stations.json'
+    | '/u/$'
   id:
     | '__root__'
     | '/'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/api/radio-blackout-stream'
     | '/api/radio-metadata'
     | '/api/stations.json'
+    | '/u/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   ApiRadioBlackoutStreamRoute: typeof ApiRadioBlackoutStreamRoute
   ApiRadioMetadataRoute: typeof ApiRadioMetadataRoute
   ApiStationsDotjsonRoute: typeof ApiStationsDotjsonRoute
+  USplatRoute: typeof USplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -232,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStationsDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/u/$': {
+      id: '/u/$'
+      path: '/u/$'
+      fullPath: '/u/$'
+      preLoaderRoute: typeof USplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -246,6 +266,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRadioBlackoutStreamRoute: ApiRadioBlackoutStreamRoute,
   ApiRadioMetadataRoute: ApiRadioMetadataRoute,
   ApiStationsDotjsonRoute: ApiStationsDotjsonRoute,
+  USplatRoute: USplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

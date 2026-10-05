@@ -85,6 +85,8 @@ play. See the [Mixcloud](../../packages/platforms/src/mixcloud/RESEARCH.md) and
 | `/legal` | Source and license information |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
+| `/u/script.js` | First-party Umami tracker (GET/HEAD) |
+| `/u/api/send` | First-party Umami event collection (POST) |
 
 Server functions (TanStack Start `createServerFn`; paths relative to `src/`):
 
@@ -111,6 +113,37 @@ curated, release-tested providers `pipedapi.wireway.ch`, `yt.omada.cafe`,
 `invidious.nikkosphere.com`, then `y.com.sb`, with per-provider and whole-pool
 deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
 `YOUTUBE_PROVIDER_RESEARCH.md` for the release probes and caveats.
+
+## Analytics
+
+The root shell loads Umami once with website ID
+`3c1fb87b-fc98-4b89-b359-59f386c01ad3`. Tracking runs only on
+`radio.avoid.quest`, honors Do Not Track and Umami's `umami.disabled`
+localStorage opt-out, and excludes URL query strings and hashes. Umami handles
+client-side navigation automatically.
+
+Following Umami's [proxy guide](https://docs.umami.is/docs/bypass-ad-blockers)
+and [tracker configuration](https://docs.umami.is/docs/tracker-configuration),
+the script uses `/u/script.js` and `data-host-url="/u"`, so event requests stay
+on `/u/api/send`. The Worker proxies only these two paths to
+`https://umami.net-work.studio`; no credentials or additional bindings are
+needed. Event bodies are limited to 64 KiB, including streamed requests without
+a reliable Content-Length. Successful scripts are cached for an hour, while collection responses
+and failures are never cached. First-party proxying reduces domain-based
+blocking; it does not guarantee that every blocker will allow tracking.
+
+The proxy forwards the browser's user agent, Umami session headers, and
+available [Cloudflare location headers](https://docs.umami.is/docs/enable-cloudflare-headers).
+It derives `x-radio-client-ip` from Cloudflare's incoming `CF-Connecting-IP`,
+overwriting any browser-supplied value. [Cloudflare replaces standard IP headers
+on cross-zone subrequests](https://developers.cloudflare.com/rules/transform/request-header-modification/#important-remarks).
+Before enabling production collection, set `CLIENT_IP_HEADER=x-radio-client-ip`
+on the Umami server and preserve that header through its reverse proxy;
+[Umami gives this configured header priority](https://github.com/umami-software/umami/blob/master/src/lib/ip.ts).
+Direct requests without it retain Umami's standard IP-header fallback, including
+the independent Astro integration. Confirm visitor/session attribution in the
+dashboard after deployment. Region/city data needs Cloudflare's visitor location headers
+enabled if desired. The Astro site's analytics setup is independent.
 
 ## Architecture
 

@@ -27,7 +27,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          changed_paths=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          changed_paths=$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA")
           code=false
           while IFS= read -r path; do
             case "$path" in
@@ -53,6 +53,10 @@ jobs:
       - name: Lint and format
         if: steps.changes.outputs.code == 'true'
         run: bun run check
+
+      - name: Verify generated Cloudflare types
+        if: steps.changes.outputs.code == 'true'
+        run: bun run --filter @avoid.quest/radio cf-typegen --check
 
       - name: Typecheck production code and tests
         if: steps.changes.outputs.code == 'true'

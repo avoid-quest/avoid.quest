@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
   getProjectIdFromDsn,
   isAllowedEnvelopeDsn,
@@ -9,6 +9,136 @@ import { handleSentryTunnelRequest } from "./tunnel-service";
 
 const TEST_SENTRY_DSN =
   "https://examplePublicKey@o123.ingest.us.sentry.io/9876543210";
+const PRODUCTION_SENTRY_DSN =
+  "https://444829d47e194352a94b3739c56ca4ee@o4510834344656896.ingest.de.sentry.io/4510834349375568";
+
+async function buildTunnelModule(config: {
+  configuredDsn?: string;
+  production: boolean;
+}): Promise<typeof import("./tunnel")> {
+  // Inline build-time values without loading the app or initializing Sentry.
+  const build = await Bun.build({
+    define: {
+      "import.meta.env.PROD": JSON.stringify(config.production),
+      "import.meta.env.VITE_RADIO_SENTRY_DSN":
+        config.configuredDsn === undefined
+          ? "undefined"
+          : JSON.stringify(config.configuredDsn),
+    },
+    entrypoints: [`${import.meta.dir}/tunnel.ts`],
+    target: "bun",
+  });
+  expect(build.success).toBe(true);
+  const [output] = build.outputs;
+  if (!output) {
+    throw new Error("Missing built tunnel module");
+  }
+
+  return import(
+    `data:text/javascript;base64,${Buffer.from(await output.text()).toString("base64")}`
+  );
+}
+
+describe("readClientSentryDsn", () => {
+  test.each([
+    {
+      configuredDsn: undefined,
+      expectedDsn: PRODUCTION_SENTRY_DSN,
+      name: "uses the public radio DSN in production without an override",
+      production: true,
+    },
+    {
+      configuredDsn: undefined,
+      expectedDsn: "",
+      name: "leaves development disabled without an override",
+      production: false,
+    },
+    {
+      configuredDsn: ` ${TEST_SENTRY_DSN} `,
+      expectedDsn: TEST_SENTRY_DSN,
+      name: "prefers a trimmed production override",
+      production: true,
+    },
+    {
+      configuredDsn: TEST_SENTRY_DSN,
+      expectedDsn: TEST_SENTRY_DSN,
+      name: "preserves explicit development opt-in",
+      production: false,
+    },
+    {
+      configuredDsn: "",
+      expectedDsn: "",
+      name: "allows an empty production override to disable reporting",
+      production: true,
+    },
+    {
+      configuredDsn: "   ",
+      expectedDsn: "",
+      name: "allows a blank production override to disable reporting",
+      production: true,
+    },
+    {
+      configuredDsn: "   ",
+      expectedDsn: "",
+      name: "leaves development disabled for a blank override",
+      production: false,
+    },
+  ])("$name", async ({ configuredDsn, production, expectedDsn }) => {
+    const tunnel = await buildTunnelModule({ configuredDsn, production });
+
+    expect(tunnel.readClientSentryDsn("radio.avoid.quest")).toBe(expectedDsn);
+  });
+
+  test.each([
+    "radio.test",
+    "localhost",
+    "fork.example",
+    "preview-radio.cwav.workers.dev",
+    "radio.avoid.quest.example",
+  ])("does not use the owner's default on %s", async (hostname) => {
+    const tunnel = await buildTunnelModule({ production: true });
+    expect(tunnel.readClientSentryDsn(hostname)).toBe("");
+    const response = await handleSentryTunnelRequest(
+      new Request(`https://${hostname}/tunnel`, { method: "POST" }),
+      { fallbackDsn: tunnel.readClientSentryDsn(hostname) }
+    );
+    expect(response.status).toBe(503);
+  });
+
+  test("allows a self-hosted deployment to opt in to its own DSN", async () => {
+    const tunnel = await buildTunnelModule({
+      configuredDsn: TEST_SENTRY_DSN,
+      production: true,
+    });
+    expect(tunnel.readClientSentryDsn("fork.example")).toBe(TEST_SENTRY_DSN);
+  });
+
+  test("the production default forwards matching envelopes through the existing tunnel", async () => {
+    const tunnel = await buildTunnelModule({ production: true });
+    const dsn = tunnel.readClientSentryDsn("radio.avoid.quest");
+    const fetchImpl = Object.assign(
+      mock((..._args: Parameters<typeof fetch>) =>
+        Promise.resolve(new Response(null, { status: 202 }))
+      ),
+      { preconnect: () => undefined }
+    );
+    const request = new Request("https://radio.test/tunnel", {
+      body: new TextEncoder().encode(`{"dsn":"${dsn}"}\n{"type":"event"}\n{}`),
+      method: "POST",
+    });
+
+    const response = await handleSentryTunnelRequest(request, {
+      fallbackDsn: dsn,
+      fetchImpl,
+    });
+
+    expect(response.status).toBe(202);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      "https://o4510834344656896.ingest.de.sentry.io/api/4510834349375568/envelope/"
+    );
+  });
+});
 
 describe("resolveTunnelTarget", () => {
   test("uses runtime DSN when available", () => {

@@ -13,7 +13,7 @@ export const getRouter = () => {
   });
   if (!router.isServer) {
     initClientSentry({
-      dsn: readClientSentryDsn(),
+      dsn: readClientSentryDsn(window.location.hostname),
       environment: import.meta.env.MODE,
       release: `radio@${__APP_VERSION__}`,
       tunnel: CLIENT_SENTRY_TUNNEL,

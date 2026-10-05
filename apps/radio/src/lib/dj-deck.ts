@@ -63,6 +63,7 @@ import {
   type LazyTrackRequest,
   lazyTrackRequest,
   refreshPlatformStream,
+  withSpotifyTrackStream,
 } from "@/lib/platform-stream-refresh";
 import type { Platform } from "@/lib/platform-types";
 import {
@@ -451,16 +452,11 @@ function keepLazyTrackStream(
     if (!isSpotifyMetadata(metadata)) {
       return;
     }
-    const track =
-      metadata.itemType === "track"
-        ? metadata
-        : metadata.tracks?.find(
-            (candidate) => candidate.spotifyId === request.spotifyId
-          );
-    if (track?.spotifyId === request.spotifyId) {
-      track.streamUrl = resolved.streamUrl;
-      track.youtubeVideoId = resolved.youtubeVideoId ?? track.youtubeVideoId;
-    }
+    radio.platformMetadata = withSpotifyTrackStream(
+      metadata,
+      request.spotifyId,
+      resolved
+    );
     return;
   }
   const track = isYouTubeMetadata(metadata)

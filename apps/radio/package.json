@@ -2,10 +2,10 @@
   "name": "@avoid.quest/radio",
   "version": "0.7.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "build": "vite build && cp instrument.server.mjs dist/server && bun run check:node-chunk",
+    "build": "bun ../../scripts/prepare-legal.ts radio && vite build && cp instrument.server.mjs dist/server && bun run check:node-chunk",
     "cf-build": "bun run build",
     "cf-deploy": "bun run build && wrangler deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts",

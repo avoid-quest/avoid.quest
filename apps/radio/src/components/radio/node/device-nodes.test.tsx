@@ -456,6 +456,19 @@ const usbOut: OutputData = {
 };
 
 describe("Output device node", () => {
+  test("an unconfigured output is silent even without setSinkId", async () => {
+    const view = render(
+      <OutputHarness data={{ ...usbOut, deviceId: null }} supported={false} />
+    );
+    await flush();
+    expect(view.getByText("Pick the output to play on")).toBeTruthy();
+    expect(
+      view.queryByText(
+        "This browser can't choose an output, playing through Speakers"
+      )
+    ).toBeNull();
+  });
+
   test("names its device, and asks for access to see device names", async () => {
     const view = render(<OutputHarness data={usbOut} />);
     await flush();

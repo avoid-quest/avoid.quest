@@ -40,6 +40,41 @@ export type ResolvePlatformStream = (
   input: PlatformStreamResolutionInput
 ) => Promise<PlatformStreamResolution | null>;
 
+/** Update only the unresolved occurrence being loaded, preserving its position. */
+export function withSpotifyTrackStream(
+  metadata: SpotifyMetadata,
+  spotifyId: string,
+  resolved: PlatformStreamResolution
+): SpotifyMetadata {
+  if (metadata.itemType === "track") {
+    return {
+      ...metadata,
+      streamUrl: resolved.streamUrl,
+      youtubeVideoId: resolved.youtubeVideoId ?? metadata.youtubeVideoId,
+    };
+  }
+  const index =
+    metadata.tracks?.findIndex(
+      (track) => track.streamUrl === `spotify:track:${spotifyId}`
+    ) ?? -1;
+  if (index < 0) {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    currentTrackIndex: index,
+    tracks: metadata.tracks?.map((track, trackIndex) =>
+      trackIndex === index
+        ? {
+            ...track,
+            streamUrl: resolved.streamUrl,
+            youtubeVideoId: resolved.youtubeVideoId ?? track.youtubeVideoId,
+          }
+        : track
+    ),
+  };
+}
+
 /**
  * A Spotify radio's playing track renews from the YouTube upload it was
  * matched to, without matching again; one not matched yet is matched.
@@ -242,19 +277,7 @@ export async function radioOnTrack(
     return withStream(
       {
         ...radio,
-        platformMetadata: {
-          ...metadata,
-          tracks: metadata.tracks.map((track) =>
-            track.spotifyId === spotifyId
-              ? {
-                  ...track,
-                  streamUrl: matched.streamUrl,
-                  youtubeVideoId:
-                    matched.youtubeVideoId ?? track.youtubeVideoId,
-                }
-              : track
-          ),
-        },
+        platformMetadata: withSpotifyTrackStream(metadata, spotifyId, matched),
       },
       matched
     );

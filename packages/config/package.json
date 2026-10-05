@@ -2,5 +2,5 @@
   "name": "@avoid.quest/config",
   "version": "0.0.0",
   "private": true,
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

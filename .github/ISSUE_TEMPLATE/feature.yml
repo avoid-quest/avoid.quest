@@ -1,0 +1,13 @@
+name: Feature request
+description: Suggest an improvement.
+body:
+  - type: markdown
+    attributes:
+      value: "Reports are public. Leave out emails, secrets and private links. For vulnerabilities, follow [SECURITY.md](https://github.com/avoid-quest/avoid.quest/blob/main/SECURITY.md)."
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to do?
+      description: Describe the problem and how your suggestion would help.
+    validations:
+      required: true

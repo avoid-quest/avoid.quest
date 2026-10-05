@@ -104,7 +104,7 @@ export function SearchInput({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!query.trim()) {
+    if (isPending || !query.trim()) {
       return;
     }
     if (onDirectLink?.(query.trim())) {

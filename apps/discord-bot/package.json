@@ -2,7 +2,7 @@
   "name": "@avoid.quest/discord-bot",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "tsup",

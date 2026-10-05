@@ -163,7 +163,7 @@ describe("handleFeedbackRequest", () => {
     expect(feedbackHandlerMock).not.toHaveBeenCalled();
   });
 
-  test("formats contact email and mode into readable issue sections", async () => {
+  test("excludes legacy contact email while preserving non-sensitive context", async () => {
     const limitMock = mock(async (_options: { key: string }) => ({
       success: true,
     }));
@@ -193,7 +193,7 @@ describe("handleFeedbackRequest", () => {
     const formatted = endpointOptions.issue?.formatter?.({
       body: "The deck meter stopped moving.",
       category: "bug",
-      pageUrl: "https://radio.test/",
+      pageUrl: "https://radio.test/?email=listener@example.com#private",
       untrustedMetadata: {
         contactEmail: "listener@example.com",
         mode: "dj",
@@ -201,8 +201,12 @@ describe("handleFeedbackRequest", () => {
       userAgent: "Test Browser",
     });
 
-    expect(formatted?.body).toContain("## Contact");
-    expect(formatted?.body).toContain("- Email: listener@example.com");
+    expect(formatted?.body).not.toContain("## Contact");
+    expect(JSON.stringify(formatted)).not.toContain("listener@example.com");
+    expect(formatted?.body).toContain("- Page URL: https://radio.test/");
+    expect(createFeedbackEndpointMock.mock.calls[0]?.[0]).toMatchObject({
+      logger: false,
+    });
     expect(formatted?.body).toContain("## Context");
     expect(formatted?.body).toContain("| Category | Bug report |");
     expect(formatted?.body).toContain("| Mode | DJ |");

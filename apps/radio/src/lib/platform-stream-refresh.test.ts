@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Radio } from "@/lib/audio";
+import { findNextTrack } from "./dj-actions-playlist";
 import {
   getRefreshRequest,
   radioOnTrack,
@@ -279,4 +280,41 @@ describe("radioOnTrack", () => {
     expect(resolveStream).not.toHaveBeenCalled();
     expect(next?.streamUrl).toBe("https://media.example/one.m4a");
   });
+});
+
+test("duplicate Spotify occurrences advance past the later occurrence", async () => {
+  if (spotifyAlbum.platformMetadata?.platform !== "spotify") {
+    throw new Error("fixture");
+  }
+  const [first, repeated] = spotifyAlbum.platformMetadata.tracks ?? [];
+  if (!(first && repeated)) {
+    throw new Error("Expected playlist fixture");
+  }
+  const radio: Radio = {
+    ...spotifyAlbum,
+    platformMetadata: {
+      ...spotifyAlbum.platformMetadata,
+      tracks: [
+        first,
+        repeated,
+        { ...repeated },
+        { ...first, streamUrl: "https://media.example/last.webm" },
+      ],
+    },
+  };
+  const resolveStream = mock(async () => ({
+    streamFormat: "progressive" as const,
+    streamUrl: "https://media.example/repeat.webm",
+    youtubeVideoId: "repeat",
+  }));
+  const next = await radioOnTrack(radio, repeated.streamUrl, resolveStream);
+  expect(findNextTrack(next)?.streamUrl).toBe(repeated.streamUrl);
+  const nextTrack = findNextTrack(next);
+  if (!(next && nextTrack)) {
+    throw new Error("Expected next occurrence");
+  }
+  const later = await radioOnTrack(next, nextTrack.streamUrl, resolveStream);
+  expect(findNextTrack(later)?.streamUrl).toBe(
+    "https://media.example/last.webm"
+  );
 });

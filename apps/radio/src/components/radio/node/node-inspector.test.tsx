@@ -394,7 +394,7 @@ describe("NodeInspector", () => {
     checkSettings("Output device", () =>
       expect(
         view.getByText(
-          "This browser can't choose an output, playing through Speakers"
+          "Pick the output to play on"
         )
       ).toBeTruthy()
     );

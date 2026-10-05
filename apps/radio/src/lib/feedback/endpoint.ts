@@ -65,6 +65,15 @@ function formatTableCell(value: string | undefined): string {
   return (value || "Not provided").replaceAll("|", "\\|").replace(/\s+/g, " ");
 }
 
+function publicPageUrl(value: string | undefined): string | undefined {
+  try {
+    const url = new URL(value ?? "");
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
   const category =
     FEEDBACK_CATEGORY_NAMES_BY_VALUE[
@@ -79,18 +88,11 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
       ? FEEDBACK_MODE_NAMES_BY_VALUE[mode]
       : "Unknown";
   }
-  const contactEmail = readStringMetadata(item, "contactEmail");
 
   return [
     "## Feedback",
     "",
     item.body.trim(),
-    "",
-    "## Contact",
-    "",
-    contactEmail
-      ? `- Email: ${formatTableCell(contactEmail)}`
-      : "- No contact email provided.",
     "",
     "## Context",
     "",
@@ -103,7 +105,7 @@ function formatRadioFeedbackIssueBody(item: FeedbackItem): string {
     "<summary>Details</summary>",
     "",
     `- App version: ${formatTableCell(`v${APP_VERSION}`)}`,
-    `- Page URL: ${formatTableCell(item.pageUrl?.trim())}`,
+    `- Page URL: ${formatTableCell(publicPageUrl(item.pageUrl))}`,
     `- User agent: ${formatTableCell(item.userAgent?.trim())}`,
     "",
     "</details>",
@@ -143,6 +145,8 @@ function createRadioFeedbackEndpoint(token: string) {
       }),
       titlePrefix: "[GF]",
     },
+    // The library logs provider errors with request payloads by default.
+    logger: false,
   });
 }
 
@@ -181,8 +185,9 @@ export async function handleFeedbackRequest(
     }
 
     return response;
-  } catch (error) {
-    console.error("[feedback] Failed to handle feedback request", error);
+  } catch {
+    // Provider errors can embed the submitted request, including legacy metadata.
+    console.error("[feedback] Failed to handle feedback request");
     return feedbackError("issue_create_failed", 502);
   }
 }

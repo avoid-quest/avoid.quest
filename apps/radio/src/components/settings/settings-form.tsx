@@ -23,6 +23,7 @@ import {
 } from "@avoid.quest/ui/components/toggle-group";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import {
+  CodeXmlIcon,
   DatabaseIcon,
   type LucideIcon,
   MonitorIcon,
@@ -346,6 +347,19 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         }
         title="Version"
       />
+      <div className="flex flex-wrap items-center gap-3 py-3 text-muted-foreground text-xs">
+        <Button asChild size="sm" variant="ghost">
+          <a href="https://github.com/avoid-quest/avoid.quest">
+            <CodeXmlIcon aria-hidden="true" className="size-3.5" /> GitHub
+          </a>
+        </Button>
+        <a
+          className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          href="/legal/"
+        >
+          Source and licenses
+        </a>
+      </div>
     </div>
   );
 }

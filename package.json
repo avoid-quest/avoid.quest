@@ -1,7 +1,7 @@
 {
   "name": "avoid.quest",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "workspaces": {
     "packages": [

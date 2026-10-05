@@ -78,6 +78,9 @@ function OutputState({
   supported,
   onRetry,
 }: Omit<OutputDeviceBodyProps, "onPickDevice" | "onToggleMute" | "onRemove">) {
+  if (data.deviceId === null) {
+    return <DeviceNote>Pick the output to play on</DeviceNote>;
+  }
   if (!supported || status?.state === "unsupported") {
     return (
       <DeviceNote tone="warning">
@@ -112,9 +115,6 @@ function OutputState({
         </Button>
       </InlineError>
     );
-  }
-  if (data.deviceId === null) {
-    return <DeviceNote>Pick the output to play on</DeviceNote>;
   }
   if (data.deviceId === mainOutputId) {
     return <DeviceNote>Same device as Speakers</DeviceNote>;

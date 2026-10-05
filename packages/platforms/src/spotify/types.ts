@@ -51,6 +51,8 @@ export type SpotifyMetadata = {
   duration?: number;
   trackCount?: number;
   tracks?: SpotifyTrackInfo[];
+  /** Playing playlist occurrence; duplicate tracks can resolve to the same URL. */
+  currentTrackIndex?: number;
   streamUrl?: string;
   /** Track links only, once matched. */
   youtubeVideoId?: string;

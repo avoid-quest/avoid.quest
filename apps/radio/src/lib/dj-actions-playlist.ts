@@ -93,7 +93,16 @@ const findNextTrack = (
     return null;
   }
 
-  const currentIndex = findCurrentTrackIndex(tracks, radio.streamUrl, platform);
+  const occurrence =
+    platformMetadata.platform === "spotify"
+      ? platformMetadata.currentTrackIndex
+      : undefined;
+  const currentIndex =
+    occurrence !== undefined &&
+    Number.isInteger(occurrence) &&
+    tracks[occurrence]?.streamUrl === radio.streamUrl
+      ? occurrence
+      : findCurrentTrackIndex(tracks, radio.streamUrl, platform);
   const searchStartIndex = currentIndex === -1 ? 0 : currentIndex + 1;
   return findPlayableTrackStreamUrl(tracks, platform, searchStartIndex);
 };

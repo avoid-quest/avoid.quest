@@ -962,7 +962,7 @@ describe("from raw localStorage", () => {
     expect(result.storedSessionIds).toEqual(["dj", "node", "single"]);
   });
 
-  test("a store too full for Node keeps Multiple and settles", async () => {
+  test("a store too full for Node rejects preparation and keeps Multiple", async () => {
     // The Node record is larger than Multiple's, so it cannot be written,
     // and the rolled-back delete must not run the step again and again.
     const result = await runRawStorageScenario({
@@ -971,6 +971,9 @@ describe("from raw localStorage", () => {
       restoreStateOnLoad: true,
     });
 
+    expect(result.errors).toContain(
+      "QuotaExceededError: The quota has been exceeded."
+    );
     expect(result.refusedSessionWrites).toBeLessThan(20);
     expect(result.storedSessionIds).toEqual(["multiple"]);
     expect(result.backup).toBeNull();

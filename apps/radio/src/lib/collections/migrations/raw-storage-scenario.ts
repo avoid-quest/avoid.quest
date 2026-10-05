@@ -255,7 +255,11 @@ async function runScenario({
 
   const collections = await import("../index");
   collections.addSessionRadio(station("rg_live"));
-  await collections.initializeCollections();
+  await collections.initializeCollections().catch((error: unknown) => {
+    errors.push(
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    );
+  });
   const { playbackSessionsCollection, getPlaybackSession } = collections;
 
   const node = getPlaybackSession("node");

@@ -1,0 +1,67 @@
+name: PR validation
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Identify documentation-only changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed_paths=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          code=false
+          while IFS= read -r path; do
+            case "$path" in
+              LICENSE|LICENSES/*|LICENSING.md|THIRD_PARTY_NOTICES.md) code=true ;;
+              ""|*.md) ;;
+              *) code=true ;;
+            esac
+          done <<< "$changed_paths"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = false ]; then
+            echo 'Documentation only: review paths and commands; no app build required.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.changes.outputs.code == 'true'
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        if: steps.changes.outputs.code == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Lint and format
+        if: steps.changes.outputs.code == 'true'
+        run: bun run check
+
+      - name: Typecheck production code and tests
+        if: steps.changes.outputs.code == 'true'
+        run: bun run typecheck
+
+      - name: Test workspaces
+        if: steps.changes.outputs.code == 'true'
+        run: bun run test
+
+      - name: Build apps and shared consumers
+        if: steps.changes.outputs.code == 'true'
+        run: bun run build

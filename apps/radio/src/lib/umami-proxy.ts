@@ -1,4 +1,5 @@
 const UMAMI_ORIGIN = "https://umami.net-work.studio";
+export const MAX_UMAMI_EVENT_BYTES = 64 * 1024;
 
 const REQUEST_HEADERS = [
   "content-type",
@@ -15,6 +16,44 @@ type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit
 ) => Promise<Response>;
+
+async function readEventBody(request: Request): Promise<ArrayBuffer | null> {
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (declaredLength > MAX_UMAMI_EVENT_BYTES) {
+    await request.body?.cancel();
+    return null;
+  }
+  if (!request.body) {
+    return new ArrayBuffer(0);
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    let chunk = await reader.read();
+    while (!chunk.done) {
+      const { value } = chunk;
+      length += value.byteLength;
+      if (length > MAX_UMAMI_EVENT_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+      // biome-ignore lint/performance/noAwaitInLoops: read sequentially so the limit bounds buffering.
+      chunk = await reader.read();
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body.buffer;
+}
 
 export async function handleUmamiRequest(
   request: Request,
@@ -42,18 +81,25 @@ export async function handleUmamiRequest(
     }
   }
 
-  // Cloudflare rewrites CF-Connecting-IP on cross-zone Worker subrequests.
-  // Umami checks True-Client-IP first; never trust the browser's forwarded IPs.
+  // Cross-zone fetch rewrites standard IP headers. Umami must be configured
+  // with CLIENT_IP_HEADER=x-radio-client-ip; never copy browser-forwarded IPs.
   const clientIp = request.headers.get("CF-Connecting-IP");
   if (clientIp) {
-    headers.set("True-Client-IP", clientIp);
+    headers.set("x-radio-client-ip", clientIp);
   }
 
   try {
+    const body = isScript ? undefined : await readEventBody(request);
+    if (body === null) {
+      return new Response("Event too large", {
+        headers: { "Cache-Control": "no-store" },
+        status: 413,
+      });
+    }
     const upstream = await fetchImpl(
       `${UMAMI_ORIGIN}${isScript ? "/script.js" : "/api/send"}`,
       {
-        body: isScript ? undefined : await request.arrayBuffer(),
+        body,
         headers,
         method: request.method,
         redirect: "manual",
@@ -80,12 +126,10 @@ export async function handleUmamiRequest(
       responseHeaders.set("Retry-After", retryAfter);
     }
 
-    return new Response(
-      request.method === "HEAD" || upstream.body === null
-        ? null
-        : await upstream.text(),
-      { headers: responseHeaders, status: upstream.status }
-    );
+    return new Response(request.method === "HEAD" ? null : upstream.body, {
+      headers: responseHeaders,
+      status: upstream.status,
+    });
   } catch {
     return new Response("Upstream unavailable", {
       headers: { "Cache-Control": "no-store" },

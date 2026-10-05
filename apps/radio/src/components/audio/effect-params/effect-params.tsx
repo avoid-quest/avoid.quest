@@ -14,6 +14,8 @@ type EffectParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
   deckId?: "deck-a" | "deck-b";
   effectId?: string;
+  /** Current position in the effect tree; nested containers keep this depth. */
+  depth?: number;
   /**
    * Where MIDI learn targets start, e.g. `node:<nodeId>` in Node mode. DJ
    * decks leave it unset and get `<deckId>:effect:<effectId>`.
@@ -26,6 +28,7 @@ export function EffectParams({
   onUpdate,
   deckId,
   effectId,
+  depth = 0,
   midiTargetPrefix,
 }: EffectParamsProps) {
   const schema = getEffectSchema(effect.type);
@@ -42,6 +45,7 @@ export function EffectParams({
     return (
       <ContainerParams
         deckId={deckId}
+        depth={depth}
         effect={effect}
         effectId={effectId}
         midiTargetPrefix={midiTargetPrefix}

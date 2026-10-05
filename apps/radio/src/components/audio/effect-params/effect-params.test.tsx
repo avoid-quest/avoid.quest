@@ -2,7 +2,9 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { useState } from "react";
 import type { EffectConfig } from "@/lib/audio";
+import { MAX_EFFECT_TREE_DEPTH } from "@/lib/audio/dsp/routing/effect-tree";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -198,6 +200,215 @@ describe("EffectParams selects", () => {
       expect(nodeEffectConfigSchema.safeParse(updated).success).toBe(true);
     }
   );
+});
+
+type Composite = Extract<EffectConfig, { type: "fxComposite" }>;
+
+function composite(id: string, effects: EffectConfig[]): Composite {
+  const effect = createDefaultEffectConfig("fxComposite", id, 0) as Composite;
+  return {
+    ...effect,
+    chains: effect.chains.map((chain, index) => ({
+      ...chain,
+      effects: index === 0 ? effects : [],
+    })),
+  };
+}
+
+function StatefulEditor({
+  initial,
+  onUpdate = noop,
+  ...props
+}: Partial<Parameters<typeof EffectParams>[0]> & {
+  initial: EffectConfig;
+}) {
+  const [effect, setEffect] = useState(initial);
+  return (
+    <EffectParams
+      {...props}
+      effect={effect}
+      onUpdate={(patch) => {
+        onUpdate(patch);
+        setEffect((current) => ({ ...current, ...patch }) as EffectConfig);
+      }}
+    />
+  );
+}
+
+describe("shared root and nested controls", () => {
+  test.each([false, true])(
+    "tailored controls, EQ bands and special editors (nested: %s)",
+    async (nested) => {
+      const cases = [
+        ["compressor", "Compressor", "Timing"],
+        ["gate", "Gate", "Envelope"],
+        ["vocoder", "Vocoder", "Carrier"],
+        ["revamp", "7-Band EQ", "HP"],
+        ["werkstatt", "Werkstatt", "Playground"],
+        ["neuralAmp", "Tone3000", "Local NAM model"],
+      ] as const;
+      for (const [type, name, label] of cases) {
+        const child = createDefaultEffectConfig(type, "child", 0);
+        const effect = nested ? composite("root", [child]) : child;
+        const view = render(
+          <EffectParams deckId="deck-a" effect={effect} onUpdate={noop} />
+        );
+        if (nested) {
+          fireEvent.click(view.getByRole("button", { name }));
+        }
+        expect(view.getByText(label)).toBeTruthy();
+        if (type === "compressor" || type === "gate") {
+          expect(
+            view.getByRole("combobox", { name: "Sidechain input" })
+          ).toBeTruthy();
+        }
+        if (type === "revamp") {
+          expect(view.getAllByRole("slider", { name: "Freq" })).toHaveLength(7);
+          expect(view.getByRole("switch", { name: "HP enabled" })).toBeTruthy();
+        }
+        // Allow Werkstatt's declaration parser to finish before unmounting.
+        // biome-ignore lint/performance/noAwaitInLoops: each render must settle before cleanup.
+        await act(() => Promise.resolve());
+        cleanup();
+      }
+    }
+  );
+
+  test.each(["deck", "node"])(
+    "%s MIDI targets keep every chain and effect identity at two levels",
+    (mode) => {
+      const children = [
+        createDefaultEffectConfig("compressor", "comp", 0),
+        createDefaultEffectConfig("revamp", "eq", 1),
+      ];
+      const inner = composite("inner", children);
+      const root = composite("root", [inner]);
+      const prefix = mode === "node" ? "node:root" : "deck-b:effect:root";
+      const childPrefix = `${prefix}:chain:${root.chains[0]?.id}:effect:inner:chain:${inner.chains[0]?.id}:effect`;
+      const view = render(
+        <EffectParams
+          deckId="deck-b"
+          effect={root}
+          effectId="root"
+          midiTargetPrefix={mode === "node" ? prefix : undefined}
+          onUpdate={noop}
+        />
+      );
+      for (const name of ["FX Composite", "Compressor", "7-Band EQ"]) {
+        fireEvent.click(view.getByRole("button", { name }));
+      }
+      const targets = [
+        ...view.container.querySelectorAll("[data-midi-target]"),
+      ].map((element) => element.getAttribute("data-midi-target"));
+      expect(targets).toContain(`${childPrefix}:comp:threshold`);
+      expect(targets).toContain(`${childPrefix}:comp:dryWet`);
+      expect(targets).toContain(`${childPrefix}:eq:highPassFrequency`);
+      expect(targets).toContain(`${childPrefix}:eq:dryWet`);
+      expect(new Set(targets).size).toBe(targets.length);
+      expect(targets.every((target) => target?.startsWith(`${prefix}:`))).toBe(
+        true
+      );
+    }
+  );
+
+  test("nested edits, bypass and removal preserve siblings and expansion", async () => {
+    const compressor = createDefaultEffectConfig("compressor", "comp", 1);
+    const gate = createDefaultEffectConfig("gate", "gate", 0);
+    const inner = composite("inner", [compressor, gate]);
+    const root = composite("root", [inner]);
+    const onUpdate = mock((_patch: Partial<EffectConfig>) => undefined);
+    const view = render(
+      <StatefulEditor deckId="deck-a" initial={root} onUpdate={onUpdate} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "FX Composite" }));
+    const headers = view
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(headers.indexOf("Gate")).toBeLessThan(headers.indexOf("Compressor"));
+    fireEvent.click(view.getByRole("button", { name: "Compressor" }));
+    fireEvent.keyDown(view.getByRole("slider", { name: "Threshold" }), {
+      key: "ArrowUp",
+    });
+    const lastInner = () => {
+      const patch = onUpdate.mock.calls.at(-1)?.[0] as Partial<Composite>;
+      expect(patch.chains?.[1]).toEqual(root.chains[1]);
+      return patch.chains?.[0]?.effects[0] as Composite;
+    };
+    let updated = lastInner();
+    expect(updated.chains[0]?.effects[0]).toMatchObject({
+      id: "comp",
+      threshold: (compressor as { threshold: number }).threshold + 0.5,
+    });
+    expect(updated.chains[0]?.effects[1]).toEqual(gate);
+    fireEvent.keyDown(view.getByRole("combobox", { name: "Sidechain input" }), {
+      key: "Enter",
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    fireEvent.click(view.getByRole("option", { name: "Deck B" }));
+    expect(lastInner().chains[0]?.effects[0]).toMatchObject({
+      sidechain: { channelId: "deck-b" },
+    });
+    fireEvent.click(view.getByRole("switch", { name: "Compressor enabled" }));
+    expect(lastInner().chains[0]?.effects[0]?.enabled).toBe(
+      !compressor.enabled
+    );
+    expect(
+      view
+        .getByRole("button", { name: "Compressor" })
+        .getAttribute("aria-expanded")
+    ).toBe("true");
+    fireEvent.click(view.getByRole("button", { name: "Compressor" }));
+    expect(view.queryByRole("slider", { name: "Threshold" })).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Compressor" }));
+    expect(
+      view.getByRole("combobox", { name: "Sidechain input" }).textContent
+    ).toContain("Deck B");
+    fireEvent.click(view.getByRole("button", { name: "Remove Compressor" }));
+    updated = lastInner();
+    expect(updated.chains[0]?.effects).toEqual([{ ...gate, order: 0 }]);
+    expect(view.queryByRole("button", { name: "Compressor" })).toBeNull();
+  });
+
+  test("nested containers retain the depth limit through the shared renderer", () => {
+    const root = composite("root", [composite("inner", [])]);
+    const view = render(
+      <EffectParams
+        depth={MAX_EFFECT_TREE_DEPTH - 2}
+        effect={root}
+        onUpdate={noop}
+      />
+    );
+    fireEvent.click(view.getByRole("button", { name: "FX Composite" }));
+    const addButtons = view.getAllByRole("button", {
+      name: "Add nested effect",
+    });
+    // The inner container is at depth 7: leaves remain allowed, containers do not.
+    fireEvent.click(addButtons[0] as HTMLElement);
+    expect(view.getByRole("dialog")).toBeTruthy();
+    expect(
+      view.queryByRole("button", {
+        name: (name) => name.startsWith("Stereo Split"),
+      })
+    ).toBeNull();
+    expect(
+      view.getByRole("button", {
+        name: (name) => name.startsWith("Compressor "),
+      })
+    ).toBeTruthy();
+    cleanup();
+    const atLimit = render(
+      <EffectParams
+        depth={MAX_EFFECT_TREE_DEPTH - 1}
+        effect={root}
+        onUpdate={noop}
+      />
+    );
+    fireEvent.click(atLimit.getByRole("button", { name: "FX Composite" }));
+    // Only the two root chains can add effects; the inner chains are at depth 8.
+    expect(
+      atLimit.getAllByRole("button", { name: "Add nested effect" })
+    ).toHaveLength(2);
+  });
 });
 
 describe("ParamSlider", () => {

@@ -374,7 +374,7 @@ export default defineConfig({
   plugins: [
     audioWorkletPlugin(),
     openDawAssetsPlugin(),
-    gitChangelogPlugin(),
+    gitChangelogPlugin({ types: [] }),
     cloudflare({
       viteEnvironment: { name: "ssr" },
     }),

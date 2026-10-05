@@ -36,11 +36,11 @@ async function readEventBody(request: Request): Promise<ArrayBuffer | null> {
       const { value } = chunk;
       length += value.byteLength;
       if (length > MAX_UMAMI_EVENT_BYTES) {
+        // biome-ignore lint/performance/noAwaitInLoops: stop this sequential stream before returning.
         await reader.cancel();
         return null;
       }
       chunks.push(value);
-      // biome-ignore lint/performance/noAwaitInLoops: read sequentially so the limit bounds buffering.
       chunk = await reader.read();
     }
   } finally {

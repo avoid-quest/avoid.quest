@@ -83,7 +83,27 @@ play. See `packages/platforms/src/{mixcloud,spotify}/RESEARCH.md`.
 | `/u/script.js` | First-party Umami tracker (GET/HEAD) |
 | `/u/api/send` | First-party Umami event collection (POST) |
 
-### Analytics
+Server functions (TanStack Start `createServerFn`):
+
+| Function file | Description |
+|--------------|-------------|
+| `utils/platform.functions.ts` | Bandcamp, SoundCloud, and Radio Garden metadata/URL resolution |
+| `utils/search.functions.ts` | Bandcamp and SoundCloud search |
+| `utils/radio-garden.functions.ts` | Radio Garden search and suggestions |
+| `utils/radio-browser.functions.ts` | Shared Radio Browser directory search |
+
+Audio bytes never pass through the app server. Static audio URLs and M3U/PLS
+playlists are resolved directly in the browser. Bandcamp's fresh, validated
+`bcbits.com` media URLs use the curated, release-tested public relay pool
+`seep.eu.org`,
+`proxy.cors.sh`, then `cors.zme.ink`; the browser range-probes the pool under one
+deadline before selecting the highest-priority working relay. YouTube tries the
+curated, release-tested providers `pipedapi.wireway.ch`, `yt.omada.cafe`,
+`invidious.nikkosphere.com`, then `y.com.sb`, with per-provider and whole-pool
+deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
+`YOUTUBE_PROVIDER_RESEARCH.md` for the release probes and caveats.
+
+## Analytics
 
 The root shell loads Umami once with website ID
 `3c1fb87b-fc98-4b89-b359-59f386c01ad3`. Tracking runs only on
@@ -109,26 +129,6 @@ Deployment verification should confirm the upstream reverse proxy preserves
 this header and does not override Umami's IP selection with a different
 `CLIENT_IP_HEADER`. Region/city data needs Cloudflare's visitor location headers
 enabled if desired. The Astro site's analytics setup is independent.
-
-Server functions (TanStack Start `createServerFn`):
-
-| Function file | Description |
-|--------------|-------------|
-| `utils/platform.functions.ts` | Bandcamp, SoundCloud, and Radio Garden metadata/URL resolution |
-| `utils/search.functions.ts` | Bandcamp and SoundCloud search |
-| `utils/radio-garden.functions.ts` | Radio Garden search and suggestions |
-| `utils/radio-browser.functions.ts` | Shared Radio Browser directory search |
-
-Audio bytes never pass through the app server. Static audio URLs and M3U/PLS
-playlists are resolved directly in the browser. Bandcamp's fresh, validated
-`bcbits.com` media URLs use the curated, release-tested public relay pool
-`seep.eu.org`,
-`proxy.cors.sh`, then `cors.zme.ink`; the browser range-probes the pool under one
-deadline before selecting the highest-priority working relay. YouTube tries the
-curated, release-tested providers `pipedapi.wireway.ch`, `yt.omada.cafe`,
-`invidious.nikkosphere.com`, then `y.com.sb`, with per-provider and whole-pool
-deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
-`YOUTUBE_PROVIDER_RESEARCH.md` for the release probes and caveats.
 
 ## Architecture
 

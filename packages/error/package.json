@@ -9,9 +9,16 @@
   },
   "main": "src/index.ts",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json"
   },
   "dependencies": {
     "@sentry/tanstackstart-react": "^11.2.0"
+  },
+  "devDependencies": {
+    "@avoid.quest/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

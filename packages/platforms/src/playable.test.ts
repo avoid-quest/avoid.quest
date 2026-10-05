@@ -140,7 +140,9 @@ describe("createPlayablePlatformResolver", () => {
       throw new Error(`Unexpected Radio Garden fetch: ${url}`);
     });
 
-    globalThis.fetch = fetchImpl as typeof fetch;
+    globalThis.fetch = Object.assign(fetchImpl, {
+      preconnect: mock(() => undefined),
+    });
     try {
       const resolver = createPlayablePlatformResolver();
 

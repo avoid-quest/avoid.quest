@@ -10,7 +10,7 @@
     "dev": "doppler run -- tsx --watch src/index.ts",
     "start": "node dist/index.cjs",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json"
   },
   "dependencies": {
     "@avoid.quest/platforms": "workspace:*",
@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@avoid.quest/config": "workspace:*",
+    "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",

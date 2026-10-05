@@ -47,12 +47,12 @@ let emitAudioPlayerIdle:
   | ((oldState: unknown, newState: unknown) => void)
   | undefined;
 
-const fetchDirectAudioStreamMock = mock(
-  async (_url: string, _options?: { signal?: AbortSignal }) => {
-    await Promise.resolve();
-    throw new Error("fetchDirectAudioStream mock not configured");
-  }
-);
+const fetchDirectAudioStreamMock = mock<
+  typeof import("./direct-audio.js").fetchDirectAudioStream
+>(async (_url: string, _options?: { signal?: AbortSignal }) => {
+  await Promise.resolve();
+  throw new Error("fetchDirectAudioStream mock not configured");
+});
 
 let clearGuildPlayback!: GuildPlayerModule["clearGuildPlayback"];
 let skipGuildPlayback!: GuildPlayerModule["skipGuildPlayback"];

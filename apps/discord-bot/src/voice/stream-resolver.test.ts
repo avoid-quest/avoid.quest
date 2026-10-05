@@ -18,7 +18,9 @@ describe("resolveStaticAudioItem", () => {
     });
 
     try {
-      globalThis.fetch = fetchImpl as typeof fetch;
+      globalThis.fetch = Object.assign(fetchImpl, {
+        preconnect: mock(() => undefined),
+      });
 
       await expect(
         resolveStaticAudioItem("https://audio.example/live.mp3")

@@ -5,7 +5,7 @@ describe("getSoundCloudItem", () => {
   test("uses progressive by default and allows callers to prefer HLS", async () => {
     const originalFetch = globalThis.fetch;
     const requestedUrls: string[] = [];
-    globalThis.fetch = mock((input: string | URL | Request) => {
+    const fetchImpl = mock((input: string | URL | Request) => {
       const url = input.toString();
       requestedUrls.push(url);
 
@@ -50,7 +50,10 @@ describe("getSoundCloudItem", () => {
         );
       }
       return Promise.reject(new Error(`Unexpected request: ${url}`));
-    }) as typeof fetch;
+    });
+    globalThis.fetch = Object.assign(fetchImpl, {
+      preconnect: mock(() => undefined),
+    });
 
     try {
       await expect(

@@ -36,7 +36,7 @@
     "check": "bunx ultracite check",
     "fix": "bunx ultracite fix",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@avoid.quest/config": "workspace:*",
+    "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:"
   }

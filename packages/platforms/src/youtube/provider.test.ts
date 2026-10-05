@@ -12,6 +12,16 @@ const VIDEO_ID = "abcdefghijk";
 const PLAYLIST_ID = "PLabcdefghijk";
 const PUBLIC_ADDRESS = "93.184.216.34";
 
+function mockFetch(
+  implementation: (
+    ...args: Parameters<typeof fetch>
+  ) => ReturnType<typeof fetch>
+) {
+  return Object.assign(mock(implementation), {
+    preconnect: mock(() => undefined),
+  });
+}
+
 function json(value: unknown): Response {
   return Response.json(value);
 }
@@ -45,7 +55,7 @@ function invidiousVideo() {
         type: "audio/webm",
         url: "/videoplayback/audio",
       },
-    ],
+    ] satisfies [unknown],
     author: "Artist",
     lengthSeconds: 180,
     liveNow: false,
@@ -64,7 +74,7 @@ function pipedVideo() {
         mimeType: "audio/webm",
         url: "https://proxy.piped.test/audio",
       },
-    ],
+    ] satisfies [unknown],
     duration: 180,
     livestream: false,
     thumbnailUrl: "https://proxy.piped.test/thumb.jpg",
@@ -75,15 +85,17 @@ function pipedVideo() {
 
 describe("browser Invidious adapter", () => {
   test("does not follow provider JSON redirects to loopback", async () => {
-    const fetchImpl = mock((_input: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.redirect).toBe("error");
-      return Promise.resolve(
-        Response.redirect("http://127.0.0.1/private-api", 302)
-      );
-    });
+    const fetchImpl = mockFetch(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(init?.redirect).toBe("error");
+        return Promise.resolve(
+          Response.redirect("http://127.0.0.1/private-api", 302)
+        );
+      }
+    );
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     });
 
     await expect(adapter.probe()).rejects.toMatchObject({
@@ -96,7 +108,7 @@ describe("browser Invidious adapter", () => {
   test("rejects JSON whose declared body exceeds the configured cap", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(
           new Response("{}", {
             headers: {
@@ -105,7 +117,7 @@ describe("browser Invidious adapter", () => {
             },
           })
         )
-      ) as typeof fetch,
+      ),
       maxResponseBytes: 16,
     });
 
@@ -116,30 +128,32 @@ describe("browser Invidious adapter", () => {
 
   test("maps search results and sends anonymous browser-safe requests", async () => {
     const resolveHostname = mock(async () => ["203.0.113.8"]);
-    const fetchImpl = mock((_input: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.credentials).toBe("omit");
-      expect(init?.referrerPolicy).toBe("no-referrer");
-      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
-      return Promise.resolve(
-        json([
-          {
-            author: "Artist",
-            lengthSeconds: 125,
-            title: "Track",
-            type: "video",
-            videoId: VIDEO_ID,
-            videoThumbnails: [
-              thumbnail(),
-              thumbnail("/vi/abcdefghijk/medium.jpg"),
-            ],
-            viewCount: 1_200_000,
-          },
-        ])
-      );
-    });
+    const fetchImpl = mockFetch(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(init?.credentials).toBe("omit");
+        expect(init?.referrerPolicy).toBe("no-referrer");
+        expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+        return Promise.resolve(
+          json([
+            {
+              author: "Artist",
+              lengthSeconds: 125,
+              title: "Track",
+              type: "video",
+              videoId: VIDEO_ID,
+              videoThumbnails: [
+                thumbnail(),
+                thumbnail("/vi/abcdefghijk/medium.jpg"),
+              ],
+              viewCount: 1_200_000,
+            },
+          ])
+        );
+      }
+    );
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       resolveHostname,
     });
 
@@ -162,13 +176,13 @@ describe("browser Invidious adapter", () => {
   test("rejects a 200 HTML frontend as the wrong service", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://wrong.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(
           new Response("<!doctype html><title>Radio</title>", {
             headers: { "Content-Type": "text/html" },
           })
         )
-      ) as typeof fetch,
+      ),
     });
 
     await expect(adapter.probe()).rejects.toMatchObject({
@@ -180,9 +194,9 @@ describe("browser Invidious adapter", () => {
   test("rejects valid JSON with the wrong schema", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://wrong.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(json({ software: { name: "radio" } }))
-      ) as typeof fetch,
+      ),
     });
 
     await expect(adapter.probe()).rejects.toMatchObject({
@@ -194,13 +208,13 @@ describe("browser Invidious adapter", () => {
   test("distinguishes malformed JSON from a provider outage", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://wrong.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(
           new Response("{not-json", {
             headers: { "Content-Type": "application/json" },
           })
         )
-      ) as typeof fetch,
+      ),
     });
 
     await expect(adapter.probe()).rejects.toMatchObject({
@@ -213,14 +227,14 @@ describe("browser Invidious adapter", () => {
     const requests: Array<{ init?: RequestInit; url: string }> = [];
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: mock((input: RequestInfo | URL, init?: RequestInit) => {
+      fetchImpl: mockFetch((input: RequestInfo | URL, init?: RequestInit) => {
         requests.push({ init, url: String(input) });
         return Promise.resolve(
           String(input).includes("/videoplayback/")
             ? media()
             : json(invidiousVideo())
         );
-      }) as typeof fetch,
+      }),
       resolveHostname: async () => [PUBLIC_ADDRESS],
     });
 
@@ -236,7 +250,7 @@ describe("browser Invidious adapter", () => {
   test("accepts a range response whose Content-Range is not CORS-exposed", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: mock((input: RequestInfo | URL) =>
+      fetchImpl: mockFetch((input: RequestInfo | URL) =>
         Promise.resolve(
           String(input).includes("/videoplayback/")
             ? new Response(new Uint8Array([0]), {
@@ -248,7 +262,7 @@ describe("browser Invidious adapter", () => {
               })
             : json(invidiousVideo())
         )
-      ) as typeof fetch,
+      ),
       resolveHostname: async () => [PUBLIC_ADDRESS],
     });
 
@@ -262,10 +276,10 @@ describe("browser Invidious adapter", () => {
     const [stream] = video.adaptiveFormats;
     stream.url = "https://private-media.test/audio";
     video.videoThumbnails = [thumbnail("https://public-images.test/thumb.jpg")];
-    const fetchImpl = mock(() => Promise.resolve(json(video)));
+    const fetchImpl = mockFetch(() => Promise.resolve(json(video)));
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       resolveHostname: async (hostname) =>
         hostname === "private-media.test" ? ["127.0.0.1"] : [PUBLIC_ADDRESS],
     });
@@ -278,7 +292,7 @@ describe("browser Invidious adapter", () => {
   });
 
   test("rejects thumbnails whose hostname resolves to a private address", async () => {
-    const fetchImpl = mock(() =>
+    const fetchImpl = mockFetch(() =>
       Promise.resolve(
         json([
           {
@@ -297,7 +311,7 @@ describe("browser Invidious adapter", () => {
     );
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       resolveHostname: async () => ["192.168.1.10"],
     });
 
@@ -311,7 +325,7 @@ describe("browser Invidious adapter", () => {
   test("maps playlists to lazy video IDs without resolving every stream", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://invidious.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(
           json({
             author: "Artist",
@@ -329,7 +343,7 @@ describe("browser Invidious adapter", () => {
             ],
           })
         )
-      ) as typeof fetch,
+      ),
     });
 
     const result = await adapter.resolveItem(
@@ -351,9 +365,7 @@ describe("Piped adapter", () => {
     });
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock(() =>
-        Promise.resolve(new Response(body))
-      ) as typeof fetch,
+      fetchImpl: mockFetch(() => Promise.resolve(new Response(body))),
       maxResponseBytes: 3,
     });
 
@@ -375,7 +387,9 @@ describe("Piped adapter", () => {
     };
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl: Object.assign(fetchImpl, {
+        preconnect: mock(() => undefined),
+      }),
     });
 
     await expect(adapter.probe()).resolves.toMatchObject({ status: "ready" });
@@ -383,7 +397,7 @@ describe("Piped adapter", () => {
   });
 
   test("maps the music search filter and stream results", async () => {
-    const fetchImpl = mock(() =>
+    const fetchImpl = mockFetch(() =>
       Promise.resolve(
         json({
           items: [
@@ -403,7 +417,7 @@ describe("Piped adapter", () => {
     );
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     });
 
     await expect(adapter.search("ambient", "songs")).resolves.toEqual([
@@ -424,7 +438,7 @@ describe("Piped adapter", () => {
   test("classifies malformed result URLs as retryable provider schema errors", async () => {
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(
           json({
             items: [
@@ -440,7 +454,7 @@ describe("Piped adapter", () => {
             ],
           })
         )
-      ) as typeof fetch,
+      ),
     });
 
     await expect(adapter.search("ambient")).rejects.toMatchObject({
@@ -453,14 +467,14 @@ describe("Piped adapter", () => {
     const requests: string[] = [];
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock((input: RequestInfo | URL) => {
+      fetchImpl: mockFetch((input: RequestInfo | URL) => {
         requests.push(String(input));
         return Promise.resolve(
           String(input).includes("proxy.piped.test")
             ? media()
             : json(pipedVideo())
         );
-      }) as typeof fetch,
+      }),
       resolveHostname: async () => [PUBLIC_ADDRESS],
     });
 
@@ -477,14 +491,14 @@ describe("Piped adapter", () => {
     const requests: Array<{ init?: RequestInit; url: string }> = [];
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock((input: RequestInfo | URL, init?: RequestInit) => {
+      fetchImpl: mockFetch((input: RequestInfo | URL, init?: RequestInit) => {
         requests.push({ init, url: String(input) });
         return Promise.resolve(
           String(input).includes("proxy.piped.test")
             ? Response.redirect("http://127.0.0.1/private-media", 302)
             : json(pipedVideo())
         );
-      }) as typeof fetch,
+      }),
     });
 
     await expect(adapter.resolveStream(VIDEO_ID)).rejects.toMatchObject({
@@ -501,7 +515,7 @@ describe("Piped adapter", () => {
     stream.url = "http://127.0.0.1/private-audio";
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      fetchImpl: mockFetch(() => Promise.resolve(json(video))),
       verifyMedia: false,
     });
 
@@ -515,10 +529,10 @@ describe("Piped adapter", () => {
     const [stream] = video.audioStreams;
     stream.url = "https://private-media.test/audio";
     video.thumbnailUrl = "https://public-images.test/thumb.jpg";
-    const fetchImpl = mock(() => Promise.resolve(json(video)));
+    const fetchImpl = mockFetch(() => Promise.resolve(json(video)));
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       resolveHostname: async (hostname) =>
         hostname === "private-media.test" ? ["10.0.0.1"] : [PUBLIC_ADDRESS],
     });
@@ -531,7 +545,7 @@ describe("Piped adapter", () => {
   });
 
   test("rejects thumbnails whose hostname resolves to a private address", async () => {
-    const fetchImpl = mock(() =>
+    const fetchImpl = mockFetch(() =>
       Promise.resolve(
         json({
           items: [
@@ -550,7 +564,7 @@ describe("Piped adapter", () => {
     );
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
       resolveHostname: async () => ["172.16.0.1"],
     });
 
@@ -567,7 +581,7 @@ describe("Piped adapter", () => {
     stream.url = "https://user:password@proxy.piped.test/audio";
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      fetchImpl: mockFetch(() => Promise.resolve(json(video))),
       verifyMedia: false,
     });
 
@@ -586,7 +600,7 @@ describe("Piped adapter", () => {
     );
     const adapter = createPipedAdapter({
       baseUrl: "http://localhost:4100",
-      fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      fetchImpl: mockFetch(() => Promise.resolve(json(video))),
       resolveHostname,
       verifyMedia: false,
     });
@@ -600,7 +614,7 @@ describe("Piped adapter", () => {
   test("maps playlists to lazy video IDs", async () => {
     const adapter = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock(() =>
+      fetchImpl: mockFetch(() =>
         Promise.resolve(
           json({
             name: "Playlist",
@@ -617,7 +631,7 @@ describe("Piped adapter", () => {
             videos: 1,
           })
         )
-      ) as typeof fetch,
+      ),
     });
 
     const result = await adapter.resolveItem(
@@ -635,7 +649,7 @@ function fakeAdapter(
   return {
     id,
     kind: id === "first" ? "invidious" : "piped",
-    probe: mock(() =>
+    probe: mock<YouTubeProviderAdapter["probe"]>(() =>
       Promise.resolve({
         kind: id === "first" ? "invidious" : "piped",
         providerId: id,
@@ -678,13 +692,13 @@ describe("ordered YouTube provider failover", () => {
     test(`falls through a provider that returns ${description}`, async () => {
       const first = createPipedAdapter({
         baseUrl: "https://piped.test",
-        fetchImpl: mock((input: RequestInfo | URL) =>
+        fetchImpl: mockFetch((input: RequestInfo | URL) =>
           Promise.resolve(
             String(input).includes("proxy.piped.test")
               ? invalidMedia()
               : json(pipedVideo())
           )
-        ) as typeof fetch,
+        ),
         id: "first",
         resolveHostname: async () => [PUBLIC_ADDRESS],
       });
@@ -710,7 +724,7 @@ describe("ordered YouTube provider failover", () => {
     video.thumbnailUrl = "https://public-images.test/thumb.jpg";
     const first = createPipedAdapter({
       baseUrl: "https://piped.test",
-      fetchImpl: mock(() => Promise.resolve(json(video))) as typeof fetch,
+      fetchImpl: mockFetch(() => Promise.resolve(json(video))),
       id: "first",
       resolveHostname: async (hostname) =>
         hostname === "private-media.test" ? ["127.0.0.1"] : [PUBLIC_ADDRESS],
@@ -721,7 +735,7 @@ describe("ordered YouTube provider failover", () => {
     const second: YouTubeProviderAdapter = {
       id: "second",
       kind: "invidious",
-      probe: mock(() =>
+      probe: mock<YouTubeProviderAdapter["probe"]>(() =>
         Promise.resolve({
           kind: "invidious",
           providerId: "second",
@@ -804,7 +818,7 @@ describe("ordered YouTube provider failover", () => {
   test("classifies timeouts", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://slow.test",
-      fetchImpl: mock(
+      fetchImpl: mockFetch(
         async (_input: RequestInfo | URL, init?: RequestInit) =>
           await new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener(
@@ -813,7 +827,7 @@ describe("ordered YouTube provider failover", () => {
               { once: true }
             );
           })
-      ) as typeof fetch,
+      ),
       timeoutMs: 5,
     });
 

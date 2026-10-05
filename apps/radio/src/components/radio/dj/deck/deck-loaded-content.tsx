@@ -36,7 +36,7 @@ export function LoadedDeckContent({
     effectsTempo,
     setEffectsTempo,
   } = useDeckContext();
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1024);
   const { metadata } = useRadioMetadata({
     poll: isPlaying && !isLoading,
     radio,

@@ -1,7 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
 import { AudioLinesIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { VolumeControl } from "@/components/audio/volume-control";
@@ -24,7 +23,7 @@ import {
 } from "@/lib/node-graph/sources";
 import type { NodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { usePlaybackChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 import { InlineError } from "../inline-error";
 import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import {
@@ -112,10 +111,7 @@ function InputSourceRow({
   strip,
   children,
 }: NodeSourceRowProps) {
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(nodeId)]
-  );
+  const runtime = usePlaybackChannelRuntimeView(laneChannelId(nodeId));
   const devices = useNodeDevices();
   const isPlaying = runtime?.isPlaying ?? false;
   const isLoading = runtime?.isLoading ?? false;
@@ -141,7 +137,7 @@ function InputSourceRow({
       )}
       data-node-id={nodeId}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 sm:flex">
         <InputLiveButton
           compact
           disabled={!isPlaying && (denied || unplugged)}
@@ -165,7 +161,7 @@ function InputSourceRow({
           </StationRowText>
         </div>
         <VolumeControl
-          className="w-28 shrink-0"
+          className="col-span-2 col-start-2 row-start-2 w-full shrink-0 sm:w-28"
           isMuted={muted || volume === 0}
           onToggleMute={() => {
             controls.toggleMute(nodeId);
@@ -211,10 +207,7 @@ function StationSourceRow({
   strip,
   children,
 }: NodeSourceRowProps) {
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(nodeId)]
-  );
+  const runtime = usePlaybackChannelRuntimeView(laneChannelId(nodeId));
   const isPlaying = runtime?.isPlaying ?? false;
   const isLoading = runtime?.isLoading ?? false;
   const error = runtime?.error?.message?.trim();
@@ -241,7 +234,7 @@ function StationSourceRow({
       data-node-id={nodeId}
       ref={elementRef}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 sm:flex">
         <PlayPauseButton
           className="size-7 shrink-0"
           iconClassName="size-3.5"
@@ -281,7 +274,7 @@ function StationSourceRow({
           </StationRowText>
         </div>
         <VolumeControl
-          className="w-28 shrink-0"
+          className="col-span-2 col-start-2 row-start-2 w-full shrink-0 sm:w-28"
           isMuted={muted || volume === 0}
           onToggleMute={() => {
             controls.toggleMute(nodeId);

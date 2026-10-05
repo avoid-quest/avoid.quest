@@ -206,8 +206,8 @@ function anyNodeInView(
 }
 
 /**
- * Fits the patch in view, as F, a template load or a second tap on Patch
- * does; on a phone a patch too big for the readable zoom shows its top.
+ * Fits the patch in view; on a phone a patch too big for the readable
+ * zoom shows its top.
  */
 function fitPatch(
   { fitView, getNodes, getNodesBounds, setViewport }: FitTools,

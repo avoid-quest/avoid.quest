@@ -26,7 +26,7 @@ import type {
 import { getNodePlayback } from "@/lib/node-playback";
 import { isRadioBrowserMetadata } from "@/lib/platform-types";
 import { streamFormatOf } from "@/lib/source-strip";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { usePlaybackChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 import { useReleaseStep } from "./module-frame";
 import {
   CompactSourceStrip,
@@ -57,10 +57,7 @@ function useSoloedOut(solo: boolean, store: NodeStore): boolean {
 
 /** The lane's runtime by source node id: its sound and play state. */
 export function useLaneRuntime(nodeId: string) {
-  return useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(nodeId)]
-  );
+  return usePlaybackChannelRuntimeView(laneChannelId(nodeId));
 }
 
 function commitStrip(

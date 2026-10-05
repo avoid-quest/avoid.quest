@@ -1,5 +1,5 @@
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { useStore } from "@tanstack/react-store";
+import { shallow, useStore } from "@tanstack/react-store";
 import type { Radio } from "@/lib/audio";
 import {
   type PlaybackSessionRecord,
@@ -43,30 +43,38 @@ function useNodeSessionRecord(): PlaybackSessionRecord | undefined {
 export function useNodeSession() {
   const playback = getNodePlayback();
   const session = useNodeSessionRecord();
-  const runtimes = useStore(playbackRuntimeStore, (state) => state.channels);
   const masterVolume = session?.masterVolume ?? 1;
 
-  const sources: NodeSourceState[] = (session?.channels ?? [])
-    .filter(
-      (channel): channel is typeof channel & { radio: Radio } =>
-        Boolean(channel.radio) && channel.id.startsWith(LANE_CHANNEL_PREFIX)
-    )
-    .map((channel) => {
-      const runtime = runtimes[channel.id];
-      return {
-        channelId: channel.id,
-        error: runtime?.error?.message ?? null,
-        id: channel.id.slice(LANE_CHANNEL_PREFIX.length),
-        isLoading: runtime?.isLoading ?? false,
-        isMuted: channel.muted || channel.volume === 0,
-        isPlaying: runtime?.isPlaying ?? false,
-        kind: isDeviceInputMetadata(channel.radio.platformMetadata)
-          ? ("input" as const)
-          : ("station" as const),
-        radio: channel.radio,
-        volume: channel.volume,
-      };
-    });
+  // Only rendered source fields participate in equality, so meter ticks and
+  // runtime updates outside this session leave the whole Node view alone.
+  const sources: NodeSourceState[] = useStore(
+    playbackRuntimeStore,
+    (state) =>
+      (session?.channels ?? [])
+        .filter(
+          (channel): channel is typeof channel & { radio: Radio } =>
+            Boolean(channel.radio) && channel.id.startsWith(LANE_CHANNEL_PREFIX)
+        )
+        .map((channel) => {
+          const runtime = state.channels[channel.id];
+          return {
+            channelId: channel.id,
+            error: runtime?.error?.message ?? null,
+            id: channel.id.slice(LANE_CHANNEL_PREFIX.length),
+            isLoading: runtime?.isLoading ?? false,
+            isMuted: channel.muted || channel.volume === 0,
+            isPlaying: runtime?.isPlaying ?? false,
+            kind: isDeviceInputMetadata(channel.radio.platformMetadata)
+              ? ("input" as const)
+              : ("station" as const),
+            radio: channel.radio,
+            volume: channel.volume,
+          };
+        }),
+    (previous, next) =>
+      previous.length === next.length &&
+      previous.every((source, index) => shallow(source, next[index]))
+  );
 
   return {
     graph: session?.graph ?? null,

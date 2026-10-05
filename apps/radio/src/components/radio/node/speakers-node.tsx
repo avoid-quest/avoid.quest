@@ -12,8 +12,8 @@ type SpeakersData = Extract<GraphNode, { type: "speakers" }>["data"];
 export type SpeakersFlowNode = FlowNode<SpeakersData, "speakers">;
 
 /**
- * The main bus: Play all / Pause all, master volume and mute, a meter while
- * anything plays, and Resume when the browser interrupted the audio.
+ * The main bus: master volume and mute, a meter while anything plays, and
+ * Resume when the browser interrupted the audio.
  */
 export function SpeakersNode({ selected }: FlowNodeProps<SpeakersFlowNode>) {
   return (

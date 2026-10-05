@@ -146,7 +146,7 @@ export function RadioNowPlaying({
         <div
           className={cn(
             "flex min-w-0 items-center gap-3",
-            featured && "gap-4 lg:flex-col lg:items-center lg:gap-6"
+            featured && "sm:gap-4 lg:flex-col lg:items-center lg:gap-6"
           )}
         >
           <div className="relative shrink-0">
@@ -163,7 +163,7 @@ export function RadioNowPlaying({
                 <Artwork
                   className={
                     featured
-                      ? "size-28 rounded-xl lg:size-[clamp(15rem,36vh,22rem)] lg:rounded-2xl"
+                      ? "size-20 rounded-xl sm:size-28 lg:size-[clamp(15rem,36vh,22rem)] lg:rounded-2xl"
                       : "size-16 rounded-lg"
                   }
                   metadata={metadata}
@@ -192,7 +192,8 @@ export function RadioNowPlaying({
             <Heading
               className={cn(
                 "min-w-0 font-semibold text-sm leading-snug",
-                featured && "text-xl leading-tight tracking-tight lg:text-3xl"
+                featured &&
+                  "text-lg leading-tight tracking-tight sm:text-xl lg:text-3xl"
               )}
             >
               {metadata?.itemUrl ? (

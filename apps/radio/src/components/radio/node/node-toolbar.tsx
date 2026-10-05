@@ -4,13 +4,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { useStore } from "@tanstack/react-store";
 import {
   CableIcon,
   ChevronDownIcon,
+  EllipsisIcon,
   LayoutTemplateIcon,
+  MaximizeIcon,
   PlusIcon,
   Redo2Icon,
   Undo2Icon,
@@ -63,18 +67,21 @@ export function NodeToolbar({
   onAdd,
   onLoadTemplate,
   onRewire,
+  onFitView,
+  isPhone = false,
   store = nodeStore,
 }: {
   onAdd: () => void;
   onLoadTemplate: (template: NodeTemplateId) => void;
   onRewire?: (edgeId: string) => void;
+  onFitView?: () => void;
+  isPhone?: boolean;
   store?: NodeStore;
 }) {
   const { canRedo, canUndo } = useNodeHistory(store);
   const edgeId = useStore(store, (state) =>
     state.selection.edges.length === 1 ? state.selection.edges[0] : null
   );
-
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Button
@@ -89,13 +96,46 @@ export function NodeToolbar({
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost">
-            <LayoutTemplateIcon className="sm:hidden" />
-            <span className="max-sm:sr-only">Templates</span>
-            <ChevronDownIcon className="max-sm:hidden" />
+          <Button
+            aria-label={isPhone ? "Patch actions" : undefined}
+            size="sm"
+            variant="ghost"
+          >
+            {isPhone ? (
+              <EllipsisIcon />
+            ) : (
+              <>
+                <LayoutTemplateIcon className="sm:hidden" />
+                <span className="max-sm:sr-only">Templates</span>
+                <ChevronDownIcon className="max-sm:hidden" />
+              </>
+            )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent align={isPhone ? "end" : "start"} className="w-64">
+          {isPhone ? (
+            <>
+              {onFitView ? (
+                <DropdownMenuItem onSelect={onFitView}>
+                  <MaximizeIcon /> Fit view
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem
+                disabled={!canUndo}
+                onSelect={() => undoNodeGraph(store)}
+              >
+                <Undo2Icon /> Undo
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!canRedo}
+                onSelect={() => redoNodeGraph(store)}
+              >
+                <Redo2Icon /> Redo
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Templates</DropdownMenuLabel>
+            </>
+          ) : null}
           {PALETTE_TEMPLATES.map((template) => (
             <DropdownMenuItem
               className="flex-col items-start gap-0.5"
@@ -121,30 +161,34 @@ export function NodeToolbar({
           <CableIcon />
         </Button>
       ) : null}
-      <Button
-        aria-keyshortcuts="Meta+Z Control+Z"
-        aria-label="Undo"
-        className="size-8 text-muted-foreground"
-        disabled={!canUndo}
-        onClick={() => undoNodeGraph(store)}
-        size="icon"
-        title="Undo (⌘Z)"
-        variant="ghost"
-      >
-        <Undo2Icon />
-      </Button>
-      <Button
-        aria-keyshortcuts="Shift+Meta+Z Shift+Control+Z"
-        aria-label="Redo"
-        className="size-8 text-muted-foreground"
-        disabled={!canRedo}
-        onClick={() => redoNodeGraph(store)}
-        size="icon"
-        title="Redo (⇧⌘Z)"
-        variant="ghost"
-      >
-        <Redo2Icon />
-      </Button>
+      {isPhone ? null : (
+        <Button
+          aria-keyshortcuts="Meta+Z Control+Z"
+          aria-label="Undo"
+          className="size-8 text-muted-foreground"
+          disabled={!canUndo}
+          onClick={() => undoNodeGraph(store)}
+          size="icon"
+          title="Undo (⌘Z)"
+          variant="ghost"
+        >
+          <Undo2Icon />
+        </Button>
+      )}
+      {isPhone ? null : (
+        <Button
+          aria-keyshortcuts="Shift+Meta+Z Shift+Control+Z"
+          aria-label="Redo"
+          className="size-8 text-muted-foreground"
+          disabled={!canRedo}
+          onClick={() => redoNodeGraph(store)}
+          size="icon"
+          title="Redo (⇧⌘Z)"
+          variant="ghost"
+        >
+          <Redo2Icon />
+        </Button>
+      )}
     </div>
   );
 }

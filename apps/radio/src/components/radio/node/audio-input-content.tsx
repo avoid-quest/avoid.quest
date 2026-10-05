@@ -8,7 +8,6 @@ import {
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
 import { MicIcon, MoreHorizontalIcon, Trash2Icon } from "lucide-react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { ChannelSelection } from "@/lib/audio";
@@ -21,7 +20,7 @@ import {
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
 import { getNodePlayback } from "@/lib/node-playback";
-import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { usePlaybackChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 import { BrowserAudioHelp } from "../browser-audio-form";
 import { InlineError } from "../inline-error";
 import {
@@ -297,10 +296,7 @@ export function AudioInputNodeContent({
   const actions = useNodeActions();
   const playback = getNodePlayback();
   const devices = useNodeDevices();
-  const runtime = useStore(
-    playbackRuntimeStore,
-    (state) => state.channels[laneChannelId(id)]
-  );
+  const runtime = usePlaybackChannelRuntimeView(laneChannelId(id));
   const isPlaying = runtime?.isPlaying ?? false;
   const isLoading = runtime?.isLoading ?? false;
   useUnpluggedPause(

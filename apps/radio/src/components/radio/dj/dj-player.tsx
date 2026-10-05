@@ -49,7 +49,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
   const deckACueEnabled = mixer?.deckACueEnabled ?? false;
   const deckBCueEnabled = mixer?.deckBCueEnabled ?? false;
   const isCueActive = !!audioSettings.cueOutputId;
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1024);
 
   return (
     <div

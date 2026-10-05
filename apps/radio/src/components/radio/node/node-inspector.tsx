@@ -205,7 +205,7 @@ export function useNodeInspector({
 const INSPECTOR_BODY =
   "space-y-4 [&_.uppercase]:font-sans [&_.uppercase]:text-[10px] [&_.uppercase]:normal-case [&_.uppercase]:tracking-normal";
 
-/** Source picking and transport stay the same in the patch and inspector. */
+/** Loaded sources show their settings; empty sources keep their picker. */
 function SourceInspectorParams({
   node,
   store,
@@ -251,7 +251,7 @@ function SourceInspectorParams({
   const tracklist = sourceTracklist(node);
   return (
     <>
-      {content}
+      {node.type === "deviceIn" || !hasSource ? content : null}
       {hasSource ? (
         <NodeSourceStripPanel
           node={node}

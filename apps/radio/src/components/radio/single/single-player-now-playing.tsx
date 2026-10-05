@@ -35,7 +35,7 @@ export function MobileNowPlayingPanel({
   }
 
   return (
-    <div className="relative shrink-0 border-border/50 border-b px-5 py-5 lg:hidden">
+    <div className="relative shrink-0 border-border/50 border-b px-4 py-4 sm:px-5 sm:py-5 lg:hidden [@media(max-height:600px)]:py-3 sm:[@media(max-height:600px)]:w-1/2 sm:[@media(max-height:600px)]:overflow-y-auto sm:[@media(max-height:600px)]:border-r sm:[@media(max-height:600px)]:border-b-0">
       <PlayerPanel {...playerProps} radio={radio} />
     </div>
   );
@@ -63,8 +63,7 @@ function PlayerPanel({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
-      {actions ? <div className="absolute top-3 right-3">{actions}</div> : null}
+    <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-5">
       <RadioNowPlaying
         isLoading={isLoading}
         metadata={metadata}
@@ -74,7 +73,7 @@ function PlayerPanel({
 
       {error?.trim() ? <InlineError>{error}</InlineError> : null}
 
-      <div className="flex items-center gap-4 border-border/50 border-t pt-4">
+      <div className="flex items-center gap-3 border-border/50 border-t pt-3 sm:gap-4 sm:pt-4">
         <PlayPauseButton
           className="size-12 shrink-0"
           iconClassName="size-5"
@@ -92,6 +91,11 @@ function PlayerPanel({
           onVolumeChange={onVolumeChange}
           volume={volume}
         />
+        {actions ? (
+          <div className="shrink-0 lg:absolute lg:top-3 lg:right-3">
+            {actions}
+          </div>
+        ) : null}
       </div>
     </div>
   );

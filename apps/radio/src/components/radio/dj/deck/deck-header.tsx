@@ -28,8 +28,8 @@ type DeckMenuProps = {
 };
 
 /**
- * The deck's options. Desktop shows it in the header row; phones place it in
- * the flow of the deck's first card so it scrolls with the deck.
+ * Desktop options sit in the header; the tabbed layout places them in the
+ * deck's first card so they scroll with the deck.
  */
 export function DeckMenu({ deckId, radio, onReset, className }: DeckMenuProps) {
   const label = deckId === "deck-a" ? "A" : "B";
@@ -113,7 +113,7 @@ export function DeckHeader({
   return (
     <div
       className={cn(
-        "hidden items-center gap-2 px-3 py-1.5 md:flex",
+        "hidden items-center gap-2 px-3 py-1.5 lg:flex",
         isRight && "flex-row-reverse",
         className
       )}

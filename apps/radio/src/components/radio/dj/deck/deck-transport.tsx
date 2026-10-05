@@ -95,6 +95,10 @@ function TransportToggles({
   setAutoplay: (autoplay: boolean) => void;
   setRepeat: (repeat: boolean) => void;
 }) {
+  if (!(isSeekable || hasTracklist)) {
+    return null;
+  }
+
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       {isSeekable ? (
@@ -197,19 +201,20 @@ export function DeckTransport({
           />
         )}
 
-        {liveTime === null ? null : (
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
-            {formatTime(liveTime)}
-          </span>
-        )}
-
-        <TransportPlayButton
-          isBuffering={isBuffering}
-          isLoading={isLoading}
-          isPlaying={isPlaying}
-          label={deckId === "deck-a" ? "deck A" : "deck B"}
-          onPlayPause={handlePlayPause}
-        />
+        <div className="flex shrink-0 flex-col-reverse items-center gap-1 lg:flex-row lg:gap-2.5">
+          {liveTime === null ? null : (
+            <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+              {formatTime(liveTime)}
+            </span>
+          )}
+          <TransportPlayButton
+            isBuffering={isBuffering}
+            isLoading={isLoading}
+            isPlaying={isPlaying}
+            label={deckId === "deck-a" ? "deck A" : "deck B"}
+            onPlayPause={handlePlayPause}
+          />
+        </div>
 
         {/* Repeat / Autoplay toggles */}
         <TransportToggles
@@ -235,7 +240,7 @@ export function DeckTransport({
         )}
 
         <DeckMenu
-          className="md:hidden"
+          className="lg:hidden"
           deckId={deckId}
           onReset={reset}
           radio={radio}

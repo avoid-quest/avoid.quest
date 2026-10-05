@@ -116,6 +116,7 @@ const nts = {
 };
 
 const REPICK_ROW = /Pick the file again/;
+const BULK_TRANSPORT = /^(Play|Pause) all/;
 
 function renderStage() {
   const controls = {
@@ -143,12 +144,13 @@ describe("NodeStage", () => {
     );
     const { controls, view } = renderStage();
 
-    await waitFor(() =>
-      expect(view.getByRole("button", { name: "Play all (2)" })).toBeTruthy()
+    const sources = await waitFor(() =>
+      view.getByRole("list", { name: "Sources" })
     );
     expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Mute all" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: BULK_TRANSPORT })).toBeNull();
 
-    const sources = view.getByRole("list", { name: "Sources" });
     expect(within(sources).getAllByRole("listitem")).toHaveLength(2);
     for (const radio of [kexp, nts]) {
       const nodeId = `src-${radio.id}`;
@@ -165,7 +167,7 @@ describe("NodeStage", () => {
     }
   });
 
-  test("counts playing sources on the master", async () => {
+  test("keeps individual pause and the master meter while a source plays", async () => {
     playbackSessionsCollection.insert(
       buildNodeSessionFromTemplate("start-from-multiple", {
         session: [kexp, nts],
@@ -174,10 +176,12 @@ describe("NodeStage", () => {
     setPlaybackChannelRuntime("n:src-nts", () => ({ isPlaying: true }));
     const { controls, view } = renderStage();
 
-    await waitFor(() =>
-      expect(view.getByRole("button", { name: "Pause all (1)" })).toBeTruthy()
+    const pause = await waitFor(() =>
+      view.getByRole("button", { name: "Pause NTS 1" })
     );
-    fireEvent.click(view.getByRole("button", { name: "Pause NTS 1" }));
+    expect(view.getByTitle("Master level")).toBeTruthy();
+    expect(view.queryByRole("button", { name: BULK_TRANSPORT })).toBeNull();
+    fireEvent.click(pause);
     expect(controls.setPlaying).toHaveBeenLastCalledWith("src-nts", false);
   });
 
@@ -295,7 +299,8 @@ describe("NodeStage", () => {
     await waitFor(() =>
       expect(view.getByText("Search to add a station")).toBeTruthy()
     );
-    expect(view.getByRole("button", { name: "Play all (0)" })).toBeTruthy();
+    expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: BULK_TRANSPORT })).toBeNull();
   });
 
   test("a File to pick again after a reload shows, and opens its File", async () => {

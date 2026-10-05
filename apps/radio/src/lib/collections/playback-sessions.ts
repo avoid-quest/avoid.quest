@@ -844,8 +844,7 @@ export async function hydrateNodeGraphNamModels(
   );
 }
 
-async function externalizeStoredNamModels(): Promise<void> {
-  await hydrateGraphNamModels();
+function externalizeStoredNamModels() {
   const channels = [...playbackSessionsCollection.state.values()].flatMap(
     (session) =>
       // A retired record left for a later migration run cannot be updated.
@@ -857,24 +856,27 @@ async function externalizeStoredNamModels(): Promise<void> {
           }))
         : []
   );
-  const updates = await Promise.all(
+  return Promise.all(
     channels.map(async ({ channel, sessionId }) => {
       const effects = await externalizeChannelNamModels(channel.effects);
       return { channel, effects, sessionId };
     })
   );
-  await persistSessionPreparation(() => {
-    for (const { channel, effects, sessionId } of updates) {
-      if (effects.some((effect, index) => effect !== channel.effects[index])) {
-        if (sessionId === "node") {
-          holdNodeNamModels(collectLocalNamModelIds(effects));
-        }
-        updatePlaybackChannel(sessionId, channel.id, (draft) => {
-          draft.effects = effects;
-        });
+}
+
+function applyStoredNamModels(
+  updates: Awaited<ReturnType<typeof externalizeStoredNamModels>>
+): void {
+  for (const { channel, effects, sessionId } of updates) {
+    if (effects.some((effect, index) => effect !== channel.effects[index])) {
+      if (sessionId === "node") {
+        holdNodeNamModels(collectLocalNamModelIds(effects));
       }
+      updatePlaybackChannel(sessionId, channel.id, (draft) => {
+        draft.effects = effects;
+      });
     }
-  });
+  }
 }
 
 /** Persist each preparation step as one storage write, or roll all its rows back. */
@@ -933,10 +935,15 @@ export async function initializePlaybackSessions(): Promise<void> {
   const discardedModelIds = shouldRestore
     ? []
     : [...collectReferencedNamModelIds()];
+  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
+  // Move inline bytes to IndexedDB before a write that adds sessions or grows
+  // a migrated graph. Persist their removal with that write so quota can recover.
+  const modelUpdates = shouldRestore ? await externalizeStoredNamModels() : [];
   await persistSessionPreparation(() => {
     migrateMultipleSession(legacyCollections);
     // Upgrade stored v1 graphs before any validated session update.
     migrateNodeGraphSession(playbackSessionsCollection);
+    applyStoredNamModels(modelUpdates);
     if (!shouldRestore) {
       upsertSession(buildSingleSessionFromLegacyState());
       // Playback starts paused; disabling restoration must not erase a patch.
@@ -977,9 +984,8 @@ export async function initializePlaybackSessions(): Promise<void> {
   // Only committed preparation can release models or declare the page ready.
   holdNodeNamModels(collectSessionNamModelIds(getPlaybackSession("node")));
   scheduleNamModelCleanup(discardedModelIds);
-  stopWatchingLegacyWrites ??= watchLegacyMultipleWrites(legacyCollections);
   if (shouldRestore) {
-    await externalizeStoredNamModels();
+    await hydrateGraphNamModels();
   }
   restoreNodeSessionRadios();
 }

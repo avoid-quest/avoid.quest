@@ -12,6 +12,7 @@ const scenarios = [
   "restore",
   "reset-on-boot",
   "legacy-during-model-load",
+  "quota-inline-model",
 ] as const;
 const scenario = process.env.AVOID_QUEST_MODE_BOOT_SCENARIO;
 
@@ -59,7 +60,9 @@ if (scenario) {
   test(scenario, async () => {
     await settings.initializeSettings();
     settings.setRestoreStateOnLoad(
-      scenario === "restore" || scenario === "legacy-during-model-load"
+      scenario === "restore" ||
+        scenario === "legacy-during-model-load" ||
+        scenario === "quota-inline-model"
     );
     await sessions.playbackSessionsCollection.stateWhenReady();
 
@@ -85,6 +88,53 @@ if (scenario) {
       [...sessions.playbackSessionsCollection.state.values()].map(
         sessions.parsePlaybackSessionRecord
       );
+
+    if (scenario === "quota-inline-model") {
+      if (effect.type !== "neuralAmp") {
+        throw new Error("Expected neural amp config");
+      }
+      effect.modelData = JSON.stringify({ model: "x".repeat(10_000) });
+      await sessions.playbackSessionsCollection.insert(seedSingle).isPersisted
+        .promise;
+      const stored = localStorage.getItem(
+        sessions.PLAYBACK_SESSIONS_STORAGE_KEY
+      );
+      if (!stored) {
+        throw new Error("Missing seeded session");
+      }
+      const quota = stored.length + 64;
+      const { setItem } = dom.window.Storage.prototype;
+      const write = spyOn(
+        dom.window.Storage.prototype,
+        "setItem"
+      ).mockImplementation(function (
+        this: Storage,
+        key: string,
+        value: string
+      ) {
+        if (
+          key === sessions.PLAYBACK_SESSIONS_STORAGE_KEY &&
+          value.length > quota
+        ) {
+          throw new Error("storage quota exceeded");
+        }
+        setItem.call(this, key, value);
+      });
+      try {
+        await loadSingleRadio();
+        expect(sessions.playbackSessionsCollection.state.size).toBe(3);
+        expect(
+          sessions.getPlaybackSession("single")?.channels[0].effects[0]
+        ).toMatchObject({
+          modelData: null,
+          modelId,
+        });
+        expect(getCachedNamModel(modelId)).toBe(effect.modelData);
+      } finally {
+        write.mockRestore();
+      }
+      return;
+    }
 
     if (scenario === "legacy-during-model-load") {
       if (effect.type !== "neuralAmp") {

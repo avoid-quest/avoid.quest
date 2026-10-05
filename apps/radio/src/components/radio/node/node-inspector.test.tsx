@@ -392,11 +392,7 @@ describe("NodeInspector", () => {
       ).toBeTruthy();
     });
     checkSettings("Output device", () =>
-      expect(
-        view.getByText(
-          "Pick the output to play on"
-        )
-      ).toBeTruthy()
+      expect(view.getByText("Pick the output to play on")).toBeTruthy()
     );
     checkSettings("Speakers", () =>
       expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy()

@@ -60,7 +60,9 @@ describe("resolveShortLink", () => {
   test("rejects non-short-link hosts before fetch", async () => {
     const fetchImpl = mock(async () => new Response(null));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = fetchImpl as typeof fetch;
+    globalThis.fetch = Object.assign(fetchImpl, {
+      preconnect: mock(() => undefined),
+    });
 
     try {
       await expect(

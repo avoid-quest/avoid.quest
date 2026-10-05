@@ -27,6 +27,7 @@
       },
       "devDependencies": {
         "@avoid.quest/config": "workspace:*",
+        "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "tsup": "^8.5.1",
         "tsx": "^4.23.15",
@@ -127,6 +128,12 @@
       "dependencies": {
         "@sentry/tanstackstart-react": "^11.2.0",
       },
+      "devDependencies": {
+        "@avoid.quest/config": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "typescript": "catalog:",
+      },
     },
     "packages/platforms": {
       "name": "@avoid.quest/platforms",
@@ -137,6 +144,7 @@
       },
       "devDependencies": {
         "@avoid.quest/config": "workspace:*",
+        "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "typescript": "catalog:",
       },

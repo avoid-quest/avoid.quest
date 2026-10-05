@@ -41,7 +41,7 @@ describe("parseSpotifyRef", () => {
     [`spotify:track:${TRACK_ID}`, "track", TRACK_ID],
     [`  spotify:album:${ALBUM_ID}  `, "album", ALBUM_ID],
     [`spotify:user:spotify:playlist:${PLAYLIST_ID}`, "playlist", PLAYLIST_ID],
-  ])("parses %s", (url, type, id) => {
+  ] as const)("parses %s", (url, type, id) => {
     expect(parseSpotifyRef(url)).toEqual({ id, type });
   });
 

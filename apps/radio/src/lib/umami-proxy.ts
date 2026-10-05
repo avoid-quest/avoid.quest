@@ -55,6 +55,53 @@ async function readEventBody(request: Request): Promise<ArrayBuffer | null> {
   return body.buffer;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function addVisitorIp(body: ArrayBuffer, clientIp: string | null) {
+  try {
+    const event: unknown = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(body)
+    );
+    if (!(isRecord(event) && isRecord(event.payload))) {
+      return null;
+    }
+    // Umami's built-in payload.ip takes priority over rewritten CDN headers.
+    // Replace client-supplied IPs; without Cloudflare's header, use its fallback.
+    return new TextEncoder().encode(
+      JSON.stringify({
+        ...event,
+        payload: { ...event.payload, ip: clientIp || undefined },
+      })
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function prepareEventBody(
+  request: Request
+): Promise<ArrayBuffer | Response> {
+  const rawBody = await readEventBody(request);
+  if (rawBody !== null) {
+    const body = addVisitorIp(rawBody, request.headers.get("CF-Connecting-IP"));
+    if (body === null) {
+      return new Response("Invalid event", {
+        headers: { "Cache-Control": "no-store" },
+        status: 400,
+      });
+    }
+    if (body.byteLength <= MAX_UMAMI_EVENT_BYTES) {
+      return body.buffer;
+    }
+  }
+  return new Response("Event too large", {
+    headers: { "Cache-Control": "no-store" },
+    status: 413,
+  });
+}
+
 export async function handleUmamiRequest(
   request: Request,
   fetchImpl: FetchLike = fetch
@@ -81,20 +128,10 @@ export async function handleUmamiRequest(
     }
   }
 
-  // Cross-zone fetch rewrites standard IP headers. Umami must be configured
-  // with CLIENT_IP_HEADER=x-radio-client-ip; never copy browser-forwarded IPs.
-  const clientIp = request.headers.get("CF-Connecting-IP");
-  if (clientIp) {
-    headers.set("x-radio-client-ip", clientIp);
-  }
-
   try {
-    const body = isScript ? undefined : await readEventBody(request);
-    if (body === null) {
-      return new Response("Event too large", {
-        headers: { "Cache-Control": "no-store" },
-        status: 413,
-      });
+    const body = isScript ? undefined : await prepareEventBody(request);
+    if (body instanceof Response) {
+      return body;
     }
     const upstream = await fetchImpl(
       `${UMAMI_ORIGIN}${isScript ? "/script.js" : "/api/send"}`,

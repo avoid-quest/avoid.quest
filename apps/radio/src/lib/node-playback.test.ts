@@ -7,8 +7,10 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { makeSentryOptions } from "@avoid.quest/error";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporter
 import * as Sentry from "@sentry/core";
+import { close, flush, init } from "@sentry/tanstackstart-react";
 import { Store } from "@tanstack/react-store";
 import { toast } from "sonner";
 import {
@@ -52,6 +54,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 import { getSettings, settingsCollection } from "@/lib/collections/settings";
 import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
+import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { compile } from "@/lib/node-graph/compile";
@@ -4565,6 +4568,33 @@ describe("Node Playback: Track and File sources", () => {
     expect(harness.context.reportError).toHaveBeenCalledTimes(1);
   });
 
+  test("pausing a pending YouTube start suppresses its later abort", async () => {
+    insertNodeSession(patch([trackNode("video")]));
+    const resolveStream = mock(async () => null);
+    const harness = createHarness({ resolveStream });
+    let rejectStart: (error: Error) => void = () => undefined;
+    harness.context.audio.playSound = mock(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectStart = reject;
+        })
+    );
+    await harness.playback.activate();
+
+    const starting = harness.playback.setPlaying("video", true);
+    await harness.playback.setPlaying("video", false);
+    rejectStart(new DOMException("Load aborted", "AbortError"));
+    await starting;
+
+    expect(getPlaybackChannelRuntime(channelOf("video"))).toMatchObject({
+      error: null,
+      isLoading: false,
+      isPlaying: false,
+    });
+    expect(resolveStream).not.toHaveBeenCalled();
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
   test("an expired YouTube stream is renewed and resumes where it stopped", async () => {
     insertNodeSession(patch([trackNode("video")]));
     const resolveStream = mock(async () => ({
@@ -4608,6 +4638,124 @@ describe("Node Playback: Track and File sources", () => {
     );
     expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
   });
+
+  test.each(["recovered", "failed", "aborted", "resolution-rejected"] as const)(
+    "a YouTube start that %s publishes only the final error and sends terminal failures through the SDK",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const harness = createHarness({
+        resolveStream: async (input) => {
+          if (outcome === "resolution-rejected") {
+            return await resolveDjPlatformStreamUrl(input, {
+              getYouTubeClient: () => {
+                throw new Error("YouTube provider unavailable");
+              },
+            });
+          }
+          return outcome === "recovered"
+            ? {
+                streamFormat: "progressive",
+                streamUrl: "https://media.example/renewed.m4a",
+              }
+            : null;
+        },
+      });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      harness.context.reportError = capturePlaybackActionError;
+      const events: Sentry.Event[] = [];
+      init({
+        ...makeSentryOptions({
+          dsn: "http://key@localhost/42",
+          environment: "test",
+          release: "radio@test",
+        }),
+        transport: () => ({
+          flush: () => Promise.resolve(true),
+          send: (envelope: Sentry.Envelope) => {
+            for (const [header, event] of envelope[1]) {
+              if (header.type === "event") {
+                events.push(event as Sentry.Event);
+              }
+            }
+            return Promise.resolve({ statusCode: 200 });
+          },
+        }),
+      });
+      let publish = (_state: AudioState) => undefined;
+      harness.context.audio.subscribe = mock((_id, listener) => {
+        publish = listener;
+        return () => undefined;
+      });
+      const manager = spyOn(AudioManager, "getInstance").mockReturnValue(
+        harness.context.audio
+      );
+      try {
+        subscribeChannelRuntime("node", channelOf("video"), soundOf("video"), {
+          onAudioState: laneWatcher(harness.context, "video"),
+        });
+        const callbacks = createPlaybackSourceCallbacks({
+          instance: {
+            buffering: false,
+            loading: true,
+            playing: true,
+            radio: getPlaybackChannel("node", channelOf("video"))?.radio,
+            volume: 1,
+          } as SoundInstance,
+          notifyListeners: (_id, state) => publish(state),
+          soundId: soundOf("video"),
+        });
+        (
+          harness.context.audio.playSound as ReturnType<typeof mock>
+        ).mockImplementationOnce(() => {
+          const failure =
+            outcome === "aborted"
+              ? new DOMException("Playback unexpectedly aborted", "AbortError")
+              : new Error("Expired YouTube stream");
+          callbacks.onError?.(failure);
+          expect(
+            getPlaybackChannelRuntime(channelOf("video")).error
+          ).toBeNull();
+          return Promise.reject(failure);
+        });
+
+        await harness.playback.setPlaying("video", true);
+        await harness.playback.whenSettled();
+        await flush(2000);
+
+        expect(events).toHaveLength(outcome === "recovered" ? 0 : 1);
+        expect(getPlaybackChannelRuntime(channelOf("video"))).toMatchObject({
+          error: outcome === "recovered" ? null : expect.any(Object),
+          isBuffering: false,
+          isLoading: false,
+          isPlaying: outcome === "recovered",
+        });
+        if (outcome !== "recovered") {
+          expect(events[0]?.tags).toMatchObject({
+            error_code: "PLAY_ERROR",
+            mode: "node",
+            operation: "playback",
+          });
+          if (outcome === "aborted") {
+            expect(events[0]?.exception?.values?.at(-1)).toMatchObject({
+              type: "AbortError",
+              value: "Playback unexpectedly aborted",
+            });
+          }
+          if (outcome === "resolution-rejected") {
+            expect(events[0]?.exception?.values?.at(-1)).toMatchObject({
+              type: "Error",
+              value: "YouTube provider unavailable",
+            });
+          }
+        }
+      } finally {
+        manager.mockRestore();
+        await close();
+        Sentry.getCurrentScope().setClient(undefined);
+      }
+    }
+  );
 
   test.each(["success", "unresolved", "failed", "load-failed"] as const)(
     "production Node callbacks defer interruption reporting until renewal is %s",

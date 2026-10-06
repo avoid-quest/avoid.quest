@@ -14,6 +14,7 @@ import type { SoundInstance } from "./audio-manager-types.js";
 
 type ConnectAudioGraphParams = {
   instance: SoundInstance;
+  isCurrent?: () => boolean;
   connectMainOutput: (source: AudioNode, realtime: boolean) => () => void;
   notifyListeners: NotifySoundListeners;
   connectEffectsGraph: (
@@ -113,6 +114,7 @@ function attachWorkletManagerListeners({
 
 async function connectAudioGraph({
   instance,
+  isCurrent = () => true,
   connectMainOutput,
   notifyListeners,
   connectEffectsGraph,
@@ -152,14 +154,17 @@ async function connectAudioGraph({
   instance.mainOutputCleanup = connectMainOutput(gain, instance.isDeviceInput);
 
   const inputChannels = instance.deviceSource?.outputChannelCount ?? 2;
-  if (
-    await connectEffectsGraph(
-      instance.sourceId,
-      filter,
-      panAfterEffects ? pan : preFaderSend,
-      inputChannels
-    )
-  ) {
+  const connected = await connectEffectsGraph(
+    instance.sourceId,
+    filter,
+    panAfterEffects ? pan : preFaderSend,
+    inputChannels
+  );
+  // Canceled setup is complete; it must not add a bypass or publish an error.
+  if (!isCurrent()) {
+    return true;
+  }
+  if (connected) {
     return true;
   }
 

@@ -127,14 +127,10 @@ export async function resolveDjPlatformStreamUrl(
 ): Promise<PlatformStreamResolution | null> {
   switch (input.platform) {
     case "youtube": {
-      try {
-        const streamUrl = await (
-          dependencies.getYouTubeClient ?? getYouTubeClient
-        )().resolveStream(input.videoId);
-        return resolvedStream(streamUrl);
-      } catch {
-        return null;
-      }
+      const streamUrl = await (
+        dependencies.getYouTubeClient ?? getYouTubeClient
+      )().resolveStream(input.videoId);
+      return resolvedStream(streamUrl);
     }
     case "spotify":
       return await resolveSpotifyStream(

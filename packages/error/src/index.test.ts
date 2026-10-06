@@ -369,15 +369,31 @@ describe("handled playback and transport policy", () => {
     expect(captureException).toHaveBeenCalledTimes(1);
   });
 
-  test("only actual cancellation is quiet; recovery failures mentioning cancellation report", () => {
+  test("caller classification distinguishes cancellation from an unexpected abort", () => {
     const abort = new DOMException("The operation was aborted.", "AbortError");
     expect(isAbortPlaybackError(abort)).toBe(true);
-    capturePlaybackError(abort, {
+    const payload = {
       errorCode: "PLAY_ERROR",
       errorMessage: abort.message,
-      mode: "single",
-    });
+      mode: "single" as const,
+    };
+    capturePlaybackError(
+      new AppError({
+        category: "cancellation",
+        cause: abort,
+        code: "PLAY_CANCELED",
+        safeMessage: "Playback canceled",
+      }),
+      payload
+    );
     expect(captureException).not.toHaveBeenCalled();
+
+    capturePlaybackError(abort, payload);
+    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(capturedScope?.tags).toMatchObject({
+      error_category: "playback",
+      error_expected: "false",
+    });
     const recovery = new Error(
       "Recovery failed after the operation was aborted"
     );
@@ -387,7 +403,7 @@ describe("handled playback and transport policy", () => {
       errorMessage: recovery.message,
       mode: "single",
     });
-    expect(captureException).toHaveBeenCalledTimes(1);
+    expect(captureException).toHaveBeenCalledTimes(2);
   });
 
   test("attaches caller-owned diagnostic context", () => {

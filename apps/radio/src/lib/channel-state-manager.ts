@@ -282,13 +282,16 @@ export function subscribeChannelRuntime(
   const cleanup = manager.subscribe(soundId, (audioState) => {
     const channel = getPlaybackChannel(sessionId, channelId);
     setPlaybackChannelRuntime(channelId, () => ({
-      error: audioState.error
-        ? toRuntimeAudioError(
-            audioState.error,
-            audioState.error.code,
-            channel?.radio ?? undefined
-          )
-        : null,
+      // The start action owns its failure and possible URL renewal. Publish
+      // its terminal error only after that action has exhausted recovery.
+      error:
+        audioState.error && !audioState.error.duringStart
+          ? toRuntimeAudioError(
+              audioState.error,
+              audioState.error.code,
+              channel?.radio ?? undefined
+            )
+          : null,
       isBuffering: audioState.isBuffering,
       isLoading: audioState.isLoading,
       isPlaying: audioState.isPlaying,

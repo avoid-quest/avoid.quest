@@ -13,15 +13,22 @@ type SourceCallbackParams = {
   instance: SoundInstance;
   soundId: string;
   notifyListeners: NotifySoundListeners;
+  isCurrent?: () => boolean;
+  isStarting?: () => boolean;
 };
 
 function createPlaybackSourceCallbacks({
   instance,
   soundId,
   notifyListeners,
+  isCurrent = () => true,
+  isStarting = () => instance.loading,
 }: SourceCallbackParams): PlaybackSourceCallbacks {
   return {
     onBuffering: (isBuffering) => {
+      if (!isCurrent()) {
+        return;
+      }
       instance.buffering = isBuffering;
       notifySoundState(notifyListeners, soundId, instance, {
         error: null,
@@ -29,6 +36,9 @@ function createPlaybackSourceCallbacks({
       });
     },
     onEnded: () => {
+      if (!isCurrent()) {
+        return;
+      }
       instance.playing = false;
       notifySoundState(notifyListeners, soundId, instance, {
         hasEnded: true,
@@ -36,7 +46,10 @@ function createPlaybackSourceCallbacks({
       });
     },
     onError: (error, recoveryPending) => {
-      const duringStart = instance.loading;
+      if (!isCurrent()) {
+        return;
+      }
+      const duringStart = isStarting();
       instance.playing = false;
       instance.loading = false;
       notifySoundError(
@@ -49,6 +62,9 @@ function createPlaybackSourceCallbacks({
       );
     },
     onPaused: () => {
+      if (!isCurrent()) {
+        return;
+      }
       instance.playing = false;
       instance.buffering = false;
       notifySoundState(notifyListeners, soundId, instance, {
@@ -57,6 +73,9 @@ function createPlaybackSourceCallbacks({
       });
     },
     onPlaying: () => {
+      if (!isCurrent()) {
+        return;
+      }
       instance.loading = false;
       instance.buffering = false;
       instance.playing = true;
@@ -66,6 +85,9 @@ function createPlaybackSourceCallbacks({
       });
     },
     onStreamError: (position, error) => {
+      if (!isCurrent()) {
+        return;
+      }
       notifySoundError(
         notifyListeners,
         soundId,

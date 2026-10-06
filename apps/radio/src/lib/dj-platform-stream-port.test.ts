@@ -68,7 +68,7 @@ describe("DJ platform stream port", () => {
     expect(resolveStream).toHaveBeenCalledWith("abcdefghijk");
   });
 
-  test("fails closed when client initialization or provider resolution fails", async () => {
+  test("preserves YouTube failures for the owning caller to report", async () => {
     const input = {
       platform: "youtube" as const,
       radio,
@@ -76,19 +76,21 @@ describe("DJ platform stream port", () => {
       videoId: "abcdefghijk",
     };
 
+    const clientFailure = new Error("YouTube client unavailable");
+    const providerFailure = new Error("Provider failed");
     await expect(
       resolveDjPlatformStreamUrl(input, {
         getYouTubeClient: () => {
-          throw new Error("YouTube client unavailable");
+          throw clientFailure;
         },
       })
-    ).resolves.toBeNull();
+    ).rejects.toBe(clientFailure);
     await expect(
       resolveDjPlatformStreamUrl(input, {
         getYouTubeClient: () =>
-          youtubeClient(() => Promise.reject(new Error("Provider failed"))),
+          youtubeClient(() => Promise.reject(providerFailure)),
       })
-    ).resolves.toBeNull();
+    ).rejects.toBe(providerFailure);
   });
 
   test("matches a lazy Spotify track on YouTube and reports the upload", async () => {

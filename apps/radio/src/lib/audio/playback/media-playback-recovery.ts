@@ -65,6 +65,9 @@ export class MediaPlaybackRecovery {
 
   failed(error: Error): void {
     const state = this.actions.getSnapshot();
+    if (state.status === "error") {
+      return;
+    }
     if (!(state.shouldResume && state.input)) {
       this.terminal(error);
       return;
@@ -87,7 +90,7 @@ export class MediaPlaybackRecovery {
 
   offline(): void {
     const state = this.actions.getSnapshot();
-    if (!(state.shouldResume && state.input)) {
+    if (state.status === "error" || !(state.shouldResume && state.input)) {
       return;
     }
 
@@ -116,7 +119,7 @@ export class MediaPlaybackRecovery {
 
   playing(): boolean {
     const state = this.actions.getSnapshot();
-    if (!(state.shouldResume && state.input)) {
+    if (state.status === "error" || !(state.shouldResume && state.input)) {
       return false;
     }
     this.timer.markRecovered();
@@ -126,7 +129,11 @@ export class MediaPlaybackRecovery {
 
   stalled(): void {
     const state = this.actions.getSnapshot();
-    if (state.status === "idle" || state.status === "ended") {
+    if (
+      state.status === "idle" ||
+      state.status === "ended" ||
+      state.status === "error"
+    ) {
       return;
     }
 
@@ -138,7 +145,11 @@ export class MediaPlaybackRecovery {
 
   waiting(): void {
     const state = this.actions.getSnapshot();
-    if (state.status === "idle" || state.status === "ended") {
+    if (
+      state.status === "idle" ||
+      state.status === "ended" ||
+      state.status === "error"
+    ) {
       return;
     }
     this.actions.setState("buffering", true);
@@ -147,7 +158,7 @@ export class MediaPlaybackRecovery {
 
   watch(error: Error, markBuffering = true): void {
     const state = this.actions.getSnapshot();
-    if (!(state.shouldResume && state.input)) {
+    if (state.status === "error" || !(state.shouldResume && state.input)) {
       return;
     }
 

@@ -1,216 +1,11 @@
 import { afterEach, describe, expect, jest, mock, test } from "bun:test";
+import { type FakeAudioElement, installBrowser } from "./fake-media-browser";
 import { MediaElementPlaybackSource } from "./media-element-playback-source.js";
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
-}
-
-class FakeAudioElement {
-  autoplay = false;
-  crossOrigin: string | null = null;
-  currentTime = 0;
-  duration = Number.POSITIVE_INFINITY;
-  ended = false;
-  error: MediaError | null = null;
-  muted = false;
-  paused = true;
-  playbackRate = 1;
-  defaultPlaybackRate = 1;
-  preservesPitch = true;
-  preload = "";
-  readyState = 0;
-  volume = 1;
-  nativeHlsSupport = "";
-  readonly loadSources: string[] = [];
-  #src = "";
-  readonly #listeners = new Map<
-    string,
-    Set<{ listener: EventListener; once: boolean }>
-  >();
-
-  get src(): string {
-    return this.#src;
-  }
-
-  set src(value: string) {
-    this.#src = value;
-    this.loadSources.push(value);
-  }
-
-  addEventListener(
-    type: string,
-    listener: EventListener,
-    options?: AddEventListenerOptions | boolean
-  ): void {
-    const listeners = this.#listeners.get(type) ?? new Set();
-    listeners.add({
-      listener,
-      once: typeof options === "object" && options.once === true,
-    });
-    this.#listeners.set(type, listeners);
-  }
-
-  canPlayType(type: string): string {
-    return type === "application/vnd.apple.mpegurl"
-      ? this.nativeHlsSupport
-      : "";
-  }
-
-  emit(type: string): void {
-    if (type === "canplay" || type === "playing") {
-      this.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
-      this.ended = false;
-    } else if (type === "waiting" || type === "stalled") {
-      this.readyState = HTMLMediaElement.HAVE_CURRENT_DATA;
-    }
-    const event = new Event(type);
-    for (const entry of [...(this.#listeners.get(type) ?? [])]) {
-      entry.listener.call(this, event);
-      if (entry.once) {
-        this.#listeners.get(type)?.delete(entry);
-      }
-    }
-  }
-
-  load(): void {
-    // Tests drive readiness explicitly.
-  }
-
-  pause(): void {
-    this.paused = true;
-    this.emit("pause");
-  }
-
-  play(): Promise<void> {
-    this.paused = false;
-    return Promise.resolve();
-  }
-
-  removeAttribute(name: string): void {
-    if (name === "src") {
-      this.#src = "";
-    }
-  }
-
-  removeEventListener(type: string, listener: EventListener): void {
-    const listeners = this.#listeners.get(type);
-    if (!listeners) {
-      return;
-    }
-    for (const entry of listeners) {
-      if (entry.listener === listener) {
-        listeners.delete(entry);
-      }
-    }
-  }
-
-  setAttribute(): void {
-    // Attribute values are not relevant to these tests.
-  }
-}
-
-type InstalledBrowser = {
-  audio: () => FakeAudioElement;
-  dispatchNetworkEvent: (type: "offline" | "online") => void;
-  restore: () => void;
-};
-
-function installBrowser(): InstalledBrowser {
-  const descriptors = new Map(
-    ["Audio", "HTMLMediaElement", "MediaError", "navigator"].map((name) => [
-      name,
-      Object.getOwnPropertyDescriptor(globalThis, name),
-    ])
-  );
-  const originalAddEventListener = globalThis.addEventListener;
-  const originalRemoveEventListener = globalThis.removeEventListener;
-  const networkListeners = new Map<
-    string,
-    Set<EventListenerOrEventListenerObject>
-  >();
-  let audio: FakeAudioElement | null = null;
-
-  Object.defineProperties(globalThis, {
-    Audio: {
-      configurable: true,
-      value: class extends FakeAudioElement {
-        constructor() {
-          super();
-          audio = this;
-        }
-      },
-    },
-    HTMLMediaElement: {
-      configurable: true,
-      value: {
-        HAVE_CURRENT_DATA: 2,
-        HAVE_ENOUGH_DATA: 4,
-        HAVE_FUTURE_DATA: 3,
-        HAVE_METADATA: 1,
-        HAVE_NOTHING: 0,
-      },
-    },
-    MediaError: {
-      configurable: true,
-      value: {
-        MEDIA_ERR_ABORTED: 1,
-        MEDIA_ERR_DECODE: 3,
-        MEDIA_ERR_NETWORK: 2,
-        MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
-      },
-    },
-    navigator: { configurable: true, value: { onLine: true } },
-  });
-  globalThis.addEventListener = (
-    type: string,
-    listener: EventListenerOrEventListenerObject
-  ) => {
-    const listeners = networkListeners.get(type) ?? new Set();
-    listeners.add(listener);
-    networkListeners.set(type, listeners);
-  };
-  globalThis.removeEventListener = (
-    type: string,
-    listener: EventListenerOrEventListenerObject
-  ) => {
-    networkListeners.get(type)?.delete(listener);
-  };
-
-  return {
-    audio: () => {
-      if (!audio) {
-        throw new Error("Audio element was not created");
-      }
-      return audio;
-    },
-    dispatchNetworkEvent: (type) => {
-      Object.defineProperty(globalThis.navigator, "onLine", {
-        configurable: true,
-        value: type === "online",
-      });
-      const event = new Event(type);
-      for (const listener of networkListeners.get(type) ?? []) {
-        if (typeof listener === "function") {
-          listener.call(globalThis, event);
-        } else {
-          listener.handleEvent(event);
-        }
-      }
-    },
-    restore: () => {
-      globalThis.addEventListener = originalAddEventListener;
-      globalThis.removeEventListener = originalRemoveEventListener;
-      for (const [name, descriptor] of descriptors) {
-        if (descriptor) {
-          Object.defineProperty(globalThis, name, descriptor);
-        } else {
-          Reflect.deleteProperty(globalThis, name);
-        }
-      }
-    },
-  };
 }
 
 async function startNativeStream(
@@ -311,6 +106,53 @@ afterEach(() => {
 });
 
 describe("MediaElementPlaybackSource native playback", () => {
+  test("a failed start stays stopped when late media events arrive", async () => {
+    const browser = installBrowser();
+    const onPlaying = mock(() => undefined);
+    const onError = mock(() => undefined);
+    const onBuffering = mock(() => undefined);
+    const source = new MediaElementPlaybackSource(null, "youtube", {
+      onBuffering,
+      onError,
+      onPlaying,
+    });
+    try {
+      const audio = browser.audio();
+      const loading = source.load({
+        format: "progressive",
+        src: "https://media.example/expired.webm",
+      });
+      const playing = source.play();
+      const rejected = Promise.all([
+        loading.catch((error: unknown) => error),
+        playing.catch((error: unknown) => error),
+      ]);
+      await flushMicrotasks();
+      audio.emit("waiting");
+      expect(source.isBuffering).toBe(true);
+      audio.error = { code: 2 } as MediaError;
+      audio.emit("error");
+      for (const error of await rejected) {
+        expect(error).toHaveProperty("message", "Audio stream failed to load");
+      }
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      audio.emit("waiting");
+      audio.emit("stalled");
+      audio.emit("playing");
+
+      expect(source.status).toBe("error");
+      expect(source.isBuffering).toBe(false);
+      expect(audio.autoplay).toBe(false);
+      expect(audio.paused).toBe(true);
+      expect(onPlaying).not.toHaveBeenCalled();
+      expect(onBuffering).toHaveBeenLastCalledWith(false);
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
   test("supersedes a pending attachment and ignores its readiness", async () => {
     const browser = installBrowser();
     const onReady = mock(() => undefined);
@@ -504,8 +346,10 @@ describe("MediaElementPlaybackSource native playback", () => {
       (_error: Error, _recoveryPending?: boolean) => undefined
     );
     const onStreamError = mock((_position: number, _error: Error) => undefined);
+    const onPlaying = mock(() => undefined);
     const source = new MediaElementPlaybackSource(null, "native", {
       onError,
+      onPlaying,
       onStreamError,
     });
     try {
@@ -522,6 +366,30 @@ describe("MediaElementPlaybackSource native playback", () => {
       expect(onStreamError).toHaveBeenCalledWith(42, expect.any(Error));
       expect(onError).toHaveBeenCalledWith(expect.any(Error), true);
       expect(onStreamError.mock.calls[0]?.[1]).toBe(onError.mock.calls[0]?.[0]);
+
+      onPlaying.mockClear();
+      audio.emit("waiting");
+      audio.emit("stalled");
+      audio.emit("playing");
+      browser.dispatchNetworkEvent("offline");
+      browser.dispatchNetworkEvent("online");
+      audio.emit("error");
+      expect(source.status).toBe("error");
+      expect(source.isBuffering).toBe(false);
+      expect(onPlaying).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      const refreshing = source.refreshUrl({
+        format: "progressive",
+        src: "https://media.example/renewed.mp3",
+      });
+      await flushMicrotasks();
+      audio.error = null;
+      audio.emit("canplay");
+      expect(await refreshing).toBe(true);
+      audio.emit("playing");
+      expect(source.status).toBe("streaming");
+      expect(onPlaying).toHaveBeenCalledTimes(1);
     } finally {
       source.cleanup();
       browser.restore();

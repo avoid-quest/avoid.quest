@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { installBrowser } from "../playback/fake-media-browser";
 import type { AudioState, PlaybackSource } from "../playback/index.js";
 import {
   FakeAudioContext,
@@ -36,6 +37,40 @@ function createPendingSource(): PlaybackSource {
     play: () => new Promise<void>(() => undefined),
     stop: () => undefined,
   } as unknown as PlaybackSource;
+}
+
+function createMediaPlaybackHarness() {
+  const capture = createDeviceCaptureHarness();
+  const browser = installBrowser();
+  const { manager, context } = capture;
+  Object.assign(context, {
+    createMediaElementSource: () => context.createGain(),
+  });
+  const internals = manager as unknown as {
+    effects: { connectGraph: () => Promise<boolean> };
+    output: {
+      getMainMeterSource: () => unknown;
+      replaceContext: () => Promise<void>;
+    };
+  };
+  internals.output.getMainMeterSource = () => context.createGain();
+  internals.output.replaceContext = async () => undefined;
+  return {
+    ...capture,
+    browser,
+    effects: internals.effects,
+    restore() {
+      browser.restore();
+      capture.restore();
+    },
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) {
+    // biome-ignore lint/performance/noAwaitInLoops: advance each deferred media lifecycle step in order
+    await Promise.resolve();
+  }
 }
 
 type GraphHarness = {
@@ -95,6 +130,243 @@ afterEach(() => {
 });
 
 describe("AudioManager", () => {
+  test("a fresh source's graph-start failure cleans up without advancing the playlist", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, effects, browser } = harness;
+      const failure = new Error("Graph setup failed");
+      effects.connectGraph = mock(() => Promise.reject(failure));
+      const soundId = manager.createSound(station, "node:n:video");
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+
+      await expect(manager.playSound(soundId)).rejects.toBe(failure);
+
+      expect(effects.connectGraph).toHaveBeenCalledTimes(1);
+      expect(harness.connectMain).toHaveBeenCalledTimes(1);
+      expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+      expect(browser.audio().paused).toBe(true);
+      expect(browser.audio().src).toBe("");
+      expect(states.some((state) => state.hasEnded)).toBe(false);
+      expect(states.at(-1)).toMatchObject({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      });
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test("an older rejected start cannot clean up a replacement on the same sound", async () => {
+    const harness = createMediaPlaybackHarness();
+    const graph = Promise.withResolvers<boolean>();
+    try {
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = mock(() =>
+        Promise.resolve(true)
+      ).mockImplementationOnce(() => graph.promise);
+      const soundId = manager.createSound(station, "node:n:video");
+      const older = manager.playSound(soundId).catch((error: unknown) => error);
+      await flushMicrotasks();
+      browser.audio().emit("waiting");
+
+      manager.stopSound(soundId);
+      expect(getRegistry(manager).get(soundId)?.buffering).toBe(false);
+      const newer = manager.playSound(soundId).catch((error: unknown) => error);
+      const replacement = getRegistry(manager).get(soundId)?.playbackSource;
+      const audio = browser.audio();
+      await flushMicrotasks();
+      audio.emit("canplay");
+      graph.resolve(true);
+      await older;
+
+      expect(await newer).toBeUndefined();
+      expect(getRegistry(manager).get(soundId)?.playbackSource).toBe(
+        replacement
+      );
+      expect(audio.paused).toBe(false);
+      expect(audio.src).toBe(station.streamUrl);
+    } finally {
+      graph.resolve(true);
+      harness.restore();
+    }
+  });
+
+  test.each(["audio-graph", "native"] as const)(
+    "a paused %s start ignores a later load abort through production callbacks",
+    async (mode) => {
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(station, "node:n:video", mode);
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager
+          .playSound(soundId)
+          .catch((error: unknown) => error);
+        await flushMicrotasks();
+        manager.pauseSound(soundId);
+        const stateCount = states.length;
+        browser.audio().emit("abort");
+        await starting;
+
+        expect(states.slice(stateCount).some((state) => state.error)).toBe(
+          false
+        );
+        expect(states.at(-1)).toMatchObject({
+          error: null,
+          isLoading: false,
+          isPlaying: false,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each(["audio-graph", "native"] as const)(
+    "a recreated %s source seeks before its first playback",
+    async (mode) => {
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(station, "node:n:video", mode);
+        const refreshed = manager
+          .refreshStreamUrl(soundId, "https://media.example/renewed.webm", 42)
+          .catch((error: unknown) => error);
+        const audio = browser.audio();
+        audio.duration = 120;
+        await flushMicrotasks();
+        expect(audio.playPositions).toEqual([]);
+        audio.emit("canplay");
+        expect(await refreshed).toBeUndefined();
+
+        expect(audio.playPositions).toEqual([42]);
+        expect(manager.getSoundRadio(soundId)?.streamUrl).toBe(
+          "https://media.example/renewed.webm"
+        );
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test("a paused URL renewal ignores its late abort through production callbacks", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, browser } = harness;
+      const soundId = manager.createSound(station, "node:n:video", "native");
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await starting;
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+
+      const refreshing = manager
+        .refreshStreamUrl(soundId, "https://media.example/renewed.webm", 42)
+        .catch((error: unknown) => error);
+      await flushMicrotasks();
+      manager.pauseSound(soundId);
+      const stateCount = states.length;
+      browser.audio().emit("abort");
+      await refreshing;
+
+      expect(states.slice(stateCount).some((state) => state.error)).toBe(false);
+      expect(states.at(-1)).toMatchObject({
+        error: null,
+        isLoading: false,
+        isPlaying: false,
+      });
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test("a replaced recovery cannot seek the new source sharing its sound ID", async () => {
+    const harness = createMediaPlaybackHarness();
+    const graph = Promise.withResolvers<boolean>();
+    try {
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = mock(() =>
+        Promise.resolve(true)
+      ).mockImplementationOnce(() => graph.promise);
+      const soundId = manager.createSound(station, "node:n:video");
+      const refreshed = manager
+        .refreshStreamUrl(soundId, "https://media.example/renewed.webm", 42)
+        .catch((error: unknown) => error);
+      const previous = browser.audio();
+      previous.duration = 120;
+      await flushMicrotasks();
+      previous.emit("canplay");
+      await flushMicrotasks();
+
+      manager.createSound(
+        { ...station, streamUrl: "https://media.example/replacement.webm" },
+        soundId
+      );
+      const replacement = manager.playSound(soundId);
+      const audio = browser.audio();
+      audio.duration = 120;
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await replacement;
+      graph.resolve(true);
+      expect(await refreshed).toBeUndefined();
+
+      expect(audio.currentTime).toBe(0);
+      expect(audio.playPositions).toEqual([0]);
+    } finally {
+      graph.resolve(true);
+      harness.restore();
+    }
+  });
+
+  test("an active graph source's play rejection stops it and clears loading", async () => {
+    const capture = createDeviceCaptureHarness();
+    try {
+      const { manager, context } = capture;
+      const internals = manager as unknown as {
+        ensurePlaybackSetup: () => Promise<void>;
+        output: {
+          getMainMeterSource: () => unknown;
+          replaceContext: () => Promise<void>;
+        };
+      };
+      internals.ensurePlaybackSetup = async () => undefined;
+      internals.output.getMainMeterSource = () => context.createGain();
+      internals.output.replaceContext = async () => undefined;
+      const soundId = manager.createSound(station, "node:n:video");
+      const instance = getRegistry(manager).get(soundId);
+      if (!instance) {
+        throw new Error("sound was not created");
+      }
+      const failure = new DOMException("Playback failed", "NotSupportedError");
+      const pause = mock(() => undefined);
+      instance.playbackSource = {
+        ...createPendingSource(),
+        pause,
+        play: () => Promise.reject(failure),
+      } as PlaybackSource;
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+
+      await expect(manager.playSound(soundId)).rejects.toBe(failure);
+
+      expect(pause).toHaveBeenCalledTimes(1);
+      expect(instance.loading).toBe(false);
+      expect(instance.playing).toBe(false);
+      expect(states.at(-1)).toMatchObject({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      });
+    } finally {
+      capture.restore();
+    }
+  });
+
   test.each(["stopSound", "cleanupSound", "cleanup"] as const)(
     "%s cancels pending capture before callbacks or graph connection",
     async (cancel) => {

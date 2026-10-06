@@ -1115,12 +1115,14 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (runtime.streamRefresh) {
       return;
     }
+    const { playGeneration } = runtime;
     const refresh = { generation, soundId };
     runtime.streamRefresh = refresh;
     try {
       await refreshPlatformStream(radio, soundId, position, {
         isCurrent: () =>
           isCurrent(deckId, generation) &&
+          runtime.playGeneration === playGeneration &&
           getPlaybackChannelRuntime(deckId).soundId === soundId,
         onFailed: (request, error) =>
           reportFailure(deckId, request.failureMessage, error, radio),

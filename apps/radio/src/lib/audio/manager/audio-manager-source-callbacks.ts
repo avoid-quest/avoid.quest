@@ -36,6 +36,7 @@ function createPlaybackSourceCallbacks({
       });
     },
     onError: (error) => {
+      const duringStart = instance.loading;
       instance.playing = false;
       instance.loading = false;
       notifySoundError(
@@ -43,7 +44,8 @@ function createPlaybackSourceCallbacks({
         soundId,
         instance,
         "STREAM_FETCH_FAILED",
-        error.message
+        error.message,
+        { cause: error, duringStart }
       );
     },
     onPaused: () => {
@@ -91,6 +93,7 @@ function createDeviceSourceCallbacks({
       });
     },
     onError: (error) => {
+      const duringStart = instance.loading;
       instance.playing = false;
       instance.loading = false;
       notifySoundError(
@@ -98,7 +101,8 @@ function createDeviceSourceCallbacks({
         soundId,
         instance,
         "PLAYBACK_FAILED",
-        error.message
+        error.message,
+        { cause: error, duringStart }
       );
     },
     onInactive: () => {

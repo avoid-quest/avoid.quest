@@ -12,6 +12,7 @@ import { SearchInput } from "./search-input";
 import { SearchResults } from "./search-results";
 
 type ExternalSearchProps = {
+  mode?: "dj" | "node";
   onLoad: (radio: Radio) => void;
   onCancel?: () => void;
   initialPlatform?: SearchPlatform;
@@ -37,6 +38,7 @@ type ExternalSearchContentProps = Omit<
 const HTTP_LINK = /^https?:\/\/\S+$/i;
 
 function ExternalSearchContent({
+  mode,
   onLoad,
   onCancel,
   lockedPlatform,
@@ -89,6 +91,7 @@ function ExternalSearchContent({
   };
 
   const { mutate: loadLink, isPending: isLoadingLink } = useDjTrackLoad({
+    mode,
     onError: (message) => {
       if (latestPick.current === "link") {
         setError(message);
@@ -151,6 +154,7 @@ function ExternalSearchContent({
 
       <SearchResults
         error={error}
+        mode={mode}
         onLoad={handleResultLoad}
         onPick={handleResultPick}
         results={results}
@@ -188,6 +192,7 @@ export function ExternalSearch(props: ExternalSearchProps) {
     <ExternalSearchContent
       key={lockedPlatform ?? "unlocked"}
       lockedPlatform={lockedPlatform}
+      mode={props.mode}
       onCancel={props.onCancel}
       onLoad={props.onLoad}
       onOtherLink={props.onOtherLink}

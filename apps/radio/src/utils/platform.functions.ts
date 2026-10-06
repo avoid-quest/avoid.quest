@@ -24,6 +24,7 @@ import {
   needsResolution,
   normalizeSoundCloudUrl,
   resolveShortLink,
+  SoundCloudShortLinkError,
 } from "@avoid.quest/platforms/soundcloud";
 import {
   getSpotifyMetadata,
@@ -36,6 +37,7 @@ import { workerMetadataCache } from "@/lib/metadata/edge-cache";
 import type { PlatformMetadata } from "@/lib/platform-types";
 import { getCachedRadioGardenItem } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
+import { validateServerInput } from "./server-input";
 
 const LoadPlatformItemSchema = z.object({
   url: z
@@ -74,12 +76,21 @@ async function normalizePlatformUrl(url: string): Promise<string> {
       normalizeMixcloudUrl(normalizeSoundCloudUrl(normalizedUrl))
     );
   } catch (error) {
+    const shortLinkError =
+      error instanceof SoundCloudShortLinkError ? error : undefined;
+    const expected =
+      shortLinkError?.status !== undefined &&
+      [400, 404, 410].includes(shortLinkError.status);
+    const failureCategory = shortLinkError?.unsafeRedirect
+      ? "security"
+      : "dependency";
+    const failureStatus = shortLinkError?.unsafeRedirect ? 403 : 502;
     throw appErrorFromCause(error, {
-      category: "dependency",
+      category: expected ? "validation" : failureCategory,
       code: "SOUNDCLOUD_SHORTLINK_RESOLVE_FAILED",
-      expected: true,
+      expected,
       safeMessage: "Failed to resolve SoundCloud short link",
-      status: 400,
+      status: expected ? 400 : failureStatus,
     });
   }
 }
@@ -231,7 +242,7 @@ function resolvePlatformItem(
 
 export const loadPlatformItem = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("load-platform-item")])
-  .validator(LoadPlatformItemSchema)
+  .validator(validateServerInput(LoadPlatformItemSchema))
   .handler(
     ({ data }): Promise<LoadPlatformItemResponse> =>
       runServerFn({
@@ -299,7 +310,7 @@ export type LoadSpotifyMetadataResponse = AppResult<{
  */
 export const loadSpotifyMetadata = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("load-spotify-metadata")])
-  .validator(LoadSpotifyMetadataSchema)
+  .validator(validateServerInput(LoadSpotifyMetadataSchema))
   .handler(
     ({ data }): Promise<LoadSpotifyMetadataResponse> =>
       runServerFn({

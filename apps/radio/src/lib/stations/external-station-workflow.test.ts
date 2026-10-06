@@ -77,7 +77,7 @@ describe("createStationIntake", () => {
       origin: "manual",
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       error: {
         code: "INVALID_STATION_CANDIDATE",
         message: "Name and Stream URL are required",
@@ -99,7 +99,7 @@ describe("createStationIntake", () => {
       origin: "website",
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       error: {
         code: "INVALID_STATION_CANDIDATE",
         message: "Stream URL must be a valid URL",
@@ -771,7 +771,7 @@ describe("createStationIntake", () => {
       radio: sessionRadio,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       error: {
         code: "SAVED_STATION_SAVE_FAILED",
         message: "Storage unavailable",

@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import type {
   DesiredEffectsState,
   EffectsRuntimeOutcome,
@@ -243,6 +244,10 @@ class EffectsController {
         status: "failed",
       };
       this.switchBackend(soundId, state, "bypass", generation);
+      captureError(error, {
+        operation: "reconcileEffectsRuntime",
+        surface: "ui",
+      });
     }
     return state.outcome;
   }
@@ -416,11 +421,17 @@ class EffectsController {
       // non-monitoring registration with this exact AudioNode. This does not
       // create a compatibility runtime for the source.
       this.registerNonOfficialSource(soundId, state, generation).catch(
-        (error: unknown) =>
-          console.warn(
-            "[EffectsController] Failed to re-register sidechain source",
-            error
-          )
+        (error: unknown) => {
+          if (
+            this.states.get(soundId) === state &&
+            state.generation === generation
+          ) {
+            captureError(error, {
+              operation: "registerEffectsSidechain",
+              surface: "ui",
+            });
+          }
+        }
       );
       state.outcome = { backend: "bypass", ready: true, status: "ready" };
       return true;
@@ -438,11 +449,11 @@ class EffectsController {
           ready: true,
           status: "failed",
         };
+        captureError(error, {
+          operation: "connectEffectsRuntime",
+          surface: "ui",
+        });
       }
-      console.warn(
-        "[EffectsController] Failed to select effects runtime",
-        error
-      );
       return ownsGraph;
     }
     // Runtime selection can be superseded by an effect edit while it awaits a
@@ -940,11 +951,17 @@ class EffectsController {
         state.officialConnected = false;
         this.pruneOfficialSidechainSources();
         this.registerNonOfficialSource(soundId, state, generation).catch(
-          (error: unknown) =>
-            console.warn(
-              "[EffectsController] Failed to register sidechain source",
-              error
-            )
+          (error: unknown) => {
+            if (
+              this.states.get(soundId) === state &&
+              state.generation === generation
+            ) {
+              captureError(error, {
+                operation: "registerEffectsSidechain",
+                surface: "ui",
+              });
+            }
+          }
         );
       }
     });
@@ -971,11 +988,11 @@ class EffectsController {
             ready: true,
             status: "failed",
           };
+          captureError(error, {
+            operation: "selectEffectsRuntime",
+            surface: "ui",
+          });
         }
-        console.warn(
-          "[EffectsController] Failed to select effects runtime",
-          error
-        );
       });
   }
 }

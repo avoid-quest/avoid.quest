@@ -9,6 +9,7 @@ import { z } from "zod";
 import { workerMetadataCache } from "@/lib/metadata/edge-cache";
 import { searchCachedRadioGarden } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
+import { validateServerInput } from "./server-input";
 
 const RadioGardenSearchSchema = z.object({
   query: z.string().min(1, "Search query is required").max(200),
@@ -34,7 +35,7 @@ export type RadioGardenSearchResponse = AppResult<{
 
 export const radioGardenSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-search")])
-  .validator(RadioGardenSearchSchema)
+  .validator(validateServerInput(RadioGardenSearchSchema))
   .handler(
     ({ data }): Promise<RadioGardenSearchResponse> =>
       runServerFn({
@@ -77,7 +78,7 @@ export type RadioGardenStreamResponse = AppResult<{ streamUrl: string }>;
 
 export const radioGardenStream = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-garden-stream")])
-  .validator(RadioGardenStreamSchema)
+  .validator(validateServerInput(RadioGardenStreamSchema))
   .handler(
     ({ data }): Promise<RadioGardenStreamResponse> =>
       runServerFn({

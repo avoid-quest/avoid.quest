@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import { createPacedMutations, type Transaction } from "@tanstack/react-db";
 import { Throttler } from "@tanstack/react-pacer";
 import {
@@ -7,7 +8,9 @@ import {
 
 /** Keep live edits optimistic; write at most every 250 ms and flush on release. */
 export function createNodeSessionPersistence(
-  onError: (error: unknown) => void = console.error
+  onError: (error: unknown) => void = (error) => {
+    captureError(error, { operation: "persistNodeSession", surface: "ui" });
+  }
 ) {
   const throttler = new Throttler((commit: () => unknown) => commit(), {
     leading: true,

@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import {
   createCollection,
   localStorageCollectionOptions,
@@ -206,7 +207,7 @@ function writeSessionRadioIds(key: string, ids: Set<string>): void {
     );
   } catch (error) {
     // A full or blocked storage loses the tombstones, not the radio change.
-    console.warn("[session-radios] Could not store removed radios", error);
+    captureError(error, { operation: "persistRemovedRadios", surface: "ui" });
   }
 }
 

@@ -1,6 +1,20 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: observe the real reporting pipeline
+import * as Sentry from "@sentry/core";
 import { shallow } from "@tanstack/react-store";
-import { AudioManager, createDefaultEffectConfig } from "@/lib/audio";
+import {
+  AudioManager,
+  type AudioState,
+  createDefaultEffectConfig,
+} from "@/lib/audio";
 import {
   createDefaultChannel,
   getPlaybackChannel,
@@ -16,7 +30,9 @@ import {
   deactivateAllChannels,
   selectChannelRuntimeView,
   setChannelVolume,
+  subscribeChannelRuntime,
 } from "./channel-state-manager";
+import { createDefaultPlaybackActionContext } from "./playback-action-context";
 
 async function resetPlaybackSessions(): Promise<void> {
   await playbackSessionsCollection.stateWhenReady();
@@ -37,6 +53,65 @@ afterEach(async () => {
 });
 
 describe("channel state manager", () => {
+  test("production action and asynchronous audio failures reach reporting, while start callbacks defer to their promise", () => {
+    const captured: unknown[] = [];
+    const capture = spyOn(Sentry, "captureException").mockImplementation(
+      (error) => {
+        captured.push(error);
+        return "1234567890abcdef1234567890abcdef";
+      }
+    );
+    const manager = AudioManager.getInstance();
+    let publish: (state: AudioState) => void = () => undefined;
+    manager.subscribe = mock((_soundId, callback) => {
+      publish = callback;
+      return () => undefined;
+    });
+    try {
+      const actionFailure = new Error("Audio worklet unavailable");
+      createDefaultPlaybackActionContext().reportError({
+        cause: actionFailure,
+        code: "WORKLET_LOAD_FAILED",
+        mode: "single",
+        rawMessage: actionFailure.message,
+        userMessage: "Audio could not start",
+      });
+      subscribeChannelRuntime("single", "single-a", "sound-a");
+      const streamFailure = new Error("Stream disconnected");
+      const audioError: NonNullable<AudioState["error"]> = {
+        cause: streamFailure,
+        code: "STREAM_FETCH_FAILED",
+        id: "error-1",
+        message: "Stream disconnected",
+        timestamp: 1,
+      };
+      const state: AudioState = {
+        error: audioError,
+        hasEnded: false,
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+        volume: 1,
+      };
+      publish({ ...state, error: { ...audioError, duringStart: true } });
+      expect(captured).toEqual([actionFailure]);
+      publish(state);
+      expect(captured).toEqual([actionFailure, streamFailure]);
+      const recovered = mock(() => undefined);
+      subscribeChannelRuntime("node", "node-a", "sound-b", {
+        onAudioState: recovered,
+      });
+      publish({
+        ...state,
+        error: { ...audioError, code: "STREAM_INTERRUPTED" },
+      });
+      expect(recovered).toHaveBeenCalledTimes(1);
+      expect(captured).toHaveLength(2);
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
   test("leaves meter-rate peak levels out of the channel view", () => {
     const playing = {
       ...initialChannelRuntimeState,
@@ -133,7 +208,7 @@ describe("channel state manager", () => {
     });
     const manager = AudioManager.getInstance();
     const desired: DesiredEffectsState[] = [];
-    manager.createSound = mock((_radio, soundId) => soundId ?? "sound-a");
+    manager.createSound = mock((_radio, soundId = "sound-a") => soundId);
     manager.subscribe = mock(() => () => undefined);
     manager.subscribeMeter = mock(() => () => undefined);
     manager.cleanupSound = mock(() => undefined);

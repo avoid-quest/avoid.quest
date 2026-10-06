@@ -1,8 +1,9 @@
+import { capturePlaybackError } from "@avoid.quest/error";
 import type { Radio } from "@/lib/audio";
-import { captureDjError } from "@/lib/dj/dj-error-surface";
 import { usePlatformLoad } from "@/lib/hooks/use-platform-query";
 
 type UseDjTrackLoadOptions = {
+  mode?: "dj" | "node";
   onLoad: (radio: Radio) => void;
   onError?: (message: string, code: string) => void;
   onSettled?: () => void;
@@ -18,9 +19,14 @@ export function useDjTrackLoad(options: UseDjTrackLoadOptions) {
   const { isPending, load } = usePlatformLoad();
   const mutate = (url: string) =>
     load(url, {
-      onError: (message, code) => {
+      onError: (message, code, cause) => {
         const errorCode = code ?? "DJ_TRACK_RESOLUTION_FAILED";
-        captureDjError(message, errorCode);
+        capturePlaybackError(cause ?? new Error(message), {
+          errorCode,
+          errorMessage: message,
+          mode: options.mode ?? "dj",
+          streamUrl: url,
+        });
         options.onError?.(message, errorCode);
         options.onSettled?.();
       },

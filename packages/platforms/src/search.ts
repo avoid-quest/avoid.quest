@@ -387,7 +387,12 @@ export function createExternalPlatformSearchWorkflow({
         return searchAll(query);
       }
 
-      return searchProvider(params.platform, query, params);
+      return searchProvider(params.platform, query, params).catch(
+        (error: unknown) => {
+          reportProviderError?.(params.platform as SearchablePlatform, error);
+          throw error;
+        }
+      );
     },
   };
 }

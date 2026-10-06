@@ -1,3 +1,4 @@
+import { fromProblemError } from "@avoid.quest/error";
 import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
 import type {
   BandcampSearchFilter,
@@ -380,7 +381,7 @@ export async function resolvePlatformItem(
     signal
   );
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   const platform = detectPlayablePlatformFromUrl(url);
   const bandcampRelayBaseUrl =
@@ -399,7 +400,7 @@ async function loadSpotifyMetadata(url: string) {
   );
   const result = await load({ data: { url } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return result.data.metadata;
 }
@@ -444,7 +445,7 @@ export async function searchBandcamp(
   const { bandcampSearch } = await import("@/utils/search.functions");
   const result = await bandcampSearch({ data: { filter, query } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return result.data.results;
 }
@@ -455,7 +456,7 @@ export async function searchRadioGarden(
   const { radioGardenSearch } = await import("@/utils/radio-garden.functions");
   const result = await radioGardenSearch({ data: { query } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return result.data.results;
 }
@@ -466,7 +467,7 @@ export async function searchRadioBrowser(query: string, limit: number) {
   );
   const result = await radioBrowserSearch({ data: { limit, query } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return result.data.results;
 }
@@ -502,7 +503,7 @@ export async function resolveRadioGardenStream(
   const { radioGardenStream } = await import("@/utils/radio-garden.functions");
   const result = await radioGardenStream({ data: { channelId } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return preparePlatformItem(canonicalUrl, {
     metadata: {
@@ -521,7 +522,7 @@ export async function searchSoundCloud(
   const { soundcloudSearch } = await import("@/utils/search.functions");
   const result = await soundcloudSearch({ data: { query } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return result.data.results;
 }
@@ -532,7 +533,7 @@ export async function searchMixcloud(
   const { mixcloudSearch } = await import("@/utils/search.functions");
   const result = await mixcloudSearch({ data: { query } });
   if (!result.ok) {
-    throw new Error(result.error.message);
+    throw fromProblemError(result.error);
   }
   return result.data.results;
 }

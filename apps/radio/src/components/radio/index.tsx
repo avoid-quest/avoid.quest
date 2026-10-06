@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import {
   type ComponentType,
   type LazyExoticComponent,
@@ -54,11 +55,19 @@ export function Radios() {
       return;
     }
     import("@/lib/mode-lifecycle-requests")
-      .then(({ modeLifecycleRequests }) =>
-        // A legacy mode ("multiple", or one another tab wrote) runs as its
-        // replacement. Committing that could fail on the same stale record
-        // the settings step could not rewrite and roll the mode back.
-        modeLifecycleRequests.synchronizeMode(mode)
+      .then(
+        ({ modeLifecycleRequests }) =>
+          // A legacy mode ("multiple", or one another tab wrote) runs as its
+          // replacement. Committing that could fail on the same stale record
+          // the settings step could not rewrite and roll the mode back.
+          modeLifecycleRequests.synchronizeMode(mode),
+        (error) => {
+          captureError(error, {
+            operation: "loadModeLifecycle",
+            surface: "ui",
+          });
+          throw error;
+        }
       )
       .catch((error) => {
         console.error("[radio] Failed to synchronize playback mode:", error);

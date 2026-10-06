@@ -138,8 +138,29 @@ function validateShortLinkRedirectTarget(
   return { ok: true, url };
 }
 
+export class SoundCloudShortLinkError extends Error {
+  readonly status?: number;
+  readonly unsafeRedirect: boolean;
+
+  constructor(
+    message: string,
+    options: { status?: number; unsafeRedirect?: boolean } = {}
+  ) {
+    super(message);
+    this.name = "SoundCloudShortLinkError";
+    this.status = options.status;
+    this.unsafeRedirect = options.unsafeRedirect ?? false;
+  }
+}
+
 function createShortLinkRedirectError(reason: ShortLinkRedirectFailure): Error {
-  return new Error(SHORT_LINK_REDIRECT_ERROR_MESSAGES[reason]);
+  return new SoundCloudShortLinkError(
+    SHORT_LINK_REDIRECT_ERROR_MESSAGES[reason],
+    {
+      unsafeRedirect:
+        reason === "invalid-domain" || reason === "invalid-protocol",
+    }
+  );
 }
 
 function createErrorResponse(message: string): SoundCloudItemError {
@@ -248,7 +269,9 @@ async function fetchUserTracks(
  */
 export async function resolveShortLink(shortUrl: string): Promise<string> {
   if (!needsResolution(shortUrl)) {
-    throw new Error("Invalid SoundCloud short link");
+    throw new SoundCloudShortLinkError("Invalid SoundCloud short link", {
+      status: 400,
+    });
   }
 
   const signal = AbortSignal.timeout(10_000);
@@ -269,8 +292,9 @@ export async function resolveShortLink(shortUrl: string): Promise<string> {
   }
 
   if (!result.response.ok) {
-    throw new Error(
-      `Failed to resolve short link: ${result.response.status} ${result.response.statusText}`
+    throw new SoundCloudShortLinkError(
+      `Failed to resolve short link: ${result.response.status} ${result.response.statusText}`,
+      { status: result.response.status }
     );
   }
 

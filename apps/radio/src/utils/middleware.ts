@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { AppError } from "@avoid.quest/error";
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { getSessionId } from "@/lib/auth/session";
@@ -40,7 +41,11 @@ export function rateLimitMiddleware(
 
     if (!(sessionId || createSessionIfMissing)) {
       logAuthFailure(identifier);
-      throw new Error("Unauthorized");
+      throw new AppError({
+        category: "auth",
+        code: "UNAUTHORIZED",
+        safeMessage: "Unauthorized",
+      });
     }
 
     const rateLimitSubject = resolveRateLimitSubject(request);
@@ -52,7 +57,11 @@ export function rateLimitMiddleware(
 
     if (!rateLimitResult.allowed) {
       logRateLimitViolation(sessionId ?? "anonymous", identifier);
-      throw new Error("Rate limit exceeded");
+      throw new AppError({
+        category: "rate_limit",
+        code: "RATE_LIMITED",
+        safeMessage: "Rate limit exceeded",
+      });
     }
 
     const result = await next({
@@ -82,7 +91,11 @@ export function authMiddleware(options?: { createSessionIfMissing?: boolean }) {
 
     if (!(sessionId || createSessionIfMissing)) {
       logAuthFailure("auth");
-      throw new Error("Unauthorized");
+      throw new AppError({
+        category: "auth",
+        code: "UNAUTHORIZED",
+        safeMessage: "Unauthorized",
+      });
     }
 
     return next({

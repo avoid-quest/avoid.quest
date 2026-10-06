@@ -1,4 +1,15 @@
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: a restored spy keeps the shared reporting module real for other tests
+import * as errorSdk from "@avoid.quest/error";
 import { AppError } from "@avoid.quest/error";
 import { cleanup, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
@@ -21,12 +32,13 @@ for (const [key, value] of Object.entries({
   });
 }
 
-const captureErrorMock = mock((_error: unknown, _meta: unknown) => undefined);
+let captureErrorMock: ReturnType<typeof spyOn<typeof errorSdk, "captureError">>;
 
-mock.module("@avoid.quest/error", () => ({
-  AppError,
-  captureError: captureErrorMock,
-}));
+beforeEach(() => {
+  captureErrorMock = spyOn(errorSdk, "captureError").mockImplementation(
+    () => undefined
+  );
+});
 
 mock.module("@tanstack/react-router", () => ({
   Link: ({ children, to: _to }: { children: React.ReactNode; to: string }) => (
@@ -43,7 +55,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   cleanup();
-  captureErrorMock.mockClear();
+  captureErrorMock.mockRestore();
 });
 
 function renderError(error: Error) {

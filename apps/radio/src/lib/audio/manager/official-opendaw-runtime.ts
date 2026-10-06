@@ -1,3 +1,4 @@
+import { AppError, captureError } from "@avoid.quest/error";
 import { UUID } from "@opendaw/lib-std";
 import type { Project, ProjectEnv } from "@opendaw/studio-core";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
@@ -258,6 +259,23 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       });
       this.modules = modules;
       this.project = project;
+      worklet.addEventListener(
+        "processorerror",
+        () => {
+          if (this.project === project && !this.closed) {
+            captureError(
+              new AppError({
+                category: "playback",
+                code: "AUDIO_PROCESSOR_FAILED",
+                context: { backend: "official" },
+                safeMessage: "Audio worklet processor stopped",
+              }),
+              { operation: "runAudioProcessor", surface: "ui" }
+            );
+          }
+        },
+        { once: true }
+      );
     } catch (error) {
       project.terminate();
       throw error;

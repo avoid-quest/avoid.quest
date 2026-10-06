@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   appendEffectToTree,
@@ -270,7 +271,7 @@ export function createChannelEffects({
     unbind(ref) {
       bindings.delete(refKey(ref));
       reconcileBound().catch((error: unknown) =>
-        console.warn("[ChannelEffects] Could not rebind sidechains", error)
+        captureError(error, { operation: "rebindSidechains", surface: "ui" })
       );
     },
   };

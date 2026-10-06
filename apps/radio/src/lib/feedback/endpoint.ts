@@ -1,3 +1,4 @@
+import { AppError, captureError } from "@avoid.quest/error";
 import { Octokit as OctokitCore } from "@octokit/core";
 import { restEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { createGitHubAdapter } from "git-feedback/github";
@@ -147,7 +148,23 @@ function createRadioFeedbackEndpoint(token: string) {
     },
     // The library logs provider errors with request payloads by default.
     logger: false,
+    onCreateIssueError: () => {
+      reportFeedbackFailure("FEEDBACK_CREATE_FAILED");
+    },
   });
+}
+
+function reportFeedbackFailure(code: string): void {
+  // Provider exceptions can embed the submitted text and credentials.
+  captureError(
+    new AppError({
+      category: "infrastructure",
+      code,
+      expected: false,
+      safeMessage: "Failed to submit feedback",
+    }),
+    { operation: "submitFeedback", surface: "api-route" }
+  );
 }
 
 export async function handleFeedbackRequest(
@@ -158,6 +175,7 @@ export async function handleFeedbackRequest(
   const token = env.GIT_FEEDBACK_GITHUB_TOKEN?.trim();
 
   if (!token) {
+    reportFeedbackFailure("FEEDBACK_NOT_CONFIGURED");
     return feedbackError("issue_create_failed", 502);
   }
 
@@ -187,7 +205,7 @@ export async function handleFeedbackRequest(
     return response;
   } catch {
     // Provider errors can embed the submitted request, including legacy metadata.
-    console.error("[feedback] Failed to handle feedback request");
+    reportFeedbackFailure("FEEDBACK_ENDPOINT_FAILED");
     return feedbackError("issue_create_failed", 502);
   }
 }

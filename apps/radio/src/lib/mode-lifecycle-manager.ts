@@ -1,3 +1,4 @@
+import { AppError, captureError } from "@avoid.quest/error";
 import { fadeOut } from "@/lib/audio";
 import {
   getPlaybackSession,
@@ -10,6 +11,7 @@ import {
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
 import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
+import { isPlaybackActionError } from "./playback-action-errors";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
 
@@ -235,6 +237,12 @@ export function createModeManager({
     try {
       await restorePreviousMode(previousMode, activeModeToDeactivate);
     } catch (rollbackError) {
+      if (!isPlaybackActionError(rollbackError)) {
+        captureError(rollbackError, {
+          operation: "restorePreviousMode",
+          surface: "ui",
+        });
+      }
       emit({
         currentMode: previousMode,
         error: getUserFacingErrorMessage(rollbackError),
@@ -325,7 +333,13 @@ export function createModeManager({
       options: SwitchModeOptions = {}
     ): Promise<void> {
       if (isTransitionInProgress()) {
-        return Promise.reject(new Error("Mode transition in progress"));
+        return Promise.reject(
+          new AppError({
+            category: "validation",
+            code: "MODE_TRANSITION_IN_PROGRESS",
+            safeMessage: "Mode transition in progress",
+          })
+        );
       }
       return switchMode(nextMode, options);
     },

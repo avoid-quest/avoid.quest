@@ -1,4 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+
+import { captureError } from "@avoid.quest/error";
 import appleIcon from "@avoid.quest/ui/assets/favicon/apple-icon.png";
 import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
 import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
@@ -130,7 +132,10 @@ function RootContent() {
         setSyncChanges(null);
       })
       .catch((error) => {
-        console.error("[radio] Failed to apply radio sync changes:", error);
+        captureError(error, {
+          operation: "applyRadioSyncChanges",
+          surface: "ui",
+        });
       });
   };
 

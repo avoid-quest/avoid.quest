@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import type {
   AudioErrorCode,
   AudioState,
@@ -86,6 +87,7 @@ import {
   setPlaybackRate,
   streamFormatOf,
 } from "@/lib/source-strip";
+import { setDjError } from "@/lib/stores/dj-runtime-store";
 import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
@@ -407,7 +409,7 @@ const productionPlatform: DjDeckPlatformAdapter = {
 };
 
 function reportEffectsError(error: unknown): void {
-  console.warn("[DjDeck] Could not restore Effects", error);
+  captureError(error, { operation: "restoreDjEffects", surface: "ui" });
 }
 
 function reportOutputError(error: unknown, deckId: DeckId): void {
@@ -559,7 +561,6 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   const reportFailure = (
     deckId: DeckId,
-    code: string,
     fallbackMessage: string,
     error: unknown,
     radio = getPlaybackChannel("dj", deckId)?.radio ?? null,
@@ -574,13 +575,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       radio: radio ?? undefined,
     });
     options.context.reportError(playbackError);
-    reportDjErrorSurface(
-      playbackError.userMessage,
-      code,
-      playbackError.cause,
-      radio,
-      deckId
-    );
+    setDjError(playbackError.userMessage, deckId);
   };
 
   /**
@@ -706,23 +701,22 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         radio,
         state.error.position ?? 0
       ).catch((error) =>
-        console.error("[DjDeck] Stream refresh failed", error)
+        captureError(error, { operation: "refreshDjStream", surface: "ui" })
       );
       return;
     }
-    if (state.error?.message) {
+    if (state.error?.message && !state.error.duringStart) {
       reportFailure(
         deckId,
-        `DJ_${state.error.code}`,
         state.error.message,
-        new Error(state.error.message),
+        state.error.cause ?? new Error(state.error.message),
         radio,
         state.error.code
       );
     }
     if (state.hasEnded) {
       continueAfterEnd(deckId, generation, soundId).catch((error) =>
-        console.error("[DjDeck] Continuation failed", error)
+        captureError(error, { operation: "continueDjTrack", surface: "ui" })
       );
     }
   };
@@ -875,13 +869,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       draft.radio = null;
     });
     releaseReplacedFile(previous, null);
-    reportFailure(
-      deckId,
-      "DJ_LOAD_DECK_FAILED",
-      `Failed to load ${deckId}`,
-      error,
-      radio
-    );
+    reportFailure(deckId, `Failed to load ${deckId}`, error, radio);
   };
 
   /**
@@ -1085,13 +1073,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       applyCrossfade();
     } catch (error) {
       if (stillCurrent() && !isDisplayAudioCancel(error)) {
-        reportFailure(
-          deckId,
-          "DJ_PLAY_DECK_FAILED",
-          `Failed to play ${deckId}`,
-          error,
-          radio
-        );
+        reportFailure(deckId, `Failed to play ${deckId}`, error, radio);
       }
     }
   };
@@ -1116,13 +1098,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         isCurrent(deckId, generation) &&
         getPlaybackChannelRuntime(deckId).soundId === soundId,
       onFailed: (request, error) =>
-        reportFailure(
-          deckId,
-          "DJ_STREAM_REFRESH_FAILED",
-          request.failureMessage,
-          error,
-          radio
-        ),
+        reportFailure(deckId, request.failureMessage, error, radio),
       onRefreshed: () => {
         setPlaybackChannelRuntime(deckId, () => ({ error: null }));
         clearDjErrorSurface(deckId);
@@ -1172,13 +1148,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       }
     } catch (error) {
       if (isContinuationCurrent(deckId, generation, soundId)) {
-        reportFailure(
-          deckId,
-          "DJ_REPEAT_TRACK_FAILED",
-          "Failed to repeat track",
-          error,
-          radio
-        );
+        reportFailure(deckId, "Failed to repeat track", error, radio);
       }
     }
   }
@@ -1213,13 +1183,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         type: "track-url",
       });
     } catch (error) {
-      reportFailure(
-        deckId,
-        "DJ_LOAD_NEXT_TRACK_FAILED",
-        "Failed to load next track",
-        error,
-        channel.radio
-      );
+      reportFailure(deckId, "Failed to load next track", error, channel.radio);
     }
   }
 
@@ -1409,7 +1373,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       return loaded();
     }
     if (!result.success) {
-      return fileLoadFailed(deckId, result.error, result.code);
+      return fileLoadFailed(deckId, result.error, result.code, result.cause);
     }
     const failures: Parameters<ReportSourceFailure>[] = [];
     const resolved = await resolveTrack(

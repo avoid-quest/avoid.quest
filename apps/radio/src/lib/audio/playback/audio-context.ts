@@ -1,3 +1,5 @@
+import { captureError } from "@avoid.quest/error";
+
 /**
  * Audio Context Singleton
  *
@@ -359,7 +361,10 @@ class AudioContextManager {
       try {
         callback(state);
       } catch (error) {
-        console.error("Error in context state listener:", error);
+        captureError(error, {
+          operation: "notifyAudioContextState",
+          surface: "ui",
+        });
       }
     }
   }

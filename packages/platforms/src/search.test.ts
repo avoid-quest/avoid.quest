@@ -6,6 +6,26 @@ function wait(ms: number): Promise<void> {
 }
 
 describe("createExternalPlatformSearchWorkflow", () => {
+  test("reports a selected provider failure once and preserves the caller's error", async () => {
+    const error = new Error("YouTube unavailable");
+    const reportProviderError = mock(() => undefined);
+    const workflow = createExternalPlatformSearchWorkflow({
+      adapters: {
+        bandcamp: { search: mock(async () => []) },
+        radiogarden: { search: mock(async () => []) },
+        soundcloud: { search: mock(async () => []) },
+        youtube: { search: mock(() => Promise.reject(error)) },
+      },
+      reportProviderError,
+    });
+
+    await expect(
+      workflow.search({ platform: "youtube", query: "ambient" })
+    ).rejects.toBe(error);
+    expect(reportProviderError).toHaveBeenCalledTimes(1);
+    expect(reportProviderError).toHaveBeenCalledWith("youtube", error);
+  });
+
   test("interleaves all-platform results and reports provider failures", async () => {
     const reportProviderError = mock(() => undefined);
     const bandcampSearch = mock(async () => [

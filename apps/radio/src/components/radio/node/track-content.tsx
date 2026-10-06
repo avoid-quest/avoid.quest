@@ -253,6 +253,7 @@ export function TrackNodeBody({
           {/* The chips above pick the platform, so its own select stays off. */}
           <ExternalSearch
             initialPlatform={data.searchPlatform ?? "all"}
+            mode="node"
             onLoad={onLoad}
             onOtherLink={onStreamLink}
             showPlatform={false}

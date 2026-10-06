@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 /**
  * Audio Manager
  *
@@ -276,7 +277,12 @@ export class AudioManager {
     // Build the native master shell synchronously so the media play request
     // can remain in the originating user-activation task on mobile.
     this.output.getMainMeterSource(context);
-    this.output.replaceContext(context).catch(console.error);
+    this.output.replaceContext(context).catch((error) => {
+      captureError(error, {
+        operation: "replaceAudioOutputContext",
+        surface: "ui",
+      });
+    });
 
     // Update instance state
     instance.volume = volume;
@@ -1246,7 +1252,12 @@ export class AudioManager {
     await resumeAudioContext();
 
     this.output.getMainMeterSource(context);
-    this.output.replaceContext(context).catch(console.error);
+    this.output.replaceContext(context).catch((error) => {
+      captureError(error, {
+        operation: "replaceAudioOutputContext",
+        surface: "ui",
+      });
+    });
     await this.meters.setMasterSource(this.output.getMainMeterSource(context));
     this.audioSystemInitialized = true;
   }

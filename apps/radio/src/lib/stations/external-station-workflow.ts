@@ -16,6 +16,7 @@ import { generateId } from "@/lib/types";
 export type ExternalStationError = {
   code: string;
   message: string;
+  cause?: unknown;
 };
 
 export type ExternalStationResult<T> =
@@ -109,12 +110,13 @@ function normalizeWorkflowError(
 ): ExternalStationError {
   if (error instanceof Error && error.message.trim()) {
     return {
+      cause: error,
       code: fallback.code,
       message: error.message,
     };
   }
 
-  return fallback;
+  return { ...fallback, cause: error };
 }
 
 function normalizeRequiredString(value: string): string {

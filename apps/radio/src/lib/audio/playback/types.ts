@@ -40,6 +40,9 @@ export type AudioError = {
   id: string;
   message: string;
   code: AudioErrorCode;
+  /** Original exception and whether the start promise owns reporting. */
+  cause?: unknown;
+  duringStart?: boolean;
   radio?: Radio;
   timestamp: number;
   /** Source ID if error originated from a specific source/effect */

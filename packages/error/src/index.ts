@@ -2,6 +2,7 @@
 import * as Sentry from "@sentry/core";
 
 export type ErrorCategory =
+  | "cancellation"
   | "validation"
   | "auth"
   | "rate_limit"
@@ -59,6 +60,7 @@ function normalizeSafeMessage(message: unknown): string {
 
 const DEFAULT_SEVERITY_BY_CATEGORY: Record<ErrorCategory, ErrorSeverity> = {
   auth: "warning",
+  cancellation: "info",
   dependency: "error",
   infrastructure: "critical",
   network: "error",
@@ -71,6 +73,7 @@ const DEFAULT_SEVERITY_BY_CATEGORY: Record<ErrorCategory, ErrorSeverity> = {
 
 const DEFAULT_STATUS_BY_CATEGORY: Record<ErrorCategory, number> = {
   auth: 401,
+  cancellation: 499,
   dependency: 502,
   infrastructure: 500,
   network: 502,
@@ -107,7 +110,8 @@ export class AppError extends Error {
       init.expected ??
       (init.category === "validation" ||
         init.category === "auth" ||
-        init.category === "rate_limit");
+        init.category === "rate_limit" ||
+        init.category === "cancellation");
     this.status = init.status ?? DEFAULT_STATUS_BY_CATEGORY[init.category];
     this.tags = init.tags;
     this.context = init.context;
@@ -149,6 +153,14 @@ export function toAppError(
 
   return new AppError({
     ...fallback,
+    ...(isAbortPlaybackError(error)
+      ? {
+          category: "cancellation" as const,
+          expected: true,
+          severity: "info" as const,
+          status: 499,
+        }
+      : {}),
     cause: error,
   });
 }
@@ -181,39 +193,6 @@ export function fromProblemError(payload: ProblemErrorPayload): AppError {
     tags: { request_id: payload.requestId },
   });
 }
-
-type DedupeStore = {
-  hasSeen: (key: string) => boolean;
-};
-
-export function createDedupeStore(
-  ttlMs = 30_000,
-  now = () => Date.now()
-): DedupeStore {
-  const seen = new Map<string, number>();
-
-  return {
-    hasSeen(key) {
-      const ts = now();
-      for (const [entryKey, expiresAt] of seen) {
-        if (expiresAt <= ts) {
-          seen.delete(entryKey);
-        }
-      }
-
-      const expiresAt = seen.get(key);
-      if (expiresAt && expiresAt > ts) {
-        return true;
-      }
-
-      seen.set(key, ts + ttlMs);
-      return false;
-    },
-  };
-}
-
-const dedupeStore = createDedupeStore();
-const dedupeStoresByTtl = new Map<number, DedupeStore>();
 
 function parseAppName(release: string): string {
   const [name] = release.split("@");
@@ -253,6 +232,7 @@ export function makeSentryOptions(config: {
         ? null
         : breadcrumb;
     },
+    beforeSend: filterSentryEvent,
     beforeSendLog: () => null,
     beforeSendMetric: () => null,
     dataCollection: DATA_COLLECTION,
@@ -273,17 +253,32 @@ export function shouldDropKnownBrowserApiNoise(
     return false;
   }
 
-  const hasExpectedMessage = values.some(
-    (value) => value.value === "Error invoking post: Method not found"
+  // A linked exception must not silence an unrelated primary failure.
+  return (
+    values.length === 1 &&
+    values[0]?.value === "Error invoking post: Method not found" &&
+    values[0]?.mechanism?.type === "auto.browser.browserapierrors.setTimeout"
   );
-  if (!hasExpectedMessage) {
-    return false;
-  }
+}
 
-  return values.some(
-    (value) =>
-      value.mechanism?.type === "auto.browser.browserapierrors.setTimeout"
-  );
+export function filterSentryEvent(
+  event: Sentry.ErrorEvent,
+  hint: Sentry.EventHint
+): Sentry.ErrorEvent | null {
+  const error = hint.originalException;
+  if (
+    isAbortPlaybackError(error) ||
+    (error instanceof AppError &&
+      (error.reportingHandled || !shouldReportToSentry(error)))
+  ) {
+    return null;
+  }
+  // Share links keep a local backup in the fragment. The SDK's query control
+  // deliberately leaves fragments intact, so remove this one URL component.
+  if (event.request?.url) {
+    event.request.url = event.request.url.split("#", 1)[0];
+  }
+  return shouldDropKnownBrowserApiNoise(event) ? null : event;
 }
 
 export function createRequestId(request: Request): string {
@@ -333,8 +328,6 @@ export function captureError(
     requestId?: string;
     fingerprint?: string[];
     tags?: Record<string, string | number | boolean>;
-    dedupeKey?: string;
-    dedupeTtlMs?: number;
   }
 ): string | undefined {
   const appError = resolveCaptureError(error);
@@ -345,24 +338,6 @@ export function captureError(
     !Sentry.isEnabled()
   ) {
     return;
-  }
-
-  if (meta.dedupeKey) {
-    let localDedupe = dedupeStore;
-    if (meta.dedupeTtlMs && meta.dedupeTtlMs > 0) {
-      const existing = dedupeStoresByTtl.get(meta.dedupeTtlMs);
-      if (existing) {
-        localDedupe = existing;
-      } else {
-        const created = createDedupeStore(meta.dedupeTtlMs);
-        dedupeStoresByTtl.set(meta.dedupeTtlMs, created);
-        localDedupe = created;
-      }
-    }
-
-    if (localDedupe.hasSeen(meta.dedupeKey)) {
-      return;
-    }
   }
 
   let eventId: string | undefined;
@@ -380,22 +355,23 @@ export function captureError(
       scope.setTag("request_id", meta.requestId);
     }
 
-    if (meta.tags) {
-      for (const [key, value] of Object.entries(meta.tags)) {
-        scope.setTag(key, asStringTagValue(value));
-      }
-    }
-
-    if (appError.tags) {
-      for (const [key, value] of Object.entries(appError.tags)) {
-        scope.setTag(key, asStringTagValue(value));
-      }
+    for (const [key, value] of Object.entries({
+      ...appError.tags,
+      ...meta.tags,
+    })) {
+      scope.setTag(key, asStringTagValue(value));
     }
 
     if (meta.fingerprint && meta.fingerprint.length > 0) {
-      scope.setFingerprint(meta.fingerprint);
+      scope.setFingerprint(["{{ default }}", ...meta.fingerprint]);
     }
 
+    if (appError.context) {
+      scope.setContext("application", appError.context);
+    }
+    scope.setLevel(
+      appError.severity === "critical" ? "fatal" : appError.severity
+    );
     scope.setContext("app_error", {
       category: appError.category,
       code: appError.code,
@@ -408,7 +384,9 @@ export function captureError(
       scope.setContext("request", { id: meta.requestId });
     }
 
-    eventId = Sentry.captureException(appError);
+    eventId = Sentry.captureException(
+      appError.cause instanceof Error ? appError.cause : appError
+    );
   });
 
   return eventId;
@@ -550,107 +528,32 @@ export type PlaybackTelemetryPayload = {
   retryPhase?: RetryPhase;
 };
 
-const ACTIONABLE_PLAYBACK_PREFIXES = [
-  "MEDIA_ERROR_",
-  "PLAYBACK_",
-  "STREAM_",
-  "DJ_",
-  "SINGLE_",
-  "MULTIPLE_",
-];
-const ABORTED_OPERATION_MESSAGE_FRAGMENT = "operation was aborted";
-
-export function shouldCapturePlaybackError(errorCode: string): boolean {
-  return ACTIONABLE_PLAYBACK_PREFIXES.some((prefix) =>
-    errorCode.startsWith(prefix)
-  );
-}
-
-function hasAbortErrorName(error: unknown): boolean {
-  if (
-    typeof DOMException !== "undefined" &&
-    error instanceof DOMException &&
+/** Only actual cancellation identity is quiet; recovery messages are not evidence. */
+export function isAbortPlaybackError(
+  error: unknown,
+  _message?: string
+): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
     error.name === "AbortError"
-  ) {
-    return true;
-  }
-
-  if (error instanceof Error && error.name === "AbortError") {
-    return true;
-  }
-
-  if (typeof error !== "object" || error === null || !("name" in error)) {
-    return false;
-  }
-
-  return (error as { name?: unknown }).name === "AbortError";
-}
-
-export function isAbortPlaybackError(error: unknown, message: string): boolean {
-  if (hasAbortErrorName(error)) {
-    return true;
-  }
-
-  return message.toLowerCase().includes(ABORTED_OPERATION_MESSAGE_FRAGMENT);
-}
-
-export function buildPlaybackEventKey(
-  payload: PlaybackTelemetryPayload
-): string {
-  const streamHost = payload.streamHost ?? hostFromUrl(payload.streamUrl);
-  return [payload.mode, streamHost].join("|");
+  );
 }
 
 export function capturePlaybackError(
   error: unknown,
   payload: PlaybackTelemetryPayload
 ): string | undefined {
-  if (!shouldCapturePlaybackError(payload.errorCode)) {
-    return;
-  }
-
-  const safeMessage = normalizeSafeMessage(payload.errorMessage);
-  if (isAbortPlaybackError(error, safeMessage)) {
-    return;
-  }
-
   const streamHost = payload.streamHost ?? hostFromUrl(payload.streamUrl);
-  const dedupeKey = buildPlaybackEventKey({
-    ...payload,
-    errorMessage: safeMessage,
-    streamHost,
-  });
-
-  const appError = new AppError({
+  const appError = toAppError(error, {
     category: "playback",
-    cause: error,
     code: payload.errorCode,
-    context: {
-      radioId: payload.radioId,
-      radioName: payload.radioName,
-      streamHost,
-    },
     expected: false,
-    safeMessage,
-    severity: "error",
-    status: 500,
-    tags: {
-      feature: "radio-playback",
-      mode: payload.mode,
-      retry_phase: payload.retryPhase ?? "none",
-      stream_host: streamHost,
-    },
+    safeMessage: normalizeSafeMessage(payload.errorMessage),
   });
-
   return captureError(appError, {
-    dedupeKey,
-    dedupeTtlMs: 30_000,
-    fingerprint: [
-      "radio-playback",
-      payload.mode,
-      payload.errorCode,
-      streamHost,
-    ],
+    fingerprint: ["radio-playback", payload.mode, appError.code],
     operation: "playback",
     surface: "ui",
     tags: {

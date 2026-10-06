@@ -77,7 +77,11 @@ describe("resolveClientStaticAudio", () => {
         fetchImpl,
         resolveHostname: async () => ["127.0.0.1"],
       })
-    ).rejects.toThrow("must resolve to a public host");
+    ).rejects.toMatchObject({
+      category: "validation",
+      expected: true,
+      message: "Audio URL must resolve to a public host",
+    });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -339,5 +343,9 @@ Length1=11`,
     await expect(pending).rejects.toBeInstanceOf(
       ClientStaticAudioResolverError
     );
+    await expect(pending).rejects.toMatchObject({
+      category: "cancellation",
+      expected: true,
+    });
   });
 });

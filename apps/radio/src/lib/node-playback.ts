@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 /**
@@ -393,6 +394,15 @@ export function detectNodePlaybackEnv(): NodePlaybackEnv {
 
 function isNodeChannelId(channelId: string): boolean {
   return channelId.startsWith(NODE_CHANNEL_PREFIX);
+}
+
+function reportNodeFailure(message: string) {
+  return (error: unknown) =>
+    captureError(error, {
+      operation: "nodePlayback",
+      surface: "ui",
+      tags: { action: message, mode: "node" },
+    });
 }
 
 function warn(message: string) {
@@ -1547,7 +1557,7 @@ function createNodePlayback(
     const lane = plan.lanes.get(laneId);
     if (lane) {
       track(replaceTree(lane.id, lane.effects)).catch(
-        warn("Could not apply lane effects")
+        reportNodeFailure("Could not apply lane effects")
       );
     }
   };
@@ -1573,7 +1583,7 @@ function createNodePlayback(
       return;
     }
     track(replaceTree(laneId, tree)).catch(
-      warn("Could not apply lane effects")
+      reportNodeFailure("Could not apply lane effects")
     );
   };
 
@@ -1606,7 +1616,7 @@ function createNodePlayback(
       }
     };
     track(laneOutputs.swap(laneId, () => replaceUntilLatest(laneId)))
-      .catch(warn("Could not swap lane effects"))
+      .catch(reportNodeFailure("Could not swap lane effects"))
       .finally(endSwap);
   };
 
@@ -1755,7 +1765,7 @@ function createNodePlayback(
   };
 
   const persistence = createNodeSessionPersistence(
-    warn("Could not save a patch change")
+    reportNodeFailure("Could not save a patch change")
   );
 
   /** Writes `graph` with its derived channels in one session update. */
@@ -1833,7 +1843,7 @@ function createNodePlayback(
     try {
       reconcile(false);
     } catch (error) {
-      warn("Could not apply a patch change")(error);
+      reportNodeFailure("Could not apply a patch change")(error);
     }
   };
 
@@ -1915,7 +1925,7 @@ function createNodePlayback(
           takeOtherTabPatch(stored, previous);
         }
       })
-      .catch(warn("Could not take in another tab's patch"));
+      .catch(reportNodeFailure("Could not take in another tab's patch"));
   };
 
   const flushBeforeLeave = () => {

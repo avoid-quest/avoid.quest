@@ -1,13 +1,20 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { UUID } from "@opendaw/lib-std";
 import type { WerkstattDeviceBox } from "@opendaw/studio-boxes";
 import type { Project } from "@opendaw/studio-core";
+// biome-ignore lint/performance/noNamespaceImport: observe the production reporting boundary
+import * as Sentry from "@sentry/core";
+// @ts-expect-error jsdom types are not installed in this workspace.
+import { JSDOM } from "jsdom";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import { getWerkstattRuntimeStatus } from "../dsp/effects/werkstatt-runtime-status.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
 const runtimes: OfficialOpenDawRuntime[] = [];
+const { Event: ProcessorEvent, EventTarget: ProcessorEventTarget } = new JSDOM(
+  ""
+).window;
 
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) {
@@ -45,12 +52,14 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     import("@opendaw/studio-core"),
   ]);
   const compiles: ReturnType<typeof deferred>[] = [];
-  const audioNode = () => ({
-    connect: mock(() => undefined),
-    disconnect: mock(() => undefined),
-    gain: { value: 1 },
-    pan: { value: 0 },
-  });
+  const audioNode = () =>
+    Object.assign(new ProcessorEventTarget(), {
+      connect: mock(() => undefined),
+      disconnect: mock(() => undefined),
+      gain: { value: 1 },
+      pan: { value: 0 },
+    });
+  const worklet = audioNode();
   const context = {
     audioWorklet: {
       addModule: mock((url: string) => {
@@ -123,7 +132,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
                 boxGraph: project.boxGraph,
                 editing: project.editing,
                 engine,
-                startAudioWorklet: audioNode,
+                startAudioWorklet: () => worklet,
                 terminate,
               };
             },
@@ -155,6 +164,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     source: { context } as unknown as AudioNode,
     subscriptions,
     terminate,
+    worklet,
   };
 }
 
@@ -190,6 +200,29 @@ function parameter(
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
+  test("reports a running processor's terminal failure once and ignores disposed runtimes", async () => {
+    const capture = spyOn(Sentry, "captureException").mockReturnValue(
+      "event-id"
+    );
+    try {
+      const running = await createHarness();
+      await running.runtime.initialize();
+      running.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
+      running.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
+      const disposed = await createHarness();
+      await disposed.runtime.initialize();
+      disposed.runtime.cleanup();
+      disposed.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
+      expect(capture).toHaveBeenCalledTimes(1);
+      expect(capture.mock.calls[0]?.[0]).toMatchObject({
+        code: "AUDIO_PROCESSOR_FAILED",
+        context: { backend: "official" },
+      });
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
   test("a newer compile wins when the superseded compile completes last", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);

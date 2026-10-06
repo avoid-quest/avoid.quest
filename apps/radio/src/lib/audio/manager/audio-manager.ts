@@ -877,6 +877,17 @@ export class AudioManager {
     return this.effects.setEffectFields(...args);
   }
 
+  writeTransientEffect(
+    ...args: Parameters<EffectsController["writeTransientEffect"]>
+  ) {
+    return this.effects.writeTransientEffect(...args);
+  }
+
+  getStripNodes(soundId: string) {
+    const nodes = this.sounds.get(soundId)?.nodes;
+    return nodes ? { filter: nodes.filter, pan: nodes.pan } : null;
+  }
+
   /** The backend a sound's effects last settled on, e.g. a dry fallback. */
   getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
     return this.effects.getRuntimeOutcome(soundId);

@@ -32,6 +32,7 @@ import {
   EffectsBackendRouter,
 } from "./effects-backend-router.js";
 import type {
+  EffectLayoutRequirements,
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
   EffectWriteResult,
@@ -306,6 +307,28 @@ class EffectsController {
       state.effects = next;
     }
     return result;
+  }
+
+  writeTransientEffect(
+    soundId: string,
+    effectId: string,
+    config: EffectConfig,
+    requirements: EffectLayoutRequirements,
+    prepare: boolean
+  ): EffectWriteResult {
+    const state = this.states.get(soundId);
+    if (!state?.officialConnected) {
+      return "unavailable";
+    }
+    return (
+      this.officialRuntime?.writeTransientEffect(
+        soundId,
+        effectId,
+        config,
+        requirements,
+        prepare
+      ) ?? "unavailable"
+    );
   }
 
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {

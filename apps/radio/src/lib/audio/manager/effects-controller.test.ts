@@ -151,6 +151,7 @@ function createRuntime() {
         _config: import("../dsp/effects/types.js").EffectConfig
       ) => "applied" as const
     ),
+    writeTransientEffect: mock(() => "applied" as const),
   } satisfies EffectsGraphRuntime;
 }
 

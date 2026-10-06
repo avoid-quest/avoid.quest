@@ -15,6 +15,7 @@ import {
   updateEffectFieldsInTree,
 } from "../dsp/routing/effect-tree.js";
 import type {
+  EffectLayoutRequirements,
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
   EffectWriteResult,
@@ -33,6 +34,7 @@ import {
   syncOfficialEffectCells,
   updateOfficialEffectGroup,
   writeOfficialEffectFields,
+  writeTransientOfficialEffectGroup,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
@@ -634,6 +636,50 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     return "applied";
   }
 
+  writeTransientEffect(
+    soundId: string,
+    effectId: string,
+    config: EffectConfig,
+    requirements: EffectLayoutRequirements,
+    prepare: boolean
+  ): EffectWriteResult {
+    const unit = this.soundUnits.get(soundId);
+    const group = unit?.groupsById.get(effectId);
+    if (!(unit && group && this.project) || group.config.type !== config.type) {
+      return "unavailable";
+    }
+    return this.transaction(() => {
+      if (
+        !writeTransientOfficialEffectGroup(
+          this.adapterContext(),
+          group,
+          config,
+          requirements,
+          prepare
+        )
+      ) {
+        return "structural";
+      }
+      if (prepare) {
+        const indices = new Map<OfficialEffectHost, number>();
+        for (const current of unit.groupsById.values()) {
+          const index = indices.get(current.host) ?? 0;
+          indices.set(
+            current.host,
+            index +
+              moveOfficialEffectGroup(
+                this.adapterContext(),
+                current,
+                current.host,
+                index
+              )
+          );
+        }
+      }
+      return "applied";
+    });
+  }
+
   private syncEffectChain(
     previous: ReadonlyMap<string, OfficialEffectGroup>,
     next: Map<string, OfficialEffectGroup>,
@@ -745,7 +791,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.initializePromise = null;
   }
 
-  private transaction<T>(write: () => T): T {
+  transaction<T>(write: () => T): T {
     const graph = this.requireProject().boxGraph;
     if (graph.inTransaction()) {
       return write();

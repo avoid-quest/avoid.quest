@@ -71,6 +71,15 @@ import {
   type StartResult,
 } from "./lane.js";
 
+export type { EngineParamTarget } from "./param-target";
+
+import {
+  type EngineParamTarget,
+  type ParamMode,
+  paramKey,
+} from "./param-target";
+import { withLaneParam } from "./params";
+
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
  * no effects runtime; `compat` on the compatibility worklet; `bypassed`
@@ -153,7 +162,10 @@ export type NodeEngineOptions = {
   deviceSinks: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
   laneOutputs: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
   /** Where each lane's sound reconciles its effects; AudioManager's. */
-  effects: Pick<AudioManager, "reconcileEffects" | "setEffectFields">;
+  effects: Pick<
+    AudioManager,
+    "reconcileEffects" | "setEffectFields" | "writeTransientEffect"
+  >;
   fadeOut: (soundId: string) => Promise<void>;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
   resolveStream: ResolvePlatformStream;
@@ -208,6 +220,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
    */
   const laneLevels = (laneId: string) => {
     const levels = new Map<string, number>();
+    const parameters = liveInstance(laneId)?.parameters;
+    const transient =
+      parameters && parameters.transient.size > 0 && parameters.available()
+        ? parameters.transient
+        : undefined;
     for (const edge of plan.edges.values()) {
       if (edge.from.id !== laneId) {
         continue;
@@ -216,7 +233,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
       const silenced = edge.muted || plan.sinks.get(sinkId)?.muted === true;
       levels.set(
         sinkId,
-        (levels.get(sinkId) ?? 0) + (silenced ? 0 : edge.gain)
+        (levels.get(sinkId) ?? 0) +
+          (silenced
+            ? 0
+            : (transient?.get(paramKey({ edgeId: edge.id, kind: "send" })) ??
+              edge.gain))
       );
     }
     return levels;
@@ -281,6 +302,24 @@ export function createNodeEngine(options: NodeEngineOptions) {
   };
 
   const host: LaneHost = {
+    authorParam: (target, value) => {
+      if (target.kind === "send") {
+        const edge = plan.edges.get(target.edgeId);
+        if (edge) {
+          plan = {
+            ...plan,
+            edges: new Map(plan.edges).set(edge.id, { ...edge, gain: value }),
+          };
+        }
+        return;
+      }
+      const slot = slots.get(target.laneId);
+      if (slot?.plan) {
+        const lane = withLaneParam(slot.plan, target, value);
+        slot.plan = lane;
+        plan = { ...plan, lanes: new Map(plan.lanes).set(lane.id, lane) };
+      }
+    },
     commitTrack: options.commitTrack,
     ctx,
     cueTap: (laneId, tap) => {
@@ -321,6 +360,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       });
     },
     resolveStream: options.resolveStream,
+    sendGain: (edgeId) => plan.edges.get(edgeId)?.gain,
     setEffectFields: (soundId, effectId, config) =>
       options.effects.setEffectFields(soundId, effectId, config),
     /** A lane's sound came or went: every other lane keyed from it rebinds. */
@@ -349,6 +389,8 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
       return busy >= limit ? limit : null;
     },
+    writeTransientEffect: (...args) =>
+      options.effects.writeTransientEffect(...args),
   };
 
   /**
@@ -538,6 +580,23 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
     },
     busy: (): boolean => [...slots.values()].some((slot) => slot.busy()),
+    clearTransient(target?: EngineParamTarget) {
+      if (target) {
+        const laneId =
+          target.kind === "send"
+            ? plan.edges.get(target.edgeId)?.from.id
+            : target.laneId;
+        if (laneId) {
+          liveInstance(laneId)?.parameters.clear(target);
+        }
+      } else {
+        for (const slot of slots.values()) {
+          if (!slot.current?.retiring) {
+            slot.current?.parameters.clear();
+          }
+        }
+      }
+    },
     async dispose() {
       disposing = true;
       playAll?.abort();
@@ -576,6 +635,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       publishBadges();
       cleanupOrphanedSounds([...soundIds], ctx, "node");
     },
+    levels: laneLevels,
     pause(laneId: string) {
       slots.get(laneId)?.pause(true);
     },
@@ -627,6 +687,14 @@ export function createNodeEngine(options: NodeEngineOptions) {
       if (!disposing && plan.sinks.get(sinkId)?.type === "deviceOut") {
         deviceSinks.retry(sinkId);
       }
+    },
+    setParam(target: EngineParamTarget, value: number, mode: ParamMode) {
+      const laneId =
+        target.kind === "send"
+          ? plan.edges.get(target.edgeId)?.from.id
+          : target.laneId;
+      const instance = laneId ? liveInstance(laneId) : undefined;
+      return instance?.parameters.set(target, value, mode) ?? "unavailable";
     },
     /** The lane's sound, while it has one. */
     soundOf: (laneId: string) => liveInstance(laneId)?.soundId ?? null,

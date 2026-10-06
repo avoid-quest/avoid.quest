@@ -347,6 +347,7 @@ function createWorld(directFields = false) {
         );
         return "applied";
       },
+      writeTransientEffect: () => "unavailable",
     },
     fadeOutSound: () =>
       options.holdFades ? hold(heldFades, () => undefined) : Promise.resolve(),

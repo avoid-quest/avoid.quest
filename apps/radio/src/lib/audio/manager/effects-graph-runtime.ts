@@ -1,5 +1,7 @@
 import type { EffectConfig } from "../dsp/effects/types.js";
 
+export type EffectWriteResult = "applied" | "structural" | "unavailable";
+
 export type EffectsPerformanceSnapshot = {
   backend: "official";
   monitoringChannelCount: number;
@@ -16,6 +18,12 @@ export type OfficialSoundSettings = {
 
 /** EffectsController seam implemented by the openDAW and test adapters. */
 export type EffectsGraphRuntime = {
+  writeEffect: (
+    soundId: string,
+    effectId: string,
+    config: EffectConfig
+  ) => EffectWriteResult;
+  syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
   cleanup: () => void;
   connectSidechainSource: (
     soundId: string,

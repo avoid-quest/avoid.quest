@@ -34,6 +34,7 @@ import {
   isEffectChainActive,
   isEffectContainer,
   MAX_EFFECT_TREE_DEPTH,
+  usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import {
   getNodeDefinition,
@@ -399,7 +400,7 @@ function placeTrim(
   const pending = level === 0 ? trim : UNITY;
   const previousIndex = lastEnabledIndex(effects);
   const previous = effects[previousIndex];
-  if (previous && !isDirectLayout(previous)) {
+  if (previous && !usesDirectEffectLayout(previous)) {
     effects[previousIndex] = {
       ...previous,
       outputGain: previous.outputGain * level,
@@ -973,21 +974,13 @@ function hash(text: string): string {
  * openDAW keeps a default Autotune as a bare device and wraps it otherwise
  * (`usesDirectOfficialEffectLayout`), so that flip is a layout change too.
  */
-function isDirectLayout(effect: EffectConfig): boolean {
-  return (
-    effect.type === "autotune" &&
-    effect.dryWet === 1 &&
-    effect.inputGain === 1 &&
-    effect.outputGain === 1
-  );
-}
 
 function layoutOf(effects: readonly EffectConfig[]): unknown[] {
   return effects.map((effect) => [
     effect.id,
     effect.type,
     effect.order,
-    isDirectLayout(effect),
+    usesDirectEffectLayout(effect),
     effect.signalGain !== undefined,
     isEffectContainer(effect)
       ? effect.chains.map((chain) => [

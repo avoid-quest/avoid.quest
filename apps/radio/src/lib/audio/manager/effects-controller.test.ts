@@ -136,6 +136,19 @@ function createRuntime() {
     disconnectSound: mock(() => undefined),
     getPerformanceSnapshot: mock(() => performanceSnapshot),
     setSidechainTarget: mock(() => undefined),
+    syncEffects: mock(
+      (
+        _soundId: string,
+        _effects: readonly import("../dsp/effects/types.js").EffectConfig[]
+      ) => undefined
+    ),
+    writeEffect: mock(
+      (
+        _soundId: string,
+        _effectId: string,
+        _config: import("../dsp/effects/types.js").EffectConfig
+      ) => "applied" as const
+    ),
   } satisfies EffectsGraphRuntime;
 }
 
@@ -191,6 +204,106 @@ describe("EffectsController", () => {
     expect(controller.getPerformanceSnapshot()).toBe(
       runtime.getPerformanceSnapshot()
     );
+  });
+
+  test.each([true, false])(
+    "direct knobs keep the selected backend (official=%s)",
+    async (official) => {
+      Object.defineProperty(globalThis, "crossOriginIsolated", {
+        configurable: true,
+        value: official,
+      });
+      const context = new TestAudioContext();
+      const source = new TestAudioNode(context);
+      const destination = new TestAudioNode(context);
+      const runtime = createRuntime();
+      let liveThreshold = 0;
+      runtime.writeEffect.mockImplementation((_soundId, _effectId, written) => {
+        if (written.type === "compressor") {
+          liveThreshold = written.threshold;
+        }
+        return "applied";
+      });
+      const manager = createManager(context);
+      const controller = new EffectsController({
+        createOfficialRuntime: () => runtime,
+        createWorkletManager: () => manager,
+        notifyListeners: () => undefined,
+        sounds: new Map([["lane", sound("lane", source)]]),
+        workletProcessorUrl: () => "/worklet.js",
+      });
+      const config = {
+        ...createDefaultEffectConfig("compressor", "comp", 0),
+        enabled: true,
+      };
+      await controller.reconcile("lane", desiredEffects([config]));
+      await controller.connectGraph(
+        "lane",
+        source as unknown as AudioNode,
+        destination as unknown as AudioNode
+      );
+      const connections = [...source.connections];
+      expect(
+        await controller.setEffectFields("lane", config.id, {
+          ...config,
+          threshold: -23,
+        })
+      ).toBe("applied");
+      expect(controller.getRuntimeOutcome("lane").backend).toBe(
+        official ? "official" : "compatibility"
+      );
+      expect([...source.connections]).toEqual(connections);
+      if (official) {
+        expect(liveThreshold).toBe(-23);
+      } else {
+        expect(manager.updateEffect).toHaveBeenCalledWith(
+          "lane",
+          config.id,
+          expect.objectContaining({ threshold: -23 })
+        );
+      }
+      controller.cleanup();
+    }
+  );
+
+  test("a knob edited during connection becomes the connected authored value", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const connecting = Promise.withResolvers<boolean>();
+    runtime.connectSound.mockImplementation(() => connecting.promise);
+    let connectedEffects: readonly import("../dsp/effects/types.js").EffectConfig[] =
+      [];
+    runtime.syncEffects.mockImplementation((_soundId, effects) => {
+      connectedEffects = effects;
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    await controller.reconcile("lane", desiredEffects([config]));
+    const connected = controller.connectGraph(
+      "lane",
+      source as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    expect(
+      await controller.setEffectFields("lane", config.id, {
+        ...config,
+        threshold: -27,
+      })
+    ).toBe("applied");
+    connecting.resolve(true);
+    await connected;
+    expect(connectedEffects).toEqual([{ ...config, threshold: -27 }]);
+    expect(controller.getRuntimeOutcome("lane").backend).toBe("official");
+    controller.cleanup();
   });
 
   test("exposes desired-state reconciliation instead of granular Effects mutations", () => {

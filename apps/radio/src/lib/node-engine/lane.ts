@@ -26,6 +26,8 @@
 
 import { captureError } from "@avoid.quest/error";
 import type { AudioState, Radio } from "@/lib/audio";
+import { findEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
+import type { AudioManager } from "@/lib/audio/manager/audio-manager";
 import type { NodeLaneOutputs } from "@/lib/audio/routing/node-lane-outputs";
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
 import {
@@ -76,6 +78,7 @@ export type EffectsBackend = EffectsRuntimeOutcome["backend"];
 
 /** What a lane needs from the engine that holds it. */
 export type LaneHost = {
+  readonly setEffectFields: AudioManager["setEffectFields"];
   readonly ctx: PlaybackActionContext;
   readonly laneOutputs: NodeLaneOutputs;
   readonly resolveStream: ResolvePlatformStream;
@@ -192,6 +195,7 @@ export class LaneInstance {
   private layout: string | null;
   /** Its effects changed since they were last reconciled. */
   private effectsStale = true as boolean;
+  private readonly pendingFields = new Set<string>();
   private ducked = false as boolean;
   private readonly host: LaneHost;
   private readonly slot: LaneSlot;
@@ -563,6 +567,33 @@ export class LaneInstance {
     this.effectsStale = true;
   }
 
+  setEffectFields(effectId: string): void {
+    this.pendingFields.add(effectId);
+  }
+
+  private writePendingFields(plan: LanePlan): Promise<void> | null {
+    const id = this.pendingFields.values().next().value;
+    if (!id) {
+      return null;
+    }
+    this.pendingFields.delete(id);
+    const config = findEffectInTree(plan.effects, id);
+    const result = config
+      ? this.host.setEffectFields(this.soundId, id, config)
+      : "applied";
+    if (typeof result !== "string") {
+      return result.then((written) => {
+        if (written !== "applied") {
+          this.effectsChanged();
+        }
+      });
+    }
+    if (result !== "applied") {
+      this.effectsChanged();
+    }
+    return this.effectsStep(plan);
+  }
+
   /**
    * The driver's next effects step toward `plan`, or null once they match:
    * changed effects in a new FX layout duck first, unless nothing plays,
@@ -572,27 +603,34 @@ export class LaneInstance {
    */
   effectsStep(plan: LanePlan): Promise<void> | null {
     const { laneOutputs } = this.host;
-    if (!this.effectsStale) {
-      if (this.ducked) {
-        this.ducked = false;
-        laneOutputs.unduck(plan.id);
+    if (
+      this.effectsStale ||
+      (this.layout === null && this.pendingFields.size > 0)
+    ) {
+      const swap = plan.layoutSignature !== this.layout;
+      const ducking = swap && !this.ducked && laneOutputs.duck(plan.id);
+      if (ducking) {
+        this.ducked = true;
+        return ducking;
       }
-      return null;
+      this.effectsStale = false;
+      this.pendingFields.clear();
+      this.layout = null;
+      return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
+        if (!["failed", "superseded"].includes(outcome.status)) {
+          this.layout = plan.layoutSignature;
+        }
+        this.recordOutcome(outcome);
+      }, reportNodeFailure("Could not apply lane effects"));
     }
-    const swap = plan.layoutSignature !== this.layout;
-    const ducking = swap && !this.ducked && laneOutputs.duck(plan.id);
-    if (ducking) {
-      this.ducked = true;
-      return ducking;
+    if (this.pendingFields.size > 0) {
+      return this.writePendingFields(plan);
     }
-    this.effectsStale = false;
-    this.layout = null;
-    return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
-      if (!["failed", "superseded"].includes(outcome.status)) {
-        this.layout = plan.layoutSignature;
-      }
-      this.recordOutcome(outcome);
-    }, reportNodeFailure("Could not apply lane effects"));
+    if (this.ducked) {
+      this.ducked = false;
+      laneOutputs.unduck(plan.id);
+    }
+    return null;
   }
 
   /**
@@ -950,6 +988,13 @@ export class LaneSlot {
   effectsChanged(): void {
     this.current?.effectsChanged();
     this.kick();
+  }
+
+  setEffectFields(effectId: string): void {
+    if (this.current && !this.current.retiring) {
+      this.current.setEffectFields(effectId);
+      this.kick();
+    }
   }
 
   /** Takes each step toward what is wanted until one waits, then goes on. */

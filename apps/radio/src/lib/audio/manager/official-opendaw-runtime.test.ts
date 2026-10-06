@@ -1166,7 +1166,16 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         },
       });
       try {
-        h.runtime.syncEffects("deck", effects({ ...config, threshold: -18 }));
+        expect(
+          h.runtime.writeEffect("deck", config.id, {
+            ...config,
+            threshold: -18,
+          })
+        ).toBe("applied");
+        expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
+          device
+        );
+        expect(device.threshold.getValue()).toBe(-18);
         expect(updates).toEqual([{ field: device.threshold, value: -18 }]);
         expect(transactions).toEqual([false]);
         expect(h.project.editing.hasNoChanges()).toBe(true);
@@ -1176,6 +1185,38 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+
+  test("model and Autotune layout changes use the structural path", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const nam = createDefaultEffectConfig("neuralAmp", "amp", 0);
+    const tune = createDefaultEffectConfig("autotune", "tune", 1);
+    h.runtime.syncEffects("deck", [nam, tune]);
+    expect(
+      h.runtime.writeEffect("deck", nam.id, { ...nam, modelId: "new-model" })
+    ).toBe("structural");
+    expect(
+      h.runtime.writeEffect("deck", tune.id, { ...tune, dryWet: 0.5 })
+    ).toBe("structural");
+    const oldModel = h.project.boxGraph
+      .boxes()
+      .find((box) => box instanceof h.boxes.NeuralAmpDeviceBox);
+    h.runtime.syncEffects("deck", [
+      { ...nam, modelId: "new-model" },
+      { ...tune, dryWet: 0.5 },
+    ]);
+    expect(h.project.boxGraph.boxes()).not.toContain(oldModel);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.AutotuneDeviceBox),
+      h.boxes.AutotuneDeviceBox
+    );
+    expect(wrapperForDevice(h, device).wet.getValue()).toBeCloseTo(
+      20 * Math.log10(0.5)
+    );
+    expect(h.project.editing.hasNoChanges()).toBe(true);
+  });
 
   test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
     "%s edits nested chains and cell controls without resetting their devices",

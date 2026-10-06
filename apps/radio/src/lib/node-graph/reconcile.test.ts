@@ -154,14 +154,15 @@ describe("diff", () => {
     });
   });
 
-  test("a param-only change yields only setLaneEffects", () => {
+  test("a param-only change writes only the changed effect", () => {
     const next = base({ verb: { decay: 0.9, dryWet: 0.4 } });
     const ops = diff(base(), next);
     expect(ops).toEqual([
       {
-        effects: next.lanes.get("a")?.effects ?? [],
+        config: next.lanes.get("a")?.effects[0] as EffectConfig,
+        effectId: "verb",
         laneId: "a",
-        type: "setLaneEffects",
+        type: "setEffectFields",
       },
     ]);
   });
@@ -178,7 +179,9 @@ describe("diff", () => {
         [station("a"), fx("verb", "cheapReverb", { enabled: true }), speakers],
         [audio("a", "verb", { gain }), audio("verb", "speakers")]
       );
-    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual(["setLaneEffects"]);
+    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual([
+      "setEffectFields",
+    ]);
   });
 
   test("toggling a unity Autotune updates effects without ducking the lane", () => {
@@ -193,10 +196,10 @@ describe("diff", () => {
         [audio("a", "verb"), audio("verb", "tune"), audio("tune", "speakers")]
       );
     expect(types(diff(autotuned(true), autotuned(false)))).toEqual([
-      "setLaneEffects",
+      "setEffectFields",
     ]);
     expect(types(diff(autotuned(false), autotuned(true)))).toEqual([
-      "setLaneEffects",
+      "setEffectFields",
     ]);
   });
 
@@ -242,8 +245,8 @@ describe("diff", () => {
     const unity = autotuned();
     const nudged = autotuned({ gainDb: -0.1 });
 
-    expect(types(diff(unity, nudged))).toEqual(["setLaneEffects"]);
-    expect(types(diff(nudged, unity))).toEqual(["setLaneEffects"]);
+    expect(types(diff(unity, nudged))).toEqual(["setEffectFields"]);
+    expect(types(diff(nudged, unity))).toEqual(["setEffectFields"]);
     expect(types(diff(unity, autotuned({ muted: true })))).not.toContain(
       "replaceLaneEffects"
     );

@@ -873,6 +873,10 @@ export class AudioManager {
     return this.effects.reconcile(soundId, desired);
   }
 
+  setEffectFields(...args: Parameters<EffectsController["setEffectFields"]>) {
+    return this.effects.setEffectFields(...args);
+  }
+
   /** The backend a sound's effects last settled on, e.g. a dry fallback. */
   getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
     return this.effects.getRuntimeOutcome(soundId);

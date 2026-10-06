@@ -7,9 +7,16 @@ import {
   clearWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
+import {
+  effectFieldsAreStructural,
+  findEffectInTree,
+  localEffectConfig,
+  updateEffectInTree,
+} from "../dsp/routing/effect-tree.js";
 import type {
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
+  EffectWriteResult,
   OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 import {
@@ -24,6 +31,7 @@ import {
   setMasterRackDryWet,
   syncOfficialEffectCells,
   updateOfficialEffectGroup,
+  writeOfficialEffectFields,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
@@ -57,6 +65,7 @@ type WerkstattCompiler = ReturnType<
 type Terminable = { terminate: () => void };
 
 type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
+  effects: EffectConfig[];
   groupsById: Map<string, OfficialEffectGroup>;
   groups: OfficialEffectGroup[];
   inputChannels: 1 | 2;
@@ -427,6 +436,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       unit = {
         ...product,
         destination: null,
+        effects: [],
         groups: [],
         groupsById: new Map(),
         inputChannels,
@@ -544,7 +554,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!(unit && this.project)) {
       return;
     }
-    const nextEffects = structuredClone(effects);
+    const nextEffects = structuredClone([...effects]);
     const nextGroups = new Map<string, OfficialEffectGroup>();
     const { groups, retired: retiredGroups } = this.transaction(() => {
       const obsoleteCells: ReturnType<typeof syncOfficialEffectCells> = [];
@@ -565,6 +575,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.bindSidechains({ groups: next, soundId });
       return { groups: next, retired };
     });
+    unit.effects = nextEffects;
     unit.groups = groups;
     unit.groupsById = nextGroups;
     this.afterCommit(() => {
@@ -586,6 +597,40 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       }
       this.compileWerkstattChain(group.children);
     }
+  }
+
+  writeEffect(
+    soundId: string,
+    effectId: string,
+    config: EffectConfig
+  ): EffectWriteResult {
+    const unit = this.soundUnits.get(soundId);
+    const group = unit?.groupsById.get(effectId);
+    if (!(unit && group && this.project)) {
+      return "unavailable";
+    }
+    if (effectFieldsAreStructural(group.config, config)) {
+      return "structural";
+    }
+    const authored = structuredClone(config);
+    this.transaction(() => {
+      writeOfficialEffectFields(this.adapterContext(), group, authored);
+      group.config = authored;
+      syncOfficialEffectCells(this.adapterContext(), group);
+      if (authored.type === "werkstatt") {
+        restoreWerkstattParameterValues(
+          this.adapterContext(),
+          group,
+          authored.parameters
+        );
+      }
+    });
+    unit.effects = updateEffectInTree(unit.effects, effectId, authored);
+    for (const current of unit.groupsById.values()) {
+      current.config =
+        findEffectInTree(unit.effects, current.config.id) ?? current.config;
+    }
+    return "applied";
   }
 
   private syncEffectChain(
@@ -996,16 +1041,6 @@ function canKeepDevice(before: EffectConfig, after: EffectConfig): boolean {
       (before.modelId !== after.modelId || before.modelData !== after.modelData)
     )
   );
-}
-
-function localEffectConfig(effect: EffectConfig): unknown {
-  if (!("chains" in effect)) {
-    return effect;
-  }
-  return {
-    ...effect,
-    chains: effect.chains.map(({ effects: _, ...chain }) => chain),
-  };
 }
 
 function werkstattSource(

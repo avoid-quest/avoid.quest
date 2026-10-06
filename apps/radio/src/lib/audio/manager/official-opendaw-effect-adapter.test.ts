@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type {
-  AudioEffectCompositeBox,
-  StereoToolDeviceBox,
-} from "@opendaw/studio-boxes";
 import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import {
@@ -10,6 +6,7 @@ import {
   createOfficialEffectGroup,
   updateOfficialEffectGroup,
   usesDirectOfficialEffectLayout,
+  writeOfficialEffectFields,
 } from "./official-opendaw-effect-adapter.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
@@ -19,73 +16,6 @@ afterEach(() => {
 });
 
 describe("official openDAW BoxGraph adapter", () => {
-  test("fails visibly when a required device field is missing", () => {
-    const primitive = () => ({
-      getValue: () => 0,
-      setValue: () => undefined,
-    });
-    const makeBox = (missing?: string) =>
-      new Proxy(
-        {
-          audioEffects: {},
-          delete: () => undefined,
-          entries: {},
-        } as Record<string, unknown>,
-        {
-          get(target, key) {
-            if (key === missing) {
-              return;
-            }
-            if (key in target) {
-              return target[key as string];
-            }
-            return primitive();
-          },
-        }
-      );
-    const factories = {
-      AudioEffectComposite: "composite",
-      Compressor: "compressor",
-      StereoTool: "stereo-tool",
-    };
-    const project = {
-      api: {
-        insertEffect: (_host: unknown, factory: string) =>
-          makeBox(factory === factories.Compressor ? "threshold" : undefined),
-      },
-      boxGraph: {},
-    };
-    const boxes = {
-      AudioEffectCompositeCellBox: {
-        create: (
-          _graph: unknown,
-          _uuid: unknown,
-          configure: (box: Record<string, ReturnType<typeof primitive>>) => void
-        ) => {
-          const cell = makeBox();
-          Reflect.set(cell, "composite", { refer: () => undefined });
-          configure(cell as never);
-          return cell;
-        },
-      },
-    };
-    const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
-
-    expect(() =>
-      createOfficialEffectGroup(
-        {
-          boxes,
-          bpm: 120,
-          core: { EffectFactories: { AudioNamed: factories } },
-          project,
-        } as never,
-        compressor,
-        {},
-        0
-      )
-    ).toThrow('openDAW box is missing required field "threshold"');
-  });
-
   test("constructs every catalog effect with the published boxes", async () => {
     Reflect.set(globalThis, "AudioWorkletNode", class {});
     const [adapters, boxes, core, { Option, Terminable }] = await Promise.all([
@@ -141,46 +71,49 @@ describe("official openDAW BoxGraph adapter", () => {
       false
     );
 
-    const groups = project.editing
+    const { groups, host } = project.editing
       .modify(() => {
         const unit = project.api.createAnyInstrument(
           adapters.InstrumentFactories.Tape
         );
         const rack = createMasterRack(
-          { boxes, bpm: 120, core, project },
+          { adapters, boxes, bpm: 120, core, project },
           unit.audioUnitBox.audioEffects
         );
-        return Object.keys(OPENDAW_FACTORY_KEYS).map((type, index) => {
-          const config = createDefaultEffectConfig(
-            type as keyof typeof OPENDAW_FACTORY_KEYS,
-            `effect-${index}`,
-            index
-          );
-          if (config.type === "cheapReverb") {
-            config.enabled = true;
-            config.dryWet = 0.5;
-            config.signalGain = 0.5;
+        const createdGroups = Object.keys(OPENDAW_FACTORY_KEYS).map(
+          (type, index) => {
+            const config = createDefaultEffectConfig(
+              type as keyof typeof OPENDAW_FACTORY_KEYS,
+              `effect-${index}`,
+              index
+            );
+            if (config.type === "cheapReverb") {
+              config.enabled = true;
+              config.dryWet = 0.5;
+              config.signalGain = 0.5;
+            }
+            if (config.type === "crusher") {
+              config.autoGain = false;
+              config.boost = 20;
+            }
+            if (config.type === "autotune") {
+              config.enabled = true;
+              config.scale = "majorPentatonic";
+            }
+            if (config.type === "fold") {
+              config.amount = 20;
+              config.volume = 3;
+              config.autoGain = true;
+            }
+            return createOfficialEffectGroup(
+              { adapters, boxes, bpm: 120, core, project },
+              config,
+              rack.wet.audioEffects,
+              index * 3
+            );
           }
-          if (config.type === "crusher") {
-            config.autoGain = false;
-            config.boost = 20;
-          }
-          if (config.type === "autotune") {
-            config.enabled = true;
-            config.scale = "majorPentatonic";
-          }
-          if (config.type === "fold") {
-            config.amount = 20;
-            config.volume = 3;
-            config.autoGain = true;
-          }
-          return createOfficialEffectGroup(
-            { boxes, bpm: 120, core, project },
-            config,
-            rack.wet.audioEffects,
-            index * 3
-          );
-        });
+        );
+        return { groups: createdGroups, host: rack.wet.audioEffects };
       })
       .unwrap();
 
@@ -203,12 +136,12 @@ describe("official openDAW BoxGraph adapter", () => {
 
     expect(groups).toHaveLength(19);
     expect(
-      groups.find((group) => group.config.type === "autotune")?.created
-    ).toHaveLength(1);
+      groups.find((group) => group.config.type === "autotune")?.wrapper
+    ).toBeNull();
     expect(
       groups
         .filter((group) => group.config.type !== "autotune")
-        .every((group) => group.created.length >= 4)
+        .every((group) => group.wrapper !== null)
     ).toBe(true);
     expect(value("plateReverb", "device", "dry")).toBe(-72);
     expect(value("plateReverb", "device", "wet")).toBe(0);
@@ -226,7 +159,12 @@ describe("official openDAW BoxGraph adapter", () => {
     const updatedAutotune = { ...autotune.config, key: "D" as const };
     expect(usesDirectOfficialEffectLayout(updatedAutotune)).toBe(true);
     project.editing.modify(() =>
-      updateOfficialEffectGroup(autotune, updatedAutotune, 120)
+      updateOfficialEffectGroup(
+        { adapters, boxes, bpm: 120, core, project },
+        autotune,
+        updatedAutotune,
+        host
+      )
     );
     expect(value("autotune", "device", "key")).toBe(2);
     expect(
@@ -246,10 +184,7 @@ describe("official openDAW BoxGraph adapter", () => {
     ) {
       throw new Error("Missing reverb signal trim");
     }
-    const signalTrim = reverb.signalTrim as unknown as StereoToolDeviceBox;
-    const wrapper = reverb.wrapper as unknown as AudioEffectCompositeBox;
-    const wetTrim = reverb.inputTrim as unknown as StereoToolDeviceBox;
-    const outputTrim = reverb.outputTrim as unknown as StereoToolDeviceBox;
+    const { signalTrim, wrapper, inputTrim: wetTrim, outputTrim } = reverb;
     // The published BoxGraph places gain before the point where dry and wet split.
     expect(signalTrim.host.targetVertex.unwrap()).toBe(
       wrapper.host.targetVertex.unwrap()
@@ -262,16 +197,51 @@ describe("official openDAW BoxGraph adapter", () => {
     expect(signalTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(0.5));
     expect(signalTrim.panningMixing.getValue()).toBe(0);
     expect(wetTrim.volume.getValue()).toBe(0);
-    const created = reverb.created.length;
+    const { device } = reverb;
     project.editing.modify(() =>
       updateOfficialEffectGroup(
+        { adapters, boxes, bpm: 120, core, project },
         reverb,
         { ...reverb.config, signalGain: 1 },
-        120
+        host
       )
     );
     expect(signalTrim.volume.getValue()).toBe(0);
-    expect(reverb.created).toHaveLength(created);
+    project.editing.modify(() =>
+      updateOfficialEffectGroup(
+        { adapters, boxes, bpm: 120, core, project },
+        reverb,
+        { ...reverb.config, enabled: false, signalGain: 0.5 },
+        host
+      )
+    );
+    expect(signalTrim.enabled.getValue()).toBe(false);
+    expect(wrapper.enabled.getValue()).toBe(false);
+    expect(outputTrim.enabled.getValue()).toBe(false);
+    project.editing.modify(() =>
+      updateOfficialEffectGroup(
+        { adapters, boxes, bpm: 120, core, project },
+        reverb,
+        { ...reverb.config, enabled: true },
+        host
+      )
+    );
+    expect(signalTrim.enabled.getValue()).toBe(true);
+    expect(signalTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+    expect(reverb.device).toBe(device);
+    const authored = reverb.config;
+    project.editing.modify(() =>
+      writeOfficialEffectFields(
+        { adapters, boxes, bpm: 120, core, project },
+        reverb,
+        { ...authored, dryWet: 0.4, inputGain: 0.5, outputGain: 1.5 }
+      )
+    );
+    expect(wetTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+    expect(wrapper.dry.getValue()).toBeCloseTo(20 * Math.log10(0.6));
+    expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.4));
+    expect(outputTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(1.5));
+    expect(reverb.config).toBe(authored);
     project.terminate();
   });
 });

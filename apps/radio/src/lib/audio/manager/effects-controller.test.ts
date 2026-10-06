@@ -365,6 +365,111 @@ describe("EffectsController", () => {
     expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);
   });
 
+  test("toggling one official effect retains the other enabled effect and sends both devices", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const createWorkletManager = mock(() => createManager(context));
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const reverb = {
+      ...createDefaultEffectConfig("plateReverb", "reverb", 0),
+      enabled: true,
+    };
+    const disabledOfficial = createDefaultEffectConfig("delay", "disabled", 1);
+    const disabledLegacy = createDefaultEffectConfig("limiter", "legacy", 2);
+    const survivor = {
+      ...createDefaultEffectConfig("compressor", "survivor", 3),
+      enabled: true,
+    };
+    const tree = [reverb, disabledOfficial, disabledLegacy, survivor];
+    await controller.reconcile("target", desiredEffects(tree));
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    for (const enabled of [false, true]) {
+      const updated = { ...reverb, enabled };
+      // biome-ignore lint/performance/noAwaitInLoops: consecutive desired states retain the same runtime
+      await controller.reconcile(
+        "target",
+        desiredEffects([updated, disabledOfficial, disabledLegacy, survivor])
+      );
+      expect(controller.getRuntimeOutcome("target")).toEqual({
+        backend: "official",
+        ready: true,
+        status: "ready",
+      });
+      expect(runtime.connectSound.mock.calls.at(-1)?.[5]).toEqual({
+        dryWet: 1,
+        effects: [updated, disabledOfficial, survivor],
+        sidechainSoundId: null,
+        tempo: 120,
+      });
+      expect(runtime.deleteSound).not.toHaveBeenCalled();
+      expect(createWorkletManager).not.toHaveBeenCalled();
+    }
+    await controller.reconcile("target", desiredEffects([]));
+    expect(controller.getRuntimeOutcome("target").backend).toBe("bypass");
+  });
+
+  test.each(["disabled", "dry"] as const)(
+    "%s settings select the same backend after an official connection or a fresh start",
+    async (mode) => {
+      const context = new TestAudioContext();
+      const previousFilter = new TestAudioNode(context);
+      const freshFilter = new TestAudioNode(context);
+      const runtime = createRuntime();
+      const controller = new EffectsController({
+        createOfficialRuntime: () => runtime,
+        notifyListeners: () => undefined,
+        sounds: new Map([
+          ["previous", sound("previous", previousFilter)],
+          ["fresh", sound("fresh", freshFilter)],
+        ]),
+        workletProcessorUrl: () => "/worklet.js",
+      });
+      const reverb = {
+        ...createDefaultEffectConfig("plateReverb", "reverb", 0),
+        enabled: true,
+      };
+      await controller.reconcile("previous", desiredEffects([reverb]));
+      await controller.connectGraph(
+        "previous",
+        previousFilter as unknown as AudioNode,
+        new TestAudioNode(context) as unknown as AudioNode
+      );
+      expect(controller.getRuntimeOutcome("previous").backend).toBe("official");
+      const desired = desiredEffects(
+        [{ ...reverb, enabled: mode !== "disabled" }],
+        { dryWet: mode === "dry" ? 0 : 1 }
+      );
+      await controller.reconcile("previous", desired);
+      await controller.reconcile("fresh", desired);
+      await controller.connectGraph(
+        "fresh",
+        freshFilter as unknown as AudioNode,
+        new TestAudioNode(context) as unknown as AudioNode
+      );
+      expect(controller.getRuntimeOutcome("previous")).toEqual(
+        controller.getRuntimeOutcome("fresh")
+      );
+      expect(controller.getRuntimeOutcome("previous").backend).toBe("bypass");
+      expect(runtime.deleteSound).toHaveBeenCalledWith(
+        "previous",
+        expect.any(Number)
+      );
+      expect(runtime.connectSound).toHaveBeenCalledTimes(1);
+      controller.cleanup();
+    }
+  );
+
   test("falls back to compatibility with the same desired tree", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);

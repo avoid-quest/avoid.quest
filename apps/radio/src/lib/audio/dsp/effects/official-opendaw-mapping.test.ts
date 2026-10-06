@@ -4,7 +4,7 @@ import {
   hasEnabledEffects,
   isOfficialOpenDawEffectType,
   OPENDAW_FACTORY_KEYS,
-  selectEnabledEffects,
+  selectOfficialEffects,
 } from "./official-opendaw-mapping";
 import { createDefaultEffectConfig } from "./registry";
 import {
@@ -43,6 +43,10 @@ describe("official openDAW runtime selection", () => {
 
   test("does not initialize an effect runtime for an empty or disabled chain", () => {
     expect(hasEnabledEffects([])).toBe(false);
+    expect(canUseOfficialOpenDawRuntime([])).toBe(false);
+    expect(canUseOfficialOpenDawRuntime([effect("delay", "off", false)])).toBe(
+      false
+    );
     expect(hasEnabledEffects([effect("pitchShifter", "legacy", false)])).toBe(
       false
     );
@@ -55,9 +59,26 @@ describe("official openDAW runtime selection", () => {
     ];
 
     expect(canUseOfficialOpenDawRuntime(effects)).toBe(true);
-    expect(selectEnabledEffects(effects).map(({ id }) => id)).toEqual([
+    expect(selectOfficialEffects(effects).map(({ id }) => id)).toEqual([
       "official",
     ]);
+  });
+
+  test("keeps disabled official devices and excludes radio-only descendants of a disabled container", () => {
+    const container = createDefaultEffectConfig("fxComposite", "container", 0);
+    container.enabled = false;
+    container.chains[0].effects = [
+      effect("limiter", "legacy", true),
+      effect("delay", "nested", false),
+    ];
+    const configs = [container, effect("cheapReverb", "reverb", true)];
+    expect(canUseOfficialOpenDawRuntime(configs)).toBe(true);
+    const [selected] = selectOfficialEffects(configs);
+    expect(selected.enabled).toBe(false);
+    if (!("chains" in selected)) {
+      throw new Error("Container missing");
+    }
+    expect(selected.chains[0].effects.map(({ id }) => id)).toEqual(["nested"]);
   });
 
   test("an enabled legacy effect selects the compatibility runtime", () => {

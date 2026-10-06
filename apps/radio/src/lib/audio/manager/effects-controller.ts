@@ -6,7 +6,7 @@ import type {
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
-  selectEnabledEffects,
+  selectOfficialEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
@@ -710,7 +710,7 @@ class EffectsController {
         state.inputChannels,
         {
           dryWet: state.dryWet,
-          effects: selectEnabledEffects(state.effects),
+          effects: selectOfficialEffects(state.effects),
           sidechainSoundId: state.desiredSidechainSoundId,
           tempo: state.tempo,
         }

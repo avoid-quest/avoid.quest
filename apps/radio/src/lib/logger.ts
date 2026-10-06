@@ -2,7 +2,6 @@ type LogLevel = "info" | "warn" | "error";
 
 type LogContext = {
   sessionId?: string;
-  ip?: string;
   url?: string;
   endpoint?: string;
   [key: string]: unknown;
@@ -47,12 +46,10 @@ export function logSecurityEvent(
  */
 export function logRateLimitViolation(
   sessionId: string,
-  endpoint: string,
-  ip?: string
+  endpoint: string
 ): void {
   logSecurityEvent("warn", "Rate limit exceeded", {
     endpoint,
-    ip,
     sessionId,
   });
 }
@@ -63,13 +60,11 @@ export function logRateLimitViolation(
 export function logSSRFAttempt(
   sessionId: string,
   attemptedUrl: string,
-  endpoint: string,
-  ip?: string
+  endpoint: string
 ): void {
   logSecurityEvent("warn", "SSRF attempt detected", {
     attemptedUrl,
     endpoint,
-    ip,
     sessionId,
   });
 }
@@ -77,9 +72,8 @@ export function logSSRFAttempt(
 /**
  * Log authentication failure
  */
-export function logAuthFailure(endpoint: string, ip?: string): void {
+export function logAuthFailure(endpoint: string): void {
   logSecurityEvent("warn", "Authentication failure", {
     endpoint,
-    ip,
   });
 }

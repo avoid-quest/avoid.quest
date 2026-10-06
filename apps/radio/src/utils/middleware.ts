@@ -39,7 +39,7 @@ export function rateLimitMiddleware(
     );
 
     if (!(sessionId || createSessionIfMissing)) {
-      logAuthFailure(identifier, ip);
+      logAuthFailure(identifier);
       throw new Error("Unauthorized");
     }
 
@@ -51,7 +51,7 @@ export function rateLimitMiddleware(
     );
 
     if (!rateLimitResult.allowed) {
-      logRateLimitViolation(sessionId ?? "anonymous", identifier, ip);
+      logRateLimitViolation(sessionId ?? "anonymous", identifier);
       throw new Error("Rate limit exceeded");
     }
 
@@ -81,7 +81,7 @@ export function authMiddleware(options?: { createSessionIfMissing?: boolean }) {
     );
 
     if (!(sessionId || createSessionIfMissing)) {
-      logAuthFailure("auth", ip);
+      logAuthFailure("auth");
       throw new Error("Unauthorized");
     }
 

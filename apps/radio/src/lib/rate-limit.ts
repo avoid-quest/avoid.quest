@@ -93,11 +93,10 @@ export async function checkRateLimit(
     const outcome = await rateLimit.limit({ key });
 
     return { allowed: outcome.success };
-  } catch (error) {
+  } catch {
     // In development, allow on error to avoid blocking development
     // In production, fail closed for security
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Rate limit check failed:", errorMessage, error);
+    console.error("Rate limit check failed");
 
     if (isDevelopment) {
       console.warn("Allowing request due to rate limit error in development");

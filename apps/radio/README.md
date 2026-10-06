@@ -146,6 +146,20 @@ invalid payload shapes are rejected before forwarding. Confirm visitor/session
 attribution in the dashboard after deployment. The Astro site's analytics
 setup is independent.
 
+Umami uses IPs transiently for location metrics and anonymous session hashes;
+[it does not store the IP address](https://docs.umami.is/docs/metric-definitions).
+The proxy keeps Umami's standard visitor attribution instead of replacing IPs
+with a shared placeholder. Security logs omit visitor IPs, and the existing
+Cloudflare rate limiting remains in place.
+
+Sentry's shared configuration follows its documented
+[`dataCollection` controls](https://docs.sentry.io/platforms/javascript/guides/tanstackstart-react/data-management/data-collected/):
+`userInfo: false`, cookies and bodies disabled, and IP-bearing headers/query
+parameters filtered. The app does not explicitly set a Sentry user/IP. Sentry's
+**Prevent Storing of IP Addresses** setting under **Security & Privacy** is an
+additional server-side safeguard. Provider access logs and historical data are
+managed outside this repository and are not verified by these SDK settings.
+
 ## Architecture
 
 When changing Node Mode graph rules, playback, persistence or editing, read the

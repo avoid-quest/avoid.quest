@@ -8,6 +8,8 @@ import {
   capturePlaybackError,
   createDedupeStore,
   createRequestId,
+  initClientSentry,
+  initServerSentry,
   isAbortPlaybackError,
   problemJson,
   runApiRoute,
@@ -35,6 +37,37 @@ beforeEach(() => {
 
 afterEach(() => {
   captureException.mockRestore();
+});
+
+describe("Sentry privacy configuration", () => {
+  test.each([initClientSentry, initServerSentry])(
+    "%p disables automatic IP collection and filters IP-bearing metadata",
+    (initialize) => {
+      const init = spyOn(Sentry, "init").mockImplementation(() => undefined);
+      try {
+        initialize({
+          dsn: "https://publicKey@o123.ingest.us.sentry.io/42",
+          environment: "test",
+          release: "radio@test",
+          tunnel: "/tunnel",
+        });
+        const collection = init.mock.calls[0]?.[0]?.dataCollection;
+        const ipFilter = {
+          deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+        };
+        expect(collection?.userInfo).toBe(false);
+        expect(collection?.cookies).toBe(false);
+        expect(collection?.httpBodies).toEqual([]);
+        expect(collection?.httpHeaders).toEqual({
+          request: ipFilter,
+          response: ipFilter,
+        });
+        expect(collection?.urlQueryParams).toEqual(ipFilter);
+      } finally {
+        init.mockRestore();
+      }
+    }
+  );
 });
 
 describe("AppError", () => {

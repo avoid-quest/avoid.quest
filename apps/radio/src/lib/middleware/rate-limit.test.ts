@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 const logAuthFailureMock = mock(() => undefined);
 const logRateLimitViolationMock = mock(() => undefined);
@@ -13,11 +13,13 @@ mock.module("@/lib/logger", () => ({
 const VALID_SESSION_ID =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+let checkRateLimit: typeof import("../rate-limit")["checkRateLimit"];
 let getClientIP: typeof import("./rate-limit")["getClientIP"];
 let validateAuthAndRateLimit: typeof import("./rate-limit")["validateAuthAndRateLimit"];
 
 beforeAll(async () => {
   ({ getClientIP, validateAuthAndRateLimit } = await import("./rate-limit"));
+  ({ checkRateLimit } = await import("../rate-limit"));
 });
 
 describe("validateAuthAndRateLimit", () => {
@@ -107,6 +109,53 @@ describe("validateAuthAndRateLimit", () => {
     expect(result).toBeInstanceOf(Response);
     expect((result as Response).status).toBe(429);
     expect(limitMock).not.toHaveBeenCalled();
+  });
+
+  test("does not pass visitor IPs to authentication or rate-limit logs", async () => {
+    const request = new Request("https://radio.test/api/feedback", {
+      headers: { "cf-connecting-ip": "203.0.113.10" },
+    });
+    const env = {
+      "proxy-rate-limit": { limit: mock(async () => ({ success: false })) },
+    };
+    const unauthorized = await validateAuthAndRateLimit(
+      request,
+      env,
+      "feedback",
+      {
+        createSessionIfMissing: false,
+      }
+    );
+    expect(unauthorized).toBeInstanceOf(Response);
+    expect(logAuthFailureMock).toHaveBeenLastCalledWith("feedback");
+    const limited = await validateAuthAndRateLimit(request, env, "feedback");
+    expect(limited).toBeInstanceOf(Response);
+    expect(logRateLimitViolationMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      "feedback"
+    );
+  });
+
+  test("does not persist an IP embedded in a rate-limit binding error", async () => {
+    const log = spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const result = await checkRateLimit(
+        {
+          "proxy-rate-limit": {
+            limit: mock(() => {
+              throw new Error("Failed key feedback:ip:203.0.113.10");
+            }),
+          },
+        },
+        "feedback",
+        { type: "ip", value: "203.0.113.10" }
+      );
+      expect(result.allowed).toBe(false);
+      expect(log).toHaveBeenCalled();
+      expect(JSON.stringify(log.mock.calls)).not.toContain("203.0.113.10");
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

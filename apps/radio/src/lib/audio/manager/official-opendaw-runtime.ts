@@ -304,37 +304,23 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!this.isCurrentSoundConnection(soundId, generation)) {
       return false;
     }
-    const existing = this.soundUnits.has(soundId);
-    try {
-      return this.transaction(() => {
-        const connected = this.connectSoundUnit(
-          soundId,
-          source,
-          destination,
-          true,
-          generation,
-          inputChannels
-        );
-        if (connected && settings) {
-          this.setTempo(settings.tempo);
-          this.setSidechainTarget(soundId, settings.sidechainSoundId);
-          this.syncEffects(soundId, settings.effects);
-          this.setDryWet(soundId, settings.dryWet);
-        }
-        return connected;
-      });
-    } catch (error) {
-      const unit = this.soundUnits.get(soundId);
-      if (!existing && unit) {
-        this.soundUnits.delete(soundId);
-        this.sidechainTargets.delete(soundId);
-        this.releaseWerkstattGroups(unit.groups);
-        this.requireProject().engine.unregisterMonitoringSource(
-          unit.audioUnitBox.address.uuid
-        );
+    return this.transaction(() => {
+      const connected = this.connectSoundUnit(
+        soundId,
+        source,
+        destination,
+        true,
+        generation,
+        inputChannels
+      );
+      if (connected && settings) {
+        this.setTempo(settings.tempo);
+        this.setSidechainTarget(soundId, settings.sidechainSoundId);
+        this.syncEffects(soundId, settings.effects);
+        this.setDryWet(soundId, settings.dryWet);
       }
-      throw error;
-    }
+      return connected;
+    });
   }
 
   async connectSidechainSource(
@@ -528,23 +514,25 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         unit.effects = nextEffects;
         this.bindSidechains();
       });
-      for (const { after, before } of stableUpdates) {
-        const group = groupsById.get(after.id);
-        if (
-          group &&
-          after.type === "werkstatt" &&
-          before.type === "werkstatt" &&
-          werkstattSource(before) !== werkstattSource(after)
-        ) {
-          this.compileWerkstattGroup(group, after);
+      this.afterCommit(() => {
+        for (const { after, before } of stableUpdates) {
+          const group = groupsById.get(after.id);
+          if (
+            group &&
+            after.type === "werkstatt" &&
+            before.type === "werkstatt" &&
+            werkstattSource(before) !== werkstattSource(after)
+          ) {
+            this.compileWerkstattGroup(group, after);
+          }
         }
-      }
+      });
       return;
     }
 
-    this.releaseWerkstattGroups(unit.groups);
+    const previousGroups = unit.groups;
     this.transaction(() => {
-      deleteOfficialEffectGroups(unit.groups);
+      deleteOfficialEffectGroups(previousGroups);
       unit.effects = nextEffects;
       unit.groups = unit.effects.map((effect, index) =>
         createOfficialEffectGroup(
@@ -556,20 +544,25 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       );
       this.bindSidechains();
     });
-    for (const group of flattenGroups(unit.groups)) {
-      if (group.config.type === "werkstatt") {
-        this.compileWerkstattGroup(group, group.config);
+    this.afterCommit(() => {
+      this.releaseWerkstattGroups(previousGroups);
+      for (const group of flattenGroups(unit.groups)) {
+        if (group.config.type === "werkstatt") {
+          this.compileWerkstattGroup(group, group.config);
+        }
       }
-    }
+    });
   }
 
   setSidechainTarget(soundId: string, targetSoundId: string | null): void {
-    if (targetSoundId === null) {
-      this.sidechainTargets.delete(soundId);
-    } else {
-      this.sidechainTargets.set(soundId, targetSoundId);
-    }
-    this.rebindSidechains();
+    this.transaction(() => {
+      if (targetSoundId === null) {
+        this.sidechainTargets.delete(soundId);
+      } else {
+        this.sidechainTargets.set(soundId, targetSoundId);
+      }
+      this.bindSidechains();
+    });
   }
 
   setDryWet(soundId: string, value: number): void {
@@ -586,8 +579,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!project) {
       return;
     }
-    this.bpm = clampEffectTempo(bpm);
-    this.transaction(() => project.api.setBpm(this.bpm));
+    this.transaction(() => {
+      this.bpm = clampEffectTempo(bpm);
+      project.api.setBpm(this.bpm);
+    });
   }
 
   cleanup(): void {
@@ -624,6 +619,18 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (graph.inTransaction()) {
       return write();
     }
+    const { bpm } = this;
+    const targets = new Map(this.sidechainTargets);
+    const units = new Map(
+      [...this.soundUnits].map(([id, unit]) => [id, { ...unit }])
+    );
+    const groups = new Map(
+      [...this.soundUnits.values()].flatMap((unit) =>
+        flattenGroups(unit.groups).map(
+          (group) => [group, { ...group }] as const
+        )
+      )
+    );
     graph.beginTransaction();
     try {
       const result = write();
@@ -633,8 +640,65 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       if (graph.inTransaction()) {
         graph.abortTransaction();
       }
+      this.bpm = bpm;
+      this.sidechainTargets.clear();
+      for (const [id, target] of targets) {
+        this.sidechainTargets.set(id, target);
+      }
+      this.restoreMonitoringSources(units);
+      for (const [group, previous] of groups) {
+        Object.assign(group, restoreGroup(previous, graph));
+      }
+      this.soundUnits.clear();
+      for (const [id, unit] of units) {
+        this.soundUnits.set(id, unit);
+      }
       throw error;
     }
+  }
+
+  private restoreMonitoringSources(
+    units: ReadonlyMap<string, SoundUnit>
+  ): void {
+    const project = this.requireProject();
+    for (const [id, unit] of this.soundUnits) {
+      const previous = units.get(id);
+      if (
+        !previous ||
+        previous.source !== unit.source ||
+        previous.destination !== unit.destination ||
+        previous.inputChannels !== unit.inputChannels
+      ) {
+        project.engine.unregisterMonitoringSource(
+          unit.audioUnitBox.address.uuid
+        );
+        if (previous?.source && previous.destination) {
+          project.engine.registerMonitoringSource(
+            previous.audioUnitBox.address.uuid,
+            previous.source,
+            previous.inputChannels,
+            previous.destination
+          );
+        }
+      }
+    }
+  }
+
+  private afterCommit(commit: () => void): void {
+    const graph = this.requireProject().boxGraph;
+    if (!graph.inTransaction()) {
+      commit();
+      return;
+    }
+    const subscription = graph.subscribeTransaction({
+      onBeginTransaction: () => undefined,
+      onEndTransaction: (aborted) => {
+        subscription.terminate();
+        if (!aborted) {
+          commit();
+        }
+      },
+    });
   }
 
   private requireModules(): RuntimeModules {
@@ -929,4 +993,26 @@ function werkstattSource(
   config: Extract<EffectConfig, { type: "werkstatt" }>
 ): string {
   return config.code ?? config.source;
+}
+
+function restoreGroup(
+  group: OfficialEffectGroup,
+  graph: Project["boxGraph"]
+): OfficialEffectGroup {
+  // Rollback recreates deleted boxes, so cached handles must follow their UUIDs.
+  const restore = <T extends { address?: { uuid: Uint8Array } } | null>(
+    box: T
+  ): T =>
+    box?.address
+      ? (graph.findBox(box.address.uuid).unwrap() as unknown as T)
+      : box;
+  return {
+    ...group,
+    created: group.created.map((box) => restore(box)),
+    device: restore(group.device),
+    inputTrim: restore(group.inputTrim),
+    outputTrim: restore(group.outputTrim),
+    signalTrim: restore(group.signalTrim),
+    wrapper: restore(group.wrapper),
+  };
 }

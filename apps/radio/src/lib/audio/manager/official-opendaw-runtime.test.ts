@@ -230,7 +230,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     async (failure) => {
       const h = await createHarness();
       await h.runtime.connectSound("live", h.source, h.destination);
-      const liveBoxes = h.project.boxGraph.boxes();
+      const liveBoxes = h.project.boxGraph.boxes().slice();
       const boundary =
         failure === "syncEffects"
           ? spyOn(h.runtime, "syncEffects")
@@ -262,6 +262,85 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         h.runtime.connectSound("failed", h.source, h.destination)
       ).resolves.toBe(true);
       expect(h.runtime.soundCount).toBe(2);
+    }
+  );
+
+  test.each(["fields", "layout"] as const)(
+    "a failed existing connection restores its settings before retrying %s",
+    async (change) => {
+      const h = await createHarness();
+      await h.runtime.connectSidechainSource("key", h.source);
+      const compressor = {
+        ...createDefaultEffectConfig("compressor", "comp", 0),
+        sidechain: { channelId: "key" },
+        threshold: -12,
+      };
+      const settings = {
+        dryWet: 0.5,
+        effects: [compressor],
+        sidechainSoundId: "key",
+        tempo: 120,
+      };
+      await h.runtime.connectSound(
+        "deck",
+        h.source,
+        h.destination,
+        1,
+        2,
+        settings
+      );
+      const checksum = h.project.boxGraph.checksum();
+      const next =
+        change === "fields"
+          ? { ...compressor, threshold: -24 }
+          : createDefaultEffectConfig("plateReverb", "reverb", 0);
+      const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+      endTransaction.mockImplementationOnce(() => {
+        throw new Error("commit failed");
+      });
+      try {
+        await expect(
+          h.runtime.connectSound("deck", h.source, h.destination, 2, 2, {
+            ...settings,
+            effects: [next],
+            sidechainSoundId: null,
+            tempo: 150,
+          })
+        ).rejects.toThrow("commit failed");
+      } finally {
+        endTransaction.mockRestore();
+      }
+      expect(h.project.boxGraph.checksum()).toEqual(checksum);
+      // A later bind must use the last committed sidechain target and box handles.
+      h.runtime.setDryWet("deck", 0.5);
+      await h.runtime.connectSidechainSource("key", h.source);
+      const restored = h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox);
+      if (!(restored instanceof h.boxes.CompressorDeviceBox)) {
+        throw new Error("Compressor missing");
+      }
+      expect(restored.threshold.getValue()).toBe(-12);
+      expect(restored.sideChain.targetVertex.unwrap().box.address.uuid).toEqual(
+        h.engine.registerMonitoringSource.mock.calls[0][0]
+      );
+      await h.runtime.connectSound("deck", h.source, h.destination, 3, 2, {
+        ...settings,
+        effects: [next],
+        sidechainSoundId: null,
+        tempo: 150,
+      });
+      const device = h.project.boxGraph
+        .boxes()
+        .find((box) =>
+          change === "fields"
+            ? box instanceof h.boxes.CompressorDeviceBox
+            : box instanceof h.boxes.DattorroReverbDeviceBox
+        );
+      expect(device?.isAttached()).toBe(true);
+      if (device instanceof h.boxes.CompressorDeviceBox) {
+        expect(device.threshold.getValue()).toBe(-24);
+      }
     }
   );
 
@@ -398,7 +477,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     await finishCompile(h.compiles[0]);
     const device = scriptDevice(h);
     const amount = parameter(h, device);
-    const liveBoxes = h.project.boxGraph.boxes();
+    const liveBoxes = h.project.boxGraph.boxes().slice();
 
     h.runtime.syncEffects("deck", [
       { ...config, parameters: { amount: 0.625 } },

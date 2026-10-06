@@ -601,6 +601,9 @@ class EffectsController {
     generation: number
   ): Promise<void> {
     if (!this.shouldProcess(state)) {
+      if (state.officialConnectingGeneration !== null) {
+        this.deleteOfficialSound(soundId);
+      }
       this.switchBackend(soundId, state, "bypass", generation);
       await this.registerNonOfficialSource(soundId, state, generation);
       return;

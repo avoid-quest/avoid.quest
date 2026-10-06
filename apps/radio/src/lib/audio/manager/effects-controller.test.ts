@@ -572,6 +572,50 @@ describe("EffectsController", () => {
     expect(secondSetTempo).toHaveBeenCalledWith("second", 140);
   });
 
+  test("bypass invalidates a pending official connection before it can apply settings", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const pending = Promise.withResolvers<boolean>();
+    let owner: number | undefined;
+    let appliedTempo = 120;
+    runtime.connectSound.mockImplementation(
+      async (_id, _source, _destination, generation, _channels, settings) => {
+        owner = generation;
+        await pending.promise;
+        if (owner !== generation) {
+          return false;
+        }
+        appliedTempo = settings?.tempo ?? 120;
+        return true;
+      }
+    );
+    runtime.deleteSound.mockImplementation(() => {
+      owner = undefined;
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    await controller.reconcile(
+      "target",
+      desiredEffects([reverb], { tempo: 150 })
+    );
+    const connecting = controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await Promise.resolve();
+    await controller.reconcile("target", desiredEffects([]));
+    pending.resolve(true);
+    await connecting;
+    expect(appliedTempo).toBe(120);
+  });
+
   test("stop cancels an in-flight official connection", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);

@@ -11,7 +11,9 @@ import { compiledPlan } from "@/lib/node-graph/compiled-plan";
  * - a lane is a managed sound, created paused; a removed lane fades out for
  *   150 ms before its channel is released, and a lane whose stream changes
  *   in place resumes on the new one if it was playing;
- * - FX changes go through channel effects as a whole-tree replace;
+ * - FX changes reconcile the lane's sound with its plan's effects tree,
+ *   keyed from its key lane's sound once that lane has one; the saved
+ *   session is never read for them;
  * - a Station's volume and mute, and the lane's pan and filter, are params.
  *
  * `session.channels` is written as the derived cache (`n:<nodeId>`, role
@@ -68,8 +70,13 @@ import { Store } from "@tanstack/react-store";
 import { toast } from "sonner";
 import type { AudioState, Radio } from "@/lib/audio";
 import { fadeOut } from "@/lib/audio";
+import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/effects/tempo";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
-import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
+import {
+  isEffectContainer,
+  normalizeEffectTree,
+} from "@/lib/audio/dsp/routing/effect-tree";
+import type { AudioManager } from "@/lib/audio/manager/audio-manager";
 import {
   createNodeDeviceSinks,
   type DeviceSinkStatus,
@@ -100,6 +107,7 @@ import {
 } from "@/lib/device-input-playback";
 import { findNextTrack } from "@/lib/dj-actions-playlist";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
+import { validateRadioForMode } from "@/lib/external-url/utils";
 import {
   type ChannelSelectionPlan,
   type EnginePlan,
@@ -155,16 +163,15 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import {
-  type ChannelEffects,
-  type ChannelEffectsResult,
-  channelEffects,
+  type DesiredEffectsState,
   type EffectsRuntimeOutcome,
+  findSidechainChannelId,
 } from "./channel-effects.js";
 import {
   clearManagedPlaybackErrors,
   getChannelPlayVolume,
   getReadyManagedPlaybackSession,
-  restoreManagedChannels,
+  isRestorableRadio,
   setManagedChannelPlaying,
   setManagedPlaybackError,
   setManagedSessionMasterVolume,
@@ -311,7 +318,8 @@ export type GetNodePlaybackOptions = {
   backendBadges?: NodeBackendBadgeStore;
   ctx?: PlaybackActionContext;
   deviceSinks?: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
-  effects?: Pick<ChannelEffects, "change">;
+  /** Where each lane's sound reconciles its effects; AudioManager's. */
+  effects?: Pick<AudioManager, "reconcileEffects">;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
   getEnv?: () => NodePlaybackEnv;
@@ -744,6 +752,70 @@ function createNodePlayback(
     publishBadges();
   };
 
+  /**
+   * A lane's effects as its plan has them, keyed from its key lane's sound
+   * once that lane has one. Node has no dry/wet or tempo control.
+   */
+  const desiredEffects = (lane: LanePlan): DesiredEffectsState => {
+    const keyChannelId = findSidechainChannelId(lane.effects);
+    return {
+      dryWet: 1,
+      sidechainSoundId: keyChannelId
+        ? getPlaybackChannelRuntime(keyChannelId).soundId
+        : null,
+      tempo: DEFAULT_EFFECT_TEMPO,
+      tree: normalizeEffectTree(lane.effects),
+    };
+  };
+
+  /** Reconciles a lane's sound, once it has one, with its plan's effects. */
+  const reconcileLaneEffects = async (laneId: string) => {
+    const lane = plan.lanes.get(laneId);
+    const { soundId } = getPlaybackChannelRuntime(laneChannelId(laneId));
+    if (lane && soundId) {
+      recordOutcome(
+        laneId,
+        await effects.reconcileEffects(soundId, desiredEffects(lane))
+      );
+    }
+  };
+
+  /**
+   * A lane's sound came or went: it takes its own effects, and every lane
+   * keyed from it rebinds its sidechain.
+   */
+  const reconcileAround = (channelId: string, withOwn: boolean) => {
+    const laneId = channelId.slice(NODE_CHANNEL_PREFIX.length);
+    for (const lane of plan.lanes.values()) {
+      if (
+        (withOwn && lane.id === laneId) ||
+        findSidechainChannelId(lane.effects) === channelId
+      ) {
+        track(reconcileLaneEffects(lane.id)).catch(
+          reportNodeFailure("Could not apply lane effects")
+        );
+      }
+    }
+  };
+
+  /** A lane's managed sound, whose effects this runtime reconciles itself. */
+  const createLaneSoundFor = (
+    channelId: string,
+    radio: Radio,
+    muted: boolean
+  ) => {
+    const soundId = createManagedSound(
+      "node",
+      channelId,
+      radio,
+      { ownsEffects: true },
+      ctx
+    );
+    ctx.channels.setMuted("node", channelId, muted);
+    reconcileAround(channelId, true);
+    return soundId;
+  };
+
   const track = <T>(promise: Promise<T>): Promise<T> => {
     inFlight.add(promise);
     promise.then(
@@ -792,11 +864,9 @@ function createNodePlayback(
     if (!radio) {
       return;
     }
-    let { soundId } = getPlaybackChannelRuntime(channel.id);
-    if (!soundId) {
-      soundId = createManagedSound("node", channel.id, radio, undefined, ctx);
-      ctx.channels.setMuted("node", channel.id, channel.muted);
-    }
+    const soundId =
+      getPlaybackChannelRuntime(channel.id).soundId ??
+      createLaneSoundFor(channel.id, radio, channel.muted);
     applySessionMasterVolume("node", ctx);
     const capture = ctx.audio.getDeviceSource(soundId);
     // An unplugged device leaves its capture "active" on an ended track.
@@ -845,7 +915,7 @@ function createNodePlayback(
         await startDeviceLane(channel, source, shouldReportError);
       } else {
         if (playing && channel) {
-          makeTrackSound(channel);
+          makeLaneSound(channel);
         }
         await setManagedChannelPlaying("node", channel, playing, ctx);
       }
@@ -1135,6 +1205,9 @@ function createNodePlayback(
     resetPlaybackChannelRuntime(channelId);
     fileSoundReleases.get(channelId)?.();
     fileSoundReleases.delete(channelId);
+    if (active) {
+      reconcileAround(channelId, false);
+    }
   };
 
   const reportLaneFailure = (
@@ -1419,28 +1492,25 @@ function createNodePlayback(
   };
 
   /**
-   * A Track or File without a sound gets one before it plays, so its state
-   * is watched from the start. A local file has none until then: restore
-   * never prepares one.
+   * A lane without a sound gets one before it plays, so a Track's or File's
+   * state is watched from the start. A local file has none until then:
+   * restore never prepares one.
    */
-  const makeTrackSound = (channel: PlaybackChannelRecord) => {
-    if (
-      !(channel.radio && isTrackRadio(channel.radio)) ||
-      getPlaybackChannelRuntime(channel.id).soundId
-    ) {
+  const makeLaneSound = (channel: PlaybackChannelRecord) => {
+    if (!channel.radio || getPlaybackChannelRuntime(channel.id).soundId) {
       return;
     }
+    validateRadioForMode(channel.radio, "node");
     laneWatches.delete(channel.id);
     const releaseFile = retainLocalFileUrl(channel.radio.streamUrl);
     try {
-      createManagedSound("node", channel.id, channel.radio, undefined, ctx);
+      createLaneSoundFor(channel.id, channel.radio, channel.muted);
     } catch (error) {
       releaseFile();
       throw error;
     }
     fileSoundReleases.get(channel.id)?.();
     fileSoundReleases.set(channel.id, releaseFile);
-    ctx.channels.setMuted("node", channel.id, channel.muted);
     watchLane(channel.id);
   };
 
@@ -1467,13 +1537,21 @@ function createNodePlayback(
   const createLaneSound = (channelId: string) => {
     // A start still settling for the old sound must not clean this one.
     advanceChannelRevision(channelId);
-    const channel = getPlaybackChannel("node", channelId);
-    if (channel) {
-      restoreManagedChannels("node", [channel], ctx);
-      const releaseFile =
-        channel.radio && getPlaybackChannelRuntime(channelId).soundId
-          ? retainLocalFileUrl(channel.radio.streamUrl)
-          : null;
+    const lane = laneOfChannel(channelId);
+    if (lane) {
+      const radio = lane.radio as Radio;
+      const { soundId } = getPlaybackChannelRuntime(channelId);
+      if (!isRestorableRadio(radio, "node")) {
+        if (soundId) {
+          cleanupManagedChannel(channelId, ctx);
+        }
+        resetPlaybackChannelRuntime(channelId);
+      } else if (!soundId) {
+        createLaneSoundFor(channelId, radio, lane.muted);
+      }
+      const releaseFile = getPlaybackChannelRuntime(channelId).soundId
+        ? retainLocalFileUrl(radio.streamUrl)
+        : null;
       fileSoundReleases.get(channelId)?.();
       if (releaseFile) {
         fileSoundReleases.set(channelId, releaseFile);
@@ -1567,27 +1645,15 @@ function createNodePlayback(
     });
   };
 
-  const replaceTree = async (laneId: string, tree: EffectConfig[]) => {
-    const result = await effects.change(
-      { channelId: laneChannelId(laneId), sessionId: "node" },
-      { tree, type: "replace" }
-    );
-    recordOutcome(laneId, result.runtime);
-    return result;
-  };
-
   /** Per lane: layout swaps in flight, ducking or replacing its tree. */
   const pendingSwaps = new Map<string, number>();
   /** Lanes whose tree changed while a swap was in flight. */
   const staleSwaps = new Set<string>();
 
   const replaceLatestTree = (laneId: string) => {
-    const lane = plan.lanes.get(laneId);
-    if (lane) {
-      track(replaceTree(lane.id, lane.effects)).catch(
-        reportNodeFailure("Could not apply lane effects")
-      );
-    }
+    track(reconcileLaneEffects(laneId)).catch(
+      reportNodeFailure("Could not apply lane effects")
+    );
   };
 
   const endPendingSwap = (laneId: string) => {
@@ -1603,29 +1669,23 @@ function createNodePlayback(
     }
   };
 
-  const changeLaneEffects = (laneId: string, tree: EffectConfig[]) => {
+  const changeLaneEffects = (laneId: string) => {
     // A swap in flight replaces with the lane's latest tree before its
     // duck lifts; applying this one now would change the layout audibly.
     if (pendingSwaps.has(laneId)) {
       staleSwaps.add(laneId);
       return;
     }
-    track(replaceTree(laneId, tree)).catch(
-      reportNodeFailure("Could not apply lane effects")
-    );
+    replaceLatestTree(laneId);
   };
 
   /** Replaces a lane's tree, again while a commit changed it meanwhile. */
-  const replaceUntilLatest = async (
-    laneId: string
-  ): Promise<ChannelEffectsResult | null> => {
+  const replaceUntilLatest = async (laneId: string): Promise<void> => {
     staleSwaps.delete(laneId);
-    const lane = plan.lanes.get(laneId);
-    if (!lane) {
-      return null;
+    await reconcileLaneEffects(laneId);
+    if (staleSwaps.has(laneId)) {
+      await replaceUntilLatest(laneId);
     }
-    const result = await replaceTree(lane.id, lane.effects);
-    return staleSwaps.has(laneId) ? replaceUntilLatest(laneId) : result;
   };
 
   /**
@@ -1736,7 +1796,7 @@ function createNodePlayback(
         removeLane(op.laneId, laneChannelId(op.laneId));
         break;
       case "setLaneEffects":
-        changeLaneEffects(op.laneId, op.effects);
+        changeLaneEffects(op.laneId);
         break;
       case "replaceLaneEffects":
         swapLaneEffects(op.laneId);
@@ -2377,7 +2437,10 @@ export function getNodePlayback({
   ctx = getDefaultPlaybackActionContext(),
   cueOutput = getOutputRouting,
   deviceSinks = createNodeDeviceSinks,
-  effects = channelEffects,
+  effects = {
+    reconcileEffects: (soundId, desired) =>
+      ctx.audio.reconcileEffects(soundId, desired),
+  },
   fadeOutDurationMs = DEFAULT_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
   getEnv = detectNodePlaybackEnv,

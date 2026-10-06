@@ -83,7 +83,7 @@ const UNRESTORED_PLATFORMS: ReadonlySet<string> = new Set([
   "device-input",
 ]);
 
-function isRestorableRadio(
+export function isRestorableRadio(
   radio: Radio | null,
   sessionId: ManagedPlaybackSessionId
 ): radio is Radio {

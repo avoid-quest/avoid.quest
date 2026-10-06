@@ -93,7 +93,10 @@ const inactiveOutcome = (): EffectsRuntimeOutcome => ({
 const refKey = ({ sessionId, channelId }: ChannelEffectsRef): string =>
   `${sessionId}:${channelId}`;
 
-function findSidechainChannelId(tree: readonly EffectConfig[]): string | null {
+/** The channel an enabled, audible effect keys from, if any. */
+export function findSidechainChannelId(
+  tree: readonly EffectConfig[]
+): string | null {
   for (const effect of tree) {
     if (!effect.enabled) {
       continue;

@@ -139,6 +139,11 @@ function createModeLifecycleTestContext() {
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
+      reconcileEffects: mock(async () => ({
+        backend: null,
+        ready: false,
+        status: "inactive" as const,
+      })),
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
       setVolume: mock((_soundId: string, _volume: number) => undefined),
@@ -225,7 +230,7 @@ describe("mode lifecycle manager", () => {
       "node",
       "n:station-1",
       expect.objectContaining({ id: "station-1" }),
-      "node:n:station-1"
+      { ownsEffects: true, soundId: "node:n:station-1" }
     );
     expect(context.audio.playSound).not.toHaveBeenCalled();
     expect(commitMode).toHaveBeenCalledWith("node");
@@ -295,8 +300,8 @@ describe("mode lifecycle manager", () => {
     const context = createModeLifecycleTestContext();
     const liveSoundIds = new Set<string>();
     context.channels.activate = mock(
-      (_sessionId, channelId, _radio, soundId) => {
-        const id = String(soundId);
+      (_sessionId, channelId, _radio, optionsOrSoundId) => {
+        const id = getActivatedSoundId(channelId, optionsOrSoundId);
         liveSoundIds.add(id);
         setPlaybackChannelRuntime(channelId, () => ({ soundId: id }));
         return id;

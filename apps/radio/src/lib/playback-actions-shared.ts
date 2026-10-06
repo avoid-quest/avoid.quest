@@ -94,7 +94,7 @@ export function createManagedSound(
       ? { soundId: optionsOrSoundId }
       : optionsOrSoundId;
   const soundId = options.soundId ?? getDefaultSoundId(sessionId, channelId);
-  if (!options.onAudioState) {
+  if (!(options.onAudioState || options.ownsEffects)) {
     return ctx.channels.activate(sessionId, channelId, radio, soundId);
   }
   return ctx.channels.activate(sessionId, channelId, radio, {

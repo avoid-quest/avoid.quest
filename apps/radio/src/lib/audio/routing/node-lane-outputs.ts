@@ -5,14 +5,13 @@
  * fader and the outputs its cables reach, fanned out into one send per
  * output (sink):
  *
- *   nodes.gain (fader) → laneOut → send(Speakers) → OutputRouting.connectMain
- *                                → send(Output device) → its device sink
+ *   nodes.gain (fader) → laneOut → send(sink) → the sink's Output node gain
  *
  * The fader belongs to the volume controller and master volume, so node code
  * never writes it. Each send's gain is the sum of the lane's unmuted cables
  * into its sink; laneOut carries only the layout duck. Where a send goes is
- * the `route` callback's call: Speakers go to the main bus, an Output device
- * to its sink, or back to the main bus when that sink can't play.
+ * the `route` callback's call: the Output node's own gain
+ * (node-device-sinks), which carries its mute.
  *
  * laneOut is built inside the lane's output connector, which AudioManager
  * calls synchronously while it connects the sound's native shell, so it
@@ -21,22 +20,19 @@
  */
 
 import type { AudioManager } from "../manager/audio-manager.js";
-import type {
-  MainOutputConnect,
-  SoundOutputConnector,
-} from "../manager/audio-manager-types.js";
+import type { SoundOutputConnector } from "../manager/audio-manager-types.js";
 import { safeDisconnect, safeDisconnectFrom } from "../utils.js";
 
 export type LaneOutputHost = Pick<AudioManager, "setSoundOutputConnector">;
 
 /**
- * Connects one send to where its sink plays and returns its disconnect.
- * `connectMain` puts the send on the main bus, as Speakers do.
+ * Connects one send to its sink and returns its disconnect. A realtime
+ * lane (a live input) skips the main delay.
  */
 export type LaneSinkRoute = (
   sinkId: string,
   send: GainNode,
-  connectMain: () => () => void
+  realtime: boolean
 ) => () => void;
 
 export type NodeLaneOutputsOptions = {
@@ -44,8 +40,8 @@ export type NodeLaneOutputsOptions = {
   getHost: () => LaneOutputHost;
   /** The lane's level per sink now: the sum of its unmuted cables into it. */
   getLevels: (laneId: string) => ReadonlyMap<string, number>;
-  /** Where a sink's sends go; every sink is the main bus without it. */
-  route?: LaneSinkRoute;
+  /** Where a sink's sends go. */
+  route: LaneSinkRoute;
   /**
    * Runs as the lane's sound connects: its native nodes exist from here,
    * and its playback has not started yet.
@@ -69,11 +65,6 @@ export type NodeLaneOutputs = {
   duck: (laneId: string) => Promise<void> | null;
   /** Ramps laneOut back from the layout duck. */
   unduck: (laneId: string) => void;
-  /**
-   * Reconnects every send into `sinkId` (every send without it) through
-   * `route`, e.g. when a device sink fails over to Speakers.
-   */
-  reroute: (sinkId?: string) => void;
   /** Fades every lane's send into a removed sink out, then takes it off. */
   dropSink: (sinkId: string) => void;
   /** Unregisters the connector and drops laneOut. Its sound is gone. */
@@ -94,8 +85,7 @@ type LaneOutput = {
   soundId: string;
   host: LaneOutputHost;
   out: GainNode | null;
-  /** From the last connect: the main bus, and whether it is realtime. */
-  connectMain: MainOutputConnect | null;
+  /** From the last connect: whether it skips the main delay. */
   realtime: boolean;
   sends: Map<string, LaneSend>;
   /** Under a layout duck: a rebuilt laneOut starts silent too. */
@@ -128,33 +118,21 @@ function rampLinear(out: GainNode, level: number): void {
   out.gain.linearRampToValueAtTime(level, now + LANE_DUCK_MS / 1000);
 }
 
-function settleSend(send: GainNode, level: number): void {
-  const now = send.context.currentTime;
-  hold(send.gain, now);
-  send.gain.setTargetAtTime(level, now, LANE_LEVEL_TIME_CONSTANT_S);
+/** Ramps a level change from wherever the gain is now, τ = 5 ms. */
+export function settleGain(gain: GainNode, level: number): void {
+  const now = gain.context.currentTime;
+  hold(gain.gain, now);
+  gain.gain.setTargetAtTime(level, now, LANE_LEVEL_TIME_CONSTANT_S);
 }
-
-const toMain: LaneSinkRoute = (_sinkId, _send, connectMain) => connectMain();
 
 export function createNodeLaneOutputs({
   getHost,
   getLevels,
   onConnect,
-  route = toMain,
+  route,
   wait = delay,
 }: NodeLaneOutputsOptions): NodeLaneOutputs {
   const lanes = new Map<string, LaneOutput>();
-
-  const connectSend = (
-    lane: LaneOutput,
-    sinkId: string,
-    gain: GainNode
-  ): (() => void) =>
-    route(sinkId, gain, () => {
-      // connectMain is idempotent per node and heals a rebuilt output graph.
-      const release = lane.connectMain?.(gain, lane.realtime);
-      return release ?? (() => undefined);
-    });
 
   const dropSend = (out: GainNode | null, send: LaneSend) => {
     send.release();
@@ -174,15 +152,15 @@ export function createNodeLaneOutputs({
         const gain = out.context.createGain();
         gain.gain.value = 0;
         out.connect(gain);
-        send = { gain, release: connectSend(lane, sinkId, gain) };
+        send = { gain, release: route(sinkId, gain, lane.realtime) };
         lane.sends.set(sinkId, send);
       }
-      settleSend(send.gain, level);
+      settleGain(send.gain, level);
     }
     // A sink the lane no longer reaches fades out, ready for a new cable.
     for (const [sinkId, send] of lane.sends) {
       if (!levels.has(sinkId)) {
-        settleSend(send.gain, 0);
+        settleGain(send.gain, 0);
       }
     }
   };
@@ -209,31 +187,16 @@ export function createNodeLaneOutputs({
 
   const connectorFor =
     (laneId: string, lane: LaneOutput): SoundOutputConnector =>
-    (source, realtime, connectMain) => {
+    (source, realtime) => {
       onConnect?.(laneId);
       const out = ensureOut(lane, source.context);
       source.connect(out);
-      const reconnect =
-        lane.connectMain !== connectMain || lane.realtime !== realtime;
-      lane.connectMain = connectMain;
       lane.realtime = realtime;
-      if (reconnect) {
-        rerouteLane(lane);
-      }
       settle(laneId, lane);
       return () => {
         safeDisconnectFrom(source, out, "NodeLaneOutputs.disconnect");
       };
     };
-
-  const rerouteLane = (lane: LaneOutput, sinkId?: string) => {
-    for (const [id, send] of lane.sends) {
-      if (sinkId === undefined || id === sinkId) {
-        send.release();
-        send.release = connectSend(lane, id, send.gain);
-      }
-    }
-  };
 
   const release = (laneId: string) => {
     const lane = lanes.get(laneId);
@@ -254,7 +217,6 @@ export function createNodeLaneOutputs({
       }
       release(laneId);
       const lane: LaneOutput = {
-        connectMain: null,
         ducked: false,
         host,
         out: null,
@@ -277,10 +239,10 @@ export function createNodeLaneOutputs({
           continue;
         }
         // Off the lane now, so a new cable gets a new send; it fades out
-        // first, so a send still on Speakers doesn't click.
+        // first, through the Output node's gain, which waits for it.
         lane.sends.delete(sinkId);
         const { out } = lane;
-        settleSend(send.gain, 0);
+        settleGain(send.gain, 0);
         wait(LANE_DROP_MS).then(
           () => dropSend(out, send),
           () => dropSend(out, send)
@@ -307,11 +269,6 @@ export function createNodeLaneOutputs({
       }
     },
     release,
-    reroute(sinkId) {
-      for (const lane of lanes.values()) {
-        rerouteLane(lane, sinkId);
-      }
-    },
     unduck(laneId) {
       const lane = lanes.get(laneId);
       if (lane) {

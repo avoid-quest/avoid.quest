@@ -1518,7 +1518,7 @@ describe("setDeviceParams", () => {
     });
   });
 
-  test("a copied Output device picks its own device", () => {
+  test("a copied Output device keeps its device and independent mute", () => {
     const start = setDeviceParams(withDevices(), "deviceOut", {
       deviceId: "usb",
       deviceLabel: "USB interface",
@@ -1528,8 +1528,16 @@ describe("setDeviceParams", () => {
 
     expect(
       graph.nodes.find((node) => node.id === nodeIds[0])?.data
-    ).toMatchObject({ deviceId: null, deviceLabel: "" });
+    ).toMatchObject({ deviceId: "usb", deviceLabel: "USB interface" });
+    const mutedCopy = setDeviceParams(graph, nodeIds[0] ?? "", { muted: true });
+    expect(
+      mutedCopy.nodes.find((node) => node.id === nodeIds[0])?.data
+    ).toMatchObject({ deviceId: "usb", muted: true });
+    expect(
+      mutedCopy.nodes.find((node) => node.id === "deviceOut")?.data
+    ).toMatchObject({ deviceId: "usb", muted: false });
     expect(validate(graph)).toEqual([]);
+    expect(validate(mutedCopy)).toEqual([]);
   });
 });
 

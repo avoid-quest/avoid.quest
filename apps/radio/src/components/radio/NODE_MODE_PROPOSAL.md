@@ -48,8 +48,9 @@ membership and patch membership are separate: saving a search result to the
 library does not add another node automatically.
 
 A patch has exactly one Speakers. An Output device adds a separately selected
-physical sink when the browser supports routing. Source lanes can feed both;
-a lane without an output cable is silent. Output-device selection failures use the
+physical sink when the browser supports routing. Several Output device nodes
+may play to the same device, each with its own cables and mute. Source lanes
+can feed both; a lane without an output cable is silent. Output-device selection failures use the
 existing main-output fallback and expose a user retry. Browser capability checks
 and device status determine which controls are available.
 

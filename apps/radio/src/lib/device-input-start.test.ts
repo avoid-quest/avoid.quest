@@ -148,6 +148,8 @@ describe("device input first connection", () => {
       const outputs = createNodeLaneOutputs({
         getHost: () => audio,
         getLevels: () => new Map([["speakers", 1]]),
+        // As the engine routes Speakers: onto the main bus.
+        route: (_sinkId, laneSend) => connectMain(laneSend),
       });
       outputs.attach("input", soundId);
       let settled = false;

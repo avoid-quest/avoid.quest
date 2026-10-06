@@ -14,8 +14,9 @@
  * (node-lane-outputs), registered as the sound's output connector before it
  * first plays, which fans out into one send per output. Cable gain and mute
  * ramp each send to the sum of the lane's unmuted cables into that output.
- * Speakers sends go to the main bus; an Output device's go to its device
- * sink (node-device-sinks), or to the main bus while that sink can't play.
+ * Every send goes through its Output node's own gain (node-device-sinks),
+ * which carries the node's mute and plays on the main bus for Speakers, or
+ * on an Output device's sink (the main bus while that sink can't play).
  * A lane ducks laneOut around its own FX layout swaps.
  */
 
@@ -34,7 +35,6 @@ import type {
   NodeDeviceSinksOptions,
 } from "@/lib/audio/routing/node-device-sinks";
 import type {
-  LaneSinkRoute,
   NodeLaneOutputs,
   NodeLaneOutputsOptions,
 } from "@/lib/audio/routing/node-lane-outputs";
@@ -144,13 +144,14 @@ export type NodeEngineOptions = {
   /** Where Output device sink statuses are published for their bodies. */
   sinkStatuses: NodeSinkStatusStore;
   /**
-   * The headphone cue bus a Track's or File's cue listen taps into. Its
-   * settings are applied as a tap goes on, as a DJ deck's CUE does, since
-   * Node mode alone never builds the cue output.
+   * The main bus Output nodes play into, and the headphone cue bus a
+   * Track's or File's cue listen taps into. The cue settings are applied
+   * as a tap goes on, as a DJ deck's CUE does, since Node mode alone never
+   * builds the cue output.
    */
-  cueOutput: () => Pick<
+  outputRouting: () => Pick<
     OutputRouting,
-    "applySettings" | "registerCueDeck" | "releaseCue"
+    "applySettings" | "connectMain" | "registerCueDeck" | "releaseCue"
   >;
   deviceSinks: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
   laneOutputs: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
@@ -211,7 +212,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
 
   /**
    * A lane's level per output: the gains of its unmuted cables into it,
-   * summed. A muted Output device takes nothing.
+   * summed. The output's own mute is its gain's.
    */
   const laneLevels = (laneId: string) => {
     const levels = new Map<string, number>();
@@ -221,50 +222,28 @@ export function createNodeEngine(options: NodeEngineOptions) {
         continue;
       }
       const sinkId = edge.to.id;
-      const silenced = edge.muted || plan.sinks.get(sinkId)?.muted === true;
       const gain = parameters?.available({ edgeId: edge.id, kind: "send" })
         ? (transientSends.get(edge.id) ?? edge.gain)
         : edge.gain;
-      levels.set(sinkId, (levels.get(sinkId) ?? 0) + (silenced ? 0 : gain));
+      levels.set(sinkId, (levels.get(sinkId) ?? 0) + (edge.muted ? 0 : gain));
     }
     return levels;
   };
 
-  /**
-   * Speakers are the main bus. An Output device plays on its sink, or on
-   * the main bus while that sink can't; with no device picked, nowhere.
-   */
-  const routeSink: LaneSinkRoute = (sinkId, send, connectMain) => {
-    const sink = plan.sinks.get(sinkId);
-    if (sink?.type === "speakers") {
-      return connectMain();
-    }
-    if (sink?.type !== "deviceOut") {
-      return () => undefined;
-    }
-    const routed = deviceSinks.connect(sinkId, send);
-    switch (routed.to) {
-      case "device":
-        return routed.release;
-      case "speakers":
-        return connectMain();
-      default:
-        return () => undefined;
-    }
-  };
+  const deviceSinks = options.deviceSinks({
+    connectMain: (node, realtime) =>
+      options.outputRouting().connectMain(node, realtime),
+    isActive: () => !disposing,
+    onStatus: () => options.sinkStatuses.setState(() => deviceSinks.statuses()),
+  });
 
   const laneOutputs = options.laneOutputs({
     getHost: () => ctx.audio,
     getLevels: laneLevels,
     // A new sound's nodes exist from its connect, before its playback starts.
     onConnect: (laneId) => slots.get(laneId)?.current?.applyStrip(),
-    route: routeSink,
-  });
-
-  const deviceSinks = options.deviceSinks({
-    isActive: () => !disposing,
-    onReroute: (sinkId) => laneOutputs.reroute(sinkId),
-    onStatus: () => options.sinkStatuses.setState(() => deviceSinks.statuses()),
+    route: (sinkId, send, realtime) =>
+      deviceSinks.connect(sinkId, send, realtime),
   });
 
   /** Writes every lane's badge, and its FX nodes', when one changed. */
@@ -292,7 +271,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     commitTrack: options.commitTrack,
     ctx,
     cueTap: (laneId, tap) => {
-      const output = options.cueOutput();
+      const output = options.outputRouting();
       cueOpened = true;
       const registration = output.registerCueDeck(`node:${laneId}`, tap, true);
       // The cue sink exists only once the stored cue output is applied; the
@@ -361,29 +340,26 @@ export function createNodeEngine(options: NodeEngineOptions) {
   };
 
   /**
-   * Matches the device sinks to the plan's Output devices. A removed output
-   * takes its sends with it; a mute on one changes every lane's levels.
+   * Matches the Output node gains to the plan's outputs. A removed output
+   * takes its sends with it; its gain stays until they faded out.
    */
   const syncSinks = (previous: EnginePlan, next: EnginePlan) => {
-    const devices = new Map<string, string | null>();
-    for (const sink of next.sinks.values()) {
-      if (sink.type === "deviceOut") {
-        devices.set(sink.id, sink.deviceId ?? null);
-      }
-    }
-    deviceSinks.sync(devices);
-    let levelsChanged = false;
-    for (const [id, sink] of previous.sinks) {
-      const kept = next.sinks.get(id);
-      if (!kept) {
+    deviceSinks.sync(
+      new Map(
+        [...next.sinks.values()].map((sink) => [
+          sink.id,
+          {
+            muted: sink.muted ?? false,
+            ...(sink.type === "deviceOut"
+              ? { deviceId: sink.deviceId ?? null }
+              : {}),
+          },
+        ])
+      )
+    );
+    for (const id of previous.sinks.keys()) {
+      if (!next.sinks.has(id)) {
         laneOutputs.dropSink(id);
-      } else if (kept.muted !== sink.muted) {
-        levelsChanged = true;
-      }
-    }
-    if (levelsChanged) {
-      for (const laneId of next.lanes.keys()) {
-        laneOutputs.refresh(laneId);
       }
     }
   };
@@ -599,7 +575,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       if (cueOpened) {
         cueOpened = false;
         try {
-          options.cueOutput().releaseCue();
+          options.outputRouting().releaseCue();
         } catch (error) {
           warn("Could not close the cue output")(error);
         }

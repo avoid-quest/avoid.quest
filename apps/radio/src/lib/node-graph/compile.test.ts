@@ -352,7 +352,7 @@ describe("compile: audio inputs and output devices", () => {
     ).toEqual(["a>desk", "a>speakers"]);
   });
 
-  test("a second Output device on the same device is left out, and says why", () => {
+  test("several Output device nodes on one device keep independent routes", () => {
     const plan = build(
       [
         station("a"),
@@ -363,8 +363,11 @@ describe("compile: audio inputs and output devices", () => {
       [audio("a", "desk"), audio("a", "booth")]
     );
 
-    expect(codes(plan)).toEqual(["one-device-out@booth"]);
-    expect(plan.sinks.has("booth")).toBe(false);
+    expect(codes(plan)).toEqual([]);
+    expect(plan.sinks.has("booth")).toBe(true);
+    expect(
+      [...plan.edges.values()].map((edge) => `${edge.from.id}>${edge.to.id}`)
+    ).toEqual(["a>desk", "a>booth"]);
   });
 });
 

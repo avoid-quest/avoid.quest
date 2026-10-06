@@ -168,12 +168,9 @@ async function harness(
     backendBadges: new Store({}),
     commitTrack: () => false,
     ctx,
-    cueOutput: () => {
-      throw new Error("No cue in this patch");
-    },
     deviceSinks: () => ({
       checkDevices: async () => undefined,
-      connect: () => ({ to: "nowhere" }),
+      connect: () => () => undefined,
       dispose: () => undefined,
       retry: () => undefined,
       status: () => undefined,
@@ -231,9 +228,11 @@ async function harness(
           levels.set(id, options.getLevels(id).get("speakers") ?? 0);
         },
         release: () => undefined,
-        reroute: () => undefined,
         unduck: () => undefined,
       };
+    },
+    outputRouting: () => {
+      throw new Error("No cue in this patch");
     },
     resolveStream: () => {
       throw new Error("No renewal in this patch");

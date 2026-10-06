@@ -318,7 +318,7 @@ describe("paletteEntries: audio inputs and output devices", () => {
     );
   });
 
-  test("an output that already has an Output device isn't offered again", () => {
+  test("an output device remains available for another independent output node", () => {
     const added = addPaletteNode(patch, {
       device: { deviceId: "usb", label: "USB interface" },
       id: "deviceOut:usb",
@@ -333,7 +333,7 @@ describe("paletteEntries: audio inputs and output devices", () => {
         paletteEntries(added.graph, { devices, sinkSelection: true }),
         "outputs"
       )
-    ).toEqual(["Monitor"]);
+    ).toEqual(["USB interface", "Monitor"]);
   });
 
   test("an Audio input comes set to its device, with only an audio out, and no cable", () => {

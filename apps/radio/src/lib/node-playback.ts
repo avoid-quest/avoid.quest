@@ -1,6 +1,8 @@
 import { captureError } from "@avoid.quest/error";
 import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
+import { applyModulation } from "@/lib/node-graph/modulation-parameters";
+import { createModulationRuntime } from "@/lib/node-graph/modulation-runtime";
 /**
  * Node Playback
  *
@@ -123,6 +125,7 @@ import {
 import { diff, type Op } from "@/lib/node-graph/reconcile";
 import {
   type GraphNode,
+  isModulationNode,
   isRadioSourceNode,
   migrateNodeGraph,
   type NodeGraph,
@@ -551,6 +554,8 @@ function createNodePlayback(
   let unmutedMasterVolume = 1;
 
   let plan = EMPTY_PLAN;
+  let modulationPlan: EnginePlan | null = null;
+  let modulation: ReturnType<typeof createModulationRuntime> | null = null;
   let active = false;
   const isReadOnly = () =>
     store.state.readOnlyVersion !== null ||
@@ -609,12 +614,14 @@ function createNodePlayback(
    */
   const laneLevels = (laneId: string) => {
     const levels = new Map<string, number>();
-    for (const edge of plan.edges.values()) {
+    const audiblePlan = modulationPlan ?? plan;
+    for (const edge of audiblePlan.edges.values()) {
       if (edge.from.id !== laneId) {
         continue;
       }
       const sinkId = edge.to.id;
-      const silenced = edge.muted || plan.sinks.get(sinkId)?.muted === true;
+      const silenced =
+        edge.muted || audiblePlan.sinks.get(sinkId)?.muted === true;
       levels.set(
         sinkId,
         (levels.get(sinkId) ?? 0) + (silenced ? 0 : edge.gain)
@@ -653,6 +660,58 @@ function createNodePlayback(
     onConnect: (laneId) => applyLaneStrip(laneChannelId(laneId)),
     route: routeSink,
   });
+
+  const applyModulationValues = (values: Readonly<Record<string, number>>) => {
+    const { graph } = store.state;
+    if (!graph || isReadOnly()) {
+      return;
+    }
+    const effective = applyModulation(graph, values);
+    const previous = modulationPlan ?? plan;
+    modulationPlan =
+      effective === graph ? null : compiledPlan(effective, getEnv());
+    const next = modulationPlan ?? plan;
+    for (const lane of next.lanes.values()) {
+      const { soundId } = getPlaybackChannelRuntime(lane.channelId);
+      if (soundId && ctx.audio.getPreFaderNode(soundId)) {
+        ctx.audio.setTransientNodeParams(soundId, {
+          effects: lane.effects,
+          filter: lane.filter,
+          pan: lane.pan,
+        });
+      }
+      const before = [...previous.edges.values()].filter(
+        (edge) => edge.from.id === lane.id
+      );
+      const after = [...next.edges.values()].filter(
+        (edge) => edge.from.id === lane.id
+      );
+      if (!deepEquals(before, after)) {
+        laneOutputs.refresh(lane.id);
+      }
+    }
+  };
+
+  const syncModulation = (graph: NodeGraph) => {
+    if (!graph.nodes.some(isModulationNode)) {
+      modulation?.dispose();
+      modulation = null;
+      modulationPlan = null;
+      return;
+    }
+    modulation ??= createModulationRuntime({
+      getAudioTap: (id) => {
+        const lane = [...plan.lanes.values()].find(
+          (entry) => entry.id === id || entry.nodes.includes(id)
+        );
+        return lane ? ctx.audio.getPreFaderNode(lane.soundId) : null;
+      },
+      getNativeSession: (onValue) =>
+        ctx.audio.createModulationSession?.(onValue) ?? Promise.resolve(null),
+      onValues: applyModulationValues,
+    });
+    modulation.sync(graph);
+  };
 
   const deviceSinks = createDeviceSinks({
     getPlaybackEpoch: () => epoch,
@@ -1846,6 +1905,7 @@ function createNodePlayback(
     const previous = plan;
     const ops = diff(previous, next);
     plan = next;
+    modulationPlan = null;
     for (const op of ops) {
       if (op.type === "removeLane") {
         removingLanes.add(op.laneId);
@@ -1854,6 +1914,7 @@ function createNodePlayback(
     try {
       syncSinks(previous, next);
       applyOps(ops, previous, next, strict);
+      syncModulation(graph);
     } finally {
       // A carry is only "in place" within one batch; a later re-add of the
       // same Station must not resume it.
@@ -1967,6 +2028,9 @@ function createNodePlayback(
   };
 
   const stopListening = () => {
+    modulation?.dispose();
+    modulation = null;
+    modulationPlan = null;
     persistence.flush();
     globalThis.removeEventListener?.("pagehide", flushBeforeLeave);
     globalThis.document?.removeEventListener(

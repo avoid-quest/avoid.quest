@@ -93,6 +93,11 @@ file URLs; cleanup releases resources only after no retained document or live
 sound needs them. New FX instances receive fresh identities, while Undo restores
 the original instance and its MIDI mapping.
 
+Parameter modulation adds control sources, signed assignments and transient
+runtime values. When changing sources, targets, cable editing or their playback
+bridge, read [the modulation contract](node/docs/modulation.md) for the prototype
+workflow, engine boundaries and verification criteria.
+
 ## Editing and accessible controls
 
 React Flow renders the controlled graph. Local drag frames commit positions at

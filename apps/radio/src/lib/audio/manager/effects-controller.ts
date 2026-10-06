@@ -122,6 +122,38 @@ class EffectsController {
     return state;
   }
 
+  async createModulationSession(onValue: (id: string, value: number) => void) {
+    if (
+      this.officialRuntimeUnavailable ||
+      globalThis.crossOriginIsolated !== true
+    ) {
+      return null;
+    }
+    this.officialRuntime ??= this.createOfficialRuntime(getAudioContext());
+    return (
+      (await this.officialRuntime.createModulationSession?.(onValue)) ?? null
+    );
+  }
+
+  /** Parameter-only modulation leaves desired state, generations and routing intact. */
+  setTransientEffects(soundId: string, effects: readonly EffectConfig[]): void {
+    const state = this.states.get(soundId);
+    if (!state?.outcome.ready) {
+      return;
+    }
+    if (state.outcome.backend === "official") {
+      this.officialRuntime?.setTransientEffects?.(soundId, effects);
+    } else {
+      for (const effect of effects) {
+        state.manager?.updateEffect(
+          soundId,
+          effect.id,
+          convertEffectConfig(effect)
+        );
+      }
+    }
+  }
+
   private advance(state: SoundEffectsState): number {
     this.nextGeneration += 1;
     state.generation = this.nextGeneration;

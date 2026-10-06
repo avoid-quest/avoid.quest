@@ -206,7 +206,7 @@ describe("connectableHandles", () => {
         type: "source",
       });
       // Inputs: Compressor in and key, Reverb in, Delay in, Speakers in.
-      expect(spy).toHaveBeenCalledTimes(5);
+      expect(spy).toHaveBeenCalledTimes(11);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
       ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
@@ -228,8 +228,8 @@ describe("connectableHandles", () => {
         node: "kexp",
         type: "source",
       });
-      // Once with each of the 5 facing ports' cables, once without any.
-      expect(spy).toHaveBeenCalledTimes(5 + 1);
+      // Once with each of the 11 facing ports' cables, once without any.
+      expect(spy).toHaveBeenCalledTimes(11 + 1);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
       ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);

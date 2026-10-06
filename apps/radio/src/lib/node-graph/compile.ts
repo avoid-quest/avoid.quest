@@ -316,6 +316,18 @@ export { laneChannelId, laneSoundId } from "./identifiers";
 
 /** Node types this compiler lowers; later layers add theirs. */
 const COMPILED_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  "macro",
+  "lfo",
+  "steps",
+  "randomiser",
+  "follower",
+  "envelope",
+  "curve",
+  "slew",
+  "multiEnvelope",
+  "shapedLfo",
+  "clock",
+  "midiIn",
   "station",
   "platform",
   "file",

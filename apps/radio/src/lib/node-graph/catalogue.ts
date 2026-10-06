@@ -71,7 +71,7 @@ function audioOut(id = "main", label = "Out"): NodePort {
 }
 
 function controlIn(id: string, label: string, ship?: ShipLevel): NodePort {
-  return { direction: "in", id, kind: "control", label, max: 1, ship };
+  return { direction: "in", id, kind: "control", label, max: UNLIMITED, ship };
 }
 
 function controlOut(id = "main", label = "Out", ship?: ShipLevel): NodePort {
@@ -127,7 +127,12 @@ function effectDefinition(type: EffectNodeType): NodeDefinition {
     category: container ? "routing" : "fx",
     effectType: type,
     name: container ?? EFFECT_DEFINITIONS[type].name,
-    ports: [audioIn(), ...(keyed ? [keyIn] : []), ...containerOuts(type)],
+    ports: [
+      audioIn(),
+      ...(keyed ? [keyIn] : []),
+      controlIn("parameter", "Parameter"),
+      ...containerOuts(type),
+    ],
     // Werkstatt needs the official openDAW backend; it waits for PR 8.
     ship: type === "werkstatt" ? "later" : "v1",
     type,
@@ -144,7 +149,7 @@ const OTHER_DEFINITIONS: Record<
     category: "control",
     name: "Clock",
     ports: [controlOut()],
-    ship: "v2",
+    ship: "v1",
   },
   crossfade: {
     category: "routing",
@@ -157,11 +162,17 @@ const OTHER_DEFINITIONS: Record<
     ],
     ship: "v2",
   },
+  curve: {
+    category: "control",
+    name: "Curve",
+    ports: [controlIn("gate", "Trigger"), controlOut()],
+    ship: "v1",
+  },
   // DJ's word for a mic or line-in; its lane is a live capture, not a stream.
   deviceIn: {
     category: "source",
     name: "Audio input",
-    ports: [audioOut()],
+    ports: [controlIn("parameter", "Parameter"), audioOut()],
     ship: "v1",
     source: true,
   },
@@ -178,11 +189,17 @@ const OTHER_DEFINITIONS: Record<
     ports: [audioIn("main", "In", 8), controlIn("tune", "Tune"), audioOut()],
     ship: "v2",
   },
+  envelope: {
+    category: "control",
+    name: "ADSR",
+    ports: [controlIn("gate", "Gate"), controlOut()],
+    ship: "v1",
+  },
   // A local file or a static audio URL (MP3, M3U, PLS), on its own lane.
   file: {
     category: "source",
     name: "File",
-    ports: [controlIn("volume", "Volume", "v2"), audioOut()],
+    ports: [controlIn("parameter", "Parameter"), audioOut()],
     ship: "v1",
     source: true,
     stream: true,
@@ -191,20 +208,30 @@ const OTHER_DEFINITIONS: Record<
     category: "fx",
     name: "Filter",
     native: "filter",
-    ports: [audioIn(), controlIn("cutoff", "Cutoff", "v2"), audioOut()],
+    ports: [
+      audioIn(),
+      controlIn("parameter", "Parameter"),
+      controlIn("cutoff", "Cutoff", "v2"),
+      audioOut(),
+    ],
     ship: "v1",
   },
   follower: {
     category: "control",
     name: "Follower",
     ports: [audioIn(), controlOut()],
-    ship: "v2",
+    ship: "v1",
   },
   gain: {
     category: "fx",
     name: "Gain",
     native: "gain",
-    ports: [audioIn(), controlIn("gain", "Gain", "v2"), audioOut()],
+    ports: [
+      audioIn(),
+      controlIn("parameter", "Parameter"),
+      controlIn("gain", "Gain", "v2"),
+      audioOut(),
+    ],
     ship: "v1",
   },
   headphones: {
@@ -216,8 +243,12 @@ const OTHER_DEFINITIONS: Record<
   lfo: {
     category: "control",
     name: "LFO",
-    ports: [controlIn("rate", "Rate"), controlOut()],
-    ship: "v2",
+    ports: [
+      controlIn("gate", "Reset"),
+      controlIn("rate", "Rate", "v2"),
+      controlOut(),
+    ],
+    ship: "v1",
   },
   loop: {
     category: "routing",
@@ -229,10 +260,17 @@ const OTHER_DEFINITIONS: Record<
     category: "control",
     name: "Macro",
     ports: [
-      { direction: "in", id: "main", kind: "midi", label: "MIDI", max: 1 },
+      {
+        direction: "in",
+        id: "main",
+        kind: "midi",
+        label: "MIDI",
+        max: 1,
+        ship: "v2",
+      },
       controlOut(),
     ],
-    ship: "v2",
+    ship: "v1",
   },
   merge: {
     category: "routing",
@@ -244,15 +282,23 @@ const OTHER_DEFINITIONS: Record<
     category: "control",
     name: "MIDI in",
     ports: [
+      controlOut(),
       {
         direction: "out",
         id: "cc",
         kind: "midi",
         label: "CC",
         max: UNLIMITED,
+        ship: "v2",
       },
     ],
-    ship: "v2",
+    ship: "v1",
+  },
+  multiEnvelope: {
+    category: "control",
+    name: "Multi-stage envelope",
+    ports: [controlIn("gate", "Gate"), controlOut()],
+    ship: "v1",
   },
   muteSolo: {
     category: "routing",
@@ -264,7 +310,12 @@ const OTHER_DEFINITIONS: Record<
     category: "fx",
     name: "Pan",
     native: "pan",
-    ports: [audioIn(), controlIn("pan", "Pan", "v2"), audioOut()],
+    ports: [
+      audioIn(),
+      controlIn("parameter", "Parameter"),
+      controlIn("pan", "Pan", "v2"),
+      audioOut(),
+    ],
     ship: "v1",
   },
   // A YouTube, SoundCloud, Bandcamp or Spotify track, album or playlist, or
@@ -272,7 +323,7 @@ const OTHER_DEFINITIONS: Record<
   platform: {
     category: "source",
     name: "Track",
-    ports: [controlIn("volume", "Volume", "v2"), audioOut()],
+    ports: [controlIn("parameter", "Parameter"), audioOut()],
     ship: "v1",
     source: true,
     stream: true,
@@ -280,8 +331,12 @@ const OTHER_DEFINITIONS: Record<
   randomiser: {
     category: "control",
     name: "Randomiser",
-    ports: [controlIn("trigger", "Trigger"), controlOut()],
-    ship: "v2",
+    ports: [
+      controlIn("gate", "Reset"),
+      controlIn("trigger", "Trigger", "v2"),
+      controlOut(),
+    ],
+    ship: "v1",
   },
   recorder: {
     category: "output",
@@ -307,6 +362,18 @@ const OTHER_DEFINITIONS: Record<
     ports: [audioIn(), audioOut("main", "To return")],
     ship: "v2",
   },
+  shapedLfo: {
+    category: "control",
+    name: "Shaped LFO",
+    ports: [controlIn("gate", "Reset"), controlOut()],
+    ship: "v1",
+  },
+  slew: {
+    category: "control",
+    name: "Slew",
+    ports: [controlIn("main", "Control"), controlOut()],
+    ship: "v1",
+  },
   speakers: {
     category: "output",
     name: "Speakers",
@@ -324,6 +391,7 @@ const OTHER_DEFINITIONS: Record<
     category: "source",
     name: "Station",
     ports: [
+      controlIn("parameter", "Parameter"),
       controlIn("volume", "Volume", "v2"),
       controlIn("pan", "Pan", "v2"),
       controlIn("station", "Station", "v2"),
@@ -334,6 +402,12 @@ const OTHER_DEFINITIONS: Record<
     ship: "v1",
     source: true,
     stream: true,
+  },
+  steps: {
+    category: "control",
+    name: "Steps",
+    ports: [controlIn("gate", "Reset"), controlOut()],
+    ship: "v1",
   },
   sundial: {
     category: "control",

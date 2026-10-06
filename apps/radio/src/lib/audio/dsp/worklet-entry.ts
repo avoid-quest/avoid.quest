@@ -8,6 +8,7 @@
 /// <reference path="./worklet-env.d.ts" />
 
 import { DSPProcessor } from "./processor.js";
+import "./modulation-worklet.js";
 
 /**
  * AudioWorklet processor wrapper for DSPProcessor

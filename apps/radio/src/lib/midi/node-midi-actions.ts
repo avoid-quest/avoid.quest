@@ -21,6 +21,12 @@ import {
   setNativeParams,
 } from "@/lib/node-graph/graph-edits";
 import {
+  MODULATION_COMMON_FIELDS,
+  MODULATION_FIELDS,
+} from "@/lib/node-graph/modulation-fields";
+import { setModulatorParams } from "@/lib/node-graph/modulation-parameters";
+import { isModulationType } from "@/lib/node-graph/modulation-schema";
+import {
   commitNodeGraph,
   type NodeCommitHistory,
 } from "@/lib/node-graph/node-store";
@@ -209,7 +215,13 @@ export function nodeMidiGroups(graph: NodeGraph): Map<string, string> {
   const groups = new Map<string, string>();
   const seen = new Map<string, number>();
   for (const node of graph.nodes) {
-    if (!(isEffectNodeType(node.type) || isNativeNode(node))) {
+    if (
+      !(
+        isEffectNodeType(node.type) ||
+        isNativeNode(node) ||
+        isModulationType(node.type)
+      )
+    ) {
       continue;
     }
     const title = getNodeDefinition(node.type).name;
@@ -264,6 +276,36 @@ export function createNodeMidiActions(
     }
     if (isNativeNode(node)) {
       return nativeActions(node, group, commit);
+    }
+    if (isModulationType(node.type)) {
+      return [
+        ...MODULATION_FIELDS[node.type],
+        ...MODULATION_COMMON_FIELDS,
+      ].flatMap((field): MidiAction[] => {
+        if (field.kind !== "number") {
+          return [];
+        }
+        return [
+          {
+            dispatch: (value) =>
+              commit((current) => {
+                const bounded = withinRange(value, { max: 1, min: 0 });
+                const next =
+                  field.scale === "log"
+                    ? field.min * (field.max / field.min) ** bounded
+                    : scaled(bounded, field);
+                return setModulatorParams(current, node.id, {
+                  [field.key]: Math.round(next / field.step) * field.step,
+                });
+              }),
+            group,
+            label: field.label,
+            range: { max: field.max, min: field.min, step: field.step },
+            targetId: `${nodeMidiTargetPrefix(node.id)}:${field.key}`,
+            type: "continuous",
+          },
+        ];
+      });
     }
     const { effect } = node.data as { effect: EffectConfig };
     return effectActions(node.id, effect, group, commit);

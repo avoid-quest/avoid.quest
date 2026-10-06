@@ -1,6 +1,7 @@
 import { AppError, captureError } from "@avoid.quest/error";
 import { UUID } from "@opendaw/lib-std";
 import type { Project, ProjectEnv } from "@opendaw/studio-core";
+import { createNativeModulationSession } from "../../node-graph/modulation-native.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
@@ -246,6 +247,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       // uses only the per-source monitor returns; leaving output 0 connected
       // would duplicate the signal.
       worklet.disconnect(this.context.destination, 0, 0);
+      // Global modulators keep running even when no source lane is playing.
+      worklet.connect(this.getSilentDestination(), 0, 0);
       await project.engine.isReady();
 
       if (this.closed) {
@@ -310,6 +313,14 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       generation,
       inputChannels
     );
+  }
+
+  async createModulationSession(onValue: (id: string, value: number) => void) {
+    await this.initialize();
+    const project = this.requireProject();
+    // The skeleton starts asleep until a monitoring source or transport wakes it.
+    project.engine.wake();
+    return createNativeModulationSession(project, onValue);
   }
 
   async connectSidechainSource(
@@ -472,6 +483,42 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.soundUnits.delete(soundId);
     this.sidechainTargets.delete(soundId);
     this.rebindSidechains();
+  }
+
+  setTransientEffects(soundId: string, effects: readonly EffectConfig[]): void {
+    const unit = this.soundUnits.get(soundId);
+    const { project } = this;
+    if (!(unit && project)) {
+      return;
+    }
+    const configs = new Map<string, EffectConfig>();
+    for (const effect of flattenEffects(effects)) {
+      configs.set(effect.id, effect);
+    }
+    const updates = flattenGroups(unit.groups).flatMap((group) => {
+      const next = configs.get(group.config.id);
+      return next &&
+        next.type === group.config.type &&
+        JSON.stringify(next) !== JSON.stringify(group.config)
+        ? [{ group, next }]
+        : [];
+    });
+    if (updates.length === 0) {
+      return;
+    }
+    // Transient updates bypass openDAW's editing history.
+    project.boxGraph.beginTransaction();
+    try {
+      for (const { group, next } of updates) {
+        updateOfficialEffectGroup(group, next, this.bpm);
+      }
+      project.boxGraph.endTransaction();
+    } catch (error) {
+      if (project.boxGraph.inTransaction()) {
+        project.boxGraph.abortTransaction();
+      }
+      throw error;
+    }
   }
 
   syncEffects(soundId: string, effects: readonly EffectConfig[]): void {

@@ -31,7 +31,7 @@ type EdgeInput = NodeGraphInput["edges"][number];
 
 const position = { x: 0, y: 0 };
 /** Words a refusal should never use: engine terms and unshipped nodes. */
-const JARGON = /patch \w+ into|sidechain|Follower/i;
+const JARGON = /patch \w+ into|sidechain/i;
 
 function station(id: string): NodeInput {
   return {
@@ -464,10 +464,7 @@ describe("validate: port kinds", () => {
   test("ports that land later are refused until their release", () => {
     const nodes = [station("a"), node("cut", "filter"), node("lfo", "lfo")];
     const edges = [control("lfo", "cut", "cutoff")];
-    expect(check(nodes, edges)).toEqual([
-      "unshipped@lfo",
-      "unshipped@lfo->cut",
-    ]);
+    expect(check(nodes, edges)).toEqual(["unshipped@lfo->cut"]);
     expect(check(nodes, edges, { release: "v2" })).toEqual([]);
   });
 
@@ -1363,9 +1360,24 @@ describe("validate: messages", () => {
     return graph(nodes, edges);
   };
   const scenarios: Issue[][] = [
+    validate(graph(range(33).map((index) => node(`macro${index}`, "macro")))),
+    validate(
+      graph(range(9).map((index) => node(`follow${index}`, "follower")))
+    ),
     validate(
       graph(
-        [station("a"), node("cut", "filter"), node("lfo", "lfo")],
+        [node("lfo", "lfo"), node("cut", "filter")],
+        [{ ...control("lfo", "cut", "parameter"), parameter: "enabled" }]
+      )
+    ),
+    validate(
+      graph(
+        [
+          station("a"),
+          node("cut", "filter"),
+          node("lfo", "lfo"),
+          node("title", "titleTrigger"),
+        ],
         [control("lfo", "cut", "cutoff")]
       )
     ),
@@ -1537,6 +1549,10 @@ describe("validate: messages", () => {
       "budget-edges": ["Up to 64 cables per patch"],
       "budget-lfos": ["Up to 8 LFOs per patch"],
       "budget-loops": ["Up to 4 Loops per patch"],
+      "budget-modulators": [
+        "Up to 32 modulators per patch",
+        "Up to 8 audio followers per patch",
+      ],
       "budget-playing": ["Up to 6 streams can play at once"],
       "budget-sources": ["Up to 24 sources per patch"],
       "budget-tape-warp": ["Up to 2 Tape Warp per patch"],
@@ -1554,6 +1570,9 @@ describe("validate: messages", () => {
       "lane-key": ["One key per lane"],
       "lane-pan": ["One Pan per lane"],
       "missing-node": ["Cable points at a missing node"],
+      "modulation-target": [
+        "Choose a numeric parameter this module can modulate",
+      ],
       "no-audio-in": ["A Station makes its own sound and takes no audio in"],
       "no-out": ["The sound ends at Speakers; it has no output"],
       "one-device-out": ["This output already has a module"],
@@ -1567,7 +1586,7 @@ describe("validate: messages", () => {
       "sidechain-target": ["A key only works on a station lane"],
       "unknown-port": ["Cable points at a missing port"],
       unshipped: [
-        "LFO isn't available yet",
+        "Title trigger isn't available yet",
         "Cutoff isn't available yet",
         BUS_MERGE_MESSAGE,
       ],

@@ -17,11 +17,20 @@ import {
   type PortKind,
   type ShipLevel,
 } from "./catalogue";
-import type { GraphEdge, GraphNode, NodeGraph, NodeType } from "./schema";
+import { modulationParameters } from "./modulation-parameters";
+import {
+  type GraphEdge,
+  type GraphNode,
+  isModulationNode,
+  type NodeGraph,
+  type NodeType,
+} from "./schema";
 
 export type Profile = "desktop" | "mobile";
 
 export type IssueCode =
+  | "modulation-target"
+  | "budget-modulators"
   | "unshipped"
   | "missing-node"
   | "bad-handle"
@@ -376,6 +385,22 @@ function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
     edgeIssue(context, edge, kind.code, kind.message);
     return null;
   }
+  if (to.kind === "control" && to.id === "parameter") {
+    const parameters = modulationParameters(target);
+    if (
+      parameters.length === 0 ||
+      (edge.parameter !== undefined &&
+        !parameters.some((parameter) => parameter.key === edge.parameter))
+    ) {
+      edgeIssue(
+        context,
+        edge,
+        "modulation-target",
+        "Choose a numeric parameter this module can modulate"
+      );
+      return null;
+    }
+  }
   return { edge, from, to };
 }
 
@@ -402,7 +427,16 @@ function checkEdges(context: Context): CheckedEdges {
     if (!result) {
       continue;
     }
-    const cable = `${edge.source}\u0000${edge.sourceHandle}\u0000${edge.target}\u0000${edge.targetHandle}`;
+    const cableParts = [
+      edge.source,
+      edge.sourceHandle,
+      edge.target,
+      edge.targetHandle,
+    ];
+    if (result.to.id === "parameter") {
+      cableParts.push(edge.id);
+    }
+    const cable = cableParts.join("\u0000");
     if (cables.has(cable)) {
       edgeIssue(context, edge, "duplicate-edge", "These are already connected");
       continue;
@@ -660,7 +694,7 @@ export type Topology = {
 };
 
 function laneFromInputs(node: GraphNode, inputs: readonly Lane[]): Lane {
-  if (definitionOf(node).category === "output") {
+  if (["output", "control"].includes(definitionOf(node).category)) {
     return;
   }
   const lane = inputs.reduce<Lane>(joinLane, undefined);
@@ -1110,6 +1144,18 @@ function checkBudgets(
     budget.lfos,
     "budget-lfos",
     `Up to ${budget.lfos} LFOs per patch`
+  );
+  flagNodes(
+    graph.nodes.filter(isModulationNode),
+    32,
+    "budget-modulators",
+    "Up to 32 modulators per patch"
+  );
+  flagNodes(
+    ofType("follower"),
+    8,
+    "budget-modulators",
+    "Up to 8 audio followers per patch"
   );
 
   overBudget(graph.edges, budget.edges, (edge) =>

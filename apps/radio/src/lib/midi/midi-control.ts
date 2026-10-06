@@ -6,6 +6,7 @@ import {
   createEffectMidiActions,
   type EffectChangeFactory,
 } from "./effect-actions";
+import { publishModulationMidi, resetModulationMidi } from "./modulation-input";
 import { getMidiPresetById } from "./presets";
 import {
   applyTransform,
@@ -576,6 +577,9 @@ export function createMidiControl({
     if (!persisted.enabled) {
       return;
     }
+    if (nodeActive) {
+      publishModulationMidi(data);
+    }
     for (const mapping of activeMappings(message)) {
       dispatchMapping(mapping, message);
     }
@@ -616,6 +620,7 @@ export function createMidiControl({
       return () => {
         cancelPendingDispatch();
         nodeActive = false;
+        resetModulationMidi();
         notify();
       };
     },
@@ -699,6 +704,7 @@ export function createMidiControl({
         case "set-enabled":
           if (!change.enabled) {
             cancelPendingDispatch();
+            resetModulationMidi();
           }
           persisted.enabled = change.enabled;
           persist();

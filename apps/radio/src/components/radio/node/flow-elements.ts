@@ -18,6 +18,7 @@ import {
 import { getNodeDefinition, isShipped } from "@/lib/node-graph/catalogue";
 import { laneChannelId, type MergeRole } from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
+import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
 import {
   EFFECT_NODE_TYPES,
@@ -40,6 +41,7 @@ type Size = { width: number; height: number };
  * but Werkstatt) with the splits, and the Merge that closes them.
  */
 export const DRAWN_NODE_TYPES: readonly NodeType[] = [
+  ...MODULATION_NODE_TYPES,
   "speakers",
   "deviceOut",
   "station",
@@ -483,6 +485,9 @@ export function toFlowEdges(
             : undefined,
         ...(kind === "sidechain"
           ? keyOf(edge, label, live, idleKeys)
+          : undefined),
+        ...(kind === "control"
+          ? { className: "node-edge-control", type: "control" }
           : undefined),
         domAttributes: { "aria-roledescription": "cable" },
         id: edge.id,

@@ -830,16 +830,15 @@ describe("NodeCanvas: dragging a cable", () => {
         clientY: 0,
       });
       move(-5000);
-      // One per input in the patch: Compressor in and key, Reverb in,
-      // Speakers in. Stations have no shipped inputs.
-      expect(spy).toHaveBeenCalledTimes(4);
+      // Audio inputs plus each source/FX parameter input, once at drag start.
+      expect(spy).toHaveBeenCalledTimes(9);
 
       const speakersIn = port("speakers", "in:audio:main");
       for (const x of [-4990, -4980, -4970]) {
         move(x, speakersIn);
       }
       move(-4960, port("comp", "in:sidechain:key"));
-      expect(spy).toHaveBeenCalledTimes(4);
+      expect(spy).toHaveBeenCalledTimes(9);
     } finally {
       spy.mockRestore();
       release(null);
@@ -940,7 +939,7 @@ describe("NodeCanvas: dragging a cable", () => {
       toast.mockRestore();
     }
   });
-  test("an Audio input draws only an audio out, an Output device only an audio in, and neither takes the wrong cable", async () => {
+  test("an Audio input draws control in and audio out, an Output device draws audio in, and neither takes the wrong audio cable", async () => {
     const view = mountGraph(
       schema.nodeGraphSchema.parse({
         edges: [],
@@ -974,7 +973,7 @@ describe("NodeCanvas: dragging a cable", () => {
         ),
       ].map((element) => element.getAttribute("data-handleid"));
 
-    expect(handles("mic")).toEqual(["out:audio:main"]);
+    expect(handles("mic")).toEqual(["in:control:parameter", "out:audio:main"]);
     expect(handles("desk")).toEqual(["in:audio:main"]);
     expect(
       view.container.querySelector('.react-flow__node[data-id="mic"]')

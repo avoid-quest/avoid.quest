@@ -62,7 +62,9 @@ describe("paletteEntries", () => {
 
     expect(
       entries
-        .filter((entry) => entry.section !== "fx")
+        .filter(
+          (entry) => entry.section !== "fx" && entry.section !== "modulators"
+        )
         .map((entry) => `${entry.section}:${entry.name}`)
     ).toEqual([
       "sources:Station",
@@ -173,7 +175,10 @@ describe("paletteEntries", () => {
     expect(entries.length).toBeGreaterThan(0);
     expect(
       entries.every(
-        (entry) => entry.section === "fx" || entry.section === "routing"
+        (entry) =>
+          entry.section === "fx" ||
+          entry.section === "routing" ||
+          (entry.kind === "node" && entry.type === "follower")
       )
     ).toBe(true);
   });

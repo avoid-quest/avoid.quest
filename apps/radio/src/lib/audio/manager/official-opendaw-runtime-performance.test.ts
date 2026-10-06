@@ -33,11 +33,19 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
         play: mock(() => undefined),
       },
       startAudioWorklet: () =>
-        Object.assign(new EventTarget(), { disconnect: () => undefined }),
+        Object.assign(new EventTarget(), {
+          connect: () => undefined,
+          disconnect: () => undefined,
+        }),
       terminate: () => undefined,
     };
     const createProject = mock(() => project);
     const context = {
+      createGain: () => ({
+        connect: () => undefined,
+        disconnect: () => undefined,
+        gain: { value: 1 },
+      }),
       destination: {},
       sampleRate: 48_000,
     } as unknown as AudioContext;

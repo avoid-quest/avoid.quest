@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
+import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { type RefObject, useEffect, useRef, useState } from "react";
@@ -47,6 +48,8 @@ import {
   clearConnectionHints,
   startConnectionHints,
 } from "./connection-hints";
+import { ControlEdge } from "./control-edge";
+import { ControlNode } from "./control-node";
 import { EffectNode } from "./effect-node";
 import { FileNode } from "./file-node";
 import {
@@ -96,6 +99,9 @@ type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 const nodeTypes = {
+  ...Object.fromEntries(
+    MODULATION_NODE_TYPES.map((type) => [type, ControlNode])
+  ),
   // Every drawn effect shares one node, and every split another; sources
   // and outputs come last.
   ...Object.fromEntries(
@@ -122,6 +128,7 @@ const nodeTypes = {
  */
 const edgeTypes = {
   branch: BranchEdge,
+  control: ControlEdge,
   key: KeyEdge,
 } satisfies FlowEdgeTypes;
 

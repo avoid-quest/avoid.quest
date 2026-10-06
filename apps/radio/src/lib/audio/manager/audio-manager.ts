@@ -21,6 +21,7 @@ import type {
   EffectsRuntimeOutcome,
 } from "../../channel-effects.js";
 import { getOutputRouting, type OutputRouting } from "../../output-routing.js";
+import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   type AudioState,
   type AudioStateCallback,
@@ -698,6 +699,41 @@ export class AudioManager {
       const now = context.currentTime;
       instance.nodes.pan.pan.setTargetAtTime(clampedPan, now, 0.05);
     }
+  }
+
+  /** Control-rate parameters: no authored values, volume caches or listeners change. */
+  setTransientNodeParams(
+    soundId: string,
+    params: {
+      pan: number;
+      filter: {
+        type: "lowpass" | "highpass";
+        frequency: number;
+        Q: number;
+      } | null;
+      effects: readonly EffectConfig[];
+    }
+  ): void {
+    const nodes = this.sounds.get(soundId)?.nodes;
+    if (!nodes) {
+      return;
+    }
+    const now = nodes.pan.context.currentTime;
+    nodes.pan.pan.setTargetAtTime(params.pan, now, 0.01);
+    nodes.filter.type = params.filter?.type ?? "highpass";
+    nodes.filter.frequency.setTargetAtTime(
+      params.filter?.frequency ?? 0,
+      now,
+      0.01
+    );
+    if (params.filter) {
+      nodes.filter.Q.setTargetAtTime(params.filter.Q, now, 0.01);
+    }
+    this.effects.setTransientEffects(soundId, params.effects);
+  }
+
+  createModulationSession(onValue: (id: string, value: number) => void) {
+    return this.effects.createModulationSession(onValue);
   }
 
   /**

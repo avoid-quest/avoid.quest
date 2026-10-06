@@ -1,3 +1,4 @@
+import type { NativeModulationSession } from "../../node-graph/modulation-native.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 
 export type EffectsPerformanceSnapshot = {
@@ -9,6 +10,9 @@ export type EffectsPerformanceSnapshot = {
 
 /** EffectsController seam implemented by the openDAW and test adapters. */
 export type EffectsGraphRuntime = {
+  createModulationSession?: (
+    onValue: (id: string, value: number) => void
+  ) => Promise<NativeModulationSession>;
   cleanup: () => void;
   connectSidechainSource: (
     soundId: string,
@@ -30,4 +34,9 @@ export type EffectsGraphRuntime = {
   setSidechainTarget: (soundId: string, targetSoundId: string | null) => void;
   setTempo: (bpm: number) => void;
   syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
+  /** In-place parameter updates without replacing the authored effect tree. */
+  setTransientEffects?: (
+    soundId: string,
+    effects: readonly EffectConfig[]
+  ) => void;
 };

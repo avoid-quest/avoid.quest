@@ -17,12 +17,10 @@ the source of truth for availability.
   Validation refuses a key cable into FX outside a station lane; keep that
   refusal until bus FX receive a resolved key source. A pre-fader send must tap
   the lane's `preFaderSend`, because `nodes.gain` is already post-fader.
-- **Control graph:** Macro, MIDI-in cables, LFO, Clock, Randomiser, Follower,
-  song/title triggers and Sundial. Preserve graph validation and define how
-  modulation reaches current engine parameters before exposing those ports.
-  Graph commits and `channelEffects.change` persist authored values and trigger
-  reconciliation. Continuous modulation therefore needs a transient runtime
-  parameter path that changes neither the session nor the authored base value.
+- **Additional control sources:** song/title triggers and Sundial remain
+  unshipped. The [modulation prototype](modulation.md) now exposes Macro,
+  MIDI input, LFO, Clock, Randomiser, Follower and envelope/curve/smoothing
+  modules through a transient parameter path.
 - **Additional routing/output nodes:** delayed feedback Loop, Tape Warp, Scope,
   Headphones and Recorder. The shipped per-source whole-track Loop and cue bus do
   not imply these authored nodes are implemented.

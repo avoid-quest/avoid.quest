@@ -18,6 +18,12 @@ import {
   isEffectContainer,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { MidiTransform } from "@/lib/midi/types";
+import {
+  isModulationType,
+  MODULATION_DATA_SCHEMAS,
+  MODULATION_NODE_TYPES,
+  type ModulationNodeType,
+} from "./modulation-schema";
 
 export const NODE_GRAPH_VERSION = 2;
 
@@ -71,14 +77,9 @@ export const ROUTING_NODE_TYPES = [
 ] as const;
 
 export const CONTROL_NODE_TYPES = [
-  "macro",
-  "lfo",
-  "clock",
-  "randomiser",
-  "follower",
+  ...MODULATION_NODE_TYPES,
   "titleTrigger",
   "sundial",
-  "midiIn",
 ] as const;
 
 export const OUTPUT_NODE_TYPES = [
@@ -112,6 +113,7 @@ const TYPED_NODE_TYPES = [
   "merge",
   "loop",
   "tapeWarp",
+  ...MODULATION_NODE_TYPES,
 ] as const satisfies readonly NodeType[];
 
 const LOOSE_NODE_TYPES = NODE_TYPES.filter(
@@ -418,6 +420,14 @@ const looseNodeSchema = z.object({
   type: z.enum(LOOSE_NODE_TYPES),
 });
 
+function modulationNode<T extends ModulationNodeType>(type: T) {
+  return z.object({
+    ...nodeBase,
+    data: MODULATION_DATA_SCHEMAS[type],
+    type: z.literal(type),
+  });
+}
+
 export const graphNodeSchema = z.discriminatedUnion("type", [
   stationNodeSchema,
   platformNodeSchema,
@@ -432,6 +442,18 @@ export const graphNodeSchema = z.discriminatedUnion("type", [
   mergeNodeSchema,
   loopNodeSchema,
   tapeWarpNodeSchema,
+  modulationNode("macro"),
+  modulationNode("lfo"),
+  modulationNode("steps"),
+  modulationNode("randomiser"),
+  modulationNode("follower"),
+  modulationNode("envelope"),
+  modulationNode("curve"),
+  modulationNode("slew"),
+  modulationNode("multiEnvelope"),
+  modulationNode("shapedLfo"),
+  modulationNode("clock"),
+  modulationNode("midiIn"),
   looseNodeSchema,
 ]);
 
@@ -446,13 +468,15 @@ export const graphEdgeSchema = z.object({
   /** User cable colour override. */
   color: z.string().optional(),
   /** Modulation depth on control cables. */
-  depth: z.number().optional(),
+  depth: z.number().min(-1).max(1).optional(),
   /** Linear, capped like a container branch gain (+12 dB). */
   gain: z.number().min(0).max(MAX_EDGE_GAIN).default(1),
   id: z.string().min(1),
   muted: z.boolean().default(false),
   /** A branch cable's pan, added to its chain's (Split, Stereo or Band Split). */
   pan: z.number().min(-1).max(1).optional(),
+  /** Numeric parameter selected on a modulation cable. */
+  parameter: z.string().max(80).optional(),
   /** A branch cable's solo: its chain plays and unsoloed siblings go quiet. */
   solo: z.boolean().optional(),
   source: z.string().min(1),
@@ -522,6 +546,13 @@ export type NodeGraphInput = z.input<typeof nodeGraphSchema>;
 export type GraphNode = NodeGraph["nodes"][number];
 export type GraphEdge = NodeGraph["edges"][number];
 export type RadioSourceNode = Extract<GraphNode, { type: RadioSourceNodeType }>;
+export type ModulationNode = Extract<GraphNode, { type: ModulationNodeType }>;
+
+export function isModulationNode(
+  node: GraphNode | undefined
+): node is ModulationNode {
+  return node !== undefined && isModulationType(node.type);
+}
 
 export function isRadioSourceNode(
   node: GraphNode | undefined

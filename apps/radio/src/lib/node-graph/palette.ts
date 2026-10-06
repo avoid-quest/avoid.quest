@@ -80,6 +80,7 @@ import {
 type Position = GraphNode["position"];
 
 export type PaletteSection =
+  | "modulators"
   | "sources"
   | "fx"
   | "routing"
@@ -98,7 +99,7 @@ export type PaletteNodeEntry = {
   kind: "node";
   /** Stable React key; also what a test or a shortcut picks by. */
   id: string;
-  section: "sources" | "fx" | "routing" | "outputs";
+  section: "sources" | "fx" | "routing" | "outputs" | "modulators";
   type: NodeType;
   name: string;
   /** Set on a Station that comes filled with this station. */
@@ -189,6 +190,7 @@ export function templatePatch(
 }
 
 const SECTION_OF = {
+  control: "modulators",
   fx: "fx",
   output: "outputs",
   routing: "routing",
@@ -199,7 +201,13 @@ const SECTION_OF = {
  * Section order: what makes sound, what shapes it, how it splits and
  * joins, where it goes.
  */
-const SECTION_ORDER = ["sources", "fx", "routing", "outputs"] as const;
+const SECTION_ORDER = [
+  "sources",
+  "fx",
+  "modulators",
+  "routing",
+  "outputs",
+] as const;
 
 /**
  * Within a section: Station, Track and File before Audio input (saved

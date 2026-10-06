@@ -6,6 +6,8 @@ import type { Project } from "@opendaw/studio-core";
 import * as Sentry from "@sentry/core";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import type { NativeModulationSpec } from "../../node-graph/modulation-native.js";
+import { MODULATION_DATA_SCHEMAS } from "../../node-graph/modulation-schema.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import { getWerkstattRuntimeStatus } from "../dsp/effects/werkstatt-runtime-status.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
@@ -15,6 +17,78 @@ const runtimes: OfficialOpenDawRuntime[] = [];
 const { Event: ProcessorEvent, EventTarget: ProcessorEventTarget } = new JSDOM(
   ""
 ).window;
+
+test("native modulation shares the FX Project, reuses source boxes and releases public telemetry", async () => {
+  const harness = await createHarness();
+  const samples: [string, number][] = [];
+  const telemetry: Array<{
+    listener: (values: Float32Array) => void;
+    terminate: ReturnType<typeof mock>;
+  }> = [];
+  await harness.runtime.initialize();
+  const subscriptionSpy = spyOn(
+    harness.project.liveStreamReceiver,
+    "subscribeFloats"
+  ).mockImplementation((_address, listener) => {
+    const subscription = { listener, terminate: mock(() => undefined) };
+    telemetry.push(subscription);
+    return subscription;
+  });
+  try {
+    const session = await harness.runtime.createModulationSession((id, value) =>
+      samples.push([id, value])
+    );
+    expect(harness.engine.wake).toHaveBeenCalledTimes(1);
+    const sources = (["lfo", "steps", "randomiser", "macro"] as const).map(
+      (type) =>
+        ({
+          data: MODULATION_DATA_SCHEMAS[type].parse({}),
+          id: type,
+          type,
+        }) as NativeModulationSpec
+    );
+    harness.project.editing.markSaved();
+    session.sync(sources);
+    const adapters = harness.project.api.modulation.adapters();
+    expect(adapters.map((adapter) => adapter.box.name)).toEqual([
+      "LfoModulatorBox",
+      "StepsModulatorBox",
+      "RandomModulatorBox",
+      "MacroModulatorBox",
+    ]);
+    expect(adapters.map((adapter) => adapter.indexField.getValue())).toEqual([
+      0, 1, 2, 3,
+    ]);
+    expect(telemetry).toHaveLength(4);
+    telemetry[0]?.listener(new Float32Array([0.75, -0.25]));
+    expect(samples).toEqual([["lfo", -0.25]]);
+    session.sync(
+      sources.map(
+        (spec) =>
+          ({
+            ...spec,
+            data: { ...spec.data, amount: 0.4 },
+          }) as NativeModulationSpec
+      )
+    );
+    expect(
+      harness.project.api.modulation.adapters().map((adapter) => adapter.box)
+    ).toEqual(adapters.map((adapter) => adapter.box));
+    expect(adapters[0]?.amount.getValue()).toBeCloseTo(0.4, 6);
+    expect(telemetry).toHaveLength(4);
+    session.sync(sources.slice(0, 2));
+    expect(harness.project.api.modulation.adapters()).toHaveLength(2);
+    expect(telemetry[2]?.terminate).toHaveBeenCalledTimes(1);
+    expect(telemetry[3]?.terminate).toHaveBeenCalledTimes(1);
+    session.dispose();
+    expect(harness.project.api.modulation.adapters()).toHaveLength(0);
+    expect(telemetry[0]?.terminate).toHaveBeenCalledTimes(1);
+    expect(harness.project.editing.hasUnsavedChanges()).toBe(false);
+    expect(harness.terminate).not.toHaveBeenCalled();
+  } finally {
+    subscriptionSpy.mockRestore();
+  }
+});
 
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) {
@@ -106,6 +180,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       return subscription;
     },
     unregisterMonitoringSource: mock(() => undefined),
+    wake: mock(() => undefined),
   };
   let project: Project | undefined;
   const terminate = mock(() => project?.terminate());
@@ -132,6 +207,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
                 boxGraph: project.boxGraph,
                 editing: project.editing,
                 engine,
+                liveStreamReceiver: project.liveStreamReceiver,
                 startAudioWorklet: () => worklet,
                 terminate,
               };
@@ -200,6 +276,31 @@ function parameter(
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
+  test("modulation updates device parameters in place without saving or recording undo", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = createDefaultEffectConfig("delay", "echo", 0);
+    h.runtime.syncEffects("deck", [config]);
+    const device = h.project.boxGraph
+      .boxes()
+      .find((box) => box instanceof h.boxes.DelayDeviceBox);
+    if (!(device instanceof h.boxes.DelayDeviceBox)) {
+      throw new Error("Missing Delay device");
+    }
+    const liveBoxes = h.project.boxGraph.boxes();
+    h.project.editing.markSaved();
+    for (let index = 0; index < 30; index += 1) {
+      h.runtime.setTransientEffects("deck", [
+        { ...config, feedback: index / 100 },
+      ]);
+    }
+    expect(device.feedback.getValue()).toBeCloseTo(0.29);
+    expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+    expect(h.project.editing.hasUnsavedChanges()).toBe(false);
+    h.runtime.setTransientEffects("deck", [config]);
+    expect(device.feedback.getValue()).toBe(config.feedback);
+    expect(h.project.editing.hasUnsavedChanges()).toBe(false);
+  });
   test("reports a running processor's terminal failure once and ignores disposed runtimes", async () => {
     const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(

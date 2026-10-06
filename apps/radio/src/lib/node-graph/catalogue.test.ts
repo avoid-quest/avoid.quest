@@ -8,6 +8,7 @@ import {
   portHandleId,
   SIDECHAIN_EFFECT_TYPES,
 } from "./catalogue";
+import { MODULATION_NODE_TYPES } from "./modulation-schema";
 import { NODE_TYPES, type NodeType, nodeGraphSchema } from "./schema";
 import { validate } from "./validate";
 
@@ -67,18 +68,21 @@ describe("NODE_DEFINITIONS", () => {
       )
       .map((definition) => definition.type)
       .sort();
-    expect(v1).toEqual([
-      "deviceIn",
-      "deviceOut",
-      "file",
-      "filter",
-      "gain",
-      "merge",
-      "pan",
-      "platform",
-      "speakers",
-      "station",
-    ]);
+    expect(v1).toEqual(
+      [
+        ...MODULATION_NODE_TYPES,
+        "deviceIn",
+        "deviceOut",
+        "file",
+        "filter",
+        "gain",
+        "merge",
+        "pan",
+        "platform",
+        "speakers",
+        "station",
+      ].sort() as NodeType[]
+    );
   });
 
   test("only compressor, gate and vocoder take a key", () => {
@@ -88,7 +92,7 @@ describe("NODE_DEFINITIONS", () => {
       )
       .map((definition) => definition.type)
       .sort();
-    expect(keyed).toEqual([...SIDECHAIN_EFFECT_TYPES].sort());
+    expect(keyed).toEqual([...SIDECHAIN_EFFECT_TYPES].sort() as NodeType[]);
   });
 
   test("ports have unique handle ids and sane limits", () => {
@@ -203,7 +207,7 @@ describe("catalogue invariants", () => {
         definition.ports
           .filter((port) => isShipped(port.ship ?? definition.ship, "v1"))
           .map(portHandleId)
-      ).toEqual(["out:audio:main"]);
+      ).toEqual(["in:control:parameter", "out:audio:main"]);
     }
     expect(NODE_DEFINITIONS.platform.name).toBe("Track");
   });

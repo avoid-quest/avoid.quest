@@ -247,7 +247,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   pause(): void {
     this.cancelPendingPlaybackIntent();
     this.cancelRecovery();
-    this._status = "buffering";
+    if (this._status !== "error") {
+      this._status = "buffering";
+    }
     if (!this.audio.paused) {
       this.ignoredPauseEvents += 1;
     }

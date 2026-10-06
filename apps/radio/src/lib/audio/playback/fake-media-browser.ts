@@ -71,6 +71,10 @@ export class FakeAudioElement {
   }
 
   pause(): void {
+    // biome-ignore lint/suspicious/noUnnecessaryConditions: play() changes this mutable flag
+    if (this.paused) {
+      return;
+    }
     this.paused = true;
     this.emit("pause");
   }

@@ -56,13 +56,17 @@ export async function prepareSourceRadio(
   if (radio.platformMetadata?.platform === "device-input") {
     return { radio };
   }
-  const playable = await radioOnTrack(
-    radio,
-    radio.streamUrl,
-    resolveStream,
-    "initial-load"
-  );
-  return playable ? { radio: playable } : { error: TRACK_UNPLAYABLE };
+  try {
+    const playable = await radioOnTrack(
+      radio,
+      radio.streamUrl,
+      resolveStream,
+      "initial-load"
+    );
+    return playable ? { radio: playable } : { error: TRACK_UNPLAYABLE };
+  } catch {
+    return { error: TRACK_UNPLAYABLE };
+  }
 }
 
 /** A platform link or static audio URL, resolved as a DJ deck loads one. */

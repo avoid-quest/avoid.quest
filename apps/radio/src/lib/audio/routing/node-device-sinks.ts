@@ -48,8 +48,8 @@ export type NodeDeviceSinksOptions = {
   listOutputDeviceIds?: () => Promise<string[]>;
   /** Calls `onChange` on hot-plug; returns the unsubscribe. */
   watchDevices?: (onChange: () => void) => () => void;
-  /** Changes when playback activates or starts deactivating. */
-  getPlaybackEpoch?: () => number;
+  /** Whether playback still runs: false once it starts deactivating. */
+  isActive?: () => boolean;
   /** A sink's sends must be routed again, e.g. it failed over to Speakers. */
   onReroute?: (sinkId: string) => void;
   /** Any sink's status changed. */
@@ -138,7 +138,7 @@ export function createNodeDeviceSinks({
   createElement = () => new Audio(),
   listOutputDeviceIds: listIds = listOutputDeviceIds,
   watchDevices: watch = watchDevices,
-  getPlaybackEpoch = () => 0,
+  isActive = () => true,
   onReroute,
   onStatus,
 }: NodeDeviceSinksOptions = {}): NodeDeviceSinks {
@@ -190,11 +190,10 @@ export function createNodeDeviceSinks({
     const graph = { destination, element, input };
     entry.graph = graph;
     const { generation } = entry;
-    const playbackEpoch = getPlaybackEpoch();
     const current = () =>
       entries.get(sinkId) === entry &&
       entry.generation === generation &&
-      getPlaybackEpoch() === playbackEpoch;
+      isActive();
     element
       .setSinkId(deviceId)
       .then(() => (current() ? element.play() : undefined))

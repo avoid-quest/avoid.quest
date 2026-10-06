@@ -466,6 +466,17 @@ function stationData(store: NodeStore, nodeId: string) {
   return node?.type === "station" ? node.data : undefined;
 }
 
+/**
+ * Reports `soundId` playing on its channel, as AudioManager does only while
+ * the channel holds it: a released sound's subscription and request are gone.
+ */
+function reportPlaying(soundId: string): void {
+  const channelId = soundId.slice("node:".length);
+  if (getPlaybackChannelRuntime(channelId).soundId === soundId) {
+    setPlaybackChannelRuntime(channelId, () => ({ isPlaying: true }));
+  }
+}
+
 /** playSound mock whose starts wait for a release each. */
 function heldStarts(context: PlaybackActionContext) {
   const releases: Array<() => void> = [];
@@ -475,9 +486,7 @@ function heldStarts(context: PlaybackActionContext) {
       new Promise<void>((resolve) => {
         started.push(soundId);
         releases.push(() => {
-          setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
-            isPlaying: true,
-          }));
+          reportPlaying(soundId);
           resolve();
         });
       })
@@ -1317,10 +1326,7 @@ describe("Node Playback starts", () => {
       (soundId: string) =>
         new Promise<void>((resolve) => {
           resolveStart = () => {
-            setPlaybackChannelRuntime(channelId, () => ({
-              isPlaying: true,
-              soundId,
-            }));
+            reportPlaying(soundId);
             resolve();
           };
         })
@@ -1353,10 +1359,7 @@ describe("Node Playback starts", () => {
         new Promise<void>((resolve) => {
           attempt += 1;
           const start = () => {
-            setPlaybackChannelRuntime(channelId, () => ({
-              isPlaying: true,
-              soundId,
-            }));
+            reportPlaying(soundId);
             resolve();
           };
           if (attempt === 1) {

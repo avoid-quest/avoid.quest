@@ -78,6 +78,11 @@ export function setWorkletProcessorUrl(url: string): void {
   workletProcessorUrl = url;
 }
 
+/** The asset URL shared by effects and Node modulation worklets. */
+export function getWorkletProcessorUrl(): string {
+  return workletProcessorUrl;
+}
+
 export type {
   FilterConfig,
   MainOutputConnect,

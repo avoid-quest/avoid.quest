@@ -571,14 +571,17 @@ export function createMidiControl({
 
   const handleMessage = (data: Uint8Array) => {
     const message = parseMidiMessage(data);
-    if (!message || learnFromMessage(message)) {
+    if (!message) {
+      return;
+    }
+    if (persisted.enabled && nodeActive) {
+      publishModulationMidi(data);
+    }
+    if (learnFromMessage(message)) {
       return;
     }
     if (!persisted.enabled) {
       return;
-    }
-    if (nodeActive) {
-      publishModulationMidi(data);
     }
     for (const mapping of activeMappings(message)) {
       dispatchMapping(mapping, message);

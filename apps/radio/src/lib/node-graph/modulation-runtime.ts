@@ -98,10 +98,12 @@ export function createModulationRuntime({
   onValues,
   getAudioTap,
   getNativeSession,
+  getWorkletProcessorUrl,
 }: {
   onValues: (values: Readonly<Record<string, number>>) => void;
   /** Follower taps the named node's lane, after its effects and before its fader. */
   getAudioTap: (sourceId: string) => AudioNode | null;
+  getWorkletProcessorUrl: () => string;
   getNativeSession?: (
     onValue: (id: string, value: number) => void
   ) => Promise<NativeModulationSession | null>;
@@ -113,16 +115,52 @@ export function createModulationRuntime({
   let pending: Promise<void> | null = null;
   let disposed = false;
   let taps: AudioTap[] = [];
-  const queuedGates = new Map<string, boolean>();
+  const queuedGates = new Map<string, { on: boolean; triggered: boolean }>();
+  const queuedMidi = new Map<
+    string,
+    Extract<ModulationMessage, { type: "midi" }>
+  >();
   const resetSources = new Set<string>();
   let native: NativeModulationSession | null = null;
   let nativeAttempted = false;
+  let nativeGeneration = 0;
   let nativeQueued = false;
   let nativeValues: Record<string, number> = {};
 
+  const disposeNativeSession = (session: NativeModulationSession | null) => {
+    try {
+      session?.dispose();
+    } catch (error) {
+      if (!disposed) {
+        modulationReadouts.setState((state) => ({
+          ...state,
+          nativeWarning: `Native modulation cleanup failed: ${String(error)}`,
+        }));
+      }
+    }
+  };
+  const releaseNative = () => {
+    nativeGeneration += 1;
+    const session = native;
+    native = null;
+    disposeNativeSession(session);
+  };
+  const nativeFailed = (error: unknown) => {
+    releaseNative();
+    modulationReadouts.setState((state) => ({
+      ...state,
+      nativeWarning: `Native modulation is unavailable: ${String(error)}`,
+    }));
+  };
+
   const configure = () => {
-    const sources = native ? nativeModulationNodes(program, resetSources) : [];
-    native?.sync(sources);
+    let sources = native ? nativeModulationNodes(program, resetSources) : [];
+    try {
+      native?.sync(sources);
+    } catch (error) {
+      nativeFailed(error);
+      sources = [];
+    }
     program = { ...program, nativeIds: sources.map((spec) => spec.id) };
     const ids = new Set(program.nativeIds);
     nativeValues = Object.fromEntries(
@@ -151,8 +189,14 @@ export function createModulationRuntime({
       return;
     }
     nativeAttempted = true;
+    nativeGeneration += 1;
+    const generation = nativeGeneration;
     getNativeSession((id, value) => {
-      if (disposed || !program.nativeIds?.includes(id)) {
+      if (
+        disposed ||
+        generation !== nativeGeneration ||
+        !program.nativeIds?.includes(id)
+      ) {
         return;
       }
       nativeValues[id] = value;
@@ -171,8 +215,8 @@ export function createModulationRuntime({
       });
     })
       .then((session) => {
-        if (disposed) {
-          session?.dispose();
+        if (disposed || generation !== nativeGeneration) {
+          disposeNativeSession(session);
           return;
         }
         native = session;
@@ -187,12 +231,9 @@ export function createModulationRuntime({
         }
       })
       .catch((error: unknown) => {
-        if (!disposed) {
-          native = null;
-          modulationReadouts.setState((state) => ({
-            ...state,
-            nativeWarning: `Native modulation is unavailable: ${String(error)}`,
-          }));
+        if (!disposed && generation === nativeGeneration) {
+          nativeFailed(error);
+          configure();
         }
       });
   };
@@ -237,10 +278,28 @@ export function createModulationRuntime({
       return;
     }
     clearTaps();
-    for (const tap of next) {
-      tap.source.connect(node, 0, tap.input);
+    try {
+      for (const tap of next) {
+        tap.source.connect(node, 0, tap.input);
+        taps.push(tap);
+      }
+    } catch (error) {
+      clearTaps();
+      throw error;
     }
-    taps = next;
+  };
+  const releaseWorklet = () => {
+    clearTaps();
+    context?.removeEventListener("statechange", stateChanged);
+    if (node) {
+      node.port.postMessage({ type: "stop" } satisfies ModulationMessage);
+      node.port.onmessage = null;
+      node.disconnect();
+      node.port.close();
+    }
+    silent?.disconnect();
+    node = null;
+    silent = null;
   };
   const initialize = () => {
     if (
@@ -261,7 +320,7 @@ export function createModulationRuntime({
     }));
     let loaded = modules.get(audio);
     if (!loaded) {
-      loaded = audio.audioWorklet.addModule("/dsp-processor-bundle.js");
+      loaded = audio.audioWorklet.addModule(getWorkletProcessorUrl());
       modules.set(audio, loaded);
       loaded.catch(() => modules.delete(audio));
     }
@@ -287,7 +346,12 @@ export function createModulationRuntime({
           }
           // Public SDK telemetry otherwise dispatches on animation frames,
           // which browsers throttle when the radio tab is in the background.
-          native?.dispatch();
+          try {
+            native?.dispatch();
+          } catch (error) {
+            nativeFailed(error);
+            configure();
+          }
           refreshTaps();
           modulationReadouts.setState((state) => ({
             ...state,
@@ -297,7 +361,14 @@ export function createModulationRuntime({
         };
         configure();
         initializeNative();
-        for (const [id, on] of queuedGates) {
+        for (const [id, { on, triggered }] of queuedGates) {
+          if (triggered) {
+            node.port.postMessage({
+              id,
+              on: true,
+              type: "gate",
+            } satisfies ModulationMessage);
+          }
           node.port.postMessage({
             id,
             on,
@@ -305,12 +376,19 @@ export function createModulationRuntime({
           } satisfies ModulationMessage);
         }
         queuedGates.clear();
+        for (const message of queuedMidi.values()) {
+          node.port.postMessage(message);
+        }
+        queuedMidi.clear();
         refreshTaps();
         audio.addEventListener("statechange", stateChanged);
         stateChanged();
       })
       .catch((error: unknown) => {
         if (!disposed) {
+          releaseNative();
+          nativeAttempted = false;
+          releaseWorklet();
           modulationReadouts.setState((state) => ({
             ...state,
             error: String(error),
@@ -322,15 +400,62 @@ export function createModulationRuntime({
         pending = null;
       });
   };
+  const clearQueuedNotes = (channel: number) => {
+    for (const id of queuedMidi.keys()) {
+      if (id.startsWith(`note:${channel}:`)) {
+        queuedMidi.delete(id);
+      }
+    }
+  };
+  // MIDI state has a fixed number of channels, notes and controllers. Keeping
+  // the latest press/release for each note and the last CC preserves triggers
+  // and held notes without a growing backlog.
+  const queueMidi = (message: Extract<ModulationMessage, { type: "midi" }>) => {
+    const [status = 0, key = 0, velocity = 0] = message.bytes;
+    if (status === 255) {
+      queuedMidi.clear();
+      queuedMidi.set("reset", message);
+      return;
+    }
+    const channel = status % 16;
+    const kind = Math.floor(status / 16);
+    if ((kind !== 8 && kind !== 9 && kind !== 11) || key < 0 || key > 127) {
+      return;
+    }
+    if (kind === 11 && (key === 120 || key === 123)) {
+      clearQueuedNotes(channel);
+    }
+    const pressed = kind === 9 && velocity > 0;
+    const id =
+      kind === 11
+        ? `cc:${channel}:${key}`
+        : `note:${channel}:${key}:${pressed ? "on" : "off"}`;
+    if (pressed) {
+      queuedMidi.delete(`note:${channel}:${key}:off`);
+    }
+    // Reinsert so the last pressed note remains last after replay.
+    queuedMidi.delete(id);
+    queuedMidi.set(id, message);
+  };
   const send = (message: ModulationMessage) => {
     if (message.type === "gate") {
+      if (!program.nodes.some((spec) => spec.id === message.id)) {
+        return;
+      }
       if (!node) {
-        queuedGates.set(message.id, message.on);
+        queuedGates.set(message.id, {
+          on: message.on,
+          triggered:
+            message.on || (queuedGates.get(message.id)?.triggered ?? false),
+        });
       }
       if (message.on) {
         resetSources.add(message.id);
         configure();
       }
+    }
+    if (message.type === "midi" && !node && program.nodes.length > 0) {
+      queueMidi(message);
     }
     initialize();
     node?.port.postMessage(message);
@@ -345,19 +470,10 @@ export function createModulationRuntime({
       disposed = true;
       commands.delete(send);
       stopMidi();
-      context?.removeEventListener("statechange", stateChanged);
-      clearTaps();
-      native?.dispose();
-      native = null;
-      if (node) {
-        node.port.postMessage({ type: "stop" } satisfies ModulationMessage);
-        node.port.onmessage = null;
-        node.disconnect();
-        node.port.close();
-      }
-      silent?.disconnect();
-      node = null;
-      silent = null;
+      queuedGates.clear();
+      queuedMidi.clear();
+      releaseNative();
+      releaseWorklet();
       onValues({});
       modulationReadouts.setState(() => ({
         backends: {},
@@ -370,6 +486,11 @@ export function createModulationRuntime({
     sync(next: NodeGraph) {
       program = modulationProgram(next);
       const retained = new Set(program.nodes.map((spec) => spec.id));
+      for (const id of queuedGates.keys()) {
+        if (!retained.has(id)) {
+          queuedGates.delete(id);
+        }
+      }
       for (const id of resetSources) {
         if (!retained.has(id)) {
           resetSources.delete(id);

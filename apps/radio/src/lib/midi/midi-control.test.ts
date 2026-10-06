@@ -9,6 +9,7 @@ import {
   type MidiMappingPersistence,
   type PersistedMidiControl,
 } from "./midi-control";
+import { subscribeModulationMidi } from "./modulation-input";
 import { createStaticMidiActions } from "./static-actions";
 import type { MidiAction, MidiMapping, MidiTransform } from "./types";
 
@@ -18,6 +19,41 @@ const mapping: MidiMapping = {
   targetId: "deck-a:volume",
   type: "cc",
 };
+
+test("MIDI learn publishes a held note's release to Node modulation", async () => {
+  const browser = new FakeBrowser();
+  const control = createMidiControl({
+    browser,
+    persistence: new MemoryPersistence({
+      state: { activePresetId: null, enabled: true, mappings: [] },
+      version: 2,
+    }),
+    staticActions: [],
+  });
+  const received: number[][] = [];
+  const unsubscribe = subscribeModulationMidi((bytes) =>
+    received.push(Array.from(bytes))
+  );
+  try {
+    control.activateNode();
+    await control.connect();
+    browser.emit([0x90, 60, 100]);
+    control.change({ targetId: "deck-a:volume", type: "start-learn" });
+    browser.emit([0x80, 60, 0]);
+    expect(received).toEqual([
+      [0x90, 60, 100],
+      [0x80, 60, 0],
+    ]);
+    expect(control.getSnapshot().learningTarget).toBeNull();
+    expect(control.getSnapshot().mappings[0]).toMatchObject({
+      control: 60,
+      type: "note",
+    });
+  } finally {
+    unsubscribe();
+    control.cleanup();
+  }
+});
 
 class MemoryPersistence implements MidiMappingPersistence {
   value: PersistedMidiControl | null;

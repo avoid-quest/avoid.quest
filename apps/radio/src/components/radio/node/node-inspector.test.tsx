@@ -99,6 +99,8 @@ let NodeInspector: InspectorModule["NodeInspector"];
 let isInspectable: InspectorModule["isInspectable"];
 let useNodeInspector: InspectorModule["useNodeInspector"];
 let NodeRack: typeof import("./node-rack")["NodeRack"];
+let StepsEditor: typeof import("./modulation-editors")["StepsEditor"];
+let CurveEditor: typeof import("./modulation-editors")["CurveEditor"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let useIsMobile: typeof import("@avoid.quest/ui/hooks/use-mobile")["useIsMobile"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
@@ -113,6 +115,7 @@ beforeAll(async () => {
     "./node-inspector"
   ));
   ({ NodeRack } = await import("./node-rack"));
+  ({ StepsEditor, CurveEditor } = await import("./modulation-editors"));
   ({ NodeActionsProvider } = await import("./node-actions"));
   ({ useIsMobile } = await import("@avoid.quest/ui/hooks/use-mobile"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
@@ -136,6 +139,48 @@ const noop = () => undefined;
 const asyncNoop = async () => undefined;
 const position = { x: 0, y: 0 };
 const REPICK_FILE = /Lost\.wav.*Pick the file again/;
+
+describe("modulation pattern editors", () => {
+  test("clearing or entering an invalid count preserves every authored step", () => {
+    const onChange = mock((_values: number[]) => undefined);
+    const values = [0.2, 0.8, 0.4, 0.9];
+    const view = render(<StepsEditor onChange={onChange} values={values} />);
+    const count = view.getByRole("spinbutton", { name: "Step count" });
+    for (const value of ["", "not-a-number", "Infinity"]) {
+      fireEvent.focusIn(count);
+      fireEvent.change(count, { target: { value } });
+      fireEvent.keyUp(count, { key: "Backspace" });
+    }
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(count, { target: { value: "6" } });
+    fireEvent.keyUp(count, { key: "6" });
+    expect(onChange).toHaveBeenCalledWith([...values, 0, 0]);
+  });
+
+  test("only points with an outgoing segment expose a Bend control", () => {
+    const onChange = mock(() => undefined);
+    const points = [
+      { bend: 0.4, time: 0, value: 0 },
+      { bend: 0, time: 1, value: 1 },
+    ];
+    const view = render(
+      <CurveEditor fixed={false} onChange={onChange} points={points} />
+    );
+    expect(view.getByRole("slider", { name: "Point bend" })).toBeTruthy();
+    const curve = view.getByRole("img", {
+      name: "Envelope curve; edit point values below",
+    });
+    Object.defineProperty(curve, "setPointerCapture", { value: noop });
+    const finalPoint = curve.querySelector('[data-point="1"]');
+    if (!finalPoint) {
+      throw new Error("Missing final curve point");
+    }
+    fireEvent.pointerDown(finalPoint, { pointerId: 1 });
+    expect(view.queryByRole("slider", { name: "Point bend" })).toBeNull();
+    expect(view.getByRole("slider", { name: "Point value" })).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
 
 /** KEXP through a Compressor and a Filter to Speakers. */
 function createStore(): NodeStore {

@@ -24,7 +24,11 @@ import {
   MODULATION_COMMON_FIELDS,
   MODULATION_FIELDS,
 } from "@/lib/node-graph/modulation-fields";
-import { setModulatorParams } from "@/lib/node-graph/modulation-parameters";
+import {
+  NATIVE_PARAM_RANGES,
+  type NativeParamRange,
+  setModulatorParams,
+} from "@/lib/node-graph/modulation-parameters";
 import { isModulationType } from "@/lib/node-graph/modulation-schema";
 import {
   commitNodeGraph,
@@ -41,38 +45,11 @@ export type NodeMidiCommit = (
 ) => void;
 
 type NativeNodeType = "filter" | "pan" | "gain";
-type NativeKey = "frequency" | "Q" | "pan" | "gainDb";
 
-export type NativeParamRange = {
-  key: NativeKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  /** A log knob spreads its travel by ratio, as the node's own knob does. */
-  scale?: "log";
-};
-
-/** The native strip's knobs, shared by their node bodies and MIDI. */
-export const NATIVE_PARAM_RANGES: Record<
-  NativeNodeType,
-  readonly NativeParamRange[]
-> = {
-  filter: [
-    {
-      key: "frequency",
-      label: "Cutoff",
-      max: 20_000,
-      min: 20,
-      scale: "log",
-      step: 1,
-    },
-    { key: "Q", label: "Q", max: 10, min: 0.1, scale: "log", step: 0.01 },
-  ],
-  // The schema's full range, so a stored +24 dB trim stays put.
-  gain: [{ key: "gainDb", label: "Gain", max: 24, min: -40, step: 0.1 }],
-  pan: [{ key: "pan", label: "Pan", max: 1, min: -1, step: 0.01 }],
-};
+export {
+  NATIVE_PARAM_RANGES,
+  type NativeParamRange,
+} from "@/lib/node-graph/modulation-parameters";
 
 const CHAIN_PARAMS = [
   ["gain", "gain", 0, 4, 0.01],

@@ -39,6 +39,7 @@ import {
   portHandleId,
 } from "./catalogue";
 import { compile, isRadioSourceLive } from "./compile";
+import { modulationParameters } from "./modulation-parameters";
 import {
   type EffectNodeType,
   type GraphEdge,
@@ -573,7 +574,7 @@ export function removeSelection(
 /** Adds a cable at unity gain. Validation happens before, on drag. */
 export function connectNodes(
   graph: NodeGraph,
-  { source, sourceHandle, target, targetHandle }: Connection
+  { source, sourceHandle, target, targetHandle, parameter }: Connection
 ): NodeGraph {
   if (!(sourceHandle && targetHandle)) {
     return graph;
@@ -587,6 +588,7 @@ export function connectNodes(
         gain: 1,
         id: uniqueId(`${source}->${target}`, edgeIds),
         muted: false,
+        ...(parameter === undefined ? {} : { parameter }),
         source,
         sourceHandle,
         target,
@@ -600,8 +602,8 @@ export function connectNodes(
  * Rewires cable `edgeId` to `connection`, as dragging a cable end does: the
  * old cable goes and the new one comes in one edit, checked against the
  * patch without the old one, so an input it filled takes the new cable.
- * Only its endpoints change; its id, order and settings stay, except a
- * branch pan and solo, which go when it no longer leaves a split.
+ * Its id, order and settings stay. Branch settings follow a split output;
+ * a parameter follows a compatible target, and depth follows control cables.
  */
 export function reconnectEdge(
   graph: NodeGraph,
@@ -617,41 +619,45 @@ export function reconnectEdge(
     old.source === connection.source &&
     old.sourceHandle === connection.sourceHandle &&
     old.target === connection.target &&
-    old.targetHandle === connection.targetHandle
+    old.targetHandle === connection.targetHandle &&
+    (connection.parameter === undefined ||
+      old.parameter === connection.parameter)
   ) {
     return { graph, ok: true };
   }
   const without = removeEdges(graph, [edgeId]);
-  const verdict = connectionVerdict(without, connection, options);
+  const replacement = reconnectCandidate(graph, old, connection);
+  const verdict = connectionVerdict(without, replacement, options);
   if (!verdict.ok) {
     return { message: verdict.message, ok: false };
   }
-  const connected = connectNodes(without, connection);
-  const added = connected.edges.at(-1);
-  if (connected === without || !added) {
-    return { message: "That cable can't go there", ok: false };
-  }
   return {
     graph: {
-      ...connected,
-      edges: graph.edges.map((edge) =>
-        edge === old
-          ? {
-              ...(isSplitNode(
-                graph.nodes.find((node) => node.id === added.source)
-              )
-                ? edge
-                : withoutBranchParams(edge)),
-              source: added.source,
-              sourceHandle: added.sourceHandle,
-              target: added.target,
-              targetHandle: added.targetHandle,
-            }
-          : edge
-      ),
+      ...graph,
+      edges: graph.edges.map((edge) => (edge === old ? replacement : edge)),
     },
     ok: true,
   };
+}
+
+/** The same cable metadata for drag verdicts and the final reconnect edit. */
+export function reconnectCandidate(
+  graph: NodeGraph,
+  old: GraphEdge,
+  connection: Connection
+): GraphEdge {
+  return normalizeControlCable(graph, {
+    ...(isSplitNode(graph.nodes.find((node) => node.id === connection.source))
+      ? old
+      : withoutBranchParams(old)),
+    source: connection.source,
+    sourceHandle: connection.sourceHandle ?? "",
+    target: connection.target,
+    targetHandle: connection.targetHandle ?? "",
+    ...(connection.parameter === undefined
+      ? {}
+      : { parameter: connection.parameter }),
+  });
 }
 
 export function moveNodes(
@@ -909,6 +915,7 @@ export function isLoose(graph: NodeGraph, nodeId: string): boolean {
  * one's id, gain, mute and branch settings, so a branch stays a branch and
  * its level holds; the one out starts at unity. The node's first input and
  * output that fit are used, e.g. a Compressor's main input, not its key.
+ * A control cable's parameter and depth stay at the original destination.
  */
 export function insertNodeOnEdge(
   graph: NodeGraph,
@@ -932,11 +939,11 @@ export function insertNodeOnEdge(
   const others = graph.edges.filter((entry) => entry !== edge);
   let refusal: string | null = null;
   for (const input of ports.filter((port) => port.direction === "in")) {
-    const upstream: GraphEdge = {
-      ...edge,
+    const upstream = normalizeControlCable(graph, {
+      ...withoutControlParams(edge),
       target: nodeId,
       targetHandle: portHandleId(input),
-    };
+    });
     const cut = { ...graph, edges: others };
     const up = connectionVerdict(cut, upstream, options);
     if (!up.ok) {
@@ -948,7 +955,7 @@ export function insertNodeOnEdge(
       edges: graph.edges.map((entry) => (entry === edge ? upstream : entry)),
     };
     for (const output of ports.filter((port) => port.direction === "out")) {
-      const downstream: GraphEdge = {
+      const downstream = normalizeControlCable(graph, {
         gain: 1,
         id: uniqueId(`${nodeId}->${edge.target}`, cableIdsOf(graph)),
         muted: false,
@@ -956,7 +963,8 @@ export function insertNodeOnEdge(
         sourceHandle: portHandleId(output),
         target: edge.target,
         targetHandle: edge.targetHandle,
-      };
+        ...controlParams(edge),
+      });
       const down = connectionVerdict(withUpstream, downstream, options);
       if (!down.ok) {
         refusal ??= down.message;
@@ -987,6 +995,62 @@ export function insertNodeOnEdge(
 function withoutBranchParams(edge: GraphEdge): GraphEdge {
   const { pan: _pan, solo: _solo, ...kept } = edge;
   return kept;
+}
+
+function withoutControlParams(edge: GraphEdge): GraphEdge {
+  const { depth: _depth, parameter: _parameter, ...kept } = edge;
+  return kept;
+}
+
+function controlParams(
+  edge: GraphEdge
+): Pick<GraphEdge, "depth" | "parameter"> {
+  return {
+    ...(edge.depth === undefined ? {} : { depth: edge.depth }),
+    ...(edge.parameter === undefined ? {} : { parameter: edge.parameter }),
+  };
+}
+
+/** Keeps modulation settings only on the control destination they describe. */
+function normalizeControlCable(graph: NodeGraph, edge: GraphEdge): GraphEdge {
+  if (
+    parseHandleId(edge.sourceHandle)?.kind !== "control" ||
+    parseHandleId(edge.targetHandle)?.kind !== "control"
+  ) {
+    return withoutControlParams(edge);
+  }
+  const target = graph.nodes.find((node) => node.id === edge.target);
+  if (
+    edge.targetHandle === "in:control:parameter" &&
+    target &&
+    modulationParameters(target).some(
+      (parameter) => parameter.key === edge.parameter
+    )
+  ) {
+    return edge;
+  }
+  const { parameter: _parameter, ...kept } = edge;
+  return kept;
+}
+
+function controlDepth(edge: GraphEdge): number {
+  return (
+    edge.depth ?? (edge.targetHandle === "in:control:parameter" ? 0.25 : 1)
+  );
+}
+
+/** Signed gains compose when a control processor is removed from the path. */
+function healedControlParams(
+  upstream: GraphEdge,
+  downstream: GraphEdge
+): Pick<GraphEdge, "depth" | "parameter"> {
+  if (parseHandleId(upstream.targetHandle)?.kind !== "control") {
+    return {};
+  }
+  return {
+    ...controlParams(downstream),
+    depth: controlDepth(upstream) * controlDepth(downstream),
+  };
 }
 
 /** What a removed node adds to a path out through `downstream`. */
@@ -1106,7 +1170,7 @@ function removeNodeHealed(
       next = withCleanCable(
         next,
         {
-          ...withoutBranchParams(upstream),
+          ...withoutControlParams(withoutBranchParams(upstream)),
           ...healedBranch(upstream, branch, nodeOf(upstream.source)),
           gain,
           id: taken.has(upstream.id)
@@ -1119,6 +1183,7 @@ function removeNodeHealed(
             (soloed && !branch.solo),
           target: downstream.target,
           targetHandle: downstream.targetHandle,
+          ...healedControlParams(upstream, downstream),
         },
         options
       );

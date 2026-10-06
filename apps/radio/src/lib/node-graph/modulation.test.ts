@@ -7,6 +7,8 @@ import {
   applyModulation,
   modulatedValue,
   modulationParameters,
+  NATIVE_PARAM_RANGES,
+  parameterCables,
   setModulatorParams,
 } from "./modulation-parameters";
 import { modulationProgram } from "./modulation-runtime";
@@ -132,11 +134,11 @@ describe("Node modulation routing", () => {
       ...graph,
       edges: [
         ...graph.edges,
-        { ...graph.edges[3], depth: -0.25, id: "second" },
+        { ...graph.edges[3], depth: -0.25, id: "second", source: "macro" },
       ],
     } as NodeGraph;
     expect(
-      compile(applyModulation(doubled, { lfo: 1 }), {
+      compile(applyModulation(doubled, { lfo: 1, macro: 1 }), {
         crossOriginIsolated: true,
       }).lanes.get("station")?.filter?.frequency
     ).toBe(1000);
@@ -156,6 +158,116 @@ describe("Node modulation routing", () => {
         lfo: 1,
       }).nodes.find((node) => node.id === "cut")?.data
     ).toEqual(graph.nodes.find((node) => node.id === "cut")?.data);
+  });
+
+  test("zero offsets preserve quiet Gain values and unchanged graph identity", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          id: "amount",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "gain",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        createPaletteNode("macro", "macro", { x: 0, y: 0 }),
+        {
+          data: { gainDb: -80.05 },
+          id: "gain",
+          position: { x: 0, y: 0 },
+          type: "gain",
+        },
+        { id: "speakers", position: { x: 0, y: 0 }, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const gain = graph.nodes.find((node) => node.type === "gain");
+    if (!gain) {
+      throw new Error("Missing test Gain");
+    }
+    const [range] = modulationParameters(gain);
+    expect(range?.min).toBe(-80.05);
+    expect(applyModulation(graph, { macro: 0 })).toBe(graph);
+    expect(
+      applyModulation(graph, { macro: 1 }).nodes.find(
+        (node) => node.type === "gain"
+      )?.data
+    ).toMatchObject({ gainDb: -54 });
+  });
+
+  test("Filter Q uses the same logarithmic range as its knob and MIDI", () => {
+    const graph = patch();
+    const filter = graph.nodes.find((node) => node.id === "cut");
+    if (!filter) {
+      throw new Error("Missing test Filter");
+    }
+    const resonance = modulationParameters(filter).find(
+      (range) => range.key === "Q"
+    );
+    const nativeRange = NATIVE_PARAM_RANGES.filter.find(
+      (range) => range.key === "Q"
+    );
+    expect(resonance).toMatchObject({ max: 30, min: 0.1, scale: "log" });
+    expect(resonance).toMatchObject({ ...nativeRange, label: "Resonance" });
+    if (!resonance) {
+      throw new Error("Missing resonance range");
+    }
+    expect(modulatedValue(0.1, 0.5, resonance)).toBe(1.73);
+  });
+
+  test("refused source handles and cables past the budget never change targets", () => {
+    const graph = patch();
+    const [, , , cable] = graph.edges;
+    if (!cable) {
+      throw new Error("Missing test cable");
+    }
+    const invalid = {
+      ...graph,
+      edges: [{ ...cable, sourceHandle: "out:control:missing" }],
+    };
+    expect(parameterCables(invalid)).toEqual([]);
+    expect(applyModulation(invalid, { lfo: 1 })).toBe(invalid);
+    const overflow = {
+      ...graph,
+      edges: [
+        ...Array.from({ length: 64 }, (_, index) => ({
+          ...cable,
+          id: `invalid-${index}`,
+          sourceHandle: "out:control:missing",
+        })),
+        cable,
+      ],
+    };
+    expect(validate(overflow)).toContainEqual(
+      expect.objectContaining({ code: "budget-edges", id: cable.id })
+    );
+    expect(parameterCables(overflow)).toEqual([]);
+    expect(applyModulation(overflow, { lfo: 1 })).toBe(overflow);
+  });
+
+  test("a wired parameter cable from a modulator past the node budget is inert", () => {
+    const graph = patch();
+    const [, , , cable] = graph.edges;
+    if (!cable) {
+      throw new Error("Missing test cable");
+    }
+    const overflow = nodeGraphSchema.parse({
+      ...graph,
+      edges: [{ ...cable, source: "extra-20" }],
+      nodes: [
+        ...graph.nodes,
+        ...Array.from({ length: 21 }, (_, index) =>
+          createPaletteNode("macro", `extra-${index}`, { x: 0, y: 0 })
+        ),
+      ],
+    });
+    expect(validate(overflow)).toContainEqual(
+      expect.objectContaining({ code: "budget-modulators", id: "extra-20" })
+    );
+    expect(parameterCables(overflow)).toEqual([]);
+    expect(applyModulation(overflow, { "extra-20": 1 })).toBe(overflow);
   });
 
   test("authored edits undo; unsupported targets and control cycles fail closed", () => {

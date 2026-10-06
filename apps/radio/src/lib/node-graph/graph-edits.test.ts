@@ -81,6 +81,32 @@ function accepted(edit: GraphEdit): NodeGraph {
   return edit.graph;
 }
 
+function modulationPatch(): NodeGraph {
+  const position = { x: 0, y: 0 };
+  return nodeGraphSchema.parse({
+    edges: [
+      {
+        depth: -0.5,
+        id: "control",
+        parameter: "Q",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      },
+    ],
+    nodes: [
+      { id: "macro", position, type: "macro" },
+      { id: "other-macro", position, type: "macro" },
+      { data: {}, id: "filter", position, type: "filter" },
+      { data: {}, id: "pan", position, type: "pan" },
+      { id: "slew", position, type: "slew" },
+      { id: "speakers", position, type: "speakers" },
+    ],
+    version: 2,
+  });
+}
+
 describe("addStationNode", () => {
   test("adds a Station below the others, wired to Speakers", () => {
     const { graph, nodeId } = addStationNode(patch(radio("a")), radio("b"));
@@ -340,6 +366,69 @@ describe("where a new node lands", () => {
 });
 
 describe("reconnectEdge", () => {
+  test("an explicit reconnect parameter updates even when the endpoints stay the same", () => {
+    const start = modulationPatch();
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        parameter: "frequency",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[0]).toMatchObject({
+      depth: -0.5,
+      parameter: "frequency",
+    });
+    expect(validate(next)).toEqual([]);
+  });
+
+  test("reconnecting to another parameter module clears incompatible metadata", () => {
+    const start = modulationPatch();
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "pan",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[0]).toMatchObject({ depth: -0.5, target: "pan" });
+    expect(next.edges[0]?.parameter).toBeUndefined();
+    expect(validate(next)).toEqual([]);
+  });
+
+  test("reconnecting a source keeps a compatible target and checks the final cable", () => {
+    const start = modulationPatch();
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        source: "other-macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[0]).toMatchObject({ depth: -0.5, parameter: "Q" });
+    expect(validate(next)).toEqual([]);
+
+    const occupied = nodeGraphSchema.parse({
+      ...start,
+      edges: [
+        ...start.edges,
+        { ...start.edges[0], id: "occupied", source: "other-macro" },
+      ],
+    });
+    expect(
+      reconnectEdge(occupied, "control", {
+        source: "other-macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    ).toMatchObject({ message: "These are already connected", ok: false });
+  });
+
   test("moves a cable end in one edit, keeping its identity and settings", () => {
     const start = patch(radio("a"), radio("b"));
     const [cable] = start.edges;
@@ -382,7 +471,6 @@ describe("reconnectEdge", () => {
     );
     expect(edit.graph.edges[0]).toMatchObject({
       color: "#abc123",
-      depth: 0.25,
       gain: 0.5,
       id: cable?.id,
       muted: true,
@@ -390,6 +478,7 @@ describe("reconnectEdge", () => {
       target: withGain.nodeId,
       transform: { max: 0.8, min: 0.2 },
     });
+    expect(edit.graph.edges[0]?.depth).toBeUndefined();
   });
 
   test("rewiring a branch preserves its compiled pan, solo and gain", () => {
@@ -807,6 +896,49 @@ function cables(graph: NodeGraph) {
 }
 
 describe("insertNodeOnEdge", () => {
+  test("inserting and removing a Slew retains the original parameter assignment", () => {
+    const start = modulationPatch();
+    const edited = accepted(insertNodeOnEdge(start, "slew", "control"));
+    const upstream = edited.edges.find((edge) => edge.target === "slew");
+    const downstream = edited.edges.find((edge) => edge.source === "slew");
+    expect(upstream?.depth).toBeUndefined();
+    expect(upstream?.parameter).toBeUndefined();
+    expect(downstream).toMatchObject({
+      depth: -0.5,
+      parameter: "Q",
+      target: "filter",
+    });
+    expect(validate(edited)).toEqual([]);
+    const healed = accepted(removeNodesHealed(edited, ["slew"]));
+    expect(healed.edges).toHaveLength(1);
+    expect(healed.edges[0]).toMatchObject({
+      depth: -0.5,
+      parameter: "Q",
+      source: "macro",
+      target: "filter",
+    });
+    expect(validate(healed)).toEqual([]);
+  });
+
+  test("healing combines signed control depths, including the default parameter depth", () => {
+    const start = accepted(
+      insertNodeOnEdge(modulationPatch(), "slew", "control")
+    );
+    const scaled = {
+      ...start,
+      edges: start.edges.map((edge) => {
+        if (edge.target === "slew") {
+          return { ...edge, depth: -0.5 };
+        }
+        const { depth: _depth, ...defaultDepth } = edge;
+        return defaultDepth;
+      }),
+    };
+    const healed = accepted(removeNodesHealed(scaled, ["slew"]));
+    expect(healed.edges[0]).toMatchObject({ depth: -0.125, parameter: "Q" });
+    expect(validate(healed)).toEqual([]);
+  });
+
   test("splits one cable into two, the first keeping its id and level", () => {
     const start = patch(radio("a"));
     const gained = {

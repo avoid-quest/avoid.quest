@@ -1,7 +1,10 @@
 import { captureError } from "@avoid.quest/error";
 import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
-import { applyModulation } from "@/lib/node-graph/modulation-parameters";
+import {
+  applyModulation,
+  parameterCables,
+} from "@/lib/node-graph/modulation-parameters";
 import { createModulationRuntime } from "@/lib/node-graph/modulation-runtime";
 /**
  * Node Playback
@@ -72,6 +75,7 @@ import type { AudioState, Radio } from "@/lib/audio";
 import { fadeOut } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
+import { getWorkletProcessorUrl } from "@/lib/audio/manager/audio-manager";
 import {
   createNodeDeviceSinks,
   type DeviceSinkStatus,
@@ -307,6 +311,10 @@ function sameBadges(left: NodeBackendBadges, right: NodeBackendBadges) {
     keys.length === Object.keys(right).length &&
     keys.every((key) => left[key] === right[key])
   );
+}
+
+function laneParams(lane: LanePlan) {
+  return { effects: lane.effects, filter: lane.filter, pan: lane.pan };
 }
 
 export type GetNodePlaybackOptions = {
@@ -555,6 +563,19 @@ function createNodePlayback(
 
   let plan = EMPTY_PLAN;
   let modulationPlan: EnginePlan | null = null;
+  let effectiveGraph: NodeGraph | null = null;
+  let modulationCables: ReturnType<typeof parameterCables> = [];
+  const transientParams = new Map<
+    string,
+    {
+      tap: AudioNode;
+      backend: EffectsRuntimeOutcome["backend"];
+      ready: boolean;
+      params: Parameters<
+        PlaybackActionContext["audio"]["setTransientNodeParams"]
+      >[1];
+    }
+  >();
   let modulation: ReturnType<typeof createModulationRuntime> | null = null;
   let active = false;
   const isReadOnly = () =>
@@ -661,25 +682,8 @@ function createNodePlayback(
     route: routeSink,
   });
 
-  const applyModulationValues = (values: Readonly<Record<string, number>>) => {
-    const { graph } = store.state;
-    if (!graph || isReadOnly()) {
-      return;
-    }
-    const effective = applyModulation(graph, values);
-    const previous = modulationPlan ?? plan;
-    modulationPlan =
-      effective === graph ? null : compiledPlan(effective, getEnv());
-    const next = modulationPlan ?? plan;
+  const refreshChangedLevels = (previous: EnginePlan, next: EnginePlan) => {
     for (const lane of next.lanes.values()) {
-      const { soundId } = getPlaybackChannelRuntime(lane.channelId);
-      if (soundId && ctx.audio.getPreFaderNode(soundId)) {
-        ctx.audio.setTransientNodeParams(soundId, {
-          effects: lane.effects,
-          filter: lane.filter,
-          pan: lane.pan,
-        });
-      }
       const before = [...previous.edges.values()].filter(
         (edge) => edge.from.id === lane.id
       );
@@ -690,6 +694,59 @@ function createNodePlayback(
         laneOutputs.refresh(lane.id);
       }
     }
+  };
+
+  const applyTransientLane = (lane: LanePlan) => {
+    const { soundId } = getPlaybackChannelRuntime(lane.channelId);
+    const tap = soundId ? ctx.audio.getPreFaderNode(soundId) : null;
+    if (!(soundId && tap)) {
+      return;
+    }
+    const params = laneParams(lane);
+    const last = transientParams.get(soundId);
+    const authored = plan.lanes.get(lane.id);
+    const { backend, ready } = ctx.audio.getEffectsRuntimeOutcome(soundId);
+    const unchanged =
+      last?.tap === tap
+        ? last.backend === backend &&
+          last.ready === ready &&
+          deepEquals(last.params, params)
+        : authored && deepEquals(params, laneParams(authored));
+    if (unchanged) {
+      return;
+    }
+    ctx.audio.setTransientNodeParams(soundId, params);
+    transientParams.set(soundId, { backend, params, ready, tap });
+  };
+
+  const forgetChangedLaneParams = (previous: EnginePlan, next: EnginePlan) => {
+    for (const lane of next.lanes.values()) {
+      const old = previous.lanes.get(lane.id);
+      if (old && !deepEquals(laneParams(old), laneParams(lane))) {
+        transientParams.delete(lane.soundId);
+      }
+    }
+  };
+
+  const applyModulationValues = (values: Readonly<Record<string, number>>) => {
+    const { graph } = store.state;
+    if (!graph || isReadOnly()) {
+      return;
+    }
+    const transformed = applyModulation(graph, values, modulationCables);
+    const effective =
+      effectiveGraph && deepEquals(effectiveGraph, transformed)
+        ? effectiveGraph
+        : transformed;
+    effectiveGraph = effective === graph ? null : effective;
+    const previous = modulationPlan ?? plan;
+    modulationPlan =
+      effective === graph ? null : compiledPlan(effective, getEnv());
+    const next = modulationPlan ?? plan;
+    for (const lane of next.lanes.values()) {
+      applyTransientLane(lane);
+    }
+    refreshChangedLevels(previous, next);
   };
 
   const syncModulation = (graph: NodeGraph) => {
@@ -708,6 +765,7 @@ function createNodePlayback(
       },
       getNativeSession: (onValue) =>
         ctx.audio.createModulationSession?.(onValue) ?? Promise.resolve(null),
+      getWorkletProcessorUrl,
       onValues: applyModulationValues,
     });
     modulation.sync(graph);
@@ -1187,6 +1245,10 @@ function createNodePlayback(
 
   /** Releases a channel's sound, its runtime, its watch and its cue tap. */
   const releaseChannel = (channelId: string) => {
+    const { soundId } = getPlaybackChannelRuntime(channelId);
+    if (soundId) {
+      transientParams.delete(soundId);
+    }
     cueTaps.get(channelId)?.registration.cleanup();
     cueTaps.delete(channelId);
     laneWatches.delete(channelId);
@@ -1903,7 +1965,11 @@ function createNodePlayback(
       }
     }
     const previous = plan;
+    const previousAudible = modulationPlan ?? previous;
     const ops = diff(previous, next);
+    modulationCables = parameterCables(graph);
+    effectiveGraph = null;
+    forgetChangedLaneParams(previous, next);
     plan = next;
     modulationPlan = null;
     for (const op of ops) {
@@ -1914,6 +1980,9 @@ function createNodePlayback(
     try {
       syncSinks(previous, next);
       applyOps(ops, previous, next, strict);
+      if (previousAudible !== previous) {
+        refreshChangedLevels(previousAudible, next);
+      }
       syncModulation(graph);
     } finally {
       // A carry is only "in place" within one batch; a later re-add of the
@@ -2200,6 +2269,9 @@ function createNodePlayback(
     deviceSinks.dispose();
     publishSinkStatuses();
     plan = EMPTY_PLAN;
+    effectiveGraph = null;
+    modulationCables = [];
+    transientParams.clear();
     laneOutcomes.clear();
     publishBadges();
     observedGraph = null;

@@ -180,6 +180,45 @@ describe("validate: the migrated Multiple layout", () => {
 });
 
 describe("validate: port kinds", () => {
+  test("parameter cable identity uses the effective parameter, not the cable id", () => {
+    const patch = graph(
+      [node("macro", "macro"), node("filter", "filter")],
+      [
+        control("macro", "filter", "parameter", "default"),
+        {
+          ...control("macro", "filter", "parameter", "same"),
+          parameter: "frequency",
+        },
+        { ...control("macro", "filter", "parameter", "other"), parameter: "Q" },
+      ]
+    );
+    const analysis = analyseGraph(patch);
+    expect(codes(analysis.issues)).toEqual(["duplicate-edge@same"]);
+    expect(analysis.wired.map(({ edge }) => edge.id)).toEqual([
+      "default",
+      "other",
+    ]);
+    const withoutDuplicate = { ...patch, edges: patch.edges.slice(0, 1) };
+    expect(
+      connectionVerdict(withoutDuplicate, {
+        parameter: "Q",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    ).toEqual({ ok: true });
+    expect(
+      connectionVerdict(withoutDuplicate, {
+        parameter: "frequency",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    ).toMatchObject({ code: "duplicate-edge", ok: false });
+  });
+
   test("audio → audio connects", () => {
     expect(
       check(

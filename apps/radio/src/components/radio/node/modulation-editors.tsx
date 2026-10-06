@@ -31,10 +31,12 @@ export function StepsEditor({
             max={64}
             min={1}
             onChange={(event) => {
-              const count = Math.max(
-                1,
-                Math.min(64, Number(event.target.value))
-              );
+              const rawCount = event.target.value;
+              const enteredCount = Number(rawCount);
+              if (rawCount.trim() === "" || !Number.isFinite(enteredCount)) {
+                return;
+              }
+              const count = Math.max(1, Math.min(64, Math.trunc(enteredCount)));
               onChange(
                 Array.from({ length: count }, (_, index) => values[index] ?? 0)
               );
@@ -247,16 +249,18 @@ export function CurveEditor({
           step={0.01}
           value={current.value}
         />
-        <ModuleKnob
-          format={(value) => value.toFixed(2)}
-          label="Bend"
-          max={1}
-          min={-1}
-          name="Point bend"
-          onChange={(bend) => update({ bend })}
-          step={0.01}
-          value={current.bend}
-        />
+        {index < points.length - 1 ? (
+          <ModuleKnob
+            format={(value) => value.toFixed(2)}
+            label="Bend"
+            max={1}
+            min={-1}
+            name="Point bend"
+            onChange={(bend) => update({ bend })}
+            step={0.01}
+            value={current.bend}
+          />
+        ) : null}
       </div>
       {fixed ? (
         <p className="text-[10px] text-muted-foreground">

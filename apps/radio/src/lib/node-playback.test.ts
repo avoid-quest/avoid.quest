@@ -57,6 +57,8 @@ import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+// biome-ignore lint/performance/noNamespaceImport: observe compiler calls on telemetry
+import * as graphCompiler from "@/lib/node-graph/compile";
 import { compile } from "@/lib/node-graph/compile";
 import {
   removeEdges,
@@ -64,6 +66,8 @@ import {
   setSourceRadio,
   setSourceStrip,
 } from "@/lib/node-graph/graph-edits";
+// biome-ignore lint/performance/noNamespaceImport: supply worklet readouts without browser audio
+import * as modulationRuntime from "@/lib/node-graph/modulation-runtime";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -246,6 +250,9 @@ function createTestContext(): PlaybackActionContext {
       setPlaybackRate: mock((_soundId: string, _rate: number) => undefined),
       setSoundOutputConnector: mock(
         (_soundId: string, _connect: SoundOutputConnector | null) => undefined
+      ),
+      setTransientNodeParams: mock(
+        (_soundId: string, _params: unknown) => undefined
       ),
       updateFilter: mock((_soundId: string, _config: unknown) => undefined),
     } as unknown as AudioManager,
@@ -5381,6 +5388,242 @@ describe("Node Playback: Track and File sources", () => {
     );
     await harness.playback.setPlaying("file", true);
     expect(getPlaybackChannelRuntime(channelOf("file")).isPlaying).toBe(true);
+  });
+});
+
+describe("Node Playback: modulation readouts", () => {
+  function modulationHarness() {
+    let emit: (values: Readonly<Record<string, number>>) => void = () =>
+      undefined;
+    let values: Readonly<Record<string, number>> = {};
+    const runtime = spyOn(
+      modulationRuntime,
+      "createModulationRuntime"
+    ).mockImplementation(({ onValues }) => {
+      emit = (next) => {
+        values = next;
+        onValues(next);
+      };
+      return {
+        dispose: () => onValues({}),
+        sync: () => onValues(values),
+      };
+    });
+    let outputOptions:
+      | Parameters<NonNullable<GetNodePlaybackOptions["laneOutputs"]>>[0]
+      | null = null;
+    const refresh = mock((_laneId: string) => undefined);
+    const context = createTestContext();
+    const tap = new FakeAudioContext().createGain();
+    context.audio.getPreFaderNode = mock(() => tap as unknown as GainNode);
+    const harness = createHarness({
+      context,
+      laneOutputs: (options) => {
+        outputOptions = options;
+        return { ...createNodeLaneOutputs(options), refresh };
+      },
+    });
+    return {
+      ...harness,
+      emit: (next: Readonly<Record<string, number>>) => emit(next),
+      levels: () => Object.fromEntries(outputOptions?.getLevels("a") ?? []),
+      refresh,
+      runtime,
+    };
+  }
+
+  function modulatedPatch(target = "a", parameter = "trimDb"): NodeGraph {
+    const base = patch([station("a"), station("b")]);
+    return nodeGraphSchema.parse({
+      ...base,
+      edges: [
+        ...base.edges,
+        {
+          depth: 0.25,
+          id: "control",
+          parameter,
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target,
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        ...base.nodes,
+        {
+          data: {},
+          id: "macro",
+          position: { x: 0, y: 0 },
+          type: "macro",
+        },
+      ],
+    });
+  }
+
+  test.each(["muted", "removed", "disabled", "last source removed"])(
+    "restores the authored Trim send when modulation is %s",
+    async (action) => {
+      insertNodeSession(modulatedPatch());
+      const harness = modulationHarness();
+      try {
+        await harness.playback.activate();
+        harness.emit({ macro: 1 });
+        expect(harness.levels().speakers).toBeCloseTo(10 ** (9 / 20));
+        harness.refresh.mockClear();
+
+        await commit(harness, (graph) => {
+          let { edges, nodes } = graph;
+          if (action === "muted") {
+            edges = edges.map((edge) =>
+              edge.id === "control" ? { ...edge, muted: true } : edge
+            );
+          } else if (action === "removed" || action === "last source removed") {
+            edges = edges.filter((edge) => edge.id !== "control");
+          }
+          if (action === "disabled") {
+            nodes = nodes.map((node) =>
+              node.type === "macro"
+                ? { ...node, data: { ...node.data, enabled: false } }
+                : node
+            );
+          } else if (action === "last source removed") {
+            nodes = nodes.filter((node) => node.id !== "macro");
+          }
+          return { ...graph, edges, nodes };
+        });
+
+        expect(harness.levels().speakers).toBe(1);
+        expect(harness.refresh).toHaveBeenCalledWith("a");
+      } finally {
+        await harness.playback.deactivate();
+        harness.runtime.mockRestore();
+      }
+    }
+  );
+
+  test("constant values reuse their plan and write only changed lane parameters", async () => {
+    insertNodeSession(modulatedPatch("a", "pan"));
+    const harness = modulationHarness();
+    const compiler = spyOn(graphCompiler, "compile");
+    try {
+      await harness.playback.activate();
+      compiler.mockClear();
+      const setter = harness.context.audio.setTransientNodeParams as ReturnType<
+        typeof mock
+      >;
+      setter.mockClear();
+
+      harness.emit({ macro: 1 });
+      expect(compiler).toHaveBeenCalledTimes(1);
+      expect(setter).toHaveBeenCalledTimes(1);
+      expect(setter).toHaveBeenLastCalledWith(soundOf("a"), {
+        effects: [],
+        filter: null,
+        pan: 0.5,
+      });
+      harness.emit({ macro: 1 });
+      harness.emit({ macro: 1 });
+      expect(compiler).toHaveBeenCalledTimes(1);
+      expect(setter).toHaveBeenCalledTimes(1);
+
+      harness.emit({ macro: -1 });
+      expect(setter).toHaveBeenCalledTimes(2);
+      expect(setter.mock.calls.at(-1)?.[1]).toMatchObject({ pan: -0.5 });
+      await commit(harness, (graph) => ({
+        ...graph,
+        edges: graph.edges.filter((edge) => edge.id !== "control"),
+        nodes: graph.nodes.filter((node) => node.id !== "macro"),
+      }));
+      expect(setter).toHaveBeenCalledTimes(3);
+      expect(setter.mock.calls.at(-1)?.[1]).toMatchObject({ pan: 0 });
+      expect(setter.mock.calls.every(([id]) => id === soundOf("a"))).toBe(true);
+    } finally {
+      await harness.playback.deactivate();
+      compiler.mockRestore();
+      harness.runtime.mockRestore();
+    }
+  });
+
+  test("an unconnected Macro does not compile or write lane parameters on telemetry ticks", async () => {
+    const graph = modulatedPatch();
+    insertNodeSession({
+      ...graph,
+      edges: graph.edges.filter((edge) => edge.id !== "control"),
+    });
+    const harness = modulationHarness();
+    const compiler = spyOn(graphCompiler, "compile");
+    try {
+      await harness.playback.activate();
+      compiler.mockClear();
+      const setter = harness.context.audio.setTransientNodeParams as ReturnType<
+        typeof mock
+      >;
+      setter.mockClear();
+
+      harness.emit({ macro: 1 });
+      harness.emit({ macro: 1 });
+      expect(compiler).not.toHaveBeenCalled();
+      expect(setter).not.toHaveBeenCalled();
+    } finally {
+      await harness.playback.deactivate();
+      compiler.mockRestore();
+      harness.runtime.mockRestore();
+    }
+  });
+
+  test("removing the last modulator restores authored effect values before disposal", async () => {
+    const graph = modulatedPatch("a", "dryWet");
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        ...graph,
+        edges: [
+          cable("a", "reverb"),
+          cable("reverb", "speakers"),
+          cable("b", "speakers"),
+          {
+            ...graph.edges.find((edge) => edge.id === "control"),
+            target: "reverb",
+          },
+        ],
+        nodes: [...graph.nodes, reverb("reverb", { dryWet: 0.3 })],
+      })
+    );
+    const harness = modulationHarness();
+    try {
+      await harness.playback.activate();
+      harness.emit({ macro: 1 });
+      const setter = harness.context.audio.setTransientNodeParams as ReturnType<
+        typeof mock
+      >;
+      expect(setter.mock.calls.at(-1)?.[1]).toMatchObject({
+        effects: [{ dryWet: 0.55, id: "reverb" }],
+      });
+      harness.context.audio.getEffectsRuntimeOutcome = mock(
+        (): EffectsRuntimeOutcome => ({
+          backend: "official",
+          ready: true,
+          status: "ready",
+        })
+      );
+      const beforeReady = setter.mock.calls.length;
+      harness.emit({ macro: 1 });
+      expect(setter).toHaveBeenCalledTimes(beforeReady + 1);
+      expect(setter.mock.calls.at(-1)?.[1]).toMatchObject({
+        effects: [{ dryWet: 0.55, id: "reverb" }],
+      });
+
+      await commit(harness, (current) => ({
+        ...current,
+        edges: current.edges.filter((edge) => edge.id !== "control"),
+        nodes: current.nodes.filter((node) => node.id !== "macro"),
+      }));
+      expect(setter.mock.calls.at(-1)?.[1]).toMatchObject({
+        effects: [{ dryWet: 0.3, id: "reverb" }],
+      });
+    } finally {
+      await harness.playback.deactivate();
+      harness.runtime.mockRestore();
+    }
   });
 });
 

@@ -72,7 +72,7 @@
   }
 
   .react-flow__handle.node-port[data-kind="control"] {
-    border-color: var(--primary);
+    border-color: var(--node-mod);
   }
 
   .react-flow__handle.node-port.node-port-live {

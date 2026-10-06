@@ -13,6 +13,7 @@ import {
   insertNodeOnEdge,
   isLoose,
   moveNodes,
+  reconnectCandidate,
   reconnectEdge,
   removeEdges,
   removeNodesHealed,
@@ -727,17 +728,21 @@ function Canvas({
 
   // The drag's verdicts, taken when it started; React Flow asks on every
   // pointer move near a port.
-  const isValidConnection = (connection: FlowConnection | FlowEdge) =>
-    canConnect(
+  const isValidConnection = (connection: FlowConnection | FlowEdge) => {
+    const currentDrag = rewiring();
+    const old = graph.edges.find((edge) => edge.id === currentDrag?.edge);
+    const candidate = {
+      source: connection.source,
+      sourceHandle: connection.sourceHandle,
+      target: connection.target,
+      targetHandle: connection.targetHandle,
+    };
+    return canConnect(
       dragGraph(),
-      {
-        source: connection.source,
-        sourceHandle: connection.sourceHandle,
-        target: connection.target,
-        targetHandle: connection.targetHandle,
-      },
+      old ? reconnectCandidate(dragGraph(), old, candidate) : candidate,
       validateOptions
     );
+  };
 
   // Every port's verdict on the cable, once per drag: ports light up or
   // lock by it until the drag ends.
@@ -749,7 +754,9 @@ function Canvas({
       startConnectionHints(
         dragGraph(),
         { handle: handleId, node: nodeId, type: handleType },
-        validateOptions
+        validateOptions,
+        undefined,
+        graph.edges.find((edge) => edge.id === rewiring()?.edge)
       );
     }
   };

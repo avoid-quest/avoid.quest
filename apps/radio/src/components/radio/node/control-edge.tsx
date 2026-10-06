@@ -24,7 +24,10 @@ export function ControlEdge(props: FlowEdgeProps<ControlFlowEdge>) {
   const graph = useStore(nodeStore, (state) => state.graph);
   const edge = graph?.edges.find((entry) => entry.id === props.id);
   const target = graph?.nodes.find((node) => node.id === props.target);
-  const parameters = target ? modulationParameters(target) : [];
+  const parameters =
+    target && edge?.targetHandle === "in:control:parameter"
+      ? modulationParameters(target)
+      : [];
   const parameter = parameters.find(
     (entry) => entry.key === (edge?.parameter ?? parameters[0]?.key)
   );

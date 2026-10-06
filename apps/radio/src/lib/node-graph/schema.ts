@@ -423,7 +423,10 @@ const looseNodeSchema = z.object({
 function modulationNode<T extends ModulationNodeType>(type: T) {
   return z.object({
     ...nodeBase,
-    data: MODULATION_DATA_SCHEMAS[type],
+    data: z.preprocess(
+      (data) => (data === undefined ? {} : data),
+      MODULATION_DATA_SCHEMAS[type]
+    ),
     type: z.literal(type),
   });
 }
@@ -468,7 +471,8 @@ export const graphEdgeSchema = z.object({
   /** User cable colour override. */
   color: z.string().optional(),
   /** Modulation depth on control cables. */
-  depth: z.number().min(-1).max(1).optional(),
+  // Older v2 patches allowed any finite depth; keep them readable at a safe level.
+  depth: clampedNumber(-1, 1).optional(),
   /** Linear, capped like a container branch gain (+12 dB). */
   gain: z.number().min(0).max(MAX_EDGE_GAIN).default(1),
   id: z.string().min(1),

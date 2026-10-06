@@ -41,6 +41,7 @@ import {
   nextFxPosition,
   nextOutputPosition,
   nextStationPosition,
+  reconnectCandidate,
   reconnectEdge,
   uniqueId,
   wireToSpeakers,
@@ -48,6 +49,7 @@ import {
 } from "./graph-edits";
 import {
   type EffectNodeType,
+  type GraphEdge,
   type GraphNode,
   graphNodeSchema,
   isRadioSourceNode,
@@ -391,7 +393,8 @@ export function portKey(nodeId: string, handle: string): string {
 export function connectableHandles(
   graph: NodeGraph,
   from: PaletteFrom,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  reconnecting?: GraphEdge
 ): Map<string, Verdict> {
   const verdicts = new Map<string, Verdict>();
   const baseline = connectionBaseline(graph, options);
@@ -399,11 +402,14 @@ export function connectableHandles(
     const definition = getNodeDefinition(node.type);
     for (const port of definition.ports) {
       if (isShipped(port.ship ?? definition.ship, options?.release ?? "v1")) {
+        const cable = cableBetween(from, node.id, port);
         verdicts.set(
           portKey(node.id, portHandleId(port)),
           connectionVerdict(
             graph,
-            cableBetween(from, node.id, port),
+            reconnecting
+              ? reconnectCandidate(graph, reconnecting, cable)
+              : cable,
             options,
             baseline
           )
@@ -504,7 +510,8 @@ function fits(
   type: NodeType,
   { from, into, ...options }: PaletteOptions
 ): boolean {
-  if (!(from || into)) {
+  const connectionRequested = from || into;
+  if (!connectionRequested) {
     return true;
   }
   const probe = createPaletteNode(type, PROBE_ID, { x: 0, y: 0 });

@@ -123,6 +123,7 @@ export type ValidateOptions = {
 
 export type Connection = {
   id?: string;
+  parameter?: string;
   source: string;
   sourceHandle: string | null | undefined;
   target: string;
@@ -434,7 +435,12 @@ function checkEdges(context: Context): CheckedEdges {
       edge.targetHandle,
     ];
     if (result.to.id === "parameter") {
-      cableParts.push(edge.id);
+      const target = context.nodes.get(edge.target);
+      cableParts.push(
+        edge.parameter ??
+          (target ? modulationParameters(target)[0]?.key : "") ??
+          ""
+      );
     }
     const cable = cableParts.join("\u0000");
     if (cables.has(cable)) {
@@ -1262,6 +1268,9 @@ export function validateConnection(
     gain: 1,
     id: connection.id ?? candidateEdgeId(graph),
     muted: false,
+    ...(connection.parameter === undefined
+      ? {}
+      : { parameter: connection.parameter }),
     source: connection.source,
     sourceHandle: connection.sourceHandle ?? "",
     target: connection.target,

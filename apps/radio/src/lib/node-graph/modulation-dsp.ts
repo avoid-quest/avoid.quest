@@ -23,10 +23,12 @@ type Voice = {
   phase: number;
   gate: boolean;
   manualGate: boolean;
+  triggered: boolean;
   active: boolean;
   position: number;
   value: number;
   midiValue: number;
+  midiGateTriggered: boolean;
   notes: Map<number, number>;
   adsr: Adsr;
   envelopeBuffer: Float32Array;
@@ -175,6 +177,7 @@ export class ModulationDsp {
             envelopeBuffer: new Float32Array(1),
             gate: false,
             manualGate: false,
+            midiGateTriggered: false,
             midiValue: 0,
             notes: new Map(),
             phase: 0,
@@ -183,6 +186,7 @@ export class ModulationDsp {
             smooth: new Smooth(0.25, this.sampleRate),
             spec,
             tidal: new TidalComputer(),
+            triggered: false,
             value: 0,
           };
     if (
@@ -196,6 +200,7 @@ export class ModulationDsp {
     if (midiMappingChanged(previous?.spec, spec)) {
       voice.notes.clear();
       voice.midiValue = 0;
+      voice.midiGateTriggered = false;
     }
     voice.spec = spec;
     if (spec.type === "envelope") {
@@ -215,6 +220,7 @@ export class ModulationDsp {
   gate(id: string, on: boolean): void {
     const voice = this.voices.get(id);
     if (voice) {
+      voice.triggered ||= on && !voice.manualGate;
       voice.manualGate = on;
     }
   }
@@ -232,6 +238,7 @@ export class ModulationDsp {
       if (status === 255) {
         voice.notes.clear();
         voice.midiValue = 0;
+        voice.midiGateTriggered = false;
         continue;
       }
       if (status % 16 === voice.spec.data.channel) {
@@ -275,8 +282,11 @@ export class ModulationDsp {
       (sum, link) => sum + (this.values[link.source] ?? 0) * link.depth,
       0
     );
-    const gate = spec.data.enabled && (voice.manualGate || input > 0.5);
-    if (gate && !voice.gate) {
+    const { triggered } = voice;
+    voice.triggered = false;
+    const gate =
+      spec.data.enabled && (triggered || voice.manualGate || input > 0.5);
+    if (gate && (triggered || !voice.gate)) {
       voice.age = 0;
       voice.phase = 0;
       voice.position = 0;
@@ -308,8 +318,11 @@ export class ModulationDsp {
     switch (spec.type) {
       case "macro":
         return spec.data.value;
-      case "midiIn":
-        return voice.midiValue;
+      case "midiIn": {
+        const { midiGateTriggered } = voice;
+        voice.midiGateTriggered = false;
+        return midiGateTriggered ? 1 : voice.midiValue;
+      }
       case "clock":
         return fraction(voice.phase + spec.data.phase) < 0.5 ? 1 : 0;
       case "lfo":
@@ -375,9 +388,11 @@ function updateMidiVoice(
   } else if (kind === 9) {
     voice.notes.delete(key);
     voice.notes.set(key, velocity);
+    voice.midiGateTriggered ||= data.mode === "gate";
   }
   if (kind === 11 && (key === 120 || key === 123)) {
     voice.notes.clear();
+    voice.midiGateTriggered = false;
   }
   if (data.mode === "cc") {
     return;

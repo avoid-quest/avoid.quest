@@ -5,7 +5,10 @@ import type { WorkletManager } from "../playback/index.js";
 import type { AudioManager } from "./audio-manager.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
-import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+import type {
+  EffectsGraphRuntime,
+  OfficialSoundSettings,
+} from "./effects-graph-runtime.js";
 
 class TestAudioParam {
   value = 0;
@@ -125,16 +128,14 @@ function createRuntime() {
         _source: AudioNode,
         _destination: AudioNode,
         _generation?: number,
-        _inputChannels?: 1 | 2
+        _inputChannels?: 1 | 2,
+        _settings?: OfficialSoundSettings
       ) => Promise.resolve(true)
     ),
     deleteSound: mock(() => undefined),
     disconnectSound: mock(() => undefined),
     getPerformanceSnapshot: mock(() => performanceSnapshot),
-    setDryWet: mock(() => undefined),
     setSidechainTarget: mock(() => undefined),
-    setTempo: mock(() => undefined),
-    syncEffects: mock(() => undefined),
   } satisfies EffectsGraphRuntime;
 }
 
@@ -361,7 +362,6 @@ describe("EffectsController", () => {
       status: "ready",
     });
     expect(createWorkletManager).not.toHaveBeenCalled();
-    expect(runtime.connectSound.mock.calls[0]).toHaveLength(5);
     expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);
   });
 
@@ -605,7 +605,6 @@ describe("EffectsController", () => {
     await connecting;
 
     expect(runtime.deleteSound).toHaveBeenCalledTimes(1);
-    expect(runtime.syncEffects).not.toHaveBeenCalled();
   });
 
   test("a stale rejected connection cannot delete its graph replacement", async () => {
@@ -657,14 +656,14 @@ describe("EffectsController", () => {
     await originalConnection;
 
     expect(runtime.deleteSound).not.toHaveBeenCalled();
-    expect(runtime.syncEffects).toHaveBeenCalledTimes(1);
     expect(runtime.connectSound).toHaveBeenNthCalledWith(
       2,
       "target",
       replacementFilter,
       expect.anything(),
       expect.any(Number),
-      2
+      2,
+      { dryWet: 1, effects: [reverb], sidechainSoundId: null, tempo: 120 }
     );
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "official",
@@ -707,7 +706,6 @@ describe("EffectsController", () => {
     await connecting;
 
     expect(runtime.deleteSound).toHaveBeenCalledTimes(1);
-    expect(runtime.syncEffects).not.toHaveBeenCalled();
     expect(runtime.connectSidechainSource).not.toHaveBeenCalled();
     expect(createWorkletManager).not.toHaveBeenCalled();
   });

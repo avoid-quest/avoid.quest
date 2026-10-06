@@ -225,6 +225,90 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   });
 
+  test.each(["syncEffects", "endTransaction"] as const)(
+    "a failed new connection releases its monitoring source after %s throws",
+    async (failure) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("live", h.source, h.destination);
+      const liveBoxes = h.project.boxGraph.boxes();
+      const boundary =
+        failure === "syncEffects"
+          ? spyOn(h.runtime, "syncEffects")
+          : spyOn(h.project.boxGraph, "endTransaction");
+      boundary.mockImplementationOnce(() => {
+        throw new Error("connection failed");
+      });
+      try {
+        await expect(
+          h.runtime.connectSound("failed", h.source, h.destination, 1, 2, {
+            dryWet: 1,
+            effects: [createDefaultEffectConfig("compressor", "comp", 0)],
+            sidechainSoundId: null,
+            tempo: 120,
+          })
+        ).rejects.toThrow("connection failed");
+      } finally {
+        boundary.mockRestore();
+      }
+      const [failedUuid] = h.engine.registerMonitoringSource.mock.calls[1];
+      expect(h.runtime.soundCount).toBe(1);
+      expect(h.engine.unregisterMonitoringSource).toHaveBeenCalledWith(
+        failedUuid
+      );
+      expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+      h.runtime.deleteSound("failed");
+      expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+      await expect(
+        h.runtime.connectSound("failed", h.source, h.destination)
+      ).resolves.toBe(true);
+      expect(h.runtime.soundCount).toBe(2);
+    }
+  );
+
+  test("a thousand sound syncs keep edits live without retaining undo history", async () => {
+    const h = await createHarness();
+    const compressor = createDefaultEffectConfig("compressor", "compressor", 0);
+    const transactions: number[] = [];
+    const subscription = h.runtime.initialize().then(() =>
+      h.project.boxGraph.subscribeTransaction({
+        onBeginTransaction: () => transactions.push(0),
+        onEndTransaction: () => undefined,
+      })
+    );
+    const observer = await subscription;
+    try {
+      for (let index = 0; index < 1000; index += 1) {
+        // biome-ignore lint/performance/noAwaitInLoops: each sync commits a complete desired sound state
+        await h.runtime.connectSound(
+          "deck",
+          h.source,
+          h.destination,
+          index,
+          2,
+          {
+            dryWet: 0.5,
+            effects: [{ ...compressor, threshold: -index / 100 }],
+            sidechainSoundId: null,
+            tempo: 120,
+          }
+        );
+      }
+      const device = h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox);
+      expect(device).toBeInstanceOf(h.boxes.CompressorDeviceBox);
+      if (!(device instanceof h.boxes.CompressorDeviceBox)) {
+        throw new Error("Compressor missing");
+      }
+      expect(device.threshold.getValue()).toBeCloseTo(-9.99);
+      expect(transactions).toHaveLength(1000);
+      expect(h.project.editing.canUndo()).toBe(false);
+      expect(h.project.editing.hasNoChanges()).toBe(true);
+    } finally {
+      observer.terminate();
+    }
+  });
+
   test("a newer compile wins when the superseded compile completes last", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
@@ -322,6 +406,8 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(scriptDevice(h)).toBe(device);
     expect(parameter(h, device)).toBe(amount);
     expect(amount.value.getValue()).toBe(0.625);
+    expect(h.project.editing.canUndo()).toBe(false);
+    expect(h.project.editing.hasNoChanges()).toBe(true);
     expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
     expect(h.compiles).toHaveLength(1);
     expect(h.subscriptions).toHaveLength(1);

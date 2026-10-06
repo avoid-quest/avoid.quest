@@ -709,7 +709,13 @@ class EffectsController {
         graph.source,
         graph.officialGain,
         runtimeGeneration,
-        state.inputChannels
+        state.inputChannels,
+        {
+          dryWet: state.dryWet,
+          effects: selectEnabledEffects(state.effects),
+          sidechainSoundId: state.desiredSidechainSoundId,
+          tempo: state.tempo,
+        }
       );
       if (
         !(
@@ -736,10 +742,6 @@ class EffectsController {
       }
 
       this.officialRegisteredSoundIds.add(soundId);
-      runtime.setTempo(state.tempo);
-      runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
-      runtime.syncEffects(soundId, selectEnabledEffects(state.effects));
-      runtime.setDryWet(soundId, state.dryWet);
       state.officialConnected = true;
       await this.registerNonOfficialSources(runtime, soundId);
       return (

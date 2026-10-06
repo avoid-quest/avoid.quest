@@ -125,7 +125,12 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
       context,
       initialize: () => Promise.resolve(),
       project: {
-        editing: { modify: (action: () => void) => action() },
+        boxGraph: {
+          abortTransaction: () => undefined,
+          beginTransaction: () => undefined,
+          endTransaction: () => undefined,
+          inTransaction: () => false,
+        },
         engine: {
           registerMonitoringSource,
           unregisterMonitoringSource: mock(() => undefined),

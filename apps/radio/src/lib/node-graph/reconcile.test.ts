@@ -183,6 +183,25 @@ describe("diff", () => {
     expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual(["setLaneEffects"]);
   });
 
+  test("toggling a unity Autotune updates effects without ducking the lane", () => {
+    const autotuned = (enabled: boolean) =>
+      plan(
+        [
+          station("a"),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("tune", "autotune", { enabled }),
+          speakers,
+        ],
+        [audio("a", "verb"), audio("verb", "tune"), audio("tune", "speakers")]
+      );
+    expect(types(diff(autotuned(true), autotuned(false)))).toEqual([
+      "setLaneEffects",
+    ]);
+    expect(types(diff(autotuned(false), autotuned(true)))).toEqual([
+      "setLaneEffects",
+    ]);
+  });
+
   test.each([
     ["add", ["verb"], ["verb", "crush"]],
     ["remove", ["verb", "crush"], ["crush"]],

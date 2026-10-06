@@ -9,7 +9,10 @@ import { JSDOM } from "jsdom";
 import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import type { EffectConfig, OpenDawEffectType } from "../dsp/effects/types.js";
-import { getWerkstattRuntimeStatus } from "../dsp/effects/werkstatt-runtime-status.js";
+import {
+  getWerkstattRuntimeStatus,
+  subscribeWerkstattRuntimeStatus,
+} from "../dsp/effects/werkstatt-runtime-status.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
@@ -532,6 +535,41 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+  test("an existing sound can sync again after its effect transaction rolls back", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    await h.runtime.connectSidechainSource("key", h.source);
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      sidechain: { channelId: "key" },
+    };
+    const liveBoxes = h.project.boxGraph.boxes();
+    const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+    endTransaction.mockImplementationOnce(() => {
+      throw new Error("effect sync failed");
+    });
+    try {
+      expect(() => h.runtime.syncEffects("deck", [config])).toThrow(
+        "effect sync failed"
+      );
+    } finally {
+      endTransaction.mockRestore();
+    }
+    expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+    h.runtime.setSidechainTarget("deck", "key");
+    h.runtime.syncEffects("deck", [config]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
+    expect(device.isAttached()).toBe(true);
+    expect(device.sideChain.targetVertex.unwrap().box.address.uuid).toEqual(
+      h.engine.registerMonitoringSource.mock.calls[1][0]
+    );
+  });
+
   test("restores live mono, stereo and sidechain returns on every worklet restart", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("stereo", h.source, h.destination);
@@ -1196,6 +1234,45 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(h.compiles).toHaveLength(2);
     await finishCompile(h.compiles[1]);
     expect(device.code.getValue()).toContain("// another edit while off");
+  });
+
+  test("a failed script keeps its error until its source changes", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt("{ invalid script");
+    const states: string[] = [];
+    const unsubscribe = subscribeWerkstattRuntimeStatus(config.id, () => {
+      states.push(getWerkstattRuntimeStatus(config.id).state);
+    });
+    try {
+      h.runtime.syncEffects("deck", [config]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const device = scriptDevice(h);
+      const code = device.code.getValue();
+      const status = getWerkstattRuntimeStatus(config.id);
+      expect(status.state).toBe("error");
+      expect(states).toEqual(["compiling", "error"]);
+      expect(h.compiles).toHaveLength(0);
+
+      h.runtime.syncEffects("deck", [config]);
+      h.runtime.syncEffects("deck", [{ ...config, dryWet: 0.5 }]);
+      h.runtime.syncEffects("deck", [{ ...config, enabled: false }]);
+      h.runtime.syncEffects("deck", [config]);
+      expect(getWerkstattRuntimeStatus(config.id)).toEqual(status);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(states).toEqual(["compiling", "error"]);
+      expect(device.code.getValue()).toBe(code);
+
+      const corrected = werkstatt("// corrected script");
+      h.runtime.syncEffects("deck", [corrected]);
+      expect(scriptDevice(h)).toBe(device);
+      expect(states).toEqual(["compiling", "error", "compiling"]);
+      await finishCompile(h.compiles[0]);
+      expect(states).toEqual(["compiling", "error", "compiling", "ready"]);
+      expect(device.code.getValue()).toContain("// corrected script");
+    } finally {
+      unsubscribe();
+    }
   });
 
   test("a newer compile wins when the superseded compile completes last", async () => {

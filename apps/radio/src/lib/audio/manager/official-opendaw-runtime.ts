@@ -124,6 +124,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     number
   >();
   private readonly werkstattGroups = new Map<string, OfficialEffectGroup>();
+  private readonly werkstattSources = new Map<OfficialEffectGroup, string>();
   private readonly werkstattSubscriptions = new Map<
     OfficialEffectGroup,
     Terminable
@@ -544,10 +545,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return;
     }
     const nextEffects = structuredClone(effects);
-    this.transaction(() => {
-      const nextGroups = new Map<string, OfficialEffectGroup>();
+    const nextGroups = new Map<string, OfficialEffectGroup>();
+    const groups = this.transaction(() => {
       const obsoleteCells: ReturnType<typeof syncOfficialEffectCells> = [];
-      unit.groups = this.syncEffectChain(
+      const next = this.syncEffectChain(
         unit.groupsById,
         nextGroups,
         nextEffects,
@@ -566,9 +567,11 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       for (const cell of obsoleteCells) {
         cell.delete();
       }
-      unit.groupsById = nextGroups;
-      this.bindSidechains();
+      this.bindSidechains({ groups: next, soundId });
+      return next;
     });
+    unit.groups = groups;
+    unit.groupsById = nextGroups;
   }
 
   private syncEffectChain(
@@ -682,6 +685,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.werkstattSubscriptions.clear();
     this.werkstattGenerations.clear();
     this.werkstattGroups.clear();
+    this.werkstattSources.clear();
     this.silentDestination?.disconnect();
     this.silentDestination = null;
     this.project?.terminate();
@@ -835,12 +839,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       group.device,
       this.requireModules().boxes.WerkstattDeviceBox
     );
-    const source = werkstattSource(config);
-    if (
-      this.werkstattGroups.get(config.id) === group &&
-      compiler.stripHeader(device.code.getValue()) ===
-        compiler.stripHeader(source)
-    ) {
+    const source = compiler.stripHeader(werkstattSource(config));
+    if (this.werkstattSources.get(group) === source) {
       return;
     }
     this.subscribeWerkstattMessages(group, config.id);
@@ -852,6 +852,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       message: "Compiling locally in the openDAW audio worklet…",
       state: "compiling",
     });
+    this.werkstattSources.set(group, source);
     this.transaction(() =>
       compiler.compile(this.context, Editing.Transient, device, source)
     )
@@ -915,6 +916,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.werkstattSubscriptions.get(group)?.terminate();
     this.werkstattSubscriptions.delete(group);
     this.werkstattGenerations.delete(group);
+    this.werkstattSources.delete(group);
     if (this.werkstattGroups.get(group.config.id) === group) {
       this.werkstattGroups.delete(group.config.id);
       clearWerkstattRuntimeStatus(group.config.id);
@@ -933,7 +935,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     );
   }
 
-  private bindSidechains(): void {
+  private bindSidechains(updated?: {
+    soundId: string;
+    groups: OfficialEffectGroup[];
+  }): void {
     const bind = (
       group: OfficialEffectGroup,
       target: SoundUnit["audioUnitBox"] | null
@@ -954,7 +959,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         targetUnit?.source === null || targetUnit === undefined
           ? null
           : targetUnit.audioUnitBox;
-      for (const group of unit.groups) {
+      const groups =
+        updated?.soundId === soundId ? updated.groups : unit.groups;
+      for (const group of groups) {
         bind(group, target);
       }
     }

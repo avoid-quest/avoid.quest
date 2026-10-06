@@ -975,7 +975,6 @@ function hash(text: string): string {
  */
 function isDirectLayout(effect: EffectConfig): boolean {
   return (
-    effect.enabled &&
     effect.type === "autotune" &&
     effect.dryWet === 1 &&
     effect.inputGain === 1 &&

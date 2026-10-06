@@ -2148,6 +2148,13 @@ describe("layoutSignature", () => {
     );
   });
 
+  test("toggling a unity Autotune keeps its layout", () => {
+    const tune = createNodeEffectConfig("autotune", "tune");
+    expect(layoutSignature([{ ...tune, enabled: true }])).toBe(
+      layoutSignature([{ ...tune, enabled: false }])
+    );
+  });
+
   test("changes with ids, order and chains", () => {
     const base = layoutSignature([verb, crush]);
     expect(layoutSignature([verb])).not.toBe(base);

@@ -2455,6 +2455,114 @@ describe("Node Playback lane outputs", () => {
     });
   });
 
+  test("a layout change during a swap is applied before the duck lifts", async () => {
+    insertNodeSession(patch([station("a")]));
+    const replaces: Array<{
+      tree: readonly EffectConfig[];
+      done: () => void;
+    }> = [];
+    const ready: EffectsRuntimeOutcome = {
+      backend: "compatibility",
+      ready: true,
+      status: "ready",
+    };
+    const harness = createHarness({
+      effects: {
+        // The lane's dry tree, as its sound is made, reconciles at once.
+        reconcileEffects: mock((_soundId, { tree }) => {
+          if (tree.length === 0) {
+            return Promise.resolve(ready);
+          }
+          const { promise, resolve } =
+            Promise.withResolvers<EffectsRuntimeOutcome>();
+          replaces.push({ done: () => resolve(ready), tree });
+          return promise;
+        }),
+      },
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { laneOut } = connectLane(harness.context, "a");
+
+    const chain =
+      (...ids: string[]) =>
+      () =>
+        nodeGraphSchema.parse({
+          edges: [
+            cable("a", ids[0] ?? "speakers"),
+            ...ids.map((id, index) => cable(id, ids[index + 1] ?? "speakers")),
+          ],
+          nodes: [station("a"), ...ids.map((id) => reverb(id)), speakers],
+          version: 2,
+        });
+    commitNodeGraph(chain("verb"), harness.store);
+    harness.playback.flush();
+    await new Promise((resolve) => setTimeout(resolve, LANE_DUCK_MS + 10));
+    expect(replaces).toHaveLength(1);
+
+    // Another FX goes in while the first layout connects.
+    commitNodeGraph(chain("verb", "hall"), harness.store);
+    harness.playback.flush();
+    replaces[0]?.done();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(replaces.map(({ tree }) => tree.map(({ id }) => id))).toEqual([
+      ["verb"],
+      ["verb", "hall"],
+    ]);
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 0,
+    });
+
+    replaces[1]?.done();
+    await harness.playback.whenSettled();
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
+  });
+
+  test("a layout swap whose effects fail still lifts the duck", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness({
+      effects: {
+        reconcileEffects: mock((_soundId, { tree }) =>
+          tree.length === 0
+            ? Promise.resolve<EffectsRuntimeOutcome>({
+                backend: null,
+                ready: false,
+                status: "inactive",
+              })
+            : Promise.reject(new Error("tree failed"))
+        ),
+      },
+    });
+    const warnings = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      const { laneOut } = connectLane(harness.context, "a");
+
+      await commit(harness, () =>
+        nodeGraphSchema.parse({
+          edges: [cable("a", "verb"), cable("verb", "speakers")],
+          nodes: [station("a"), reverb("verb"), speakers],
+          version: 2,
+        })
+      );
+
+      expect(laneOut.gain.events.at(-1)).toMatchObject({
+        type: "linear",
+        value: 1,
+      });
+    } finally {
+      warnings.mockRestore();
+    }
+  });
+
   test("a Station removed during the duck is not given its old tree", async () => {
     insertNodeSession(patch([station("a"), station("b")]));
     const harness = createHarness();
@@ -2567,9 +2675,9 @@ describe("Node Playback FX lanes", () => {
         const outputs = createNodeLaneOutputs(options);
         return {
           ...outputs,
-          swap: (laneId, replace) => {
+          duck: (laneId) => {
             swaps.push(laneId);
-            return outputs.swap(laneId, replace);
+            return outputs.duck(laneId);
           },
         };
       },

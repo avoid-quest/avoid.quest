@@ -7,8 +7,8 @@
  *
  * - param-only FX change (same layout signature): `setLaneEffects`, which the
  *   effects controller no-ops when identical and openDAW updates in place;
- * - FX added, removed or reordered: `duckLane` → `replaceLaneEffects` →
- *   `unduckLane`, a short dip instead of a click;
+ * - FX added, removed or reordered: `replaceLaneEffects`, which the engine
+ *   swaps under a short duck instead of a click;
  * - native pan, filter and cable levels, a source's volume and mute, a
  *   Track's or File's transport and cue listen, and an Audio input's
  *   channels: `setParam`, ramped by the engine;
@@ -33,9 +33,7 @@ export type Op =
   | { type: "addLane"; lane: LanePlan }
   | { type: "removeLane"; laneId: string; soundId: string }
   | { type: "setLaneEffects"; laneId: string; effects: EffectConfig[] }
-  | { type: "duckLane"; laneId: string }
   | { type: "replaceLaneEffects"; laneId: string; effects: EffectConfig[] }
-  | { type: "unduckLane"; laneId: string }
   | {
       type: "setParam";
       target: "lane";
@@ -139,11 +137,7 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
   const ops: Op[] = [];
   const laneId = next.id;
   if (previous.layoutSignature !== next.layoutSignature) {
-    ops.push(
-      { laneId, type: "duckLane" },
-      { effects: next.effects, laneId, type: "replaceLaneEffects" },
-      { laneId, type: "unduckLane" }
-    );
+    ops.push({ effects: next.effects, laneId, type: "replaceLaneEffects" });
   } else if (!same(previous.effects, next.effects)) {
     ops.push({ effects: next.effects, laneId, type: "setLaneEffects" });
   }

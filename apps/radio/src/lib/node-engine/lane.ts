@@ -9,12 +9,12 @@
  * One driver per slot moves the instance toward what is wanted, read afresh
  * on each pass: a retiring instance fades out for 150 ms and is released; a
  * lane with a restorable source, or a start owed, gets its sound; changed
- * effects are reconciled with the latest plan, a new FX layout under
- * laneOut's duck; a start owed runs on the sound, synchronously up to its
- * play call. A lane's sound id never changes, so a new sound is only made
- * once the last is released. The driver waits only on a fade or on effects,
- * an effects wait ending as its instance retires; a start never waits
- * behind effects, and stays silent under a duck.
+ * effects are reconciled with the latest plan, a new FX layout under a duck
+ * that lifts once the latest layout is in; a start owed runs on the sound,
+ * synchronously up to its play call. A lane's sound id never changes, so a
+ * new sound is only made once the last is released. The driver waits only
+ * on a fade or on effects, an effects wait ending as its instance retires;
+ * a start never waits behind effects, and stays silent under a duck.
  *
  * A start, a track pick, a renewal or a repeat runs as the slot's attempt,
  * which a pause, a newer attempt, a removal or a replaced source aborts. A
@@ -186,12 +186,13 @@ export class LaneInstance {
   /** The backend its effects last settled on, as the controller reported. */
   outcome: EffectsBackend | undefined;
   /**
-   * The FX layout its tree has, by the plan's layout signature: a new
-   * sound's is its plan's, since it is silent until it plays.
+   * The FX layout that last went into its tree, by the plan's layout
+   * signature: a new sound's is its plan's, as it is silent until it plays.
    */
   private layout: string;
   /** Its effects changed since they were last reconciled. */
   private effectsStale = true as boolean;
+  private ducked = false as boolean;
   private readonly host: LaneHost;
   private readonly slot: LaneSlot;
   private readonly releaseFile: () => void;
@@ -563,40 +564,35 @@ export class LaneInstance {
   }
 
   /**
-   * The driver's next effects step toward `plan`, or null once they match.
-   * A new FX layout swaps under laneOut's duck, which lifts once every
-   * change made meanwhile is in too.
+   * The driver's next effects step toward `plan`, or null once they match:
+   * changed effects in a new FX layout duck first, unless nothing plays,
+   * and the duck lifts once nothing is left. A layout that failed to go in
+   * swaps again, ducked, with the next change.
    */
   effectsStep(plan: LanePlan): Promise<void> | null {
-    if (plan.layoutSignature === this.layout) {
-      return this.effectsStale ? this.reconcile(plan) : null;
-    }
-    return this.host.laneOutputs.swap(plan.id, async () => {
-      let latest = this.slot.plan;
-      while (latest && !this.retiring && this.differs(latest)) {
-        // biome-ignore lint/performance/noAwaitInLoops: each change made while one reconciles goes in under the same duck.
-        await this.reconcile(latest);
-        latest = this.slot.plan;
+    const { laneOutputs } = this.host;
+    const swap = plan.layoutSignature !== this.layout;
+    if (this.effectsStale && swap && !this.ducked) {
+      const ducking = laneOutputs.duck(plan.id);
+      if (ducking) {
+        this.ducked = true;
+        return ducking;
       }
-    });
-  }
-
-  private differs(plan: LanePlan): boolean {
-    return this.effectsStale || plan.layoutSignature !== this.layout;
-  }
-
-  private reconcile(plan: LanePlan): Promise<void> {
-    this.effectsStale = false;
-    return this.host
-      .reconcileEffects(this.soundId, plan)
-      .then(
-        (outcome) => this.recordOutcome(outcome),
-        reportNodeFailure("Could not apply lane effects")
-      )
-      .finally(() => {
-        // In, or failed: either way it waits for the next change.
-        this.layout = plan.layoutSignature;
-      });
+    }
+    if (this.effectsStale) {
+      this.effectsStale = false;
+      return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
+        if (outcome.status !== "failed") {
+          this.layout = plan.layoutSignature;
+        }
+        this.recordOutcome(outcome);
+      }, reportNodeFailure("Could not apply lane effects"));
+    }
+    if (this.ducked) {
+      this.ducked = false;
+      laneOutputs.unduck(plan.id);
+    }
+    return null;
   }
 
   /**

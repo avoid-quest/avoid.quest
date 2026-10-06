@@ -370,6 +370,7 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __SENTRY_RELEASE__: JSON.stringify(sentryReleaseName),
   },
   plugins: [
     audioWorkletPlugin(),

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 // biome-ignore lint/performance/noNamespaceImport: namespace required to spy on the Sentry integration
-import * as Sentry from "@sentry/tanstackstart-react";
+import * as Sentry from "@sentry/core";
 import {
   AppError,
   buildPlaybackEventKey,
@@ -8,9 +8,8 @@ import {
   capturePlaybackError,
   createDedupeStore,
   createRequestId,
-  initClientSentry,
-  initServerSentry,
   isAbortPlaybackError,
+  makeSentryOptions,
   problemJson,
   runApiRoute,
   shouldCapturePlaybackError,
@@ -23,9 +22,11 @@ let captureException: ReturnType<
   typeof spyOn<typeof Sentry, "captureException">
 >;
 let capturedScope: ReturnType<Sentry.Scope["getScopeData"]> | undefined;
+let isEnabled: ReturnType<typeof spyOn<typeof Sentry, "isEnabled">>;
 
 beforeEach(() => {
   capturedScope = undefined;
+  isEnabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
   // Keep real scope handling, but never initialize a client or send telemetry.
   captureException = spyOn(Sentry, "captureException").mockImplementation(
     () => {
@@ -37,37 +38,36 @@ beforeEach(() => {
 
 afterEach(() => {
   captureException.mockRestore();
+  isEnabled.mockRestore();
 });
 
 describe("Sentry privacy configuration", () => {
-  test.each([initClientSentry, initServerSentry])(
-    "%p disables automatic IP collection and filters IP-bearing metadata",
-    (initialize) => {
-      const init = spyOn(Sentry, "init").mockImplementation(() => undefined);
-      try {
-        initialize({
-          dsn: "https://publicKey@o123.ingest.us.sentry.io/42",
-          environment: "test",
-          release: "radio@test",
-          tunnel: "/tunnel",
-        });
-        const collection = init.mock.calls[0]?.[0]?.dataCollection;
-        const ipFilter = {
-          deny: ["forwarded", "-ip", "remote-", "via", "-user"],
-        };
-        expect(collection?.userInfo).toBe(false);
-        expect(collection?.cookies).toBe(false);
-        expect(collection?.httpBodies).toEqual([]);
-        expect(collection?.httpHeaders).toEqual({
-          request: ipFilter,
-          response: ipFilter,
-        });
-        expect(collection?.urlQueryParams).toEqual(ipFilter);
-      } finally {
-        init.mockRestore();
-      }
-    }
-  );
+  test("disables automatic IP collection and private request data", () => {
+    const collection = makeSentryOptions({
+      dsn: "https://publicKey@o123.ingest.us.sentry.io/42",
+      environment: "test",
+      release: "radio@test",
+    }).dataCollection;
+    const ipFilter = {
+      deny: [
+        "forwarded",
+        "-ip",
+        "remote-",
+        "via",
+        "-user",
+        "referer",
+        "referrer",
+      ],
+    };
+    expect(collection.userInfo).toBe(false);
+    expect(collection.cookies).toBe(false);
+    expect(collection.httpBodies).toEqual([]);
+    expect(collection.httpHeaders).toEqual({
+      request: ipFilter,
+      response: ipFilter,
+    });
+    expect(collection.urlQueryParams).toBe(false);
+  });
 });
 
 describe("AppError", () => {

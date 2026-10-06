@@ -1,5 +1,5 @@
 // biome-ignore lint/performance/noNamespaceImport: namespace import required by Sentry SDK
-import * as Sentry from "@sentry/tanstackstart-react";
+import * as Sentry from "@sentry/core";
 
 export type ErrorCategory =
   | "validation"
@@ -24,6 +24,7 @@ export type AppErrorInit = {
   cause?: unknown;
   tags?: Record<string, string | number | boolean>;
   context?: Record<string, unknown>;
+  reportingHandled?: boolean;
 };
 
 export type ProblemErrorPayload = {
@@ -31,6 +32,10 @@ export type ProblemErrorPayload = {
   message: string;
   requestId: string;
   status: number;
+  category?: ErrorCategory;
+  expected?: boolean;
+  severity?: ErrorSeverity;
+  reportingHandled?: boolean;
 };
 
 export type AppResult<T> =
@@ -87,6 +92,7 @@ export class AppError extends Error {
   readonly status: number;
   readonly tags?: Record<string, string | number | boolean>;
   readonly context?: Record<string, unknown>;
+  readonly reportingHandled: boolean;
 
   constructor(init: AppErrorInit) {
     const safeMessage = normalizeSafeMessage(init.safeMessage);
@@ -105,6 +111,7 @@ export class AppError extends Error {
     this.status = init.status ?? DEFAULT_STATUS_BY_CATEGORY[init.category];
     this.tags = init.tags;
     this.context = init.context;
+    this.reportingHandled = init.reportingHandled ?? false;
   }
 }
 
@@ -112,12 +119,20 @@ export function ok<T>(data: T): AppResult<T> {
   return { data, ok: true };
 }
 
-export function fail(error: AppError, requestId: string): AppResult<never> {
+export function fail(
+  error: AppError,
+  requestId: string,
+  reportingHandled = error.reportingHandled
+): Extract<AppResult<never>, { ok: false }> {
   return {
     error: {
+      category: error.category,
       code: error.code,
+      expected: error.expected,
       message: error.safeMessage,
+      reportingHandled,
       requestId,
+      severity: error.severity,
       status: error.status,
     },
     ok: false,
@@ -149,6 +164,22 @@ export function shouldReportToSentry(error: AppError): boolean {
     return false;
   }
   return true;
+}
+
+/** Restore classification and only retain explicitly established reporting ownership. */
+export function fromProblemError(payload: ProblemErrorPayload): AppError {
+  const category =
+    payload.category ?? (payload.status >= 500 ? "dependency" : "validation");
+  return new AppError({
+    category,
+    code: payload.code,
+    expected: payload.expected,
+    reportingHandled: payload.reportingHandled ?? false,
+    safeMessage: payload.message,
+    severity: payload.severity,
+    status: payload.status,
+    tags: { request_id: payload.requestId },
+  });
 }
 
 type DedupeStore = {
@@ -193,7 +224,7 @@ function parseAppName(release: string): string {
 // everything when unset. These values reproduce v10's `sendDefaultPii: false`,
 // as listed in Sentry's v10-to-v11 migration guide.
 const PII_HEADER_DENYLIST = {
-  deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+  deny: ["forwarded", "-ip", "remote-", "via", "-user", "referer", "referrer"],
 };
 const DATA_COLLECTION = {
   cookies: false,
@@ -203,11 +234,11 @@ const DATA_COLLECTION = {
   httpBodies: [],
   httpHeaders: { request: PII_HEADER_DENYLIST, response: PII_HEADER_DENYLIST },
   queues: false,
-  urlQueryParams: PII_HEADER_DENYLIST,
+  urlQueryParams: false,
   userInfo: false,
-} satisfies NonNullable<Sentry.BrowserOptions["dataCollection"]>;
+} satisfies NonNullable<Sentry.Options["dataCollection"]>;
 
-function makeBaseSentryOptions(config: {
+export function makeSentryOptions(config: {
   dsn: string;
   environment: string;
   release: string;
@@ -217,17 +248,24 @@ function makeBaseSentryOptions(config: {
   return {
     // v11 attaches synthetic stack traces to messages by default; v10 did not.
     attachStacktrace: false,
+    beforeBreadcrumb(breadcrumb: Sentry.Breadcrumb) {
+      return breadcrumb.category === "console" || breadcrumb.type === "http"
+        ? null
+        : breadcrumb;
+    },
+    beforeSendLog: () => null,
+    beforeSendMetric: () => null,
     dataCollection: DATA_COLLECTION,
     dsn: config.dsn,
     environment: config.environment,
-    maxBreadcrumbs: 0,
+    maxBreadcrumbs: 50,
     release: config.release,
     sampleRate: 1.0,
     tracesSampleRate: 0,
-  } as const;
+  } as const satisfies Sentry.Options;
 }
 
-function shouldDropKnownBrowserApiNoise(
+export function shouldDropKnownBrowserApiNoise(
   event: Sentry.ErrorEvent | Sentry.Event
 ): boolean {
   const values = event.exception?.values;
@@ -246,42 +284,6 @@ function shouldDropKnownBrowserApiNoise(
     (value) =>
       value.mechanism?.type === "auto.browser.browserapierrors.setTimeout"
   );
-}
-
-export function initClientSentry(config: {
-  dsn: string;
-  environment: string;
-  release: string;
-  tunnel?: string;
-}): void {
-  if (!config.dsn) {
-    return;
-  }
-
-  Sentry.init({
-    ...makeBaseSentryOptions(config),
-    beforeSend(event) {
-      if (shouldDropKnownBrowserApiNoise(event)) {
-        return null;
-      }
-      return event;
-    },
-    tunnel: config.tunnel,
-  });
-}
-
-export function initServerSentry(config: {
-  dsn: string;
-  environment: string;
-  release: string;
-}): void {
-  if (!config.dsn) {
-    return;
-  }
-
-  Sentry.init({
-    ...makeBaseSentryOptions(config),
-  });
 }
 
 export function createRequestId(request: Request): string {
@@ -337,7 +339,11 @@ export function captureError(
 ): string | undefined {
   const appError = resolveCaptureError(error);
 
-  if (!shouldReportToSentry(appError)) {
+  if (
+    appError.reportingHandled ||
+    !shouldReportToSentry(appError) ||
+    !Sentry.isEnabled()
+  ) {
     return;
   }
 
@@ -509,12 +515,12 @@ export async function runServerFn<T>(options: {
     return ok(data);
   } catch (error) {
     const appError = toAppError(error, options.fallback);
-    captureError(appError, {
+    const eventId = captureError(appError, {
       operation: options.operation,
       requestId,
       surface: "server-fn",
     });
-    return fail(appError, requestId);
+    return fail(appError, requestId, appError.reportingHandled || !!eventId);
   }
 }
 

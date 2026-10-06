@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
   },
   "main": "src/index.ts",
   "scripts": {
@@ -13,7 +14,8 @@
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json"
   },
   "dependencies": {
-    "@sentry/tanstackstart-react": "^11.2.0"
+    "@sentry/core": "11.2.0",
+    "@sentry/react": "11.2.0"
   },
   "devDependencies": {
     "@avoid.quest/config": "workspace:*",

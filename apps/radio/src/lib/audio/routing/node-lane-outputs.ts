@@ -98,6 +98,8 @@ type LaneOutput = {
   connectMain: MainOutputConnect | null;
   realtime: boolean;
   sends: Map<string, LaneSend>;
+  /** Under a layout duck: a rebuilt laneOut starts silent too. */
+  ducked: boolean;
 };
 
 function delay(ms: number): Promise<void> {
@@ -200,7 +202,7 @@ export function createNodeLaneOutputs({
     }
     dropOut(lane);
     const out = context.createGain();
-    out.gain.value = 1;
+    out.gain.value = lane.ducked ? 0 : 1;
     lane.out = out;
     return out;
   };
@@ -253,6 +255,7 @@ export function createNodeLaneOutputs({
       release(laneId);
       const lane: LaneOutput = {
         connectMain: null,
+        ducked: false,
         host,
         out: null,
         realtime: false,
@@ -285,11 +288,12 @@ export function createNodeLaneOutputs({
       }
     },
     duck(laneId) {
-      const out = lanes.get(laneId)?.out;
-      if (!out) {
+      const lane = lanes.get(laneId);
+      if (!lane?.out) {
         return null;
       }
-      rampLinear(out, 0);
+      lane.ducked = true;
+      rampLinear(lane.out, 0);
       try {
         return wait(LANE_DUCK_MS);
       } catch (error) {
@@ -309,9 +313,12 @@ export function createNodeLaneOutputs({
       }
     },
     unduck(laneId) {
-      const out = lanes.get(laneId)?.out;
-      if (out) {
-        rampLinear(out, 1);
+      const lane = lanes.get(laneId);
+      if (lane) {
+        lane.ducked = false;
+      }
+      if (lane?.out) {
+        rampLinear(lane.out, 1);
       }
     },
   };

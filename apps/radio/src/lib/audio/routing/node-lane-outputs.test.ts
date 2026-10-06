@@ -84,8 +84,8 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
   });
 
   /** What AudioManager does inside connectAudioGraph, synchronously. */
-  const connectSound = (soundId: string) => {
-    const { fader, node } = createFakeFader(context);
+  const connectSound = (soundId: string, into = context) => {
+    const { fader, node } = createFakeFader(into);
     const connect = connectors.get(soundId);
     if (!connect) {
       throw new Error(`no connector for ${soundId}`);
@@ -369,6 +369,25 @@ describe("createNodeLaneOutputs", () => {
     });
     expect(fader.gain.events).toEqual([]);
     expect(fader.gain.value).toBe(0.8);
+  });
+
+  test("a laneOut rebuilt on a new context during a duck starts silent", () => {
+    const harness = createHarness(0.7);
+    harness.outputs.attach("kexp", "node:n:kexp");
+    harness.connectSound("node:n:kexp");
+    harness.outputs.duck("kexp");
+
+    const { laneOut } = harness.connectSound(
+      "node:n:kexp",
+      new FakeAudioContext()
+    );
+    expect(laneOut.gain.value).toBe(0);
+
+    harness.outputs.unduck("kexp");
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
   });
 
   test("a duck whose wait throws rejects, and unduck still lifts it", async () => {

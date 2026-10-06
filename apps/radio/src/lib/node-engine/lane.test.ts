@@ -198,6 +198,8 @@ function createWorld() {
     holdFades: false as boolean,
     holdPlays: false as boolean,
     holdReconciles: false as boolean,
+    /** How each effects reconcile ends, as the controller reports it. */
+    reconcileStatus: "inactive" as EffectsRuntimeOutcome["status"],
   };
   let stateListener: ((state: AudioState) => boolean | undefined) | null = null;
 
@@ -327,7 +329,7 @@ function createWorld() {
         if (options.holdReconciles) {
           await hold(heldReconciles, () => undefined);
         }
-        return { backend: null, ready: false, status: "inactive" };
+        return { backend: null, ready: false, status: options.reconcileStatus };
       },
     },
     fadeOutSound: () =>
@@ -865,6 +867,36 @@ const transitions: Row[] = [
     },
     when: "a new FX layout that failed to go in swaps again, ducked, on the next change",
   },
+  ...(
+    [
+      ["failed", "is undone", () => patch([station("a")]), "[]"],
+      ["superseded", "has a knob turned", threshold(-12), "[comp@-12]"],
+    ] as const
+  ).map(
+    ([status, edit, next, tree]): Row => ({
+      expected(world) {
+        // The graph may hold neither layout, so the next change swaps too.
+        expect(world.log).toEqual([
+          "duck a",
+          `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+          "unduck a",
+          "duck a",
+          `reconcile ${sound("a")} ${tree}`,
+          "unduck a",
+        ]);
+      },
+      initial: patch([station("a")]),
+      async run(world) {
+        await playedOnce(world, "a");
+        world.options.reconcileStatus = status;
+        commit(world, () => compressed());
+        await world.playback.whenSettled();
+        world.options.reconcileStatus = "inactive";
+        commit(world, next);
+      },
+      when: `a new FX layout whose reconcile ${status} swaps again, ducked, when it ${edit}`,
+    })
+  ),
   {
     expected(world) {
       expect(world.live).toEqual(new Set([soundOf("a")]));

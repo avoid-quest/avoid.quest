@@ -186,10 +186,10 @@ export class LaneInstance {
   /** The backend its effects last settled on, as the controller reported. */
   outcome: EffectsBackend | undefined;
   /**
-   * The FX layout that last went into its tree, by the plan's layout
-   * signature: a new sound's is its plan's, as it is silent until it plays.
+   * The FX layout last in its tree, by the plan's layout signature, null
+   * if unknown: a new sound's is its plan's, as it is silent until it plays.
    */
-  private layout: string;
+  private layout: string | null;
   /** Its effects changed since they were last reconciled. */
   private effectsStale = true as boolean;
   private ducked = false as boolean;
@@ -566,33 +566,30 @@ export class LaneInstance {
   /**
    * The driver's next effects step toward `plan`, or null once they match:
    * changed effects in a new FX layout duck first, unless nothing plays,
-   * and the duck lifts once nothing is left. A layout that failed to go in
-   * swaps again, ducked, with the next change.
+   * and the duck lifts once nothing is left. A failed or superseded
+   * reconcile leaves the layout unknown: the next change swaps, ducked.
    */
   effectsStep(plan: LanePlan): Promise<void> | null {
     const { laneOutputs } = this.host;
-    const swap = plan.layoutSignature !== this.layout;
-    if (this.effectsStale && swap && !this.ducked) {
-      const ducking = laneOutputs.duck(plan.id);
-      if (ducking) {
-        this.ducked = true;
-        return ducking;
+    if (!this.effectsStale) {
+      if (this.ducked) {
+        this.ducked = false;
+        laneOutputs.unduck(plan.id);
       }
+      return null;
     }
-    if (this.effectsStale) {
-      this.effectsStale = false;
-      return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
-        if (outcome.status !== "failed") {
-          this.layout = plan.layoutSignature;
-        }
-        this.recordOutcome(outcome);
-      }, reportNodeFailure("Could not apply lane effects"));
+    const swap = plan.layoutSignature !== this.layout;
+    const ducking = swap && !this.ducked && laneOutputs.duck(plan.id);
+    if (ducking) {
+      this.ducked = true;
+      return ducking;
     }
-    if (this.ducked) {
-      this.ducked = false;
-      laneOutputs.unduck(plan.id);
-    }
-    return null;
+    this.effectsStale = false;
+    return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
+      const unknown = ["failed", "superseded"].includes(outcome.status);
+      this.layout = unknown ? null : plan.layoutSignature;
+      this.recordOutcome(outcome);
+    }, reportNodeFailure("Could not apply lane effects"));
   }
 
   /**

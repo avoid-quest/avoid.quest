@@ -235,13 +235,15 @@ describe("duck", () => {
 
     const plan = compile(graph, env);
     expect(plan.issues).toEqual([]);
-    const [compressor] = plan.lanes.get("src-kexp")?.effects ?? [];
+    const compressor = plan.patch?.nodes.get(DUCK_NODE_ID)?.data;
     expect(compressor).toMatchObject({
-      autoMakeup: false,
-      enabled: true,
-      id: DUCK_NODE_ID,
-      sidechain: { channelId: "n:src-r4" },
-      type: "compressor",
+      effect: {
+        autoMakeup: false,
+        enabled: true,
+        id: DUCK_NODE_ID,
+
+        type: "compressor",
+      },
     });
     // The talk plays dry, straight to Speakers.
     expect(plan.lanes.get("src-r4")?.effects).toEqual([]);
@@ -278,12 +280,7 @@ describe("duck", () => {
     expect(parsePlaybackSessionRecord(session).graph).toEqual(session.graph);
     expect(session.channels).toEqual([
       expect.objectContaining({
-        effects: [
-          expect.objectContaining({
-            id: DUCK_NODE_ID,
-            sidechain: { channelId: "n:src-b" },
-          }),
-        ],
+        effects: [],
         id: "n:src-a",
       }),
       expect.objectContaining({ effects: [], id: "n:src-b", volume: 0.4 }),

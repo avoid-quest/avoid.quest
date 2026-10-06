@@ -64,7 +64,14 @@ export function modulationProgram(graph: NodeGraph): ModulationProgram {
   const nodes = graph.nodes
     .filter(isModulationNode)
     .filter((node) => !refusedNodes.has(node.id));
-  const ids = new Set(nodes.map((node) => node.id));
+  const routers = graph.nodes
+    .filter(
+      (node) =>
+        (node.type === "merge" || node.type === "fxComposite") &&
+        !refusedNodes.has(node.id)
+    )
+    .map((node) => node.id);
+  const ids = new Set([...nodes.map((node) => node.id), ...routers]);
   const audioSources: Record<string, string> = {};
   const links: ControlLink[] = [];
   for (const { edge, to } of wired) {
@@ -72,7 +79,7 @@ export function modulationProgram(graph: NodeGraph): ModulationProgram {
       continue;
     }
     if (to.kind === "audio") {
-      audioSources[edge.target] = edge.source;
+      audioSources[edge.target] = edge.target;
     } else if (to.kind === "control" && ids.has(edge.source)) {
       links.push({
         depth: edge.depth ?? 1,
@@ -88,7 +95,44 @@ export function modulationProgram(graph: NodeGraph): ModulationProgram {
       .map((node) => node.id),
     links,
     nodes,
+    routers,
   };
+}
+
+/** Recompute passive routers immediately, including while audio is suspended. */
+export function routedControlValues(
+  program: ModulationProgram,
+  sources: Readonly<Record<string, number>>
+): Record<string, number> {
+  const enabled = new Set(
+    program.nodes.filter((spec) => spec.data.enabled).map((spec) => spec.id)
+  );
+  const values = Object.fromEntries(
+    Object.entries(sources).filter(([id]) => enabled.has(id))
+  );
+  const routers = new Set(program.routers);
+  const visiting = new Set<string>();
+  const visit = (id: string): number => {
+    if (!routers.has(id)) {
+      return values[id] ?? 0;
+    }
+    if (Object.hasOwn(values, id)) {
+      return values[id] ?? 0;
+    }
+    if (visiting.has(id)) {
+      return 0;
+    }
+    visiting.add(id);
+    values[id] = program.links
+      .filter((link) => link.target === id)
+      .reduce((sum, link) => sum + visit(link.source) * link.depth, 0);
+    visiting.delete(id);
+    return values[id] ?? 0;
+  };
+  for (const id of routers) {
+    visit(id);
+  }
+  return values;
 }
 
 type AudioTap = { source: AudioNode; input: number };
@@ -101,7 +145,7 @@ export function createModulationRuntime({
   getWorkletProcessorUrl,
 }: {
   onValues: (values: Readonly<Record<string, number>>) => void;
-  /** Follower taps the named node's lane, after its effects and before its fader. */
+  /** Follower taps its summed, cable-scaled audio input. */
   getAudioTap: (sourceId: string) => AudioNode | null;
   getWorkletProcessorUrl: () => string;
   getNativeSession?: (
@@ -510,16 +554,12 @@ export function createModulationRuntime({
       }
       refreshTaps();
       // Removing or muting a cable restores its base even when the context is suspended.
-      const ids = new Set(
-        program.nodes.filter((spec) => spec.data.enabled).map((spec) => spec.id)
+      const values = routedControlValues(
+        program,
+        modulationReadouts.state.values
       );
-      onValues(
-        Object.fromEntries(
-          Object.entries(modulationReadouts.state.values).filter(([id]) =>
-            ids.has(id)
-          )
-        )
-      );
+      modulationReadouts.setState((state) => ({ ...state, values }));
+      onValues(values);
     },
   };
 }

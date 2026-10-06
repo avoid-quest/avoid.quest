@@ -26,9 +26,9 @@ smoke checks support code review; they do not establish release readiness.
    quantization. Timed sources add free Hz to their selected BPM sync rate;
    use zero free Hz for tempo-only timing. Their clock runs independently of
    source playback.
-4. For Follower, branch an audio cable into **In**. It detects the entire source
-   lane after FX and before the fader, regardless of where the cable originates
-   within that lane. Completion: its trace follows audible lane energy.
+4. For Follower, branch an audio cable into **In**. It detects the
+   signal at the connected output, including that cable's gain/mute. Multiple
+   inputs sum before detection. Completion: its trace follows the cabled signal.
 5. Hold the ADSR or Multi-stage envelope gate button, then release it. A Clock or
    MIDI gate cable supplies the same gate. Curve supports editable points/bends,
    looping or a triggered one-shot; Multi-stage envelope has eight points and
@@ -70,7 +70,8 @@ smoke checks support code review; they do not establish release readiness.
   target conversion, including logarithmic Filter cutoff. Target discovery uses
   existing numeric FX parameter metadata plus native Filter/Pan/Gain and source
   pan/trim. Structural switches and source transport controls stay authored.
-- `modulation-parameters.ts` creates an ephemeral graph for lane lowering.
+- `modulation-parameters.ts` creates an ephemeral graph for lane or explicit
+  graph routing.
   `node-playback.ts` applies transient values without graph commits, persisted
   writes or normal FX reconciliation. Official runtime field transactions
   bypass editing history; compatibility updates reuse existing processors.
@@ -80,8 +81,9 @@ smoke checks support code review; they do not establish release readiness.
   contributions must sum consistently across them. Native source generation
   does not make these assignments native or audio-rate.
 - Validation bounds the patch to 32 control nodes, eight followers and the
-  existing eight-LFO budget. Control cycles are refused. Audio into a follower
-  is a detector tap and gives it no managed audio lane.
+  source/playing budgets. Merge sums control inputs and Split fans them out;
+  passive routers do not count as modulation sources. Control cycles are refused.
+  Audio into a follower is a detector tap and gives it no managed audio lane.
 
 ## First-class UI integrations
 

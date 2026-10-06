@@ -103,7 +103,9 @@ export function ModulationCableControls({
         />
       </div>
       <p className="max-w-56 text-[10px] text-muted-foreground">
-        Depth adds a fraction of the parameter range to its saved value.
+        {parameters.length > 0
+          ? "Depth adds a fraction of the parameter range to its saved value."
+          : "Depth scales the incoming control signal."}{" "}
         Negative depth reverses it; multiple cables add together.
       </p>
       <Button

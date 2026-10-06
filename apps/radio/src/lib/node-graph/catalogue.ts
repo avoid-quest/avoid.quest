@@ -62,7 +62,7 @@ export const SIDECHAIN_EFFECT_TYPES = [
   "vocoder",
 ] as const satisfies readonly EffectType[];
 
-function audioIn(id = "main", label = "In", max = 1): NodePort {
+function audioIn(id = "main", label = "In", max = UNLIMITED): NodePort {
   return { direction: "in", id, kind: "audio", label, max };
 }
 
@@ -90,7 +90,7 @@ const keyIn: NodePort = {
   id: "key",
   kind: "sidechain",
   label: "Key",
-  max: 1,
+  max: UNLIMITED,
 };
 
 function numberedOuts(prefix: string, label: string): NodePort[] {
@@ -132,6 +132,14 @@ function effectDefinition(type: EffectNodeType): NodeDefinition {
       ...(keyed ? [keyIn] : []),
       controlIn("parameter", "Parameter"),
       ...containerOuts(type),
+      ...(type === "fxComposite"
+        ? [
+            controlIn("main", "Control in"),
+            ...[1, 2, 3, 4].map((index) =>
+              controlOut(`branch-${index}`, `Control ${index}`)
+            ),
+          ]
+        : []),
     ],
     // Werkstatt needs the official openDAW backend; it waits for PR 8.
     ship: type === "werkstatt" ? "later" : "v1",
@@ -275,7 +283,12 @@ const OTHER_DEFINITIONS: Record<
   merge: {
     category: "routing",
     name: "Merge",
-    ports: [audioIn("main", "In", 8), audioOut()],
+    ports: [
+      audioIn(),
+      audioOut(),
+      controlIn("main", "Control in"),
+      controlOut(),
+    ],
     ship: "v1",
   },
   midiIn: {

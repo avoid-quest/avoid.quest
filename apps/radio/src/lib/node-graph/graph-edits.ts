@@ -1485,15 +1485,6 @@ export function duplicateNodes(
       x: node.position.x + DUPLICATE_OFFSET_PX,
       y: node.position.y + DUPLICATE_OFFSET_PX,
     };
-    if (node.type === "deviceOut") {
-      // One Output device a device: the copy picks its own.
-      return {
-        ...node,
-        data: { ...node.data, deviceId: null, deviceLabel: "" },
-        id,
-        position,
-      };
-    }
     return isEffectNodeType(node.type)
       ? ({
           ...node,

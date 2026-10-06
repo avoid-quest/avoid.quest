@@ -43,22 +43,13 @@ export type IssueCode =
   | "duplicate-edge"
   | "port-max"
   | "one-speakers"
-  | "one-device-out"
-  | "sidechain-source"
-  | "sidechain-target"
-  | "lane-filter"
-  | "lane-pan"
-  | "lane-key"
   | "feedback-needs-loop"
   | "control-cycle"
   | "budget-playing"
   | "budget-sources"
-  | "budget-buses"
-  | "budget-bus-fx"
   | "budget-loops"
   | "budget-tape-warp"
   | "budget-tape-warp-time"
-  | "budget-lfos"
   | "budget-edges"
   | "native-position"
   // Raised by the compiler, where the patch's shape is known.
@@ -78,22 +69,16 @@ export type NodeBudget = {
   /** Stream sources playing at once: each costs a decoder, hls.js and a worklet. */
   playingStreams: number;
   sources: number;
-  buses: number;
-  busesWithFx: number;
   loops: number;
   tapeWarps: number;
   tapeWarpSeconds: number;
-  lfos: number;
   edges: number;
 };
 
 /** Mobile is a coarse pointer or iOS, where every FX lane is one worklet. */
 export const NODE_BUDGETS: Readonly<Record<Profile, NodeBudget>> = {
   desktop: {
-    buses: 6,
-    busesWithFx: 3,
-    edges: 64,
-    lfos: 8,
+    edges: 256,
     loops: 4,
     playingStreams: 6,
     sources: 24,
@@ -101,10 +86,7 @@ export const NODE_BUDGETS: Readonly<Record<Profile, NodeBudget>> = {
     tapeWarps: 2,
   },
   mobile: {
-    buses: 3,
-    busesWithFx: 2,
-    edges: 64,
-    lfos: 8,
+    edges: 256,
     loops: 4,
     playingStreams: 4,
     sources: 24,
@@ -202,12 +184,8 @@ function definitionOf(node: GraphNode): NodeDefinition {
   return getNodeDefinition(node.type);
 }
 
-/** Why a second Output device can't play to a device one already does. */
-export const ONE_DEVICE_OUT_MESSAGE = "This output already has a module";
-
 function checkNodes(context: Context): void {
   let speakers = 0;
-  const devices = new Set<string>();
   for (const node of context.graph.nodes) {
     const definition = definitionOf(node);
     if (!isShipped(definition.ship, context.release)) {
@@ -223,12 +201,6 @@ function checkNodes(context: Context): void {
       if (speakers > 1) {
         nodeIssue(context, node, "one-speakers", "A patch has one Speakers");
       }
-    }
-    if (node.type === "deviceOut" && node.data.deviceId !== null) {
-      if (devices.has(node.data.deviceId)) {
-        nodeIssue(context, node, "one-device-out", ONE_DEVICE_OUT_MESSAGE);
-      }
-      devices.add(node.data.deviceId);
     }
   }
 }
@@ -625,11 +597,12 @@ function checkCycles(
   const rejected = new Set<WiredEdge>();
   const nodeIds = context.graph.nodes.map((node) => node.id);
   const isLoop = (id: string) => context.nodes.get(id)?.type === "loop";
-  // A key cable taps its lane before the FX, so it closes no cycle; taking
-  // the Loop nodes out leaves exactly the delay-free cycles.
+  // Keys receive the cabled audio signal, so key feedback is audio feedback.
+  // Taking Loop nodes out leaves the delay-free cycles.
   const inCycles = (kind: "audio" | "control") => (wire: WiredEdge) =>
     wire.from.kind === kind &&
-    wire.to.kind === kind &&
+    (wire.to.kind === kind ||
+      (kind === "audio" && wire.to.kind === "sidechain")) &&
     !(
       kind === "audio" &&
       (isLoop(wire.edge.source) || isLoop(wire.edge.target))
@@ -952,111 +925,6 @@ function findTopology(context: Context, wired: WiredEdge[]): Topology {
   return { buses: labelBuses(context, inputs, lanes), lanes };
 }
 
-function checkSidechains(
-  context: Context,
-  wired: WiredEdge[],
-  { lanes }: Topology
-): Set<string> {
-  const keyed = new Set<string>();
-  for (const { edge, to } of wired) {
-    if (to.kind !== "sidechain") {
-      continue;
-    }
-    const lane = lanes.get(edge.source);
-    if (typeof lane !== "string") {
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-source",
-        "A key must come from a station lane"
-      );
-    } else if (lane !== edge.source) {
-      // The engine keys from the station's raw signal, so a cable drawn after
-      // its Gain or FX would claim a tap it doesn't get.
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-source",
-        "A key must come from the station itself"
-      );
-    } else if (typeof lanes.get(edge.target) === "string") {
-      keyed.add(edge.target);
-    } else {
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-target",
-        "A key only works on a station lane"
-      );
-    }
-  }
-  return keyed;
-}
-
-function checkLanes(context: Context, topology: Topology, keyed: Set<string>) {
-  const seen = new Map<string, Set<IssueCode>>();
-  const rules: {
-    code: IssueCode;
-    message: string;
-    test: (node: GraphNode) => boolean;
-  }[] = [
-    {
-      code: "lane-filter",
-      message: "One Filter per lane",
-      test: (node) => node.type === "filter",
-    },
-    {
-      code: "lane-pan",
-      message: "One Pan per lane",
-      test: (node) => node.type === "pan",
-    },
-    {
-      code: "lane-key",
-      message: "One key per lane",
-      test: (node) => keyed.has(node.id),
-    },
-  ];
-  for (const node of context.graph.nodes) {
-    const lane = topology.lanes.get(node.id);
-    if (typeof lane !== "string") {
-      continue;
-    }
-    const laneSeen = seen.get(lane) ?? new Set<IssueCode>();
-    seen.set(lane, laneSeen);
-    for (const rule of rules) {
-      if (!rule.test(node)) {
-        continue;
-      }
-      if (laneSeen.has(rule.code)) {
-        nodeIssue(context, node, rule.code, rule.message);
-      }
-      laneSeen.add(rule.code);
-    }
-  }
-}
-
-function busHeads(context: Context, { buses }: Topology): GraphNode[] {
-  return context.graph.nodes.filter((node) => buses.get(node.id) === node.id);
-}
-
-/**
- * Why a Merge can't take a second station: that makes it a bus, and buses
- * ship after in-lane Merge.
- */
-export const BUS_MERGE_MESSAGE =
-  "Merging different stations needs a bus, which comes in a later update";
-
-function checkBusRelease(context: Context, topology: Topology): void {
-  if (isShipped("v2", context.release)) {
-    return;
-  }
-  for (const node of busHeads(context, topology)) {
-    if (node.type === "merge") {
-      nodeIssue(context, node, "unshipped", BUS_MERGE_MESSAGE);
-    }
-  }
-}
-
 function overBudget<T>(
   items: readonly T[],
   limit: number,
@@ -1067,11 +935,7 @@ function overBudget<T>(
   }
 }
 
-function checkBudgets(
-  context: Context,
-  topology: Topology,
-  playing: readonly string[]
-): void {
+function checkBudgets(context: Context, playing: readonly string[]): void {
   const { budget, graph } = context;
   const ofType = (type: NodeType) =>
     graph.nodes.filter((node) => node.type === type);
@@ -1101,27 +965,6 @@ function checkBudgets(
     `Up to ${budget.sources} sources per patch`
   );
 
-  const heads = busHeads(context, topology);
-  flagNodes(
-    heads,
-    budget.buses,
-    "budget-buses",
-    `Up to ${budget.buses} buses per patch`
-  );
-  const fxBuses = new Set(
-    graph.nodes
-      .filter(
-        (node) => topology.buses.has(node.id) && definitionOf(node).effectType
-      )
-      .map((node) => topology.buses.get(node.id))
-  );
-  flagNodes(
-    heads.filter((node) => fxBuses.has(node.id)),
-    budget.busesWithFx,
-    "budget-bus-fx",
-    `Up to ${budget.busesWithFx} buses with FX per patch`
-  );
-
   flagNodes(
     ofType("loop"),
     budget.loops,
@@ -1145,12 +988,6 @@ function checkBudgets(
       );
     }
   }
-  flagNodes(
-    ofType("lfo"),
-    budget.lfos,
-    "budget-lfos",
-    `Up to ${budget.lfos} LFOs per patch`
-  );
   flagNodes(
     graph.nodes.filter(isModulationNode),
     32,
@@ -1196,10 +1033,7 @@ export function analyseGraph(
   checkNodes(context);
   const wired = checkCycles(context, checkEdges(context));
   const topology = findTopology(context, wired);
-  const keyed = checkSidechains(context, wired, topology);
-  checkLanes(context, topology, keyed);
-  checkBusRelease(context, topology);
-  checkBudgets(context, topology, playing);
+  checkBudgets(context, playing);
   return { issues: context.issues, topology, wired };
 }
 
@@ -1208,8 +1042,7 @@ export function validate(
   graph: ValidatableGraph,
   options?: ValidateOptions
 ): Issue[] {
-  const { issues, topology, wired } = analyseGraph(graph, options);
-  return [...issues, ...nativePlacementIssues(graph, wired, topology.lanes)];
+  return analyseGraph(graph, options).issues;
 }
 
 function issueKey(issue: Issue): string {
@@ -1291,27 +1124,6 @@ export function validateConnection(
 export type Verdict =
   | { ok: true }
   | { ok: false; code: IssueCode; message: string };
-
-/**
- * Whether Output device `nodeId` (or a new one) may play to `deviceId`:
- * refused when another Output device already does. The palette and the
- * node's device select ask here, as the validator would.
- */
-export function deviceOutVerdict(
-  graph: Pick<NodeGraph, "nodes">,
-  deviceId: string,
-  nodeId: string | null = null
-): Verdict {
-  const taken = graph.nodes.some(
-    (node) =>
-      node.type === "deviceOut" &&
-      node.id !== nodeId &&
-      node.data.deviceId === deviceId
-  );
-  return taken
-    ? { code: "one-device-out", message: ONE_DEVICE_OUT_MESSAGE, ok: false }
-    : { ok: true };
-}
 
 /** Why a cable dragged from an output can't end on another output. */
 export const SAME_SIDE_MESSAGE = "A cable runs from an output to an input";

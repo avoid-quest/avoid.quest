@@ -79,6 +79,7 @@ const createSoundState = (): SoundEffectsState => ({
 });
 
 class EffectsController {
+  private readonly processorIds = new Set<string>();
   private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false as boolean;
   private officialRuntimeWarningReported = false as boolean;
@@ -210,7 +211,7 @@ class EffectsController {
     soundId: string,
     desired: DesiredEffectsState
   ): Promise<EffectsRuntimeOutcome> {
-    if (!this.sounds.has(soundId)) {
+    if (!(this.sounds.has(soundId) || this.processorIds.has(soundId))) {
       return {
         backend: null,
         error: new Error(`Sound with id ${soundId} not found`),
@@ -282,6 +283,22 @@ class EffectsController {
       });
     }
     return state.outcome;
+  }
+
+  /** A graph processor has no decoder or playback channel of its own. */
+  async connectProcessor(
+    id: string,
+    source: AudioNode,
+    destination: AudioNode,
+    desired: DesiredEffectsState
+  ): Promise<boolean> {
+    this.processorIds.add(id);
+    const state = this.getState(id);
+    await this.reconcile(id, desired);
+    if (!this.processorIds.has(id) || this.states.get(id) !== state) {
+      return false;
+    }
+    return this.connectGraph(id, source, destination);
   }
 
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
@@ -361,8 +378,9 @@ class EffectsController {
     if (!(state.desiredSidechainSoundId && state.compatibilitySourceCreated)) {
       return true;
     }
-    const source = this.sounds.get(state.desiredSidechainSoundId)?.nodes
-      ?.filter;
+    const source =
+      this.sounds.get(state.desiredSidechainSoundId)?.nodes?.filter ??
+      this.states.get(state.desiredSidechainSoundId)?.graph?.source;
     const target = state.manager?.node;
     if (!(source && target)) {
       return false;
@@ -584,6 +602,7 @@ class EffectsController {
   }
 
   cleanupSound(soundId: string): void {
+    this.processorIds.delete(soundId);
     const state = this.states.get(soundId);
     if (!state) {
       return;
@@ -621,6 +640,7 @@ class EffectsController {
       state.manager?.cleanup();
     }
     this.states.clear();
+    this.processorIds.clear();
     this.officialRegisteredSoundIds.clear();
     this.officialSoundOwners.clear();
     this.officialRuntime?.cleanup();

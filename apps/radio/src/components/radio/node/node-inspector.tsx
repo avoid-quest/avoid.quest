@@ -56,7 +56,7 @@ import { AudioInputNodeContent } from "./audio-input-content";
 import { BackendBadge } from "./backend-badge";
 import { ModulationControls } from "./control-node";
 import { FileNodeContent } from "./file-content";
-import { feedsOutput, takenDevices } from "./flow-elements";
+import { feedsOutput } from "./flow-elements";
 import { ModulationAssignments } from "./modulation-cables";
 import { useReleaseStep } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
@@ -283,7 +283,6 @@ function InspectorParams({
   store: NodeStore;
 }) {
   const title = getNodeDefinition(node.type).name;
-  const currentGraph = useStore(store, (state) => state.graph);
   // A release lands after the knob throttle's trailing call, then takes
   // the turn as one undo step. Selects and switches release here too.
   const release = useReleaseStep(() => snapshotNodeGraph(store));
@@ -297,7 +296,6 @@ function InspectorParams({
       <OutputDeviceNodeContent
         data={{
           ...node.data,
-          taken: currentGraph ? takenDevices(currentGraph, node.id) : [],
         }}
         id={node.id}
         store={store}

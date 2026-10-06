@@ -741,6 +741,42 @@ export class AudioManager {
     return this.effects.createModulationSession(onValue);
   }
 
+  connectNodeProcessor(
+    id: string,
+    source: AudioNode,
+    destination: AudioNode,
+    tree: readonly EffectConfig[],
+    sidechainSoundId: string | null
+  ) {
+    return this.effects.connectProcessor(id, source, destination, {
+      dryWet: 1,
+      sidechainSoundId,
+      tempo: 120,
+      tree: [...tree],
+    });
+  }
+
+  updateNodeProcessor(
+    id: string,
+    tree: readonly EffectConfig[],
+    sidechainSoundId: string | null
+  ) {
+    return this.effects.reconcile(id, {
+      dryWet: 1,
+      sidechainSoundId,
+      tempo: 120,
+      tree: [...tree],
+    });
+  }
+
+  modulateNodeProcessor(id: string, tree: readonly EffectConfig[]): void {
+    this.effects.setTransientEffects(id, tree);
+  }
+
+  releaseNodeProcessor(id: string): void {
+    this.effects.cleanupSound(id);
+  }
+
   /**
    * Set playback rate for a sound (0.5 to 2.0)
    * Pitch follows the rate unless key lock (`setKeyLock`) is on.

@@ -107,7 +107,7 @@ describe("NODE_DEFINITIONS", () => {
         }
       }
     }
-    expect(NODE_DEFINITIONS.merge.ports[0]?.max).toBe(8);
+    expect(NODE_DEFINITIONS.merge.ports[0]?.max).toBe(Number.POSITIVE_INFINITY);
   });
 
   test("describes Station control ports as landing with Control", () => {

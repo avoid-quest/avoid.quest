@@ -179,7 +179,11 @@ export function SplitNode({
       <ModulePorts
         nodeId={id}
         outputIds={outputs}
-        outputLabel={(port) => branchName(node, portHandleId(port))}
+        outputLabel={(port) =>
+          port.kind === "control"
+            ? port.label
+            : branchName(node, portHandleId(port))
+        }
         title={getNodeDefinition(type).name}
         type={type}
       />

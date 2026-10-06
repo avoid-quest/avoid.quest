@@ -74,6 +74,27 @@ function createHarness({
 }
 
 describe("createNodeDeviceSinks", () => {
+  test("two nodes can use the same physical device with independent connection lifetimes", async () => {
+    const h = createHarness();
+    h.sinks.sync(
+      new Map([
+        ["one", "usb"],
+        ["two", "usb"],
+      ])
+    );
+    const one = h.sinks.connect("one", h.send());
+    const two = h.sinks.connect("two", h.send());
+    await h.settle();
+    expect(one.to).toBe("device");
+    expect(two.to).toBe("device");
+    expect(h.elements.map((element) => element.sinkId)).toEqual(["usb", "usb"]);
+    h.sinks.sync(new Map([["two", "usb"]]));
+    expect(h.elements[0]?.paused).toBe(true);
+    expect(h.elements[1]?.paused).toBe(false);
+    expect(h.sinks.status("two")).toEqual({ state: "ok" });
+    h.sinks.dispose();
+  });
+
   test("a send plays through a MediaStream hop into an <audio> set to the device", async () => {
     const harness = createHarness();
     harness.sinks.sync(new Map([["desk", "usb"]]));

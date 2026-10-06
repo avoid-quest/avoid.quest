@@ -7,6 +7,7 @@ export type ModulationProgram = {
   nodes: ModulationSpec[];
   links: ControlLink[];
   followers: string[];
+  routers?: string[];
   audioSources?: Record<string, string>;
   nativeIds?: string[];
 };
@@ -107,7 +108,7 @@ function waveform(shape: string, phase: number): number {
 /** Sample-clocked sources using openDAW's exported envelope, RMS, slew and Tidal DSP. */
 export class ModulationDsp {
   private voices = new Map<string, Voice>();
-  private ordered: Voice[] = [];
+  private ordered: (Voice | string)[] = [];
   private readonly inputs = new Map<string, ControlLink[]>();
   private followers: string[] = [];
   private nativeIds = new Set<string>();
@@ -129,9 +130,11 @@ export class ModulationDsp {
       program.nodes.map((spec) => [spec.id, this.configureVoice(spec)])
     );
     this.voices = next;
+    const routers = new Set(program.routers);
+    const ids = new Set([...next.keys(), ...routers]);
     this.inputs.clear();
     for (const link of program.links) {
-      if (next.has(link.source) && next.has(link.target)) {
+      if (ids.has(link.source) && ids.has(link.target)) {
         this.inputs.set(link.target, [
           ...(this.inputs.get(link.target) ?? []),
           link,
@@ -153,13 +156,15 @@ export class ModulationDsp {
       const voice = next.get(id);
       if (voice) {
         this.ordered.push(voice);
+      } else if (routers.has(id)) {
+        this.ordered.push(id);
       }
     };
-    for (const id of next.keys()) {
+    for (const id of ids) {
       visit(id);
     }
     for (const id of Object.keys(this.values)) {
-      if (!next.has(id)) {
+      if (!ids.has(id)) {
         delete this.values[id];
       }
     }
@@ -259,7 +264,14 @@ export class ModulationDsp {
   ): Readonly<Record<string, number>> {
     for (let frame = 0; frame < frames; frame += 1) {
       for (const voice of this.ordered) {
-        this.processVoice(voice, audio, frame);
+        if (typeof voice === "string") {
+          this.values[voice] = (this.inputs.get(voice) ?? []).reduce(
+            (sum, link) => sum + (this.values[link.source] ?? 0) * link.depth,
+            0
+          );
+        } else {
+          this.processVoice(voice, audio, frame);
+        }
       }
     }
     return this.values;

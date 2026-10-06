@@ -452,7 +452,6 @@ const usbOut: OutputData = {
   deviceId: "usb",
   deviceLabel: "USB interface",
   muted: false,
-  taken: [],
 };
 
 describe("Output device node", () => {

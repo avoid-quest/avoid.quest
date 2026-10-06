@@ -49,25 +49,38 @@ library does not add another node automatically.
 
 A patch has exactly one Speakers. An Output device adds a separately selected
 physical sink when the browser supports routing. Source lanes can feed both;
-a lane without an output cable is silent. Output-device selection failures use the
+several Output device nodes may use the same physical device with independent
+mutes. A lane without an output cable is silent. Output-device selection failures use the
 existing main-output fallback and expose a user retry. Browser capability checks
 and device status determine which controls are available.
 
-FX lower to the existing `EffectConfig` tree. Native Filter and Pan occupy the
-leading source strip. Gain nodes and cable trims retain the whole signal level,
-including the dry path at partial FX mix. Split, Stereo Split, Band Split and
-same-source fan-out regions use the existing series/parallel containers and
-reconverge at an in-lane Merge. Branch controls distinguish the configured base
-level from cable trim and display their combined gain. Cross-source Merge buses
-remain roadmap work.
+Audio inputs sum any number of distinct cables and outputs fan out. Sources can
+share a Merge or FX directly; Filter and Pan can appear anywhere, repeatedly.
+Branches may feed different outputs, cross other branches or rejoin without an
+explicit Merge. Stereo Split and Band Split keep distinct channel/band outputs.
+Audio and control remain separate signal types. Merge sums control inputs and
+Split fans them out; parameter assignments still use signed depth.
 
-Audio cables carry signal and branch controls; dashed key cables feed supported
-FX sidechains. A connected Vocoder key selects its external modulator in the
-compiled plan; removing it uses the authored modulator setting, which connecting
-no longer overwrites. The shared connection verdict checks port kinds, limits and
-native placement before all connection paths commit an edit.
-Compilation validates again and excludes refused routes rather than sending an
-invalid topology to audio.
+Simple source-owned trees retain the existing lane engine. Other patches use
+`audio-patch-plan.ts` and `node-audio-patch.ts`: one stable module per node,
+one gain per cable, and one FX processor per used output port. Shared downstream
+FX process the summed input once. The source's post-fader output feeds this graph;
+cable gain/mute and split pan/solo operate along the drawn paths. Unused FX ports
+start only when connected. FX reuse the existing official/compatibility backend
+selection rather than creating synthetic playback sounds.
+
+Dashed audio key cables feed supported sidechain ports from the exact cabled
+output, including processed, split or merged signals. Multiple keys sum with
+cable gain/mute. A connected, unmuted Vocoder key selects the external modulator
+only at runtime; removing or muting all keys restores its authored setting.
+Follower inputs likewise detect the summed signal at their cables, including
+cable levels, rather than the end of a source's whole lane.
+
+Every connection path uses the same typed-port verdict. Duplicate cables,
+delay-free audio feedback (including key feedback), control cycles, invalid
+parameter assignments and unsupported nodes remain refused. Compilation validates
+again and excludes invalid routes. The patch permits 256 cables; source, playing
+stream and total modulator/follower budgets remain in force.
 
 The catalogue's ship flags define the available v1 nodes and ports. The schema
 also describes future nodes so migrations can identify them; schema membership
@@ -87,7 +100,8 @@ Platform media receives bounded initial-load and mid-play renewal using its
 original identity.
 
 Graph commits compile and reconcile in batches. Parameter edits reuse lanes and
-FX; structural FX changes use the existing duck/swap/restore path. Meter-rate
+FX. Source-tree structural changes use the existing duck/swap/restore path;
+explicit graphs fade removed cables and retain unaffected processors. Meter-rate
 updates bypass React graph state. Undo/Redo retain referenced NAM bytes and local
 file URLs; cleanup releases resources only after no retained document or live
 sound needs them. New FX instances receive fresh identities, while Undo restores
@@ -102,8 +116,8 @@ workflow, engine boundaries and verification criteria.
 
 React Flow renders the controlled graph. Local drag frames commit positions at
 release; insertion and cable surgery commit one undoable graph change. Cancelling
-or pinching a drag clears its insertion target. Removing a Merge is refused when
-healing would break a working lane's routes.
+or pinching a drag clears its insertion target. Removing a Merge heals each
+incoming audio path to its destinations; independent branches remain playable.
 
 Stage and Rack provide source controls outside the zoomed canvas. Rack also lists
 loose, empty or invalid modules and shows graph issues when no lane compiles.
@@ -129,10 +143,11 @@ throttled graph or engine writes.
 | Document versions, source strip defaults | [`schema.ts`](../../lib/node-graph/schema.ts) |
 | Available nodes, typed ports and FX defaults | [`catalogue.ts`](../../lib/node-graph/catalogue.ts) |
 | Budgets, diagnostics, connection verdict | [`validate.ts`](../../lib/node-graph/validate.ts) |
-| Lane lowering, branch shape and sidechains | [`compile.ts`](../../lib/node-graph/compile.ts) |
+| Lane lowering and graph planning | [`compile.ts`](../../lib/node-graph/compile.ts) |
 | Parameter versus structural engine changes | [`reconcile.ts`](../../lib/node-graph/reconcile.ts) |
 | Pure graph edits, templates, undo/history | [`graph-edits.ts`](../../lib/node-graph/graph-edits.ts), [`templates.ts`](../../lib/node-graph/templates.ts), [`node-store.ts`](../../lib/node-graph/node-store.ts) |
 | Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts), [`pending-channel-starts.ts`](../../lib/pending-channel-starts.ts) |
+| Shared graph processors and exact cable taps | [`node-audio-patch.ts`](../../lib/audio/routing/node-audio-patch.ts), [`audio-patch-plan.ts`](../../lib/node-graph/audio-patch-plan.ts) |
 | Output sends and physical device sinks | [`node-lane-outputs.ts`](../../lib/audio/routing/node-lane-outputs.ts), [`node-device-sinks.ts`](../../lib/audio/routing/node-device-sinks.ts) |
 | External source loading and local file lifetime | [`node-source-loaders.ts`](../../lib/node-source-loaders.ts), [`sources.ts`](../../lib/node-graph/sources.ts) |
 | Persistence, migration and local NAM retention | [`playback-sessions.ts`](../../lib/collections/playback-sessions.ts), [`migrations/`](../../lib/collections/migrations/) |

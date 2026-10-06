@@ -72,7 +72,6 @@ import {
   type Connection,
   connectionBaseline,
   connectionVerdict,
-  deviceOutVerdict,
   kindsPatch,
   parseHandleId,
   type ValidateOptions,
@@ -557,7 +556,7 @@ export function paletteEntries(
       continue;
     }
     if (type === "deviceOut") {
-      entries.push(...outputDeviceEntries(graph, devices.outputs));
+      entries.push(...outputDeviceEntries(devices.outputs));
       continue;
     }
     entries.push(
@@ -662,12 +661,11 @@ function inputDeviceEntries(
 
 /**
  * One Output device per output the browser lists, set to it, leaving out
- * the main output Speakers already play on and any device an Output device
- * already has. With none but the main output listed yet, one to set up in
+ * the main output Speakers already play on. Devices remain available for
+ * multiple independently muted outputs. With only the main output, one to set up in
  * its body.
  */
 function outputDeviceEntries(
-  graph: NodeGraph,
   outputs: readonly PaletteDevice[]
 ): PaletteNodeEntry[] {
   const { name } = getNodeDefinition("deviceOut");
@@ -685,16 +683,14 @@ function outputDeviceEntries(
       },
     ];
   }
-  return others
-    .filter((device) => deviceOutVerdict(graph, device.deviceId).ok)
-    .map((device) => ({
-      device,
-      id: `deviceOut:${device.deviceId}`,
-      kind: "node",
-      name: device.label,
-      section: "outputs",
-      type: "deviceOut",
-    }));
+  return others.map((device) => ({
+    device,
+    id: `deviceOut:${device.deviceId}`,
+    kind: "node",
+    name: device.label,
+    section: "outputs",
+    type: "deviceOut",
+  }));
 }
 
 /** The effects an FX node can swap to: every other shipped non-split FX. */
@@ -845,7 +841,7 @@ export function addPaletteNode(
 
 /**
  * The cable to make when a drag from `from` ends on node `nodeId` rather
- * than on a port: set only when exactly one of its ports fits.
+ * than on a port: prefer the matching signal kind and main port.
  */
 export function autoConnection(
   graph: NodeGraph,
@@ -859,7 +855,21 @@ export function autoConnection(
     return null;
   }
   const cables = validCables(graph, node, from, options, baseline);
-  return cables.length === 1 ? (cables[0] ?? null) : null;
+  const kind = parseHandleId(from.handle)?.kind;
+  const facing = (cable: Connection) =>
+    parseHandleId(
+      from.type === "source" ? cable.targetHandle : cable.sourceHandle
+    );
+  const direct = cables.filter((cable) => facing(cable)?.kind === kind);
+  const main = direct.filter((cable) => facing(cable)?.name === "main");
+  const preferred = main.length === 1 ? main : direct;
+  if (preferred.length === 1) {
+    return preferred[0] ?? null;
+  }
+  if (cables.length === 1) {
+    return cables[0] ?? null;
+  }
+  return null;
 }
 
 type Refusal = Extract<Verdict, { ok: false }>;

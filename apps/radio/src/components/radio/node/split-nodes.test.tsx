@@ -89,7 +89,8 @@ let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
 let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
 let setBandCount: typeof import("@/lib/node-graph/branches")["setBandCount"];
-let BUS_MERGE_MESSAGE: string;
+const BUS_MERGE_MESSAGE =
+  "Sums audio from different sources before shared effects";
 let moduleFrame: typeof import("./module-frame");
 
 beforeAll(async () => {
@@ -100,7 +101,6 @@ beforeAll(async () => {
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
   ({ setBandCount } = await import("@/lib/node-graph/branches"));
-  ({ BUS_MERGE_MESSAGE } = await import("@/lib/node-graph/validate"));
   moduleFrame = await import("./module-frame");
 });
 
@@ -182,7 +182,7 @@ describe("Merge node", () => {
     );
     const badge = view.getByText("in-lane");
     expect(badge.getAttribute("title")).toContain("one station");
-    expect(view.getByText("2 of 8 inputs")).toBeTruthy();
+    expect(view.getByText("2 audio inputs")).toBeTruthy();
   });
 
   test("a Merge summing stations reads bus, with the reason", () => {
@@ -337,7 +337,11 @@ describe("split ports", () => {
       <ModulePorts
         nodeId="split"
         outputIds={outputIds}
-        outputLabel={(port) => `Branch ${port.id.split("-").at(-1)}`}
+        outputLabel={(port) =>
+          port.kind === "control"
+            ? port.label
+            : `Branch ${port.id.split("-").at(-1)}`
+        }
         title="Split"
         type="fxComposite"
       />
@@ -360,15 +364,26 @@ describe("split ports", () => {
     expect(handles()).toEqual([
       "in:audio:main",
       "in:control:parameter",
+      "in:control:main",
       "out:audio:branch-1",
       "out:audio:branch-2",
+      "out:control:branch-1",
+      "out:control:branch-2",
     ]);
     // Only the outputs are named for their branches; the input is an input.
     expect(
       [...view.container.querySelectorAll("[data-handle]")].map((handle) =>
         handle.getAttribute("title")
       )
-    ).toEqual(["Input", "Parameter input", "Branch 1", "Branch 2"]);
+    ).toEqual([
+      "Input",
+      "Parameter input",
+      "Control input",
+      "Branch 1",
+      "Branch 2",
+      "Control 1",
+      "Control 2",
+    ]);
     const measured = updateNodeInternals.mock.calls.length;
 
     view.rerender(

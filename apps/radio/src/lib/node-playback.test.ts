@@ -2861,7 +2861,7 @@ describe("Node Playback key cables", () => {
     return { desired, harness, settled };
   }
 
-  test("a key cable from Station b to a Compressor in a's lane binds b's sound as a's sidechain", async () => {
+  test("adding a key moves FX out of the source channel into shared graph routing", async () => {
     insertNodeSession(duckPatch(false));
     const { desired, harness, settled } = withChannelEffects();
     await harness.playback.activate();
@@ -2871,13 +2871,13 @@ describe("Node Playback key cables", () => {
     await commit(harness, () => duckPatch(true));
     await settled();
 
-    expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
-      expect.objectContaining({
-        id: "comp",
-        sidechain: { channelId: channelOf("b") },
-      }),
-    ]);
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([]);
+    expect(
+      compile(harness.store.state.graph as NodeGraph, {
+        crossOriginIsolated: false,
+      }).patch?.edges.has(KEY_EDGE_ID)
+    ).toBe(true);
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
     // The key listens; it never puts FX or a key on b's own lane.
     expect(desired.get(soundOf("b"))?.sidechainSoundId).toBeNull();
 
@@ -2886,14 +2886,14 @@ describe("Node Playback key cables", () => {
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
   });
 
-  test("a patch opened with its key binds once both lanes exist", async () => {
+  test("a patch opened with a key retains sources without duplicating FX in their channels", async () => {
     insertNodeSession(duckPatch(true));
     const { desired, harness, settled } = withChannelEffects();
 
     await harness.playback.activate();
     await settled();
 
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
   });
 
   test("a Vocoder key overrides its runtime mode and removal restores its authored mode", async () => {
@@ -2920,12 +2920,13 @@ describe("Node Playback key cables", () => {
     const { desired, harness, settled } = withChannelEffects();
     await harness.playback.activate();
     await settled();
-    expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
-      modulatorSource: "external",
-      sidechain: { channelId: channelOf("b") },
-      type: "vocoder",
+    expect(desired.get(soundOf("a"))?.tree).toEqual([]);
+    const authoredVocoder = compile(vocoderPatch, {
+      crossOriginIsolated: false,
+    }).patch?.nodes.get("comp");
+    expect(authoredVocoder?.data).toMatchObject({
+      effect: { modulatorSource: "noise-pink", type: "vocoder" },
     });
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
 
     await commit(harness, (graph) => removeEdges(graph, [KEY_EDGE_ID]));
     await settled();

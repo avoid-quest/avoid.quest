@@ -102,7 +102,7 @@ describe("one rule for every way to connect", () => {
       "Station into a full key",
       plug("kexp", "comp", { to: "in:sidechain:key" }),
       "source",
-      "This input takes one cable",
+      null,
     ],
     [
       "Compressor into itself",
@@ -209,7 +209,13 @@ describe("connectableHandles", () => {
       expect(spy).toHaveBeenCalledTimes(11);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
-      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+      ).toEqual([
+        "comp in:audio:main",
+        "comp in:sidechain:key",
+        "verb in:audio:main",
+        "echo in:audio:main",
+        "speakers in:audio:main",
+      ]);
       expect(verdicts.get("fip out:audio:main")).toEqual({
         code: "bad-handle",
         message: SAME_SIDE_MESSAGE,
@@ -232,7 +238,13 @@ describe("connectableHandles", () => {
       expect(spy).toHaveBeenCalledTimes(11 + 1);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
-      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+      ).toEqual([
+        "comp in:audio:main",
+        "comp in:sidechain:key",
+        "verb in:audio:main",
+        "echo in:audio:main",
+        "speakers in:audio:main",
+      ]);
     } finally {
       spy.mockRestore();
     }

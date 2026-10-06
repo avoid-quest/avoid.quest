@@ -24,7 +24,6 @@ import {
   type NodeStore,
   nodeStore,
 } from "@/lib/node-graph/node-store";
-import { ONE_DEVICE_OUT_MESSAGE } from "@/lib/node-graph/validate";
 import { getNodePlayback, nodeSinkStatuses } from "@/lib/node-playback";
 import { InlineError } from "../inline-error";
 import { DeviceNote, DeviceSelect } from "./audio-input-controls";
@@ -231,9 +230,6 @@ export function OutputDeviceNodeBody({
             )}
             <DeviceSelect
               devices={choices}
-              disabledReason={(deviceId) =>
-                data.taken.includes(deviceId) ? ONE_DEVICE_OUT_MESSAGE : null
-              }
               isLoading={devices.isLoading}
               label="Output device"
               onChange={onPickDevice}

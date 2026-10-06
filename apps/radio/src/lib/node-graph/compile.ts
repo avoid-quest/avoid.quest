@@ -1,23 +1,14 @@
+import {
+  type AudioPatchPlan,
+  audioPatchPlan,
+  needsAudioPatch,
+  patchRoutes,
+} from "./audio-patch-plan";
 import { laneChannelId, laneSoundId } from "./identifiers";
 /**
- * Node Graph Compiler
- *
- * Lowers a validated patch onto what the engine already runs: one managed
- * sound per live source (a Station's stream, a Track's or File's audio, or
- * an Audio input's capture),
- * a leading Filter and Pan on its native strip, and
- * its FX as one series-parallel EffectConfig tree. Cables leaving a lane
- * become edge gains keyed by the cable id, and key cables become sidechain
- * bindings. Nothing here touches audio; `reconcile.ts` diffs two plans.
- *
- * Each source's channel strip folds in here too: its trim multiplies into
- * every exit's gain (as an in-lane Gain would), its pan adds to the lane's
- * Pan, any solo mutes the exits of every unsoloed lane, and a Track's or
- * File's speed, key lock, loop and cue listen become the lane's transport.
- * The fader and mute stay the source's own.
- *
- * Buses, control and modulation land with the layers that ship them. Until
- * then a node that would start a bus is refused with an issue, never dropped.
+ * Compile validated cables into playback sources and outputs. Simple source-owned
+ * trees use the existing lane engine; shared or independent paths use an explicit
+ * audio patch with one processor per node. Control routing is compiled separately.
  */
 
 import {
@@ -31,15 +22,10 @@ import type {
   FxCompositeConfig,
 } from "@/lib/audio/dsp/effects/types";
 import {
-  isEffectChainActive,
   isEffectContainer,
   MAX_EFFECT_TREE_DEPTH,
 } from "@/lib/audio/dsp/routing/effect-tree";
-import {
-  getNodeDefinition,
-  isEffectNodeType,
-  SIDECHAIN_EFFECT_TYPES,
-} from "./catalogue";
+import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import {
   type GraphEdge,
   type GraphNode,
@@ -59,8 +45,6 @@ import {
   type Lane,
   liveAudioNodes,
   nativePlacementIssues,
-  parseHandleId,
-  type Topology,
   type ValidateOptions,
   type WiredEdge,
 } from "./validate";
@@ -174,6 +158,8 @@ export type SinkPlan = {
 
 export type EnginePlan = {
   lanes: Map<string, LanePlan>;
+  /** Explicit Web Audio routing when a patch cannot be represented by one FX tree per source. */
+  patch?: AudioPatchPlan;
   edges: Map<string, EdgePlan>;
   sinks: Map<string, SinkPlan>;
   budget: { monitoringChannels: number };
@@ -356,7 +342,6 @@ function effectOf(node: GraphNode): EffectConfig | null {
  */
 const ADVISORY_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   "budget-playing",
-  "lane-key",
 ]);
 
 type CompileGraph = Pick<NodeGraph, "nodes" | "edges">;
@@ -1017,73 +1002,6 @@ export function layoutSignature(effects: readonly EffectConfig[]): string {
   return hash(JSON.stringify(layoutOf(effects)));
 }
 
-/** Writes the key on the first keyed FX in tree order, and on no other. */
-function keyEffects(
-  effects: readonly EffectConfig[],
-  keys: ReadonlyMap<string, string>
-): EffectConfig[] {
-  let keyed = false;
-  const visit = (current: readonly EffectConfig[]): EffectConfig[] =>
-    current.map((effect) => {
-      const channelId = keys.get(effect.id);
-      let next = effect;
-      if (!keyed && channelId !== undefined) {
-        keyed = true;
-        // A key overrides the runtime modulator, preserving the authored
-        // choice so removing the cable restores it, including after undo.
-        next = {
-          ...effect,
-          ...(effect.type === "vocoder" ? { modulatorSource: "external" } : {}),
-          sidechain: { channelId },
-        } as EffectConfig;
-      }
-      return isEffectContainer(next)
-        ? ({
-            ...next,
-            chains: next.chains.map((chain) => ({
-              ...chain,
-              effects: visit(chain.effects),
-            })),
-          } as EffectConfig)
-        : next;
-    });
-  return visit(effects);
-}
-
-/**
- * The effects that hear the lane, in tree order, as the runtime looks for a
- * key (`findSidechainChannelId` in channel-effects.ts): enabled, and not
- * inside a switched-off container or a muted, silent or unsoloed chain.
- */
-function activeEffects(
-  effects: readonly EffectConfig[],
-  into: EffectConfig[] = []
-): EffectConfig[] {
-  for (const effect of effects) {
-    if (!effect.enabled) {
-      continue;
-    }
-    into.push(effect);
-    if (isEffectContainer(effect)) {
-      const hasSolo = effect.chains.some((chain) => chain.solo);
-      for (const chain of effect.chains) {
-        if (chain.gain !== 0 && isEffectChainActive(chain, hasSolo)) {
-          activeEffects(chain.effects, into);
-        }
-      }
-    }
-  }
-  return into;
-}
-
-/** The lane channel the runtime keys this tree from, or null. */
-function boundKeyChannel(effects: readonly EffectConfig[]): string | null {
-  return (
-    activeEffects(effects).find((effect) => effect.sidechain)?.sidechain
-      ?.channelId ?? null
-  );
-}
-
 type Prepared = {
   graph: CompileGraph;
   byId: Map<string, GraphNode>;
@@ -1091,8 +1009,6 @@ type Prepared = {
   wired: WiredEdge[];
   labels: ReadonlyMap<string, Lane>;
   nativeIssues: Issue[];
-  /** Keyed FX the validator flagged as a lane's second key. */
-  extraKeys: ReadonlySet<string>;
 };
 
 function withoutExcluded(
@@ -1114,14 +1030,22 @@ function withoutExcluded(
 }
 
 /** Nodes this compiler cannot lower yet, each with the reason. */
-function refuse(graph: CompileGraph, { buses, lanes }: Topology): Issue[] {
+function refuse(graph: CompileGraph): Issue[] {
   return graph.nodes.flatMap((node): Issue[] => {
     let message: string | null = null;
-    // Flag where the bus starts; what follows it goes quiet with it.
-    if (lanes.get(node.id) === null && buses.get(node.id) === node.id) {
-      message = "Mixing stations into a bus isn't available yet";
-    } else if (!isCompiled(node.type)) {
+    if (!isCompiled(node.type)) {
       message = `${getNodeDefinition(node.type).name} can't play in a patch yet`;
+    }
+    if (node.type === "frequencySplit" && !splitPorts(node.data.effect)) {
+      return [
+        {
+          code: "split-branches",
+          id: node.id,
+          message:
+            "Band Split needs 2 to 4 ordered bands with one chain per band",
+          target: "node",
+        },
+      ];
     }
     return message
       ? [{ code: "unshipped", id: node.id, message, target: "node" }]
@@ -1131,7 +1055,7 @@ function refuse(graph: CompileGraph, { buses, lanes }: Topology): Issue[] {
 
 /**
  * Drops what failed validation, then refuses what this compiler cannot lower
- * yet (buses, other sources, control), re-validating after every round until
+ * yet, re-validating after every round until
  * the patch is stable, so an issue a drop uncovers is reported too. Each
  * round drops at least one node or cable, so this always settles. Advisory
  * issues come from the final round, the patch the plan is built from.
@@ -1150,16 +1074,11 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
       (issue) => !ADVISORY_CODES.has(issue.code)
     );
     if (blocking.length === 0) {
-      blocking = refuse(kept, analysis.topology);
+      blocking = refuse(kept);
     }
     if (blocking.length === 0) {
       return {
         byId: new Map(kept.nodes.map((node) => [node.id, node])),
-        extraKeys: new Set(
-          advisory
-            .filter((issue) => issue.code === "lane-key")
-            .map((issue) => issue.id)
-        ),
         graph: kept,
         issues: [...issues, ...advisory],
         labels: analysis.topology.lanes,
@@ -1176,41 +1095,6 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
       (issue.target === "node" ? excludedNodes : excludedEdges).add(issue.id);
     }
   }
-}
-
-/** Keyed FX node id → the key's lane channel, grouped by the keyed lane. */
-function planKeys({
-  byId,
-  extraKeys,
-  labels,
-  wired,
-}: Prepared): Map<string, Map<string, string>> {
-  const keys = new Map<string, Map<string, string>>();
-  for (const { edge, to } of wired) {
-    const from = labels.get(edge.source);
-    const lane = labels.get(edge.target);
-    // Only a key straight from its station binds: the engine taps the raw lane.
-    const station = from === edge.source ? byId.get(from) : undefined;
-    const target = byId.get(edge.target);
-    if (
-      to.kind !== "sidechain" ||
-      typeof lane !== "string" ||
-      !(station && isSourceLive(station)) ||
-      // The key the validator flagged stays unkeyed, so the badge is honest.
-      extraKeys.has(edge.target) ||
-      !(target && isKeyable(target))
-    ) {
-      continue;
-    }
-    const laneKeys = keys.get(lane) ?? new Map<string, string>();
-    laneKeys.set(edge.target, laneChannelId(station.id));
-    keys.set(lane, laneKeys);
-  }
-  return keys;
-}
-
-function isKeyable(node: GraphNode): boolean {
-  return (SIDECHAIN_EFFECT_TYPES as readonly string[]).includes(node.type);
 }
 
 function groupLanes(
@@ -1302,11 +1186,47 @@ function estimateBackend(
     : "compat";
 }
 
-/** Compiles a patch into the plan the node engine reconciles against. */
-export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
-  const prepared = prepare(graph, env);
+const TREE_SHAPE_CODES = new Set<IssueCode>([
+  "lane-branches",
+  "not-series-parallel",
+  "split-depth",
+  "split-branches",
+]);
+
+function explicitPlan(
+  prepared: Prepared,
+  lanes: Map<string, LanePlan>,
+  live: Map<string, LiveSource>,
+  sinks: Map<string, SinkPlan>
+): EnginePlan {
+  for (const lane of lanes.values()) {
+    lane.effects = [];
+    lane.filter = null;
+    lane.pan = live.get(lane.id)?.strip.pan ?? 0;
+    lane.nodes = [lane.id];
+    lane.backend = null;
+    lane.layoutSignature = layoutSignature([]);
+  }
+  const patch = audioPatchPlan(prepared.graph, prepared.wired);
+  return {
+    budget: { monitoringChannels: 0 },
+    edges: patchRoutes(patch, lanes),
+    issues: prepared.issues.filter(
+      (issue) =>
+        !TREE_SHAPE_CODES.has(issue.code) ||
+        (issue.code === "split-branches" &&
+          (!prepared.byId.has(issue.id) ||
+            prepared.byId.get(issue.id)?.type === "frequencySplit"))
+    ),
+    lanes,
+    patch,
+    sinks,
+  };
+}
+
+function planSinks(nodes: readonly GraphNode[]): Map<string, SinkPlan> {
   const sinks = new Map<string, SinkPlan>();
-  for (const node of prepared.graph.nodes) {
+  for (const node of nodes) {
     if (node.type === "deviceOut") {
       const { deviceId, muted } = node.data;
       sinks.set(node.id, { deviceId, id: node.id, muted, type: node.type });
@@ -1314,9 +1234,15 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       sinks.set(node.id, { id: node.id, type: node.type });
     }
   }
+  return sinks;
+}
+
+/** Compiles a patch into the plan the node engine reconciles against. */
+export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
+  const prepared = prepare(graph, env);
+  const sinks = planSinks(prepared.graph.nodes);
   const sinkIds = new Set(sinks.keys());
   const members = groupLanes(prepared.labels);
-  const keys = planKeys(prepared);
 
   const lanes = new Map<string, LanePlan>();
   const edges = new Map<string, EdgePlan>();
@@ -1334,21 +1260,33 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     })
   );
   const anySolo = isSoloActive(prepared.graph.nodes);
+  const explicit = needsAudioPatch(
+    prepared.graph,
+    prepared.wired,
+    prepared.labels,
+    prepared.nativeIssues
+  );
   for (const node of prepared.graph.nodes) {
     const source = live.get(node.id);
     if (!source) {
       continue;
     }
-    const lowered = lowerLane(
-      node,
-      prepared,
-      members.get(node.id) ?? new Set([node.id]),
-      sinkIds
-    );
-    const effects = keyEffects(lowered.effects, keys.get(node.id) ?? new Map());
+    const lowered = explicit
+      ? {
+          effects: [],
+          exits: [],
+          lowerer: { filter: null, nodes: [node.id], pan: 0 },
+        }
+      : lowerLane(
+          node,
+          prepared,
+          members.get(node.id) ?? new Set([node.id]),
+          sinkIds
+        );
+    const { effects } = lowered;
     const channelId = laneChannelId(node.id);
     const inputs = new Set(
-      [channelId, boundKeyChannel(effects)].filter(
+      [channelId].filter(
         (id): id is string => id !== null && !monitored.has(id)
       )
     );
@@ -1390,6 +1328,16 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     }
   }
 
+  const fallback =
+    explicit ||
+    prepared.issues.some(
+      (issue) =>
+        TREE_SHAPE_CODES.has(issue.code) &&
+        prepared.byId.get(issue.id)?.type !== "frequencySplit"
+    );
+  if (fallback) {
+    return explicitPlan(prepared, lanes, live, sinks);
+  }
   return {
     budget: { monitoringChannels },
     edges,
@@ -1401,8 +1349,7 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
 
 /**
  * What the compiler made of each Merge: `in-lane` when it closes a split
- * inside one station's lane, `bus` when it would sum stations (refused
- * until buses ship). A Merge fed by nothing has no role.
+ * inside one source tree, `bus` for shared graph routing. A Merge fed by nothing has no role.
  */
 export type MergeRole = "in-lane" | "bus";
 
@@ -1425,26 +1372,11 @@ export function mergeRoles(
     }
     if (inLane.has(node.id)) {
       roles.set(node.id, "in-lane");
-    } else if (refused.has(node.id)) {
+    } else if (plan.patch?.nodes.has(node.id) || refused.has(node.id)) {
       roles.set(node.id, "bus");
     }
   }
   return roles;
-}
-
-function effectsById(
-  effects: readonly EffectConfig[],
-  into = new Map<string, EffectConfig>()
-): Map<string, EffectConfig> {
-  for (const effect of effects) {
-    into.set(effect.id, effect);
-    if (isEffectContainer(effect)) {
-      for (const chain of effect.chains) {
-        effectsById(chain.effects, into);
-      }
-    }
-  }
-  return into;
 }
 
 const EMPTY_SOURCE_REASONS = {
@@ -1471,61 +1403,39 @@ function silentSource(node: GraphNode | undefined): string | null {
 
 /**
  * Why each key cable that keys nothing is idle, by cable id, as the canvas
- * says it: the issue that refused it (a lane's second key, a key from a
- * bus), an empty or hidden source, or an effect switched off. A key that
+ * says it: validation issues, an empty or hidden source, or an effect switched off. A key that
  * reaches its effect's sidechain is left out.
  */
 export function idleKeys(
   graph: Pick<NodeGraph, "nodes" | "edges">,
   plan: EnginePlan
 ): Map<string, string> {
-  const inLane = new Map<string, EffectConfig>();
-  const active = new Set<EffectConfig>();
-  const laneOf = new Map<string, LanePlan>();
-  for (const lane of plan.lanes.values()) {
-    effectsById(lane.effects, inLane);
-    for (const effect of activeEffects(lane.effects)) {
-      active.add(effect);
-    }
-    for (const id of lane.nodes) {
-      laneOf.set(id, lane);
-    }
-  }
-  const issues = new Map(
-    plan.issues.map((issue) => [`${issue.target}:${issue.id}`, issue.message])
-  );
-  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const idle = new Map<string, string>();
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const issues = new Map(
+    plan.issues
+      .filter((issue) => issue.target === "edge")
+      .map((issue) => [issue.id, issue.message])
+  );
   for (const edge of graph.edges) {
-    if (parseHandleId(edge.targetHandle)?.kind !== "sidechain") {
+    if (edge.targetHandle !== "in:sidechain:key") {
       continue;
     }
-    // A refused cable can share its lane with the one that keys, so its own
-    // issue wins over a matching channel.
-    const refusal = issues.get(`edge:${edge.id}`);
-    if (refusal) {
-      idle.set(edge.id, refusal);
-      continue;
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    const effect = target ? effectOf(target) : null;
+    const reason =
+      issues.get(edge.id) ??
+      (edge.muted || edge.gain === 0 ? "This key cable is off" : null) ??
+      silentSource(source) ??
+      (effect?.enabled === false
+        ? "Switch the effect on to use its key"
+        : null);
+    if (reason) {
+      idle.set(edge.id, reason);
+    } else if (!plan.patch?.edges.has(edge.id)) {
+      idle.set(edge.id, "This key isn't used");
     }
-    const effect = inLane.get(edge.target);
-    const channelId = laneOf.get(edge.source)?.channelId;
-    if (channelId && effect?.sidechain?.channelId === channelId) {
-      if (!effect.enabled) {
-        idle.set(edge.id, "Switch the effect on to use its key");
-      } else if (!active.has(effect)) {
-        // The runtime binds no key under an off Split or a silent branch.
-        idle.set(edge.id, "Its branch is off, so the key isn't used");
-      }
-      continue;
-    }
-    idle.set(
-      edge.id,
-      issues.get(`edge:${edge.id}`) ??
-        issues.get(`node:${edge.target}`) ??
-        silentSource(byId.get(edge.source)) ??
-        issues.get(`node:${edge.source}`) ??
-        "This key isn't used"
-    );
   }
   return idle;
 }

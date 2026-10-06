@@ -425,7 +425,7 @@ describe("diff", () => {
     ]);
   });
 
-  test("a key cable is a param change on the keyed lane", () => {
+  test("adding a key transitions from a lane tree to exact graph routing", () => {
     const keyed = (withKey: boolean) =>
       plan(
         [
@@ -450,7 +450,13 @@ describe("diff", () => {
             : []),
         ]
       );
-    expect(types(diff(keyed(false), keyed(true)))).toEqual(["setLaneEffects"]);
+    expect(types(diff(keyed(false), keyed(true)))).toEqual([
+      "removeEdge",
+      "duckLane",
+      "replaceLaneEffects",
+      "unduckLane",
+      "addEdge",
+    ]);
   });
 });
 

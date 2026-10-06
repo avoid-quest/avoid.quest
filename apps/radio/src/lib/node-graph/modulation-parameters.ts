@@ -164,7 +164,14 @@ export function applyModulation(
     }
     const value = outputs[edge.source];
     const source = nodes.get(edge.source);
-    if (!(isModulationNode(source) && source.data.enabled)) {
+    if (
+      !(
+        source &&
+        ((isModulationNode(source) && source.data.enabled) ||
+          source.type === "merge" ||
+          source.type === "fxComposite")
+      )
+    ) {
       continue;
     }
     const target = nodes.get(edge.target);

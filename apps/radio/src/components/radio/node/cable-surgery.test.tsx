@@ -208,7 +208,7 @@ describe("cable surgery shortcuts", () => {
     expect(store.state.graph).toBe(start);
   });
 
-  test("Delete refuses an unhealable Merge with a reason and keeps the whole selection", () => {
+  test("Delete heals a Merge to independent output branches and undo restores the patch", () => {
     const serial = insertNodeOnEdge(patch(), "delay", "compressor->speakers");
     if (!serial.ok) {
       throw new Error(serial.message);
@@ -232,14 +232,14 @@ describe("cable surgery shortcuts", () => {
 
     press("Delete");
 
-    expect(store.state).toBe(before);
-    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(2);
-    const last = toast.getHistory().slice(notifications).at(-1);
-    expect(last && "title" in last ? last.title : null).toContain(
-      "disconnecting a source from its output"
+    expect(store.state.graph?.nodes.some((node) => node.id === merge?.id)).toBe(
+      false
     );
+    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(1);
+    expect(toast.getHistory().length).toBe(notifications);
     undo();
-    expect(store.state).toBe(before);
+    expect(store.state.graph).toEqual(before.graph);
+    expect(store.state.selection).toEqual({ edges: [], nodes: [] });
   });
 
   test("Cmd+D duplicates and selects the copies; one Cmd+Z undoes it", () => {

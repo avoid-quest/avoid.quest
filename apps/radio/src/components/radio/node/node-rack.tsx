@@ -91,6 +91,36 @@ function groupLanes(
   );
 }
 
+/** Shared processors are displayed in every source path that reaches them. */
+function rackLane(plan: EnginePlan, lane: LanePlan): LanePlan {
+  if (!plan.patch) {
+    return lane;
+  }
+  const nodes = [lane.id];
+  const seen = new Set(nodes);
+  for (const id of nodes) {
+    for (const edge of plan.patch.edges.values()) {
+      if (
+        edge.source !== id ||
+        !edge.targetHandle.startsWith("in:audio:") ||
+        seen.has(edge.target)
+      ) {
+        continue;
+      }
+      seen.add(edge.target);
+      const target = plan.patch.nodes.get(edge.target);
+      if (
+        target &&
+        getNodeDefinition(target.type).category !== "output" &&
+        target.type !== "follower"
+      ) {
+        nodes.push(target.id);
+      }
+    }
+  }
+  return { ...lane, nodes };
+}
+
 function RackSection({
   title,
   hint,
@@ -136,13 +166,18 @@ function keyingStations(
   }
   const keyed = new Map<string, string>();
   for (const edge of graph.edges) {
-    const station = stationOf.get(edge.source);
+    const station =
+      stationOf.get(edge.source) ??
+      nodeLabel(graph.nodes.find((node) => node.id === edge.source));
     if (
       station &&
       parseHandleId(edge.targetHandle)?.kind === "sidechain" &&
       !idle.has(edge.id)
     ) {
-      keyed.set(edge.target, station);
+      keyed.set(
+        edge.target,
+        [keyed.get(edge.target), station].filter(Boolean).join(", ")
+      );
     }
   }
   return keyed;
@@ -302,7 +337,7 @@ export function NodeRack({
   const repick = repickFiles(graph);
 
   const listed = new Set([
-    ...[...plan.lanes.values()].flatMap((lane) => lane.nodes),
+    ...[...plan.lanes.values()].flatMap((lane) => rackLane(plan, lane).nodes),
     ...hidden.map((node) => node.id),
     ...repick.map((node) => node.id),
   ]);
@@ -368,7 +403,7 @@ export function NodeRack({
                 >
                   <LaneChain
                     keyedBy={keyedBy}
-                    lane={lane}
+                    lane={rackLane(plan, lane)}
                     nodesById={nodesById}
                   />
                 </NodeSourceRow>

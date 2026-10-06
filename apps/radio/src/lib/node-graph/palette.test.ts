@@ -23,7 +23,7 @@ import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
 } from "./templates";
-import { BUS_MERGE_MESSAGE, validate } from "./validate";
+import { validate } from "./validate";
 
 function radio(id: string, extra: Partial<Radio> = {}): Radio {
   return {
@@ -323,7 +323,7 @@ describe("paletteEntries: audio inputs and output devices", () => {
     );
   });
 
-  test("an output that already has an Output device isn't offered again", () => {
+  test("an output device remains available for another independent output node", () => {
     const added = addPaletteNode(patch, {
       device: { deviceId: "usb", label: "USB interface" },
       id: "deviceOut:usb",
@@ -338,7 +338,7 @@ describe("paletteEntries: audio inputs and output devices", () => {
         paletteEntries(added.graph, { devices, sinkSelection: true }),
         "outputs"
       )
-    ).toEqual(["Monitor"]);
+    ).toEqual(["USB interface", "Monitor"]);
   });
 
   test("an Audio input comes set to its device, with only an audio out, and no cable", () => {
@@ -471,7 +471,7 @@ describe("addPaletteNode", () => {
     ]);
   });
 
-  test("a dropped cable that would not compile leaves the new node loose", () => {
+  test("a dropped source connects to independent output branches", () => {
     const blank = buildNodeGraphFromTemplate("blank", {});
     const delay = (id: string) =>
       createPaletteNode("delay", id, { x: 0, y: 0 }, null, null);
@@ -506,7 +506,8 @@ describe("addPaletteNode", () => {
     );
 
     expect(graph.nodes.some((node) => node.id === nodeId)).toBe(true);
-    expect(graph.edges).toEqual(fanOut.edges);
+    expect(graph.edges).toHaveLength(fanOut.edges.length + 1);
+    expect(validate(graph)).toEqual([]);
   });
 });
 
@@ -527,7 +528,7 @@ describe("addPaletteNode: patch budgets", () => {
     }
   });
 
-  test("a Station that would take a 65th cable comes loose", () => {
+  test("a Station can add a 65th cable", () => {
     const stations = buildNodeGraphFromTemplate("start-from-multiple", {
       saved: Array.from({ length: 16 }, (_, index) => radio(String(index))),
     });
@@ -568,7 +569,7 @@ describe("addPaletteNode: patch budgets", () => {
     const { graph: added, nodeId } = addPaletteNode(graph, emptyStation);
 
     expect(added.nodes.some((node) => node.id === nodeId)).toBe(true);
-    expect(added.edges).toEqual(graph.edges);
+    expect(added.edges).toHaveLength(65);
     expect(validate(added)).toEqual([]);
   });
 });
@@ -677,10 +678,12 @@ describe("dropRefusal", () => {
     type: "source",
   };
 
-  test("a second station dropped on a Merge's body says why it was refused", () => {
+  test("a second station dropped on Merge connects", () => {
     expect(validate(merged)).toEqual([]);
-    expect(autoConnection(merged, fromB, "mix")).toBeNull();
-    expect(dropRefusal(merged, fromB, "mix")).toBe(BUS_MERGE_MESSAGE);
+    expect(autoConnection(merged, fromB, "mix")).toMatchObject({
+      target: "mix",
+    });
+    expect(dropRefusal(merged, fromB, "mix")).toBeNull();
   });
 
   test("says nothing when a port would take the cable", () => {
@@ -724,18 +727,20 @@ describe("dropRefusal", () => {
       nodes: [...duck.nodes, fip, gate, crusher],
     } as typeof duck;
 
-    test("a station dropped on a full FX in a keyed lane says One key per lane", () => {
+    test("a station dropped on an occupied FX input connects", () => {
       expect(validate(keyed)).toEqual([]);
       const fromFip: PaletteFrom = {
         handle: AUDIO_OUT_HANDLE,
         node: "src-fip",
         type: "source",
       };
-      expect(autoConnection(keyed, fromFip, "gate")).toBeNull();
-      expect(dropRefusal(keyed, fromFip, "gate")).toBe("One key per lane");
+      expect(autoConnection(keyed, fromFip, "gate")).toMatchObject({
+        target: "gate",
+      });
+      expect(dropRefusal(keyed, fromFip, "gate")).toBeNull();
     });
 
-    test("a key dropped on a node in no lane says why", () => {
+    test("a key can connect from a loose effect", () => {
       const unkeyed = {
         ...keyed,
         edges: keyed.edges.filter(
@@ -747,10 +752,11 @@ describe("dropRefusal", () => {
         node: "duck",
         type: "target",
       };
-      expect(autoConnection(unkeyed, fromKey, "crusher")).toBeNull();
-      expect(dropRefusal(unkeyed, fromKey, "crusher")).toBe(
-        "A key must come from a station lane"
-      );
+      expect(autoConnection(unkeyed, fromKey, "crusher")).toMatchObject({
+        source: "crusher",
+        targetHandle: "in:sidechain:key",
+      });
+      expect(dropRefusal(unkeyed, fromKey, "crusher")).toBeNull();
       // A station would take it: the drop was fine.
       expect(dropRefusal(unkeyed, fromKey, "src-fip")).toBeNull();
     });
@@ -769,9 +775,14 @@ describe("dropOnNode", () => {
   }
   const loose = { ...patch, nodes: [...patch.nodes, comp] } as typeof patch;
 
-  test("a key let go on a loose Compressor's key input is refused, not rewired as audio", () => {
+  test("a drop on a key input preserves its selected signal path", () => {
     expect(dropOnNode(loose, fromB, "comp", "in:sidechain:key")).toEqual({
-      refuse: "A key only works on a station lane",
+      connect: {
+        source: "src-b",
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: "comp",
+        targetHandle: "in:sidechain:key",
+      },
     });
     // On the body, the one port that fits still takes it.
     expect(dropOnNode(loose, fromB, "comp", null)).toEqual({
@@ -784,7 +795,7 @@ describe("dropOnNode", () => {
     });
   });
 
-  test("a port that is only full gives way to the node's other ports", () => {
+  test("a second source connects to the same Merge input", () => {
     const mix = createPaletteNode("merge", "mix", { x: 400, y: 0 });
     if (!mix) {
       throw new Error("Expected a Merge");
@@ -805,7 +816,12 @@ describe("dropOnNode", () => {
     } as typeof patch;
 
     expect(dropOnNode(merged, fromB, "mix", AUDIO_IN_HANDLE)).toEqual({
-      refuse: BUS_MERGE_MESSAGE,
+      connect: {
+        source: "src-b",
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: "mix",
+        targetHandle: AUDIO_IN_HANDLE,
+      },
     });
   });
 });
@@ -838,11 +854,10 @@ describe("dropOnNode: Replace", () => {
     edge: "a-gain",
   };
 
-  test("a full one-cable input offers to take the cable's place, on the port or the body", () => {
+  test("an occupied audio input connects without replacing its existing cable", () => {
     for (const port of [AUDIO_IN_HANDLE, null]) {
       expect(dropOnNode(fed, fromB, "gain", port)).toEqual({
-        refuse: "This input takes one cable",
-        replace,
+        connect: replace.connection,
       });
     }
   });
@@ -982,7 +997,7 @@ describe("cable surgery entries", () => {
     expect(ids).toContain("filter");
     // A Merge passes one cable through; a split would leave a lone branch.
     expect(ids).toContain("merge");
-    expect(ids).not.toContain("fxComposite");
+    expect(ids).toContain("fxComposite");
 
     const { graph, nodeId } = addPaletteNode(patch, fxEntry("delay"), {
       into: "src-a->speakers",
@@ -995,7 +1010,7 @@ describe("cable surgery entries", () => {
     expect(validate(graph)).toEqual([]);
   });
 
-  test("a cable after an FX refuses the station's own Filter", () => {
+  test("a cable after FX can accept a Filter", () => {
     const { graph: withComp, nodeId } = addPaletteNode(
       patch,
       fxEntry("compressor"),
@@ -1009,7 +1024,7 @@ describe("cable surgery entries", () => {
     );
 
     expect(ids).toContain("delay");
-    expect(ids).not.toContain("filter");
+    expect(ids).toContain("filter");
   });
 
   test("Swap effect… lists every other plain effect, no splits", () => {

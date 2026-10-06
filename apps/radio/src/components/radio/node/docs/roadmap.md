@@ -8,15 +8,11 @@ the source of truth for availability.
 
 ## A later product v2
 
-- **Cross-source buses:** shared Merge/FX buses, sends and returns, crossfade and
-  Dial routing. Sources already mix at physical outputs; a shared authored bus is
-  the missing capability. Revisit ownership, latency and loudness at that seam.
-  The current engine imposes three constraints on that design.
-  `EffectsController.reconcile` accepts only registered AudioManager sounds, so
-  bus FX need an owned bus registration rather than a synthetic sound id.
-  Validation refuses a key cable into FX outside a station lane; keep that
-  refusal until bus FX receive a resolved key source. A pre-fader send must tap
-  the lane's `preFaderSend`, because `nodes.gain` is already post-fader.
+- **Additional bus controls:** pre-fader sends/returns, Crossfade and Dial.
+  Shared Merge/FX buses and direct multi-input effects are implemented through
+  explicit graph processors. Their keys receive the exact connected signal.
+  A future pre-fader send must tap `preFaderSend`, because the current graph
+  receives a source's post-fader output.
 - **Additional control sources:** song/title triggers and Sundial remain
   unshipped. The [modulation prototype](modulation.md) now exposes Macro,
   MIDI input, LFO, Clock, Randomiser, Follower and envelope/curve/smoothing

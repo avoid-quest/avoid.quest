@@ -747,7 +747,7 @@ describe("NodePort", () => {
     start: element.classList.contains("connectablestart"),
   });
 
-  test("a Merge input holding eight cables takes no ninth", () => {
+  test("a Merge input accepts more than eight cables", () => {
     const merge = { data: {}, id: "mix", position: at, type: "merge" };
     const seven = renderPorts(
       [...stations(8), merge],
@@ -764,14 +764,14 @@ describe("NodePort", () => {
       cablesInto("mix", "in:audio:main", 8)
     );
     expect(takes(eight.port("mix", "in:audio:main"))).toEqual({
-      end: false,
-      start: false,
+      end: true,
+      start: true,
     });
     // An output takes any number.
     expect(takes(eight.port("mix", "out:audio:main")).start).toBe(true);
   });
 
-  test("a Compressor key with one cable is locked for a second", () => {
+  test("a Compressor key sums multiple cables", () => {
     const { port } = renderPorts(
       [
         ...stations(1),
@@ -781,7 +781,7 @@ describe("NodePort", () => {
     );
     const key = port("comp", "in:sidechain:key");
     expect(key.dataset.kind).toBe("sidechain");
-    expect(takes(key)).toEqual({ end: false, start: false });
+    expect(takes(key)).toEqual({ end: true, start: true });
     expect(takes(port("comp", "in:audio:main")).end).toBe(true);
   });
 

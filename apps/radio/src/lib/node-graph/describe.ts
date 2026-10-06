@@ -71,7 +71,10 @@ export function portPhrase(port: NodePort | undefined): string {
   if (port.direction === "out") {
     return port.id === "main" ? port.kind : sentence(port.label);
   }
-  return port.id === "main" ? "input" : `${sentence(port.label)} input`;
+  if (port.id === "main") {
+    return port.kind === "control" ? "control input" : "input";
+  }
+  return `${sentence(port.label)} input`;
 }
 
 /** A port on its own node, for a picker: "Audio out", "Key input". */

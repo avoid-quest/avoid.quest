@@ -11,7 +11,7 @@ import {
   parameterCables,
   setModulatorParams,
 } from "./modulation-parameters";
-import { modulationProgram } from "./modulation-runtime";
+import { modulationProgram, routedControlValues } from "./modulation-runtime";
 import {
   MODULATION_DATA_SCHEMAS,
   MODULATION_NODE_TYPES,
@@ -113,10 +113,13 @@ describe("Node modulation routing", () => {
     });
     expect(plan.issues).toEqual([]);
     expect([...plan.lanes.keys()]).toEqual(["station"]);
-    expect(plan.lanes.get("station")?.filter?.frequency).toBe(1000);
+    expect(
+      (plan.patch?.nodes.get("cut")?.data as { frequency: number } | undefined)
+        ?.frequency
+    ).toBe(1000);
     expect(modulationProgram(graph).nodes).toHaveLength(12);
     expect(modulationProgram(graph).audioSources).toEqual({
-      follower: "station",
+      follower: "follower",
     });
   });
 
@@ -125,8 +128,11 @@ describe("Node modulation routing", () => {
     const store = createNodeStore(graph);
     const effective = applyModulation(graph, { lfo: 1 });
     expect(
-      compile(effective, { crossOriginIsolated: true }).lanes.get("station")
-        ?.filter?.frequency
+      (
+        compile(effective, { crossOriginIsolated: true }).patch?.nodes.get(
+          "cut"
+        )?.data as { frequency: number } | undefined
+      )?.frequency
     ).toBe(5623);
     expect(store.state.graph).toBe(graph);
     expect(store.state.history.past).toHaveLength(0);
@@ -138,9 +144,11 @@ describe("Node modulation routing", () => {
       ],
     } as NodeGraph;
     expect(
-      compile(applyModulation(doubled, { lfo: 1, macro: 1 }), {
-        crossOriginIsolated: true,
-      }).lanes.get("station")?.filter?.frequency
+      (
+        compile(applyModulation(doubled, { lfo: 1, macro: 1 }), {
+          crossOriginIsolated: true,
+        }).patch?.nodes.get("cut")?.data as { frequency: number } | undefined
+      )?.frequency
     ).toBe(1000);
     const cut = graph.nodes.find((node) => node.id === "cut");
     if (!cut) {
@@ -494,5 +502,114 @@ describe("sample-clocked modulation sources", () => {
     midi.midi([0x91, 60, 100]);
     midi.midi([255]);
     expect(midi.process([], 1).midiIn).toBe(0);
+  });
+});
+
+describe("control merge and split routing", () => {
+  function routed(): NodeGraph {
+    const graph = patch();
+    return nodeGraphSchema.parse({
+      ...graph,
+      edges: [
+        ...graph.edges.filter((edge) => edge.id !== "mod"),
+        {
+          depth: 0.5,
+          id: "a",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "sum",
+          targetHandle: "in:control:main",
+        },
+        {
+          depth: -0.25,
+          id: "b",
+          source: "lfo",
+          sourceHandle: "out:control:main",
+          target: "sum",
+          targetHandle: "in:control:main",
+        },
+        {
+          id: "c",
+          source: "sum",
+          sourceHandle: "out:control:main",
+          target: "split",
+          targetHandle: "in:control:main",
+        },
+        {
+          depth: 0.5,
+          id: "d",
+          parameter: "frequency",
+          source: "split",
+          sourceHandle: "out:control:branch-1",
+          target: "cut",
+          targetHandle: "in:control:parameter",
+        },
+        {
+          depth: 0.25,
+          id: "e",
+          parameter: "trimDb",
+          source: "split",
+          sourceHandle: "out:control:branch-2",
+          target: "station",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        ...graph.nodes,
+        createPaletteNode("merge", "sum", { x: 200, y: 200 }),
+        createPaletteNode("fxComposite", "split", { x: 400, y: 200 }),
+      ],
+    });
+  }
+  test("routers sum signed inputs and fan out to independent parameter assignments", () => {
+    const graph = routed();
+    expect(validate(graph)).toEqual([]);
+    const program = modulationProgram(graph);
+    const engine = new ModulationDsp(1000);
+    engine.configure(program);
+    engine.process([], 1);
+    expect(engine.values.sum).toBeCloseTo(
+      engine.values.macro * 0.5 - engine.values.lfo * 0.25
+    );
+    expect(engine.values.split).toBe(engine.values.sum);
+    const values = routedControlValues(program, { lfo: 0, macro: 1 });
+    expect(values.sum).toBe(0.5);
+    expect(values.split).toBe(0.5);
+    const effective = applyModulation(graph, values);
+    expect(effective.nodes.find((node) => node.id === "cut")?.data).not.toEqual(
+      graph.nodes.find((node) => node.id === "cut")?.data
+    );
+    expect(
+      effective.nodes.find((node) => node.id === "station")?.data
+    ).not.toEqual(graph.nodes.find((node) => node.id === "station")?.data);
+  });
+  test("removing or muting router inputs clears old outputs even while the worklet is suspended", () => {
+    const graph = routed();
+    const old = { lfo: 0, macro: 1, split: 0.5, sum: 0.5 };
+    const removed = {
+      ...graph,
+      edges: graph.edges.filter((edge) => !["a", "b"].includes(edge.id)),
+    };
+    const values = routedControlValues(modulationProgram(removed), old);
+    expect(values.sum).toBe(0);
+    expect(values.split).toBe(0);
+    expect(applyModulation(removed, values)).toEqual(removed);
+    const muted = {
+      ...graph,
+      edges: graph.edges.map((edge) => ({ ...edge, muted: true })),
+    };
+    expect(routedControlValues(modulationProgram(muted), old).split).toBe(0);
+  });
+  test("invalid parameter cables cannot bypass validation during modulation", () => {
+    const graph = routed();
+    const invalid = {
+      ...graph,
+      edges: graph.edges.map((edge) =>
+        edge.id === "d"
+          ? { ...edge, parameter: "not-a-knob" }
+          : { ...edge, muted: true }
+      ),
+    };
+    expect(applyModulation(invalid, { split: 1 })).toEqual(invalid);
   });
 });

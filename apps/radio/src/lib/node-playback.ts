@@ -1,5 +1,7 @@
 import { captureError } from "@avoid.quest/error";
+import { createNodeAudioPatch } from "@/lib/audio/routing/node-audio-patch";
 import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
+import { patchInputId } from "@/lib/node-graph/audio-patch-plan";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 import {
   applyModulation,
@@ -131,6 +133,7 @@ import {
   type GraphNode,
   isModulationNode,
   isRadioSourceNode,
+  isStripSource,
   migrateNodeGraph,
   type NodeGraph,
 } from "@/lib/node-graph/schema";
@@ -633,9 +636,31 @@ function createNodePlayback(
    * A lane's level per output: the gains of its unmuted cables into it,
    * summed. A muted Output device takes nothing.
    */
+  const patchLaneLevels = (laneId: string, audiblePlan: EnginePlan) => {
+    const source = store.state.graph?.nodes.find((node) => node.id === laneId);
+    const effectiveSource = audiblePlan.patch?.nodes.get(laneId) ?? source;
+    const strip =
+      effectiveSource && isStripSource(effectiveSource)
+        ? effectiveSource.data.strip
+        : null;
+    const anySolo = store.state.graph?.nodes.some(
+      (node) =>
+        isStripSource(node) && node.data.strip.solo && plan.lanes.has(node.id)
+    );
+    return new Map([
+      [
+        patchInputId(laneId),
+        strip && !(anySolo && !strip.solo) ? 10 ** (strip.trimDb / 20) : 0,
+      ],
+    ]);
+  };
+
   const laneLevels = (laneId: string) => {
     const levels = new Map<string, number>();
     const audiblePlan = modulationPlan ?? plan;
+    if (audiblePlan.patch) {
+      return patchLaneLevels(laneId, audiblePlan);
+    }
     for (const edge of audiblePlan.edges.values()) {
       if (edge.from.id !== laneId) {
         continue;
@@ -656,6 +681,12 @@ function createNodePlayback(
    * the main bus while that sink can't; with no device picked, nowhere.
    */
   const routeSink: LaneSinkRoute = (sinkId, send, connectMain) => {
+    if (plan.patch && sinkId.startsWith("audio-patch\u0000")) {
+      return audioPatch.connectSource(
+        sinkId.slice("audio-patch\u0000".length),
+        send
+      );
+    }
     const sink = plan.sinks.get(sinkId);
     if (sink?.type === "speakers") {
       return connectMain();
@@ -674,6 +705,23 @@ function createNodePlayback(
     }
   };
 
+  const audioPatch = createNodeAudioPatch({
+    getHost: () => ctx.audio,
+    onChange: () => publishBadges(),
+    onError: reportNodeFailure("Could not update audio routing"),
+    route: (sinkId, send) =>
+      routeSink(sinkId, send, () =>
+        getOutputRouting().connectMain(
+          send,
+          [...plan.edges.values()].some(
+            (edge) =>
+              edge.to.id === sinkId &&
+              plan.lanes.get(edge.from.id)?.source.kind === "device"
+          )
+        )
+      ),
+  });
+
   const laneOutputs = createLaneOutputs({
     getHost: () => ctx.audio,
     getLevels: laneLevels,
@@ -690,7 +738,7 @@ function createNodePlayback(
       const after = [...next.edges.values()].filter(
         (edge) => edge.from.id === lane.id
       );
-      if (!deepEquals(before, after)) {
+      if (next.patch || !deepEquals(before, after)) {
         laneOutputs.refresh(lane.id);
       }
     }
@@ -743,6 +791,9 @@ function createNodePlayback(
     modulationPlan =
       effective === graph ? null : compiledPlan(effective, getEnv());
     const next = modulationPlan ?? plan;
+    if (next.patch) {
+      audioPatch.modulate(next.patch);
+    }
     for (const lane of next.lanes.values()) {
       applyTransientLane(lane);
     }
@@ -758,6 +809,9 @@ function createNodePlayback(
     }
     modulation ??= createModulationRuntime({
       getAudioTap: (id) => {
+        if (plan.patch) {
+          return audioPatch.getTap(id);
+        }
         const lane = [...plan.lanes.values()].find(
           (entry) => entry.id === id || entry.nodes.includes(id)
         );
@@ -773,7 +827,10 @@ function createNodePlayback(
 
   const deviceSinks = createDeviceSinks({
     getPlaybackEpoch: () => epoch,
-    onReroute: (sinkId) => laneOutputs.reroute(sinkId),
+    onReroute: (sinkId) => {
+      laneOutputs.reroute(sinkId);
+      audioPatch.reroute();
+    },
     onStatus: () => publishSinkStatuses(),
   });
 
@@ -818,6 +875,15 @@ function createNodePlayback(
   /** Writes every lane's badge, and its FX nodes', when one changed. */
   const publishBadges = () => {
     const badges: Record<string, BackendBadge> = {};
+    for (const { id, outcomes } of audioPatch.outcomes()) {
+      if (outcomes.some((outcome) => outcome.status === "failed")) {
+        badges[id] = "bypassed";
+      } else if (
+        outcomes.some((outcome) => outcome.backend === "compatibility")
+      ) {
+        badges[id] = "compat";
+      }
+    }
     for (const lane of plan.lanes.values()) {
       const badge = laneBackendBadge(lane.backend, laneOutcomes.get(lane.id));
       if (!badge) {
@@ -1979,9 +2045,17 @@ function createNodePlayback(
     }
     try {
       syncSinks(previous, next);
+      audioPatch.sync(next.patch);
       applyOps(ops, previous, next, strict);
       if (previousAudible !== previous) {
         refreshChangedLevels(previousAudible, next);
+      }
+      if (previous.patch !== next.patch) {
+        audioPatch.reroute();
+        laneOutputs.reroute();
+        for (const laneId of next.lanes.keys()) {
+          laneOutputs.refresh(laneId);
+        }
       }
       syncModulation(graph);
     } finally {
@@ -2028,6 +2102,7 @@ function createNodePlayback(
   const whenSettled = async (): Promise<void> => {
     await batch;
     await persistence.whenSettled();
+    await audioPatch.whenSettled();
     if (inFlight.size === 0) {
       return;
     }
@@ -2266,6 +2341,7 @@ function createNodePlayback(
     }
     advancingLanes.clear();
     laneOutputs.dispose();
+    audioPatch.dispose();
     deviceSinks.dispose();
     publishSinkStatuses();
     plan = EMPTY_PLAN;

@@ -177,6 +177,63 @@ afterEach(() => {
 });
 
 describe("EffectsController", () => {
+  test("a shared graph processor runs without creating a playback sound", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const sounds = new Map<string, SoundInstance>();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds,
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const input = new TestAudioNode(context) as unknown as AudioNode;
+    const output = new TestAudioNode(context) as unknown as AudioNode;
+    const effect = {
+      ...createDefaultEffectConfig("compressor", "fx", 0),
+      enabled: true,
+    };
+    expect(
+      await controller.connectProcessor(
+        "shared",
+        input,
+        output,
+        desiredEffects([effect])
+      )
+    ).toBe(true);
+    expect(sounds.size).toBe(0);
+    expect(runtime.connectSound).toHaveBeenCalledTimes(1);
+    expect(runtime.syncEffects).toHaveBeenCalledWith("shared", [effect]);
+    expect(controller.getRuntimeOutcome("shared").backend).toBe("official");
+    controller.cleanupSound("shared");
+    expect(runtime.deleteSound).toHaveBeenCalled();
+    expect(
+      (await controller.reconcile("shared", desiredEffects([effect]))).status
+    ).toBe("failed");
+  });
+  test("removing a processor before its initial reconciliation settles cannot reconnect it", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const input = new TestAudioNode(context);
+    const output = new TestAudioNode(context);
+    const pending = controller.connectProcessor(
+      "removed",
+      input as unknown as AudioNode,
+      output as unknown as AudioNode,
+      desiredEffects([])
+    );
+    controller.cleanupSound("removed");
+    expect(await pending).toBe(false);
+    expect(input.connections.size).toBe(0);
+    expect(runtime.connectSound).not.toHaveBeenCalled();
+  });
+
   test("exposes openDAW performance data without exposing its Project", () => {
     const runtime = createRuntime();
     const controller = new EffectsController({

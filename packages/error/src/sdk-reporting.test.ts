@@ -150,8 +150,16 @@ test("outer classification controls cause capture while retaining cause stacks a
       }),
       { operation: "expected.wrapper", surface: "ui" }
     );
+    capturePlaybackError(
+      new DOMException("Unexpected media abort", "AbortError"),
+      {
+        errorCode: "PLAY_ERROR",
+        errorMessage: "Playback could not start",
+        mode: "node",
+      }
+    );
     await Sentry.flush(2000);
-    expect(events).toHaveLength(2);
+    expect(events).toHaveLength(3);
     expect(events[0]).toMatchObject({
       level: "fatal",
       tags: {
@@ -171,6 +179,13 @@ test("outer classification controls cause capture while retaining cause stacks a
       )
     ).toBe(true);
     expect(events[1]?.tags?.error_code).toBe("CRITICAL_ABORT_CAUSE");
+    expect(events[2]?.tags).toMatchObject({
+      error_category: "playback",
+      error_expected: "false",
+    });
+    expect(events[2]?.exception?.values?.at(-1)?.value).toContain(
+      "Unexpected media abort"
+    );
   } finally {
     await Sentry.close();
     Sentry.getCurrentScope().clearBreadcrumbs();

@@ -171,6 +171,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       const loadError =
         error instanceof Error ? error : new Error("Audio playback failed");
       if (generation === this.generation) {
+        this.shouldResumeAfterLoad = false;
+        this.audio.autoplay = false;
+        this.cancelRecovery();
         this._status = "error";
         this.callbacks.onError?.(loadError);
       }
@@ -204,7 +207,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       try {
         await loadPromise;
       } catch (error) {
-        if (this.isPlaybackIntentCanceled(playbackIntent)) {
+        // A failed load clears autoplay, but still rejects this start. Only a
+        // later user action supersedes the play request.
+        if (playbackIntent !== this.playbackIntent) {
           return;
         }
         throw error;
@@ -367,7 +372,6 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     } catch (error) {
       if (generation === this.generation) {
         this.resetMediaElement({
-          preservePlaybackIntent: this.shouldResumeAfterLoad,
           resetProgress: true,
         });
       }

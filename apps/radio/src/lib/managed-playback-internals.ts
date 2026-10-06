@@ -210,7 +210,9 @@ export function setManagedPlaybackError(
 ): void {
   setPlaybackChannelRuntime(channelId, () => ({
     error: toRuntimeAudioError(error, "PLAY_ERROR", radio),
+    isBuffering: false,
     isLoading: false,
+    isPlaying: false,
   }));
 }
 

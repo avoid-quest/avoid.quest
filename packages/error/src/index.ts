@@ -151,16 +151,10 @@ export function toAppError(
     return error;
   }
 
+  // The caller owns cancellation intent. An AbortError can also be a
+  // terminal playback or network failure, so retain its classification.
   return new AppError({
     ...fallback,
-    ...(isAbortPlaybackError(error)
-      ? {
-          category: "cancellation" as const,
-          expected: true,
-          severity: "info" as const,
-          status: 499,
-        }
-      : {}),
     cause: error,
   });
 }
@@ -534,7 +528,7 @@ export type PlaybackTelemetryPayload = {
   retryPhase?: RetryPhase;
 };
 
-/** Only actual cancellation identity is quiet; recovery messages are not evidence. */
+/** Recognize raw SDK aborts; handled errors retain their caller's policy. */
 export function isAbortPlaybackError(
   error: unknown,
   _message?: string

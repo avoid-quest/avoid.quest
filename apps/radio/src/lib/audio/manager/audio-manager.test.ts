@@ -4,6 +4,7 @@ import {
   FakeAudioContext,
   type FakeAudioParam,
 } from "../routing/fake-audio-nodes";
+import { createPlaybackSourceCallbacks } from "./audio-manager-source-callbacks";
 import type {
   AudioNodes,
   MainOutputConnect,
@@ -95,6 +96,113 @@ afterEach(() => {
 });
 
 describe("AudioManager", () => {
+  test("startup cleanup does not announce an ended track to playlist listeners", () => {
+    const manager = AudioManager.getInstance();
+    const soundId = manager.createSound(station, "node:n:video");
+    const instance = getRegistry(manager).get(soundId);
+    if (!instance) {
+      throw new Error("sound was not created");
+    }
+    const states: AudioState[] = [];
+    const callbacks = createPlaybackSourceCallbacks({
+      instance,
+      notifyListeners: (_id, state) => states.push(state),
+      soundId,
+    });
+    instance.playbackSource = {
+      ...createPendingSource(),
+      stop: () => callbacks.onEnded?.(),
+    } as PlaybackSource;
+    manager.subscribe(soundId, (state) => states.push(state));
+
+    (
+      manager as unknown as {
+        rollbackEarlyPlayback: (
+          id: string,
+          sound: SoundInstance,
+          source: PlaybackSource | null
+        ) => void;
+      }
+    ).rollbackEarlyPlayback(soundId, instance, null);
+
+    expect(states.some((state) => state.hasEnded)).toBe(false);
+    expect(instance.playbackSource).toBeNull();
+    expect(states.at(-1)).toMatchObject({
+      isLoading: false,
+      isPlaying: false,
+    });
+  });
+
+  test("a renewed URL can restart a source removed after startup failure", async () => {
+    const manager = AudioManager.getInstance();
+    const soundId = manager.createSound(station, "node:n:video");
+    const instance = getRegistry(manager).get(soundId);
+    if (!instance) {
+      throw new Error("sound was not created");
+    }
+    const play = mock(() => {
+      instance.playing = true;
+      instance.playbackSource = createPendingSource();
+      return Promise.resolve();
+    });
+    manager.playSound = play;
+
+    await manager.refreshStreamUrl(
+      soundId,
+      "https://media.example/renewed.webm",
+      0,
+      "progressive"
+    );
+
+    expect(play).toHaveBeenCalledWith(soundId, instance.volume);
+    expect(instance.radio.streamUrl).toBe("https://media.example/renewed.webm");
+    expect(instance.playing).toBe(true);
+  });
+
+  test("a graph playback rejection stops the source and clears loading", async () => {
+    const capture = createDeviceCaptureHarness();
+    try {
+      const { manager, context } = capture;
+      const internals = manager as unknown as {
+        ensurePlaybackSetup: () => Promise<void>;
+        output: {
+          getMainMeterSource: () => unknown;
+          replaceContext: () => Promise<void>;
+        };
+      };
+      internals.ensurePlaybackSetup = async () => undefined;
+      internals.output.getMainMeterSource = () => context.createGain();
+      internals.output.replaceContext = async () => undefined;
+      const soundId = manager.createSound(station, "node:n:video");
+      const instance = getRegistry(manager).get(soundId);
+      if (!instance) {
+        throw new Error("sound was not created");
+      }
+      const failure = new DOMException("Playback failed", "NotSupportedError");
+      const pause = mock(() => undefined);
+      instance.playbackSource = {
+        ...createPendingSource(),
+        pause,
+        play: () => Promise.reject(failure),
+      } as PlaybackSource;
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+
+      await expect(manager.playSound(soundId)).rejects.toBe(failure);
+
+      expect(pause).toHaveBeenCalledTimes(1);
+      expect(instance.loading).toBe(false);
+      expect(instance.playing).toBe(false);
+      expect(states.at(-1)).toMatchObject({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      });
+    } finally {
+      capture.restore();
+    }
+  });
+
   test.each(["stopSound", "cleanupSound", "cleanup"] as const)(
     "%s cancels pending capture before callbacks or graph connection",
     async (cancel) => {

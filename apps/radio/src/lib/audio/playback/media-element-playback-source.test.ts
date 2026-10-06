@@ -311,6 +311,51 @@ afterEach(() => {
 });
 
 describe("MediaElementPlaybackSource native playback", () => {
+  test("a failed start stays stopped when late media events arrive", async () => {
+    const browser = installBrowser();
+    const onPlaying = mock(() => undefined);
+    const onError = mock(() => undefined);
+    const onBuffering = mock(() => undefined);
+    const source = new MediaElementPlaybackSource(null, "youtube", {
+      onBuffering,
+      onError,
+      onPlaying,
+    });
+    try {
+      const audio = browser.audio();
+      const loading = source.load({
+        format: "progressive",
+        src: "https://media.example/expired.webm",
+      });
+      const playing = source.play();
+      const rejected = Promise.all([
+        loading.catch((error: unknown) => error),
+        playing.catch((error: unknown) => error),
+      ]);
+      await flushMicrotasks();
+      audio.error = { code: 2 } as MediaError;
+      audio.emit("error");
+      for (const error of await rejected) {
+        expect(error).toHaveProperty("message", "Audio stream failed to load");
+      }
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      audio.emit("waiting");
+      audio.emit("stalled");
+      audio.emit("playing");
+
+      expect(source.status).toBe("error");
+      expect(source.isBuffering).toBe(false);
+      expect(audio.autoplay).toBe(false);
+      expect(audio.paused).toBe(true);
+      expect(onPlaying).not.toHaveBeenCalled();
+      expect(onBuffering).not.toHaveBeenCalledWith(true);
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
   test("supersedes a pending attachment and ignores its readiness", async () => {
     const browser = installBrowser();
     const onReady = mock(() => undefined);
@@ -504,8 +549,10 @@ describe("MediaElementPlaybackSource native playback", () => {
       (_error: Error, _recoveryPending?: boolean) => undefined
     );
     const onStreamError = mock((_position: number, _error: Error) => undefined);
+    const onPlaying = mock(() => undefined);
     const source = new MediaElementPlaybackSource(null, "native", {
       onError,
+      onPlaying,
       onStreamError,
     });
     try {
@@ -522,6 +569,30 @@ describe("MediaElementPlaybackSource native playback", () => {
       expect(onStreamError).toHaveBeenCalledWith(42, expect.any(Error));
       expect(onError).toHaveBeenCalledWith(expect.any(Error), true);
       expect(onStreamError.mock.calls[0]?.[1]).toBe(onError.mock.calls[0]?.[0]);
+
+      onPlaying.mockClear();
+      audio.emit("waiting");
+      audio.emit("stalled");
+      audio.emit("playing");
+      browser.dispatchNetworkEvent("offline");
+      browser.dispatchNetworkEvent("online");
+      audio.emit("error");
+      expect(source.status).toBe("error");
+      expect(source.isBuffering).toBe(false);
+      expect(onPlaying).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      const refreshing = source.refreshUrl({
+        format: "progressive",
+        src: "https://media.example/renewed.mp3",
+      });
+      await flushMicrotasks();
+      audio.error = null;
+      audio.emit("canplay");
+      expect(await refreshing).toBe(true);
+      audio.emit("playing");
+      expect(source.status).toBe("streaming");
+      expect(onPlaying).toHaveBeenCalledTimes(1);
     } finally {
       source.cleanup();
       browser.restore();

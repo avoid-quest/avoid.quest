@@ -297,79 +297,67 @@ export class AudioManager {
       volume,
     });
 
-    // Create audio nodes if not exists
-    if (!instance.nodes) {
-      instance.nodes = createAudioNodes(
-        context,
-        volume * this.volume.getGlobalVolume()
-      );
-    }
-
-    // Initialize the requested gain before any source is connected. This is
-    // especially important for muted incoming crossfade sources.
-    this.volume.set(soundId, volume);
-
-    let playPromise: Promise<void> | null = null;
     const activePlaybackSource = instance.playbackSource?.isActive
       ? instance.playbackSource
       : null;
+    try {
+      // Create audio nodes if not exists
+      if (!instance.nodes) {
+        instance.nodes = createAudioNodes(
+          context,
+          volume * this.volume.getGlobalVolume()
+        );
+      }
 
-    // Create remote playback source if not exists or if previous ended/errored
-    if (activePlaybackSource) {
-      playPromise = this.startPlayback(activePlaybackSource);
-    } else {
-      // Clean up old source
-      instance.playbackSource?.cleanup();
+      // Initialize the requested gain before any source is connected. This is
+      // especially important for muted incoming crossfade sources.
+      this.volume.set(soundId, volume);
 
-      // Create playback source
-      instance.playbackSource = createPlaybackSource(
-        context,
-        soundId,
-        createPlaybackSourceCallbacks({
-          instance,
-          notifyListeners: this.notifyListeners,
+      let playPromise: Promise<void>;
+      // Create remote playback source if not exists or if previous ended/errored
+      if (activePlaybackSource) {
+        playPromise = this.startPlayback(activePlaybackSource);
+      } else {
+        // Clean up old source
+        instance.playbackSource?.cleanup();
+
+        // Create playback source
+        instance.playbackSource = createPlaybackSource(
+          context,
           soundId,
-        })
-      );
+          createPlaybackSourceCallbacks({
+            instance,
+            notifyListeners: this.notifyListeners,
+            soundId,
+          })
+        );
 
-      // Start graph preparation before requesting media playback. The native
-      // shell is connected synchronously, while effect runtimes may continue
-      // preparing behind a muted branch. Request play in this same task to
-      // preserve mobile transient user activation.
-      const loadPromise = this.handleDeferredRejection(
-        instance.playbackSource.load(toPlaybackInput(instance.radio))
-      );
-      const setupPromise = this.ensurePlaybackSetup(
-        soundId,
-        instance,
-        activePlaybackSource,
-        resumePromise
-      );
-      const graphPromise = this.connectAudioGraphOrRollback(
-        soundId,
-        instance,
-        activePlaybackSource
-      );
-      playPromise = this.startPlayback(instance.playbackSource);
-      await Promise.all([setupPromise, loadPromise, graphPromise]);
-    }
+        // Start graph preparation before requesting media playback. The native
+        // shell is connected synchronously, while effect runtimes may continue
+        // preparing behind a muted branch. Request play in this same task to
+        // preserve mobile transient user activation.
+        const loadPromise = this.handleDeferredRejection(
+          instance.playbackSource.load(toPlaybackInput(instance.radio))
+        );
+        const setupPromise = this.ensurePlaybackSetup(resumePromise);
+        const graphPromise = this.ensureAudioGraphConnected(soundId, instance);
+        playPromise = this.startPlayback(instance.playbackSource);
+        await Promise.all([
+          setupPromise,
+          loadPromise,
+          graphPromise,
+          playPromise,
+        ]);
+      }
 
-    if (activePlaybackSource) {
-      await this.ensurePlaybackSetup(
-        soundId,
-        instance,
-        activePlaybackSource,
-        resumePromise
-      );
-    }
-
-    if (activePlaybackSource) {
-      this.effects.resumeSource(soundId);
-    }
-
-    // Start playback
-    if (playPromise) {
-      await playPromise;
+      if (activePlaybackSource) {
+        await this.ensurePlaybackSetup(resumePromise);
+        this.effects.resumeSource(soundId);
+        await playPromise;
+      }
+    } catch (error) {
+      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      throw error;
     }
   }
 
@@ -1004,10 +992,24 @@ export class AudioManager {
     streamFormat?: Radio["streamFormat"]
   ): Promise<void> {
     const instance = this.sounds.get(soundId);
-    if (!instance?.playbackSource) {
-      throw new Error(
-        `Cannot refresh sound ${soundId}: sound not found or playback is not initialized`
-      );
+    if (!instance) {
+      throw new Error(`Cannot refresh sound ${soundId}: sound not found`);
+    }
+
+    const refreshedRadio = {
+      ...instance.radio,
+      streamFormat: streamFormat ?? inferStreamFormat(newUrl),
+      streamUrl: newUrl,
+    };
+    // A failed first start disposes its source. The renewed URL needs the
+    // normal source creation and graph setup before it can play again.
+    if (!instance.playbackSource) {
+      instance.radio = refreshedRadio;
+      await this.playSound(soundId, instance.volume);
+      if (seekPosition !== undefined && seekPosition > 0) {
+        this.seekSound(soundId, seekPosition);
+      }
+      return;
     }
 
     // Update loading state
@@ -1017,12 +1019,6 @@ export class AudioManager {
       isLoading: true,
       isPlaying: false,
     });
-
-    const refreshedRadio = {
-      ...instance.radio,
-      streamFormat: streamFormat ?? inferStreamFormat(newUrl),
-      streamUrl: newUrl,
-    };
 
     try {
       // A pause while the new URL loads keeps the sound paused.
@@ -1190,7 +1186,6 @@ export class AudioManager {
     if (activePlaybackSource) {
       activePlaybackSource.pause();
     } else {
-      instance.playbackSource?.stop();
       instance.playbackSource?.cleanup();
       instance.playbackSource = null;
     }
@@ -1206,35 +1201,18 @@ export class AudioManager {
   }
 
   private async ensurePlaybackSetup(
-    soundId: string,
-    instance: SoundInstance,
-    activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null,
     resumePromise: Promise<void>
   ): Promise<void> {
-    try {
-      await resumePromise;
-      await this.init();
-    } catch (error) {
-      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
-      throw error;
-    }
+    await resumePromise;
+    await this.init();
   }
 
-  private async connectAudioGraphOrRollback(
+  private async ensureAudioGraphConnected(
     soundId: string,
-    instance: SoundInstance,
-    activePlaybackSource: NonNullable<SoundInstance["playbackSource"]> | null
+    instance: SoundInstance
   ): Promise<void> {
-    let graphConnected = false;
-    try {
-      graphConnected = await this.connectAudioGraph(instance);
-    } catch (error) {
-      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
-      throw error;
-    }
-
+    const graphConnected = await this.connectAudioGraph(instance);
     if (!graphConnected) {
-      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
       throw new Error(`Audio graph connection failed for ${soundId}`);
     }
   }

@@ -756,10 +756,13 @@ export class LaneSlot {
     }
     const attempt = this.begin("pick");
     const { signal } = attempt.controller;
+    const picking = abortable(pick(signal), signal);
+    // The pick is lane work until it ends, as a start's run is.
+    attempt.running = picking.then(ignore, ignore);
     let picked: Radio | null = null;
     let cause: unknown = null;
     try {
-      picked = await abortable(pick(signal), signal);
+      picked = await picking;
     } catch (error) {
       cause = error;
     } finally {
@@ -841,12 +844,9 @@ export class LaneSlot {
     if (this.plan?.source.kind === "device") {
       return false;
     }
-    return this.stepping() || isAudible(this.channelId);
-  }
-
-  /** Whether a start, renewal or repeat is running. */
-  private stepping(): boolean {
-    return this.attempt?.state === "running" && this.attempt.kind !== "pick";
+    const { attempt } = this;
+    const stepping = attempt?.state === "running" && attempt.kind !== "pick";
+    return stepping || isAudible(this.channelId);
   }
 
   /** Shows and reports a failure, worded by `userMessage` or its cause. */
@@ -869,7 +869,7 @@ export class LaneSlot {
 
   /** Whether the driver or an attempt still has work. */
   busy(): boolean {
-    return this.waiting !== null || this.stepping();
+    return this.waiting !== null || this.attempt?.state === "running";
   }
 
   /** Resolves once the driver's step and the attempt in progress end. */

@@ -5353,6 +5353,41 @@ describe("Node Playback: Track and File sources", () => {
     }
   );
 
+  test("settling waits for a playlist's next track while its stream resolves", async () => {
+    insertNodeSession(patch([trackNode("playlist", youtubePlaylist)]));
+    const resolution = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("playlist", true);
+    setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+
+    let settled = false;
+    const settling = harness.playback.whenSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/two.m4a",
+    });
+    await settling;
+    expect(
+      getPlaybackChannel("node", channelOf("playlist"))?.radio
+    ).toMatchObject({ streamUrl: "https://media.example/two.m4a" });
+    expect(getPlaybackChannelRuntime(channelOf("playlist")).isPlaying).toBe(
+      true
+    );
+  });
+
   test("a third playing Track past the mobile budget is refused with its message", async () => {
     insertNodeSession(
       patch([

@@ -3044,6 +3044,8 @@ describe("Node Playback audio inputs and output devices", () => {
     const active = new Set<string>();
     /** Captures whose track ended, as an unplugged device's does. */
     const ended = new Set<string>();
+    /** Each capture's channels: an unchanged selection is a no-op. */
+    const selections = new Map<string, string>();
     Object.assign(context.audio, {
       getDeviceSource: mock((soundId: string) =>
         active.has(soundId)
@@ -3076,6 +3078,10 @@ describe("Node Playback audio inputs and output devices", () => {
             `playDeviceSound ${soundId} ${deviceId} ${JSON.stringify(constraints)} ${JSON.stringify(channelSelection)}`
           );
           active.add(soundId);
+          selections.set(
+            soundId,
+            `${channelSelection?.left}:${channelSelection?.right}`
+          );
           setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
             isPlaying: true,
           }));
@@ -3084,9 +3090,11 @@ describe("Node Playback audio inputs and output devices", () => {
       ),
       setDeviceChannelSelection: mock(
         (soundId: string, selection: { left: number; right: number }) => {
-          calls.push(
-            `setDeviceChannelSelection ${soundId} ${selection.left}:${selection.right}`
-          );
+          const channels = `${selection.left}:${selection.right}`;
+          if (selections.get(soundId) !== channels) {
+            selections.set(soundId, channels);
+            calls.push(`setDeviceChannelSelection ${soundId} ${channels}`);
+          }
         }
       ),
     });
@@ -3660,6 +3668,45 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(
       calls.filter((call) => call.startsWith("playDeviceSound"))
     ).toHaveLength(1);
+  });
+
+  test("channels changed while the device prompt is open apply once the capture opens", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const harness = createHarness();
+    const { calls } = deviceEngine(harness.context);
+    const startCapture = harness.context.audio.playDeviceSound;
+    const prompt = Promise.withResolvers<void>();
+    harness.context.audio.playDeviceSound = mock(
+      async (...args: Parameters<typeof startCapture>) => {
+        await prompt.promise;
+        return startCapture(...args);
+      }
+    );
+    await harness.playback.activate();
+    const live = harness.playback.setPlaying("mic", true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    commitNodeGraph(
+      (graph) => ({
+        ...graph,
+        nodes: graph.nodes.map((node) =>
+          node.type === "deviceIn"
+            ? {
+                ...node,
+                data: { ...node.data, channelSelection: { left: 1, right: 1 } },
+              }
+            : node
+        ),
+      }),
+      harness.store
+    );
+    harness.playback.flush();
+    prompt.resolve();
+    await live;
+
+    expect(calls.at(-1)).toBe(
+      `setDeviceChannelSelection ${soundOf("mic")} 1:1`
+    );
   });
 
   test("a reload never goes live on its own: restore skips a device input", async () => {

@@ -388,10 +388,14 @@ export class LaneInstance {
       ),
       signal
     );
-    // A fader changed during the permission prompt keeps its latest value.
+    // A fader or channels changed during the permission prompt keep their
+    // latest values.
     const latest = this.slot.plan;
-    if (latest && !latest.muted && !signal.aborted) {
-      ctx.channels.setVolume("node", this.channelId, latest.volume);
+    if (latest && !signal.aborted) {
+      this.applyChannels();
+      if (!latest.muted) {
+        ctx.channels.setVolume("node", this.channelId, latest.volume);
+      }
     }
   }
 

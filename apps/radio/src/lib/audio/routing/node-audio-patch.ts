@@ -25,6 +25,7 @@ type Port = {
   out: AudioNode;
   processorId?: string;
   effects?: EffectConfig[];
+  transientEffects?: EffectConfig[];
   retirement?: object;
 };
 type Module = {
@@ -32,6 +33,7 @@ type Module = {
   keyRegistered: boolean;
   sinkRelease?: () => void;
   type: GraphNode["type"];
+  nativeData?: GraphNode["data"];
   input: GainNode;
   key: GainNode;
   keyId: string;
@@ -327,6 +329,7 @@ export function createNodeAudioPatch({
         }
         port.processorId = undefined;
         port.effects = undefined;
+        port.transientEffects = undefined;
         port.retirement = undefined;
       })
     );
@@ -350,8 +353,13 @@ export function createNodeAudioPatch({
     });
     const key = keyed ? module.keyId : null;
     if (transient) {
-      if (port.processorId) {
+      if (
+        port.processorId &&
+        JSON.stringify(port.transientEffects ?? port.effects) !==
+          JSON.stringify(effects)
+      ) {
         module.host.modulateNodeProcessor(port.processorId, effects);
+        port.transientEffects = effects;
       }
       return;
     }
@@ -374,8 +382,12 @@ export function createNodeAudioPatch({
           key
         )
       );
-    } else if (JSON.stringify(port.effects) !== JSON.stringify(effects)) {
+    } else if (
+      port.transientEffects ||
+      JSON.stringify(port.effects) !== JSON.stringify(effects)
+    ) {
       port.effects = effects;
+      port.transientEffects = undefined;
       track(module.host.updateNodeProcessor(port.processorId, effects, key));
     }
   };
@@ -387,8 +399,12 @@ export function createNodeAudioPatch({
     if (!transient) {
       syncKey(module, hasKey(node.id));
     }
+    const nativeChanged = module.nativeData !== node.data;
+    module.nativeData = node.data;
     for (const [handle, port] of module.ports) {
-      updateNative(node, port.out);
+      if (nativeChanged) {
+        updateNative(node, port.out);
+      }
       if (getNodeDefinition(node.type).effectType) {
         updatePort(node, module, handle, port, transient);
       }

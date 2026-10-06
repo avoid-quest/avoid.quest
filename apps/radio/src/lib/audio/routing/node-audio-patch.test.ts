@@ -380,6 +380,14 @@ describe("explicit audio patch routing", () => {
     expect(h.host.connectNodeProcessor).toHaveBeenCalledTimes(1);
     expect(h.host.updateNodeProcessor).toHaveBeenCalledTimes(1);
     expect(h.host.modulateNodeProcessor).toHaveBeenCalledTimes(1);
+    h.runtime.modulate(plan);
+    expect(h.host.modulateNodeProcessor).toHaveBeenCalledTimes(1);
+    h.runtime.sync(modified);
+    await h.runtime.whenSettled();
+    expect(h.host.updateNodeProcessor).toHaveBeenCalledTimes(2);
+    expect(h.host.updateNodeProcessor.mock.calls.at(-1)?.[1][0]).toMatchObject({
+      outputGain: 0.4,
+    });
     const beforeId = h.host.connectNodeProcessor.mock.calls[0]?.[0];
     h.runtime.sync({
       ...plan,

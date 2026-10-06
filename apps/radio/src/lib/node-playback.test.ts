@@ -5862,6 +5862,64 @@ describe("Node Playback: modulation readouts", () => {
     }
   });
 
+  test("shared FX skip constant readouts and restore authored values when the last modulator is removed", async () => {
+    const graph = modulatedPatch();
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        ...graph,
+        edges: [
+          cable("a", "reverb"),
+          cable("b", "reverb"),
+          cable("reverb", "speakers"),
+          {
+            ...graph.edges.find((edge) => edge.id === "control"),
+            parameter: "dryWet",
+            target: "reverb",
+          },
+        ],
+        nodes: [...graph.nodes, reverb("reverb", { dryWet: 0.3 })],
+      })
+    );
+    const harness = modulationHarness();
+    const { desired } = recordPatchProcessors(harness.context);
+    instantStarts(harness.context);
+    const main = spyOn(getOutputRouting(), "connectMain").mockImplementation(
+      () => () => undefined
+    );
+    try {
+      await harness.playback.activate();
+      await harness.playback.playAll();
+      const audio = new FakeAudioContext();
+      connectPatchLane(harness.context, audio, "a");
+      connectPatchLane(harness.context, audio, "b");
+      await harness.playback.whenSettled();
+      const setter = harness.context.audio.modulateNodeProcessor as ReturnType<
+        typeof mock
+      >;
+      harness.refresh.mockClear();
+      harness.emit({ macro: 1 });
+      expect(setter).toHaveBeenCalledTimes(1);
+      expect(setter.mock.calls.at(-1)?.[1]).toMatchObject([
+        { dryWet: 0.55, id: "reverb" },
+      ]);
+      harness.emit({ macro: 1 });
+      expect(setter).toHaveBeenCalledTimes(1);
+      expect(harness.refresh).not.toHaveBeenCalled();
+      await commit(harness, (current) => ({
+        ...current,
+        edges: current.edges.filter((edge) => edge.id !== "control"),
+        nodes: current.nodes.filter((node) => node.id !== "macro"),
+      }));
+      expect([...desired.values()][0]?.tree).toMatchObject([
+        { dryWet: 0.3, id: "reverb" },
+      ]);
+    } finally {
+      await harness.playback.deactivate();
+      harness.runtime.mockRestore();
+      main.mockRestore();
+    }
+  });
+
   test("an unconnected Macro does not compile or write lane parameters on telemetry ticks", async () => {
     const graph = modulatedPatch();
     insertNodeSession({

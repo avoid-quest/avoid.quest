@@ -850,7 +850,13 @@ function createNodePlayback(
       const after = [...next.edges.values()].filter(
         (edge) => edge.from.id === lane.id
       );
-      if (next.patch || !deepEquals(before, after)) {
+      const patchLevelsChanged =
+        next.patch &&
+        !deepEquals(
+          [...patchLaneLevels(lane.id, previous)],
+          [...patchLaneLevels(lane.id, next)]
+        );
+      if (patchLevelsChanged || !deepEquals(before, after)) {
         laneOutputs.refresh(lane.id);
       }
     }
@@ -1788,7 +1794,7 @@ function createNodePlayback(
 
   const addLane = (laneId: string, channelId: string) => {
     const generation = bumpLane(laneId);
-    const wasPlaying =
+    const wasPlaying: boolean =
       (carriedLanes.get(laneId) ?? false) && !explicitStarts.has(laneId);
     carriedLanes.delete(laneId);
     const settling = settlingLanes.get(laneId);

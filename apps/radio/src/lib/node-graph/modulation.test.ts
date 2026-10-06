@@ -240,7 +240,7 @@ describe("Node modulation routing", () => {
     const overflow = {
       ...graph,
       edges: [
-        ...Array.from({ length: 64 }, (_, index) => ({
+        ...Array.from({ length: 256 }, (_, index) => ({
           ...cable,
           id: `invalid-${index}`,
           sourceHandle: "out:control:missing",

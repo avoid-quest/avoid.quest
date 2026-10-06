@@ -41,6 +41,10 @@ export function AboutYou() {
           <dd className="text-muted-foreground">
             Stations, settings, saved sessions, Node patches and MIDI mappings
             are saved in this browser.
+            <br />
+            Radio also keeps a random <code>radio_session_id</code> cookie for
+            API session checks. It is sent with API requests and expires after
+            one year.
           </dd>
         </div>
         <div>

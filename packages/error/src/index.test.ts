@@ -22,9 +22,11 @@ let captureException: ReturnType<
   typeof spyOn<typeof Sentry, "captureException">
 >;
 let capturedScope: ReturnType<Sentry.Scope["getScopeData"]> | undefined;
+let isEnabled: ReturnType<typeof spyOn<typeof Sentry, "isEnabled">>;
 
 beforeEach(() => {
   capturedScope = undefined;
+  isEnabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
   // Keep real scope handling, but never initialize a client or send telemetry.
   captureException = spyOn(Sentry, "captureException").mockImplementation(
     () => {
@@ -36,6 +38,7 @@ beforeEach(() => {
 
 afterEach(() => {
   captureException.mockRestore();
+  isEnabled.mockRestore();
 });
 
 describe("Sentry privacy configuration", () => {

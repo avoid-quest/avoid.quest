@@ -24,6 +24,7 @@ export type AppErrorInit = {
   cause?: unknown;
   tags?: Record<string, string | number | boolean>;
   context?: Record<string, unknown>;
+  reportingHandled?: boolean;
 };
 
 export type ProblemErrorPayload = {
@@ -31,6 +32,10 @@ export type ProblemErrorPayload = {
   message: string;
   requestId: string;
   status: number;
+  category?: ErrorCategory;
+  expected?: boolean;
+  severity?: ErrorSeverity;
+  reportingHandled?: boolean;
 };
 
 export type AppResult<T> =
@@ -87,6 +92,7 @@ export class AppError extends Error {
   readonly status: number;
   readonly tags?: Record<string, string | number | boolean>;
   readonly context?: Record<string, unknown>;
+  readonly reportingHandled: boolean;
 
   constructor(init: AppErrorInit) {
     const safeMessage = normalizeSafeMessage(init.safeMessage);
@@ -105,6 +111,7 @@ export class AppError extends Error {
     this.status = init.status ?? DEFAULT_STATUS_BY_CATEGORY[init.category];
     this.tags = init.tags;
     this.context = init.context;
+    this.reportingHandled = init.reportingHandled ?? false;
   }
 }
 
@@ -112,12 +119,20 @@ export function ok<T>(data: T): AppResult<T> {
   return { data, ok: true };
 }
 
-export function fail(error: AppError, requestId: string): AppResult<never> {
+export function fail(
+  error: AppError,
+  requestId: string,
+  reportingHandled = error.reportingHandled
+): Extract<AppResult<never>, { ok: false }> {
   return {
     error: {
+      category: error.category,
       code: error.code,
+      expected: error.expected,
       message: error.safeMessage,
+      reportingHandled,
       requestId,
+      severity: error.severity,
       status: error.status,
     },
     ok: false,
@@ -149,6 +164,22 @@ export function shouldReportToSentry(error: AppError): boolean {
     return false;
   }
   return true;
+}
+
+/** Restore classification and only retain explicitly established reporting ownership. */
+export function fromProblemError(payload: ProblemErrorPayload): AppError {
+  const category =
+    payload.category ?? (payload.status >= 500 ? "dependency" : "validation");
+  return new AppError({
+    category,
+    code: payload.code,
+    expected: payload.expected,
+    reportingHandled: payload.reportingHandled ?? false,
+    safeMessage: payload.message,
+    severity: payload.severity,
+    status: payload.status,
+    tags: { request_id: payload.requestId },
+  });
 }
 
 type DedupeStore = {
@@ -308,7 +339,11 @@ export function captureError(
 ): string | undefined {
   const appError = resolveCaptureError(error);
 
-  if (!shouldReportToSentry(appError)) {
+  if (
+    appError.reportingHandled ||
+    !shouldReportToSentry(appError) ||
+    !Sentry.isEnabled()
+  ) {
     return;
   }
 
@@ -480,12 +515,12 @@ export async function runServerFn<T>(options: {
     return ok(data);
   } catch (error) {
     const appError = toAppError(error, options.fallback);
-    captureError(appError, {
+    const eventId = captureError(appError, {
       operation: options.operation,
       requestId,
       surface: "server-fn",
     });
-    return fail(appError, requestId);
+    return fail(appError, requestId, appError.reportingHandled || !!eventId);
   }
 }
 

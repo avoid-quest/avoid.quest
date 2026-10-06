@@ -175,6 +175,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         this.audio.autoplay = false;
         this.cancelRecovery();
         this._status = "error";
+        this.setBuffering(false);
         this.callbacks.onError?.(loadError);
       }
       throw loadError;

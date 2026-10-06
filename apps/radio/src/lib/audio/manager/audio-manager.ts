@@ -32,6 +32,7 @@ import {
   getAudioContext,
   getAudioContextManager,
   initialAudioState,
+  type PlaybackSource,
   type Radio,
   resumeAudioContext,
   toPlaybackInput,
@@ -100,6 +101,7 @@ export class AudioManager {
   private readonly listeners = new Map<string, Set<AudioStateCallback>>();
   private readonly outputConnectors = new Map<string, SoundOutputConnector>();
   private readonly deviceStarts = new Map<string, symbol>();
+  private readonly playbackStarts = new Map<string, { cancelled: boolean }>();
   readonly volume: VolumeController;
   private readonly effects: EffectsController;
   private readonly output: OutputRouting;
@@ -237,7 +239,15 @@ export class AudioManager {
   /**
    * Play a sound
    */
-  async playSound(soundId: string, volume = 1): Promise<void> {
+  playSound(soundId: string, volume = 1): Promise<void> {
+    return this.playRemoteSound(soundId, volume);
+  }
+
+  private async playRemoteSound(
+    soundId: string,
+    volume: number,
+    seekPosition?: number
+  ): Promise<void> {
     const instance = this.sounds.get(soundId);
     if (!instance) {
       throw new Error(`Sound with id ${soundId} not found`);
@@ -264,43 +274,55 @@ export class AudioManager {
       return;
     }
 
-    if (instance.outputMode === "native") {
-      await this.playNativeSound(soundId, instance, volume);
-      return;
-    }
-
-    const context = getAudioContext();
-    if (!context) {
-      throw new Error("Audio context not available");
-    }
-    const resumePromise = resumeAudioContext();
-    // Build the native master shell synchronously so the media play request
-    // can remain in the originating user-activation task on mobile.
-    this.output.getMainMeterSource(context);
-    this.output.replaceContext(context).catch((error) => {
-      captureError(error, {
-        operation: "replaceAudioOutputContext",
-        surface: "ui",
-      });
-    });
-
-    // Update instance state
-    instance.volume = volume;
-    instance.playing = true;
-    instance.loading = true;
-
-    // Notify loading state
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      error: null,
-      isLoading: true,
-      isPlaying: true,
-      volume,
-    });
-
+    const request = { cancelled: false };
+    this.playbackStarts.set(soundId, request);
+    const isCurrent = () =>
+      this.sounds.get(soundId) === instance &&
+      this.playbackStarts.get(soundId) === request &&
+      !request.cancelled;
     const activePlaybackSource = instance.playbackSource?.isActive
       ? instance.playbackSource
       : null;
     try {
+      if (instance.outputMode === "native") {
+        await this.playNativeSound(
+          soundId,
+          instance,
+          volume,
+          seekPosition,
+          isCurrent
+        );
+        return;
+      }
+
+      const context = getAudioContext();
+      if (!context) {
+        throw new Error("Audio context not available");
+      }
+      const resumePromise = resumeAudioContext();
+      // Build the native master shell synchronously so the media play request
+      // can remain in the originating user-activation task on mobile.
+      this.output.getMainMeterSource(context);
+      this.output.replaceContext(context).catch((error) => {
+        captureError(error, {
+          operation: "replaceAudioOutputContext",
+          surface: "ui",
+        });
+      });
+
+      // Update instance state
+      instance.volume = volume;
+      instance.playing = true;
+      instance.loading = true;
+
+      // Notify loading state
+      notifySoundState(this.notifyListeners, soundId, instance, {
+        error: null,
+        isLoading: true,
+        isPlaying: true,
+        volume,
+      });
+
       // Create audio nodes if not exists
       if (!instance.nodes) {
         instance.nodes = createAudioNodes(
@@ -322,14 +344,10 @@ export class AudioManager {
         instance.playbackSource?.cleanup();
 
         // Create playback source
-        instance.playbackSource = createPlaybackSource(
+        instance.playbackSource = this.createManagedPlaybackSource(
           context,
           soundId,
-          createPlaybackSourceCallbacks({
-            instance,
-            notifyListeners: this.notifyListeners,
-            soundId,
-          })
+          instance
         );
 
         // Start graph preparation before requesting media playback. The native
@@ -341,7 +359,12 @@ export class AudioManager {
         );
         const setupPromise = this.ensurePlaybackSetup(resumePromise);
         const graphPromise = this.ensureAudioGraphConnected(soundId, instance);
-        playPromise = this.startPlayback(instance.playbackSource);
+        playPromise = this.startLoadedPlayback(
+          instance.playbackSource,
+          loadPromise,
+          seekPosition,
+          isCurrent
+        );
         await Promise.all([
           setupPromise,
           loadPromise,
@@ -352,12 +375,21 @@ export class AudioManager {
 
       if (activePlaybackSource) {
         await this.ensurePlaybackSetup(resumePromise);
+        if (!isCurrent()) {
+          return;
+        }
         this.effects.resumeSource(soundId);
         await playPromise;
       }
     } catch (error) {
-      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      if (isCurrent()) {
+        this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
+      }
       throw error;
+    } finally {
+      if (this.playbackStarts.get(soundId) === request) {
+        this.playbackStarts.delete(soundId);
+      }
     }
   }
 
@@ -540,12 +572,17 @@ export class AudioManager {
    * Pause a sound
    */
   pauseSound(soundId: string): void {
+    const request = this.playbackStarts.get(soundId);
+    if (request) {
+      request.cancelled = true;
+    }
     const instance = this.sounds.get(soundId);
     if (!instance) {
       return;
     }
 
     instance.playing = false;
+    instance.buffering = false;
     // A pause while connecting abandons the connect; only playback start or an
     // error would otherwise clear the flag.
     instance.loading = false;
@@ -564,6 +601,7 @@ export class AudioManager {
 
     notifySoundState(this.notifyListeners, soundId, instance, {
       error: null,
+      isBuffering: false,
       isLoading: false,
       isPlaying: false,
     });
@@ -574,6 +612,10 @@ export class AudioManager {
    */
   stopSound(soundId: string): void {
     this.deviceStarts.delete(soundId);
+    const request = this.playbackStarts.get(soundId);
+    if (request) {
+      request.cancelled = true;
+    }
     const instance = this.sounds.get(soundId);
     if (!instance) {
       return;
@@ -581,6 +623,7 @@ export class AudioManager {
 
     instance.playing = false;
     instance.loading = false;
+    instance.buffering = false;
     instance.playbackSource?.stop();
     instance.deviceSource?.stop();
     this.effects.stopSource(soundId);
@@ -1005,12 +1048,18 @@ export class AudioManager {
     // normal source creation and graph setup before it can play again.
     if (!instance.playbackSource) {
       instance.radio = refreshedRadio;
-      await this.playSound(soundId, instance.volume);
-      if (seekPosition !== undefined && seekPosition > 0) {
-        this.seekSound(soundId, seekPosition);
-      }
+      await this.playRemoteSound(soundId, instance.volume, seekPosition);
       return;
     }
+
+    const source = instance.playbackSource;
+    const request = { cancelled: false };
+    this.playbackStarts.set(soundId, request);
+    const isCurrent = () =>
+      this.sounds.get(soundId) === instance &&
+      instance.playbackSource === source &&
+      this.playbackStarts.get(soundId) === request &&
+      !request.cancelled;
 
     // Update loading state
     instance.loading = true;
@@ -1022,10 +1071,14 @@ export class AudioManager {
 
     try {
       // A pause while the new URL loads keeps the sound paused.
-      const playing = await instance.playbackSource.refreshUrl(
+      const playing = await source.refreshUrl(
         toPlaybackInput(refreshedRadio),
         seekPosition
       );
+
+      if (!isCurrent()) {
+        return;
+      }
 
       instance.radio = refreshedRadio;
       instance.loading = false;
@@ -1037,6 +1090,9 @@ export class AudioManager {
         isPlaying: playing,
       });
     } catch (error) {
+      if (!isCurrent()) {
+        throw error;
+      }
       instance.loading = false;
       instance.playing = false;
 
@@ -1049,6 +1105,10 @@ export class AudioManager {
         { cause: error, duringStart: true }
       );
       throw error;
+    } finally {
+      if (this.playbackStarts.get(soundId) === request) {
+        this.playbackStarts.delete(soundId);
+      }
     }
   }
 
@@ -1100,6 +1160,7 @@ export class AudioManager {
     }
 
     this.soundRegistry.clear();
+    this.playbackStarts.clear();
     this.listeners.clear();
     this.outputConnectors.clear();
     this.meters.clear();
@@ -1120,10 +1181,56 @@ export class AudioManager {
     return promise;
   }
 
+  private createManagedPlaybackSource(
+    context: AudioContext | null,
+    soundId: string,
+    instance: SoundInstance
+  ): PlaybackSource {
+    const source = createPlaybackSource(
+      context,
+      soundId,
+      createPlaybackSourceCallbacks({
+        instance,
+        isCurrent: () =>
+          this.sounds.get(soundId) === instance &&
+          instance.playbackSource === source &&
+          !this.playbackStarts.get(soundId)?.cancelled,
+        isStarting: () => this.playbackStarts.has(soundId),
+        notifyListeners: this.notifyListeners,
+        soundId,
+      })
+    );
+    return source;
+  }
+
+  private startLoadedPlayback(
+    source: PlaybackSource,
+    loading: Promise<void>,
+    seekPosition: number | undefined,
+    isCurrent: () => boolean
+  ): Promise<void> {
+    if (seekPosition === undefined || seekPosition <= 0) {
+      return this.startPlayback(source);
+    }
+    // Recovery already has an unlocked audio context. Apply its position on
+    // this source before requesting playback, never through a later ID lookup.
+    return this.handleDeferredRejection(
+      loading.then(() => {
+        if (!isCurrent()) {
+          return;
+        }
+        source.seek(seekPosition);
+        return source.play();
+      })
+    );
+  }
+
   private async playNativeSound(
     soundId: string,
     instance: SoundInstance,
-    volume: number
+    volume: number,
+    seekPosition: number | undefined,
+    isCurrent: () => boolean
   ): Promise<void> {
     instance.volume = volume;
     instance.playing = true;
@@ -1138,34 +1245,30 @@ export class AudioManager {
     const activePlaybackSource = instance.playbackSource?.isActive
       ? instance.playbackSource
       : null;
-    try {
-      if (activePlaybackSource) {
-        this.volume.set(soundId, volume);
-        await this.startPlayback(activePlaybackSource);
-        return;
-      }
-
-      instance.playbackSource?.cleanup();
-      instance.playbackSource = createPlaybackSource(
-        null,
-        soundId,
-        createPlaybackSourceCallbacks({
-          instance,
-          notifyListeners: this.notifyListeners,
-          soundId,
-        })
-      );
+    if (activePlaybackSource) {
       this.volume.set(soundId, volume);
-
-      const loadPromise = this.handleDeferredRejection(
-        instance.playbackSource.load(toPlaybackInput(instance.radio))
-      );
-      const playPromise = this.startPlayback(instance.playbackSource);
-      await Promise.all([loadPromise, playPromise]);
-    } catch (error) {
-      this.rollbackEarlyPlayback(soundId, instance, activePlaybackSource);
-      throw error;
+      await this.startPlayback(activePlaybackSource);
+      return;
     }
+
+    instance.playbackSource?.cleanup();
+    instance.playbackSource = this.createManagedPlaybackSource(
+      null,
+      soundId,
+      instance
+    );
+    this.volume.set(soundId, volume);
+
+    const loadPromise = this.handleDeferredRejection(
+      instance.playbackSource.load(toPlaybackInput(instance.radio))
+    );
+    const playPromise = this.startLoadedPlayback(
+      instance.playbackSource,
+      loadPromise,
+      seekPosition,
+      isCurrent
+    );
+    await Promise.all([loadPromise, playPromise]);
   }
 
   private startPlayback(

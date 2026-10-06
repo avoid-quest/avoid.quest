@@ -59,7 +59,12 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       gain: { value: 1 },
       pan: { value: 0 },
     });
-  const worklet = audioNode();
+  const worklet = Object.assign(audioNode(), {
+    isReady: () => {
+      initializing.resolve();
+      return engineReady;
+    },
+  });
   let restart: RestartWorklet | undefined;
   const context = {
     audioWorklet: {
@@ -169,12 +174,12 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       }
       return project;
     },
-    restartWorklet: async () => {
+    restartWorklet: async (ready: Promise<void> = Promise.resolve()) => {
       if (!restart) {
         throw new Error("Worklet has not started");
       }
       await restart.unload(undefined);
-      const replacement = audioNode();
+      const replacement = Object.assign(audioNode(), { isReady: () => ready });
       restart.load(replacement as never);
       return replacement;
     },
@@ -218,6 +223,27 @@ function parameter(
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
+  test("startup follows replacement worklets when earlier processors never become ready", async () => {
+    const initial = deferred();
+    const replacement = deferred();
+    const h = await createHarness(initial.promise);
+    let connected = false;
+    const connecting = h.runtime
+      .connectSound("deck", h.source, h.destination)
+      .then((result) => {
+        connected = result;
+      });
+    await h.initializing.promise;
+    await h.restartWorklet(new Promise<void>(() => undefined));
+    await h.restartWorklet(replacement.promise);
+    expect(connected).toBe(false);
+    replacement.resolve();
+    await connecting;
+    expect(connected).toBe(true);
+    expect(h.runtime.soundCount).toBe(1);
+    expect(h.runtime.isReady).toBe(true);
+  });
+
   test("reports only the first worklet failure per runtime and ignores disposed runtimes", async () => {
     const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(

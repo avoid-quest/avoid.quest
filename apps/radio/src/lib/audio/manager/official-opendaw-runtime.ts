@@ -242,7 +242,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       false
     );
     try {
+      const ready = Promise.withResolvers<void>();
       const load = (worklet: EngineWorklet): void => {
+        worklet.isReady().then(ready.resolve, ready.reject);
         // Every worklet starts with master output 0 connected. Radio uses only
         // monitoring returns, including after openDAW replaces a failed worklet.
         worklet.disconnect(this.context.destination, 0, 0);
@@ -289,7 +291,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         },
       });
       load(initialWorklet);
-      await project.engine.isReady();
+      await ready.promise;
 
       if (this.closed) {
         throw new Error("openDAW runtime initialization was canceled");

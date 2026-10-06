@@ -499,10 +499,13 @@ export class AudioManager {
    */
   private async connectAudioGraph(instance: SoundInstance): Promise<boolean> {
     const graphSource = instance.playbackSource ?? instance.deviceSource;
+    const graphNodes = instance.nodes;
+    // Pause retains the active source and graph; Stop ends the source.
     const isCurrent = () =>
       this.sounds.get(instance.sourceId) === instance &&
       (instance.playbackSource ?? instance.deviceSource) === graphSource &&
-      !this.playbackRequests.get(instance.sourceId)?.cancelled;
+      instance.nodes === graphNodes &&
+      graphSource?.isActive === true;
     const connected = await connectAudioGraph({
       connectEffectsGraph: (soundId, source, destination, inputChannels) =>
         this.effects.connectGraph(soundId, source, destination, inputChannels),

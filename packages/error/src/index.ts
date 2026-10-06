@@ -222,16 +222,16 @@ export function makeSentryOptions(config: {
         ? null
         : breadcrumb;
     },
+    beforeSendLog: () => null,
+    beforeSendMetric: () => null,
     dataCollection: DATA_COLLECTION,
     dsn: config.dsn,
-    enableLogs: false,
-    enableMetrics: false,
     environment: config.environment,
     maxBreadcrumbs: 50,
     release: config.release,
     sampleRate: 1.0,
     tracesSampleRate: 0,
-  } as const;
+  } as const satisfies Sentry.Options;
 }
 
 export function shouldDropKnownBrowserApiNoise(

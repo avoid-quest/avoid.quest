@@ -193,7 +193,7 @@ function parseAppName(release: string): string {
 // everything when unset. These values reproduce v10's `sendDefaultPii: false`,
 // as listed in Sentry's v10-to-v11 migration guide.
 const PII_HEADER_DENYLIST = {
-  deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+  deny: ["forwarded", "-ip", "remote-", "via", "-user", "referer", "referrer"],
 };
 const DATA_COLLECTION = {
   cookies: false,

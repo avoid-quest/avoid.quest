@@ -45,7 +45,17 @@ describe("Sentry privacy configuration", () => {
       environment: "test",
       release: "radio@test",
     }).dataCollection;
-    const ipFilter = { deny: ["forwarded", "-ip", "remote-", "via", "-user"] };
+    const ipFilter = {
+      deny: [
+        "forwarded",
+        "-ip",
+        "remote-",
+        "via",
+        "-user",
+        "referer",
+        "referrer",
+      ],
+    };
     expect(collection.userInfo).toBe(false);
     expect(collection.cookies).toBe(false);
     expect(collection.httpBodies).toEqual([]);

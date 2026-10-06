@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
+import { AboutYou } from "./about-you";
 import { LoadingFallback, RadioManagement } from "./radio-management";
 
 const ImportExport = lazy(() =>
@@ -348,6 +349,7 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         }
         title="Version"
       />
+      <AboutYou />
       <div className="flex flex-wrap items-center gap-3 py-3 text-muted-foreground text-xs">
         <Button asChild size="icon" variant="ghost">
           <a

@@ -266,6 +266,49 @@ describe("EffectsController", () => {
     }
   );
 
+  test("knobs on a disabled Radio-only effect keep the official lane and its authored state", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const comp = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    const distortion = {
+      ...createDefaultEffectConfig("distortion", "dist", 1),
+      enabled: false,
+    };
+    await controller.reconcile("lane", desiredEffects([comp, distortion]));
+    await controller.connectGraph(
+      "lane",
+      source as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    runtime.writeEffect.mockImplementation(() => {
+      throw new Error(
+        "No official device exists for the disabled Radio-only effect"
+      );
+    });
+    const edited = { ...distortion, amount: 0.9 };
+    expect(await controller.setEffectFields("lane", edited.id, edited)).toBe(
+      "applied"
+    );
+    runtime.connectSound.mockImplementation(() => {
+      throw new Error("The selected backend must survive this knob");
+    });
+    expect(
+      (await controller.reconcile("lane", desiredEffects([comp, edited])))
+        .backend
+    ).toBe("official");
+    controller.cleanup();
+  });
+
   test("a knob edited during connection becomes the connected authored value", async () => {
     const context = new TestAudioContext();
     const source = new TestAudioNode(context);

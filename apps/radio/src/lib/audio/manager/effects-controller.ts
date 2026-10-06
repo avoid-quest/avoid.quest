@@ -6,6 +6,7 @@ import type {
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
+  isOfficialOpenDawEffect,
   selectOfficialEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
@@ -290,6 +291,10 @@ class EffectsController {
     }
     if (!state.officialConnected) {
       return "structural";
+    }
+    if (!(config.enabled || isOfficialOpenDawEffect(config))) {
+      state.effects = next;
+      return "applied";
     }
     const result =
       this.officialRuntime?.writeEffect(soundId, effectId, config) ??

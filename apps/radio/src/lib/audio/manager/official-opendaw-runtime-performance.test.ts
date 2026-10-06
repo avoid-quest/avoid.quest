@@ -32,7 +32,8 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
         isReady: () => Promise.resolve(),
         play: mock(() => undefined),
       },
-      startAudioWorklet: () => ({ disconnect: () => undefined }),
+      startAudioWorklet: () =>
+        Object.assign(new EventTarget(), { disconnect: () => undefined }),
       terminate: () => undefined,
     };
     const createProject = mock(() => project);

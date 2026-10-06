@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import type { Radio } from "@/lib/audio";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -410,7 +411,14 @@ export function createStationDiscovery(
               limit: 10,
               signal: controller.signal,
             });
-          } catch {
+          } catch (error) {
+            if (isCurrent()) {
+              captureError(error, {
+                operation: "searchStationDirectory",
+                surface: "ui",
+                tags: { searchPlatform: source },
+              });
+            }
             return;
           }
           const safeCandidates = candidates.filter(hasSafeStreamUrl);

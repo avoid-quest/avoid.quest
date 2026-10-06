@@ -1,3 +1,4 @@
+import { AppError } from "@avoid.quest/error";
 import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
 import {
   isMixcloudShowUrl,
@@ -26,7 +27,7 @@ import { getYouTubeClient } from "@/lib/youtube";
 
 type PlatformItemPayloadResult =
   | { data: PlatformItem; ok: true }
-  | { error: { code: string; message: string }; ok: false };
+  | { error: { code: string; message: string; cause?: unknown }; ok: false };
 
 type PlatformItemLoadOptions = {
   /** Stops a Spotify match, which can run many YouTube requests. */
@@ -46,7 +47,7 @@ type PlatformItemLoaderDependencies = {
 
 export type LoadPlatformItemResult =
   | { radio: Radio; success: true }
-  | { code: string; error: string; success: false };
+  | { code: string; error: string; cause?: unknown; success: false };
 
 async function resolveStaticAudioItem(
   url: string,
@@ -57,6 +58,7 @@ async function resolveStaticAudioItem(
   } catch (error) {
     return {
       error: {
+        cause: error,
         code: "STATIC_AUDIO_CLIENT_RESOLUTION_FAILED",
         message:
           error instanceof Error
@@ -81,6 +83,7 @@ async function resolveYouTube(
   } catch (error) {
     return {
       error: {
+        cause: error,
         code: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
         message:
           error instanceof Error
@@ -122,6 +125,7 @@ async function resolveExternalPlatform(
   } catch (error) {
     return {
       error: {
+        cause: error,
         code: "PLATFORM_CLIENT_RESOLUTION_FAILED",
         message:
           error instanceof Error
@@ -136,7 +140,18 @@ async function resolveExternalPlatform(
 function unsupportedPlatform(
   message = "Unsupported platform URL"
 ): PlatformItemPayloadResult {
-  return { error: { code: "PLATFORM_UNSUPPORTED_URL", message }, ok: false };
+  return {
+    error: {
+      cause: new AppError({
+        category: "validation",
+        code: "PLATFORM_UNSUPPORTED_URL",
+        safeMessage: message,
+      }),
+      code: "PLATFORM_UNSUPPORTED_URL",
+      message,
+    },
+    ok: false,
+  };
 }
 
 /**
@@ -201,6 +216,7 @@ export function createPlatformItemLoader({
     });
     if (!result.ok) {
       return {
+        cause: result.error.cause,
         code: result.error.code,
         error: result.error.message,
         success: false,

@@ -1,6 +1,6 @@
 // biome-ignore lint/performance/noNamespaceImport: namespace import required by Sentry SDK
 import * as Sentry from "@sentry/react";
-import { makeSentryOptions, shouldDropKnownBrowserApiNoise } from "./index";
+import { makeSentryOptions } from "./index";
 
 export function initClientSentry(config: {
   dsn: string;
@@ -14,9 +14,6 @@ export function initClientSentry(config: {
 
   Sentry.init({
     ...makeSentryOptions(config),
-    beforeSend(event) {
-      return shouldDropKnownBrowserApiNoise(event) ? null : event;
-    },
     // Stream paths and console arguments can contain private URLs. Keep SDK
     // event breadcrumbs; callers attach bounded application context separately.
     integrations: [

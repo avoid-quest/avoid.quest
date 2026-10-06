@@ -10,7 +10,7 @@ export const platformKeys = {
 
 export type PlatformLoadCallbacks = {
   onSuccess?: (radio: Radio) => void;
-  onError?: (error: string, code?: string) => void;
+  onError?: (error: string, code?: string, cause?: unknown) => void;
 };
 
 /**
@@ -44,17 +44,25 @@ export function usePlatformLoad() {
       { signal: controller.signal, url },
       {
         onError: (error) => {
+          if (controller.signal.aborted) {
+            return;
+          }
           callbacks.onError?.(
             error instanceof Error
               ? error.message
-              : "Failed to load platform item"
+              : "Failed to load platform item",
+            undefined,
+            error
           );
         },
         onSuccess: (result) => {
+          if (controller.signal.aborted) {
+            return;
+          }
           if (result.success) {
             callbacks.onSuccess?.(result.radio);
           } else {
-            callbacks.onError?.(result.error, result.code);
+            callbacks.onError?.(result.error, result.code, result.cause);
           }
         },
       }
@@ -74,7 +82,7 @@ export function usePlatformItem(url: string | null) {
       }
       const result = await loadPlatformItem(url);
       if (!result.success) {
-        throw new Error(result.error);
+        throw result.cause ?? new Error(result.error);
       }
       return result.radio;
     },

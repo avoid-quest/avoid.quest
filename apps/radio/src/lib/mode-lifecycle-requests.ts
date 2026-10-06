@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import {
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
@@ -12,6 +13,7 @@ import {
   waitForPlaybackSession,
 } from "./mode-lifecycle-manager";
 import type { PlaybackActionContext } from "./playback-action-context";
+import { isPlaybackActionError } from "./playback-action-errors";
 
 export type ModeLifecycleRequests = {
   requestMode: (value: string) => Promise<void>;
@@ -42,31 +44,53 @@ export function createModeLifecycleRequests({
         return;
       }
 
-      await manager.switchTo(value);
+      try {
+        await manager.switchTo(value);
+      } catch (error) {
+        if (!isPlaybackActionError(error)) {
+          captureError(error, {
+            operation: "requestMode",
+            surface: "ui",
+            tags: { mode: value },
+          });
+        }
+        throw error;
+      }
     },
     resetPageLifecycleState: resetPlaybackLifecycleState,
     subscribeTransitionSnapshot: manager.subscribe,
     async synchronizeMode(mode: PlaybackSessionId) {
-      await waitForPlaybackSession(mode);
+      try {
+        await waitForPlaybackSession(mode);
 
-      const settings = getCurrentSettings();
-      // The settings already name `mode`, so neither path writes them: a
-      // legacy mode the settings step could not rewrite ("multiple") is
-      // synchronized as its replacement.
-      if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
-        return;
+        const settings = getCurrentSettings();
+        // The settings already name `mode`, so neither path writes them: a
+        // legacy mode the settings step could not rewrite ("multiple") is
+        // synchronized as its replacement.
+        if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
+          return;
+        }
+
+        const snapshot = manager.getSnapshot();
+        if (snapshot.currentMode === mode || snapshot.requestedMode === mode) {
+          return;
+        }
+
+        if (snapshot.currentMode === null && snapshot.phase === "inactive") {
+          return await manager.activateInitialMode(mode);
+        }
+
+        return await manager.switchTo(mode, { commit: false });
+      } catch (error) {
+        if (!isPlaybackActionError(error)) {
+          captureError(error, {
+            operation: "synchronizeMode",
+            surface: "ui",
+            tags: { mode },
+          });
+        }
+        throw error;
       }
-
-      const snapshot = manager.getSnapshot();
-      if (snapshot.currentMode === mode || snapshot.requestedMode === mode) {
-        return;
-      }
-
-      if (snapshot.currentMode === null && snapshot.phase === "inactive") {
-        return manager.activateInitialMode(mode);
-      }
-
-      return manager.switchTo(mode, { commit: false });
     },
   };
 }

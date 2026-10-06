@@ -1,3 +1,4 @@
+import { AppError, captureError } from "@avoid.quest/error";
 export type RateLimitResult = {
   allowed: boolean;
 };
@@ -76,6 +77,7 @@ export async function checkRateLimit(
         return { allowed: true };
       }
       console.error("Environment not available in production");
+      reportRateLimitFailure("RATE_LIMIT_ENV_UNAVAILABLE");
       return { allowed: false };
     }
 
@@ -86,6 +88,7 @@ export async function checkRateLimit(
         return { allowed: true };
       }
       console.error("Rate limit binding not available in production");
+      reportRateLimitFailure("RATE_LIMIT_BINDING_UNAVAILABLE");
       return { allowed: false };
     }
 
@@ -97,6 +100,7 @@ export async function checkRateLimit(
     // In development, allow on error to avoid blocking development
     // In production, fail closed for security
     console.error("Rate limit check failed");
+    reportRateLimitFailure("RATE_LIMIT_CHECK_FAILED");
 
     if (isDevelopment) {
       console.warn("Allowing request due to rate limit error in development");
@@ -105,4 +109,16 @@ export async function checkRateLimit(
 
     return { allowed: false };
   }
+}
+
+function reportRateLimitFailure(code: string): void {
+  // The binding's exception can contain its raw IP key. Report only the fault.
+  captureError(
+    new AppError({
+      category: "infrastructure",
+      code,
+      safeMessage: "Rate limit check failed",
+    }),
+    { operation: "checkRateLimit", surface: "api-route" }
+  );
 }

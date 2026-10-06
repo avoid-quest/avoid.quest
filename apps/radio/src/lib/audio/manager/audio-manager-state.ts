@@ -10,6 +10,9 @@ type AudioStateOverride = Partial<AudioState>;
 type NotifySoundListeners = (soundId: string, state: AudioState) => void;
 
 type SoundErrorOptions = {
+  cause?: unknown;
+  duringStart?: boolean;
+  recoveryPending?: boolean;
   id?: string;
   position?: number;
   timestamp?: number;
@@ -38,11 +41,14 @@ function buildSoundError(
   options: SoundErrorOptions = {}
 ) {
   return {
+    cause: options.cause,
     code,
+    duringStart: options.duringStart,
     id: options.id ?? generateErrorId(),
     message,
     position: options.position,
     radio: instance.radio,
+    recoveryPending: options.recoveryPending,
     sourceId: soundId,
     timestamp: options.timestamp ?? Date.now(),
   };

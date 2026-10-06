@@ -89,7 +89,7 @@ describe("hosted audio links", () => {
         resolveSpotifyItem: unexpected,
         resolveStaticAudio: unexpected,
       });
-      expect(await load(url)).toEqual({
+      expect(await load(url)).toMatchObject({
         code: "PLATFORM_UNSUPPORTED_URL",
         error: message,
         success: false,

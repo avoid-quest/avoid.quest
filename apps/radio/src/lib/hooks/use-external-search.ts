@@ -36,7 +36,7 @@ const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   },
   reportProviderError: (provider, error) => {
     captureError(error, {
-      operation: "searchAllPlatforms",
+      operation: "searchPlatforms",
       surface: "ui",
       tags: { searchPlatform: provider },
     });

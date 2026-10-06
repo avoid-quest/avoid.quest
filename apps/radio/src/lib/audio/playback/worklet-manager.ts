@@ -5,6 +5,7 @@
  * This is a simplified version focused on streaming audio for radio playback.
  */
 
+import { AppError, captureError } from "@avoid.quest/error";
 import type { EffectType as WorkletEffectType } from "../dsp/effects/types.js";
 import type {
   SourceEndedPayload,
@@ -589,6 +590,24 @@ export class WorkletManager {
 
     // Set up message listener
     this.setupMessageListener();
+    const worklet = this.workletNode;
+    worklet.addEventListener(
+      "processorerror",
+      () => {
+        if (this.workletNode === worklet) {
+          captureError(
+            new AppError({
+              category: "playback",
+              code: "AUDIO_PROCESSOR_FAILED",
+              context: { backend: "compatibility" },
+              safeMessage: "Audio worklet processor stopped",
+            }),
+            { operation: "runAudioProcessor", surface: "ui" }
+          );
+        }
+      },
+      { once: true }
+    );
   }
 
   /**

@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 /**
@@ -393,6 +394,15 @@ export function detectNodePlaybackEnv(): NodePlaybackEnv {
 
 function isNodeChannelId(channelId: string): boolean {
   return channelId.startsWith(NODE_CHANNEL_PREFIX);
+}
+
+function reportNodeFailure(message: string) {
+  return (error: unknown) =>
+    captureError(error, {
+      operation: "nodePlayback",
+      surface: "ui",
+      tags: { action: message, mode: "node" },
+    });
 }
 
 function warn(message: string) {
@@ -1295,6 +1305,54 @@ function createNodePlayback(
     }
   };
 
+  /** Claims reporting only for a platform URL with a renewal owner. */
+  const refreshInterruptedTrack = (
+    channelId: string,
+    soundId: string,
+    radio: Radio,
+    seekPosition: number,
+    isCurrent: () => boolean
+  ): boolean => {
+    if (!getRefreshRequest(radio)) {
+      return false;
+    }
+    // The sound repeats its error with each state until it resumes; one
+    // renewal at a time.
+    for (const refresh of refreshingStreams) {
+      if (refresh.channelId === channelId && refresh.isCurrent()) {
+        return true;
+      }
+    }
+    // A pause, removal or deactivate while it resolves drops the resume.
+    const pending = pendingChannelStarts.begin(channelId, isCurrent);
+    const refresh = { channelId, isCurrent: pending.isCurrent };
+    const canRefresh = pending.isCurrent;
+    refreshingStreams.add(refresh);
+    track(
+      refreshPlatformStream(radio, soundId, seekPosition, {
+        isCurrent: canRefresh,
+        onFailed: (request, error) =>
+          reportLaneFailure(channelId, request.failureMessage, error),
+        onRefreshed: () =>
+          setPlaybackChannelRuntime(channelId, () => ({ error: null })),
+        onUnresolved: (request) =>
+          reportLaneFailure(channelId, request.failureMessage),
+        refresh: (id, streamUrl, position, streamFormat) =>
+          ctx.audioEngine.playback.refreshStreamUrl(
+            id,
+            streamUrl,
+            position,
+            streamFormat
+          ),
+        resolveStream,
+      }).finally(() => {
+        pending.release();
+        refreshingStreams.delete(refresh);
+      })
+    ).catch(warn("Could not refresh a stream"));
+    return true;
+  };
+
   /**
    * A Track or File sound's state: an expired platform stream is renewed
    * and resumes at its position; an ended track repeats when its strip
@@ -1313,42 +1371,22 @@ function createNodePlayback(
     if (!(radio && isCurrent())) {
       return;
     }
+    if (
+      state.error?.code === "STREAM_FETCH_FAILED" &&
+      state.error.recoveryPending
+    ) {
+      return [...refreshingStreams].some(
+        (refresh) => refresh.channelId === channelId && refresh.isCurrent()
+      );
+    }
     if (state.error?.code === "STREAM_INTERRUPTED") {
-      // The sound repeats its error with each state until it resumes; one
-      // renewal at a time.
-      for (const refresh of refreshingStreams) {
-        if (refresh.channelId === channelId && refresh.isCurrent()) {
-          return;
-        }
-      }
-      // A pause, removal or deactivate while it resolves drops the resume.
-      const pending = pendingChannelStarts.begin(channelId, isCurrent);
-      const refresh = { channelId, isCurrent: pending.isCurrent };
-      const canRefresh = pending.isCurrent;
-      refreshingStreams.add(refresh);
-      track(
-        refreshPlatformStream(radio, soundId, state.error.position ?? 0, {
-          isCurrent: canRefresh,
-          onFailed: (request, error) =>
-            reportLaneFailure(channelId, request.failureMessage, error),
-          onRefreshed: () =>
-            setPlaybackChannelRuntime(channelId, () => ({ error: null })),
-          onUnresolved: (request) =>
-            reportLaneFailure(channelId, request.failureMessage),
-          refresh: (id, streamUrl, position, streamFormat) =>
-            ctx.audioEngine.playback.refreshStreamUrl(
-              id,
-              streamUrl,
-              position,
-              streamFormat
-            ),
-          resolveStream,
-        }).finally(() => {
-          pending.release();
-          refreshingStreams.delete(refresh);
-        })
-      ).catch(warn("Could not refresh a stream"));
-      return;
+      return refreshInterruptedTrack(
+        channelId,
+        soundId,
+        radio,
+        state.error.position ?? 0,
+        isCurrent
+      );
     }
     if (state.hasEnded && !state.isPlaying) {
       if (laneOfChannel(channelId)?.transport?.loop) {
@@ -1547,7 +1585,7 @@ function createNodePlayback(
     const lane = plan.lanes.get(laneId);
     if (lane) {
       track(replaceTree(lane.id, lane.effects)).catch(
-        warn("Could not apply lane effects")
+        reportNodeFailure("Could not apply lane effects")
       );
     }
   };
@@ -1573,7 +1611,7 @@ function createNodePlayback(
       return;
     }
     track(replaceTree(laneId, tree)).catch(
-      warn("Could not apply lane effects")
+      reportNodeFailure("Could not apply lane effects")
     );
   };
 
@@ -1606,7 +1644,7 @@ function createNodePlayback(
       }
     };
     track(laneOutputs.swap(laneId, () => replaceUntilLatest(laneId)))
-      .catch(warn("Could not swap lane effects"))
+      .catch(reportNodeFailure("Could not swap lane effects"))
       .finally(endSwap);
   };
 
@@ -1755,7 +1793,7 @@ function createNodePlayback(
   };
 
   const persistence = createNodeSessionPersistence(
-    warn("Could not save a patch change")
+    reportNodeFailure("Could not save a patch change")
   );
 
   /** Writes `graph` with its derived channels in one session update. */
@@ -1833,7 +1871,7 @@ function createNodePlayback(
     try {
       reconcile(false);
     } catch (error) {
-      warn("Could not apply a patch change")(error);
+      reportNodeFailure("Could not apply a patch change")(error);
     }
   };
 
@@ -1915,7 +1953,7 @@ function createNodePlayback(
           takeOtherTabPatch(stored, previous);
         }
       })
-      .catch(warn("Could not take in another tab's patch"));
+      .catch(reportNodeFailure("Could not take in another tab's patch"));
   };
 
   const flushBeforeLeave = () => {

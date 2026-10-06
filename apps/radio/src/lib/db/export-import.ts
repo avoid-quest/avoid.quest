@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import { createTransaction } from "@tanstack/react-db";
 import LZString from "lz-string";
 import { toast } from "sonner";
@@ -278,7 +279,10 @@ function applyImportedChanges(
   // promise too because the public import API is synchronous.
   transaction.isPersisted.promise.catch((error) => {
     if (error) {
-      console.error("Import persistence failed:", error);
+      captureError(error, {
+        operation: "persistImportedSettings",
+        surface: "ui",
+      });
     }
   });
   let written: NodeGraph | null = null;
@@ -483,7 +487,7 @@ export const exportDatabase = async (): Promise<void> => {
       toast.success("Backup downloaded");
     }
   } catch (error) {
-    console.error("Export failed:", error);
+    captureError(error, { operation: "exportBackup", surface: "ui" });
     toast.error("Couldn't download backup");
   }
 };

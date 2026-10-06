@@ -1,3 +1,5 @@
+import { captureError } from "@avoid.quest/error";
+
 type EventCallback<T = unknown> = (payload: T) => void;
 
 class WorkletEventEmitter {
@@ -29,10 +31,11 @@ class WorkletEventEmitter {
         try {
           callback(payload);
         } catch (error) {
-          console.error(
-            `[WorkletEventEmitter] Error in listener for "${event}" (${callbacks.size} listeners):`,
-            error
-          );
+          captureError(error, {
+            operation: "handleAudioWorkletEvent",
+            surface: "ui",
+            tags: { worklet_event: event },
+          });
         }
       }
     }

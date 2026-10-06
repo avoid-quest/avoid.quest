@@ -16,6 +16,7 @@ import {
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { rateLimitMiddleware } from "./middleware";
+import { validateServerInput } from "./server-input";
 
 const BandcampSearchSchema = z.object({
   filter: z.enum(["", "t", "a", "b"]).optional().default(""),
@@ -28,7 +29,7 @@ export type BandcampSearchResponse = AppResult<{
 
 export const bandcampSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("bandcamp-search")])
-  .validator(BandcampSearchSchema)
+  .validator(validateServerInput(BandcampSearchSchema))
   .handler(
     ({ data }): Promise<BandcampSearchResponse> =>
       runServerFn({
@@ -78,7 +79,7 @@ function getSoundCloudClientId(): Promise<string> {
 
 export const soundcloudSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("soundcloud-search")])
-  .validator(SoundCloudSearchSchema)
+  .validator(validateServerInput(SoundCloudSearchSchema))
   .handler(
     ({ data }): Promise<SoundCloudSearchResponse> =>
       runServerFn({
@@ -108,7 +109,7 @@ export type MixcloudSearchResponse = AppResult<{
 
 export const mixcloudSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("mixcloud-search")])
-  .validator(MixcloudSearchSchema)
+  .validator(validateServerInput(MixcloudSearchSchema))
   .handler(
     ({ data }): Promise<MixcloudSearchResponse> =>
       runServerFn({

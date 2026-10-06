@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { AudioManager, type AudioState, type FilterConfig } from "@/lib/audio";
 import {
@@ -20,7 +21,11 @@ import {
   usePlaybackChannelRuntimeView,
 } from "@/lib/stores/playback-runtime-store";
 import { channelEffects } from "./channel-effects.js";
-import { toRuntimeAudioError } from "./playback-action-errors.js";
+import {
+  capturePlaybackActionError,
+  createPlaybackActionError,
+  toRuntimeAudioError,
+} from "./playback-action-errors.js";
 
 export type ChannelState = PlaybackChannelRecord &
   ReturnType<typeof getPlaybackChannelRuntime>;
@@ -46,7 +51,8 @@ type ChannelUpdate =
 
 export type ChannelActivationOptions = {
   soundId?: string;
-  onAudioState?: (audioState: AudioState) => void;
+  /** Return true only when a recovery owns reporting this failure. */
+  onAudioState?: (audioState: AudioState) => boolean | undefined;
   persistRadio?: boolean;
 };
 
@@ -232,7 +238,7 @@ export function updateChannelFilter(
 }
 
 function reportChannelEffectsError(error: unknown): void {
-  console.warn("[ChannelEffects] Could not reconcile Channel Effects", error);
+  captureError(error, { operation: "reconcileChannelEffects", surface: "ui" });
 }
 
 function setChannelSubscriptionCleanup(
@@ -288,7 +294,17 @@ export function subscribeChannelRuntime(
       isPlaying: audioState.isPlaying,
       soundId,
     }));
-    options.onAudioState?.(audioState);
+    const recoveryOwned = options.onAudioState?.(audioState) === true;
+    if (audioState.error && !audioState.error.duringStart && !recoveryOwned) {
+      capturePlaybackActionError(
+        createPlaybackActionError({
+          cause: audioState.error.cause ?? new Error(audioState.error.message),
+          code: audioState.error.code,
+          mode: sessionId,
+          radio: channel?.radio ?? undefined,
+        })
+      );
+    }
   });
 
   let meterCleanup: (() => void) | null = null;

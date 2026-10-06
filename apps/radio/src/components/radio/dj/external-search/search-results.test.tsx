@@ -8,7 +8,10 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { AppError, fromProblemError } from "@avoid.quest/error";
 import type { UnifiedSearchResult } from "@avoid.quest/platforms";
+// biome-ignore lint/performance/noNamespaceImport: exercise the real reporting pipeline with a transport spy
+import * as Sentry from "@sentry/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
@@ -99,13 +102,14 @@ function deferredLoad() {
 
 let queryClient: QueryClient;
 let platformItemLoader: typeof import("@/lib/platform-item-loader");
-let djErrorSurface: typeof import("@/lib/dj/dj-error-surface");
 let loadPlatformItemMock: ReturnType<
   typeof spyOn<typeof platformItemLoader, "loadPlatformItem">
 >;
-let captureDjErrorMock: ReturnType<
-  typeof spyOn<typeof djErrorSurface, "captureDjError">
+let enabledMock: ReturnType<typeof spyOn<typeof Sentry, "isEnabled">>;
+let captureExceptionMock: ReturnType<
+  typeof spyOn<typeof Sentry, "captureException">
 >;
+let capturedMode: string | undefined;
 
 function QueryProvider({ children }: { children: ReactNode }) {
   return (
@@ -126,34 +130,103 @@ mock.module("@avoid.quest/ui/components/scroll-area", () => ({
 let SearchResults: typeof import("./search-results")["SearchResults"];
 
 beforeAll(async () => {
-  [platformItemLoader, djErrorSurface] = await Promise.all([
-    import("@/lib/platform-item-loader"),
-    import("@/lib/dj/dj-error-surface"),
-  ]);
+  platformItemLoader = await import("@/lib/platform-item-loader");
   ({ SearchResults } = await import("./search-results"));
 });
 
 beforeEach(() => {
   queryClient = new QueryClient();
   loadPlatformItemMock = spyOn(platformItemLoader, "loadPlatformItem");
-  captureDjErrorMock = spyOn(
-    djErrorSurface,
-    "captureDjError"
-  ).mockImplementation(() => undefined);
+  capturedMode = undefined;
+  enabledMock = spyOn(Sentry, "isEnabled").mockReturnValue(true);
+  captureExceptionMock = spyOn(Sentry, "captureException").mockImplementation(
+    () => {
+      const { mode } = Sentry.getCurrentScope().getScopeData().tags;
+      capturedMode = typeof mode === "string" ? mode : undefined;
+      return "1234567890abcdef1234567890abcdef";
+    }
+  );
 });
 
 afterEach(() => {
   cleanup();
   queryClient.clear();
   loadPlatformItemMock.mockRestore();
-  captureDjErrorMock.mockRestore();
+  captureExceptionMock.mockRestore();
+  enabledMock.mockRestore();
 });
 
 describe("SearchResults", () => {
-  test("shows track-load failures inline for result selections", async () => {
+  test.each([
+    { code: "DJ_TRACK_RESOLUTION_FAILED", message: "Playlist unavailable" },
+    {
+      code: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
+      message: "Every configured YouTube provider failed",
+    },
+  ])(
+    "shows $code inline and reports the failed selection",
+    async ({ code, message }) => {
+      loadPlatformItemMock.mockResolvedValue({
+        code,
+        error: message,
+        success: false,
+      });
+      const view = render(
+        <SearchResults
+          error={null}
+          mode="node"
+          onLoad={handleLoad}
+          results={SEARCH_RESULTS}
+        />,
+        { wrapper: QueryProvider }
+      );
+
+      await act(async () => {
+        fireEvent.click(view.getByRole("button"));
+        await Promise.resolve();
+      });
+
+      expect(loadPlatformItemMock.mock.calls[0]?.[0]).toBe(
+        "https://youtube.com/watch?v=track-1"
+      );
+
+      await waitFor(() => {
+        expect(view.getByText(message)).toBeTruthy();
+      });
+      expect((view.getByRole("button") as HTMLButtonElement).disabled).toBe(
+        false
+      );
+      expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+      expect(capturedMode).toBe("node");
+    }
+  );
+
+  test.each([
+    {
+      cause: fromProblemError({
+        category: "dependency",
+        code: "PROVIDER_FAILED",
+        expected: false,
+        message: "Provider unavailable",
+        reportingHandled: true,
+        requestId: "request-1",
+        status: 502,
+      }),
+      name: "server-owned failures",
+    },
+    {
+      cause: new AppError({
+        category: "validation",
+        code: "INVALID_URL",
+        safeMessage: "Unsupported URL",
+      }),
+      name: "expected invalid input",
+    },
+  ])("shows $name inline without a duplicate report", async ({ cause }) => {
     loadPlatformItemMock.mockResolvedValue({
-      code: "DJ_TRACK_RESOLUTION_FAILED",
-      error: "Playlist unavailable",
+      cause,
+      code: cause.code,
+      error: cause.message,
       success: false,
     });
     const view = render(
@@ -164,26 +237,12 @@ describe("SearchResults", () => {
       />,
       { wrapper: QueryProvider }
     );
-
     await act(async () => {
       fireEvent.click(view.getByRole("button"));
       await Promise.resolve();
     });
-
-    expect(loadPlatformItemMock.mock.calls[0]?.[0]).toBe(
-      "https://youtube.com/watch?v=track-1"
-    );
-
-    await waitFor(() => {
-      expect(view.getByText("Playlist unavailable")).toBeTruthy();
-    });
-    expect((view.getByRole("button") as HTMLButtonElement).disabled).toBe(
-      false
-    );
-    expect(captureDjErrorMock).toHaveBeenCalledWith(
-      "Playlist unavailable",
-      "DJ_TRACK_RESOLUTION_FAILED"
-    );
+    await waitFor(() => expect(view.getByText(cause.message)).toBeTruthy());
+    expect(captureExceptionMock).not.toHaveBeenCalled();
   });
 
   test.each(ABANDONED_PICK_CONTEXTS)(

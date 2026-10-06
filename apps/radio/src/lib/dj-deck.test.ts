@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: observe the production reporter
+import * as Sentry from "@sentry/core";
 import {
   type AudioState,
   createDefaultEffectConfig,
@@ -35,8 +37,10 @@ import {
   PLATFORM_ITEMS,
   STATIC_AUDIO_PLATFORM_ID,
 } from "./dj-library-sources";
+import type { PlatformStreamResolution } from "./dj-platform-stream-port";
 import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
+import { capturePlaybackActionError } from "./playback-action-errors";
 
 async function resetPlaybackSessions(): Promise<void> {
   await playbackSessionsCollection.stateWhenReady();
@@ -2032,6 +2036,157 @@ describe("DjDeckModule", () => {
       })
     );
   });
+
+  test.each([
+    "success",
+    "unresolved",
+    "failed",
+    "load-failed",
+    "nonrecoverable",
+  ] as const)(
+    "DJ defers terminal reporting only for owned renewal: %s",
+    async (outcome) => {
+      const audio = createAudioAdapter();
+      const context = createContext();
+      context.reportError = capturePlaybackActionError;
+      const renewal = Promise.withResolvers<PlatformStreamResolution | null>();
+      const platform = createPlatform();
+      platform.resolveStream = mock(() => renewal.promise);
+      const module = createDjDeckModule({
+        audio,
+        context,
+        effects: createEffects(),
+        output: createOutput(),
+        platform,
+      });
+      await module.deck("deck-a").load({
+        radio: {
+          id: "yt-1",
+          name: "Track",
+          streamUrl: "https://radio.example/old.mp3",
+          ...(outcome === "nonrecoverable"
+            ? {}
+            : {
+                platformMetadata: {
+                  itemType: "video" as const,
+                  platform: "youtube" as const,
+                  url: "https://youtube.com/watch?v=abc",
+                  videoId: "abc",
+                },
+              }),
+        },
+        type: "radio",
+      });
+      const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
+      const capture = spyOn(Sentry, "captureException").mockReturnValue(
+        "1234567890abcdef1234567890abcdef"
+      );
+      const expired = new Error("Expired URL");
+      const state: AudioState = {
+        error: {
+          cause: expired,
+          code: "STREAM_INTERRUPTED",
+          id: "expired",
+          message: "Expired URL",
+          position: 42,
+          timestamp: 1,
+        },
+        hasEnded: false,
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+        volume: 1,
+      };
+      if (!state.error) {
+        throw new Error("Missing interruption fixture");
+      }
+      try {
+        if (outcome === "load-failed") {
+          // Exercise the real refresh callback and rejection together.
+          const { AudioManager } = await import(
+            `./audio/manager/audio-manager.ts?${"unmocked"}`
+          );
+          audio.refresh = mock(
+            (
+              soundId: string,
+              url: string,
+              position?: number,
+              streamFormat?: Radio["streamFormat"]
+            ) =>
+              AudioManager.prototype.refreshStreamUrl.call(
+                {
+                  notifyListeners: audio.emit,
+                  sounds: new Map([
+                    [
+                      soundId,
+                      {
+                        buffering: false,
+                        playbackSource: {
+                          refreshUrl: () =>
+                            Promise.reject(new Error("Renewed stream failed")),
+                        },
+                        radio: getPlaybackChannel("dj", "deck-a")?.radio,
+                        volume: 1,
+                      },
+                    ],
+                  ]),
+                } as unknown as ReturnType<typeof AudioManager.getInstance>,
+                soundId,
+                url,
+                position,
+                streamFormat
+              )
+          );
+        }
+        audio.emit("left_yt-1:1", state);
+        audio.emit("left_yt-1:1", {
+          ...state,
+          error: {
+            ...state.error,
+            code: "STREAM_FETCH_FAILED",
+            recoveryPending: true,
+          },
+        });
+        if (outcome === "nonrecoverable") {
+          expect(platform.resolveStream).not.toHaveBeenCalled();
+          expect(capture).toHaveBeenCalled();
+          renewal.resolve(null);
+          return;
+        }
+        expect(capture).not.toHaveBeenCalled();
+        audio.emit("left_yt-1:1", state);
+        expect(platform.resolveStream).toHaveBeenCalledTimes(1);
+        audio.emit("left_yt-1:1", {
+          ...state,
+          error: {
+            ...state.error,
+            cause: new Error("Worklet failed"),
+            code: "WORKLET_LOAD_FAILED",
+          },
+        });
+        expect(capture).toHaveBeenCalledTimes(1);
+        capture.mockClear();
+        if (outcome === "failed") {
+          renewal.reject(new Error("Renewal unavailable"));
+        } else {
+          renewal.resolve(
+            outcome === "success" || outcome === "load-failed"
+              ? {
+                  streamFormat: "progressive",
+                  streamUrl: "https://radio.example/new.mp3",
+                }
+              : null
+          );
+        }
+        await Bun.sleep(0);
+        expect(capture).toHaveBeenCalledTimes(outcome === "success" ? 0 : 1);
+      } finally {
+        capture.mockRestore();
+        enabled.mockRestore();
+        module.deactivate();
+      }
+    }
+  );
 
   test("reports an interrupted provider stream that cannot be resolved", async () => {
     const audio = createAudioAdapter();

@@ -75,7 +75,7 @@ describe("browser platform item loader", () => {
       ),
     });
 
-    await expect(load("https://youtu.be/abcdefghijk")).resolves.toEqual({
+    await expect(load("https://youtu.be/abcdefghijk")).resolves.toMatchObject({
       code: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
       error: "No public YouTube provider is available",
       success: false,

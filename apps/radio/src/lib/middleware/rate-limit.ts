@@ -1,4 +1,4 @@
-import { AppError, problemResponse } from "@avoid.quest/error";
+import { AppError, captureError, problemResponse } from "@avoid.quest/error";
 import { getSessionId } from "@/lib/auth/session";
 import { logAuthFailure, logRateLimitViolation } from "@/lib/logger";
 import {
@@ -107,23 +107,23 @@ export async function validateAuthAndRateLimit(
     }
 
     return { ip, sessionId, shouldSetCookie };
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    console.error("validateAuthAndRateLimit error:", errorMessage, error);
+  } catch {
+    const error = new AppError({
+      category: "infrastructure",
+      code: "AUTHENTICATION_FAILED",
+      expected: false,
+      safeMessage: "Authentication failed",
+      status: 500,
+    });
+    captureError(error, {
+      operation: "validateAuthAndRateLimit",
+      requestId,
+      surface: "api-route",
+    });
     // Fail closed - return unauthorized on error
-    return problemResponse(
-      new AppError({
-        category: "infrastructure",
-        code: "AUTHENTICATION_FAILED",
-        expected: false,
-        safeMessage: "Authentication failed",
-        status: 500,
-      }),
-      {
-        headers: getCorsHeaders(origin),
-        requestId,
-      }
-    );
+    return problemResponse(error, {
+      headers: getCorsHeaders(origin),
+      requestId,
+    });
   }
 }

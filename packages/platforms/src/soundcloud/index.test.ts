@@ -1,5 +1,40 @@
 import { describe, expect, mock, test } from "bun:test";
-import { getSoundCloudItem } from "./index";
+import {
+  getSoundCloudItem,
+  resolveShortLink,
+  SoundCloudShortLinkError,
+} from "./index";
+
+test("shortlink failures retain HTTP status and distinguish unsafe redirects from transport errors", async () => {
+  const originalFetch = globalThis.fetch;
+  const setFetch = (run: () => Promise<Response>) => {
+    globalThis.fetch = Object.assign(mock(run), {
+      preconnect: mock(() => undefined),
+    });
+  };
+  try {
+    setFetch(() => Promise.resolve(new Response(null, { status: 404 })));
+    await expect(
+      resolveShortLink("https://on.soundcloud.com/missing")
+    ).rejects.toMatchObject({ status: 404, unsafeRedirect: false });
+    setFetch(() =>
+      Promise.resolve(Response.redirect("https://untrusted.test/", 302))
+    );
+    await expect(
+      resolveShortLink("https://on.soundcloud.com/redirect")
+    ).rejects.toBeInstanceOf(SoundCloudShortLinkError);
+    await expect(
+      resolveShortLink("https://on.soundcloud.com/redirect")
+    ).rejects.toMatchObject({ unsafeRedirect: true });
+    const failure = new TypeError("Network unavailable");
+    setFetch(() => Promise.reject(failure));
+    await expect(
+      resolveShortLink("https://on.soundcloud.com/offline")
+    ).rejects.toBe(failure);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 describe("getSoundCloudItem", () => {
   test("uses progressive by default and allows callers to prefer HLS", async () => {

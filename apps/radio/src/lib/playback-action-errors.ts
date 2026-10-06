@@ -1,3 +1,4 @@
+import { AppError, capturePlaybackError } from "@avoid.quest/error";
 import type { AudioError, AudioErrorCode, Radio } from "@/lib/audio";
 import { generateErrorId } from "@/lib/audio/playback";
 import { DisplayAudioError } from "@/lib/audio/playback/display-audio";
@@ -42,14 +43,19 @@ function messageIncludesAny(message: string, fragments: readonly string[]) {
   return fragments.some((fragment) => message.includes(fragment));
 }
 
-function hasPlaybackActionErrorShape(
+export function isPlaybackActionError(
   error: unknown
 ): error is PlaybackActionError {
   return (
     typeof error === "object" &&
     error !== null &&
     "userMessage" in error &&
-    typeof error.userMessage === "string"
+    typeof error.userMessage === "string" &&
+    "cause" in error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    "mode" in error &&
+    ["single", "node", "dj"].includes(String(error.mode))
   );
 }
 
@@ -114,7 +120,7 @@ export function toRuntimeAudioError(
   code: AudioErrorCode = "PLAY_ERROR",
   radio?: Radio
 ): AudioError {
-  const normalized = hasPlaybackActionErrorShape(error)
+  const normalized = isPlaybackActionError(error)
     ? error
     : createPlaybackActionError({
         cause: error,
@@ -140,3 +146,33 @@ export function reportPlaybackActionError(
   reportError(error);
   return error;
 }
+
+/** Production reporter shared by Single, Node and DJ action owners. */
+export const capturePlaybackActionError: PlaybackActionErrorReporter = (
+  error
+) => {
+  const { cause } = error;
+  const userOutcome =
+    cause instanceof DisplayAudioError ||
+    (typeof DOMException !== "undefined" &&
+      cause instanceof DOMException &&
+      ["NotAllowedError", "PermissionDeniedError", "NotFoundError"].includes(
+        cause.name
+      ));
+  capturePlaybackError(
+    userOutcome
+      ? new AppError({
+          category: "validation",
+          code: error.code,
+          expected: true,
+          safeMessage: error.userMessage,
+        })
+      : cause,
+    {
+      errorCode: error.code,
+      errorMessage: error.userMessage,
+      mode: error.mode,
+      streamUrl: error.radio?.streamUrl,
+    }
+  );
+};

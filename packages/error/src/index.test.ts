@@ -3,20 +3,21 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as Sentry from "@sentry/core";
 import {
   AppError,
-  buildPlaybackEventKey,
   captureError,
   capturePlaybackError,
-  createDedupeStore,
   createRequestId,
+  filterSentryEvent,
+  fromProblemError,
   isAbortPlaybackError,
   makeSentryOptions,
   problemJson,
   runApiRoute,
-  shouldCapturePlaybackError,
+  runServerFn,
   shouldReportToSentry,
   toAppError,
 } from "./index";
 
+const PRIVATE_DATA = /private|session=|secret/;
 const EVENT_ID = "1234567890abcdef1234567890abcdef";
 let captureException: ReturnType<
   typeof spyOn<typeof Sentry, "captureException">
@@ -147,7 +148,11 @@ describe("reporting policy", () => {
       },
       request: { id: "req-reportable" },
     });
-    expect(capturedScope?.fingerprint).toEqual(["dependency", "test"]);
+    expect(capturedScope?.fingerprint).toEqual([
+      "{{ default }}",
+      "dependency",
+      "test",
+    ]);
   });
 
   test.each(["validation", "auth", "rate_limit", "dependency"] as const)(
@@ -274,186 +279,150 @@ describe("api route wrapper", () => {
   });
 });
 
-describe("dedupe", () => {
-  test("suppresses repeated keys within ttl", () => {
-    let now = 1000;
-    const dedupe = createDedupeStore(500, () => now);
-
-    expect(dedupe.hasSeen("key")).toBe(false);
-    expect(dedupe.hasSeen("key")).toBe(true);
-
-    now = 1600;
-    expect(dedupe.hasSeen("key")).toBe(false);
-  });
-
-  test("captureError emits the first report and suppresses its duplicate key", () => {
-    const baseError = new AppError({
-      category: "playback",
-      code: "PLAYBACK_FAIL",
-      expected: false,
-      safeMessage: "Playback failed",
-    });
-
-    const meta = {
-      dedupeKey: crypto.randomUUID(),
-      operation: "playback",
-      surface: "ui" as const,
-    };
-
-    expect(captureError(baseError, meta)).toBe(EVENT_ID);
-    expect(captureException).toHaveBeenCalledTimes(1);
-    expect(captureException).toHaveBeenCalledWith(baseError);
-
+describe("handled playback and transport policy", () => {
+  test.each([
+    "PLAY_ERROR",
+    "WORKLET_LOAD_FAILED",
+    "PLATFORM_CLIENT_RESOLUTION_FAILED",
+    "STATIC_AUDIO_CLIENT_RESOLUTION_FAILED",
+    "YOUTUBE_CLIENT_RESOLUTION_FAILED",
+    "UNKNOWN",
+  ])("reports unexpected %s failures", (errorCode) => {
+    const cause = new Error("Dependency unavailable");
     expect(
-      captureError(
-        new AppError({
-          category: "playback",
-          code: "PLAYBACK_RETRY_FAILED",
-          expected: false,
-          safeMessage: "Retry failed",
-        }),
-        meta
-      )
-    ).toBeUndefined();
-    expect(captureException).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("playback helpers", () => {
-  test("captures only actionable playback codes", () => {
-    expect(shouldCapturePlaybackError("MEDIA_ERROR_4")).toBe(true);
-    expect(shouldCapturePlaybackError("SINGLE_PLAY_FAILED")).toBe(true);
-    expect(shouldCapturePlaybackError("UNKNOWN")).toBe(false);
-  });
-
-  test("builds stable playback keys from mode and host only", () => {
-    const key = buildPlaybackEventKey({
-      errorCode: "MEDIA_ERROR_4",
-      errorMessage: "Unsupported stream format for this browser",
-      mode: "single",
-      streamUrl: "https://example.test/live",
-    });
-
-    expect(key).toBe("single|example.test");
-  });
-
-  test("dedupes errors with different errorCode but same mode and host", () => {
-    const base = {
-      errorMessage: "some error",
-      mode: "single" as const,
-      streamUrl: "https://example.test/live",
-    };
-
-    const key1 = buildPlaybackEventKey({ ...base, errorCode: "MEDIA_ERROR_4" });
-    const key2 = buildPlaybackEventKey({
-      ...base,
-      errorCode: "PLAYBACK_FALLBACK_FAILED",
-    });
-
-    expect(key1).toBe(key2);
-  });
-
-  test("detects abort playback errors by error name", () => {
-    const error = new Error("The operation was aborted.");
-    error.name = "AbortError";
-
-    expect(isAbortPlaybackError(error, error.message)).toBe(true);
-  });
-
-  test("detects abort playback errors by message text", () => {
-    expect(
-      isAbortPlaybackError(
-        new Error("some wrapper"),
-        "The operation was aborted."
-      )
-    ).toBe(true);
-  });
-
-  test("capturePlaybackError emits the first report and suppresses the same mode and host", () => {
-    const streamHost = `${crypto.randomUUID()}.example.test`;
-    const payload = {
-      errorCode: "MEDIA_ERROR_4",
-      errorMessage: "Unsupported stream format for this browser",
-      mode: "single" as const,
-      streamUrl: `https://${streamHost}/private-stream-path?session=synthetic#synthetic-fragment`,
-    };
-    const error = new Error(payload.errorMessage);
-
-    expect(capturePlaybackError(error, payload)).toBe(EVENT_ID);
-    expect(captureException).toHaveBeenCalledTimes(1);
-    expect(captureException).toHaveBeenCalledWith(
-      expect.objectContaining({
-        category: "playback",
-        cause: error,
-        code: "MEDIA_ERROR_4",
-        expected: false,
-        message: payload.errorMessage,
-        severity: "error",
+      capturePlaybackError(cause, {
+        errorCode,
+        errorMessage: "Could not play",
+        mode: "single",
       })
-    );
-    expect(capturedScope?.tags).toMatchObject({
-      feature: "radio-playback",
-      mode: "single",
-      operation: "playback",
-      retry_phase: "none",
-      stream_host: streamHost,
-      surface: "ui",
+    ).toBe(EVENT_ID);
+    expect(captureException).toHaveBeenCalledWith(cause, {
+      data: { appError: expect.any(AppError) },
     });
+    expect(capturedScope?.tags.error_code).toBe(errorCode);
+  });
+
+  test("reports distinct failures on one host without sending stream paths or station data", () => {
+    const payload = {
+      errorCode: "STREAM_FETCH_FAILED",
+      errorMessage: "Stream failed",
+      mode: "single" as const,
+      radioName: "Private station name",
+      streamUrl: "https://example.test/private-path?session=private#secret",
+    };
+    capturePlaybackError(new Error("Stream failed"), payload);
     expect(capturedScope?.fingerprint).toEqual([
+      "{{ default }}",
       "radio-playback",
       "single",
-      "MEDIA_ERROR_4",
-      streamHost,
+      "STREAM_FETCH_FAILED",
     ]);
-    const captureMetadata = JSON.stringify(capturedScope);
-    expect(captureMetadata).not.toContain("private-stream-path");
-    expect(captureMetadata).not.toContain("session=synthetic");
-    expect(captureMetadata).not.toContain("synthetic-fragment");
+    expect(JSON.stringify(capturedScope)).not.toMatch(PRIVATE_DATA);
+    capturePlaybackError(new Error("Fallback failed"), {
+      ...payload,
+      errorCode: "PLAYBACK_FALLBACK_FAILED",
+    });
+    expect(captureException).toHaveBeenCalledTimes(2);
+  });
 
-    expect(
-      capturePlaybackError(new Error("Fallback failed"), {
-        ...payload,
-        errorCode: "PLAYBACK_FALLBACK_FAILED",
-        errorMessage: "Fallback failed",
-        streamUrl: `https://${streamHost}/fallback`,
-      })
-    ).toBeUndefined();
+  test("keeps expected classifications through playback wrappers", () => {
+    capturePlaybackError(
+      new AppError({
+        category: "validation",
+        code: "UNSUPPORTED_URL",
+        safeMessage: "Unsupported link",
+      }),
+      { errorCode: "PLAY_ERROR", errorMessage: "Could not play", mode: "dj" }
+    );
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  test("reports a server failure once and restores code/status/request id at the client", async () => {
+    const result = await runServerFn({
+      fallback: {
+        category: "dependency",
+        code: "PROVIDER_DOWN",
+        safeMessage: "Could not resolve track",
+      },
+      operation: "resolveTrack",
+      requestId: "req-test",
+      run: () => Promise.reject(new Error("Provider unavailable")),
+    });
+    if (result.ok) {
+      throw new Error("Expected failure result");
+    }
+    const transported = fromProblemError(
+      JSON.parse(JSON.stringify(result.error))
+    );
+    expect(transported).toMatchObject({
+      category: "dependency",
+      code: "PROVIDER_DOWN",
+      expected: false,
+      status: 502,
+      tags: { request_id: "req-test" },
+    });
+    capturePlaybackError(transported, {
+      errorCode: "PLAY_ERROR",
+      errorMessage: "Could not play",
+      mode: "node",
+    });
     expect(captureException).toHaveBeenCalledTimes(1);
   });
 
-  test("capturePlaybackError does not emit non-actionable errors", () => {
-    expect(
-      capturePlaybackError(new Error("Unknown failure"), {
-        errorCode: "UNKNOWN",
-        errorMessage: "Unknown failure",
-        mode: "single",
-      })
-    ).toBeUndefined();
+  test("only actual cancellation is quiet; recovery failures mentioning cancellation report", () => {
+    const abort = new DOMException("The operation was aborted.", "AbortError");
+    expect(isAbortPlaybackError(abort)).toBe(true);
+    capturePlaybackError(abort, {
+      errorCode: "PLAY_ERROR",
+      errorMessage: abort.message,
+      mode: "single",
+    });
     expect(captureException).not.toHaveBeenCalled();
+    const recovery = new Error(
+      "Recovery failed after the operation was aborted"
+    );
+    expect(isAbortPlaybackError(recovery, recovery.message)).toBe(false);
+    capturePlaybackError(recovery, {
+      errorCode: "PLAY_ERROR",
+      errorMessage: recovery.message,
+      mode: "single",
+    });
+    expect(captureException).toHaveBeenCalledTimes(1);
   });
 
-  test("capturePlaybackError does not emit abort errors", () => {
-    const error = new Error("Playback cancelled");
-    error.name = "AbortError";
-
-    expect(
-      capturePlaybackError(error, {
-        errorCode: "SINGLE_PLAY_FAILED",
-        errorMessage: error.message,
-        mode: "single",
-      })
-    ).toBeUndefined();
-    expect(captureException).not.toHaveBeenCalled();
+  test("attaches caller-owned diagnostic context", () => {
+    captureError(
+      new AppError({
+        category: "infrastructure",
+        code: "WORKLET_FAILED",
+        context: { backend: "worklet", phase: "initialization" },
+        safeMessage: "Audio engine unavailable",
+      }),
+      { operation: "initializeAudio", surface: "ui" }
+    );
+    expect(capturedScope?.contexts.application).toEqual({
+      backend: "worklet",
+      phase: "initialization",
+    });
   });
 
-  test("capturePlaybackError does not emit aborted operations wrapped in another error", () => {
+  test("noise filtering cannot combine separate linked exceptions", () => {
+    const noise = {
+      mechanism: { type: "auto.browser.browserapierrors.setTimeout" },
+      value: "Error invoking post: Method not found",
+    };
     expect(
-      capturePlaybackError(new Error("Wrapped playback failure"), {
-        errorCode: "SINGLE_PLAY_FAILED",
-        errorMessage: "The operation was aborted.",
-        mode: "single",
-      })
-    ).toBeUndefined();
-    expect(captureException).not.toHaveBeenCalled();
+      filterSentryEvent({ exception: { values: [noise] }, type: undefined }, {})
+    ).toBeNull();
+    const linked: Sentry.ErrorEvent = {
+      exception: {
+        values: [
+          { value: noise.value },
+          { mechanism: noise.mechanism, value: "Unexpected primary failure" },
+        ],
+      },
+      type: undefined,
+    };
+    expect(filterSentryEvent(linked, {})).toBe(linked);
   });
 });

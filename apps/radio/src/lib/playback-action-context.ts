@@ -21,7 +21,10 @@ import {
 } from "@/lib/channel-state-manager";
 import type { PlaybackSessionId } from "@/lib/collections/playback-sessions";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
-import type { PlaybackActionErrorReporter } from "./playback-action-errors.js";
+import {
+  capturePlaybackActionError,
+  type PlaybackActionErrorReporter,
+} from "./playback-action-errors.js";
 
 export type MainOutputRouter = OutputRouting | null;
 
@@ -94,8 +97,6 @@ const defaultChannels: PlaybackActionChannelFacade = {
   subscribeRuntime: subscribeChannelRuntime,
 };
 
-const noopReportError: PlaybackActionErrorReporter = () => undefined;
-
 let defaultContext: PlaybackActionContext | null = null;
 
 export function createDefaultPlaybackActionContext(): PlaybackActionContext {
@@ -109,7 +110,7 @@ export function createDefaultPlaybackActionContext(): PlaybackActionContext {
     channels: defaultChannels,
     getMainOutputRouter: getOutputRouting,
     lifecycle: defaultLifecycle,
-    reportError: noopReportError,
+    reportError: capturePlaybackActionError,
     resetAudioManager: AudioManager.resetInstance,
     resumeAudioContext,
   };

@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: observe the production SDK capture boundary
+import * as Sentry from "@sentry/core";
 
 const logAuthFailureMock = mock(() => undefined);
 const logRateLimitViolationMock = mock(() => undefined);
@@ -138,6 +140,10 @@ describe("validateAuthAndRateLimit", () => {
 
   test("does not persist an IP embedded in a rate-limit binding error", async () => {
     const log = spyOn(console, "error").mockImplementation(() => undefined);
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
+    const capture = spyOn(Sentry, "captureException").mockReturnValue(
+      "event-id"
+    );
     try {
       const result = await checkRateLimit(
         {
@@ -153,8 +159,16 @@ describe("validateAuthAndRateLimit", () => {
       expect(result.allowed).toBe(false);
       expect(log).toHaveBeenCalled();
       expect(JSON.stringify(log.mock.calls)).not.toContain("203.0.113.10");
+      expect(capture).toHaveBeenCalledTimes(1);
+      expect(capture.mock.calls[0]?.[0]).toMatchObject({
+        category: "infrastructure",
+        code: "RATE_LIMIT_CHECK_FAILED",
+      });
+      expect(JSON.stringify(capture.mock.calls)).not.toContain("203.0.113.10");
     } finally {
       log.mockRestore();
+      capture.mockRestore();
+      enabled.mockRestore();
     }
   });
 });

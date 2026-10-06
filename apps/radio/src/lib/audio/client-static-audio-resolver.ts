@@ -1,3 +1,4 @@
+import { AppError } from "@avoid.quest/error";
 import {
   cachePublicHostnameResolver,
   isPublicHttpUrl,
@@ -70,9 +71,19 @@ class PlaylistError extends Error {
   }
 }
 
-export class ClientStaticAudioResolverError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
+export class ClientStaticAudioResolverError extends AppError {
+  constructor(
+    message: string,
+    options?: ErrorOptions & { expected?: boolean; cancelled?: boolean }
+  ) {
+    const category = options?.expected ? "validation" : "dependency";
+    super({
+      category: options?.cancelled ? "cancellation" : category,
+      cause: options?.cause,
+      code: "STATIC_AUDIO_CLIENT_RESOLUTION_FAILED",
+      expected: options?.expected ?? options?.cancelled ?? false,
+      safeMessage: message,
+    });
     this.name = "ClientStaticAudioResolverError";
   }
 }
@@ -84,16 +95,19 @@ function parseUrl(value: string): URL {
   } catch (error) {
     throw new ClientStaticAudioResolverError("Audio URL is invalid", {
       cause: error,
+      expected: true,
     });
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new ClientStaticAudioResolverError(
-      "Audio URL must use HTTP or HTTPS"
+      "Audio URL must use HTTP or HTTPS",
+      { expected: true }
     );
   }
   if (url.username || url.password) {
     throw new ClientStaticAudioResolverError(
-      "Audio URL must not contain credentials"
+      "Audio URL must not contain credentials",
+      { expected: true }
     );
   }
   return url;
@@ -370,7 +384,7 @@ function resolverError(
   if (timedOut || parentAborted) {
     return new ClientStaticAudioResolverError(
       timedOut ? "Playlist request timed out" : "Playlist request was aborted",
-      { cause: error }
+      { cancelled: parentAborted && !timedOut, cause: error }
     );
   }
   return new ClientStaticAudioResolverError(
@@ -397,7 +411,8 @@ async function validateUpstreamHost(
     );
     if (!validation.ok) {
       throw new ClientStaticAudioResolverError(
-        "Audio URL must resolve to a public host"
+        "Audio URL must resolve to a public host",
+        { expected: validation.reason !== "hostname-resolution-failed" }
       );
     }
   } catch (error) {
@@ -544,11 +559,14 @@ export async function resolveClientStaticAudio(
 
   if (!(audioUrl || playlistUrl)) {
     throw new ClientStaticAudioResolverError(
-      "URL does not point to a supported audio file or playlist"
+      "URL does not point to a supported audio file or playlist",
+      { expected: true }
     );
   }
   if (!isPublicHttpUrl(upstreamUrl)) {
-    throw new ClientStaticAudioResolverError("Audio URL must be public");
+    throw new ClientStaticAudioResolverError("Audio URL must be public", {
+      expected: true,
+    });
   }
   const timeoutMs = positiveLimit(
     dependencies.timeoutMs ?? DEFAULT_TIMEOUT_MS,

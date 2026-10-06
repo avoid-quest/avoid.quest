@@ -35,7 +35,8 @@ function createPlaybackSourceCallbacks({
         isPlaying: false,
       });
     },
-    onError: (error) => {
+    onError: (error, recoveryPending) => {
+      const duringStart = instance.loading;
       instance.playing = false;
       instance.loading = false;
       notifySoundError(
@@ -43,7 +44,8 @@ function createPlaybackSourceCallbacks({
         soundId,
         instance,
         "STREAM_FETCH_FAILED",
-        error.message
+        error.message,
+        { cause: error, duringStart, recoveryPending }
       );
     },
     onPaused: () => {
@@ -63,14 +65,14 @@ function createPlaybackSourceCallbacks({
         isPlaying: true,
       });
     },
-    onStreamError: (position) => {
+    onStreamError: (position, error) => {
       notifySoundError(
         notifyListeners,
         soundId,
         instance,
         "STREAM_INTERRUPTED",
         `Stream interrupted at ${Math.floor(position)}s - URL may need refresh`,
-        { position }
+        { cause: error, position }
       );
     },
   };
@@ -91,6 +93,7 @@ function createDeviceSourceCallbacks({
       });
     },
     onError: (error) => {
+      const duringStart = instance.loading;
       instance.playing = false;
       instance.loading = false;
       notifySoundError(
@@ -98,7 +101,8 @@ function createDeviceSourceCallbacks({
         soundId,
         instance,
         "PLAYBACK_FAILED",
-        error.message
+        error.message,
+        { cause: error, duringStart }
       );
     },
     onInactive: () => {

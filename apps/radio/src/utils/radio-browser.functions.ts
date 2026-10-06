@@ -4,14 +4,17 @@ import { z } from "zod";
 import { workerMetadataCache } from "@/lib/metadata/edge-cache";
 import { searchCachedRadioBrowser } from "@/lib/stations/directory-cache";
 import { rateLimitMiddleware } from "./middleware";
+import { validateServerInput } from "./server-input";
 
 export const radioBrowserSearch = createServerFn({ method: "POST" })
   .middleware([rateLimitMiddleware("radio-browser-search")])
   .validator(
-    z.object({
-      limit: z.number().int().min(1).max(100),
-      query: z.string().trim().min(1).max(200),
-    })
+    validateServerInput(
+      z.object({
+        limit: z.number().int().min(1).max(100),
+        query: z.string().trim().min(1).max(200),
+      })
+    )
   )
   .handler(({ data }) =>
     runServerFn({

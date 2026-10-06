@@ -498,6 +498,36 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   });
 
+  test("marks the finite-media terminal callback as awaiting the interrupted URL's recovery", async () => {
+    const browser = installBrowser();
+    const onError = mock(
+      (_error: Error, _recoveryPending?: boolean) => undefined
+    );
+    const onStreamError = mock((_position: number, _error: Error) => undefined);
+    const source = new MediaElementPlaybackSource(null, "native", {
+      onError,
+      onStreamError,
+    });
+    try {
+      const audio = browser.audio();
+      await startNativeStream(
+        source,
+        audio,
+        "https://radio.example/expired.mp3"
+      );
+      audio.duration = 120;
+      audio.currentTime = 42;
+      audio.error = { code: 2, message: "Expired URL" } as MediaError;
+      audio.emit("error");
+      expect(onStreamError).toHaveBeenCalledWith(42, expect.any(Error));
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), true);
+      expect(onStreamError.mock.calls[0]?.[1]).toBe(onError.mock.calls[0]?.[0]);
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
   test("restarts HLS loading immediately after a fatal network error", async () => {
     const browser = installBrowser();
     const hls = installHlsMock();

@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: observe production reporting without replacing the error module
+import * as Sentry from "@sentry/core";
 import {
   type PlaybackSessionId,
   playbackSessionsCollection,
@@ -7,7 +9,12 @@ import {
   type SettingsRecord,
   settingsCollection,
 } from "@/lib/collections/settings";
+import { createModeManager } from "./mode-lifecycle-manager";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
+import {
+  capturePlaybackActionError,
+  reportPlaybackActionError,
+} from "./playback-action-errors";
 
 async function resetPlaybackSessions() {
   await playbackSessionsCollection.stateWhenReady();
@@ -52,6 +59,62 @@ beforeEach(async () => {
 });
 
 describe("mode lifecycle requests", () => {
+  test("reports synchronization failures after recovery and preserves the playback action's reporting owner", async () => {
+    insertPlaybackSession("node");
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
+    const capture = spyOn(Sentry, "captureException").mockReturnValue(
+      "1234567890abcdef1234567890abcdef"
+    );
+    let failure: unknown = new Error("Mode module could not load");
+    const inactive = {
+      activate: async () => undefined,
+      deactivate: async () => undefined,
+      getPhase: () => "inactive" as const,
+    };
+    const manager = createModeManager({
+      lifecycles: {
+        dj: inactive,
+        node: {
+          ...inactive,
+          activate: () => Promise.reject(failure),
+        },
+        single: inactive,
+      },
+    });
+    const requests = createModeLifecycleRequests({ manager });
+    try {
+      await expect(requests.synchronizeMode("node")).rejects.toBe(failure);
+      expect(capture).toHaveBeenCalledTimes(1);
+      expect(manager.getSnapshot().phase).toBe("inactive");
+
+      capture.mockClear();
+      failure = reportPlaybackActionError(capturePlaybackActionError, {
+        cause: new Error("Audio engine could not start"),
+        code: "WORKLET_LOAD_FAILED",
+        mode: "node",
+      });
+      await expect(requests.requestMode("node")).rejects.toBe(failure);
+      expect(capture).toHaveBeenCalledTimes(1);
+
+      capture.mockClear();
+      const settingsFailure = new Error("Settings could not be read");
+      const synchronization = createModeLifecycleRequests({
+        getCurrentSettings: () => {
+          throw settingsFailure;
+        },
+        manager,
+      });
+      await expect(synchronization.synchronizeMode("node")).rejects.toBe(
+        settingsFailure
+      );
+      expect(capture).toHaveBeenCalledTimes(1);
+      expect(capture.mock.calls[0]?.[0]).toBe(settingsFailure);
+    } finally {
+      capture.mockRestore();
+      enabled.mockRestore();
+    }
+  });
+
   test("ignores invalid mode request values", async () => {
     const switchTo = mock(async (_mode: PlaybackSessionId) => undefined);
     const requests = createModeLifecycleRequests({

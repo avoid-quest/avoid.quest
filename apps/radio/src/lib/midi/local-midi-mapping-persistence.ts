@@ -1,3 +1,4 @@
+import { captureError } from "@avoid.quest/error";
 import type {
   MidiMappingPersistence,
   PersistedMidiControl,
@@ -102,7 +103,11 @@ export function createLocalMidiMappingPersistence(): MidiMappingPersistence {
         if (typeof localStorage !== "undefined") {
           localStorage.setItem(MIDI_MAPPING_STORAGE_KEY, JSON.stringify(value));
         }
-      } catch {
+      } catch (error) {
+        captureError(error, {
+          operation: "persistMidiMappings",
+          surface: "ui",
+        });
         // Mapping updates remain usable when browser storage is unavailable.
       }
     },

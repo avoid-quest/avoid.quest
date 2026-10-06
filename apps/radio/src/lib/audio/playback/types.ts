@@ -40,6 +40,11 @@ export type AudioError = {
   id: string;
   message: string;
   code: AudioErrorCode;
+  /** Original exception and whether the start promise owns reporting. */
+  cause?: unknown;
+  duringStart?: boolean;
+  /** Companion failure emitted while the caller may be renewing a finite URL. */
+  recoveryPending?: boolean;
   radio?: Radio;
   timestamp: number;
   /** Source ID if error originated from a specific source/effect */

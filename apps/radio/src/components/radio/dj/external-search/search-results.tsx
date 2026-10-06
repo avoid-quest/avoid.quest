@@ -18,6 +18,7 @@ import {
 } from "../../station-row";
 
 type SearchResultsProps = {
+  mode?: "dj" | "node";
   error: string | null;
   onLoad: (radio: Radio) => void;
   /** Called when a result is picked, before it resolves. */
@@ -35,6 +36,7 @@ const PLATFORM_LABELS = {
 };
 
 function ResultItem({
+  mode,
   result,
   onLoad,
   onPick,
@@ -43,6 +45,7 @@ function ResultItem({
   isLoading,
   onLoadingChange,
 }: {
+  mode?: "dj" | "node";
   result: UnifiedSearchResult;
   onLoad: (radio: Radio) => void;
   onPick?: () => void;
@@ -52,6 +55,7 @@ function ResultItem({
   onLoadingChange: (loading: boolean) => void;
 }) {
   const { mutate: loadItem, isPending } = useDjTrackLoad({
+    mode,
     onError,
     onLoad: (radio) => {
       onError("");
@@ -124,6 +128,7 @@ function ResultItem({
 }
 
 function ManagedResultItem({
+  mode,
   result,
   loadingId,
   onLoad,
@@ -131,6 +136,7 @@ function ManagedResultItem({
   onError,
   onLoadingIdChange,
 }: {
+  mode?: "dj" | "node";
   result: UnifiedSearchResult;
   loadingId: string | null;
   onLoad: (radio: Radio) => void;
@@ -145,6 +151,7 @@ function ManagedResultItem({
     <ResultItem
       isDisabled={loadingId !== null}
       isLoading={loadingId === result.id}
+      mode={mode}
       onError={onError}
       onLoad={onLoad}
       onLoadingChange={handleLoadingChange}
@@ -155,6 +162,7 @@ function ManagedResultItem({
 }
 
 export function SearchResults({
+  mode,
   error,
   onLoad,
   onPick,
@@ -192,6 +200,7 @@ export function SearchResults({
             <ManagedResultItem
               key={result.id}
               loadingId={loadingId}
+              mode={mode}
               onError={setLoadError}
               onLoad={onLoad}
               onLoadingIdChange={setLoadingId}

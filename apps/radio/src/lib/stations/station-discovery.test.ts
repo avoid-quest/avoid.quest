@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: observe reporting from the real directory workflow
+import * as Sentry from "@sentry/core";
 import type { Radio } from "@/lib/audio";
 import {
   createStationDiscovery,
@@ -36,39 +38,51 @@ async function waitForSearch(): Promise<void> {
 
 describe("StationDiscovery", () => {
   test("returns Radio Garden results when Radio Browser fails", async () => {
-    const snapshots: StationDiscoverySnapshot[] = [];
-    const discovery = createStationDiscovery({
-      radioBrowser: {
-        search: () => Promise.reject(new Error("Radio Browser unavailable")),
-      },
-      radioGarden: {
-        search: () =>
-          Promise.resolve([candidate("radio-garden", "Garden Radio")]),
-      },
-      streamProbe: {
-        prepare: (entry) => Promise.resolve(entry),
-      },
-    });
-
-    discovery.search({ knownStations: [], query: "garden" }, (snapshot) =>
-      snapshots.push(snapshot)
+    const failure = new Error("Radio Browser unavailable");
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
+    const capture = spyOn(Sentry, "captureException").mockReturnValue(
+      "event-id"
     );
-    await waitForSearch();
-
-    expect(snapshots.at(-1)).toMatchObject({
-      duplicateCount: 0,
-      isSearching: false,
-      results: [
-        {
-          action: {
-            radio: { name: "Garden Radio" },
-            type: "radio-garden",
-          },
-          name: "Garden Radio",
-          sources: ["radio-garden"],
+    try {
+      const snapshots: StationDiscoverySnapshot[] = [];
+      const discovery = createStationDiscovery({
+        radioBrowser: {
+          search: () => Promise.reject(failure),
         },
-      ],
-    });
+        radioGarden: {
+          search: () =>
+            Promise.resolve([candidate("radio-garden", "Garden Radio")]),
+        },
+        streamProbe: {
+          prepare: (entry) => Promise.resolve(entry),
+        },
+      });
+
+      discovery.search({ knownStations: [], query: "garden" }, (snapshot) =>
+        snapshots.push(snapshot)
+      );
+      await waitForSearch();
+
+      expect(snapshots.at(-1)).toMatchObject({
+        duplicateCount: 0,
+        isSearching: false,
+        results: [
+          {
+            action: {
+              radio: { name: "Garden Radio" },
+              type: "radio-garden",
+            },
+            name: "Garden Radio",
+            sources: ["radio-garden"],
+          },
+        ],
+      });
+      expect(capture).toHaveBeenCalledTimes(1);
+      expect(capture.mock.calls[0]?.[0]).toBe(failure);
+    } finally {
+      capture.mockRestore();
+      enabled.mockRestore();
+    }
   });
 
   test("publishes a healthy provider before a deferred provider settles", async () => {

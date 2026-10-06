@@ -331,6 +331,34 @@ describe("AudioManager", () => {
     }
   );
 
+  test("a renewed stream load rejection retains its cause and promise reporting owner", async () => {
+    const manager = AudioManager.getInstance();
+    const soundId = manager.createSound(station, "node:n:track");
+    const instance = getRegistry(manager).get(soundId);
+    if (!instance) {
+      throw new Error("sound was not created");
+    }
+    const failure = new Error("Renewed stream unavailable");
+    instance.playbackSource = {
+      ...createPendingSource(),
+      refreshUrl: () => Promise.reject(failure),
+    } as unknown as PlaybackSource;
+    const states: AudioState[] = [];
+    manager.subscribe(soundId, (state) => states.push(state));
+
+    await expect(
+      manager.refreshStreamUrl(soundId, "https://radio.example/renewed.mp3", 12)
+    ).rejects.toBe(failure);
+
+    expect(states.at(-1)?.error).toMatchObject({
+      cause: failure,
+      code: "STREAM_FETCH_FAILED",
+      duringStart: true,
+    });
+    expect(instance.loading).toBe(false);
+    expect(instance.playing).toBe(false);
+  });
+
   test("without a connector, Single and DJ sounds connect to the main bus", async () => {
     const manager = AudioManager.getInstance();
     const graph = createGraphHarness(manager);

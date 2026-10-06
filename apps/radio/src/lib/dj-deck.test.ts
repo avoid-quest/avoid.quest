@@ -2037,7 +2037,13 @@ describe("DjDeckModule", () => {
     );
   });
 
-  test.each(["success", "unresolved", "failed", "nonrecoverable"] as const)(
+  test.each([
+    "success",
+    "unresolved",
+    "failed",
+    "load-failed",
+    "nonrecoverable",
+  ] as const)(
     "DJ defers terminal reporting only for owned renewal: %s",
     async (outcome) => {
       const audio = createAudioAdapter();
@@ -2095,6 +2101,43 @@ describe("DjDeckModule", () => {
         throw new Error("Missing interruption fixture");
       }
       try {
+        if (outcome === "load-failed") {
+          // Exercise the real refresh callback and rejection together.
+          const { AudioManager } = await import(
+            `./audio/manager/audio-manager.ts?${"unmocked"}`
+          );
+          audio.refresh = mock(
+            (
+              soundId: string,
+              url: string,
+              position?: number,
+              streamFormat?: Radio["streamFormat"]
+            ) =>
+              AudioManager.prototype.refreshStreamUrl.call(
+                {
+                  notifyListeners: audio.emit,
+                  sounds: new Map([
+                    [
+                      soundId,
+                      {
+                        buffering: false,
+                        playbackSource: {
+                          refreshUrl: () =>
+                            Promise.reject(new Error("Renewed stream failed")),
+                        },
+                        radio: getPlaybackChannel("dj", "deck-a")?.radio,
+                        volume: 1,
+                      },
+                    ],
+                  ]),
+                } as unknown as ReturnType<typeof AudioManager.getInstance>,
+                soundId,
+                url,
+                position,
+                streamFormat
+              )
+          );
+        }
         audio.emit("left_yt-1:1", state);
         audio.emit("left_yt-1:1", {
           ...state,
@@ -2127,7 +2170,7 @@ describe("DjDeckModule", () => {
           renewal.reject(new Error("Renewal unavailable"));
         } else {
           renewal.resolve(
-            outcome === "success"
+            outcome === "success" || outcome === "load-failed"
               ? {
                   streamFormat: "progressive",
                   streamUrl: "https://radio.example/new.mp3",

@@ -1049,7 +1049,8 @@ export class AudioManager {
         soundId,
         instance,
         "STREAM_FETCH_FAILED",
-        error instanceof Error ? error.message : "Failed to refresh stream"
+        error instanceof Error ? error.message : "Failed to refresh stream",
+        { cause: error, duringStart: true }
       );
       throw error;
     }

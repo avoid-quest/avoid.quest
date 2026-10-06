@@ -4609,7 +4609,7 @@ describe("Node Playback: Track and File sources", () => {
     expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
   });
 
-  test.each(["success", "unresolved", "failed"] as const)(
+  test.each(["success", "unresolved", "failed", "load-failed"] as const)(
     "production Node callbacks defer interruption reporting until renewal is %s",
     async (outcome) => {
       insertNodeSession(patch([trackNode("video")]));
@@ -4634,6 +4634,45 @@ describe("Node Playback: Track and File sources", () => {
         harness.context.audio
       );
       try {
+        if (outcome === "load-failed") {
+          // Exercise the real refresh callback and rejection together.
+          const { AudioManager: RefreshManager } = await import(
+            `./audio/manager/audio-manager.ts?${"unmocked"}`
+          );
+          harness.context.audioEngine.playback.refreshStreamUrl = mock(
+            (
+              soundId: string,
+              url: string,
+              position?: number,
+              streamFormat?: Radio["streamFormat"]
+            ) =>
+              RefreshManager.prototype.refreshStreamUrl.call(
+                {
+                  notifyListeners: (_id: string, state: AudioState) =>
+                    publish(state),
+                  sounds: new Map([
+                    [
+                      soundId,
+                      {
+                        buffering: false,
+                        playbackSource: {
+                          refreshUrl: () =>
+                            Promise.reject(new Error("Renewed stream failed")),
+                        },
+                        radio: getPlaybackChannel("node", channelOf("video"))
+                          ?.radio,
+                        volume: 1,
+                      },
+                    ],
+                  ]),
+                } as unknown as ReturnType<typeof RefreshManager.getInstance>,
+                soundId,
+                url,
+                position,
+                streamFormat
+              )
+          );
+        }
         subscribeChannelRuntime("node", channelOf("video"), soundOf("video"), {
           onAudioState: laneWatcher(harness.context, "video"),
         });
@@ -4656,7 +4695,7 @@ describe("Node Playback: Track and File sources", () => {
           renewal.reject(new Error("Renewal unavailable"));
         } else {
           renewal.resolve(
-            outcome === "success"
+            outcome === "success" || outcome === "load-failed"
               ? {
                   streamFormat: "progressive",
                   streamUrl: "https://media.example/renewed.m4a",

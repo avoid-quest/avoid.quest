@@ -1305,6 +1305,54 @@ function createNodePlayback(
     }
   };
 
+  /** Claims reporting only for a platform URL with a renewal owner. */
+  const refreshInterruptedTrack = (
+    channelId: string,
+    soundId: string,
+    radio: Radio,
+    seekPosition: number,
+    isCurrent: () => boolean
+  ): boolean => {
+    if (!getRefreshRequest(radio)) {
+      return false;
+    }
+    // The sound repeats its error with each state until it resumes; one
+    // renewal at a time.
+    for (const refresh of refreshingStreams) {
+      if (refresh.channelId === channelId && refresh.isCurrent()) {
+        return true;
+      }
+    }
+    // A pause, removal or deactivate while it resolves drops the resume.
+    const pending = pendingChannelStarts.begin(channelId, isCurrent);
+    const refresh = { channelId, isCurrent: pending.isCurrent };
+    const canRefresh = pending.isCurrent;
+    refreshingStreams.add(refresh);
+    track(
+      refreshPlatformStream(radio, soundId, seekPosition, {
+        isCurrent: canRefresh,
+        onFailed: (request, error) =>
+          reportLaneFailure(channelId, request.failureMessage, error),
+        onRefreshed: () =>
+          setPlaybackChannelRuntime(channelId, () => ({ error: null })),
+        onUnresolved: (request) =>
+          reportLaneFailure(channelId, request.failureMessage),
+        refresh: (id, streamUrl, position, streamFormat) =>
+          ctx.audioEngine.playback.refreshStreamUrl(
+            id,
+            streamUrl,
+            position,
+            streamFormat
+          ),
+        resolveStream,
+      }).finally(() => {
+        pending.release();
+        refreshingStreams.delete(refresh);
+      })
+    ).catch(warn("Could not refresh a stream"));
+    return true;
+  };
+
   /**
    * A Track or File sound's state: an expired platform stream is renewed
    * and resumes at its position; an ended track repeats when its strip
@@ -1323,42 +1371,22 @@ function createNodePlayback(
     if (!(radio && isCurrent())) {
       return;
     }
+    if (
+      state.error?.code === "STREAM_FETCH_FAILED" &&
+      state.error.recoveryPending
+    ) {
+      return [...refreshingStreams].some(
+        (refresh) => refresh.channelId === channelId && refresh.isCurrent()
+      );
+    }
     if (state.error?.code === "STREAM_INTERRUPTED") {
-      // The sound repeats its error with each state until it resumes; one
-      // renewal at a time.
-      for (const refresh of refreshingStreams) {
-        if (refresh.channelId === channelId && refresh.isCurrent()) {
-          return;
-        }
-      }
-      // A pause, removal or deactivate while it resolves drops the resume.
-      const pending = pendingChannelStarts.begin(channelId, isCurrent);
-      const refresh = { channelId, isCurrent: pending.isCurrent };
-      const canRefresh = pending.isCurrent;
-      refreshingStreams.add(refresh);
-      track(
-        refreshPlatformStream(radio, soundId, state.error.position ?? 0, {
-          isCurrent: canRefresh,
-          onFailed: (request, error) =>
-            reportLaneFailure(channelId, request.failureMessage, error),
-          onRefreshed: () =>
-            setPlaybackChannelRuntime(channelId, () => ({ error: null })),
-          onUnresolved: (request) =>
-            reportLaneFailure(channelId, request.failureMessage),
-          refresh: (id, streamUrl, position, streamFormat) =>
-            ctx.audioEngine.playback.refreshStreamUrl(
-              id,
-              streamUrl,
-              position,
-              streamFormat
-            ),
-          resolveStream,
-        }).finally(() => {
-          pending.release();
-          refreshingStreams.delete(refresh);
-        })
-      ).catch(warn("Could not refresh a stream"));
-      return;
+      return refreshInterruptedTrack(
+        channelId,
+        soundId,
+        radio,
+        state.error.position ?? 0,
+        isCurrent
+      );
     }
     if (state.hasEnded && !state.isPlaying) {
       if (laneOfChannel(channelId)?.transport?.loop) {

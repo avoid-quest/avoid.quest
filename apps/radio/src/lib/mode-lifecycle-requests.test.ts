@@ -61,6 +61,7 @@ beforeEach(async () => {
 describe("mode lifecycle requests", () => {
   test("reports synchronization failures after recovery and preserves the playback action's reporting owner", async () => {
     insertPlaybackSession("node");
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(
       "1234567890abcdef1234567890abcdef"
     );
@@ -107,9 +108,10 @@ describe("mode lifecycle requests", () => {
         settingsFailure
       );
       expect(capture).toHaveBeenCalledTimes(1);
-      expect(capture).toHaveBeenCalledWith(settingsFailure);
+      expect(capture.mock.calls[0]?.[0]).toBe(settingsFailure);
     } finally {
       capture.mockRestore();
+      enabled.mockRestore();
     }
   });
 

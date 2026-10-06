@@ -265,7 +265,10 @@ export function filterSentryEvent(
   event: Sentry.ErrorEvent,
   hint: Sentry.EventHint
 ): Sentry.ErrorEvent | null {
-  const error = hint.originalException;
+  const error =
+    hint.data?.appError instanceof AppError
+      ? hint.data.appError
+      : hint.originalException;
   if (
     isAbortPlaybackError(error) ||
     (error instanceof AppError &&
@@ -384,9 +387,12 @@ export function captureError(
       scope.setContext("request", { id: meta.requestId });
     }
 
-    eventId = Sentry.captureException(
-      appError.cause instanceof Error ? appError.cause : appError
-    );
+    // Keep native same-cause dedupe and LinkedErrors' original exception.
+    // The hint carries the authoritative wrapper policy only to beforeSend.
+    eventId =
+      appError.cause instanceof Error
+        ? Sentry.captureException(appError.cause, { data: { appError } })
+        : Sentry.captureException(appError);
   });
 
   return eventId;

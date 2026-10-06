@@ -201,6 +201,7 @@ function parameter(
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
   test("reports a running processor's terminal failure once and ignores disposed runtimes", async () => {
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(
       "event-id"
     );
@@ -220,6 +221,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       });
     } finally {
       capture.mockRestore();
+      enabled.mockRestore();
     }
   });
 

@@ -39,6 +39,7 @@ async function waitForSearch(): Promise<void> {
 describe("StationDiscovery", () => {
   test("returns Radio Garden results when Radio Browser fails", async () => {
     const failure = new Error("Radio Browser unavailable");
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(
       "event-id"
     );
@@ -77,9 +78,10 @@ describe("StationDiscovery", () => {
         ],
       });
       expect(capture).toHaveBeenCalledTimes(1);
-      expect(capture).toHaveBeenCalledWith(failure);
+      expect(capture.mock.calls[0]?.[0]).toBe(failure);
     } finally {
       capture.mockRestore();
+      enabled.mockRestore();
     }
   });
 

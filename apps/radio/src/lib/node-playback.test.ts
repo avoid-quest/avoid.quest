@@ -7,17 +7,21 @@ import {
   spyOn,
   test,
 } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: observe the production reporter
+import * as Sentry from "@sentry/core";
 import { Store } from "@tanstack/react-store";
 import { toast } from "sonner";
-import type {
-  AudioEngineFacade,
+import {
+  type AudioEngineFacade,
   AudioManager,
-  AudioState,
-  Radio,
+  type AudioState,
+  type Radio,
 } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { createPlaybackSourceCallbacks } from "@/lib/audio/manager/audio-manager-source-callbacks";
 import type {
   MainOutputConnect,
+  SoundInstance,
   SoundOutputConnector,
 } from "@/lib/audio/manager/audio-manager-types";
 import {
@@ -36,6 +40,7 @@ import {
   LANE_DUCK_MS,
   LANE_LEVEL_TIME_CONSTANT_S,
 } from "@/lib/audio/routing/node-lane-outputs";
+import { subscribeChannelRuntime } from "@/lib/channel-state-manager";
 import { writeLegacyRecord } from "@/lib/collections/migrations/legacy-records";
 import {
   getPlaybackChannel,
@@ -102,6 +107,7 @@ import {
 } from "./node-playback";
 import type { OutputRouting, OutputRoutingSnapshot } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
+import { capturePlaybackActionError } from "./playback-action-errors";
 
 type NodeInput = NodeGraphInput["nodes"][number];
 
@@ -3987,7 +3993,7 @@ function laneWatcher(context: PlaybackActionContext, nodeId: string) {
     context.channels.subscribeRuntime as ReturnType<typeof mock>
   ).mock.calls.filter(([, channelId]) => channelId === channelOf(nodeId));
   const options = calls.at(-1)?.[3] as
-    | { onAudioState?: (state: AudioState) => void }
+    | { onAudioState?: (state: AudioState) => boolean | undefined }
     | undefined;
   if (!options?.onAudioState) {
     throw new Error(`Lane ${nodeId} is not watched`);
@@ -4602,6 +4608,73 @@ describe("Node Playback: Track and File sources", () => {
     );
     expect(getPlaybackChannelRuntime(channelOf("video")).error).toBeNull();
   });
+
+  test.each(["success", "unresolved", "failed"] as const)(
+    "production Node callbacks defer interruption reporting until renewal is %s",
+    async (outcome) => {
+      insertNodeSession(patch([trackNode("video")]));
+      const renewal = Promise.withResolvers<PlatformStreamResolution | null>();
+      const harness = createHarness({
+        resolveStream: mock(() => renewal.promise),
+      });
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("video", true);
+      harness.context.reportError = capturePlaybackActionError;
+      const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
+      const capture = spyOn(Sentry, "captureException").mockReturnValue(
+        "1234567890abcdef1234567890abcdef"
+      );
+      let publish = (_state: AudioState) => undefined;
+      harness.context.audio.subscribe = mock((_soundId, listener) => {
+        publish = listener;
+        return () => undefined;
+      });
+      const manager = spyOn(AudioManager, "getInstance").mockReturnValue(
+        harness.context.audio
+      );
+      try {
+        subscribeChannelRuntime("node", channelOf("video"), soundOf("video"), {
+          onAudioState: laneWatcher(harness.context, "video"),
+        });
+        const callbacks = createPlaybackSourceCallbacks({
+          instance: {
+            buffering: false,
+            loading: false,
+            playing: true,
+            radio: getPlaybackChannel("node", channelOf("video"))?.radio,
+            volume: 1,
+          } as SoundInstance,
+          notifyListeners: (_soundId, state) => publish(state),
+          soundId: soundOf("video"),
+        });
+        const expired = new Error("Expired platform URL");
+        callbacks.onStreamError?.(42, expired);
+        callbacks.onError?.(expired, true);
+        expect(capture).not.toHaveBeenCalled();
+        if (outcome === "failed") {
+          renewal.reject(new Error("Renewal unavailable"));
+        } else {
+          renewal.resolve(
+            outcome === "success"
+              ? {
+                  streamFormat: "progressive",
+                  streamUrl: "https://media.example/renewed.m4a",
+                }
+              : null
+          );
+        }
+        await harness.playback.whenSettled();
+        expect(capture).toHaveBeenCalledTimes(outcome === "success" ? 0 : 1);
+        callbacks.onError?.(new Error("Unrelated source failure"));
+        expect(capture).toHaveBeenCalledTimes(outcome === "success" ? 1 : 2);
+      } finally {
+        capture.mockRestore();
+        enabled.mockRestore();
+        manager.mockRestore();
+      }
+    }
+  );
 
   test("a sound repeating its interruption renews its stream once", async () => {
     insertNodeSession(patch([trackNode("video")]));

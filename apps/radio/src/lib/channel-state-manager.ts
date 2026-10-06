@@ -51,7 +51,8 @@ type ChannelUpdate =
 
 export type ChannelActivationOptions = {
   soundId?: string;
-  onAudioState?: (audioState: AudioState) => void;
+  /** Return true only when a recovery owns reporting this failure. */
+  onAudioState?: (audioState: AudioState) => boolean | undefined;
   persistRadio?: boolean;
 };
 
@@ -293,11 +294,8 @@ export function subscribeChannelRuntime(
       isPlaying: audioState.isPlaying,
       soundId,
     }));
-    if (
-      audioState.error &&
-      !audioState.error.duringStart &&
-      !(audioState.error.code === "STREAM_INTERRUPTED" && options.onAudioState)
-    ) {
+    const recoveryOwned = options.onAudioState?.(audioState) === true;
+    if (audioState.error && !audioState.error.duringStart && !recoveryOwned) {
       capturePlaybackActionError(
         createPlaybackActionError({
           cause: audioState.error.cause ?? new Error(audioState.error.message),
@@ -307,7 +305,6 @@ export function subscribeChannelRuntime(
         })
       );
     }
-    options.onAudioState?.(audioState);
   });
 
   let meterCleanup: (() => void) | null = null;

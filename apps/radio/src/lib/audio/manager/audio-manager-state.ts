@@ -12,6 +12,7 @@ type NotifySoundListeners = (soundId: string, state: AudioState) => void;
 type SoundErrorOptions = {
   cause?: unknown;
   duringStart?: boolean;
+  recoveryPending?: boolean;
   id?: string;
   position?: number;
   timestamp?: number;
@@ -47,6 +48,7 @@ function buildSoundError(
     message,
     position: options.position,
     radio: instance.radio,
+    recoveryPending: options.recoveryPending,
     sourceId: soundId,
     timestamp: options.timestamp ?? Date.now(),
   };

@@ -54,6 +54,7 @@ afterEach(async () => {
 
 describe("channel state manager", () => {
   test("production action and asynchronous audio failures reach reporting, while start callbacks defer to their promise", () => {
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const captured: unknown[] = [];
     const capture = spyOn(Sentry, "captureException").mockImplementation(
       (error) => {
@@ -97,7 +98,7 @@ describe("channel state manager", () => {
       expect(captured).toEqual([actionFailure]);
       publish(state);
       expect(captured).toEqual([actionFailure, streamFailure]);
-      const recovered = mock(() => undefined);
+      const recovered = mock(() => true);
       subscribeChannelRuntime("node", "node-a", "sound-b", {
         onAudioState: recovered,
       });
@@ -107,8 +108,17 @@ describe("channel state manager", () => {
       });
       expect(recovered).toHaveBeenCalledTimes(1);
       expect(captured).toHaveLength(2);
+      subscribeChannelRuntime("node", "node-b", "sound-c", {
+        onAudioState: () => undefined,
+      });
+      publish({
+        ...state,
+        error: { ...audioError, code: "STREAM_INTERRUPTED" },
+      });
+      expect(captured).toHaveLength(3);
     } finally {
       capture.mockRestore();
+      enabled.mockRestore();
     }
   });
 

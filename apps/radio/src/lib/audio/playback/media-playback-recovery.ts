@@ -22,8 +22,8 @@ type RecoverySnapshot = {
 type RecoveryActions = {
   abortReload: () => void;
   getSnapshot: () => RecoverySnapshot;
-  onStreamError: (position: number) => void;
-  onTerminalError: (error: Error) => void;
+  onStreamError: (position: number, error: Error) => void;
+  onTerminalError: (error: Error, recoveryPending?: boolean) => void;
   reload: (input: PlaybackInput, generation: number) => Promise<void>;
   resume: () => Promise<void>;
   setState: (status: StreamStatus, isBuffering: boolean) => void;
@@ -73,8 +73,8 @@ export class MediaPlaybackRecovery {
     // Finite platform media can have expiring URLs. The caller re-resolves
     // those URLs; live streams are reloaded in place.
     if (Number.isFinite(state.duration)) {
-      this.actions.onStreamError(state.currentTime);
-      this.terminal(error);
+      this.actions.onStreamError(state.currentTime, error);
+      this.terminal(error, true);
       return;
     }
 
@@ -256,8 +256,8 @@ export class MediaPlaybackRecovery {
     });
   }
 
-  private terminal(error: Error): void {
+  private terminal(error: Error, recoveryPending = false): void {
     this.timer.cancel();
-    this.actions.onTerminalError(error);
+    this.actions.onTerminalError(error, recoveryPending);
   }
 }

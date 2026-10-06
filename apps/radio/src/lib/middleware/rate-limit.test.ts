@@ -140,6 +140,7 @@ describe("validateAuthAndRateLimit", () => {
 
   test("does not persist an IP embedded in a rate-limit binding error", async () => {
     const log = spyOn(console, "error").mockImplementation(() => undefined);
+    const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(
       "event-id"
     );
@@ -167,6 +168,7 @@ describe("validateAuthAndRateLimit", () => {
     } finally {
       log.mockRestore();
       capture.mockRestore();
+      enabled.mockRestore();
     }
   });
 });

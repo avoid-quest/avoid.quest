@@ -63,11 +63,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         shouldResume: this.shouldResumeAfterLoad,
         status: this._status,
       }),
-      onStreamError: (position) => this.callbacks.onStreamError?.(position),
-      onTerminalError: (error) => {
+      onStreamError: (position, error) =>
+        this.callbacks.onStreamError?.(position, error),
+      onTerminalError: (error, recoveryPending) => {
         this._status = "error";
         this.setBuffering(false);
-        this.callbacks.onError?.(error);
+        this.callbacks.onError?.(error, recoveryPending);
       },
       reload: (input, generation) => this.loadAttachedSource(input, generation),
       resume: async () => {

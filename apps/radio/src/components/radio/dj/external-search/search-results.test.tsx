@@ -105,6 +105,7 @@ let platformItemLoader: typeof import("@/lib/platform-item-loader");
 let loadPlatformItemMock: ReturnType<
   typeof spyOn<typeof platformItemLoader, "loadPlatformItem">
 >;
+let enabledMock: ReturnType<typeof spyOn<typeof Sentry, "isEnabled">>;
 let captureExceptionMock: ReturnType<
   typeof spyOn<typeof Sentry, "captureException">
 >;
@@ -137,6 +138,7 @@ beforeEach(() => {
   queryClient = new QueryClient();
   loadPlatformItemMock = spyOn(platformItemLoader, "loadPlatformItem");
   capturedMode = undefined;
+  enabledMock = spyOn(Sentry, "isEnabled").mockReturnValue(true);
   captureExceptionMock = spyOn(Sentry, "captureException").mockImplementation(
     () => {
       const { mode } = Sentry.getCurrentScope().getScopeData().tags;
@@ -151,6 +153,7 @@ afterEach(() => {
   queryClient.clear();
   loadPlatformItemMock.mockRestore();
   captureExceptionMock.mockRestore();
+  enabledMock.mockRestore();
 });
 
 describe("SearchResults", () => {
@@ -205,6 +208,7 @@ describe("SearchResults", () => {
         code: "PROVIDER_FAILED",
         expected: false,
         message: "Provider unavailable",
+        reportingHandled: true,
         requestId: "request-1",
         status: 502,
       }),

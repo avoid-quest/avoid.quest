@@ -61,6 +61,7 @@ import { getMixer } from "@/lib/hooks/use-dj-state";
 import { getOutputRouting, type OutputRouting } from "@/lib/output-routing.js";
 import { loadPlatformItem } from "@/lib/platform-item-loader";
 import {
+  getRefreshRequest,
   type LazyTrackRequest,
   lazyTrackRequest,
   refreshPlatformStream,
@@ -238,6 +239,7 @@ type DeckRuntime = {
   loadGeneration: number;
   playGeneration: number;
   stripRestored: boolean;
+  streamRefresh: { generation: number; soundId: string } | null;
 };
 
 const sideForDeck = (deckId: DeckId): DeckSide =>
@@ -511,6 +513,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       generation: 0,
       loadGeneration: 0,
       playGeneration: 0,
+      streamRefresh: null,
       stripRestored: false,
     },
     "deck-b": {
@@ -519,6 +522,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       generation: 0,
       loadGeneration: 0,
       playGeneration: 0,
+      streamRefresh: null,
       stripRestored: false,
     },
   };
@@ -529,6 +533,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     runtime.bindingCleanup = null;
     runtime.cueRegistration?.replaceTap(null);
     runtime.stripRestored = false;
+    runtime.streamRefresh = null;
     options.effects.unbind(effectsRef(deckId));
     resetPlaybackChannelRuntime(deckId);
   };
@@ -693,7 +698,20 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     if (state.isPlaying && !state.isLoading) {
       restorePlayableState(deckId, generation, soundId);
     }
-    if (state.error?.code === "STREAM_INTERRUPTED" && radio) {
+    const runtime = runtimes[deckId];
+    if (
+      state.error?.code === "STREAM_FETCH_FAILED" &&
+      state.error.recoveryPending &&
+      runtime.streamRefresh?.generation === generation &&
+      runtime.streamRefresh.soundId === soundId
+    ) {
+      return;
+    }
+    if (
+      state.error?.code === "STREAM_INTERRUPTED" &&
+      radio &&
+      getRefreshRequest(radio)
+    ) {
       refreshInterruptedStream(
         deckId,
         generation,
@@ -1093,28 +1111,40 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     radio: Radio,
     position: number
   ): Promise<void> {
-    await refreshPlatformStream(radio, soundId, position, {
-      isCurrent: () =>
-        isCurrent(deckId, generation) &&
-        getPlaybackChannelRuntime(deckId).soundId === soundId,
-      onFailed: (request, error) =>
-        reportFailure(deckId, request.failureMessage, error, radio),
-      onRefreshed: () => {
-        setPlaybackChannelRuntime(deckId, () => ({ error: null }));
-        clearDjErrorSurface(deckId);
-        applyCrossfade();
-      },
-      onUnresolved: (request) =>
-        reportDjErrorSurface(
-          request.failureMessage,
-          request.failureCode,
-          undefined,
-          radio,
-          deckId
-        ),
-      refresh: options.audio.refresh,
-      resolveStream: options.platform.resolveStream,
-    });
+    const runtime = runtimes[deckId];
+    if (runtime.streamRefresh) {
+      return;
+    }
+    const refresh = { generation, soundId };
+    runtime.streamRefresh = refresh;
+    try {
+      await refreshPlatformStream(radio, soundId, position, {
+        isCurrent: () =>
+          isCurrent(deckId, generation) &&
+          getPlaybackChannelRuntime(deckId).soundId === soundId,
+        onFailed: (request, error) =>
+          reportFailure(deckId, request.failureMessage, error, radio),
+        onRefreshed: () => {
+          setPlaybackChannelRuntime(deckId, () => ({ error: null }));
+          clearDjErrorSurface(deckId);
+          applyCrossfade();
+        },
+        onUnresolved: (request) =>
+          reportDjErrorSurface(
+            request.failureMessage,
+            request.failureCode,
+            undefined,
+            radio,
+            deckId
+          ),
+        refresh: options.audio.refresh,
+        resolveStream: options.platform.resolveStream,
+      });
+    } finally {
+      if (runtime.streamRefresh === refresh) {
+        runtime.streamRefresh = null;
+      }
+    }
   }
 
   const isContinuationCurrent = (

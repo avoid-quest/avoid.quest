@@ -35,9 +35,9 @@ type PlaybackSourceCallbacks = {
   onPaused?: () => void;
   onBuffering?: (isBuffering: boolean) => void;
   onReady?: () => void;
-  onError?: (error: Error) => void;
+  onError?: (error: Error, recoveryPending?: boolean) => void;
   onEnded?: () => void;
-  onStreamError?: (position: number) => void;
+  onStreamError?: (position: number, error: Error) => void;
 };
 
 export type { PlaybackInput, PlaybackSource, PlaybackSourceCallbacks };

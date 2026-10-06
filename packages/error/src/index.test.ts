@@ -296,7 +296,9 @@ describe("handled playback and transport policy", () => {
         mode: "single",
       })
     ).toBe(EVENT_ID);
-    expect(captureException).toHaveBeenCalledWith(cause);
+    expect(captureException).toHaveBeenCalledWith(cause, {
+      data: { appError: expect.any(AppError) },
+    });
     expect(capturedScope?.tags.error_code).toBe(errorCode);
   });
 

@@ -1,6 +1,6 @@
 import { AppError, captureError } from "@avoid.quest/error";
 import { Editing, UUID } from "@opendaw/lib-std";
-import type { Project, ProjectEnv } from "@opendaw/studio-core";
+import type { EngineWorklet, Project, ProjectEnv } from "@opendaw/studio-core";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
@@ -133,6 +133,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private nextWerkstattGeneration = 0;
   private bpm = 120;
   private closed = false as boolean;
+  private reportedWorkletFailure = false as boolean;
 
   constructor(
     context: AudioContext,
@@ -241,12 +242,53 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       false
     );
     try {
-      const worklet = project.startAudioWorklet();
-
-      // Project.startAudioWorklet connects the normal master output. Live radio
-      // uses only the per-source monitor returns; leaving output 0 connected
-      // would duplicate the signal.
-      worklet.disconnect(this.context.destination, 0, 0);
+      const load = (worklet: EngineWorklet): void => {
+        // Every worklet starts with master output 0 connected. Radio uses only
+        // monitoring returns, including after openDAW replaces a failed worklet.
+        worklet.disconnect(this.context.destination, 0, 0);
+        for (const unit of this.soundUnits.values()) {
+          if (unit.source && unit.destination) {
+            project.engine.registerMonitoringSource(
+              unit.audioUnitBox.address.uuid,
+              unit.source,
+              unit.inputChannels,
+              unit.destination
+            );
+          }
+          for (const group of flattenGroups(unit.groups)) {
+            if (group.config.type === "werkstatt") {
+              this.subscribeWerkstattMessages(group, group.config.id);
+            }
+          }
+        }
+      };
+      const initialWorklet = project.startAudioWorklet({
+        load,
+        unload: () => {
+          if (this.project !== project || this.closed) {
+            return Promise.resolve();
+          }
+          for (const subscription of this.werkstattSubscriptions.values()) {
+            subscription.terminate();
+          }
+          this.werkstattSubscriptions.clear();
+          // openDAW restarts indefinitely; report only once per runtime.
+          if (!this.reportedWorkletFailure) {
+            this.reportedWorkletFailure = true;
+            captureError(
+              new AppError({
+                category: "playback",
+                code: "AUDIO_PROCESSOR_FAILED",
+                context: { backend: "official" },
+                safeMessage: "Audio worklet processor stopped",
+              }),
+              { operation: "runAudioProcessor", surface: "ui" }
+            );
+          }
+          return Promise.resolve();
+        },
+      });
+      load(initialWorklet);
       await project.engine.isReady();
 
       if (this.closed) {
@@ -260,23 +302,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       });
       this.modules = modules;
       this.project = project;
-      worklet.addEventListener(
-        "processorerror",
-        () => {
-          if (this.project === project && !this.closed) {
-            captureError(
-              new AppError({
-                category: "playback",
-                code: "AUDIO_PROCESSOR_FAILED",
-                context: { backend: "official" },
-                safeMessage: "Audio worklet processor stopped",
-              }),
-              { operation: "runAudioProcessor", surface: "ui" }
-            );
-          }
-        },
-        { once: true }
-      );
     } catch (error) {
       project.terminate();
       throw error;

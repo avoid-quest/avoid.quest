@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { UUID } from "@opendaw/lib-std";
 import type { WerkstattDeviceBox } from "@opendaw/studio-boxes";
-import type { Project } from "@opendaw/studio-core";
+import type { Project, RestartWorklet } from "@opendaw/studio-core";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporting boundary
 import * as Sentry from "@sentry/core";
 // @ts-expect-error jsdom types are not installed in this workspace.
@@ -60,6 +60,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       pan: { value: 0 },
     });
   const worklet = audioNode();
+  let restart: RestartWorklet | undefined;
   const context = {
     audioWorklet: {
       addModule: mock((url: string) => {
@@ -132,7 +133,15 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
                 boxGraph: project.boxGraph,
                 editing: project.editing,
                 engine,
-                startAudioWorklet: () => worklet,
+                startAudioWorklet: (hook: RestartWorklet) => {
+                  restart = hook;
+                  const failed = () => {
+                    worklet.removeEventListener("processorerror", failed);
+                    hook.unload(undefined).then(() => undefined);
+                  };
+                  worklet.addEventListener("processorerror", failed);
+                  return worklet;
+                },
                 terminate,
               };
             },
@@ -159,6 +168,15 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
         throw new Error("Runtime has not created its project");
       }
       return project;
+    },
+    restartWorklet: async () => {
+      if (!restart) {
+        throw new Error("Worklet has not started");
+      }
+      await restart.unload(undefined);
+      const replacement = audioNode();
+      restart.load(replacement as never);
+      return replacement;
     },
     runtime,
     source: { context } as unknown as AudioNode,
@@ -200,7 +218,7 @@ function parameter(
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
-  test("reports a running processor's terminal failure once and ignores disposed runtimes", async () => {
+  test("reports only the first worklet failure per runtime and ignores disposed runtimes", async () => {
     const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(
       "event-id"
@@ -209,7 +227,8 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       const running = await createHarness();
       await running.runtime.initialize();
       running.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
-      running.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
+      await running.restartWorklet();
+      await running.restartWorklet();
       const disposed = await createHarness();
       await disposed.runtime.initialize();
       disposed.runtime.cleanup();
@@ -219,6 +238,10 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         code: "AUDIO_PROCESSOR_FAILED",
         context: { backend: "official" },
       });
+      const other = await createHarness();
+      await other.runtime.initialize();
+      await other.restartWorklet();
+      expect(capture).toHaveBeenCalledTimes(2);
     } finally {
       capture.mockRestore();
       enabled.mockRestore();
@@ -343,6 +366,43 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+  test("restores live mono, stereo and sidechain returns on every worklet restart", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("stereo", h.source, h.destination);
+    const monoSource = { context: h.source.context } as AudioNode;
+    await h.runtime.connectSound("mono", monoSource, h.destination, 1, 1);
+    const keySource = { context: h.source.context } as AudioNode;
+    await h.runtime.connectSidechainSource("key", keySource);
+    await h.runtime.connectSound("retired", h.source, h.destination);
+    h.runtime.disconnectSound("retired");
+    h.runtime.syncEffects("stereo", [werkstatt()]);
+    await finishCompile(h.compiles[0]);
+    const boxes = h.project.boxGraph.boxes();
+    const liveReturns = h.engine.registerMonitoringSource.mock.calls.slice(
+      0,
+      3
+    );
+    const [originalSubscription] = h.subscriptions;
+
+    for (let index = 0; index < 2; index += 1) {
+      h.engine.registerMonitoringSource.mockClear();
+      // biome-ignore lint/performance/noAwaitInLoops: consecutive failures each replace the worklet
+      const replacement = await h.restartWorklet();
+      expect(replacement.disconnect).toHaveBeenCalledWith(
+        h.source.context.destination,
+        0,
+        0
+      );
+      expect(h.engine.registerMonitoringSource.mock.calls).toEqual(liveReturns);
+      expect(h.project.boxGraph.boxes()).toEqual(boxes);
+    }
+    expect(originalSubscription.terminate).toHaveBeenCalledTimes(1);
+    h.subscriptions.at(-1)?.listener("restarted device error");
+    expect(getWerkstattRuntimeStatus("script")).toEqual({
+      message: "restarted device error",
+      state: "error",
+    });
+  });
 
   test("a thousand sound syncs keep edits live without retaining undo history", async () => {
     const h = await createHarness();

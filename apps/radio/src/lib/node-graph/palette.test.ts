@@ -507,6 +507,17 @@ describe("addPaletteNode", () => {
 
     expect(graph.nodes.some((node) => node.id === nodeId)).toBe(true);
     expect(graph.edges).toHaveLength(fanOut.edges.length + 1);
+    expect(graph.edges.filter((edge) => edge.source === nodeId)).toEqual([
+      expect.objectContaining({
+        source: nodeId,
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: "x",
+        targetHandle: AUDIO_IN_HANDLE,
+      }),
+    ]);
+    expect(graph.edges.filter((edge) => edge.source !== nodeId)).toEqual(
+      fanOut.edges
+    );
     expect(validate(graph)).toEqual([]);
   });
 });

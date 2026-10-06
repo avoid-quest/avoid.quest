@@ -52,6 +52,44 @@ export function gateModulator(id: string, on: boolean): void {
   }
 }
 
+function connectedControlRouters(
+  candidates: readonly string[],
+  sources: readonly string[],
+  links: readonly ControlLink[],
+  parameterSources: readonly string[]
+): string[] {
+  const routers = new Set(candidates);
+  const active = new Set<string>();
+  const outputs = new Map<string, string[]>();
+  const inputs = new Map<string, string[]>();
+  for (const link of links) {
+    outputs.set(link.source, [
+      ...(outputs.get(link.source) ?? []),
+      link.target,
+    ]);
+    inputs.set(link.target, [...(inputs.get(link.target) ?? []), link.source]);
+  }
+  const visit = (roots: readonly string[], next: Map<string, string[]>) => {
+    const seen = new Set<string>();
+    const pending = [...roots];
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      if (routers.has(id)) {
+        active.add(id);
+      }
+      pending.push(...(next.get(id) ?? []));
+    }
+  };
+  // Retain downstream readouts and upstream consumers, including zero-input
+  // routers after unplugging. Accepted cables bound this render-thread work.
+  visit(sources, outputs);
+  visit([...sources, ...parameterSources], inputs);
+  return candidates.filter((id) => active.has(id));
+}
+
 /** Lower validated control sources and detector taps for the worklet. */
 export function modulationProgram(graph: NodeGraph): ModulationProgram {
   const { wired, issues } = analyseGraph(graph);
@@ -64,36 +102,62 @@ export function modulationProgram(graph: NodeGraph): ModulationProgram {
   const nodes = graph.nodes
     .filter(isModulationNode)
     .filter((node) => !refusedNodes.has(node.id));
-  const routers = graph.nodes
+  const candidates = graph.nodes
     .filter(
       (node) =>
         (node.type === "merge" || node.type === "fxComposite") &&
         !refusedNodes.has(node.id)
     )
     .map((node) => node.id);
-  const ids = new Set([...nodes.map((node) => node.id), ...routers]);
+  const sources = nodes.map((node) => node.id);
+  const ids = new Set([...sources, ...candidates]);
+  const followers = nodes
+    .filter((node) => node.type === "follower")
+    .map((node) => node.id);
+  const followerIds = new Set(followers);
   const audioSources: Record<string, string> = {};
   const links: ControlLink[] = [];
-  for (const { edge, to } of wired) {
-    if (edge.muted || refusedEdges.has(edge.id) || !ids.has(edge.target)) {
+  const parameterSources: string[] = [];
+  for (const { edge, from, to } of wired) {
+    if (
+      edge.muted ||
+      refusedEdges.has(edge.id) ||
+      refusedNodes.has(edge.source) ||
+      refusedNodes.has(edge.target)
+    ) {
       continue;
     }
-    if (to.kind === "audio") {
+    if (to.kind === "audio" && followerIds.has(edge.target)) {
       audioSources[edge.target] = edge.target;
-    } else if (to.kind === "control" && ids.has(edge.source)) {
-      links.push({
-        depth: edge.depth ?? 1,
-        source: edge.source,
-        target: edge.target,
-      });
+    } else if (
+      from.kind === "control" &&
+      to.kind === "control" &&
+      ids.has(edge.source)
+    ) {
+      if (to.id === "parameter") {
+        parameterSources.push(edge.source);
+      } else if (ids.has(edge.target)) {
+        links.push({
+          depth: edge.depth ?? 1,
+          source: edge.source,
+          target: edge.target,
+        });
+      }
     }
   }
+  const routers = connectedControlRouters(
+    candidates,
+    sources,
+    links,
+    parameterSources
+  );
+  const activeIds = new Set([...sources, ...routers]);
   return {
     audioSources,
-    followers: nodes
-      .filter((node) => node.type === "follower")
-      .map((node) => node.id),
-    links,
+    followers,
+    links: links.filter(
+      (link) => activeIds.has(link.source) && activeIds.has(link.target)
+    ),
     nodes,
     routers,
   };

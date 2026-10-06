@@ -616,13 +616,24 @@ describe("reconnectEdge", () => {
     // Station B's cable to Speakers onto the Gain's input Station A holds.
     const toSpeakers = wired.edges.find((edge) => edge.source === "src-b");
     const original = structuredClone(wired);
-    const refused = reconnectEdge(wired, toSpeakers?.id ?? "", {
-      source: "src-b",
-      sourceHandle: "out:audio:main",
-      target: gain,
-      targetHandle: "in:audio:main",
-    });
-    expect(refused.ok).toBe(true);
+    const reconnected = accepted(
+      reconnectEdge(wired, toSpeakers?.id ?? "", {
+        source: "src-b",
+        sourceHandle: "out:audio:main",
+        target: gain,
+        targetHandle: "in:audio:main",
+      })
+    );
+    expect(reconnected.edges.filter((edge) => edge.target === gain)).toEqual([
+      expect.objectContaining({
+        id: toSpeakers?.id,
+        source: "src-b",
+        sourceHandle: "out:audio:main",
+        target: gain,
+        targetHandle: "in:audio:main",
+      }),
+      wired.edges.find((edge) => edge.id === intoGain),
+    ]);
     expect(wired).toEqual(original);
   });
 
@@ -1666,7 +1677,26 @@ describe("setDeviceParams", () => {
     expect(
       graph.nodes.find((node) => node.id === nodeIds[0])?.data
     ).toMatchObject({ deviceId: "usb", deviceLabel: "USB interface" });
+    const mutedCopy = setDeviceParams(graph, nodeIds[0] ?? "", { muted: true });
+    expect(
+      mutedCopy.nodes.find((node) => node.id === nodeIds[0])?.data
+    ).toMatchObject({
+      deviceId: "usb",
+      deviceLabel: "USB interface",
+      muted: true,
+    });
+    expect(
+      mutedCopy.nodes.find((node) => node.id === "deviceOut")?.data
+    ).toMatchObject({
+      deviceId: "usb",
+      deviceLabel: "USB interface",
+      muted: false,
+    });
+    expect(
+      graph.nodes.find((node) => node.id === nodeIds[0])?.data
+    ).toMatchObject({ muted: false });
     expect(validate(graph)).toEqual([]);
+    expect(validate(mutedCopy)).toEqual([]);
   });
 });
 
@@ -1718,6 +1748,17 @@ describe("duplicateNodes", () => {
     const feeding = duplicateNodes(start, ["src-a"]);
     expect(feeding.graph.edges).toHaveLength(start.edges.length + 1);
     expect(feeding.nodeIds).toEqual(["src-a-2"]);
+    expect(
+      feeding.graph.edges.filter((edge) => edge.target === "compressor")
+    ).toEqual([
+      start.edges.find((edge) => edge.target === "compressor"),
+      expect.objectContaining({
+        source: "src-a-2",
+        sourceHandle: "out:audio:main",
+        target: "compressor",
+        targetHandle: "in:audio:main",
+      }),
+    ]);
 
     expect(duplicateNodes(start, [SPEAKERS_NODE_ID])).toEqual({
       graph: start,

@@ -1,7 +1,10 @@
 import { captureError } from "@avoid.quest/error";
 import { createNodeAudioPatch } from "@/lib/audio/routing/node-audio-patch";
 import { createNodeSessionPersistence } from "@/lib/collections/node-session-persistence";
-import { patchInputId } from "@/lib/node-graph/audio-patch-plan";
+import {
+  type AudioPatchPlan,
+  patchInputId,
+} from "@/lib/node-graph/audio-patch-plan";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 import {
   applyModulation,
@@ -130,6 +133,7 @@ import {
 } from "@/lib/node-graph/node-store";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
 import {
+  type GraphEdge,
   type GraphNode,
   isModulationNode,
   isRadioSourceNode,
@@ -602,6 +606,8 @@ function createNodePlayback(
   const carriedLanes = new Map<string, boolean>();
   /** Lanes removed in this batch, whose cable ops run before the removal. */
   const removingLanes = new Set<string>();
+  /** Removed sources keep their old graph path until their sound finishes fading. */
+  const fadingPatches = new Map<string, EnginePlan>();
   /** Lanes a track change starts itself, so their carry doesn't resume. */
   const explicitStarts = new Set<string>();
   const laneGenerations = new Map<string, number>();
@@ -676,12 +682,122 @@ function createNodePlayback(
     return levels;
   };
 
+  const realtimeSink = (audible: EnginePlan, sinkId: string) =>
+    [...audible.edges.values()].some(
+      (edge) =>
+        edge.to.id === sinkId &&
+        audible.lanes.get(edge.from.id)?.source.kind === "device"
+    );
+
+  const isPatchSinkRealtime = (sinkId: string) =>
+    realtimeSink(plan, sinkId) ||
+    [...fadingPatches].some(([id, fading]) =>
+      [...fading.edges.values()].some(
+        (edge) =>
+          edge.from.id === id &&
+          edge.to.id === sinkId &&
+          fading.lanes.get(id)?.source.kind === "device"
+      )
+    );
+
+  const closesPatchLoop = (
+    edges: ReadonlyMap<string, GraphEdge>,
+    from: string,
+    to: string
+  ) => {
+    const queue = [to];
+    const seen = new Set<string>();
+    for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+      if (id === from) {
+        return true;
+      }
+      if (!seen.has(id)) {
+        seen.add(id);
+        queue.push(
+          ...[...edges.values()]
+            .filter((edge) => edge.source === id)
+            .map((edge) => edge.target)
+        );
+      }
+    }
+    return false;
+  };
+
+  const retainFadingCable = (
+    fading: EnginePlan,
+    edge: GraphEdge,
+    patch: AudioPatchPlan
+  ) => {
+    if (fading.sinks.has(edge.target) && !plan.sinks.has(edge.target)) {
+      return false;
+    }
+    if (patch.edges.has(edge.id)) {
+      return true;
+    }
+    // A simultaneous rewire may make an old path feed back into current routing.
+    if (closesPatchLoop(patch.edges, edge.source, edge.target)) {
+      return false;
+    }
+    patch.edges.set(edge.id, edge);
+    return true;
+  };
+
+  const retainFadingPath = (
+    sourceId: string,
+    fading: EnginePlan,
+    patch: AudioPatchPlan
+  ) => {
+    const old = fading.patch;
+    if (!old) {
+      return;
+    }
+    const queue = [sourceId];
+    const seen = new Set<string>();
+    for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      const node = old.nodes.get(id);
+      if (node && (!patch.nodes.has(id) || id === sourceId)) {
+        // A replacement source waits for this sound's fade before it connects.
+        patch.nodes.set(id, node);
+      }
+      for (const edge of [...old.edges.values()].filter(
+        (candidate) => candidate.source === id
+      )) {
+        if (retainFadingCable(fading, edge, patch)) {
+          queue.push(edge.target);
+        }
+      }
+    }
+  };
+
+  /** Current routing wins, with the old downstream paths of fading sources kept alive. */
+  const audiblePatch = (): AudioPatchPlan | undefined => {
+    if (fadingPatches.size === 0) {
+      return plan.patch;
+    }
+    const patch = {
+      edges: new Map(plan.patch?.edges),
+      nodes: new Map(plan.patch?.nodes),
+    };
+    for (const [sourceId, fading] of fadingPatches) {
+      retainFadingPath(sourceId, fading, patch);
+    }
+    return patch;
+  };
+
   /**
    * Speakers are the main bus. An Output device plays on its sink, or on
    * the main bus while that sink can't; with no device picked, nowhere.
    */
   const routeSink: LaneSinkRoute = (sinkId, send, connectMain) => {
-    if (plan.patch && sinkId.startsWith("audio-patch\u0000")) {
+    if (
+      sinkId.startsWith("audio-patch\u0000") &&
+      (plan.patch ||
+        fadingPatches.has(sinkId.slice("audio-patch\u0000".length)))
+    ) {
       return audioPatch.connectSource(
         sinkId.slice("audio-patch\u0000".length),
         send
@@ -711,14 +827,7 @@ function createNodePlayback(
     onError: reportNodeFailure("Could not update audio routing"),
     route: (sinkId, send) =>
       routeSink(sinkId, send, () =>
-        getOutputRouting().connectMain(
-          send,
-          [...plan.edges.values()].some(
-            (edge) =>
-              edge.to.id === sinkId &&
-              plan.lanes.get(edge.from.id)?.source.kind === "device"
-          )
-        )
+        getOutputRouting().connectMain(send, isPatchSinkRealtime(sinkId))
       ),
   });
 
@@ -731,7 +840,10 @@ function createNodePlayback(
   });
 
   const refreshChangedLevels = (previous: EnginePlan, next: EnginePlan) => {
-    for (const lane of next.lanes.values()) {
+    const liveLanes = [...next.lanes.values()].filter(
+      (lane) => !settlingLanes.has(lane.id)
+    );
+    for (const lane of liveLanes) {
       const before = [...previous.edges.values()].filter(
         (edge) => edge.from.id === lane.id
       );
@@ -791,10 +903,13 @@ function createNodePlayback(
     modulationPlan =
       effective === graph ? null : compiledPlan(effective, getEnv());
     const next = modulationPlan ?? plan;
-    if (next.patch) {
+    if (next.patch && previous.patch !== next.patch) {
       audioPatch.modulate(next.patch);
     }
-    for (const lane of next.lanes.values()) {
+    const liveLanes = [...next.lanes.values()].filter(
+      (lane) => !settlingLanes.has(lane.id)
+    );
+    for (const lane of liveLanes) {
       applyTransientLane(lane);
     }
     refreshChangedLevels(previous, next);
@@ -1727,7 +1842,21 @@ function createNodePlayback(
     // Deactivate releases everything itself; don't touch a new epoch.
     if (epoch === startEpoch) {
       releaseChannel(channelId);
-      laneOutputs.release(channelId.slice(NODE_CHANNEL_PREFIX.length));
+      const laneId = channelId.slice(NODE_CHANNEL_PREFIX.length);
+      laneOutputs.release(laneId);
+      const beforeRealtime = new Map(
+        [...plan.sinks.keys()].map((id) => [id, isPatchSinkRealtime(id)])
+      );
+      if (fadingPatches.delete(laneId)) {
+        audioPatch.sync(audiblePatch());
+        if (
+          [...beforeRealtime].some(
+            ([id, realtime]) => realtime !== isPatchSinkRealtime(id)
+          )
+        ) {
+          audioPatch.reroute();
+        }
+      }
     }
   };
 
@@ -2011,6 +2140,49 @@ function createNodePlayback(
     seenStoredGraph = getPlaybackSession("node")?.graph ?? null;
   };
 
+  const retainRemovedLanes = (ops: readonly Op[], previous: EnginePlan) => {
+    for (const op of ops) {
+      if (op.type === "removeLane") {
+        removingLanes.add(op.laneId);
+        if (
+          previous.patch?.nodes.has(op.laneId) &&
+          !fadingPatches.has(op.laneId)
+        ) {
+          fadingPatches.set(op.laneId, previous);
+        }
+      }
+    }
+  };
+
+  const syncPatchRouting = (
+    previous: EnginePlan,
+    next: EnginePlan,
+    previousRealtime: ReadonlyMap<string, boolean>
+  ) => {
+    if (
+      [...next.sinks.keys()].some(
+        (id) =>
+          previousRealtime.has(id) &&
+          previousRealtime.get(id) !== isPatchSinkRealtime(id)
+      )
+    ) {
+      audioPatch.reroute();
+    }
+    if (previous.patch || next.patch) {
+      for (const laneId of next.lanes.keys()) {
+        if (removingLanes.has(laneId) || settlingLanes.has(laneId)) {
+          continue;
+        }
+        const before = previous.patch?.nodes.get(laneId);
+        const after = next.patch?.nodes.get(laneId);
+        if (before?.type !== after?.type) {
+          laneOutputs.reroute(patchInputId(laneId));
+        }
+        refreshLane(laneId, next);
+      }
+    }
+  };
+
   /**
    * Compiles the current graph, writes it with its derived channels in one
    * session update, then applies the diff. `strict` (activate) rethrows the
@@ -2032,31 +2204,24 @@ function createNodePlayback(
     }
     const previous = plan;
     const previousAudible = modulationPlan ?? previous;
+    const previousRealtime = new Map(
+      [...previous.sinks.keys()].map((id) => [id, isPatchSinkRealtime(id)])
+    );
     const ops = diff(previous, next);
     modulationCables = parameterCables(graph);
     effectiveGraph = null;
     forgetChangedLaneParams(previous, next);
     plan = next;
     modulationPlan = null;
-    for (const op of ops) {
-      if (op.type === "removeLane") {
-        removingLanes.add(op.laneId);
-      }
-    }
+    retainRemovedLanes(ops, previous);
     try {
       syncSinks(previous, next);
-      audioPatch.sync(next.patch);
+      audioPatch.sync(audiblePatch());
       applyOps(ops, previous, next, strict);
       if (previousAudible !== previous) {
         refreshChangedLevels(previousAudible, next);
       }
-      if (previous.patch !== next.patch) {
-        audioPatch.reroute();
-        laneOutputs.reroute();
-        for (const laneId of next.lanes.keys()) {
-          laneOutputs.refresh(laneId);
-        }
-      }
+      syncPatchRouting(previous, next, previousRealtime);
       syncModulation(graph);
     } finally {
       // A carry is only "in place" within one batch; a later re-add of the
@@ -2306,6 +2471,7 @@ function createNodePlayback(
     epoch += 1;
     settlingLanes.clear();
     carriedLanes.clear();
+    fadingPatches.clear();
     for (const generation of activePlayAllGenerations) {
       generation.cancellation = "deactivate";
     }
@@ -2360,6 +2526,7 @@ function createNodePlayback(
       epoch += 1;
       plan = EMPTY_PLAN;
       settlingLanes.clear();
+      fadingPatches.clear();
       carriedLanes.clear();
       laneOutcomes.clear();
       laneWatches.clear();

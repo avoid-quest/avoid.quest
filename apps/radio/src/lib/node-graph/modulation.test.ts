@@ -21,7 +21,7 @@ import {
 import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
 import { createPaletteNode } from "./palette";
 import { type NodeGraph, nodeGraphSchema } from "./schema";
-import { validate } from "./validate";
+import { NODE_BUDGETS, validate } from "./validate";
 
 function source(
   type: ModulationNodeType,
@@ -506,6 +506,229 @@ describe("sample-clocked modulation sources", () => {
 });
 
 describe("control merge and split routing", () => {
+  test("unwired, audio-only and isolated routers stay off the render thread", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          id: "audio",
+          source: "audio-merge",
+          sourceHandle: "out:audio:main",
+          target: "audio-split",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "island",
+          source: "island-merge",
+          sourceHandle: "out:control:main",
+          target: "island-split",
+          targetHandle: "in:control:main",
+        },
+      ],
+      nodes: [
+        {
+          ...createPaletteNode("macro", "macro", { x: 0, y: 0 }),
+          data: { value: 0.75 },
+        },
+        createPaletteNode("speakers", "speakers", { x: 0, y: 0 }),
+        ...["audio", "island"].flatMap((prefix) => [
+          createPaletteNode("merge", `${prefix}-merge`, { x: 0, y: 0 }),
+          createPaletteNode("fxComposite", `${prefix}-split`, { x: 0, y: 0 }),
+        ]),
+        ...Array.from({ length: 1000 }, (_, index) =>
+          createPaletteNode(
+            index % 2 ? "merge" : "fxComposite",
+            `unused-${index}`,
+            {
+              x: 0,
+              y: 0,
+            }
+          )
+        ),
+      ],
+      version: 2,
+    });
+    expect(validate(graph)).toEqual([]);
+    const program = modulationProgram(graph);
+    expect(program.routers).toEqual([]);
+    const engine = new ModulationDsp(1000);
+    engine.configure(program);
+    expect(engine.process([], 128)).toEqual({ macro: 0.75 });
+  });
+
+  test("only routers on accepted cables enter the executable program", () => {
+    const budget = NODE_BUDGETS.desktop.edges;
+    const graph = nodeGraphSchema.parse({
+      edges: Array.from({ length: budget + 100 }, (_, index) => ({
+        id: `cable-${index}`,
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: `merge-${index}`,
+        targetHandle: "in:control:main",
+      })),
+      nodes: [
+        createPaletteNode("macro", "macro", { x: 0, y: 0 }),
+        createPaletteNode("speakers", "speakers", { x: 0, y: 0 }),
+        ...Array.from({ length: budget + 100 }, (_, index) =>
+          createPaletteNode("merge", `merge-${index}`, { x: 0, y: 0 })
+        ),
+      ],
+      version: 2,
+    });
+    const program = modulationProgram(graph);
+    expect(program.routers).toHaveLength(budget);
+    expect(program.links).toHaveLength(budget);
+    const engine = new ModulationDsp(1000);
+    engine.configure(program);
+    const values = engine.process([], 128);
+    expect(Object.keys(values)).toHaveLength(budget + 1);
+    expect(values[`merge-${budget - 1}`]).toBe(0.5);
+    expect(values[`merge-${budget}`]).toBeUndefined();
+  });
+
+  test("muted, invalid and refused-source cables do not activate routers", () => {
+    const graph = nodeGraphSchema.parse({
+      ...patch(),
+      edges: [
+        {
+          id: "refused-source",
+          source: "extra-20",
+          sourceHandle: "out:control:main",
+          target: "sum",
+          targetHandle: "in:control:main",
+        },
+        {
+          id: "muted",
+          muted: true,
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "sum",
+          targetHandle: "in:control:main",
+        },
+        {
+          id: "invalid-target",
+          parameter: "not-a-knob",
+          source: "sum",
+          sourceHandle: "out:control:main",
+          target: "cut",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        ...patch().nodes,
+        ...Array.from({ length: 21 }, (_, index) =>
+          createPaletteNode("macro", `extra-${index}`, { x: 0, y: 0 })
+        ),
+        createPaletteNode("merge", "sum", { x: 0, y: 0 }),
+      ],
+    });
+    const program = modulationProgram(graph);
+    expect(program.nodes).toHaveLength(32);
+    expect(program.routers).toEqual([]);
+    expect(program.links).toEqual([]);
+  });
+
+  test("routers preserve same-sample Slew and gate inputs", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          id: "input",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "sum",
+          targetHandle: "in:control:main",
+        },
+        {
+          id: "split",
+          source: "sum",
+          sourceHandle: "out:control:main",
+          target: "split",
+          targetHandle: "in:control:main",
+        },
+        {
+          id: "slew",
+          source: "split",
+          sourceHandle: "out:control:branch-1",
+          target: "slew",
+          targetHandle: "in:control:main",
+        },
+        {
+          id: "gate",
+          source: "split",
+          sourceHandle: "out:control:branch-2",
+          target: "envelope",
+          targetHandle: "in:control:gate",
+        },
+      ],
+      nodes: [
+        {
+          ...createPaletteNode("macro", "macro", { x: 0, y: 0 }),
+          data: { value: 0.75 },
+        },
+        createPaletteNode("speakers", "speakers", { x: 0, y: 0 }),
+        createPaletteNode("slew", "slew", { x: 0, y: 0 }),
+        createPaletteNode("envelope", "envelope", { x: 0, y: 0 }),
+        createPaletteNode("merge", "sum", { x: 0, y: 0 }),
+        createPaletteNode("fxComposite", "split", { x: 0, y: 0 }),
+      ],
+      version: 2,
+    });
+    expect(validate(graph)).toEqual([]);
+    const engine = new ModulationDsp(1000);
+    engine.configure(modulationProgram(graph));
+    const values = engine.process([], 10);
+    expect(values.sum).toBe(0.75);
+    expect(values.split).toBe(0.75);
+    expect(values.slew).toBeGreaterThan(0);
+    expect(values.envelope).toBeGreaterThan(0);
+  });
+
+  test("a Split parameter assignment never becomes a control signal input", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          depth: -0.25,
+          id: "parameter",
+          parameter: "dryWet",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "split",
+          targetHandle: "in:control:parameter",
+        },
+        {
+          id: "signal",
+          source: "split",
+          sourceHandle: "out:control:branch-1",
+          target: "slew",
+          targetHandle: "in:control:main",
+        },
+      ],
+      nodes: [
+        {
+          ...createPaletteNode("macro", "macro", { x: 0, y: 0 }),
+          data: { value: 0.75 },
+        },
+        createPaletteNode("slew", "slew", { x: 0, y: 0 }),
+        createPaletteNode("speakers", "speakers", { x: 0, y: 0 }),
+        createPaletteNode("fxComposite", "split", { x: 0, y: 0 }),
+      ],
+      version: 2,
+    });
+    expect(validate(graph)).toEqual([]);
+    const program = modulationProgram(graph);
+    const engine = new ModulationDsp(1000);
+    engine.configure(program);
+    const values = engine.process([], 10);
+    expect(values.split).toBe(0);
+    expect(values.slew).toBe(0);
+    expect(program.links).toEqual([
+      { depth: 1, source: "split", target: "slew" },
+    ]);
+    expect(
+      applyModulation(graph, values).nodes.find((node) => node.id === "split")
+        ?.data
+    ).toMatchObject({ effect: { dryWet: 0.81 } });
+  });
+
   function routed(): NodeGraph {
     const graph = patch();
     return nodeGraphSchema.parse({
@@ -598,7 +821,9 @@ describe("control merge and split routing", () => {
       ...graph,
       edges: graph.edges.map((edge) => ({ ...edge, muted: true })),
     };
-    expect(routedControlValues(modulationProgram(muted), old).split).toBe(0);
+    const mutedValues = routedControlValues(modulationProgram(muted), old);
+    expect(mutedValues).not.toHaveProperty("split");
+    expect(applyModulation(muted, mutedValues)).toEqual(muted);
   });
   test("invalid parameter cables cannot bypass validation during modulation", () => {
     const graph = routed();

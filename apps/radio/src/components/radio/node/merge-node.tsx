@@ -11,10 +11,9 @@ import { nodeIcon } from "./node-icons";
 /**
  * Merge Node
  *
- * Joins a split's branches back into one (up to eight cables). The badge is
- * the compiler's verdict: `in-lane` when the Merge closes a split inside one
- * station's lane, `bus` when it would sum stations, which waits for buses
- * and so is refused. Per-input levels ride on the branch cables.
+ * Sums audio cables or control cables on their respective inputs. The badge
+ * distinguishes one station's branches from shared sources. Per-input levels
+ * ride on the cables.
  */
 
 export type MergeFlowNode = FlowNode<MergeNodeData, "merge">;
@@ -63,7 +62,7 @@ export function MergeNodeBody({
       <p className="rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-1.5 text-[10px] text-muted-foreground tabular-nums">
         {data.inputs === 0
           ? "Sum audio or control cables here"
-          : `${data.inputs} audio inputs`}
+          : `${data.inputs} audio input${data.inputs === 1 ? "" : "s"}`}
       </p>
     </ModuleFrame>
   );

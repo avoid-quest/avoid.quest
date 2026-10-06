@@ -1,5 +1,10 @@
 import type { AudioPatchPlan } from "@/lib/node-graph/audio-patch-plan";
-import { branchIndex } from "@/lib/node-graph/branches";
+import {
+  branchBaseMuted,
+  branchBaseSolo,
+  branchIndex,
+  isSplitNode,
+} from "@/lib/node-graph/branches";
 import { getNodeDefinition, portHandleId } from "@/lib/node-graph/catalogue";
 import type { GraphEdge, GraphNode } from "@/lib/node-graph/schema";
 import type { EffectChainConfig, EffectConfig } from "../dsp/effects/types";
@@ -16,7 +21,12 @@ export type PatchHost = Pick<
   | "releaseNodeProcessor"
 >;
 type Route = (sinkId: string, send: GainNode) => () => void;
-type Port = { out: AudioNode; processorId?: string; effects?: EffectConfig[] };
+type Port = {
+  out: AudioNode;
+  processorId?: string;
+  effects?: EffectConfig[];
+  retirement?: object;
+};
 type Module = {
   host: PatchHost;
   keyRegistered: boolean;
@@ -40,11 +50,62 @@ function processorId(id: string, port: string): string {
   return `node-patch:${id.length}:${id}:${port}`;
 }
 
+/** A configured chain solo or any of its cable solos activates the branch. */
+function splitSoloBranches(node: GraphNode, outgoing: readonly GraphEdge[]) {
+  const solos = new Set<number>();
+  if (!isSplitNode(node)) {
+    return solos;
+  }
+  const { effect } = node.data;
+  if (isEffectContainer(effect)) {
+    [...effect.chains]
+      .sort((a, b) => a.order - b.order)
+      .forEach((chain, index) => {
+        if (chain.solo) {
+          solos.add(index + 1);
+        }
+      });
+  }
+  for (const edge of outgoing) {
+    if (edge.solo) {
+      solos.add(branchIndex(edge.sourceHandle));
+    }
+  }
+  return solos;
+}
+
+/** Mix dry routing and wet branch controls after channel/band separation. */
+function splitBranchMix(
+  chain: EffectChainConfig,
+  effect: EffectConfig,
+  dryShare: number
+): EffectChainConfig {
+  const wet = effect.enabled ? effect.dryWet : 0;
+  const wetGain = wet * effect.inputGain * chain.gain;
+  const dryGain = (1 - wet) * dryShare;
+  if (effect.type === "fxComposite") {
+    const angle = ((chain.pan + 1) * Math.PI) / 4;
+    const left = wetGain * Math.cos(angle) + dryGain;
+    const right = wetGain * Math.sin(angle) + dryGain;
+    return {
+      ...chain,
+      gain: Math.hypot(left, right),
+      pan:
+        left === 0 && right === 0
+          ? 0
+          : (4 * Math.atan2(right, left)) / Math.PI - 1,
+    };
+  }
+  const gain = wetGain + dryGain;
+  return { ...chain, gain, pan: gain === 0 ? 0 : (wetGain * chain.pan) / gain };
+}
+
 /** One branch's signal, without copying any downstream processors. */
 export function patchPortEffects(
   node: GraphNode,
   handle: string,
-  keyed: boolean
+  keyed: boolean,
+  options: { soloBranches?: ReadonlySet<number>; dryShare?: number } = {}
 ): EffectConfig[] {
   if (!getNodeDefinition(node.type).effectType) {
     return [];
@@ -57,6 +118,26 @@ export function patchPortEffects(
     const chains = [...effect.chains].sort(
       (left, right) => left.order - right.order
     );
+    const solos =
+      options.soloBranches ??
+      new Set(
+        chains.flatMap((chain, order) => (chain.solo ? [order + 1] : []))
+      );
+    const mix = (chain: EffectChainConfig, order: number) => ({
+      ...splitBranchMix(
+        chain,
+        effect,
+        effect.type === "fxComposite"
+          ? (options.dryShare ?? 1 / Math.max(1, chains.length))
+          : 1
+      ),
+      effects: [],
+      muted:
+        chain.muted ||
+        order !== index ||
+        (solos.size > 0 && !solos.has(order + 1)),
+      solo: false,
+    });
     if (effect.type === "fxComposite") {
       const selected: EffectChainConfig = chains[index] ?? {
         effects: [],
@@ -70,27 +151,23 @@ export function patchPortEffects(
       };
       effect = {
         ...effect,
-        chains: [
-          {
-            ...selected,
-            effects: [],
-            muted:
-              selected.muted ||
-              (chains.some((chain) => chain.solo) && !selected.solo),
-            order: 0,
-          },
-        ],
+        chains: [{ ...mix(selected, index), order: 0 }],
       };
     } else {
       effect = {
         ...effect,
-        chains: chains.map((chain, order) => ({
-          ...chain,
-          effects: [],
-          muted: chain.muted || order !== index,
-        })),
+        chains: chains.map(mix),
       };
     }
+    // Ports keep routing while bypassed. Each port carries only its share of
+    // dry audio, so joining different outputs cannot clone the unsplit input.
+    effect = {
+      ...effect,
+      dryWet: 1,
+      enabled: true,
+      inputGain: 1,
+      outputGain: authored.enabled ? authored.outputGain : 1,
+    };
   }
   return [
     keyed
@@ -139,8 +216,10 @@ export function createNodeAudioPatch({
     module.host.releaseNodeProcessor(module.keyId);
     module.sinkRelease?.();
     for (const port of module.ports.values()) {
+      port.retirement = undefined;
       if (port.processorId) {
         module.host.releaseNodeProcessor(port.processorId);
+        port.processorId = undefined;
       }
       safeDisconnect(port.out, "NodeAudioPatch.releasePort");
     }
@@ -201,8 +280,7 @@ export function createNodeAudioPatch({
       (edge) =>
         edge.target === id &&
         edge.targetHandle === "in:sidechain:key" &&
-        !edge.muted &&
-        edge.gain > 0
+        cableLevel(edge) > 0
     );
   const syncKey = (module: Module, keyed: boolean) => {
     if (keyed && !module.keyRegistered && context) {
@@ -233,6 +311,26 @@ export function createNodeAudioPatch({
       ramp((out as GainNode).gain, 10 ** (node.data.gainDb / 20));
     }
   };
+  const retirePort = (module: Module, port: Port) => {
+    if (!port.processorId || port.retirement) {
+      return;
+    }
+    const retirement = {};
+    port.retirement = retirement;
+    track(
+      wait(FADE_MS).then(() => {
+        if (port.retirement !== retirement) {
+          return;
+        }
+        if (port.processorId) {
+          module.host.releaseNodeProcessor(port.processorId);
+        }
+        port.processorId = undefined;
+        port.effects = undefined;
+        port.retirement = undefined;
+      })
+    );
+  };
   const updatePort = (
     node: GraphNode,
     module: Module,
@@ -241,7 +339,15 @@ export function createNodeAudioPatch({
     transient: boolean
   ) => {
     const keyed = hasKey(node.id);
-    const effects = patchPortEffects(node, handle, keyed);
+    const outgoing = [...(plan?.edges.values() ?? [])].filter(
+      (edge) => edge.source === node.id
+    );
+    const effects = patchPortEffects(node, handle, keyed, {
+      dryShare:
+        1 /
+        Math.max(1, new Set(outgoing.map((edge) => edge.sourceHandle)).size),
+      soloBranches: splitSoloBranches(node, outgoing),
+    });
     const key = keyed ? module.keyId : null;
     if (transient) {
       if (port.processorId) {
@@ -249,12 +355,12 @@ export function createNodeAudioPatch({
       }
       return;
     }
-    const used = [...(plan?.edges.values() ?? [])].some(
-      (edge) => edge.source === node.id && edge.sourceHandle === handle
-    );
+    const used = outgoing.some((edge) => edge.sourceHandle === handle);
     if (!used) {
+      retirePort(module, port);
       return;
     }
+    port.retirement = undefined;
     if (!port.processorId) {
       revision += 1;
       port.processorId = processorId(node.id, `${handle}:${revision}`);
@@ -291,17 +397,20 @@ export function createNodeAudioPatch({
   const cableLevel = (edge: GraphEdge) => {
     const source = plan?.nodes.get(edge.source);
     const sink = plan?.nodes.get(edge.target);
-    const branch =
-      source?.type === "fxComposite" ||
-      source?.type === "stereoSplit" ||
-      source?.type === "frequencySplit";
+    const branch = isSplitNode(source);
+    const configuredSolo = branch && branchBaseSolo(source, edge.sourceHandle);
+    const effect = branch ? source.data.effect : undefined;
     const solo =
       branch &&
-      [...(plan?.edges.values() ?? [])].some(
-        (other) => other.source === edge.source && other.solo
-      );
+      ((effect &&
+        isEffectContainer(effect) &&
+        effect.chains.some((chain) => chain.solo)) ||
+        [...(plan?.edges.values() ?? [])].some(
+          (other) => other.source === edge.source && other.solo
+        ));
     return edge.muted ||
-      (solo && !edge.solo) ||
+      (branch && branchBaseMuted(source, edge.sourceHandle)) ||
+      (solo && !configuredSolo && !edge.solo) ||
       (sink?.type === "deviceOut" && sink.data.muted)
       ? 0
       : edge.gain;

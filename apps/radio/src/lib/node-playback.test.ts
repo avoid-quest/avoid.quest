@@ -33,7 +33,7 @@ import {
 import {
   createFakeFader,
   FakeAudioContext,
-  type FakeGainNode,
+  FakeGainNode,
 } from "@/lib/audio/routing/fake-audio-nodes";
 import { createNodeDeviceSinks } from "@/lib/audio/routing/node-device-sinks";
 import {
@@ -112,7 +112,11 @@ import {
   type NodePlayback,
   type NodeSinkStatuses,
 } from "./node-playback";
-import type { OutputRouting, OutputRoutingSnapshot } from "./output-routing";
+import {
+  getOutputRouting,
+  type OutputRouting,
+  type OutputRoutingSnapshot,
+} from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 import { capturePlaybackActionError } from "./playback-action-errors";
 
@@ -2784,6 +2788,300 @@ describe("Node Playback FX lanes", () => {
   });
 });
 
+/** Recording processor connections for the graph runtime, without decoding sound. */
+function recordPatchProcessors(context: PlaybackActionContext) {
+  const desired = new Map<string, DesiredEffectsState>();
+  const links = new Map<string, { source: AudioNode; target: AudioNode }>();
+  const ready: EffectsRuntimeOutcome = {
+    backend: "compatibility",
+    ready: true,
+    status: "ready",
+  };
+  context.audio.connectNodeProcessor = mock(
+    (id, source, target, tree, sidechainSoundId) => {
+      source.connect(target);
+      links.set(id, { source, target });
+      desired.set(id, {
+        dryWet: 1,
+        sidechainSoundId,
+        tempo: 120,
+        tree: [...tree],
+      });
+      return Promise.resolve(true);
+    }
+  );
+  context.audio.updateNodeProcessor = mock((id, tree, sidechainSoundId) => {
+    desired.set(id, {
+      dryWet: 1,
+      sidechainSoundId,
+      tempo: 120,
+      tree: [...tree],
+    });
+    return Promise.resolve(ready);
+  });
+  context.audio.modulateNodeProcessor = mock(() => undefined);
+  context.audio.releaseNodeProcessor = mock((id) => {
+    const link = links.get(id);
+    link?.source.disconnect(link.target);
+    links.delete(id);
+    desired.delete(id);
+  });
+  return { desired, links };
+}
+
+/** Connects two lanes to the same context, just as the audio engine does. */
+function connectPatchLane(
+  context: PlaybackActionContext,
+  audio: FakeAudioContext,
+  nodeId: string
+) {
+  const registered = context.audio.setSoundOutputConnector as ReturnType<
+    typeof mock
+  >;
+  const connect = registered.mock.calls
+    .filter(([id]) => id === soundOf(nodeId))
+    .at(-1)?.[1] as SoundOutputConnector | null;
+  if (!connect) {
+    throw new Error(`No output connector for ${nodeId}`);
+  }
+  const { fader, node } = createFakeFader(audio);
+  connect(node, false, () => () => undefined);
+  return { fader, laneOut: [...fader.connections][0] as FakeGainNode };
+}
+
+function sharedEffectPatch(): NodeGraph {
+  return nodeGraphSchema.parse({
+    edges: [cable("a", "verb"), cable("b", "verb"), cable("verb", "speakers")],
+    nodes: [station("a"), station("b"), reverb("verb"), speakers],
+    version: 2,
+  });
+}
+
+function reaches(
+  source: FakeGainNode,
+  target: unknown,
+  seen = new Set<unknown>()
+): boolean {
+  if (source === target) {
+    return true;
+  }
+  if (seen.has(source)) {
+    return false;
+  }
+  seen.add(source);
+  return [...source.connections].some(
+    (next) =>
+      next === target ||
+      (next instanceof FakeGainNode && reaches(next, target, seen))
+  );
+}
+
+describe("Node Playback shared patch lifetime", () => {
+  test("parameter edits keep output routes connected and refresh source trim and solo", async () => {
+    insertNodeSession(sharedEffectPatch());
+    const harness = createHarness();
+    recordPatchProcessors(harness.context);
+    instantStarts(harness.context);
+    const release = mock(() => undefined);
+    const main = spyOn(getOutputRouting(), "connectMain").mockImplementation(
+      () => release
+    );
+    try {
+      await harness.playback.activate();
+      await harness.playback.playAll();
+      const audio = new FakeAudioContext();
+      const a = connectPatchLane(harness.context, audio, "a");
+      const b = connectPatchLane(harness.context, audio, "b");
+      const aSend = [...a.laneOut.connections][0] as FakeGainNode;
+      const bSend = [...b.laneOut.connections][0] as FakeGainNode;
+      expect(main).toHaveBeenCalledTimes(1);
+
+      await commit(harness, (graph) =>
+        setEffectParams(graph, "verb", { dryWet: 0.3 })
+      );
+      expect(main).toHaveBeenCalledTimes(1);
+      expect(release).not.toHaveBeenCalled();
+      await commit(harness, (graph) =>
+        setSourceStrip(graph, "a", { solo: true, trimDb: 6 })
+      );
+      expect(aSend.gain.events.at(-1)).toMatchObject({ value: 10 ** (6 / 20) });
+      expect(bSend.gain.events.at(-1)).toMatchObject({ value: 0 });
+      expect(main).toHaveBeenCalledTimes(1);
+      expect(release).not.toHaveBeenCalled();
+      await harness.playback.deactivate();
+    } finally {
+      main.mockRestore();
+    }
+  });
+
+  test("a changed live-input route updates realtime output routing without reconnecting later parameter edits", async () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        cable("a", "verb"),
+        cable("b", "verb"),
+        cable("mic", "verb"),
+        cable("verb", "speakers"),
+      ],
+      nodes: [
+        ...sharedEffectPatch().nodes,
+        {
+          data: { deviceId: "usb-mic", deviceLabel: "Desk mic" },
+          id: "mic",
+          position: { x: 0, y: 200 },
+          type: "deviceIn",
+        },
+      ],
+      version: 2,
+    });
+    insertNodeSession(graph);
+    const harness = createHarness();
+    recordPatchProcessors(harness.context);
+    instantStarts(harness.context);
+    const main = spyOn(getOutputRouting(), "connectMain").mockImplementation(
+      () => () => undefined
+    );
+    try {
+      await harness.playback.activate();
+      await harness.playback.playAll();
+      const audio = new FakeAudioContext();
+      connectPatchLane(harness.context, audio, "a");
+      expect(main.mock.calls.at(-1)?.[1]).toBe(true);
+      expect(main).toHaveBeenCalledTimes(1);
+
+      await commit(harness, (current) => removeEdges(current, ["mic->verb"]));
+      expect(main.mock.calls.at(-1)?.[1]).toBe(false);
+      expect(main).toHaveBeenCalledTimes(2);
+      await commit(harness, (current) =>
+        setEffectParams(current, "verb", { dryWet: 0.4 })
+      );
+      expect(main).toHaveBeenCalledTimes(2);
+      await commit(harness, () => graph);
+      expect(main.mock.calls.at(-1)?.[1]).toBe(true);
+      expect(main).toHaveBeenCalledTimes(3);
+      await harness.playback.deactivate();
+    } finally {
+      main.mockRestore();
+    }
+  });
+
+  test("an undo during a shared source fade keeps the old sound connected and the replacement independent", async () => {
+    insertNodeSession(sharedEffectPatch());
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    const processors = recordPatchProcessors(harness.context);
+    instantStarts(harness.context);
+    const main = spyOn(getOutputRouting(), "connectMain").mockImplementation(
+      () => () => undefined
+    );
+    try {
+      await harness.playback.activate();
+      await harness.playback.playAll();
+      const audio = new FakeAudioContext();
+      const old = connectPatchLane(harness.context, audio, "a");
+      connectPatchLane(harness.context, audio, "b");
+      const output = main.mock.calls[0]?.[0];
+      const oldSend = [...old.laneOut.connections][0] as FakeGainNode;
+
+      commitNodeGraph(
+        (graph) => ({
+          ...graph,
+          edges: graph.edges.filter((edge) => edge.source !== "a"),
+          nodes: graph.nodes.filter((node) => node.id !== "a"),
+        }),
+        harness.store
+      );
+      harness.playback.flush();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      undoNodeGraph(harness.store);
+      harness.playback.flush();
+      commitNodeGraph(
+        (graph) =>
+          setEffectParams(setSourceStrip(graph, "a", { trimDb: 6 }), "verb", {
+            dryWet: 0.2,
+          }),
+        harness.store
+      );
+      harness.playback.flush();
+      expect(reaches(old.fader, output)).toBe(true);
+      expect(oldSend.gain.events.at(-1)).toMatchObject({ value: 1 });
+      expect(
+        [...processors.desired.values()].find(
+          (state) => state.tree[0]?.id === "verb"
+        )?.tree[0]
+      ).toMatchObject({ dryWet: 0.2 });
+
+      fade.resolve();
+      await harness.playback.whenSettled();
+      expect(reaches(old.fader, output)).toBe(false);
+      await harness.playback.setPlaying("a", true);
+      const replacement = connectPatchLane(harness.context, audio, "a");
+      expect(reaches(replacement.fader, output)).toBe(true);
+      expect(reaches(old.fader, output)).toBe(false);
+      const newSend = [...replacement.laneOut.connections][0] as FakeGainNode;
+      expect(newSend.gain.events.at(-1)).toMatchObject({
+        value: 10 ** (6 / 20),
+      });
+      await harness.playback.deactivate();
+    } finally {
+      fade.resolve();
+      main.mockRestore();
+    }
+  });
+
+  test("a removed source keeps its shared patch path through its whole lane fade", async () => {
+    insertNodeSession(sharedEffectPatch());
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    const processors = recordPatchProcessors(harness.context);
+    instantStarts(harness.context);
+    const main = spyOn(getOutputRouting(), "connectMain").mockImplementation(
+      () => () => undefined
+    );
+    try {
+      await harness.playback.activate();
+      await harness.playback.playAll();
+      const audio = new FakeAudioContext();
+      const a = connectPatchLane(harness.context, audio, "a");
+      connectPatchLane(harness.context, audio, "b");
+      const output = main.mock.calls[0]?.[0];
+      expect(reaches(a.fader, output)).toBe(true);
+
+      commitNodeGraph(
+        (graph) => ({
+          ...graph,
+          edges: graph.edges.filter((edge) => edge.source !== "a"),
+          nodes: graph.nodes.filter((node) => node.id !== "a"),
+        }),
+        harness.store
+      );
+      harness.playback.flush();
+      // Removing one input returns b to the native lane path, while a still fades.
+      expect(
+        compile(harness.store.state.graph as NodeGraph, {
+          crossOriginIsolated: false,
+        }).patch
+      ).toBeUndefined();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(harness.fadeOutSound).toHaveBeenCalledWith(
+        soundOf("a"),
+        150,
+        true
+      );
+      expect(reaches(a.fader, output)).toBe(true);
+      expect(processors.desired.size).toBeGreaterThan(0);
+
+      fade.resolve();
+      await harness.playback.whenSettled();
+      expect(reaches(a.fader, output)).toBe(false);
+      expect(processors.desired.size).toBe(0);
+      await harness.playback.deactivate();
+    } finally {
+      fade.resolve();
+      main.mockRestore();
+    }
+  });
+});
+
 describe("Node Playback key cables", () => {
   const KEY_EDGE_ID = "b~>comp";
 
@@ -2853,12 +3151,13 @@ describe("Node Playback key cables", () => {
       binds.push(effects.bind({ channelId, sessionId }, soundId));
       return soundId;
     });
+    const processors = recordPatchProcessors(context);
     const harness = createHarness({ context, effects });
     const settled = async () => {
       await harness.playback.whenSettled();
       await Promise.all(binds);
     };
-    return { desired, harness, settled };
+    return { desired, harness, processors, settled };
   }
 
   test("adding a key moves FX out of the source channel into shared graph routing", async () => {
@@ -2917,9 +3216,27 @@ describe("Node Playback key cables", () => {
       ),
     });
     insertNodeSession(vocoderPatch);
-    const { desired, harness, settled } = withChannelEffects();
+    const { desired, harness, processors, settled } = withChannelEffects();
+    instantStarts(harness.context);
+    const main = spyOn(getOutputRouting(), "connectMain").mockImplementation(
+      () => () => undefined
+    );
     await harness.playback.activate();
+    await harness.playback.playAll();
+    const audio = new FakeAudioContext();
+    connectPatchLane(harness.context, audio, "a");
+    connectPatchLane(harness.context, audio, "b");
     await settled();
+    const keyed = [...processors.desired].find(
+      ([, state]) => state.tree[0]?.type === "vocoder"
+    );
+    expect(keyed?.[1].tree[0]).toMatchObject({
+      modulatorSource: "external",
+      sidechain: { channelId: "patch-key" },
+    });
+    expect(keyed?.[1].sidechainSoundId).toBeString();
+    expect(processors.links.has(keyed?.[1].sidechainSoundId ?? "")).toBe(true);
+    main.mockRestore();
     expect(desired.get(soundOf("a"))?.tree).toEqual([]);
     const authoredVocoder = compile(vocoderPatch, {
       crossOriginIsolated: false,

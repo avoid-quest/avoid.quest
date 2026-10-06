@@ -176,6 +176,14 @@ function splitNode(store: ReturnType<typeof createStore>) {
 }
 
 describe("Merge node", () => {
+  test("labels one incoming audio cable in the singular", () => {
+    const view = render(
+      <MergeNodeBody data={{ inputs: 1, role: null }} onRemove={noop} />
+    );
+    expect(view.getByText("1 audio input")).toBeTruthy();
+    expect(view.queryByText("1 audio inputs")).toBeNull();
+  });
+
   test("shows the compiler's in-lane badge", () => {
     const view = render(
       <MergeNodeBody data={{ inputs: 2, role: "in-lane" }} onRemove={noop} />

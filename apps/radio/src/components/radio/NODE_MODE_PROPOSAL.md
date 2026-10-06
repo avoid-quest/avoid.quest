@@ -69,6 +69,13 @@ cable gain/mute and split pan/solo operate along the drawn paths. Unused FX port
 start only when connected. FX reuse the existing official/compatibility backend
 selection rather than creating synthetic playback sounds.
 
+In an explicit patch, split routing stays active when its controls are bypassed.
+Stereo and band ports retain their channel or band; Split distributes the dry
+signal across its connected ports. Dry/wet mixes neutral routing with the authored
+branch gain and pan, so rejoining distinct ports adds the dry component once.
+Configured chain solos and cable solos share one effective branch set. The last
+cable leaving an FX port releases its processor after the cable fade.
+
 Dashed audio key cables feed supported sidechain ports from the exact cabled
 output, including processed, split or merged signals. Multiple keys sum with
 cable gain/mute. A connected, unmuted Vocoder key selects the external modulator
@@ -81,6 +88,8 @@ delay-free audio feedback (including key feedback), control cycles, invalid
 parameter assignments and unsupported nodes remain refused. Compilation validates
 again and excludes invalid routes. The patch permits 256 cables; source, playing
 stream and total modulator/follower budgets remain in force.
+Only passive control routers connected to accepted sources or consumers execute
+in the worklet; isolated router islands do not add recurring audio-thread work.
 
 The catalogue's ship flags define the available v1 nodes and ports. The schema
 also describes future nodes so migrations can identify them; schema membership

@@ -11,7 +11,9 @@ import {
 } from "@/lib/node-graph/schema";
 import { analyseGraph } from "@/lib/node-graph/validate";
 import { convertEffectConfigToEngine } from "../dsp/effects/engine-conversion";
+import type { EffectConfig } from "../dsp/effects/types";
 import { EffectSource } from "../dsp/processor-source";
+import { isEffectContainer } from "../dsp/routing/effect-tree";
 import {
   FakeAudioContext,
   FakeAudioParam,
@@ -65,13 +67,21 @@ function patch(nodes: NodeGraphInput["nodes"], edges: NodeGraphInput["edges"]) {
   const graph = nodeGraphSchema.parse({ edges, nodes, version: 2 });
   return { graph, plan: audioPatchPlan(graph, analyseGraph(graph).wired) };
 }
-function harness() {
+function harness(
+  wait: (ms: number) => Promise<void> = () => Promise.resolve()
+) {
   const context = new PatchContext();
   const routes = new Map<string, GainNode>();
   const disconnects = mock(() => undefined);
   const host = {
     connectNodeProcessor: mock(
-      (_id: string, processorInput: AudioNode, output: AudioNode) => {
+      (
+        _id: string,
+        processorInput: AudioNode,
+        output: AudioNode,
+        _effects: EffectConfig[],
+        _key: string | null
+      ) => {
         processorInput.connect(output);
         return Promise.resolve(true);
       }
@@ -82,12 +92,13 @@ function harness() {
     ),
     modulateNodeProcessor: mock(() => undefined),
     releaseNodeProcessor: mock((_id: string) => undefined),
-    updateNodeProcessor: mock(() =>
-      Promise.resolve({
-        backend: "compatibility",
-        ready: true,
-        status: "ready",
-      } as const)
+    updateNodeProcessor: mock(
+      (_id: string, _effects: EffectConfig[], _key: string | null) =>
+        Promise.resolve({
+          backend: "compatibility",
+          ready: true,
+          status: "ready",
+        } as const)
     ),
   };
   const errors: unknown[] = [];
@@ -98,7 +109,7 @@ function harness() {
       routes.set(id, send);
       return disconnects;
     },
-    wait: () => Promise.resolve(),
+    wait,
   });
   const input = context.createGain();
   return { context, disconnects, errors, host, input, routes, runtime };
@@ -206,10 +217,13 @@ describe("explicit audio patch routing", () => {
     const h = harness();
     h.runtime.sync(plan);
     h.runtime.connectSource("a", h.input);
+    const secondInput = h.context.createGain();
+    h.runtime.connectSource("b", secondInput);
     await h.runtime.whenSettled();
     expect(h.errors).toEqual([]);
     expect(h.host.connectNodeProcessor).toHaveBeenCalledTimes(1);
     const sharedInput = h.host.connectNodeProcessor.mock.calls[0]?.[1];
+    expect((secondInput as unknown as FakeGainNode).connections.size).toBe(1);
     for (const id of ["a", "b"]) {
       const out = h.runtime.getTap(id) as unknown as FakeGainNode;
       expect(
@@ -243,6 +257,28 @@ describe("explicit audio patch routing", () => {
     h.runtime.sync(plan);
     h.runtime.connectSource("a", h.input);
     const sink = h.routes.get("speakers");
+    const a = h.runtime.getTap("a") as unknown as FakeGainNode;
+    const aSend = [...a.connections][0] as FakeGainNode;
+    const b = h.runtime.getTap("b") as unknown as FakeGainNode;
+    const bSend = [...b.connections][0] as FakeGainNode;
+    const aEdge = plan.edges.get("a-out");
+    if (!aEdge) {
+      throw new Error("Missing source cable");
+    }
+    h.runtime.sync({
+      ...plan,
+      edges: new Map(plan.edges).set("a-out", { ...aEdge, muted: true }),
+    });
+    expect(aSend.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 0,
+    });
+    expect(bSend.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 1,
+    });
+    expect(bSend.connections.has(sink)).toBe(true);
+    expect(h.disconnects).not.toHaveBeenCalled();
     h.runtime.sync({
       ...plan,
       edges: new Map([...plan.edges].filter(([id]) => id !== "a-out")),
@@ -250,7 +286,6 @@ describe("explicit audio patch routing", () => {
     await h.runtime.whenSettled();
     expect(h.routes.get("speakers")).toBe(sink);
     expect(h.disconnects).not.toHaveBeenCalled();
-    const b = h.runtime.getTap("b") as unknown as FakeGainNode;
     expect(
       [...b.connections].some((send) =>
         (send as FakeGainNode).connections.has(sink)
@@ -287,6 +322,8 @@ describe("explicit audio patch routing", () => {
     const h = harness();
     h.runtime.sync(plan);
     h.runtime.connectSource("a", h.input);
+    const secondInput = h.context.createGain();
+    h.runtime.connectSource("b", secondInput);
     await h.runtime.whenSettled();
     const gain = h.runtime.getTap("gain") as unknown as FakeGainNode;
     const keySend = [...gain.connections].find((send) =>
@@ -300,6 +337,15 @@ describe("explicit audio patch routing", () => {
     )?.[1];
     expect(keySend.connections.has(keyInput)).toBe(true);
     const detector = h.runtime.getTap("follow");
+    const b = h.runtime.getTap("b") as unknown as FakeGainNode;
+    expect((secondInput as unknown as FakeGainNode).connections.size).toBe(1);
+    for (const target of [keyInput, detector]) {
+      expect(
+        [...b.connections].some((send) =>
+          (send as FakeGainNode).connections.has(target)
+        )
+      ).toBe(true);
+    }
     expect(
       [...gain.connections].some((send) =>
         (send as FakeGainNode).connections.has(detector)
@@ -380,6 +426,188 @@ describe("explicit audio patch routing", () => {
     expect(h.host.connectNodeProcessor).toHaveBeenCalledTimes(2);
     h.runtime.dispose();
   });
+
+  test("unused ports release processors after the cable fade; a quick reconnect cancels retirement", async () => {
+    const fades: (() => void)[] = [];
+    const h = harness(() => new Promise((resolve) => fades.push(resolve)));
+    const { plan } = patch(
+      [source("a"), fx("split", "fxComposite"), speakers],
+      [
+        cable("in", "a", "split"),
+        cable("one", "split", "speakers", "out:audio:branch-1"),
+      ]
+    );
+    h.runtime.sync(plan);
+    h.runtime.connectSource("a", h.input);
+    await h.runtime.whenSettled();
+    const firstId = h.host.connectNodeProcessor.mock.calls[0]?.[0];
+    const extra = graphEdgeSchema.parse({
+      ...plan.edges.get("one"),
+      id: "fan-out",
+      target: "device",
+    });
+    const device = graphNodeSchema.parse({
+      data: { deviceId: "usb" },
+      id: "device",
+      position,
+      type: "deviceOut",
+    });
+    h.runtime.sync({
+      ...plan,
+      edges: new Map(plan.edges).set(extra.id, extra),
+      nodes: new Map(plan.nodes).set(device.id, device),
+    });
+    h.runtime.sync({
+      ...plan,
+      edges: new Map([...plan.edges].filter(([id]) => id !== "one")).set(
+        extra.id,
+        extra
+      ),
+      nodes: new Map(plan.nodes).set(device.id, device),
+    });
+    for (const settle of fades.splice(0)) {
+      settle();
+    }
+    await h.runtime.whenSettled();
+    expect(
+      h.host.releaseNodeProcessor.mock.calls.some(([id]) => id === firstId)
+    ).toBe(false);
+    h.runtime.sync(plan);
+    for (const settle of fades.splice(0)) {
+      settle();
+    }
+    await h.runtime.whenSettled();
+    h.host.releaseNodeProcessor.mockClear();
+    const unplugged = {
+      ...plan,
+      edges: new Map([...plan.edges].filter(([id]) => id !== "one")),
+    };
+    h.runtime.sync(unplugged);
+    expect(h.host.releaseNodeProcessor).not.toHaveBeenCalled();
+    h.runtime.sync(plan);
+    for (const settle of fades.splice(0)) {
+      settle();
+    }
+    await h.runtime.whenSettled();
+    expect(h.host.releaseNodeProcessor).not.toHaveBeenCalled();
+    expect(h.host.connectNodeProcessor).toHaveBeenCalledTimes(1);
+    h.runtime.sync(unplugged);
+    for (const settle of fades.splice(0)) {
+      settle();
+    }
+    await h.runtime.whenSettled();
+    expect(h.host.releaseNodeProcessor).toHaveBeenCalledWith(firstId);
+    expect(
+      h.runtime.outcomes().find((module) => module.id === "split")?.outcomes
+    ).toEqual([]);
+    h.runtime.sync(plan);
+    await h.runtime.whenSettled();
+    expect(h.host.connectNodeProcessor).toHaveBeenCalledTimes(2);
+    expect(h.host.connectNodeProcessor.mock.calls[1]?.[0]).not.toBe(firstId);
+    h.runtime.dispose();
+  });
+
+  test("configured and cable solos form one effective branch set, including keys", async () => {
+    const split = graphNodeSchema.parse(fx("split", "fxComposite"));
+    if (split.type !== "fxComposite" || !isEffectContainer(split.data.effect)) {
+      throw new Error("Missing split");
+    }
+    const [firstChain] = split.data.effect.chains;
+    if (!firstChain) {
+      throw new Error("Missing first branch");
+    }
+    firstChain.solo = true;
+    const { plan } = patch(
+      [
+        source("a"),
+        split,
+        graphNodeSchema.parse({
+          ...fx("v", "compressor"),
+          data: {
+            effect: {
+              ...createNodeEffectConfig("vocoder", "v"),
+              enabled: true,
+              modulatorSource: "noise-pink",
+            },
+          },
+          type: "vocoder",
+        }),
+        speakers,
+      ],
+      [
+        cable("in", "a", "split"),
+        cable("one", "split", "speakers", "out:audio:branch-1"),
+        {
+          ...cable("two", "split", "speakers", "out:audio:branch-2"),
+          solo: true,
+        },
+        cable("key", "split", "v", "out:audio:branch-1", "in:sidechain:key"),
+        cable("out", "v", "speakers"),
+      ]
+    );
+    const h = harness();
+    h.runtime.sync(plan);
+    h.runtime.connectSource("a", h.input);
+    await h.runtime.whenSettled();
+    const configs = h.host.connectNodeProcessor.mock.calls.map(
+      (call) => call[3]
+    );
+    expect(configs).toContainEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modulatorSource: "external",
+          type: "vocoder",
+        }),
+      ])
+    );
+    for (const handle of ["out:audio:branch-1", "out:audio:branch-2"]) {
+      const out = h.runtime.getTap("split", handle) as unknown as FakeGainNode;
+      expect(
+        [...out.connections].some((send) => {
+          const event = (send as FakeGainNode).gain.events.at(-1);
+          return event?.type === "target" && event.value === 1;
+        })
+      ).toBe(true);
+    }
+    const branches = configs
+      .flat()
+      .filter((config) => config.type === "fxComposite");
+    expect(branches).toHaveLength(2);
+    for (const branch of branches) {
+      if (!isEffectContainer(branch)) {
+        throw new Error("Missing branch routing");
+      }
+      expect(branch.chains[0]?.muted).toBe(false);
+    }
+    const unconfigured = {
+      ...split,
+      data: {
+        effect: {
+          ...split.data.effect,
+          chains: split.data.effect.chains.map((chain) => ({
+            ...chain,
+            solo: false,
+          })),
+        },
+      },
+    } as GraphNode;
+    h.runtime.sync({
+      ...plan,
+      nodes: new Map(plan.nodes).set("split", unconfigured),
+    });
+    await h.runtime.whenSettled();
+    expect(
+      h.host.updateNodeProcessor.mock.calls.map((call) => call[1])
+    ).toContainEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modulatorSource: "noise-pink",
+          type: "vocoder",
+        }),
+      ])
+    );
+    h.runtime.dispose();
+  });
 });
 
 function renderPort(
@@ -423,4 +651,84 @@ test("stereo split payloads carry independent left/right signals rather than cop
   expect(left[1]).toBeCloseTo(0);
   expect(right[0]).toBeCloseTo(0);
   expect(right[1]).toBeCloseTo(0.8);
+});
+
+for (const enabled of [true, false]) {
+  for (const dryWet of [0, 0.25, 1]) {
+    test(`split routing preserves channel separation and a single bypass at enabled=${enabled}, mix=${dryWet}`, () => {
+      for (const type of ["fxComposite", "stereoSplit"] as const) {
+        const node = graphNodeSchema.parse(fx("split", type));
+        if (node.type !== "fxComposite" && node.type !== "stereoSplit") {
+          throw new Error("Missing split");
+        }
+        node.data.effect = { ...node.data.effect, dryWet, enabled };
+        const [firstHandle, secondHandle] =
+          type === "fxComposite"
+            ? (["out:audio:branch-1", "out:audio:branch-2"] as const)
+            : (["out:audio:left", "out:audio:right"] as const);
+        const first = renderPort(node, firstHandle, 0.2, 0.8);
+        const second = renderPort(node, secondHandle, 0.2, 0.8);
+        expect(first[0] + second[0]).toBeCloseTo(0.2);
+        expect(first[1] + second[1]).toBeCloseTo(0.8);
+        if (type === "stereoSplit") {
+          expect(first[1]).toBeCloseTo(0);
+          expect(second[0]).toBeCloseTo(0);
+        }
+      }
+    });
+  }
+}
+
+test("disabled and dry Band Split outputs retain their band signals", () => {
+  const node = graphNodeSchema.parse(fx("split", "frequencySplit"));
+  if (node.type !== "frequencySplit") {
+    throw new Error("Missing split");
+  }
+  const wet = Array.from({ length: 4 }, (_, index) =>
+    renderPort(node, `out:audio:band-${index + 1}`, 0.2, 0.8)
+  );
+  for (const change of [{ enabled: false }, { dryWet: 0 }]) {
+    const bypass = {
+      ...node,
+      data: { effect: { ...node.data.effect, ...change } },
+    } as GraphNode;
+    for (const [index, expected] of wet.entries()) {
+      const signal = renderPort(
+        bypass,
+        `out:audio:band-${index + 1}`,
+        0.2,
+        0.8
+      );
+      expect(signal[0]).toBeCloseTo(expected[0]);
+      expect(signal[1]).toBeCloseTo(expected[1]);
+    }
+  }
+});
+
+test("a split dry/wet mix preserves authored wet gain and pan without leaking dry audio across channels", () => {
+  const node = graphNodeSchema.parse(fx("split", "stereoSplit"));
+  if (node.type !== "stereoSplit" || !isEffectContainer(node.data.effect)) {
+    throw new Error("Missing stereo split");
+  }
+  node.data.effect = {
+    ...node.data.effect,
+    dryWet: 0.25,
+    inputGain: 2,
+    outputGain: 0.5,
+  };
+  if (!isEffectContainer(node.data.effect)) {
+    throw new Error("Missing chains");
+  }
+  const [leftChain] = node.data.effect.chains;
+  if (!leftChain) {
+    throw new Error("Missing left chain");
+  }
+  leftChain.gain = 2;
+  leftChain.pan = 0.5;
+  const left = renderPort(node, "out:audio:left", 0.2, 0.8);
+  const right = renderPort(node, "out:audio:right", 0.2, 0.8);
+  expect(left[0]).toBeCloseTo(0.125);
+  expect(left[1]).toBeCloseTo(0.05);
+  expect(right[0]).toBeCloseTo(0);
+  expect(right[1]).toBeCloseTo(0.5);
 });

@@ -31,7 +31,10 @@ An option that fails a gate is out.
 If both pass, choose B only if, at N = 4 branches on two topologies or more,
 its audio-thread load is lower by at least 20 % relative and 3 points of the
 render budget (M1), and openDAW's DSP time (M2) is no more than 10 % worse.
-Otherwise choose A. If only one passes, choose it.
+Otherwise choose A. If only one passes, choose it. If neither passes, ship
+Split and Stereo Split with A, recording the failed check, and refuse
+diverging Band Splits with "Band Split branches must meet again" until the
+cause is fixed.
 
 ## Gate results
 
@@ -64,8 +67,16 @@ effects and gain, balance, mute, solo, mix and output trim at its exit:
   browser, with the same config in openDAW's `FrequencySplit`. The bench
   measured −39 to −45 dBFS; the offline render only checks the stage against
   its own input.
+- **G2, clicks:** count clicks per edit against the baseline, in a real
+  browser. The bench run recorded no click counts.
 
 ## Decision
 
-**A.** It needs no null bus, no output 0 and no bus registrations, and it runs
-on the compatibility engine too. B is not built.
+**A (provisional).** B is out on G1. A passes every G1 check except the Band
+Split comparison against openDAW's container, which, with G2, is left to beta
+verification. If A fails the Band Split check, neither option passes:
+diverging Band Splits are refused with "Band Split branches must meet again"
+until the cause is fixed.
+
+A needs no null bus, no output 0 and no bus registrations, and it runs on the
+compatibility engine too. B is not built.

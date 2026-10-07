@@ -135,10 +135,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   >();
   private readonly werkstattGroups = new Map<string, OfficialEffectGroup>();
   private readonly werkstattSources = new Map<OfficialEffectGroup, string>();
-  private readonly werkstattParameterOverlays = new Map<
-    OfficialEffectGroup,
-    Extract<EffectConfig, { type: "werkstatt" }>["parameters"]
-  >();
   private readonly werkstattSubscriptions = new Map<
     OfficialEffectGroup,
     Terminable
@@ -619,6 +615,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!(unit && group && this.project)) {
       return "unavailable";
     }
+    if (transient && group.config.type === "werkstatt") {
+      return "unavailable";
+    }
     if (effectFieldsAreStructural(group.config, config)) {
       return "structural";
     }
@@ -628,17 +627,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       if (!transient) {
         group.config = authored;
       }
-      if (authored.type === "werkstatt") {
-        if (transient) {
-          this.werkstattParameterOverlays.set(group, {
-            ...authored.parameters,
-          });
-        } else {
-          this.werkstattParameterOverlays.delete(group);
-        }
-        if (authored.enabled) {
-          this.compileWerkstattGroup(soundId, group, authored);
-        }
+      if (authored.type === "werkstatt" && authored.enabled) {
+        this.compileWerkstattGroup(soundId, group, authored);
       }
     });
     if (transient) {
@@ -754,7 +744,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.werkstattGenerations.clear();
     this.werkstattGroups.clear();
     this.werkstattSources.clear();
-    this.werkstattParameterOverlays.clear();
     this.silentDestination?.disconnect();
     this.silentDestination = null;
     this.project?.terminate();
@@ -771,7 +760,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     const { bpm } = this;
     const targets = new Map(this.sidechainTargets);
-    const werkstattParameters = new Map(this.werkstattParameterOverlays);
     const units = new Map(
       [...this.soundUnits].map(([id, unit]) => [id, { ...unit }])
     );
@@ -795,10 +783,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.sidechainTargets.clear();
       for (const [id, target] of targets) {
         this.sidechainTargets.set(id, target);
-      }
-      this.werkstattParameterOverlays.clear();
-      for (const [group, parameters] of werkstattParameters) {
-        this.werkstattParameterOverlays.set(group, parameters);
       }
       this.restoreMonitoringSources(units);
       for (const [group, previous] of groups) {
@@ -921,7 +905,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
           restoreWerkstattParameterValues(
             this.adapterContext(),
             group,
-            this.werkstattParameterOverlays.get(group) ?? config.parameters
+            config.parameters
           )
         );
       }
@@ -954,7 +938,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
             restoreWerkstattParameterValues(
               this.adapterContext(),
               group,
-              this.werkstattParameterOverlays.get(group) ?? current.parameters
+              current.parameters
             )
           );
         }
@@ -1005,7 +989,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.werkstattSubscriptions.delete(group);
     this.werkstattGenerations.delete(group);
     this.werkstattSources.delete(group);
-    this.werkstattParameterOverlays.delete(group);
     if (this.werkstattGroups.get(group.config.id) === group) {
       this.werkstattGroups.delete(group.config.id);
       clearWerkstattRuntimeStatus(group.config.id);

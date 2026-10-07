@@ -69,7 +69,7 @@ export class LaneParameters {
       Boolean(plan) &&
       outcome.backend !== "compatibility" &&
       (!("effectId" in target) || outcome.status !== "failed") &&
-      (outcome.backend === "official" || plan?.backend !== "compat")
+      plan?.backend !== "compat"
     );
   }
 
@@ -92,7 +92,7 @@ export class LaneParameters {
           ]
         : undefined;
     }
-    if (target.field === "order") {
+    if (target.field === "order" || config.type === "werkstatt") {
       return undefined;
     }
     const value =

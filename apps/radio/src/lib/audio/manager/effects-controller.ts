@@ -155,7 +155,14 @@ class EffectsController {
   ): void {
     state.outcome = outcome;
     for (const listener of this.outcomeListeners.get(soundId) ?? []) {
-      listener(outcome);
+      try {
+        listener(outcome);
+      } catch (error) {
+        captureError(error, {
+          operation: "notifyEffectsRuntimeOutcome",
+          surface: "ui",
+        });
+      }
     }
   }
 

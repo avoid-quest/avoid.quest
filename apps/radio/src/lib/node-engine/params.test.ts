@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Store } from "@tanstack/react-store";
+import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { effectFieldsAreStructural } from "@/lib/audio/dsp/routing/effect-tree";
 import type { AudioManager } from "@/lib/audio/manager/audio-manager";
@@ -704,6 +705,78 @@ describe("Node engine parameters", () => {
     expect(h.fields.get("comp")).toMatchObject({ threshold: -17 });
     h.engine.clearTransient(threshold);
     expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+  });
+
+  test("transient Werkstatt targets are unavailable even on an official lane", async () => {
+    const h = await harness();
+    const lane = h.plan.lanes.get("a");
+    if (!lane) {
+      throw new Error("Missing lane");
+    }
+    const script = {
+      ...createDefaultEffectConfig("werkstatt", "comp", 0),
+      enabled: true,
+      parameters: { amount: 0.25 },
+    };
+    h.engine.apply(
+      {
+        ...h.plan,
+        lanes: new Map(h.plan.lanes).set("a", {
+          ...lane,
+          effects: [script],
+          layoutSignature: "werkstatt",
+        }),
+      },
+      true
+    );
+    await h.engine.whenSettled();
+    const baseline = h.fields.get("comp");
+    for (const field of ["amount", "dryWet", "outputGain"]) {
+      expect(h.engine.setParam({ ...threshold, field }, 0.7)).toBe(
+        "unavailable"
+      );
+    }
+    h.engine.clearTransient();
+    expect(h.fields.get("comp")).toBe(baseline);
+  });
+
+  test("a compatibility plan rejects transient writes despite a stale official outcome", async () => {
+    const h = await harness();
+    const patch = graph();
+    const compatible = nodeGraphSchema.parse({
+      ...patch,
+      nodes: patch.nodes.map((node) =>
+        node.id === "comp"
+          ? {
+              ...node,
+              data: {
+                effect: {
+                  ...createNodeEffectConfig("distortion", "comp"),
+                  enabled: true,
+                },
+              },
+              type: "distortion",
+            }
+          : node
+      ),
+    });
+    h.engine.apply(
+      compiler.compile(compatible, { crossOriginIsolated: true }),
+      true
+    );
+    await h.engine.whenSettled();
+    expect(h.engine.plan.lanes.get("a")?.backend).toBe("compat");
+    const baseline = h.fields.get("comp");
+    for (const target of [
+      { ...threshold, field: "outputGain" },
+      pan,
+      frequency,
+      send,
+    ]) {
+      expect(h.engine.setParam(target, 0.4)).toBe("unavailable");
+    }
+    expect(h.levels.get("a")).toBe(1);
+    expect(h.fields.get("comp")).toBe(baseline);
   });
 
   test("every target on an actual compatibility lane is unavailable", async () => {

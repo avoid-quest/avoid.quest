@@ -1265,49 +1265,45 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   );
 
-  test.each([false, true])(
-    "a ready Werkstatt edit commits its mix and parameters together (transient=%s)",
-    async (transient) => {
-      const h = await createHarness();
-      await h.runtime.connectSound("deck", h.source, h.destination);
-      const config = werkstatt();
-      h.runtime.syncEffects("deck", [config]);
-      await finishCompile(h.compiles[0]);
-      const device = scriptDevice(h);
-      const wrapper = wrapperForDevice(h, device);
-      const amount = parameter(h, device);
-      const committed: Array<{ amount: number; wet: number }> = [];
-      const subscription = h.project.boxGraph.subscribeTransaction({
-        onBeginTransaction: () => undefined,
-        onEndTransaction: (aborted) => {
-          if (!aborted) {
-            committed.push({
-              amount: amount.value.getValue(),
-              wet: wrapper.wet.getValue(),
-            });
-          }
-        },
-      });
-      try {
-        expect(
-          h.runtime.writeEffect(
-            "deck",
-            config.id,
-            { ...config, dryWet: 0.5, parameters: { amount: 0.75 } },
-            transient
-          )
-        ).toBe("applied");
-        expect(committed).toEqual([
-          { amount: 0.75, wet: wrapper.wet.getValue() },
-        ]);
-        expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.5));
-        expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
-        expect(h.project.editing.canUndo()).toBe(false);
-      } finally {
-        subscription.terminate();
-      }
+  test("a ready Werkstatt edit commits its mix and parameters together", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt();
+    h.runtime.syncEffects("deck", [config]);
+    await finishCompile(h.compiles[0]);
+    const device = scriptDevice(h);
+    const wrapper = wrapperForDevice(h, device);
+    const amount = parameter(h, device);
+    const committed: Array<{ amount: number; wet: number }> = [];
+    const subscription = h.project.boxGraph.subscribeTransaction({
+      onBeginTransaction: () => undefined,
+      onEndTransaction: (aborted) => {
+        if (!aborted) {
+          committed.push({
+            amount: amount.value.getValue(),
+            wet: wrapper.wet.getValue(),
+          });
+        }
+      },
+    });
+    try {
+      expect(
+        h.runtime.writeEffect("deck", config.id, {
+          ...config,
+          dryWet: 0.5,
+          parameters: { amount: 0.75 },
+        })
+      ).toBe("applied");
+      expect(committed).toEqual([
+        { amount: 0.75, wet: wrapper.wet.getValue() },
+      ]);
+      expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      expect(h.project.editing.canUndo()).toBe(false);
+    } finally {
+      subscription.terminate();
     }
-  );
+  });
 
   test("transient fields preserve the authored baseline and undo history", async () => {
     const h = await createHarness();
@@ -1408,58 +1404,36 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(h.project.boxGraph.findBox(cell.address.uuid).unwrap()).toBe(cell);
   });
 
-  test("the same transient writer restores Werkstatt parameters without saving them", async () => {
-    const h = await createHarness();
-    await h.runtime.connectSound("deck", h.source, h.destination);
-    const config = werkstatt();
-    h.runtime.syncEffects("deck", [config]);
-    await finishCompile(h.compiles[0]);
-    const device = scriptDevice(h);
-    const amount = parameter(h, device);
-    h.runtime.writeEffect(
-      "deck",
-      config.id,
-      { ...config, parameters: { amount: 0.7 } },
-      true
-    );
-    expect(amount.value.getValue()).toBeCloseTo(0.7);
-    h.runtime.syncEffects("deck", [config]);
-    expect(amount.value.getValue()).toBeCloseTo(0.7);
-    h.runtime.writeEffect("deck", config.id, config, true);
-    expect(amount.value.getValue()).toBe(0.25);
-    expect(parameter(h, device)).toBe(amount);
-    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
-    expect(h.project.editing.hasNoChanges()).toBe(true);
-  });
-
-  test.each(["initial", "replacement"] as const)(
-    "a transient Werkstatt parameter survives its %s compile and clears to the authored baseline",
+  test.each(["initial", "ready", "replacement"] as const)(
+    "transient Werkstatt writes are unavailable during %s compilation",
     async (phase) => {
       const h = await createHarness();
       await h.runtime.connectSound("deck", h.source, h.destination);
       const config = werkstatt();
       h.runtime.syncEffects("deck", [config]);
-      if (phase === "replacement") {
+      if (phase !== "initial") {
         await finishCompile(h.compiles[0]);
+      }
+      if (phase === "replacement") {
         config.code = werkstatt("// replacement source").code;
         h.runtime.syncEffects("deck", [config]);
       }
       const device = scriptDevice(h);
-      for (const amount of [0.6, 0.7]) {
-        expect(
-          h.runtime.writeEffect(
-            "deck",
-            config.id,
-            { ...config, parameters: { amount } },
-            true
-          )
-        ).toBe("applied");
+      const checksum = h.project.boxGraph.checksum();
+      const status = getWerkstattRuntimeStatus(config.id);
+      expect(
+        h.runtime.writeEffect(
+          "deck",
+          config.id,
+          { ...config, dryWet: 0.5, parameters: { amount: 0.7 } },
+          true
+        )
+      ).toBe("unavailable");
+      expect(h.project.boxGraph.checksum()).toEqual(checksum);
+      expect(getWerkstattRuntimeStatus(config.id)).toEqual(status);
+      if (phase !== "ready") {
+        await finishCompile(h.compiles[phase === "replacement" ? 1 : 0]);
       }
-      h.runtime.syncEffects("deck", [config]);
-      await finishCompile(h.compiles[phase === "replacement" ? 1 : 0]);
-      expect(parameter(h, device).value.getValue()).toBeCloseTo(0.7);
-      expect(config.parameters).toEqual({ amount: 0.25 });
-      h.runtime.writeEffect("deck", config.id, config, true);
       expect(parameter(h, device).value.getValue()).toBe(0.25);
       expect(h.project.editing.canUndo()).toBe(false);
     }
@@ -1683,42 +1657,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     await finishCompile(h.compiles[1]);
     expect(device.code.getValue()).toContain("// another edit while off");
   });
-
-  test.each([false, true])(
-    "a failed Werkstatt write keeps the previous overlay (transient=%s)",
-    async (transient) => {
-      const h = await createHarness();
-      await h.runtime.connectSound("deck", h.source, h.destination);
-      const config = werkstatt();
-      h.runtime.syncEffects("deck", [config]);
-      await finishCompile(h.compiles[0]);
-      h.runtime.writeEffect(
-        "deck",
-        config.id,
-        { ...config, parameters: { amount: 0.75 } },
-        true
-      );
-      const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
-      endTransaction.mockImplementationOnce(() => {
-        throw new Error("Parameter edit failed");
-      });
-      try {
-        expect(() =>
-          h.runtime.writeEffect(
-            "deck",
-            config.id,
-            { ...config, parameters: { amount: 0.5 } },
-            transient
-          )
-        ).toThrow("Parameter edit failed");
-      } finally {
-        endTransaction.mockRestore();
-      }
-      expect(parameter(h, scriptDevice(h)).value.getValue()).toBe(0.75);
-      h.runtime.syncEffects("deck", [config]);
-      expect(parameter(h, scriptDevice(h)).value.getValue()).toBe(0.75);
-    }
-  );
 
   test("enabling a script through a field write compiles it and preserves its device", async () => {
     const h = await createHarness();

@@ -518,6 +518,56 @@ describe("EffectsController", () => {
     controller.cleanup();
   });
 
+  test("a throwing outcome listener leaves the backend and other listeners working", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const controller = new EffectsController({
+      createOfficialRuntime: () => createRuntime(),
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    await controller.reconcile("lane", desiredEffects([config]));
+    await controller.connectGraph(
+      "lane",
+      source as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    const unsubscribeFailed = controller.subscribeRuntimeOutcome("lane", () => {
+      throw new Error("Overlay listener failed");
+    });
+    const observed: string[] = [];
+    const unsubscribeHealthy = controller.subscribeRuntimeOutcome(
+      "lane",
+      (outcome) => {
+        if (outcome.ready && outcome.backend) {
+          observed.push(outcome.backend);
+        }
+      }
+    );
+    try {
+      const outcome = await controller.reconcile(
+        "lane",
+        desiredEffects([{ ...config, threshold: -27 }])
+      );
+      expect(outcome).toEqual({
+        backend: "official",
+        ready: true,
+        status: "ready",
+      });
+      expect(controller.getRuntimeOutcome("lane")).toEqual(outcome);
+      expect(observed).toEqual(["official"]);
+    } finally {
+      unsubscribeFailed();
+      unsubscribeHealthy();
+      controller.cleanup();
+    }
+  });
+
   test("runtime outcome subscriptions survive sound cleanup until unsubscribed", async () => {
     const context = new TestAudioContext();
     const source = new TestAudioNode(context);

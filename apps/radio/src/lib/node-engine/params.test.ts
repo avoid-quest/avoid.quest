@@ -1082,6 +1082,28 @@ describe("Node engine parameters", () => {
     expect(h.pointLevel("speakers")).toBe(1);
   });
 
+  test.each(["official", "compatibility"] as const)(
+    "a shared unit's sends stay native with %s effects and after fallback",
+    async (backend) => {
+      const h = await harness(backend, false, sharedGraph());
+      h.connectPoints("a");
+      await h.engine.whenSettled();
+
+      expect(h.engine.setParam(send, 0.3)).toBe("applied");
+      expect(h.pointLevel("speakers")).toBe(0.3);
+      h.ready("compatibility");
+      expect(h.pointLevel("speakers")).toBe(0.3);
+      expect(h.engine.setParam(send, 0.8)).toBe("applied");
+      expect(h.pointLevel("speakers")).toBe(0.8);
+      expect(h.engine.setParam({ ...threshold, laneId: "comp" }, -12)).toBe(
+        "unavailable"
+      );
+
+      h.engine.clearTransient(send);
+      expect(h.pointLevel("speakers")).toBe(1);
+    }
+  );
+
   test("a send's overlay stays when its cable moves from a lane to a unit", async () => {
     const h = await harness();
     expect(h.engine.setParam(send, 0.3)).toBe("applied");

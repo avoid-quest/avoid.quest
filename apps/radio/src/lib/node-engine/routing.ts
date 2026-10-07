@@ -319,8 +319,7 @@ export class RoutingGraph {
     return Boolean(
       point?.wanted &&
         point.live &&
-        (point.live.parameters?.available({ edgeId: cableId, kind: "send" }) ??
-          true)
+        point.cables.some((cable) => cable.id === cableId)
     );
   }
 

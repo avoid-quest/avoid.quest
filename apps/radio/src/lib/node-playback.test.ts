@@ -383,6 +383,27 @@ function createHarness(
   );
   const otherTabListeners = new Set<() => void>();
   const mainSources = new Set<AudioNode>();
+  // Node Playback routes through its context's output routing by default;
+  // a context without one of its own gets this one.
+  const router = {
+    applySettings: async () => ({}) as OutputRoutingSnapshot,
+    connectMain: (source: AudioNode) => {
+      mainSources.add(source);
+      return () => {
+        mainSources.delete(source);
+      };
+    },
+    registerCueDeck: () => ({
+      cleanup: () => undefined,
+      enabled: false,
+      replaceTap: () => undefined,
+      setEnabled: () => undefined,
+    }),
+    releaseCue: () => undefined,
+  };
+  if (!context.getMainOutputRouter()) {
+    context.getMainOutputRouter = () => router as unknown as OutputRouting;
+  }
   const playback = getNodePlayback({
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
@@ -401,22 +422,6 @@ function createHarness(
       otherTabListeners.add(listener);
       return () => otherTabListeners.delete(listener);
     },
-    outputRouting: () => ({
-      applySettings: async () => ({}) as OutputRoutingSnapshot,
-      connectMain: (source: AudioNode) => {
-        mainSources.add(source);
-        return () => {
-          mainSources.delete(source);
-        };
-      },
-      registerCueDeck: () => ({
-        cleanup: () => undefined,
-        enabled: false,
-        replaceTap: () => undefined,
-        setEnabled: () => undefined,
-      }),
-      releaseCue: () => undefined,
-    }),
     ...(options.deviceSinks ? { deviceSinks: options.deviceSinks } : {}),
     ...(options.resolveStream ? { resolveStream: options.resolveStream } : {}),
     sinkStatuses: options.sinkStatuses ?? new Store<NodeSinkStatuses>({}),
@@ -2267,6 +2272,18 @@ describe("Node Playback lane outputs", () => {
     expect(calls.filter((call) => call.startsWith("connector"))).toHaveLength(
       1
     );
+  });
+
+  test("Speakers play through the playback context's output routing", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { send } = connectLane(harness.context, "a");
+
+    // The harness's router is the context's: nothing reaches the global one.
+    expect(onMain(harness, send())).toBe(true);
   });
 
   test("cable gain, mute and removal ramp the Speakers send with τ 5 ms and leave the fader alone", async () => {

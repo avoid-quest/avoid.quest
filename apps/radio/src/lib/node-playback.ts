@@ -758,7 +758,9 @@ export function getNodePlayback(
     getEnv: options.getEnv ?? detectNodePlaybackEnv,
     laneOutputs: options.laneOutputs ?? createNodeLaneOutputs,
     otherTabWrites: options.otherTabWrites ?? subscribeToOtherTabSessionWrites,
-    outputRouting: options.outputRouting ?? getOutputRouting,
+    outputRouting:
+      options.outputRouting ??
+      (() => ctx.getMainOutputRouter() ?? getOutputRouting()),
     resolveStream: options.resolveStream ?? resolveDjPlatformStreamUrl,
     sinkStatuses: options.sinkStatuses ?? nodeSinkStatuses,
     store: options.store ?? nodeStore,

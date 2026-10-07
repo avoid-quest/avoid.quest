@@ -201,6 +201,6 @@ Twelve control sources, parameter cables, signed depths and pattern editors are
 implemented. Ordinary openDAW effect fields use native assignments. Logical Mix,
 linear/folded gains and Crusher/Fold compensation use transient scalar writes;
 Web Audio pan/filter/sends use the same owned parameter path. Frames never
-compile or save a patch. Native Steps has no custom seed. Compatibility targets
-show unavailable on Safari/fallback. See [modulation](node/docs/modulation.md)
+compile or save a patch. Native Steps has no custom seed. A cable the runtime
+doesn't apply says so, and why. See [modulation](node/docs/modulation.md)
 and [device acceptance](node/docs/acceptance.md) for timing and verification.

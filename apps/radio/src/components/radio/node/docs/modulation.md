@@ -42,7 +42,20 @@ boxes after replacement; source clocks survive destination changes. The compiled
 retains Autotune wrappers for targeted outer controls and folded signal trims. Removing Node
 mode releases the owned worklet, boxes, assignments, overlays and subscriptions.
 
-Compatibility-engine targets show **unavailable on Safari/fallback**. Native
+A live cable the runtime doesn't apply fades and its tag says **not applied**,
+or **partly applied** while other targets its parameter binds still move; the
+tag's title and the cable's controls say why, from the same check that delivers
+modulation: nothing plays through its target yet, openDAW has no control for it
+there, or it's an effect field whose lane or unit runs on the compatibility
+engine or plays dry. Strip, Filter/Pan and send targets are Web Audio's, so they
+move on either engine. The FX's `compat` badge says what the effects controller
+reports keeps it off openDAW: the browser, a Radio-only effect (Pitch/Speed,
+Distortion, Limiter), an effect set up in a way only the compatibility engine
+runs (a keyed Delay), a startup that failed or timed out, or openDAW's 8
+monitoring input channels in use, two for each stereo FX lane or unit and two
+for each distinct key input. Once some come free, each lane or unit that fell
+back for channels asks again, one at a time, and returns to openDAW,
+crossfading, if it fits. Native
 source startup failures show unavailable, while independent worklet sources can
 continue; **Run** retries startup. Native sources never use duplicate generators.
 Short Clock/MIDI gates are retained during startup. Native telemetry is a held

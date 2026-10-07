@@ -25,9 +25,10 @@
 
 import { Mixing, StereoMatrix } from "@opendaw/lib-dsp";
 import {
-  canUseOfficialOpenDawRuntime,
+  type EffectsFallbackCause,
   hasEnabledEffects,
   MAX_MONITORING_CHANNELS,
+  radioOnlyFallback,
 } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import type {
   EffectChainConfig,
@@ -153,6 +154,8 @@ export type LanePlan = {
   layoutSignature: string;
   /** null when the lane has no enabled FX and so no effects runtime. */
   backend: LaneBackend | null;
+  /** Why the estimate is compat. */
+  fallback?: EffectsFallbackCause;
   /** A Track's or File's transport; null for live radio and inputs. */
   transport: LaneTransport | null;
   /** Plays the lane pre-fader on the headphone cue output. */
@@ -221,6 +224,8 @@ export type UnitPlan = {
   effects: EffectConfig[];
   layoutSignature: string;
   backend: LaneBackend | null;
+  /** Why the estimate is compat. */
+  fallback?: EffectsFallbackCause;
   /** Every source reaching it is a live input: it skips the main delay. */
   realtime: boolean;
 };
@@ -627,22 +632,27 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
 /**
  * official only when every enabled effect maps to openDAW, the page is
  * cross-origin isolated and the `added` channels the lane needs still fit
- * under the channel cap.
+ * under the channel cap; compat with why otherwise.
  */
 function estimateBackend(
   effects: readonly EffectConfig[],
   env: CompileEnv,
   monitoringChannels: number,
   added: number
-): LaneBackend | null {
+): Pick<LanePlan, "backend" | "fallback"> {
   if (!hasEnabledEffects(effects)) {
-    return null;
+    return { backend: null };
   }
-  return env.crossOriginIsolated &&
-    canUseOfficialOpenDawRuntime(effects) &&
-    monitoringChannels + added <= MAX_MONITORING_CHANNELS
-    ? "official"
-    : "compat";
+  let fallback = radioOnlyFallback(effects);
+  if (!(fallback || env.crossOriginIsolated)) {
+    fallback = "not-isolated";
+  } else if (
+    !fallback &&
+    monitoringChannels + added > MAX_MONITORING_CHANNELS
+  ) {
+    fallback = "capacity";
+  }
+  return fallback ? { backend: "compat", fallback } : { backend: "official" };
 }
 
 /** What a key cable hears: where it starts, a Split's port included. */
@@ -1586,7 +1596,7 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   const users = [
     ...[...builder.lanes.values()].map((lane) => ({
       channel: lane.channelId,
-      plan: lane as { effects: EffectConfig[]; backend: LaneBackend | null },
+      plan: lane as Pick<LanePlan, "effects" | "backend" | "fallback">,
     })),
     ...[...builder.units.values()]
       .sort(
@@ -1601,11 +1611,9 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       )
     );
     const added = inputs.size * LANE_CHANNELS;
-    plan.backend = estimateBackend(
-      plan.effects,
-      env,
-      monitoringChannels,
-      added
+    Object.assign(
+      plan,
+      estimateBackend(plan.effects, env, monitoringChannels, added)
     );
     if (plan.backend === "official") {
       monitoringChannels += added;
@@ -1834,7 +1842,7 @@ function chainEffects(plan: EnginePlan) {
 export function idleKeys(
   graph: Pick<NodeGraph, "nodes" | "edges">,
   plan: EnginePlan,
-  badges: Readonly<Record<string, string>> = {}
+  badges: Readonly<Record<string, { kind: "compat" | "bypassed" }>> = {}
 ): Map<string, string> {
   const { active, byId: inChain } = chainEffects(plan);
   // What the runtime leaves unkeyed: every key of a chain it plays dry, and
@@ -1842,7 +1850,7 @@ export function idleKeys(
   const unbound = new Map<EffectConfig, string>();
   for (const chain of [...plan.lanes.values(), ...plan.units.values()]) {
     const audible = audibleEffects(chain.effects);
-    const live = new Set(audible.map((effect) => badges[effect.id]));
+    const live = new Set(audible.map((effect) => badges[effect.id]?.kind));
     const [key] = audibleSidechainIds(chain.effects);
     for (const effect of audible) {
       if (live.has("bypassed")) {

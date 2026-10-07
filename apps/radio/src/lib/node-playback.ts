@@ -304,6 +304,8 @@ function createNodePlayback(
       await disposal;
     } finally {
       disposal = null;
+      // An openDAW that failed to start stays failed for one activation.
+      options.effects.discardFailedEffectsRuntime();
     }
   };
 
@@ -748,10 +750,14 @@ export function getNodePlayback(
         ctx.audio.attachEffectsInsert(id, input, output, desired),
       connectEffectsKey: (id, node) => ctx.audio.connectEffectsKey(id, node),
       detachEffectsInsert: (id) => ctx.audio.detachEffectsInsert(id),
+      discardFailedEffectsRuntime: () =>
+        ctx.audio.discardFailedEffectsRuntime(),
       reconcileEffects: (soundId, desired) =>
         ctx.audio.reconcileEffects(soundId, desired),
       releaseEffectsKey: (id) => ctx.audio.releaseEffectsKey(id),
       setEffectFields: (...args) => ctx.audio.setEffectFields(...args),
+      subscribeEffectsCapacityFreed: (listener) =>
+        ctx.audio.subscribeEffectsCapacityFreed(listener),
       subscribeEffectsRuntimeOutcome: (...args) =>
         ctx.audio.subscribeEffectsRuntimeOutcome(...args),
     },

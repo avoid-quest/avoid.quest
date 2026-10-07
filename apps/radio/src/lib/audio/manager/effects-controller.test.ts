@@ -9,10 +9,11 @@ import type { WorkletManager } from "../playback/index.js";
 import type { AudioManager } from "./audio-manager.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
-import type {
-  EffectsGraphRuntime,
-  EffectWriteResult,
-  OfficialSoundSettings,
+import {
+  type EffectsGraphRuntime,
+  type EffectWriteResult,
+  MonitoringChannelsFullError,
+  type OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 
 class TestAudioParam {
@@ -166,6 +167,143 @@ function desiredEffects(
     tempo: 120,
     tree,
     ...overrides,
+  };
+}
+
+function stereoReverb(id: string): EffectConfig {
+  return {
+    ...createDefaultEffectConfig("plateReverb", `reverb-${id}`, 0),
+    enabled: true,
+  } as EffectConfig;
+}
+
+function keyedCompressor(id: string, key: string): EffectConfig {
+  return {
+    ...createDefaultEffectConfig("compressor", `comp-${id}`, 0),
+    enabled: true,
+    sidechain: { channelId: key },
+  } as EffectConfig;
+}
+
+/**
+ * Inserts on one controller over a runtime that takes openDAW's channels
+ * as the real one does: each registration lands in turn, taking its
+ * input's channels unless that passes eight, what its id held counting as
+ * its own, or nothing once a newer one for its id began; a delete gives
+ * them back, and crossfades end after what the switch started. Each insert openDAW was too full for reconciles again on
+ * its own serial driver once channels come free, as a Node lane's does.
+ */
+function createCapacityHarness(ids: string[]) {
+  const context = new TestAudioContext();
+  /** Registrations and crossfade ends, waiting for `settle`. */
+  const registrations: (() => void)[] = [];
+  const fades: (() => void)[] = [];
+  context.createConstantSource = () => {
+    const node = new TestConstantSourceNode(context);
+    node.stop = () => {
+      fades.push(() => node.onended?.());
+    };
+    return node as unknown as ConstantSourceNode;
+  };
+  const filter = new TestAudioNode(context) as unknown as AudioNode;
+  const runtime = createRuntime();
+  const held = new Map<string, number>();
+  const generations = new Map<string, number>();
+  const used = () => [...held.values()].reduce((sum, count) => sum + count, 0);
+  let peak = 0;
+  const take = async (id: string, generation = 0, channels: 1 | 2 = 2) => {
+    if (generation < (generations.get(id) ?? 0)) {
+      return false;
+    }
+    generations.set(id, generation);
+    await new Promise<void>((resolve) => registrations.push(resolve));
+    if (generations.get(id) !== generation) {
+      return false;
+    }
+    if (used() - (held.get(id) ?? 0) + channels > 8) {
+      throw new MonitoringChannelsFullError(
+        "openDAW monitoring supports at most 8 input channels"
+      );
+    }
+    held.set(id, channels);
+    peak = Math.max(peak, used());
+    return true;
+  };
+  runtime.connectSound.mockImplementation((id, _source, _out, gen, channels) =>
+    take(id, gen, channels)
+  );
+  runtime.connectSidechainSource.mockImplementation(
+    (id, _source, gen, channels) => take(id, gen, channels)
+  );
+  runtime.deleteSound.mockImplementation((id, generation = 0) => {
+    const current = generations.get(id) ?? 0;
+    if (generation >= current) {
+      generations.set(id, Math.max(generation, current + 1));
+      held.delete(id);
+    }
+  });
+  const controller = new EffectsController({
+    createOfficialRuntime: () => runtime,
+    createWorkletManager: () => createManager(context),
+    notifyListeners: () => undefined,
+    sounds: new Map(ids.map((id) => [id, sound(id, filter as never)])),
+    workletProcessorUrl: () => "/worklet.js",
+  });
+  const desired = new Map<string, DesiredEffectsState>();
+  const drivers = new Map<string, Promise<unknown>>();
+  let signals = 0;
+  controller.subscribeCapacityFreed(() => {
+    signals += 1;
+    for (const [id, wanted] of desired) {
+      if (controller.getRuntimeOutcome(id).fallback === "capacity") {
+        drivers.set(
+          id,
+          (drivers.get(id) ?? Promise.resolve()).then(() =>
+            controller.reconcile(id, wanted)
+          )
+        );
+      }
+    }
+  });
+  const reconcile = (id: string, tree: EffectConfig[]) => {
+    desired.set(id, desiredEffects(tree));
+    return controller.reconcile(id, desiredEffects(tree));
+  };
+  return {
+    async connect(id: string, tree: EffectConfig[]) {
+      await reconcile(id, tree);
+      const connecting = controller.connectGraph(id, filter, this.node());
+      await this.settle();
+      await connecting;
+    },
+    controller,
+    held,
+    node: () => new TestAudioNode(context) as unknown as AudioNode,
+    /** The most channels openDAW held at once. */
+    get peak() {
+      return peak;
+    },
+    reconcile,
+    runtime,
+    /**
+     * Lands each registration, then ends each crossfade, one at a time
+     * once all that came before has run, until nothing waits.
+     */
+    async settle() {
+      for (;;) {
+        // biome-ignore lint/performance/noAwaitInLoops: each step lands after the last has run
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const next = registrations.shift() ?? fades.shift();
+        if (!next) {
+          return;
+        }
+        next();
+      }
+    },
+    get signals() {
+      return signals;
+    },
+    used,
   };
 }
 
@@ -1261,6 +1399,7 @@ describe("EffectsController", () => {
 
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "compatibility",
+      fallback: "radio-only:distortion",
       ready: true,
       status: "ready",
     });
@@ -1498,9 +1637,56 @@ describe("EffectsController", () => {
 
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "compatibility",
+      fallback: "startup-failed",
       ready: true,
       status: "ready",
     });
+  });
+
+  test("a runtime that failed to start stays failed until let go, and a healthy one stays", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const failed = { ...createRuntime(), startupFailed: true };
+    failed.connectSound.mockRejectedValue(new Error("openDAW didn't start"));
+    const started = createRuntime();
+    const runtimes: EffectsGraphRuntime[] = [failed, started];
+    const created: EffectsGraphRuntime[] = [];
+    const controller = new EffectsController({
+      createOfficialRuntime: () => {
+        const runtime = runtimes.shift() as EffectsGraphRuntime;
+        created.push(runtime);
+        return runtime;
+      },
+      createWorkletManager: () => createManager(context),
+      notifyListeners: () => undefined,
+      sounds: new Map(["one", "two"].map((id) => [id, sound(id, filter)])),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const connect = async (id: string) => {
+      controller.cleanupSound(id);
+      await controller.reconcile(id, desiredEffects([stereoReverb(id)]));
+      await controller.connectGraph(
+        id,
+        filter as unknown as AudioNode,
+        new TestAudioNode(context) as unknown as AudioNode
+      );
+      return controller.getRuntimeOutcome(id);
+    };
+
+    expect(await connect("one")).toMatchObject({ fallback: "startup-failed" });
+    expect(await connect("two")).toMatchObject({ fallback: "startup-failed" });
+    expect(created).toEqual([failed]);
+
+    controller.discardFailedRuntime();
+    expect(await connect("one")).toEqual({
+      backend: "official",
+      ready: true,
+      status: "ready",
+    });
+    controller.discardFailedRuntime();
+    expect(await connect("two")).toMatchObject({ backend: "official" });
+    expect(created).toEqual([failed, started]);
+    expect(started.cleanup).not.toHaveBeenCalled();
   });
 
   test("uses compatibility when a fifth stereo input exceeds openDAW's monitoring limit", async () => {
@@ -1526,7 +1712,9 @@ describe("EffectsController", () => {
       await controller.reconcile(id, desiredEffects([reverb]));
       if (id === "five") {
         runtime.connectSound.mockRejectedValueOnce(
-          new Error("openDAW monitoring supports at most 8 input channels")
+          new MonitoringChannelsFullError(
+            "openDAW monitoring supports at most 8 input channels"
+          )
         );
       }
       expect(
@@ -1538,10 +1726,158 @@ describe("EffectsController", () => {
       ).toBe(true);
       expect(controller.getRuntimeOutcome(id)).toEqual({
         backend: id === "five" ? "compatibility" : "official",
+        fallback: id === "five" ? "capacity" : undefined,
         ready: true,
         status: "ready",
       });
     }
+  });
+
+  test.each(["removed", "switched to dry"] as const)(
+    "an insert that fell back for channels returns to openDAW once a sound is %s",
+    async (release) => {
+      const h = createCapacityHarness(["one", "two", "three", "four", "five"]);
+      for (const id of ["one", "two", "three", "four", "five"]) {
+        // biome-ignore lint/performance/noAwaitInLoops: fill the shared runtime in order
+        await h.connect(id, [stereoReverb(id)]);
+      }
+      expect(h.controller.getRuntimeOutcome("five")).toMatchObject({
+        backend: "compatibility",
+        fallback: "capacity",
+      });
+
+      if (release === "removed") {
+        h.controller.cleanupSound("one");
+      } else {
+        h.reconcile("one", []);
+      }
+      await h.settle();
+
+      // No edit or restart: the freed channels bring it back.
+      expect(h.controller.getRuntimeOutcome("five")).toEqual({
+        backend: "official",
+        ready: true,
+        status: "ready",
+      });
+      expect(new Set(h.held.keys())).toEqual(
+        new Set(["two", "three", "four", "five"])
+      );
+      // An unchanged reconcile keeps it there.
+      expect(await h.reconcile("five", [stereoReverb("five")])).toEqual({
+        backend: "official",
+        ready: true,
+        status: "ready",
+      });
+    }
+  );
+
+  test.each([1, 2])(
+    "inserts with their own keys ask once each when %i sounds go at once, and settle",
+    async (removed) => {
+      const ids = ["one", "two", "three", "four", "five", "six"];
+      const h = createCapacityHarness(ids);
+      for (const id of ids.slice(0, 4)) {
+        // biome-ignore lint/performance/noAwaitInLoops: fill the shared runtime in order
+        await h.connect(id, [stereoReverb(id)]);
+      }
+      // Each needs four channels: its input and its key's.
+      for (const id of ["five", "six"]) {
+        h.controller.connectKey(`node-key:${id}`, h.node());
+        // biome-ignore lint/performance/noAwaitInLoops: fill the shared runtime in order
+        await h.connect(id, [keyedCompressor(id, `node-key:${id}`)]);
+        expect(h.controller.getRuntimeOutcome(id).fallback).toBe("capacity");
+      }
+      const attempts = h.runtime.connectSound.mock.calls.length;
+
+      for (const id of ids.slice(0, removed)) {
+        h.controller.cleanupSound(id);
+      }
+      await h.settle();
+
+      // One signal for both; each asks once, in turn, and what a failed
+      // ask took frees nothing that would ask again.
+      expect(h.signals).toBe(1);
+      expect(h.runtime.connectSound.mock.calls.length - attempts).toBe(2);
+      expect(h.used()).toBeLessThanOrEqual(8);
+      expect(h.controller.getRuntimeOutcome("five").backend).toBe(
+        removed === 2 ? "official" : "compatibility"
+      );
+      expect(h.controller.getRuntimeOutcome("six").fallback).toBe("capacity");
+    }
+  );
+
+  test("inserts openDAW was too full for ask in turn after an edit too, keeping their keys", async () => {
+    const h = createCapacityHarness(["one", "two", "a", "b"]);
+    await h.connect("one", [stereoReverb("one")]);
+    await h.connect("two", [stereoReverb("two")]);
+    h.controller.connectKey("node-key:shared", h.node());
+    const keyed = (id: string, keys: string[]) =>
+      keys.map((key, order) => ({
+        ...keyedCompressor(`${id}-${key}`, `node-key:${key}`),
+        order,
+      }));
+    // Four channels are free, and each needs six: its input, the key both
+    // share and its own.
+    for (const id of ["a", "b"]) {
+      h.controller.connectKey(`node-key:${id}`, h.node());
+      // biome-ignore lint/performance/noAwaitInLoops: fill the shared runtime in order
+      await h.connect(id, keyed(id, ["shared", id]));
+      expect(h.controller.getRuntimeOutcome(id).fallback).toBe("capacity");
+    }
+    expect(h.used()).toBe(4);
+
+    // Both drop their own key at once: one fits, keyed.
+    const edits = Promise.all(
+      ["a", "b"].map((id) => h.reconcile(id, keyed(id, ["shared"])))
+    );
+    await h.settle();
+    await edits;
+
+    const official = ["a", "b"].filter(
+      (id) => h.controller.getRuntimeOutcome(id).backend === "official"
+    );
+    expect(official).toHaveLength(1);
+    const [fits] = official;
+    expect(h.held.get("node-key:shared")).toBe(2);
+    expect(h.used()).toBe(8);
+    expect(h.peak).toBeLessThanOrEqual(8);
+    expect(
+      h.controller.getRuntimeOutcome(fits === "a" ? "b" : "a")
+    ).toMatchObject({ backend: "compatibility", fallback: "capacity" });
+  });
+
+  test("an insert already keying another asks only for its own key's channels", async () => {
+    const h = createCapacityHarness(["keyed", "key", "three", "four"]);
+    h.controller.connectKey("node-key:key", h.node());
+    await h.connect("key", []);
+    // Its channels as the key of an official insert…
+    await h.connect("keyed", [keyedCompressor("keyed", "key")]);
+    await h.connect("three", [stereoReverb("three")]);
+    await h.connect("four", [stereoReverb("four")]);
+    expect(h.used()).toBe(8);
+
+    // …leave no room for its own key, and it keys "keyed" still.
+    h.reconcile("key", [keyedCompressor("key", "node-key:key")]);
+    await h.settle();
+    expect(h.controller.getRuntimeOutcome("key")).toMatchObject({
+      backend: "compatibility",
+      fallback: "capacity",
+    });
+    expect(h.held.get("key")).toBe(2);
+    expect(h.signals).toBe(0);
+
+    // Two channels are all it needs.
+    h.controller.cleanupSound("three");
+    await h.settle();
+    expect(h.controller.getRuntimeOutcome("key")).toEqual({
+      backend: "official",
+      ready: true,
+      status: "ready",
+    });
+    expect(new Set(h.held.keys())).toEqual(
+      new Set(["keyed", "key", "four", "node-key:key"])
+    );
+    expect(h.signals).toBe(1);
   });
 
   test("reports a ready bypass when resumed runtime selection fails", async () => {
@@ -1618,6 +1954,7 @@ describe("EffectsController", () => {
 
     expect(outcome).toEqual({
       backend: "compatibility",
+      fallback: "radio-only:distortion",
       ready: true,
       status: "ready",
     });
@@ -1652,11 +1989,13 @@ describe("EffectsController", () => {
 
     expect(outcome).toEqual({
       backend: "compatibility",
+      fallback: "radio-only:distortion",
       ready: true,
       status: "ready",
     });
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "compatibility",
+      fallback: "radio-only:distortion",
       ready: true,
       status: "ready",
     });
@@ -1835,7 +2174,12 @@ describe("EffectsController", () => {
     distortion.enabled = true;
     expect(
       await controller.reconcile("target", desiredEffects([distortion]))
-    ).toEqual({ backend: "compatibility", ready: true, status: "ready" });
+    ).toEqual({
+      backend: "compatibility",
+      fallback: "radio-only:distortion",
+      ready: true,
+      status: "ready",
+    });
   });
 
   test("stop cancels an in-flight official connection", async () => {

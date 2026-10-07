@@ -29,6 +29,7 @@ import { isTrackRadio } from "@/lib/node-graph/sources";
 import {
   detectNodePlaybackEnv,
   getNodePlayback,
+  type NodeBackendBadges,
   nodeBackendBadges,
 } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
@@ -130,7 +131,7 @@ function RackSection({
 function keyingStations(
   graph: NodeGraph,
   plan: EnginePlan,
-  badges: Readonly<Record<string, string>>
+  badges: NodeBackendBadges
 ): Map<string, string> {
   const idle = idleKeys(graph, plan, badges);
   const into = new Map<string, Endpoint[]>();

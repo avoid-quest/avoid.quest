@@ -1,4 +1,5 @@
 import { captureError } from "@avoid.quest/error";
+import type { EffectsFallbackCause } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   appendEffectToTree,
@@ -50,6 +51,8 @@ export type EffectsRuntimeOutcome = {
   ready: boolean;
   status: "failed" | "inactive" | "ready" | "superseded";
   error?: Error;
+  /** Why it runs on the compatibility engine, while it does. */
+  fallback?: EffectsFallbackCause;
 };
 
 export type ChannelEffectsResult = {

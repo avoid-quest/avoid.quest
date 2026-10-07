@@ -1,18 +1,13 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useStore } from "@tanstack/react-store";
+import { describeFallback } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import {
   type BackendBadge as BackendBadgeValue,
   type NodeBackendBadgeStore,
   nodeBackendBadges,
 } from "@/lib/node-playback";
 
-const HINTS: Record<BackendBadgeValue, string> = {
-  bypassed:
-    "Effects bypassed: the effects engine couldn't start, so this lane plays dry",
-  compat: "Runs on the compatibility effects engine",
-};
-
-/** A lowercase sans tag: `compat` or `bypassed`. */
+/** A lowercase sans tag, `compat` or `bypassed`, titled with why. */
 export function BackendBadgeLabel({
   badge,
   className,
@@ -24,14 +19,18 @@ export function BackendBadgeLabel({
     <span
       className={cn(
         "inline-flex shrink-0 rounded px-1 py-0.5 font-medium text-[10px] leading-none",
-        badge === "bypassed"
+        badge.kind === "bypassed"
           ? "bg-destructive/10 text-destructive"
           : "bg-muted text-muted-foreground",
         className
       )}
-      title={HINTS[badge]}
+      title={
+        badge.kind === "bypassed"
+          ? "Effects bypassed: the effects engine couldn't start, so this lane plays dry"
+          : `Runs on the compatibility effects engine${badge.cause ? ` because ${describeFallback(badge.cause)}` : ""}`
+      }
     >
-      {badge}
+      {badge.kind}
     </span>
   );
 }

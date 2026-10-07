@@ -7,6 +7,9 @@ import type {
 
 export type EffectWriteResult = "applied" | "structural" | "unavailable";
 
+/** openDAW's monitoring inputs can't take another registration. */
+export class MonitoringChannelsFullError extends Error {}
+
 export type EffectsPerformanceSnapshot = {
   backend: "official";
   monitoringChannelCount: number;
@@ -56,4 +59,6 @@ export type EffectsGraphRuntime = {
   deleteSound: (soundId: string, generation?: number) => void;
   disconnectSound: (soundId: string, generation?: number) => void;
   getPerformanceSnapshot?: () => EffectsPerformanceSnapshot | null;
+  /** Its startup failed, for good: only a new runtime starts again. */
+  readonly startupFailed?: boolean;
 };

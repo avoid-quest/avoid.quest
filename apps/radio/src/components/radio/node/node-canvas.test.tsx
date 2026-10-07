@@ -128,6 +128,8 @@ let validateModule: typeof import("@/lib/node-graph/validate");
 let sonner: typeof import("sonner");
 let catalogue: typeof import("@/lib/node-graph/catalogue");
 let schema: typeof import("@/lib/node-graph/schema");
+let nodeBackendBadges: typeof import("@/lib/node-playback")["nodeBackendBadges"];
+let unappliedModulation: typeof import("@/lib/node-graph/modulation-runtime")["unappliedModulation"];
 
 beforeAll(async () => {
   ({
@@ -145,6 +147,10 @@ beforeAll(async () => {
   sonner = await import("sonner");
   catalogue = await import("@/lib/node-graph/catalogue");
   schema = await import("@/lib/node-graph/schema");
+  ({ nodeBackendBadges } = await import("@/lib/node-playback"));
+  ({ unappliedModulation } = await import(
+    "@/lib/node-graph/modulation-runtime"
+  ));
 });
 
 const noop = () => undefined;
@@ -264,6 +270,106 @@ describe("NodeCanvas", () => {
       view.getByRole("button", { name: "Edit Cutoff modulation" }).textContent
     ).toBe("Cutoff · 25%");
   });
+
+  test.each([
+    [
+      "on the compatibility engine",
+      "Modulation needs openDAW, but this runs on the compatibility engine because openDAW couldn't start",
+      { cause: "startup-failed", kind: "compat" },
+      false,
+    ],
+    // No badge: the runtime's reason alone still shows.
+    ["unresolved", "openDAW has no control for this here", null, false],
+    // Another target the parameter binds still moves.
+    ["partly applied", "Nothing plays through it yet", null, true],
+    ["applied", null, null, false],
+  ] as const)(
+    "a modulation cable into an FX says whether the runtime applies it: %s",
+    async (_case, why, badge, partly) => {
+      const applied = partly ? "partly applied" : "not applied";
+      const audio = (source: string, target: string) => ({
+        id: `${source}:${target}`,
+        source,
+        sourceHandle: "out:audio:main",
+        target,
+        targetHandle: "in:audio:main",
+      });
+      const view = mountGraph(
+        schema.nodeGraphSchema.parse({
+          edges: [
+            audio("kexp", "fx"),
+            audio("fx", "speakers"),
+            {
+              id: "feedback",
+              parameter: "feedback",
+              source: "lfo",
+              sourceHandle: "out:control:main",
+              target: "fx",
+              targetHandle: "in:control:parameter",
+            },
+          ],
+          nodes: [
+            {
+              data: { radio: kexp },
+              id: "kexp",
+              position: { x: 0, y: 0 },
+              type: "station",
+            },
+            {
+              data: {
+                effect: {
+                  ...catalogue.createNodeEffectConfig("delay", "fx"),
+                  enabled: true,
+                },
+              },
+              id: "fx",
+              position: { x: 300, y: 0 },
+              type: "delay",
+            },
+            { data: {}, id: "lfo", position: { x: 0, y: 300 }, type: "lfo" },
+            { id: "speakers", position: { x: 600, y: 0 }, type: "speakers" },
+          ],
+          version: 2,
+        })
+      );
+      act(() => {
+        nodeBackendBadges.setState(() => ({ ...(badge && { fx: badge }) }));
+        unappliedModulation.setState(() => ({
+          ...(why && { feedback: { partly, why } }),
+        }));
+      });
+      try {
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        const tag = view.getByRole("button", {
+          name: why
+            ? `Edit Feedback modulation, ${applied}: ${why}`
+            : "Edit Feedback modulation",
+        });
+        expect(tag.textContent).toBe(
+          why ? `Feedback · 25% · ${applied}` : "Feedback · 25%"
+        );
+        expect(tag.getAttribute("title")).toBe(why);
+        const cable = view.container.querySelector('[data-id="feedback"]');
+        expect(cable?.getAttribute("aria-label") ?? "").toContain(
+          why ? `${applied}: ${why}` : "LFO"
+        );
+        // The FX's badge says the same cause.
+        expect(view.queryByText("compat")?.getAttribute("title") ?? null).toBe(
+          badge
+            ? "Runs on the compatibility effects engine because openDAW couldn't start"
+            : null
+        );
+      } finally {
+        act(() => {
+          nodeBackendBadges.setState(() => ({}));
+          unappliedModulation.setState(() => ({}));
+        });
+      }
+    }
+  );
 
   test("draws no React Flow attribution", () => {
     const view = mountStarter();

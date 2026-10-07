@@ -43,12 +43,7 @@ import type {
 } from "@/lib/audio/routing/node-lane-outputs";
 import type { SendPlan } from "@/lib/audio/routing/sends";
 import { findSidechainChannelId } from "@/lib/channel-effects";
-import type {
-  CablePlan,
-  Endpoint,
-  EnginePlan,
-  LaneBackend,
-} from "@/lib/node-graph/compile";
+import type { CablePlan, Endpoint, EnginePlan } from "@/lib/node-graph/compile";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
 import type { OutputRouting } from "@/lib/output-routing.js";
 import {
@@ -69,23 +64,18 @@ import {
   cleanupManagedChannel,
   runWithConcurrency,
 } from "../playback-actions-shared.js";
+import { type BackendBadge, laneBackendBadge } from "./effects-slot.js";
 import {
-  type EffectsBackend,
   type LaneHost,
   LaneSlot,
   reportNodeFailure,
   type StartResult,
 } from "./lane.js";
 import { clampParam, type EngineParamTarget } from "./param-target.js";
-import { createParameters } from "./params.js";
+import { createParameters, NOT_RUNNING } from "./params.js";
 import { RoutingGraph, sendPlan } from "./routing.js";
 
-/**
- * What an FX node's badge says. None while its lane runs as planned or has
- * no effects runtime; `compat` on the compatibility worklet; `bypassed`
- * when the controller fell back dry.
- */
-export type BackendBadge = "compat" | "bypassed";
+export { type BackendBadge, laneBackendBadge } from "./effects-slot.js";
 
 /** Badges by node id: each lane's, and each enabled FX node's in it. */
 export type NodeBackendBadges = Readonly<Record<string, BackendBadge>>;
@@ -103,24 +93,6 @@ export type NodeSinkStatusStore = Store<NodeSinkStatuses>;
 export const nodeSinkStatuses: NodeSinkStatusStore =
   new Store<NodeSinkStatuses>({});
 
-/**
- * A lane's badge: the controller's outcome once it reported one, else the
- * compile estimate. The estimate is only displayed; the controller decides,
- * so an official lane past the runtime cap flips to `compat`.
- */
-export function laneBackendBadge(
-  estimate: LaneBackend | null,
-  outcome: EffectsBackend | undefined
-): BackendBadge | null {
-  if (estimate === null || outcome === "official") {
-    return null;
-  }
-  if (outcome === "bypass") {
-    return "bypassed";
-  }
-  return outcome === "compatibility" || estimate === "compat" ? "compat" : null;
-}
-
 /** Enabled effect ids in a lane's tree, containers' chains included. */
 function enabledEffectIds(effects: readonly EffectConfig[]): string[] {
   return effects.flatMap((effect) => {
@@ -137,11 +109,7 @@ function enabledEffectIds(effects: readonly EffectConfig[]): string[] {
 }
 
 function sameBadges(left: NodeBackendBadges, right: NodeBackendBadges) {
-  const keys = Object.keys(left);
-  return (
-    keys.length === Object.keys(right).length &&
-    keys.every((key) => left[key] === right[key])
-  );
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export type NodeEngineOptions = {
@@ -170,9 +138,11 @@ export type NodeEngineOptions = {
     | "attachEffectsInsert"
     | "connectEffectsKey"
     | "detachEffectsInsert"
+    | "discardFailedEffectsRuntime"
     | "reconcileEffects"
     | "releaseEffectsKey"
     | "setEffectFields"
+    | "subscribeEffectsCapacityFreed"
     | "subscribeEffectsRuntimeOutcome"
   >;
   fadeOut: (soundId: string) => Promise<void>;
@@ -237,20 +207,20 @@ export function createNodeEngine(options: NodeEngineOptions) {
   const parametersOf = (ownerId: string) =>
     liveInstance(ownerId)?.parameters ?? routing.parametersOf(ownerId);
 
-  /** Whether the cable's sender takes a transient level for it now. */
-  const sendAvailable = (cable: CablePlan): boolean =>
-    cable.from.kind === "lane"
-      ? Boolean(
-          liveInstance(cable.from.id)?.parameters.available({
-            edgeId: cable.id,
-            kind: "send",
-          })
-        )
-      : routing.sendsAvailable(cable.from, cable.id);
+  /** Why the cable's sender takes no transient level for it now, or null. */
+  const sendUnavailable = (cable: CablePlan): string | null => {
+    if (cable.from.kind !== "lane") {
+      return routing.sendsAvailable(cable.from, cable.id) ? null : NOT_RUNNING;
+    }
+    const sender = liveInstance(cable.from.id);
+    return sender
+      ? sender.parameters.unavailable({ edgeId: cable.id, kind: "send" })
+      : NOT_RUNNING;
+  };
 
   /** A cable's overlay, while its sender takes one. */
   const sendOverlay = (cable: CablePlan): number | undefined =>
-    sendAvailable(cable) ? sendOverlays.get(cable.id) : undefined;
+    sendUnavailable(cable) === null ? sendOverlays.get(cable.id) : undefined;
 
   /** Only a cable still in the plan keeps its overlay. */
   const keepSendOverlays = (next: EnginePlan) => {
@@ -336,6 +306,18 @@ export function createNodeEngine(options: NodeEngineOptions) {
     subscribeOutcome: (id, listener) =>
       options.effects.subscribeEffectsRuntimeOutcome(id, listener),
   });
+  // Channels came free: each lane and unit openDAW was too full for asks
+  // again, through its own driver.
+  const stopCapacityWatch = options.effects.subscribeEffectsCapacityFreed(
+    () => {
+      for (const slot of slots.values()) {
+        if (!slot.current?.retiring && slot.current?.effects.capacityFreed()) {
+          slot.kick();
+        }
+      }
+      routing.capacityFreed();
+    }
+  );
 
   const laneOutputs = options.laneOutputs({
     getHost: () => ctx.audio,
@@ -361,7 +343,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     const badges: Record<string, BackendBadge> = {};
     for (const lane of plan.lanes.values()) {
       const badge = laneBackendBadge(
-        lane.backend,
+        lane,
         liveInstance(lane.id)?.effects.outcome
       );
       if (!badge) {
@@ -373,7 +355,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
     }
     for (const unit of plan.units.values()) {
-      const badge = laneBackendBadge(unit.backend, routing.outcomeOf(unit.id));
+      const badge = laneBackendBadge(unit, routing.outcomeOf(unit.id));
       if (badge) {
         for (const id of enabledEffectIds(unit.effects)) {
           badges[id] = badge;
@@ -603,6 +585,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     },
     async dispose() {
       disposing = true;
+      stopCapacityWatch();
       playAll?.abort();
       const soundIds = new Set<string>();
       for (const slot of slots.values()) {
@@ -653,21 +636,23 @@ export function createNodeEngine(options: NodeEngineOptions) {
       };
     },
     onTapsChanged: (listener: () => void) => routing.onTapsChanged(listener),
-    paramAvailable(target: EngineParamTarget): boolean {
-      if (disposing) {
-        return false;
-      }
-      if (target.kind === "send") {
-        const cable = plan.cables.get(target.edgeId);
-        return Boolean(cable && sendAvailable(cable));
-      }
-      return parametersOf(target.laneId)?.available(target) ?? false;
-    },
     paramSoundId(target: EngineParamTarget): string | null {
       return "laneId" in target
         ? (liveInstance(target.laneId)?.soundId ??
             routing.soundOf(target.laneId))
         : null;
+    },
+    /** Why `target` takes no modulation now, or null while it does. */
+    paramUnavailable(target: EngineParamTarget): string | null {
+      if (disposing) {
+        return NOT_RUNNING;
+      }
+      if (target.kind === "send") {
+        const cable = plan.cables.get(target.edgeId);
+        return cable ? sendUnavailable(cable) : NOT_RUNNING;
+      }
+      const owner = parametersOf(target.laneId);
+      return owner ? owner.unavailable(target) : NOT_RUNNING;
     },
     pause(laneId: string) {
       slots.get(laneId)?.pause(true);
@@ -727,7 +712,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
       if (target.kind === "send") {
         const cable = plan.cables.get(target.edgeId);
-        if (!(cable && sendAvailable(cable))) {
+        if (!cable || sendUnavailable(cable) !== null) {
           return "unavailable";
         }
         sendOverlays.set(target.edgeId, clampParam(value, 0));

@@ -3227,7 +3227,10 @@ describe("compile: key cables", () => {
     // An openDAW chain the runtime moved to compatibility says so too.
     expect(
       Object.fromEntries(
-        idleKeys(patch, compile(patch, ENV), { comp: "compat", gate: "compat" })
+        idleKeys(patch, compile(patch, ENV), {
+          comp: { kind: "compat" },
+          gate: { kind: "compat" },
+        })
       )
     ).toEqual({ "talk~>gate": "This key needs the openDAW engine" });
     // FX sharing its one key both hear it.
@@ -3258,7 +3261,10 @@ describe("compile: key cables", () => {
         { ...key("talk", "gate"), gain: 0.5 },
       ]
     );
-    const bypassed = { comp: "bypassed", gate: "bypassed" };
+    const bypassed = {
+      comp: { kind: "bypassed" },
+      gate: { kind: "bypassed" },
+    } as const;
     for (const env of [ENV, { crossOriginIsolated: false }]) {
       expect(
         Object.fromEntries(idleKeys(patch, compile(patch, env), bypassed))

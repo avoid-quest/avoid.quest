@@ -22,7 +22,7 @@ import {
 import { modulationProgram } from "./modulation-program";
 import {
   createModulationRuntime,
-  modulationTargetAvailability,
+  unappliedModulation,
 } from "./modulation-runtime";
 import {
   MODULATION_NODE_TYPES,
@@ -30,6 +30,7 @@ import {
 } from "./modulation-schema";
 import { createNodeStore } from "./node-store";
 import { createPaletteNode } from "./palette";
+import { bindParam } from "./param-binding";
 import { type NodeGraph, nodeGraphSchema } from "./schema";
 import { connectionVerdict, validate } from "./validate";
 
@@ -101,7 +102,7 @@ function patch(): NodeGraph {
 }
 async function harness(
   graph: NodeGraph,
-  supports: (target: EngineParamTarget) => boolean = () => true
+  unavailable: (target: EngineParamTarget) => string | null = () => null
 ) {
   installModulationAudio();
   const values = new Map<string, number>();
@@ -117,8 +118,9 @@ async function harness(
       },
       onParamsChanged: () => () => undefined,
       onTapsChanged: () => () => undefined,
-      paramAvailable: (target) => available && supports(target),
       paramSoundId: () => "live-sound",
+      paramUnavailable: (target) =>
+        available ? unavailable(target) : "Nothing plays through it yet",
       setParam: (target, value) => {
         values.set(paramKey(target), value);
         return "applied";
@@ -406,7 +408,7 @@ describe("resolved modulation delivery", () => {
       ).toBeCloseTo((1 - nextMix) * 0.5 * 0.2);
       h.emit({ input: 0, mix: 0, output: 0 });
       expect(h.values.size).toBe(0);
-      expect(modulationTargetAvailability.state["mix:split:dryWet"]).toBe(true);
+      expect(unappliedModulation.state["mix:split:dryWet"]).toBeUndefined();
     }
   );
   test("all twelve defaults round-trip, ship and leave one audio lane", () => {
@@ -553,9 +555,15 @@ describe("resolved modulation delivery", () => {
     runtime.emit({ lfo: 1 });
     runtime.unavailable();
     expect(runtime.values.size).toBe(0);
-    expect(modulationTargetAvailability.state["lfo:cut:frequency"]).toBe(false);
+    expect(unappliedModulation.state["lfo:cut:frequency"]).toEqual({
+      partly: false,
+      why: "Nothing plays through it yet",
+    });
     runtime.emit({ lfo: 1 });
     expect(runtime.values.size).toBe(0);
+    // A muted cable moves nothing anyway: it isn't flagged.
+    runtime.delivery.sync(muted, compile(muted, env));
+    expect(unappliedModulation.state).toEqual({});
   });
   test("folded gain controls multiply together and exactly restore a quiet level", async () => {
     const graph = patch();
@@ -597,6 +605,47 @@ describe("resolved modulation delivery", () => {
     expect(plan.gains.find((entry) => entry.sources.includes("g"))?.value).toBe(
       base.value
     );
+  });
+  test("a cable reaching only some of its targets says it's partly applied", async () => {
+    const graph = nodeGraphSchema.parse({
+      ...patch(),
+      edges: [
+        audio("s", "g"),
+        audio("g", "out"),
+        audio("g", "p"),
+        control("lfo", "g", "gainDb"),
+      ],
+      nodes: [
+        ...patch().nodes,
+        { data: { gainDb: -6 }, id: "g", position, type: "gain" },
+        { data: {}, id: "p", position, type: "deviceOut" },
+      ],
+    });
+    const plan = compile(graph, env);
+    const [held, moved] = bindParam(graph, "g", "gainDb", plan).map((binding) =>
+      paramKey(binding.target)
+    );
+    const why = "Nothing plays through it yet";
+    let reached = 1;
+    const runtime = await harness(graph, (target) =>
+      paramKey(target) === held || (reached === 0 && paramKey(target) === moved)
+        ? why
+        : null
+    );
+    runtime.emit({ lfo: 1 });
+    expect([...runtime.values.keys()]).toEqual([moved]);
+    expect(unappliedModulation.state["lfo:g:gainDb"]).toEqual({
+      partly: true,
+      why,
+    });
+    // Once neither target moves, the cable isn't applied at all.
+    reached = 0;
+    runtime.delivery.refresh();
+    expect(unappliedModulation.state["lfo:g:gainDb"]).toEqual({
+      partly: false,
+      why,
+    });
+    runtime.delivery.dispose();
   });
   test("refused handles stay inert while sources and cables past the former caps modulate", async () => {
     const graph = patch();
@@ -695,8 +744,15 @@ test.each(["delay", "werkstatt"] as const)(
       plan: () => ({ backend: "official", effects: [config] }),
       soundId: "live-sound",
     });
-    const h = await harness(graph, owner.available);
-    expect(modulationTargetAvailability.state["lfo:cut:frequency"]).toBe(false);
+    const h = await harness(graph, owner.unavailable);
+    // Delivery and the cable's "not applied" read the same reason.
+    expect(unappliedModulation.state["lfo:cut:frequency"]).toEqual({
+      partly: false,
+      why:
+        type === "delay"
+          ? "openDAW has no control for this here"
+          : "Werkstatt isn't available yet",
+    });
     h.emit({ lfo: 1 });
     expect(h.values.size).toBe(0);
   }

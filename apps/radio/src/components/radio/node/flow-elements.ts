@@ -23,6 +23,7 @@ import {
   type MergeRole,
 } from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
+import type { Unapplied } from "@/lib/node-graph/modulation-runtime";
 import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
 import {
@@ -222,6 +223,16 @@ export type BranchEdgeData = {
 
 /** What a key cable draws: why it keys nothing, or null while it keys. */
 export type KeyEdgeData = { idle: string | null };
+
+/**
+ * What a modulation cable draws: why the runtime doesn't wholly apply it, or
+ * null while it does.
+ */
+export type ControlEdgeData = { unapplied: Unapplied | null };
+
+/** A cable's tag past its depth: what of it the runtime applies. */
+export const unappliedTag = (unapplied: Unapplied) =>
+  unapplied.partly ? "partly applied" : "not applied";
 
 /**
  * The flow element last drawn for each patch node and cable. React Flow
@@ -475,12 +486,35 @@ function keyOf(
   };
 }
 
+/**
+ * A modulation cable draws as a dashed control wire, faded with a "not
+ * applied" tag when the runtime applies none of it, tagged "partly applied"
+ * when only some, its accessible name saying why.
+ */
+function controlOf(
+  edge: GraphEdge,
+  label: string,
+  unappliedModulation: Readonly<Record<string, Unapplied>>
+): Pick<FlowEdge, "ariaLabel" | "className" | "data" | "type"> {
+  const unapplied = unappliedModulation[edge.id] ?? null;
+  const data: ControlEdgeData = { unapplied };
+  return {
+    ariaLabel: unapplied
+      ? `${label}, ${unappliedTag(unapplied)}: ${unapplied.why}`
+      : label,
+    className: "node-edge-control",
+    data,
+    type: "control",
+  };
+}
+
 export function toFlowEdges(
   graph: NodeGraph,
   {
     selection,
     liveLanes,
     idleKeys = new Map(),
+    unappliedModulation = {},
     mix = NO_MIX,
     insertTarget = null,
   }: {
@@ -489,6 +523,8 @@ export function toFlowEdges(
     liveLanes: ReadonlySet<string>;
     /** Key cables that key nothing, with why (`idleKeys` in compile). */
     idleKeys?: ReadonlyMap<string, string>;
+    /** Modulation cables not wholly applied, with why (`unappliedModulation`). */
+    unappliedModulation?: Readonly<Record<string, Unapplied>>;
     /** What a solo silences and where dry signal plays (the compiled plan). */
     mix?: Mix;
     /** The cable a dragged node would go into if let go now. */
@@ -528,7 +564,7 @@ export function toFlowEdges(
             )
           : undefined),
         ...(kind === "control"
-          ? { className: "node-edge-control", type: "control" }
+          ? controlOf(edge, label, unappliedModulation)
           : undefined),
         domAttributes: { "aria-roledescription": "cable" },
         id: edge.id,

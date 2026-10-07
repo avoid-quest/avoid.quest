@@ -690,8 +690,9 @@ describe("flow elements", () => {
               ...(solo ? { solo } : {}),
             })
           ),
-          wire("comp->merge", "comp", "merge"),
-          wire("gate->merge", "gate", "merge"),
+          ...[...new Set(branches.map(({ target }) => target))].map((target) =>
+            wire(`${target}->merge`, target, "merge")
+          ),
           wire("merge->speakers", "merge", "speakers"),
         ],
         nodes: [
@@ -721,6 +722,12 @@ describe("flow elements", () => {
             id: "gate",
             position: { x: 480, y: 200 },
             type: "gate",
+          },
+          {
+            data: { effect: createNodeEffectConfig("cheapReverb", "verb") },
+            id: "verb",
+            position: { x: 480, y: 400 },
+            type: "cheapReverb",
           },
           {
             data: {},
@@ -780,6 +787,28 @@ describe("flow elements", () => {
         ])
       )
     ).toEqual(compOnly);
+    // A soloed cable on one port and a soloed chain on another: both play,
+    // and only the branch with neither is left out.
+    expect(
+      classes(
+        graph(
+          [
+            { handle: "branch-1", solo: true, target: "comp" },
+            { handle: "branch-2", target: "gate" },
+            { handle: "branch-3", target: "verb" },
+          ],
+          true
+        )
+      )
+    ).toEqual({
+      "comp->merge": "node-edge-live",
+      "gate->merge": "node-edge-live",
+      "merge->speakers": "node-edge-live",
+      "split->comp": "node-edge-live",
+      "split->gate": "node-edge-live",
+      "split->verb": undefined,
+      "verb->merge": undefined,
+    });
     // No solo: every branch plays.
     expect(
       classes(
@@ -893,6 +922,97 @@ describe("flow elements", () => {
       "gate->desk": undefined,
       "merge->speakers": undefined,
     });
+  });
+
+  test("an open Split's muted or silent cable glows while the dry signal beside it plays, as the compiler leaves the dry cable untrimmed", () => {
+    const split = createNodeEffectConfig("fxComposite", "split");
+    const mixOf = (dryWet: number, trim: object, through: "gate" | "desk") => {
+      const graph: NodeGraph = nodeGraphSchema.parse({
+        ...patch,
+        edges: [
+          {
+            id: "kexp->split",
+            source: "src-kexp",
+            sourceHandle: "out:audio:main",
+            target: "split",
+            targetHandle: "in:audio:main",
+          },
+          {
+            id: "split->out",
+            source: "split",
+            sourceHandle: "out:audio:branch-1",
+            target: through,
+            targetHandle: "in:audio:main",
+            ...trim,
+          },
+          {
+            id: "split->speakers",
+            source: "split",
+            sourceHandle: "out:audio:branch-2",
+            target: "speakers",
+            targetHandle: "in:audio:main",
+          },
+          {
+            id: "gate->desk",
+            source: "gate",
+            sourceHandle: "out:audio:main",
+            target: "desk",
+            targetHandle: "in:audio:main",
+          },
+        ],
+        nodes: [
+          ...patch.nodes,
+          {
+            data: { effect: { ...split, dryWet, enabled: true } },
+            id: "split",
+            position: { x: 240, y: 0 },
+            type: "fxComposite",
+          },
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("gate", "gate"),
+                enabled: true,
+              },
+            },
+            id: "gate",
+            position: { x: 480, y: 0 },
+            type: "gate",
+          },
+          {
+            data: { deviceId: "usb" },
+            id: "desk",
+            position: { x: 720, y: 0 },
+            type: "deviceOut",
+          },
+        ],
+      });
+      const plan = compile(graph, { crossOriginIsolated: false });
+      const dry = [...plan.cables.values()].find(
+        (cable) => cable.edges.length === 0 && cable.from.port === 0
+      );
+      const glow = toFlowEdges(graph, {
+        liveLanes: new Set(["n:src-kexp"]),
+        mix: plan,
+        selection,
+      }).find((edge) => edge.id === "split->out")?.className;
+      return { dry: dry && { muted: dry.muted, to: dry.to.id }, glow };
+    };
+
+    // Through an FX or straight to an output, the cable's own mute or gain
+    // stays on its wet signal; the dry cable beside it plays on.
+    for (const trim of [{ muted: true }, { gain: 0 }]) {
+      for (const through of ["gate", "desk"] as const) {
+        expect(mixOf(0.5, trim, through)).toEqual({
+          dry: { muted: false, to: "desk" },
+          glow: "node-edge-live",
+        });
+        expect(mixOf(1, trim, through)).toEqual({
+          dry: undefined,
+          glow: undefined,
+        });
+      }
+    }
   });
 
   test("the module description React Flow reads names the arrow keys, and B only for effects", () => {

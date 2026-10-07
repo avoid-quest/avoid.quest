@@ -571,24 +571,28 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(device.threshold.getValue()).toBe(-24);
   });
 
-  test.each(["sync", "connect"] as const)(
+  test.each(["sync", "connect", "write"] as const)(
     "a failed %s commits no script until the enclosing graph transaction succeeds",
     async (operation) => {
       const h = await createHarness();
       await h.runtime.connectSound("deck", h.source, h.destination);
-      const config = werkstatt();
+      const config = { ...werkstatt(), enabled: operation !== "write" };
       h.runtime.syncEffects("deck", [config]);
-      await finishCompile(h.compiles[0]);
+      if (config.enabled) {
+        await finishCompile(h.compiles[0]);
+      }
       const device = scriptDevice(h);
       const code = device.code.getValue();
       const checksum = h.project.boxGraph.checksum();
-      const updated = werkstatt("// retry after rollback");
+      const compiled = h.compiles.length;
+      const status = getWerkstattRuntimeStatus(config.id).state;
+      const updated =
+        operation === "write"
+          ? { ...config, enabled: true }
+          : werkstatt("// retry after rollback");
       const sync = () =>
-        operation === "sync"
-          ? Promise.resolve().then(() =>
-              h.runtime.syncEffects("deck", [updated])
-            )
-          : h.runtime.connectSound(
+        operation === "connect"
+          ? h.runtime.connectSound(
               "deck",
               h.source,
               h.destination,
@@ -600,6 +604,11 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
                 sidechainSoundId: null,
                 tempo: 120,
               }
+            )
+          : Promise.resolve().then(() =>
+              operation === "write"
+                ? h.runtime.writeEffect("deck", config.id, updated)
+                : h.runtime.syncEffects("deck", [updated])
             );
       const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
       endTransaction.mockImplementationOnce(() => {
@@ -612,13 +621,13 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
       expect(h.project.boxGraph.checksum()).toEqual(checksum);
       expect(device.code.getValue()).toBe(code);
-      expect(h.compiles).toHaveLength(1);
-      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      expect(h.compiles).toHaveLength(compiled);
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe(status);
       await sync();
-      expect(h.compiles).toHaveLength(2);
-      await finishCompile(h.compiles[1]);
+      expect(h.compiles).toHaveLength(compiled + 1);
+      await finishCompile(h.compiles[compiled]);
       expect(scriptDevice(h)).toBe(device);
-      expect(device.code.getValue()).toContain("// retry after rollback");
+      expect(device.code.getValue()).toContain(updated.code);
       expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
     }
   );
@@ -1185,6 +1194,46 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+
+  test("a ready Werkstatt edit commits its mix and parameters together", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt();
+    h.runtime.syncEffects("deck", [config]);
+    await finishCompile(h.compiles[0]);
+    const device = scriptDevice(h);
+    const wrapper = wrapperForDevice(h, device);
+    const amount = parameter(h, device);
+    const committed: Array<{ amount: number; wet: number }> = [];
+    const subscription = h.project.boxGraph.subscribeTransaction({
+      onBeginTransaction: () => undefined,
+      onEndTransaction: (aborted) => {
+        if (!aborted) {
+          committed.push({
+            amount: amount.value.getValue(),
+            wet: wrapper.wet.getValue(),
+          });
+        }
+      },
+    });
+    try {
+      expect(
+        h.runtime.writeEffect("deck", config.id, {
+          ...config,
+          dryWet: 0.5,
+          parameters: { amount: 0.75 },
+        })
+      ).toBe("applied");
+      expect(committed).toEqual([
+        { amount: 0.75, wet: wrapper.wet.getValue() },
+      ]);
+      expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      expect(h.project.editing.canUndo()).toBe(false);
+    } finally {
+      subscription.terminate();
+    }
+  });
 
   test("model and Autotune layout changes use the structural path", async () => {
     const h = await createHarness();

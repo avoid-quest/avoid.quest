@@ -1,5 +1,14 @@
-import { UUID } from "@opendaw/lib-std";
-import type { Project } from "@opendaw/studio-core";
+import { gainToDb } from "@opendaw/lib-dsp";
+import { asInstanceOf, UUID } from "@opendaw/lib-std";
+import type {
+  AudioEffectCompositeBox,
+  AudioEffectCompositeCellBox,
+  AudioUnitBox,
+  NeuralAmpModelBox,
+  RevampDeviceBox,
+  StereoToolDeviceBox,
+} from "@opendaw/studio-boxes";
+import type { EffectBox, Project } from "@opendaw/studio-core";
 import { getCachedNamModel } from "../dsp/effects/nam-model-store.js";
 import {
   isOfficialOpenDawEffect,
@@ -16,222 +25,44 @@ import {
   type TempoDivision,
 } from "../dsp/effects/types.js";
 
-type PrimitiveField = {
-  getValue?: () => boolean | number | string;
-  setValue: (value: boolean | number | string) => void;
-};
-
-type PointerField = {
-  defer: () => void;
-  refer: (target: unknown) => void;
-};
-
-const PRIMITIVE_FIELD_KEYS = [
-  "amount",
-  "attack",
-  "autoattack",
-  "automakeup",
-  "autorelease",
-  "bandwidth",
-  "bandCount",
-  "bits",
-  "boost",
-  "carrierMaxFreq",
-  "carrierMinFreq",
-  "channelOffset",
-  "cross",
-  "crossover1",
-  "crossover2",
-  "crossover3",
-  "crush",
-  "damp",
-  "damping",
-  "decay",
-  "decayDiffusion1",
-  "decayDiffusion2",
-  "delayMusical",
-  "delayMillis",
-  "depth",
-  "drive",
-  "dry",
-  "enabled",
-  "envAttack",
-  "envRelease",
-  "equation",
-  "excursionDepth",
-  "excursionRate",
-  "feedback",
-  "filter",
-  "floor",
-  "frequency",
-  "gain",
-  "hold",
-  "index",
-  "inputDiffusion1",
-  "inputDiffusion2",
-  "inputGain",
-  "inputgain",
-  "inverse",
-  "invertL",
-  "invertR",
-  "key",
-  "knee",
-  "label",
-  "lfoDepth",
-  "lfoSpeed",
-  "lookahead",
-  "makeup",
-  "mix",
-  "modulatorMaxFreq",
-  "modulatorMinFreq",
-  "modulatorSource",
-  "mono",
-  "mute",
-  "offset",
-  "order",
-  "outputGain",
-  "overSampling",
-  "pan",
-  "panning",
-  "panningMixing",
-  "preDelay",
-  "preMillisTimeLeft",
-  "preMillisTimeRight",
-  "preSyncTimeLeft",
-  "preSyncTimeRight",
-  "q",
-  "qEnd",
-  "qStart",
-  "rate",
-  "ratio",
-  "release",
-  "retune",
-  "return",
-  "scale",
-  "shift",
-  "slope",
-  "smooth",
-  "solo",
-  "stereo",
-  "swap",
-  "symmetry",
-  "threshold",
-  "value",
-  "volume",
-  "wet",
-] as const;
-
-type PrimitiveFieldKey = (typeof PRIMITIVE_FIELD_KEYS)[number];
-type PointerFieldKey = "model" | "sideChain";
-
-type PrimitiveBoxFields = Partial<Record<PrimitiveFieldKey, PrimitiveField>>;
-type PointerBoxFields = Partial<Record<PointerFieldKey, PointerField>>;
-
-interface BoxLike extends PrimitiveBoxFields, PointerBoxFields {
-  address?: { uuid: Uint8Array };
-  audioEffects?: HostField;
-  composite?: { refer: (target: unknown) => void };
-  delete: () => void;
-  entries?: {
-    incoming?: unknown[];
-    pointerHub?: { incoming: () => Array<{ box: BoxLike }> };
-  };
-  highBell?: BoxLike;
-  highPass?: BoxLike;
-  highShelf?: BoxLike;
-  lowBell?: BoxLike;
-  lowPass?: BoxLike;
-  lowShelf?: BoxLike;
-  midBell?: BoxLike;
-  parameters?: {
-    pointerHub?: { filter: () => Array<{ box: BoxLike }> };
-  };
-}
-
-type HostField = unknown;
-
-type AdapterModules = {
-  boxes: typeof import("@opendaw/studio-boxes");
-  core: typeof import("@opendaw/studio-core");
-};
-
+export type OfficialEffectHost = Parameters<Project["api"]["insertEffect"]>[0];
 export type OfficialEffectGroup = {
   children: OfficialEffectGroup[];
+  cells: Map<string, AudioEffectCompositeCellBox>;
   config: EffectConfig;
-  created: BoxLike[];
-  device: BoxLike;
-  signalTrim: BoxLike | null;
-  inputTrim: BoxLike | null;
-  wrapper: BoxLike | null;
-  outputTrim: BoxLike | null;
+  device: EffectBox;
+  model: NeuralAmpModelBox | null;
+  signalTrim: StereoToolDeviceBox | null;
+  inputTrim: StereoToolDeviceBox | null;
+  wrapper: AudioEffectCompositeBox | null;
+  outputTrim: StereoToolDeviceBox | null;
 };
 
-type CreateContext = AdapterModules & {
+type CreateContext = {
+  adapters: typeof import("@opendaw/studio-adapters");
+  boxes: typeof import("@opendaw/studio-boxes");
+  core: typeof import("@opendaw/studio-core");
   project: Project;
   bpm: number;
 };
 
-function field(box: BoxLike, key: PrimitiveFieldKey): PrimitiveField {
-  const candidate = box[key];
-  if (
-    candidate &&
-    typeof candidate === "object" &&
-    "setValue" in candidate &&
-    typeof candidate.setValue === "function"
-  ) {
-    return candidate;
-  }
-  throw new Error(`openDAW box is missing required field "${key}"`);
-}
-
-function optionalPointer(
-  box: BoxLike,
-  key: PointerFieldKey
-): PointerField | undefined {
-  const candidate = box[key];
-  return candidate &&
-    typeof candidate === "object" &&
-    "refer" in candidate &&
-    typeof candidate.refer === "function" &&
-    "defer" in candidate &&
-    typeof candidate.defer === "function"
-    ? (candidate as PointerField)
-    : undefined;
-}
-
-function requiredPointer(box: BoxLike, key: PointerFieldKey): PointerField {
-  const candidate = optionalPointer(box, key);
-  if (!candidate) {
-    throw new Error(`openDAW box is missing required pointer "${key}"`);
-  }
-  return candidate;
-}
-
-function set(
-  box: BoxLike,
-  key: PrimitiveFieldKey,
-  value: boolean | number | string
-): void {
-  field(box, key).setValue(value);
-}
-
-function db(gain: number): number {
-  return gain <= 0 ? Number.NEGATIVE_INFINITY : 20 * Math.log10(gain);
+function outputGain(config: EffectConfig): number {
+  return config.type === "crusher" && !config.autoGain
+    ? config.outputGain * 10 ** (config.boost / 40)
+    : config.outputGain;
 }
 
 export function usesDirectOfficialEffectLayout(config: EffectConfig): boolean {
-  // The generic wrapper adds six openDAW processors. Default Autotune needs
-  // none of them, so keep its native device directly in the host chain.
+  // Keep other devices in one host chain when mix or gain changes.
   return (
-    config.enabled &&
     config.type === "autotune" &&
     config.dryWet === 1 &&
     config.inputGain === 1 &&
-    config.outputGain === 1
+    outputGain(config) === 1
   );
 }
 
-function divisionIndex(
+function optionIndex(
   division: string | undefined,
   fractions: readonly string[]
 ): number {
@@ -239,56 +70,47 @@ function divisionIndex(
   return index < 0 ? 0 : index;
 }
 
-function configureRevamp(box: BoxLike, config: EffectConfig): void {
-  if (config.type !== "revamp") {
-    return;
-  }
-  for (const [prefix, key] of [
-    ["highPass", "highPass"],
-    ["lowShelf", "lowShelf"],
-    ["lowBell", "lowBell"],
-    ["midBell", "midBell"],
-    ["highBell", "highBell"],
-    ["highShelf", "highShelf"],
-    ["lowPass", "lowPass"],
-  ] as const) {
-    const section = box[key];
-    if (!section) {
-      throw new Error(`openDAW Revamp box is missing section "${key}"`);
-    }
-    const configRecord = config as unknown as Record<string, unknown>;
-    set(section, "enabled", Boolean(configRecord[`${prefix}Enabled`]));
-    set(
-      section,
-      "frequency",
-      Number(configRecord[`${prefix}Frequency`] ?? 1000)
+function configureRevamp(
+  box: RevampDeviceBox,
+  config: Extract<EffectConfig, { type: "revamp" }>
+): void {
+  for (const key of ["highPass", "lowPass"] as const) {
+    box[key].enabled.setValue(config[`${key}Enabled`]);
+    box[key].frequency.setValue(config[`${key}Frequency`]);
+    box[key].q.setValue(config[`${key}Q`]);
+    box[key].order.setValue(
+      Math.max(0, Math.min(3, config[`${key}Order`] - 1))
     );
-    if (`${prefix}Gain` in configRecord) {
-      set(section, "gain", Number(configRecord[`${prefix}Gain`]));
-    }
-    if (`${prefix}Q` in configRecord) {
-      set(section, "q", Number(configRecord[`${prefix}Q`]));
-    }
-    if (`${prefix}Order` in configRecord) {
-      set(
-        section,
-        "order",
-        Math.max(0, Math.min(3, Number(configRecord[`${prefix}Order`]) - 1))
-      );
-    }
+  }
+  for (const key of [
+    "lowShelf",
+    "highShelf",
+    "lowBell",
+    "midBell",
+    "highBell",
+  ] as const) {
+    box[key].enabled.setValue(config[`${key}Enabled`]);
+    box[key].frequency.setValue(config[`${key}Frequency`]);
+    box[key].gain.setValue(config[`${key}Gain`]);
+  }
+  for (const key of ["lowBell", "midBell", "highBell"] as const) {
+    box[key].q.setValue(config[`${key}Q`]);
   }
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: exhaustive discriminated-union adapter for the upstream catalog
 function configureDevice(
-  box: BoxLike,
+  context: CreateContext,
+  box: EffectBox,
   config: EffectConfig,
   bpm: number
 ): void {
-  set(box, "enabled", true);
+  const { boxes } = context;
+  box.enabled.setValue(config.enabled);
   switch (config.type) {
-    case "plateReverb":
-      set(box, "preDelay", config.preDelayMillis);
+    case "plateReverb": {
+      const device = asInstanceOf(box, boxes.DattorroReverbDeviceBox);
+      device.preDelay.setValue(config.preDelayMillis);
       for (const key of [
         "bandwidth",
         "inputDiffusion1",
@@ -300,82 +122,88 @@ function configureDevice(
         "excursionRate",
         "excursionDepth",
       ] as const) {
-        set(box, key, config[key]);
+        device[key].setValue(config[key]);
       }
-      set(box, "dry", config.dry ?? 0);
-      set(box, "wet", config.wet ?? -6);
+      device.dry.setValue(config.dry ?? 0);
+      device.wet.setValue(config.wet ?? -6);
       break;
-    case "crusher":
-      set(box, "crush", config.crush);
-      set(box, "bits", config.bitDepth);
-      set(box, "boost", config.boost);
-      set(box, "mix", 1);
+    }
+    case "crusher": {
+      const device = asInstanceOf(box, boxes.CrusherDeviceBox);
+      device.crush.setValue(config.crush);
+      device.bits.setValue(config.bitDepth);
+      device.boost.setValue(config.boost);
+      device.mix.setValue(1);
       break;
-    case "fold":
-      set(box, "drive", config.amount);
-      set(
-        box,
-        "volume",
+    }
+    case "fold": {
+      const device = asInstanceOf(box, boxes.FoldDeviceBox);
+      device.drive.setValue(config.amount);
+      device.volume.setValue(
         config.volume - (config.autoGain ? Math.max(0, config.amount) / 2 : 0)
       );
-      set(box, "overSampling", { 2: 0, 4: 1, 8: 2 }[config.oversample]);
+      device.overSampling.setValue({ 2: 0, 4: 1, 8: 2 }[config.oversample]);
       break;
+    }
     case "revamp":
-      configureRevamp(box, config);
+      configureRevamp(asInstanceOf(box, boxes.RevampDeviceBox), config);
       break;
-    case "delay":
-      set(
-        box,
-        "delayMusical",
+    case "delay": {
+      const device = asInstanceOf(box, boxes.DelayDeviceBox);
+      device.delayMusical.setValue(
         (config.delayMusical ?? "1/4") === "Off"
           ? 0
-          : divisionIndex(config.delayMusical ?? "1/4", OPENDAW_DELAY_FRACTIONS)
+          : optionIndex(config.delayMusical ?? "1/4", OPENDAW_DELAY_FRACTIONS)
       );
-      set(box, "delayMillis", config.delayMillis ?? config.delayTime * 1000);
-      set(box, "feedback", config.feedback);
-      set(box, "cross", config.cross ?? config.crossFeedback ?? 0);
-      set(
-        box,
-        "preSyncTimeLeft",
-        divisionIndex(config.preSyncTimeLeft ?? "1/16", OPENDAW_DELAY_FRACTIONS)
+      device.delayMillis.setValue(
+        config.delayMillis ?? config.delayTime * 1000
       );
-      set(box, "preMillisTimeLeft", config.preMillisTimeLeft ?? 0);
-      set(
-        box,
-        "preSyncTimeRight",
-        divisionIndex(config.preSyncTimeRight ?? "Off", OPENDAW_DELAY_FRACTIONS)
+      device.feedback.setValue(config.feedback);
+      device.cross.setValue(config.cross ?? config.crossFeedback ?? 0);
+      device.preSyncTimeLeft.setValue(
+        optionIndex(config.preSyncTimeLeft ?? "1/16", OPENDAW_DELAY_FRACTIONS)
       );
-      set(box, "preMillisTimeRight", config.preMillisTimeRight ?? 0);
-      set(box, "filter", config.filter ?? 0);
-      set(box, "lfoSpeed", config.lfoSpeed ?? config.lfoRate ?? 0);
-      set(box, "lfoDepth", config.lfoDepth ?? 0);
-      set(box, "dry", config.dry ?? 0);
-      set(box, "wet", config.wet ?? -6);
+      device.preMillisTimeLeft.setValue(config.preMillisTimeLeft ?? 0);
+      device.preSyncTimeRight.setValue(
+        optionIndex(config.preSyncTimeRight ?? "Off", OPENDAW_DELAY_FRACTIONS)
+      );
+      device.preMillisTimeRight.setValue(config.preMillisTimeRight ?? 0);
+      device.filter.setValue(config.filter ?? 0);
+      device.lfoSpeed.setValue(config.lfoSpeed ?? config.lfoRate ?? 0);
+      device.lfoDepth.setValue(config.lfoDepth ?? 0);
+      device.dry.setValue(config.dry ?? 0);
+      device.wet.setValue(config.wet ?? -6);
       break;
-    case "compressor":
-      set(box, "lookahead", config.lookahead);
-      set(box, "automakeup", config.automakeup ?? config.autoMakeup);
-      set(box, "autoattack", config.autoattack ?? config.autoAttack);
-      set(box, "autorelease", config.autorelease ?? config.autoRelease);
-      set(box, "inputgain", config.inputgain ?? 0);
-      set(box, "threshold", config.threshold);
-      set(box, "ratio", config.ratio);
-      set(box, "knee", config.knee);
-      set(box, "attack", config.attack);
-      set(box, "release", config.release);
-      set(box, "makeup", config.makeup);
-      set(box, "mix", config.mix);
+    }
+    case "compressor": {
+      const device = asInstanceOf(box, boxes.CompressorDeviceBox);
+      device.lookahead.setValue(config.lookahead);
+      device.automakeup.setValue(config.automakeup ?? config.autoMakeup);
+      device.autoattack.setValue(config.autoattack ?? config.autoAttack);
+      device.autorelease.setValue(config.autorelease ?? config.autoRelease);
+      device.inputgain.setValue(config.inputgain ?? 0);
+      device.threshold.setValue(config.threshold);
+      device.ratio.setValue(config.ratio);
+      device.knee.setValue(config.knee);
+      device.attack.setValue(config.attack);
+      device.release.setValue(config.release);
+      device.makeup.setValue(config.makeup);
+      device.mix.setValue(config.mix);
       break;
-    case "stereoTool":
-      set(box, "volume", config.volume);
-      set(box, "panning", config.panning ?? 0);
-      set(box, "panningMixing", config.panLaw === "linear" ? 0 : 1);
-      set(box, "stereo", config.stereo);
-      set(box, "invertL", config.invertL);
-      set(box, "invertR", config.invertR);
-      set(box, "swap", config.swap);
+    }
+    case "stereoTool": {
+      const device = asInstanceOf(box, boxes.StereoToolDeviceBox);
+      device.volume.setValue(config.volume);
+      device.panning.setValue(config.panning ?? 0);
+      device.panningMixing.setValue(config.panLaw === "linear" ? 0 : 1);
+      device.stereo.setValue(config.stereo);
+      device.invertL.setValue(config.invertL);
+      device.invertR.setValue(config.invertR);
+      device.swap.setValue(config.swap);
       break;
+    }
     case "tidal": {
+      const device = asInstanceOf(box, boxes.TidalDeviceBox);
       const secondsPerBeat = 60 / Math.max(30, bpm);
       const closestDivision = TEMPO_DIVISIONS.reduce((best, division) => {
         const [numerator, denominator] = division.split("/").map(Number);
@@ -387,431 +215,432 @@ function configureDevice(
           ? division
           : best;
       }, "1/4" as TempoDivision);
-      set(
-        box,
-        "rate",
-        divisionIndex(
+      device.rate.setValue(
+        optionIndex(
           config.rateDivision ?? closestDivision,
           OPENDAW_TIDAL_FRACTIONS
         )
       );
-      set(box, "depth", config.depth);
-      set(box, "slope", config.slope);
-      set(box, "symmetry", config.symmetry);
-      set(box, "offset", ((config.offset + 180) % 360) - 180);
-      set(box, "channelOffset", ((config.channelOffset + 180) % 360) - 180);
+      device.depth.setValue(config.depth);
+      device.slope.setValue(config.slope);
+      device.symmetry.setValue(config.symmetry);
+      device.offset.setValue(((config.offset + 180) % 360) - 180);
+      device.channelOffset.setValue(((config.channelOffset + 180) % 360) - 180);
       break;
     }
-    case "cheapReverb":
-      set(box, "decay", config.decay ?? 0.5);
-      set(box, "preDelay", config.preDelay ?? 0.02);
-      set(box, "damp", config.damp ?? 0.5);
-      set(box, "filter", config.filter ?? 0);
-      set(box, "dry", config.dry ?? 0);
-      set(box, "wet", config.wet ?? -3);
+    case "cheapReverb": {
+      const device = asInstanceOf(box, boxes.ReverbDeviceBox);
+      device.decay.setValue(config.decay ?? 0.5);
+      device.preDelay.setValue(config.preDelay ?? 0.02);
+      device.damp.setValue(config.damp ?? 0.5);
+      device.filter.setValue(config.filter ?? 0);
+      device.dry.setValue(config.dry ?? 0);
+      device.wet.setValue(config.wet ?? -3);
       break;
-    case "gate":
-      set(box, "threshold", config.threshold);
-      set(box, "return", config.return ?? 0);
-      set(box, "attack", config.attack);
-      set(box, "hold", config.hold);
-      set(box, "release", config.release);
-      set(box, "floor", config.floor);
-      set(box, "inverse", config.inverse);
+    }
+    case "gate": {
+      const device = asInstanceOf(box, boxes.GateDeviceBox);
+      device.threshold.setValue(config.threshold);
+      device.return.setValue(config.return ?? 0);
+      device.attack.setValue(config.attack);
+      device.hold.setValue(config.hold);
+      device.release.setValue(config.release);
+      device.floor.setValue(config.floor);
+      device.inverse.setValue(config.inverse);
       break;
-    case "waveshaper":
-      set(box, "equation", config.equation ?? "hardclip");
-      set(box, "inputGain", config.deviceInputGain ?? 0);
-      set(box, "outputGain", config.deviceOutputGain ?? 0);
-      set(box, "mix", config.mix ?? 1);
+    }
+    case "waveshaper": {
+      const device = asInstanceOf(box, boxes.WaveshaperDeviceBox);
+      device.equation.setValue(config.equation ?? "hardclip");
+      device.inputGain.setValue(config.deviceInputGain ?? 0);
+      device.outputGain.setValue(config.deviceOutputGain ?? 0);
+      device.mix.setValue(config.mix ?? 1);
       break;
-    case "maximizer":
-      set(box, "threshold", config.threshold);
-      set(box, "lookahead", config.lookaheadEnabled ?? config.lookahead > 0);
+    }
+    case "maximizer": {
+      const device = asInstanceOf(box, boxes.MaximizerDeviceBox);
+      device.threshold.setValue(config.threshold);
+      device.lookahead.setValue(
+        config.lookaheadEnabled ?? config.lookahead > 0
+      );
       break;
-    case "vocoder":
-      set(box, "carrierMinFreq", config.carrierMinFreq ?? 100);
-      set(box, "carrierMaxFreq", config.carrierMaxFreq ?? 12_000);
-      set(box, "modulatorMinFreq", config.modulatorMinFreq ?? 100);
-      set(box, "modulatorMaxFreq", config.modulatorMaxFreq ?? 12_000);
-      set(box, "qStart", config.qStart ?? 20);
-      set(box, "qEnd", config.qEnd ?? 2);
-      set(box, "envAttack", config.envAttack ?? 5);
-      set(box, "envRelease", config.envRelease ?? 30);
-      set(box, "gain", config.gain ?? 0);
-      set(box, "mix", config.mix ?? 1);
-      set(box, "bandCount", config.bandCount ?? config.bands);
-      set(
-        box,
-        "modulatorSource",
+    }
+    case "vocoder": {
+      const device = asInstanceOf(box, boxes.VocoderDeviceBox);
+      device.carrierMinFreq.setValue(config.carrierMinFreq ?? 100);
+      device.carrierMaxFreq.setValue(config.carrierMaxFreq ?? 12_000);
+      device.modulatorMinFreq.setValue(config.modulatorMinFreq ?? 100);
+      device.modulatorMaxFreq.setValue(config.modulatorMaxFreq ?? 12_000);
+      device.qStart.setValue(config.qStart ?? 20);
+      device.qEnd.setValue(config.qEnd ?? 2);
+      device.envAttack.setValue(config.envAttack ?? 5);
+      device.envRelease.setValue(config.envRelease ?? 30);
+      device.gain.setValue(config.gain ?? 0);
+      device.mix.setValue(config.mix ?? 1);
+      device.bandCount.setValue(config.bandCount ?? config.bands);
+      device.modulatorSource.setValue(
         config.modulatorSource ??
           (config.modulator === "noise" ? "noise-pink" : config.modulator)
       );
       break;
-    case "neuralAmp":
-      set(box, "inputGain", config.input);
-      set(box, "outputGain", config.output);
-      set(box, "mono", config.mono ?? true);
-      set(box, "mix", config.mix ?? 1);
+    }
+    case "neuralAmp": {
+      const device = asInstanceOf(box, boxes.NeuralAmpDeviceBox);
+      device.inputGain.setValue(config.input);
+      device.outputGain.setValue(config.output);
+      device.mono.setValue(config.mono ?? true);
+      device.mix.setValue(config.mix ?? 1);
       break;
+    }
     case "werkstatt":
       // ScriptCompiler.compile owns code headers and declaration boxes.
       break;
     case "autotune": {
-      set(box, "key", Math.max(0, AUTOTUNE_KEYS.indexOf(config.key as never)));
+      const device = asInstanceOf(box, boxes.AutotuneDeviceBox);
+      device.key.setValue(optionIndex(config.key, AUTOTUNE_KEYS));
       let { scale } = config;
       if (scale === "pentatonicMajor") {
         scale = "majorPentatonic";
       } else if (scale === "pentatonicMinor") {
         scale = "minorPentatonic";
       }
-      set(box, "scale", Math.max(0, AUTOTUNE_SCALES.indexOf(scale as never)));
-      set(box, "amount", config.amount);
-      set(box, "retune", config.retuneAmount ?? config.retune / 80);
-      set(box, "shift", config.shift);
-      set(box, "smooth", config.smooth ?? config.smoothing);
+      device.scale.setValue(optionIndex(scale, AUTOTUNE_SCALES));
+      device.amount.setValue(config.amount);
+      device.retune.setValue(config.retuneAmount ?? config.retune / 80);
+      device.shift.setValue(config.shift);
+      device.smooth.setValue(config.smooth ?? config.smoothing);
       break;
     }
     case "fxComposite":
     case "stereoSplit":
-    case "frequencySplit":
-      set(box, "dry", Number.NEGATIVE_INFINITY);
-      set(box, "wet", 0);
+    case "frequencySplit": {
+      const device = context.project.boxAdapters.adapterFor(
+        box,
+        context.adapters.AudioCompositeAdapter
+      ).box;
+      device.dry.setValue(Number.NEGATIVE_INFINITY);
+      device.wet.setValue(0);
       if (config.type === "frequencySplit") {
-        set(box, "crossover1", config.crossoverFrequencies[0] ?? 200);
-        set(box, "crossover2", config.crossoverFrequencies[1] ?? 20_000);
-        set(box, "crossover3", config.crossoverFrequencies[2] ?? 20_000);
+        const split = asInstanceOf(box, boxes.FrequencySplitBox);
+        split.crossover1.setValue(config.crossoverFrequencies[0] ?? 200);
+        split.crossover2.setValue(config.crossoverFrequencies[1] ?? 20_000);
+        split.crossover3.setValue(config.crossoverFrequencies[2] ?? 20_000);
       }
       break;
+    }
     default:
       throw new Error(`Unsupported official openDAW effect: ${config.type}`);
   }
 }
 
-function createCell(
-  { boxes, project }: CreateContext,
-  composite: BoxLike,
-  chain: EffectChainConfig,
-  created?: BoxLike[]
-): BoxLike {
-  const cell = boxes.AudioEffectCompositeCellBox.create(
-    project.boxGraph,
-    UUID.generate(),
-    (box) => {
-      box.composite.refer(composite.entries as never);
-      box.index.setValue(chain.order);
-      box.label.setValue(chain.name);
-      box.gain.setValue(db(chain.gain));
-      box.pan.setValue(chain.pan);
-      box.mute.setValue(chain.muted);
-      box.solo.setValue(chain.solo);
-    }
-  ) as unknown as BoxLike;
-  created?.push(cell);
-  return cell;
-}
-
-function fixedCells(composite: BoxLike): BoxLike[] {
-  const entries = composite.entries as
-    | {
-        pointerHub?: {
-          incoming: () => Array<{ box: BoxLike }>;
-        };
-      }
-    | undefined;
-  return (
-    entries?.pointerHub
-      ?.incoming()
-      .map(({ box }) => box)
-      .sort(
-        (left, right) =>
-          Number(
-            (left.index as unknown as { getValue: () => number }).getValue()
-          ) -
-          Number(
-            (right.index as unknown as { getValue: () => number }).getValue()
-          )
-      ) ?? []
-  );
-}
-
-function createNestedChains(
-  context: CreateContext,
-  composite: BoxLike,
-  config: Extract<
-    EffectConfig,
-    { type: "fxComposite" | "stereoSplit" | "frequencySplit" }
-  >,
-  created: BoxLike[],
-  children: OfficialEffectGroup[]
-): void {
-  const cells =
-    config.type === "fxComposite"
-      ? config.chains
-          .slice()
-          .sort((left, right) => left.order - right.order)
-          .map((chain) => createCell(context, composite, chain, created))
-      : fixedCells(composite);
-
-  if (config.type === "frequencySplit") {
-    for (const cell of cells) {
-      set(cell, "mute", true);
-    }
-  }
-
-  config.chains
-    .slice()
-    .sort((left, right) => left.order - right.order)
-    .forEach((chain, index) => {
-      const cell = cells[index];
-      if (!cell) {
-        return;
-      }
-      set(cell, "label", chain.name);
-      set(cell, "gain", db(chain.gain));
-      set(cell, "pan", chain.pan);
-      set(cell, "mute", chain.muted);
-      set(cell, "solo", chain.solo);
-      chain.effects
-        .slice()
-        .sort((left, right) => left.order - right.order)
-        .forEach((effect, effectIndex) => {
-          const nested = createOfficialEffectGroup(
-            context,
-            effect,
-            cell.audioEffects,
-            effectIndex * 3
-          );
-          children.push(nested);
-          created.push(...nested.created);
-        });
-    });
-}
-
 function insert(
-  { core, project }: CreateContext,
-  host: HostField,
-  factory: keyof typeof core.EffectFactories.AudioNamed,
-  index: number
-): BoxLike {
-  return project.api.insertEffect(
-    host as never,
-    core.EffectFactories.AudioNamed[factory],
+  context: CreateContext,
+  host: OfficialEffectHost,
+  factory: keyof typeof context.core.EffectFactories.AudioNamed,
+  index = Number.MAX_SAFE_INTEGER
+): EffectBox {
+  return context.project.api.insertEffect(
+    host,
+    context.core.EffectFactories.AudioNamed[factory],
     index
-  ) as unknown as BoxLike;
+  );
 }
 
 function createTrim(
   context: CreateContext,
-  host: HostField,
-  index: number,
+  host: OfficialEffectHost,
   gain: number,
-  label: string,
-  created: BoxLike[]
-): BoxLike {
-  const trim = insert(context, host, "StereoTool", index);
-  set(trim, "label", label);
-  set(trim, "volume", db(gain));
-  set(trim, "enabled", true);
-  created.push(trim);
+  label: string
+): StereoToolDeviceBox {
+  const trim = asInstanceOf(
+    insert(context, host, "StereoTool"),
+    context.boxes.StereoToolDeviceBox
+  );
+  trim.label.setValue(label);
+  trim.volume.setValue(gainToDb(gain));
   return trim;
+}
+
+function createCell(
+  context: CreateContext,
+  composite: AudioEffectCompositeBox,
+  chain: EffectChainConfig
+): AudioEffectCompositeCellBox {
+  return context.boxes.AudioEffectCompositeCellBox.create(
+    context.project.boxGraph,
+    UUID.generate(),
+    (box) => {
+      box.composite.refer(composite.entries);
+      writeCell(box, chain);
+    }
+  );
+}
+
+function writeCell(
+  cell: AudioEffectCompositeCellBox,
+  chain: EffectChainConfig
+): void {
+  cell.index.setValue(chain.order);
+  cell.label.setValue(chain.name);
+  cell.gain.setValue(gainToDb(chain.gain));
+  cell.pan.setValue(chain.pan);
+  cell.mute.setValue(chain.muted);
+  cell.solo.setValue(chain.solo);
+}
+
+function officialEffectBoxes(group: OfficialEffectGroup): EffectBox[] {
+  return [
+    group.signalTrim,
+    group.wrapper ?? group.device,
+    group.outputTrim,
+  ].filter((box): box is EffectBox => box !== null);
+}
+
+export function moveOfficialEffectGroup(
+  context: CreateContext,
+  group: OfficialEffectGroup,
+  host: OfficialEffectHost,
+  index: number
+): number {
+  const boxes = officialEffectBoxes(group);
+  if (
+    boxes.some(
+      (box, offset) =>
+        !box.host.targetVertex.contains(host) ||
+        box.index.getValue() !== index + offset
+    )
+  ) {
+    // moveEffects sorts its selection by the current index; preserve Radio's trim/device/trim order.
+    boxes.forEach((box, offset) => {
+      box.index.setValue(index + offset);
+    });
+    context.project.api.moveEffects(host, boxes, index);
+  }
+  return boxes.length;
+}
+
+function updateLayout(
+  context: CreateContext,
+  group: OfficialEffectGroup,
+  config: EffectConfig,
+  host: OfficialEffectHost
+): void {
+  if (config.signalGain === undefined) {
+    group.signalTrim?.delete();
+    group.signalTrim = null;
+  } else if (!group.signalTrim) {
+    group.signalTrim = createTrim(
+      context,
+      host,
+      config.signalGain,
+      "Cable trim"
+    );
+  }
+  if (usesDirectOfficialEffectLayout(config)) {
+    if (group.wrapper) {
+      context.project.api.moveEffects(
+        host,
+        [group.device],
+        Number.MAX_SAFE_INTEGER
+      );
+      group.wrapper.delete();
+      group.outputTrim?.delete();
+      group.wrapper = null;
+      group.inputTrim = null;
+      group.outputTrim = null;
+    }
+  } else if (!group.wrapper) {
+    const { wrapper, wet, inputTrim, outputTrim } = createWrapper(
+      context,
+      config,
+      host
+    );
+    context.project.api.moveEffects(wet.audioEffects, [group.device], 1);
+    group.wrapper = wrapper;
+    group.inputTrim = inputTrim;
+    group.outputTrim = outputTrim;
+  }
+}
+
+function createWrapper(
+  context: CreateContext,
+  config: EffectConfig,
+  host: OfficialEffectHost
+) {
+  const wrapper = asInstanceOf(
+    insert(context, host, "AudioEffectComposite"),
+    context.boxes.AudioEffectCompositeBox
+  );
+  wrapper.label.setValue(`Radio wrapper: ${config.type}`);
+  const wet = createCell(context, wrapper, {
+    effects: [],
+    gain: 1,
+    id: `${config.id}:wet`,
+    muted: false,
+    name: "Wet",
+    order: 0,
+    pan: 0,
+    solo: false,
+  });
+  const inputTrim = createTrim(
+    context,
+    wet.audioEffects,
+    config.inputGain,
+    "Input trim"
+  );
+  const outputTrim = createTrim(
+    context,
+    host,
+    outputGain(config),
+    "Output trim"
+  );
+  return { inputTrim, outputTrim, wet, wrapper };
 }
 
 export function createOfficialEffectGroup(
   context: CreateContext,
   config: EffectConfig,
-  host: HostField,
+  host: OfficialEffectHost,
   index: number
 ): OfficialEffectGroup {
   if (!isOfficialOpenDawEffect(config)) {
     throw new Error(`Radio-only effect cannot use openDAW: ${config.type}`);
   }
-
-  const created: BoxLike[] = [];
-  const children: OfficialEffectGroup[] = [];
-  const factory = OPENDAW_FACTORY_KEYS[config.type];
-  const signalTrim =
-    config.signalGain === undefined
-      ? null
-      : createTrim(
-          context,
-          host,
-          index,
-          config.signalGain,
-          "Cable trim",
-          created
-        );
-  const deviceIndex = index + Number(signalTrim !== null);
-  if (usesDirectOfficialEffectLayout(config)) {
-    const device = insert(context, host, factory, deviceIndex);
-    created.push(device);
-    configureDevice(device, config, context.bpm);
-    return {
-      children,
-      config,
-      created,
-      device,
-      inputTrim: null,
-      outputTrim: null,
-      signalTrim,
-      wrapper: null,
-    };
-  }
-
-  const wrapper = insert(context, host, "AudioEffectComposite", deviceIndex);
-  created.push(wrapper);
-  set(wrapper, "label", `Radio wrapper: ${config.type}`);
-  set(wrapper, "enabled", config.enabled);
-  set(wrapper, "dry", db(1 - config.dryWet));
-  set(wrapper, "wet", db(config.dryWet));
-
-  const wetCell = createCell(
+  const layout = usesDirectOfficialEffectLayout(config)
+    ? null
+    : createWrapper(context, config, host);
+  const device = insert(
     context,
-    wrapper,
-    {
-      effects: [],
-      gain: 1,
-      id: `${config.id}:wet`,
-      muted: false,
-      name: "Wet",
-      order: 0,
-      pan: 0,
-      solo: false,
-    },
-    created
+    layout?.wet.audioEffects ?? host,
+    OPENDAW_FACTORY_KEYS[config.type]
   );
-  const inputTrim = createTrim(
-    context,
-    wetCell.audioEffects,
-    0,
-    config.inputGain,
-    "Input trim",
-    created
-  );
-
-  const device = insert(context, wetCell.audioEffects, factory, 1);
-  created.push(device);
-  configureDevice(device, config, context.bpm);
+  const group: OfficialEffectGroup = {
+    cells: new Map(),
+    children: [],
+    config,
+    device,
+    inputTrim: layout?.inputTrim ?? null,
+    model: null,
+    outputTrim: layout?.outputTrim ?? null,
+    signalTrim: null,
+    wrapper: layout?.wrapper ?? null,
+  };
   const modelData =
     config.type === "neuralAmp"
       ? (config.modelData ?? getCachedNamModel(config.modelId))
       : null;
   if (config.type === "neuralAmp" && modelData) {
-    const model = context.boxes.NeuralAmpModelBox.create(
+    group.model = context.boxes.NeuralAmpModelBox.create(
       context.project.boxGraph,
       UUID.generate(),
       (box) => {
         box.label.setValue(config.modelName ?? config.modelId ?? "Local model");
         box.model.setValue(modelData);
       }
-    ) as unknown as BoxLike;
-    created.push(model);
-    requiredPointer(device, "model").refer(model);
+    );
+    asInstanceOf(device, context.boxes.NeuralAmpDeviceBox).model.refer(
+      group.model
+    );
   }
-  if (
-    config.type === "fxComposite" ||
-    config.type === "stereoSplit" ||
-    config.type === "frequencySplit"
-  ) {
-    createNestedChains(context, device, config, created, children);
-  }
-
-  const outputTrim = createTrim(
-    context,
-    host,
-    deviceIndex + 1,
-    config.type === "crusher" && !config.autoGain
-      ? config.outputGain * 10 ** (config.boost / 40)
-      : config.outputGain,
-    "Output trim",
-    created
-  );
-  set(outputTrim, "enabled", config.enabled);
-
-  return {
-    children,
-    config,
-    created,
-    device,
-    inputTrim,
-    outputTrim,
-    signalTrim,
-    wrapper,
-  };
+  updateOfficialEffectGroup(context, group, config, host);
+  moveOfficialEffectGroup(context, group, host, index);
+  return group;
 }
 
 export function updateOfficialEffectGroup(
+  context: CreateContext,
   group: OfficialEffectGroup,
   config: EffectConfig,
-  bpm: number
+  host: OfficialEffectHost
 ): void {
-  if (group.signalTrim) {
-    set(group.signalTrim, "volume", db(config.signalGain ?? 1));
-  }
-  if (group.wrapper === null) {
-    if (!usesDirectOfficialEffectLayout(config)) {
-      throw new Error("Direct openDAW effect layout requires unity controls");
-    }
-    group.config = config;
-    configureDevice(group.device, config, bpm);
-    return;
-  }
-  if (!(group.inputTrim && group.outputTrim)) {
-    throw new Error("Wrapped openDAW effect layout is incomplete");
-  }
+  updateLayout(context, group, config, host);
+  writeOfficialEffectFields(context, group, config);
   group.config = config;
-  set(group.wrapper, "enabled", config.enabled);
-  set(group.wrapper, "dry", db(1 - config.dryWet));
-  set(group.wrapper, "wet", db(config.dryWet));
-  set(group.inputTrim, "volume", db(config.inputGain));
-  configureDevice(group.device, config, bpm);
-  set(
-    group.outputTrim,
-    "volume",
-    db(
-      config.type === "crusher" && !config.autoGain
-        ? config.outputGain * 10 ** (config.boost / 40)
-        : config.outputGain
-    )
-  );
-  set(group.outputTrim, "enabled", config.enabled);
-  if ("chains" in config) {
-    const cells = fixedCells(group.device);
-    config.chains
-      .slice()
-      .sort((left, right) => left.order - right.order)
-      .forEach((chain, index) => {
-        const cell = cells[index];
-        if (cell) {
-          set(cell, "label", chain.name);
-          set(cell, "gain", db(chain.gain));
-          set(cell, "pan", chain.pan);
-          set(cell, "mute", chain.muted);
-          set(cell, "solo", chain.solo);
-        }
-      });
+}
+
+export function writeOfficialEffectFields(
+  context: CreateContext,
+  group: OfficialEffectGroup,
+  config: EffectConfig
+): void {
+  group.signalTrim?.volume.setValue(gainToDb(config.signalGain ?? 1));
+  group.signalTrim?.enabled.setValue(config.enabled);
+  if (group.wrapper) {
+    group.wrapper.enabled.setValue(config.enabled);
+    group.wrapper.dry.setValue(gainToDb(1 - config.dryWet));
+    group.wrapper.wet.setValue(gainToDb(config.dryWet));
+    group.inputTrim?.volume.setValue(gainToDb(config.inputGain));
+    group.outputTrim?.volume.setValue(gainToDb(outputGain(config)));
+    group.outputTrim?.enabled.setValue(config.enabled);
   }
+  configureDevice(context, group.device, config, context.bpm);
+}
+
+export function syncOfficialEffectCells(
+  context: CreateContext,
+  group: OfficialEffectGroup
+): AudioEffectCompositeCellBox[] {
+  const { config } = group;
+  if (!("chains" in config)) {
+    return [];
+  }
+  const composite = context.project.boxAdapters.adapterFor(
+    group.device,
+    context.adapters.AudioCompositeAdapter
+  );
+  const fixed = composite.entries.adapters().map((entry) => entry.box);
+  const nextCells = new Map<string, AudioEffectCompositeCellBox>();
+  for (const [index, chain] of config.chains
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .entries()) {
+    const cell =
+      config.type === "fxComposite"
+        ? (group.cells.get(chain.id) ??
+          createCell(
+            context,
+            asInstanceOf(group.device, context.boxes.AudioEffectCompositeBox),
+            chain
+          ))
+        : fixed[index];
+    if (!cell) {
+      continue;
+    }
+    writeCell(cell, chain);
+    nextCells.set(chain.id, cell);
+  }
+  if (config.type === "frequencySplit") {
+    const used = new Set(nextCells.values());
+    for (const cell of fixed) {
+      if (!used.has(cell)) {
+        cell.mute.setValue(true);
+      }
+    }
+  }
+  const obsolete =
+    config.type === "fxComposite"
+      ? [...group.cells.values()].filter(
+          (cell) => ![...nextCells.values()].includes(cell)
+        )
+      : [];
+  group.cells = nextCells;
+  return obsolete;
 }
 
 export function restoreWerkstattParameterValues(
+  context: CreateContext,
   group: OfficialEffectGroup,
   values: Readonly<Record<string, number>>
 ): void {
-  const parameters = group.device.parameters as
-    | {
-        pointerHub?: {
-          filter: () => Array<{ box: BoxLike }>;
-        };
-      }
-    | undefined;
-  for (const { box } of parameters?.pointerHub?.filter() ?? []) {
-    const label = field(box, "label").getValue?.();
-    if (typeof label !== "string") {
-      continue;
-    }
-    const value = values[label];
+  const device = asInstanceOf(group.device, context.boxes.WerkstattDeviceBox);
+  for (const pointer of device.parameters.pointerHub.filter()) {
+    const parameter = asInstanceOf(
+      pointer.box,
+      context.boxes.WerkstattParameterBox
+    );
+    const value = values[parameter.label.getValue()];
     if (typeof value === "number" && Number.isFinite(value)) {
-      set(box, "value", value);
+      parameter.value.setValue(value);
     }
   }
 }
@@ -819,45 +648,51 @@ export function restoreWerkstattParameterValues(
 export function deleteOfficialEffectGroups(
   groups: readonly OfficialEffectGroup[]
 ): void {
-  const deleted = new Set<BoxLike>();
   for (const group of [...groups].reverse()) {
-    for (const box of [...group.created].reverse()) {
-      if (!deleted.has(box)) {
-        deleted.add(box);
-        box.delete();
-      }
+    for (const box of officialEffectBoxes(group).reverse()) {
+      box.delete();
     }
+    group.model?.delete();
   }
 }
 
 export function bindOfficialSidechain(
+  context: CreateContext,
   group: OfficialEffectGroup,
-  target: unknown | null
+  target: AudioUnitBox | null
 ): void {
-  const sidechain = optionalPointer(group.device, "sideChain");
-  if (!sidechain) {
+  const { device } = group;
+  if (
+    !(
+      device instanceof context.boxes.CompressorDeviceBox ||
+      device instanceof context.boxes.GateDeviceBox ||
+      device instanceof context.boxes.VocoderDeviceBox
+    )
+  ) {
     return;
   }
   if (target === null) {
-    sidechain.defer();
+    device.sideChain.defer();
   } else {
-    sidechain.refer(target);
+    device.sideChain.refer(target);
   }
 }
 
 export function createMasterRack(
   context: CreateContext,
-  host: HostField
+  host: OfficialEffectHost
 ): {
-  root: BoxLike;
-  dry: BoxLike;
-  wet: BoxLike;
+  root: AudioEffectCompositeBox;
+  dry: AudioEffectCompositeCellBox;
+  wet: AudioEffectCompositeCellBox;
 } {
-  const root = insert(context, host, "AudioEffectComposite", 0);
-  set(root, "label", "Radio Effects");
-  set(root, "enabled", true);
-  set(root, "dry", Number.NEGATIVE_INFINITY);
-  set(root, "wet", 0);
+  const root = asInstanceOf(
+    insert(context, host, "AudioEffectComposite", 0),
+    context.boxes.AudioEffectCompositeBox
+  );
+  root.label.setValue("Radio Effects");
+  root.dry.setValue(Number.NEGATIVE_INFINITY);
+  root.wet.setValue(0);
   const dry = createCell(context, root, {
     effects: [],
     gain: 0,
@@ -882,10 +717,10 @@ export function createMasterRack(
 }
 
 export function setMasterRackDryWet(
-  rack: { dry: BoxLike; wet: BoxLike },
+  rack: { dry: AudioEffectCompositeCellBox; wet: AudioEffectCompositeCellBox },
   value: number
 ): void {
   const wet = Math.max(0, Math.min(1, value));
-  set(rack.dry, "gain", db(1 - wet));
-  set(rack.wet, "gain", db(wet));
+  rack.dry.gain.setValue(gainToDb(1 - wet));
+  rack.wet.gain.setValue(gainToDb(wet));
 }

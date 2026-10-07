@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { UUID } from "@opendaw/lib-std";
+import { asInstanceOf, UUID } from "@opendaw/lib-std";
 import type { WerkstattDeviceBox } from "@opendaw/studio-boxes";
-import type { Project, RestartWorklet } from "@opendaw/studio-core";
+import type { EffectBox, Project, RestartWorklet } from "@opendaw/studio-core";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporting boundary
 import * as Sentry from "@sentry/core";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
-import { getWerkstattRuntimeStatus } from "../dsp/effects/werkstatt-runtime-status.js";
+import type { EffectConfig, OpenDawEffectType } from "../dsp/effects/types.js";
+import {
+  getWerkstattRuntimeStatus,
+  subscribeWerkstattRuntimeStatus,
+} from "../dsp/effects/werkstatt-runtime-status.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
@@ -209,6 +214,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
               project = core.Project.fromSkeleton(...args);
               return {
                 api: project.api,
+                boxAdapters: project.boxAdapters,
                 boxGraph: project.boxGraph,
                 editing: project.editing,
                 engine,
@@ -240,6 +246,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
   );
   runtimes.push(runtime);
   return {
+    adapters,
     boxes,
     compiles,
     createSource: () => audioNode() as unknown as AudioNode,
@@ -316,6 +323,7 @@ function werkstatt(code = "// first version") {
   return {
     ...createDefaultEffectConfig("werkstatt", "script", 0),
     code: `// @param amount 0.1\n${code}\nclass Processor { process() {} }`,
+    enabled: true,
     parameters: { amount: 0.25 },
   };
 }
@@ -341,6 +349,20 @@ function parameter(
     throw new Error("Compiler did not create the declared parameter");
   }
   return box;
+}
+
+function wrapperForDevice(
+  harness: Awaited<ReturnType<typeof createHarness>>,
+  device: EffectBox
+) {
+  const cell = asInstanceOf(
+    device.host.targetVertex.unwrap().box,
+    harness.boxes.AudioEffectCompositeCellBox
+  );
+  return asInstanceOf(
+    cell.composite.targetVertex.unwrap().box,
+    harness.boxes.AudioEffectCompositeBox
+  );
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
@@ -513,6 +535,167 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+  test("a retained effect retries the same field edit after its transaction rolls back", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      threshold: -12,
+    };
+    h.runtime.syncEffects("deck", [config]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
+    const checksum = h.project.boxGraph.checksum();
+    const updated = { ...config, threshold: -24 };
+    const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+    endTransaction.mockImplementationOnce(() => {
+      throw new Error("edit failed");
+    });
+    try {
+      expect(() => h.runtime.syncEffects("deck", [updated])).toThrow(
+        "edit failed"
+      );
+    } finally {
+      endTransaction.mockRestore();
+    }
+    expect(h.project.boxGraph.checksum()).toEqual(checksum);
+    expect(device.threshold.getValue()).toBe(-12);
+    h.runtime.syncEffects("deck", [updated]);
+    expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
+      device
+    );
+    expect(device.threshold.getValue()).toBe(-24);
+  });
+
+  test.each(["sync", "connect"] as const)(
+    "a failed %s commits no script until the enclosing graph transaction succeeds",
+    async (operation) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = werkstatt();
+      h.runtime.syncEffects("deck", [config]);
+      await finishCompile(h.compiles[0]);
+      const device = scriptDevice(h);
+      const code = device.code.getValue();
+      const checksum = h.project.boxGraph.checksum();
+      const updated = werkstatt("// retry after rollback");
+      const sync = () =>
+        operation === "sync"
+          ? Promise.resolve().then(() =>
+              h.runtime.syncEffects("deck", [updated])
+            )
+          : h.runtime.connectSound(
+              "deck",
+              h.source,
+              h.destination,
+              undefined,
+              2,
+              {
+                dryWet: 1,
+                effects: [updated],
+                sidechainSoundId: null,
+                tempo: 120,
+              }
+            );
+      const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+      endTransaction.mockImplementationOnce(() => {
+        throw new Error("script edit failed");
+      });
+      try {
+        await expect(sync()).rejects.toThrow("script edit failed");
+      } finally {
+        endTransaction.mockRestore();
+      }
+      expect(h.project.boxGraph.checksum()).toEqual(checksum);
+      expect(device.code.getValue()).toBe(code);
+      expect(h.compiles).toHaveLength(1);
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      await sync();
+      expect(h.compiles).toHaveLength(2);
+      await finishCompile(h.compiles[1]);
+      expect(scriptDevice(h)).toBe(device);
+      expect(device.code.getValue()).toContain("// retry after rollback");
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    }
+  );
+
+  test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
+    "%s defers descendant scripts while an ancestor is disabled",
+    async (type) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const script = werkstatt("// first inactive version");
+      const inner = {
+        ...createDefaultEffectConfig(type, "inner", 0),
+        enabled: true,
+      };
+      inner.chains[0].effects = [script];
+      const outer = {
+        ...createDefaultEffectConfig("fxComposite", "outer", 0),
+        enabled: false,
+      };
+      outer.chains[0].effects = [inner];
+      const compressor = createDefaultEffectConfig("compressor", "comp", 1);
+      h.runtime.syncEffects("deck", [outer, compressor]);
+      const device = scriptDevice(h);
+      expect(h.compiles).toHaveLength(0);
+      expect(getWerkstattRuntimeStatus(script.id).state).toBe("idle");
+      const edited = structuredClone(outer);
+      const [editedInner] = edited.chains[0].effects;
+      if (!("chains" in editedInner)) {
+        throw new Error("Inner container missing");
+      }
+      editedInner.chains[0].effects = [werkstatt("// latest inactive version")];
+      h.runtime.syncEffects("deck", [edited, compressor]);
+      expect(h.compiles).toHaveLength(0);
+      h.runtime.syncEffects("deck", [{ ...edited, enabled: true }, compressor]);
+      expect(h.compiles).toHaveLength(1);
+      await finishCompile(h.compiles[0]);
+      expect(scriptDevice(h)).toBe(device);
+      expect(device.code.getValue()).toContain("// latest inactive version");
+      expect(getWerkstattRuntimeStatus(script.id).state).toBe("ready");
+    }
+  );
+
+  test("an existing sound can sync again after its effect transaction rolls back", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    await h.runtime.connectSidechainSource("key", h.source);
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      sidechain: { channelId: "key" },
+    };
+    const liveBoxes = h.project.boxGraph.boxes().slice();
+    const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+    endTransaction.mockImplementationOnce(() => {
+      throw new Error("effect sync failed");
+    });
+    try {
+      expect(() => h.runtime.syncEffects("deck", [config])).toThrow(
+        "effect sync failed"
+      );
+    } finally {
+      endTransaction.mockRestore();
+    }
+    expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+    h.runtime.setSidechainTarget("deck", "key");
+    h.runtime.syncEffects("deck", [config]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
+    expect(device.isAttached()).toBe(true);
+    expect(device.sideChain.targetVertex.unwrap().box.address.uuid).toEqual(
+      h.engine.registerMonitoringSource.mock.calls[1][0]
+    );
+  });
+
   test("restores live mono, stereo and sidechain returns on every worklet restart", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("stereo", h.source, h.destination);
@@ -524,7 +707,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     h.runtime.disconnectSound("retired");
     h.runtime.syncEffects("stereo", [werkstatt()]);
     await finishCompile(h.compiles[0]);
-    const boxes = h.project.boxGraph.boxes();
+    const boxes = h.project.boxGraph.boxes().slice();
     const liveReturns = h.engine.registerMonitoringSource.mock.calls.slice(
       0,
       3
@@ -707,6 +890,519 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   });
 
+  test.each(Object.keys(OPENDAW_FACTORY_KEYS) as OpenDawEffectType[])(
+    "%s retains its device and graph when toggled through its enabled field",
+    async (type) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const baseline = h.project.boxGraph.boxes().slice();
+      const config = {
+        ...createDefaultEffectConfig(type, type, 0),
+        enabled: true,
+      };
+      h.runtime.syncEffects("deck", [config]);
+      const factoryName = OPENDAW_FACTORY_KEYS[type];
+      const core = await import("@opendaw/studio-core");
+      const device = h.project.boxGraph
+        .boxes()
+        .find(
+          (box) =>
+            !baseline.includes(box) &&
+            box.name === core.EffectFactories.AudioNamed[factoryName].boxName &&
+            !(
+              box instanceof h.boxes.StereoToolDeviceBox &&
+              ["Input trim", "Output trim", "Cable trim"].includes(
+                box.label.getValue()
+              )
+            ) &&
+            !(
+              box instanceof h.boxes.AudioEffectCompositeBox &&
+              box.label.getValue().startsWith("Radio wrapper:")
+            )
+        );
+      if (!device) {
+        throw new Error(`Missing ${type} device`);
+      }
+      const adapter = h.project.boxAdapters.adapterFor(
+        device,
+        h.adapters.Devices.isEffect
+      );
+      for (const dryWet of [1, 0.5]) {
+        h.runtime.syncEffects("deck", [{ ...config, dryWet }]);
+        const liveBoxes = h.project.boxGraph.boxes().slice();
+        h.runtime.syncEffects("deck", [{ ...config, dryWet, enabled: false }]);
+        expect(adapter.enabledField.getValue()).toBe(false);
+        expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+        h.runtime.syncEffects("deck", [{ ...config, dryWet, enabled: true }]);
+        expect(adapter.enabledField.getValue()).toBe(true);
+        expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
+        expect(device.isAttached()).toBe(true);
+      }
+      h.runtime.syncEffects("deck", [config]);
+      expect(device.isAttached()).toBe(true);
+      expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
+        device
+      );
+      expect(h.project.editing.hasNoChanges()).toBe(true);
+      h.runtime.syncEffects("deck", []);
+      expect(h.project.boxGraph.boxes()).toEqual(baseline);
+    }
+  );
+
+  test.each(
+    (Object.keys(OPENDAW_FACTORY_KEYS) as OpenDawEffectType[]).filter(
+      (type) => type !== "autotune"
+    )
+  )(
+    "%s keeps its uuid, parent and host chain when mix and gains leave unity",
+    async (type) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const baseline = h.project.boxGraph.boxes().slice();
+      const config = {
+        ...createDefaultEffectConfig(type, type, 0),
+        dryWet: 1,
+        enabled: true,
+        inputGain: 1,
+        outputGain: 1,
+      };
+      h.runtime.syncEffects("deck", [config]);
+      const core = await import("@opendaw/studio-core");
+      const device = h.project.boxGraph
+        .boxes()
+        .find(
+          (box) =>
+            !baseline.includes(box) &&
+            box.name ===
+              core.EffectFactories.AudioNamed[OPENDAW_FACTORY_KEYS[type]]
+                .boxName &&
+            !(
+              box instanceof h.boxes.StereoToolDeviceBox &&
+              ["Input trim", "Output trim", "Cable trim"].includes(
+                box.label.getValue()
+              )
+            ) &&
+            !(
+              box instanceof h.boxes.AudioEffectCompositeBox &&
+              box.label.getValue().startsWith("Radio wrapper:")
+            )
+        );
+      if (!device) {
+        throw new Error(`Missing ${type} device`);
+      }
+      const adapter = h.project.boxAdapters.adapterFor(
+        device,
+        h.adapters.Devices.isEffect
+      );
+      const uuid = UUID.toString(device.address.uuid);
+      const host = adapter.host.targetVertex.unwrap();
+      const parent = asInstanceOf(
+        host.box,
+        h.boxes.AudioEffectCompositeCellBox
+      );
+      expect(
+        asInstanceOf(
+          parent.composite.targetVertex.unwrap().box,
+          h.boxes.AudioEffectCompositeBox
+        ).label.getValue()
+      ).toBe(`Radio wrapper: ${type}`);
+      const chain = adapter.deviceHost().audioEffects.unwrap();
+      for (const field of ["dryWet", "inputGain", "outputGain"] as const) {
+        for (const value of [0.5, 1]) {
+          h.runtime.syncEffects("deck", [{ ...config, [field]: value }]);
+          expect(UUID.toString(device.address.uuid)).toBe(uuid);
+          expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
+            device
+          );
+          expect(adapter.host.targetVertex.unwrap()).toBe(host);
+          expect(adapter.host.targetVertex.unwrap().box).toBe(parent);
+          expect(adapter.deviceHost().audioEffects.unwrap()).toBe(chain);
+        }
+      }
+    }
+  );
+
+  test("adding, reordering and removing effects keeps surviving devices and trim order", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const compressor = {
+      ...createDefaultEffectConfig("compressor", "compressor", 0),
+      enabled: true,
+    };
+    const delay = {
+      ...createDefaultEffectConfig("delay", "delay", 1),
+      dryWet: 0.5,
+      enabled: true,
+      signalGain: 0.5,
+    };
+    const reverb = {
+      ...createDefaultEffectConfig("cheapReverb", "reverb", 2),
+      dryWet: 1,
+      enabled: true,
+    };
+    h.runtime.syncEffects("deck", [compressor, delay, reverb]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.DelayDeviceBox),
+      h.boxes.DelayDeviceBox
+    );
+    const survivor = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.ReverbDeviceBox),
+      h.boxes.ReverbDeviceBox
+    );
+    const retired = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
+    const delayWrapper = wrapperForDevice(h, device);
+    const reverbWrapper = wrapperForDevice(h, survivor);
+    const chain = h.project.boxAdapters
+      .adapterFor(reverbWrapper, h.adapters.Devices.isEffect)
+      .deviceHost()
+      .audioEffects.unwrap();
+    const labels = () =>
+      chain.adapters().map((adapter) => adapter.labelField.getValue());
+    expect(labels()).toEqual([
+      "Radio wrapper: compressor",
+      "Output trim",
+      "Cable trim",
+      "Radio wrapper: delay",
+      "Output trim",
+      "Radio wrapper: cheapReverb",
+      "Output trim",
+    ]);
+    const reordered = [
+      { ...delay, order: 0 },
+      { ...compressor, order: 1 },
+      reverb,
+    ];
+    h.runtime.syncEffects("deck", reordered);
+    expect(labels()).toEqual([
+      "Cable trim",
+      "Radio wrapper: delay",
+      "Output trim",
+      "Radio wrapper: compressor",
+      "Output trim",
+      "Radio wrapper: cheapReverb",
+      "Output trim",
+    ]);
+    const added = {
+      ...createDefaultEffectConfig("waveshaper", "shape", 1),
+      enabled: true,
+    };
+    h.runtime.syncEffects("deck", [reordered[0], added, reverb]);
+    expect(h.project.boxGraph.boxes()).toContain(device);
+    expect(h.project.boxGraph.boxes()).toContain(survivor);
+    expect(h.project.boxGraph.boxes()).not.toContain(retired);
+    h.runtime.syncEffects("deck", [
+      { ...delay, dryWet: 1, order: 0, signalGain: undefined },
+      reverb,
+    ]);
+    expect(h.project.boxGraph.boxes()).toContain(device);
+    expect(h.project.boxGraph.boxes()).toContain(survivor);
+    expect(labels()).toEqual([
+      "Radio wrapper: delay",
+      "Output trim",
+      "Radio wrapper: cheapReverb",
+      "Output trim",
+    ]);
+    expect(delayWrapper.index.getValue()).toBe(0);
+    expect(reverbWrapper.index.getValue()).toBe(2);
+  });
+
+  test.each([false, true])(
+    "a knob edit emits only the changed field in one transaction (nested=%s)",
+    async (nested) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = createDefaultEffectConfig("compressor", "compressor", 0);
+      const container = createDefaultEffectConfig(
+        "frequencySplit",
+        "container",
+        0
+      );
+      const effects = (compressor: typeof config): EffectConfig[] => {
+        if (!nested) {
+          return [compressor];
+        }
+        const [first, ...rest] = container.chains;
+        return [
+          {
+            ...container,
+            chains: [{ ...first, effects: [compressor] }, ...rest],
+          } as EffectConfig,
+        ];
+      };
+      h.runtime.syncEffects("deck", effects(config));
+      const device = asInstanceOf(
+        h.project.boxGraph
+          .boxes()
+          .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+        h.boxes.CompressorDeviceBox
+      );
+      const updates: Array<{ field: unknown; value: unknown }> = [];
+      const transactions: boolean[] = [];
+      const fields = h.project.boxGraph.subscribeToAllUpdates({
+        onUpdate: (update) => {
+          updates.push(
+            update.type === "primitive"
+              ? {
+                  field: update.field(h.project.boxGraph),
+                  value: update.newValue,
+                }
+              : { field: null, value: update.type }
+          );
+        },
+      });
+      const commits = h.project.boxGraph.subscribeTransaction({
+        onBeginTransaction: () => undefined,
+        onEndTransaction: (rolledBack) => {
+          transactions.push(rolledBack);
+        },
+      });
+      try {
+        h.runtime.syncEffects("deck", effects({ ...config, threshold: -18 }));
+        expect(updates).toEqual([{ field: device.threshold, value: -18 }]);
+        expect(transactions).toEqual([false]);
+        expect(h.project.editing.hasNoChanges()).toBe(true);
+      } finally {
+        fields.terminate();
+        commits.terminate();
+      }
+    }
+  );
+
+  test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
+    "%s edits nested chains and cell controls without resetting their devices",
+    async (type) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = {
+        ...createDefaultEffectConfig(type, "container", 0),
+        enabled: true,
+      };
+      const delay = {
+        ...createDefaultEffectConfig("delay", "delay", 0),
+        enabled: true,
+      };
+      const reverb = {
+        ...createDefaultEffectConfig("cheapReverb", "reverb", 0),
+        dryWet: 1,
+        enabled: true,
+      };
+      const [first, second] = config.chains;
+      if (!(first && second)) {
+        throw new Error("Container needs two chains");
+      }
+      first.effects = [delay];
+      second.effects = [reverb];
+      h.runtime.syncEffects("deck", [config]);
+      const device = asInstanceOf(
+        h.project.boxGraph
+          .boxes()
+          .find((box) => box instanceof h.boxes.DelayDeviceBox),
+        h.boxes.DelayDeviceBox
+      );
+      const survivor = asInstanceOf(
+        h.project.boxGraph
+          .boxes()
+          .find((box) => box instanceof h.boxes.ReverbDeviceBox),
+        h.boxes.ReverbDeviceBox
+      );
+      const delayWrapper = wrapperForDevice(h, device);
+      const reverbWrapper = wrapperForDevice(h, survivor);
+      const previousBoxes = h.project.boxGraph.boxes().slice();
+      const updated = {
+        ...config,
+        chains: [
+          {
+            ...second,
+            effects: [{ ...reverb, enabled: false }],
+            gain: 0.5,
+            order: 0,
+          },
+          { ...first, effects: [{ ...delay, feedback: 0.75 }], order: 1 },
+          ...config.chains.slice(2),
+        ],
+      };
+      h.runtime.syncEffects("deck", [updated]);
+      expect(h.project.boxGraph.boxes()).toEqual(previousBoxes);
+      expect(device.feedback.getValue()).toBe(0.75);
+      expect(survivor.enabled.getValue()).toBe(false);
+      const cell = asInstanceOf(
+        reverbWrapper.host.targetVertex.unwrap().box,
+        h.boxes.AudioEffectCompositeCellBox
+      );
+      expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+      h.runtime.syncEffects("deck", [
+        {
+          ...updated,
+          chains: [
+            { ...updated.chains[0], effects: [delay, { ...reverb, order: 1 }] },
+          ],
+        } as EffectConfig,
+      ]);
+      expect(h.project.boxGraph.boxes()).toContain(device);
+      expect(h.project.boxGraph.boxes()).toContain(survivor);
+      expect(delayWrapper.host.targetVertex.unwrap()).toBe(
+        reverbWrapper.host.targetVertex.unwrap()
+      );
+      expect(delayWrapper.index.getValue()).toBe(0);
+      expect(reverbWrapper.index.getValue()).toBe(2);
+    }
+  );
+
+  test("signal trim and mix edits preserve a compiling script and its parameters", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt();
+    h.runtime.syncEffects("deck", [config]);
+    const device = scriptDevice(h);
+    const amount = parameter(h, device);
+    h.runtime.syncEffects("deck", [
+      { ...config, dryWet: 0.5, parameters: { amount: 0.75 }, signalGain: 0.5 },
+    ]);
+    expect(scriptDevice(h)).toBe(device);
+    expect(parameter(h, device)).toBe(amount);
+    await finishCompile(h.compiles[0]);
+    expect(amount.value.getValue()).toBe(0.75);
+    expect(h.compiles).toHaveLength(1);
+    expect(h.subscriptions).toHaveLength(1);
+  });
+
+  test("changing a NAM model replaces only that device and releases its old model", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = {
+      ...createDefaultEffectConfig("neuralAmp", "amp", 0),
+      modelData: "first model",
+    };
+    const delay = createDefaultEffectConfig("delay", "delay", 1);
+    h.runtime.syncEffects("deck", [config, delay]);
+    const original = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.NeuralAmpDeviceBox),
+      h.boxes.NeuralAmpDeviceBox
+    );
+    const model = original.model.targetVertex.unwrap();
+    const survivor = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.DelayDeviceBox),
+      h.boxes.DelayDeviceBox
+    );
+    h.runtime.syncEffects("deck", [
+      { ...config, modelData: "second model" },
+      delay,
+    ]);
+    const replacement = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.NeuralAmpDeviceBox),
+      h.boxes.NeuralAmpDeviceBox
+    );
+    expect(replacement).not.toBe(original);
+    expect(original.isAttached()).toBe(false);
+    expect(model.box.isAttached()).toBe(false);
+    expect(
+      asInstanceOf(
+        replacement.model.targetVertex.unwrap(),
+        h.boxes.NeuralAmpModelBox
+      ).model.getValue()
+    ).toBe("second model");
+    expect(h.project.boxGraph.boxes()).toContain(survivor);
+    h.runtime.deleteSound("deck");
+    expect(replacement.isAttached()).toBe(false);
+    expect(
+      h.project.boxGraph
+        .boxes()
+        .some((box) => box instanceof h.boxes.NeuralAmpModelBox)
+    ).toBe(false);
+  });
+
+  test("disabled scripts compile their latest source only when enabled", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = { ...werkstatt(), enabled: false };
+    h.runtime.syncEffects("deck", [config]);
+    const device = scriptDevice(h);
+    expect(h.compiles).toHaveLength(0);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("idle");
+    h.runtime.syncEffects("deck", [{ ...config, code: "{ invalid script" }]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(h.compiles).toHaveLength(0);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("idle");
+
+    const enabled = { ...werkstatt("// edited while off"), enabled: true };
+    h.runtime.syncEffects("deck", [enabled]);
+    expect(scriptDevice(h)).toBe(device);
+    expect(h.compiles).toHaveLength(1);
+    await finishCompile(h.compiles[0]);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    const code = device.code.getValue();
+    h.runtime.syncEffects("deck", [{ ...enabled, enabled: false }]);
+    h.runtime.syncEffects("deck", [enabled]);
+    expect(h.compiles).toHaveLength(1);
+    expect(device.code.getValue()).toBe(code);
+
+    const edited = {
+      ...werkstatt("// another edit while off"),
+      enabled: false,
+    };
+    h.runtime.syncEffects("deck", [edited]);
+    expect(h.compiles).toHaveLength(1);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    h.runtime.syncEffects("deck", [{ ...edited, enabled: true }]);
+    expect(h.compiles).toHaveLength(2);
+    await finishCompile(h.compiles[1]);
+    expect(device.code.getValue()).toContain("// another edit while off");
+  });
+
+  test("a failed script keeps its error until its source changes", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt("{ invalid script");
+    const states: string[] = [];
+    const unsubscribe = subscribeWerkstattRuntimeStatus(config.id, () => {
+      states.push(getWerkstattRuntimeStatus(config.id).state);
+    });
+    try {
+      h.runtime.syncEffects("deck", [config]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const device = scriptDevice(h);
+      const code = device.code.getValue();
+      const status = getWerkstattRuntimeStatus(config.id);
+      expect(status.state).toBe("error");
+      expect(states).toEqual(["compiling", "error"]);
+      expect(h.compiles).toHaveLength(0);
+
+      h.runtime.syncEffects("deck", [config]);
+      h.runtime.syncEffects("deck", [{ ...config, dryWet: 0.5 }]);
+      h.runtime.syncEffects("deck", [{ ...config, enabled: false }]);
+      h.runtime.syncEffects("deck", [config]);
+      expect(getWerkstattRuntimeStatus(config.id)).toEqual(status);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(states).toEqual(["compiling", "error"]);
+      expect(device.code.getValue()).toBe(code);
+
+      const corrected = werkstatt("// corrected script");
+      h.runtime.syncEffects("deck", [corrected]);
+      expect(scriptDevice(h)).toBe(device);
+      expect(states).toEqual(["compiling", "error", "compiling"]);
+      await finishCompile(h.compiles[0]);
+      expect(states).toEqual(["compiling", "error", "compiling", "ready"]);
+      expect(device.code.getValue()).toContain("// corrected script");
+    } finally {
+      unsubscribe();
+    }
+  });
+
   test("a newer compile wins when the superseded compile completes last", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
@@ -749,11 +1445,17 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         UUID.toString(retired.address.uuid)
       );
 
-      // Adding a signal trim changes the layout while preserving the effect ID.
+      // Replacing the effect retires its compiler and device subscription.
       h.runtime.syncEffects(
         "deck",
         action === "replace"
-          ? [{ ...config, parameters: { amount: 0.75 }, signalGain: 0.5 }]
+          ? [
+              {
+                ...config,
+                id: "replacement-script",
+                parameters: { amount: 0.75 },
+              },
+            ]
           : []
       );
       expect(h.project.boxGraph.boxes()).not.toContain(retired);
@@ -771,9 +1473,11 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         expect(replacement).not.toBe(retired);
         await finishCompile(h.compiles[1]);
         expect(parameter(h, replacement).value.getValue()).toBe(0.75);
-        expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+        expect(getWerkstattRuntimeStatus("replacement-script").state).toBe(
+          "ready"
+        );
         h.subscriptions[1].listener("current-device error");
-        expect(getWerkstattRuntimeStatus(config.id)).toEqual({
+        expect(getWerkstattRuntimeStatus("replacement-script")).toEqual({
           message: "current-device error",
           state: "error",
         });

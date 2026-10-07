@@ -120,8 +120,8 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
     const unit = {
       audioUnitBox: { address: { uuid: "unit" } },
       destination: null,
-      effects: [],
       groups: [],
+      groupsById: new Map(),
       inputChannels: 2,
       monitoring: true,
       monitoringInput,

@@ -65,15 +65,14 @@ export function hasEnabledEffects(effects: readonly EffectConfig[]): boolean {
 }
 
 /**
- * Disabled radio-only records remain in the persisted controller state, but
- * must not be handed to the official adapter while an official-only active
- * chain is selected.
+ * Disabled official devices retain their boxes; radio-only records stay in the
+ * controller state for the compatibility path and are omitted here.
  */
-export function selectEnabledEffects(
+export function selectOfficialEffects(
   effects: readonly EffectConfig[]
 ): EffectConfig[] {
   return effects.flatMap((effect) => {
-    if (!effect.enabled) {
+    if (!isOfficialOpenDawEffect(effect)) {
       return [];
     }
     if (!("chains" in effect)) {
@@ -84,7 +83,7 @@ export function selectEnabledEffects(
         ...effect,
         chains: effect.chains.map((chain) => ({
           ...chain,
-          effects: selectEnabledEffects(chain.effects),
+          effects: selectOfficialEffects(chain.effects),
         })),
       } as EffectConfig,
     ];

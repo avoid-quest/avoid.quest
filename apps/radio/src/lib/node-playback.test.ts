@@ -4244,8 +4244,11 @@ describe("Node Playback audio inputs and output devices", () => {
   test("master volume acts at the outputs, after every effect, not on the faders", async () => {
     insertNodeSession(
       nodeGraphSchema.parse({
-        edges: [{ ...cable("a", "speakers"), gain: 0.5 }],
-        nodes: [station("a"), speakers],
+        edges: [
+          cable("a", "verb"),
+          { ...cable("verb", "speakers"), gain: 0.5 },
+        ],
+        nodes: [station("a"), reverb("verb"), speakers],
         version: 2,
       })
     );
@@ -4263,9 +4266,32 @@ describe("Node Playback audio inputs and output devices", () => {
     harness.playback.setMasterVolume(0.3);
 
     expect(harness.context.audio.setGlobalVolume).toHaveBeenLastCalledWith(1);
+    // The reverb runs on the lane, before the send leaves it.
+    expect(reconciledTrees(harness, "a").at(-1)).toMatchObject([
+      { id: "verb", type: "cheapReverb" },
+    ]);
     const [send] = sends();
     expect(send?.gain.events.at(-1)).toMatchObject({ value: 0.5 });
     expect(gainOf(send)?.gain.events.at(-1)).toMatchObject({ value: 0.3 });
+  });
+
+  test("a master level stored in the session reaches the outputs once Node hears of it", async () => {
+    insertNodeSession(patch([station("a")]), 1);
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { gainOf, sends } = connectLane(harness, "a");
+
+    // As an import stores it.
+    playbackSessionsCollection.update("node", (draft) => {
+      draft.masterVolume = 0.1;
+    });
+    harness.playback.masterVolumeChanged();
+
+    expect(gainOf(sends()[0])?.gain.events.at(-1)).toMatchObject({
+      value: 0.1,
+    });
   });
 
   test("master volume and an Output device's mute reach cables still fading out", async () => {

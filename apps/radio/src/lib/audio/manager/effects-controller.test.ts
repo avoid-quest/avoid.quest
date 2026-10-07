@@ -617,6 +617,50 @@ describe("EffectsController", () => {
     }
   );
 
+  test("a key whose registration fails partway leaves no unit behind", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    // As openDAW's runtime does, it keeps the unit it made before failing.
+    const units = new Set<string>();
+    runtime.connectSidechainSource.mockImplementation((id) => {
+      units.add(id);
+      return Promise.reject(new Error("No channels left"));
+    });
+    runtime.deleteSound.mockImplementation((id) => {
+      units.delete(id);
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => createManager(context),
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects(
+        [
+          {
+            ...createDefaultEffectConfig("compressor", "comp", 0),
+            enabled: true,
+            sidechain: { channelId: "node-key:comp" },
+          },
+        ],
+        { sidechainSoundId: "node-key:comp" }
+      )
+    );
+    controller.connectKey(
+      "node-key:comp",
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.getRuntimeOutcome("unit").backend).toBe("compatibility");
+    expect(units.has("node-key:comp")).toBe(false);
+  });
+
   test("exposes openDAW performance data without exposing its Project", () => {
     const runtime = createRuntime();
     const controller = new EffectsController({

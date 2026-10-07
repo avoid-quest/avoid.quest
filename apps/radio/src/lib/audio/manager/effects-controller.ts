@@ -452,19 +452,22 @@ class EffectsController {
       return;
     }
     const owner = this.claimOfficialSound(id);
-    const connected = await runtime.connectSidechainSource(id, node, owner, 2);
-    if (!connected) {
-      return;
+    let connected = false;
+    try {
+      connected = await runtime.connectSidechainSource(id, node, owner, 2);
+    } finally {
+      if (
+        connected &&
+        this.keys.get(id) === node &&
+        this.officialSoundOwners.get(id) === owner &&
+        this.officialSidechainTargets().has(id)
+      ) {
+        this.officialRegisteredSoundIds.add(id);
+      } else {
+        // What the runtime made before it failed or went stale goes too.
+        this.deleteOfficialSound(id, runtime, owner);
+      }
     }
-    if (
-      this.keys.get(id) !== node ||
-      this.officialSoundOwners.get(id) !== owner ||
-      !this.officialSidechainTargets().has(id)
-    ) {
-      this.deleteOfficialSound(id, runtime, owner);
-      return;
-    }
-    this.officialRegisteredSoundIds.add(id);
   }
 
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {

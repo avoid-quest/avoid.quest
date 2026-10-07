@@ -4,16 +4,11 @@ import {
   beforeEach,
   describe,
   expect,
+  jest,
   spyOn,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { initializePlaybackSessions } from "@/lib/collections/playback-sessions";
@@ -130,6 +125,7 @@ describe("MixerChannel", () => {
     "Deck A speed",
   ])("throttles %s writes to the deck", async (name) => {
     const change = spyOn(getDjDeckModule().deck("deck-a"), "change");
+    jest.useFakeTimers();
     try {
       const view = renderDeckAChannel();
       const control = view.getByRole("slider", { name });
@@ -140,8 +136,12 @@ describe("MixerChannel", () => {
 
       // Leading call now; the trailing one lands after the throttle window.
       expect(change).toHaveBeenCalledTimes(1);
-      await waitFor(() => expect(change).toHaveBeenCalledTimes(2));
+      await act(() => {
+        jest.advanceTimersByTime(32);
+      });
+      expect(change).toHaveBeenCalledTimes(2);
     } finally {
+      jest.useRealTimers();
       change.mockRestore();
     }
   });

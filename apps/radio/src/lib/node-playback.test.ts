@@ -466,6 +466,17 @@ function stationData(store: NodeStore, nodeId: string) {
   return node?.type === "station" ? node.data : undefined;
 }
 
+/**
+ * Reports `soundId` playing on its channel, as AudioManager does only while
+ * the channel holds it: a released sound's subscription and request are gone.
+ */
+function reportPlaying(soundId: string): void {
+  const channelId = soundId.slice("node:".length);
+  if (getPlaybackChannelRuntime(channelId).soundId === soundId) {
+    setPlaybackChannelRuntime(channelId, () => ({ isPlaying: true }));
+  }
+}
+
 /** playSound mock whose starts wait for a release each. */
 function heldStarts(context: PlaybackActionContext) {
   const releases: Array<() => void> = [];
@@ -475,9 +486,7 @@ function heldStarts(context: PlaybackActionContext) {
       new Promise<void>((resolve) => {
         started.push(soundId);
         releases.push(() => {
-          setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
-            isPlaying: true,
-          }));
+          reportPlaying(soundId);
           resolve();
         });
       })
@@ -1317,10 +1326,7 @@ describe("Node Playback starts", () => {
       (soundId: string) =>
         new Promise<void>((resolve) => {
           resolveStart = () => {
-            setPlaybackChannelRuntime(channelId, () => ({
-              isPlaying: true,
-              soundId,
-            }));
+            reportPlaying(soundId);
             resolve();
           };
         })
@@ -1353,10 +1359,7 @@ describe("Node Playback starts", () => {
         new Promise<void>((resolve) => {
           attempt += 1;
           const start = () => {
-            setPlaybackChannelRuntime(channelId, () => ({
-              isPlaying: true,
-              soundId,
-            }));
+            reportPlaying(soundId);
             resolve();
           };
           if (attempt === 1) {
@@ -3041,6 +3044,8 @@ describe("Node Playback audio inputs and output devices", () => {
     const active = new Set<string>();
     /** Captures whose track ended, as an unplugged device's does. */
     const ended = new Set<string>();
+    /** Each capture's channels: an unchanged selection is a no-op. */
+    const selections = new Map<string, string>();
     Object.assign(context.audio, {
       getDeviceSource: mock((soundId: string) =>
         active.has(soundId)
@@ -3073,6 +3078,10 @@ describe("Node Playback audio inputs and output devices", () => {
             `playDeviceSound ${soundId} ${deviceId} ${JSON.stringify(constraints)} ${JSON.stringify(channelSelection)}`
           );
           active.add(soundId);
+          selections.set(
+            soundId,
+            `${channelSelection?.left}:${channelSelection?.right}`
+          );
           setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
             isPlaying: true,
           }));
@@ -3081,9 +3090,11 @@ describe("Node Playback audio inputs and output devices", () => {
       ),
       setDeviceChannelSelection: mock(
         (soundId: string, selection: { left: number; right: number }) => {
-          calls.push(
-            `setDeviceChannelSelection ${soundId} ${selection.left}:${selection.right}`
-          );
+          const channels = `${selection.left}:${selection.right}`;
+          if (selections.get(soundId) !== channels) {
+            selections.set(soundId, channels);
+            calls.push(`setDeviceChannelSelection ${soundId} ${channels}`);
+          }
         }
       ),
     });
@@ -3225,6 +3236,41 @@ describe("Node Playback audio inputs and output devices", () => {
       }
     }
   );
+
+  test("Off while Go live requests permission mutes the late real capture", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const capture = createDeviceCaptureHarness();
+    try {
+      const context = createTestContext();
+      context.audio = capture.manager;
+      const { activate } = context.channels;
+      context.channels.activate = (...args) => {
+        const soundId = activate(...args);
+        capture.manager.createSound(args[2], soundId);
+        return soundId;
+      };
+      const harness = createHarness({ context });
+      await harness.playback.activate();
+      const start = harness.playback.setPlaying("mic", true);
+      const request = await capture.request();
+
+      await harness.playback.setPlaying("mic", false);
+      request.resolve(capturedStream().stream);
+      await start;
+      await settle();
+
+      const gain = capture.manager.getPostFaderNode(
+        soundOf("mic")
+      ) as unknown as FakeGainNode;
+      expect(gain.gain.events.at(-1)).toMatchObject({
+        type: "target",
+        value: 0.0001,
+      });
+      expect(getPlaybackChannelRuntime(channelOf("mic")).isPlaying).toBe(false);
+    } finally {
+      capture.restore();
+    }
+  });
 
   test("Go live opens the device with its echo cancellation and selected channels", async () => {
     insertNodeSession(
@@ -3657,6 +3703,45 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(
       calls.filter((call) => call.startsWith("playDeviceSound"))
     ).toHaveLength(1);
+  });
+
+  test("channels changed while the device prompt is open apply once the capture opens", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const harness = createHarness();
+    const { calls } = deviceEngine(harness.context);
+    const startCapture = harness.context.audio.playDeviceSound;
+    const prompt = Promise.withResolvers<void>();
+    harness.context.audio.playDeviceSound = mock(
+      async (...args: Parameters<typeof startCapture>) => {
+        await prompt.promise;
+        return startCapture(...args);
+      }
+    );
+    await harness.playback.activate();
+    const live = harness.playback.setPlaying("mic", true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    commitNodeGraph(
+      (graph) => ({
+        ...graph,
+        nodes: graph.nodes.map((node) =>
+          node.type === "deviceIn"
+            ? {
+                ...node,
+                data: { ...node.data, channelSelection: { left: 1, right: 1 } },
+              }
+            : node
+        ),
+      }),
+      harness.store
+    );
+    harness.playback.flush();
+    prompt.resolve();
+    await live;
+
+    expect(calls.at(-1)).toBe(
+      `setDeviceChannelSelection ${soundOf("mic")} 1:1`
+    );
   });
 
   test("a reload never goes live on its own: restore skips a device input", async () => {
@@ -5302,6 +5387,82 @@ describe("Node Playback: Track and File sources", () => {
       expect(harness.context.reportError).not.toHaveBeenCalled();
     }
   );
+
+  test("settling waits for a playlist's next track while its stream resolves", async () => {
+    insertNodeSession(patch([trackNode("playlist", youtubePlaylist)]));
+    const resolution = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("playlist", true);
+    setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+
+    let settled = false;
+    const settling = harness.playback.whenSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/two.m4a",
+    });
+    await settling;
+    expect(
+      getPlaybackChannel("node", channelOf("playlist"))?.radio
+    ).toMatchObject({ streamUrl: "https://media.example/two.m4a" });
+    expect(getPlaybackChannelRuntime(channelOf("playlist")).isPlaying).toBe(
+      true
+    );
+  });
+
+  test("settling waits for a playlist's next track to be stored after a live edit", async () => {
+    insertNodeSession(
+      patch([trackNode("playlist", youtubePlaylist), station("a")])
+    );
+    const resolution = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("playlist", true);
+    const stored = spyOn(playbackSessionsCollection.utils, "acceptMutations");
+    setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+
+    const settling = harness.playback.whenSettled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // A live edit's write holds the next one back for the pacing window.
+    commitNodeGraph(withStation("a", { volume: 0.4 }), harness.store);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/two.m4a",
+    });
+    await settling;
+
+    expect(
+      stored.mock.calls.at(-1)?.[0].mutations[0]?.modified.channels
+    ).toContainEqual(
+      expect.objectContaining({
+        radio: expect.objectContaining({
+          streamUrl: "https://media.example/two.m4a",
+        }),
+      })
+    );
+    stored.mockRestore();
+  });
 
   test("a third playing Track past the mobile budget is refused with its message", async () => {
     insertNodeSession(

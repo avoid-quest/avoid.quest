@@ -21,6 +21,7 @@ import {
   resetPlaybackLifecycleState,
 } from "./mode-lifecycle-manager";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
+import { getNodePlayback } from "./node-playback";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 async function resetPlaybackSessions() {
@@ -116,6 +117,9 @@ function getActivatedSoundId(
   return optionsOrSoundId?.soundId ?? `sound:${channelId}`;
 }
 
+/** Contexts whose Node playback may be live on the shared node store. */
+const testContexts: PlaybackActionContext[] = [];
+
 function createModeLifecycleTestContext() {
   const audioEngine = {
     playback: {
@@ -133,7 +137,7 @@ function createModeLifecycleTestContext() {
     },
   } satisfies AudioEngineFacade;
 
-  return {
+  const context = {
     audio: {
       cleanupSound: mock((_soundId: string) => undefined),
       hasSound: mock((_soundId: string) => false),
@@ -176,6 +180,8 @@ function createModeLifecycleTestContext() {
     resetAudioManager: mock(() => undefined),
     resumeAudioContext: mock(async () => undefined),
   } satisfies PlaybackActionContext;
+  testContexts.push(context);
+  return context;
 }
 
 beforeEach(async () => {
@@ -185,6 +191,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // A Node mode left active would play the next file's patches.
+  await Promise.all(
+    testContexts.splice(0).map((ctx) => getNodePlayback({ ctx }).deactivate())
+  );
   await resetPlaybackSessions();
   await resetSettings();
   resetAllPlaybackRuntime();

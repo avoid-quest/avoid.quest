@@ -1,5 +1,5 @@
 import { AppError, captureError } from "@avoid.quest/error";
-import { UUID } from "@opendaw/lib-std";
+import { Editing, UUID } from "@opendaw/lib-std";
 import type { Project, ProjectEnv } from "@opendaw/studio-core";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
@@ -10,6 +10,7 @@ import {
 import type {
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
+  OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 import {
   bindOfficialSidechain,
@@ -287,7 +288,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     source: AudioNode,
     destination: AudioNode,
     generation = (this.connectionGenerations.get(soundId) ?? 0) + 1,
-    inputChannels: 1 | 2 = 2
+    inputChannels: 1 | 2 = 2,
+    settings?: OfficialSoundSettings
   ): Promise<boolean> {
     if (!this.beginSoundConnection(soundId, generation)) {
       return false;
@@ -302,14 +304,23 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!this.isCurrentSoundConnection(soundId, generation)) {
       return false;
     }
-    return this.connectSoundUnit(
-      soundId,
-      source,
-      destination,
-      true,
-      generation,
-      inputChannels
-    );
+    return this.transaction(() => {
+      const connected = this.connectSoundUnit(
+        soundId,
+        source,
+        destination,
+        true,
+        generation,
+        inputChannels
+      );
+      if (connected && settings) {
+        this.setTempo(settings.tempo);
+        this.setSidechainTarget(soundId, settings.sidechainSoundId);
+        this.syncEffects(soundId, settings.effects);
+        this.setDryWet(soundId, settings.dryWet);
+      }
+      return connected;
+    });
   }
 
   async connectSidechainSource(
@@ -375,19 +386,17 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
 
     if (!unit) {
-      const product = project.editing
-        .modify(() => {
-          const created = project.api.createInstrument(
-            this.requireModules().adapters.InstrumentFactories.Tape,
-            { name: `Radio ${this.soundUnits.size + 1}` }
-          );
-          const rack = createMasterRack(
-            this.adapterContext(),
-            created.audioUnitBox.audioEffects
-          );
-          return { ...created, rack };
-        })
-        .unwrap();
+      const product = this.transaction(() => {
+        const created = project.api.createInstrument(
+          this.requireModules().adapters.InstrumentFactories.Tape,
+          { name: `Radio ${this.soundUnits.size + 1}` }
+        );
+        const rack = createMasterRack(
+          this.adapterContext(),
+          created.audioUnitBox.audioEffects
+        );
+        return { ...created, rack };
+      });
       unit = {
         ...product,
         destination: null,
@@ -465,9 +474,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     const { project } = this;
     if (project) {
       this.releaseWerkstattGroups(unit.groups);
-      project.editing.modify(() =>
-        project.api.deleteAudioUnit(unit.audioUnitBox)
-      );
+      this.transaction(() => project.api.deleteAudioUnit(unit.audioUnitBox));
     }
     this.soundUnits.delete(soundId);
     this.sidechainTargets.delete(soundId);
@@ -490,7 +497,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       const groupsById = new Map(
         flattenGroups(unit.groups).map((group) => [group.config.id, group])
       );
-      project.editing.modify(() => {
+      this.transaction(() => {
         for (const { after, before } of stableUpdates) {
           const group = groupsById.get(after.id);
           if (group) {
@@ -507,23 +514,25 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         unit.effects = nextEffects;
         this.bindSidechains();
       });
-      for (const { after, before } of stableUpdates) {
-        const group = groupsById.get(after.id);
-        if (
-          group &&
-          after.type === "werkstatt" &&
-          before.type === "werkstatt" &&
-          werkstattSource(before) !== werkstattSource(after)
-        ) {
-          this.compileWerkstattGroup(group, after);
+      this.afterCommit(() => {
+        for (const { after, before } of stableUpdates) {
+          const group = groupsById.get(after.id);
+          if (
+            group &&
+            after.type === "werkstatt" &&
+            before.type === "werkstatt" &&
+            werkstattSource(before) !== werkstattSource(after)
+          ) {
+            this.compileWerkstattGroup(group, after);
+          }
         }
-      }
+      });
       return;
     }
 
-    this.releaseWerkstattGroups(unit.groups);
-    project.editing.modify(() => {
-      deleteOfficialEffectGroups(unit.groups);
+    const previousGroups = unit.groups;
+    this.transaction(() => {
+      deleteOfficialEffectGroups(previousGroups);
       unit.effects = nextEffects;
       unit.groups = unit.effects.map((effect, index) =>
         createOfficialEffectGroup(
@@ -535,20 +544,25 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       );
       this.bindSidechains();
     });
-    for (const group of flattenGroups(unit.groups)) {
-      if (group.config.type === "werkstatt") {
-        this.compileWerkstattGroup(group, group.config);
+    this.afterCommit(() => {
+      this.releaseWerkstattGroups(previousGroups);
+      for (const group of flattenGroups(unit.groups)) {
+        if (group.config.type === "werkstatt") {
+          this.compileWerkstattGroup(group, group.config);
+        }
       }
-    }
+    });
   }
 
   setSidechainTarget(soundId: string, targetSoundId: string | null): void {
-    if (targetSoundId === null) {
-      this.sidechainTargets.delete(soundId);
-    } else {
-      this.sidechainTargets.set(soundId, targetSoundId);
-    }
-    this.rebindSidechains();
+    this.transaction(() => {
+      if (targetSoundId === null) {
+        this.sidechainTargets.delete(soundId);
+      } else {
+        this.sidechainTargets.set(soundId, targetSoundId);
+      }
+      this.bindSidechains();
+    });
   }
 
   setDryWet(soundId: string, value: number): void {
@@ -557,7 +571,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!(unit && project)) {
       return;
     }
-    project.editing.modify(() => setMasterRackDryWet(unit.rack, value));
+    this.transaction(() => setMasterRackDryWet(unit.rack, value));
   }
 
   setTempo(bpm: number): void {
@@ -565,8 +579,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!project) {
       return;
     }
-    this.bpm = clampEffectTempo(bpm);
-    project.editing.modify(() => project.api.setBpm(this.bpm));
+    this.transaction(() => {
+      this.bpm = clampEffectTempo(bpm);
+      project.api.setBpm(this.bpm);
+    });
   }
 
   cleanup(): void {
@@ -596,6 +612,93 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.modules = null;
     this.werkstattCompiler = null;
     this.initializePromise = null;
+  }
+
+  private transaction<T>(write: () => T): T {
+    const graph = this.requireProject().boxGraph;
+    if (graph.inTransaction()) {
+      return write();
+    }
+    const { bpm } = this;
+    const targets = new Map(this.sidechainTargets);
+    const units = new Map(
+      [...this.soundUnits].map(([id, unit]) => [id, { ...unit }])
+    );
+    const groups = new Map(
+      [...this.soundUnits.values()].flatMap((unit) =>
+        flattenGroups(unit.groups).map(
+          (group) => [group, { ...group }] as const
+        )
+      )
+    );
+    graph.beginTransaction();
+    try {
+      const result = write();
+      graph.endTransaction();
+      return result;
+    } catch (error) {
+      if (graph.inTransaction()) {
+        graph.abortTransaction();
+      }
+      this.bpm = bpm;
+      this.sidechainTargets.clear();
+      for (const [id, target] of targets) {
+        this.sidechainTargets.set(id, target);
+      }
+      this.restoreMonitoringSources(units);
+      for (const [group, previous] of groups) {
+        Object.assign(group, restoreGroup(previous, graph));
+      }
+      this.soundUnits.clear();
+      for (const [id, unit] of units) {
+        this.soundUnits.set(id, unit);
+      }
+      throw error;
+    }
+  }
+
+  private restoreMonitoringSources(
+    units: ReadonlyMap<string, SoundUnit>
+  ): void {
+    const project = this.requireProject();
+    for (const [id, unit] of this.soundUnits) {
+      const previous = units.get(id);
+      if (
+        !previous ||
+        previous.source !== unit.source ||
+        previous.destination !== unit.destination ||
+        previous.inputChannels !== unit.inputChannels
+      ) {
+        project.engine.unregisterMonitoringSource(
+          unit.audioUnitBox.address.uuid
+        );
+        if (previous?.source && previous.destination) {
+          project.engine.registerMonitoringSource(
+            previous.audioUnitBox.address.uuid,
+            previous.source,
+            previous.inputChannels,
+            previous.destination
+          );
+        }
+      }
+    }
+  }
+
+  private afterCommit(commit: () => void): void {
+    const graph = this.requireProject().boxGraph;
+    if (!graph.inTransaction()) {
+      commit();
+      return;
+    }
+    const subscription = graph.subscribeTransaction({
+      onBeginTransaction: () => undefined,
+      onEndTransaction: (aborted) => {
+        subscription.terminate();
+        if (!aborted) {
+          commit();
+        }
+      },
+    });
   }
 
   private requireModules(): RuntimeModules {
@@ -667,18 +770,19 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       message: "Compiling locally in the openDAW audio worklet…",
       state: "compiling",
     });
-    compiler
-      .compile(
+    this.transaction(() =>
+      compiler.compile(
         this.context,
-        project.editing,
+        Editing.Transient,
         group.device as never,
         config.code ?? config.source
       )
+    )
       .then(() => {
         if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
           return;
         }
-        project.editing.modify(() =>
+        this.transaction(() =>
           restoreWerkstattParameterValues(group, config.parameters)
         );
         setWerkstattRuntimeStatus(config.id, {
@@ -773,7 +877,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   }
 
   private rebindSidechains(): void {
-    this.project?.editing.modify(() => this.bindSidechains());
+    if (this.project) {
+      this.transaction(() => this.bindSidechains());
+    }
   }
 }
 
@@ -887,4 +993,26 @@ function werkstattSource(
   config: Extract<EffectConfig, { type: "werkstatt" }>
 ): string {
   return config.code ?? config.source;
+}
+
+function restoreGroup(
+  group: OfficialEffectGroup,
+  graph: Project["boxGraph"]
+): OfficialEffectGroup {
+  // Rollback recreates deleted boxes, so cached handles must follow their UUIDs.
+  const restore = <T extends { address?: { uuid: Uint8Array } } | null>(
+    box: T
+  ): T =>
+    box?.address
+      ? (graph.findBox(box.address.uuid).unwrap() as unknown as T)
+      : box;
+  return {
+    ...group,
+    created: group.created.map((box) => restore(box)),
+    device: restore(group.device),
+    inputTrim: restore(group.inputTrim),
+    outputTrim: restore(group.outputTrim),
+    signalTrim: restore(group.signalTrim),
+    wrapper: restore(group.wrapper),
+  };
 }

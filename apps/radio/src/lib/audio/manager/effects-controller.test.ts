@@ -5,7 +5,10 @@ import type { WorkletManager } from "../playback/index.js";
 import type { AudioManager } from "./audio-manager.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
-import type { EffectsGraphRuntime } from "./effects-graph-runtime.js";
+import type {
+  EffectsGraphRuntime,
+  OfficialSoundSettings,
+} from "./effects-graph-runtime.js";
 
 class TestAudioParam {
   value = 0;
@@ -125,16 +128,14 @@ function createRuntime() {
         _source: AudioNode,
         _destination: AudioNode,
         _generation?: number,
-        _inputChannels?: 1 | 2
+        _inputChannels?: 1 | 2,
+        _settings?: OfficialSoundSettings
       ) => Promise.resolve(true)
     ),
-    deleteSound: mock(() => undefined),
+    deleteSound: mock((_soundId: string) => undefined),
     disconnectSound: mock(() => undefined),
     getPerformanceSnapshot: mock(() => performanceSnapshot),
-    setDryWet: mock(() => undefined),
     setSidechainTarget: mock(() => undefined),
-    setTempo: mock(() => undefined),
-    syncEffects: mock(() => undefined),
   } satisfies EffectsGraphRuntime;
 }
 
@@ -361,7 +362,6 @@ describe("EffectsController", () => {
       status: "ready",
     });
     expect(createWorkletManager).not.toHaveBeenCalled();
-    expect(runtime.connectSound.mock.calls[0]).toHaveLength(5);
     expect(runtime.connectSound.mock.calls[0]?.[4]).toBe(1);
   });
 
@@ -572,6 +572,125 @@ describe("EffectsController", () => {
     expect(secondSetTempo).toHaveBeenCalledWith("second", 140);
   });
 
+  test("bypass invalidates a pending official connection before it can apply settings", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const pending = Promise.withResolvers<boolean>();
+    const started = Promise.withResolvers<void>();
+    let owner: number | undefined;
+    let appliedTempo = 120;
+    runtime.connectSound.mockImplementation(
+      async (_id, _source, _destination, generation, _channels, settings) => {
+        owner = generation;
+        started.resolve();
+        await pending.promise;
+        if (owner !== generation) {
+          return false;
+        }
+        appliedTempo = settings?.tempo ?? 120;
+        return true;
+      }
+    );
+    runtime.deleteSound.mockImplementation(() => {
+      owner = undefined;
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map([["target", sound("target", filter)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    await controller.reconcile(
+      "target",
+      desiredEffects([reverb], { tempo: 150 })
+    );
+    const connecting = controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await started.promise;
+    await controller.reconcile("target", desiredEffects([]));
+    pending.resolve(true);
+    await connecting;
+    expect(appliedTempo).toBe(120);
+  });
+
+  test("bypass releases an updating official sound and its unused sidechain", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const keyFilter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const registered = new Set<string>();
+    const pending = Promise.withResolvers<boolean>();
+    const started = Promise.withResolvers<void>();
+    runtime.connectSound.mockImplementation((id) => {
+      registered.add(id);
+      return Promise.resolve(true);
+    });
+    runtime.connectSidechainSource.mockImplementation((id) => {
+      registered.add(id);
+      return Promise.resolve(true);
+    });
+    runtime.deleteSound.mockImplementation((id: string) => {
+      registered.delete(id);
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => createManager(context),
+      notifyListeners: () => undefined,
+      sounds: new Map([
+        ["target", sound("target", filter)],
+        ["key", sound("key", keyFilter)],
+      ]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const destination = new TestAudioNode(context) as unknown as AudioNode;
+    await controller.connectGraph(
+      "key",
+      keyFilter as unknown as AudioNode,
+      destination
+    );
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    await controller.reconcile(
+      "target",
+      desiredEffects([reverb], { sidechainSoundId: "key" })
+    );
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      destination
+    );
+    expect(registered).toEqual(new Set(["target", "key"]));
+
+    runtime.connectSound.mockImplementation(() => {
+      started.resolve();
+      return pending.promise;
+    });
+    const updating = controller.reconcile(
+      "target",
+      desiredEffects([reverb], { sidechainSoundId: "key", tempo: 150 })
+    );
+    await started.promise;
+    await controller.reconcile(
+      "target",
+      desiredEffects([], { sidechainSoundId: "key" })
+    );
+    expect(registered.size).toBe(0);
+    pending.resolve(false);
+    await updating;
+
+    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
+    distortion.enabled = true;
+    expect(
+      await controller.reconcile("target", desiredEffects([distortion]))
+    ).toEqual({ backend: "compatibility", ready: true, status: "ready" });
+  });
+
   test("stop cancels an in-flight official connection", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);
@@ -605,7 +724,6 @@ describe("EffectsController", () => {
     await connecting;
 
     expect(runtime.deleteSound).toHaveBeenCalledTimes(1);
-    expect(runtime.syncEffects).not.toHaveBeenCalled();
   });
 
   test("a stale rejected connection cannot delete its graph replacement", async () => {
@@ -657,14 +775,14 @@ describe("EffectsController", () => {
     await originalConnection;
 
     expect(runtime.deleteSound).not.toHaveBeenCalled();
-    expect(runtime.syncEffects).toHaveBeenCalledTimes(1);
     expect(runtime.connectSound).toHaveBeenNthCalledWith(
       2,
       "target",
       replacementFilter,
       expect.anything(),
       expect.any(Number),
-      2
+      2,
+      { dryWet: 1, effects: [reverb], sidechainSoundId: null, tempo: 120 }
     );
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "official",
@@ -707,7 +825,6 @@ describe("EffectsController", () => {
     await connecting;
 
     expect(runtime.deleteSound).toHaveBeenCalledTimes(1);
-    expect(runtime.syncEffects).not.toHaveBeenCalled();
     expect(runtime.connectSidechainSource).not.toHaveBeenCalled();
     expect(createWorkletManager).not.toHaveBeenCalled();
   });

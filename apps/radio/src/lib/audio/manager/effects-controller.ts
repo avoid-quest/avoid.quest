@@ -601,6 +601,9 @@ class EffectsController {
     generation: number
   ): Promise<void> {
     if (!this.shouldProcess(state)) {
+      if (state.officialConnectingGeneration !== null) {
+        this.releaseOfficialSound(soundId, state);
+      }
       this.switchBackend(soundId, state, "bypass", generation);
       await this.registerNonOfficialSource(soundId, state, generation);
       return;
@@ -637,11 +640,11 @@ class EffectsController {
     );
   }
 
-  private releaseOfficialAttemptIfOwned(
+  private releaseOfficialSound(
     soundId: string,
     state: SoundEffectsState,
-    runtime: EffectsGraphRuntime,
-    runtimeGeneration: number
+    runtime = this.officialRuntime,
+    runtimeGeneration?: number
   ): boolean {
     if (
       this.states.get(soundId) !== state ||
@@ -664,12 +667,7 @@ class EffectsController {
     error: unknown
   ): void {
     if (!wasOfficialConnected) {
-      this.releaseOfficialAttemptIfOwned(
-        soundId,
-        state,
-        runtime,
-        runtimeGeneration
-      );
+      this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
     }
     if (!isStale) {
       this.reportOfficialRuntimeFailure(error);
@@ -709,7 +707,13 @@ class EffectsController {
         graph.source,
         graph.officialGain,
         runtimeGeneration,
-        state.inputChannels
+        state.inputChannels,
+        {
+          dryWet: state.dryWet,
+          effects: selectEnabledEffects(state.effects),
+          sidechainSoundId: state.desiredSidechainSoundId,
+          tempo: state.tempo,
+        }
       );
       if (
         !(
@@ -725,21 +729,12 @@ class EffectsController {
         )
       ) {
         if (connected && state.officialConnectingGeneration === generation) {
-          this.releaseOfficialAttemptIfOwned(
-            soundId,
-            state,
-            runtime,
-            runtimeGeneration
-          );
+          this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
         }
         return false;
       }
 
       this.officialRegisteredSoundIds.add(soundId);
-      runtime.setTempo(state.tempo);
-      runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
-      runtime.syncEffects(soundId, selectEnabledEffects(state.effects));
-      runtime.setDryWet(soundId, state.dryWet);
       state.officialConnected = true;
       await this.registerNonOfficialSources(runtime, soundId);
       return (
@@ -910,9 +905,7 @@ class EffectsController {
     graph.disconnect();
     state.graph = null;
     if (this.officialRegisteredSoundIds.has(soundId)) {
-      this.deleteOfficialSound(soundId);
-      state.officialConnected = false;
-      this.pruneOfficialSidechainSources();
+      this.releaseOfficialSound(soundId, state);
     }
   }
 
@@ -947,9 +940,7 @@ class EffectsController {
         backend !== "official" &&
         this.officialRegisteredSoundIds.has(soundId)
       ) {
-        this.deleteOfficialSound(soundId);
-        state.officialConnected = false;
-        this.pruneOfficialSidechainSources();
+        this.releaseOfficialSound(soundId, state);
         this.registerNonOfficialSource(soundId, state, generation).catch(
           (error: unknown) => {
             if (

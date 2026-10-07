@@ -7,6 +7,13 @@ export type EffectsPerformanceSnapshot = {
   workletCount: 1;
 };
 
+export type OfficialSoundSettings = {
+  dryWet: number;
+  effects: readonly EffectConfig[];
+  sidechainSoundId: string | null;
+  tempo: number;
+};
+
 /** EffectsController seam implemented by the openDAW and test adapters. */
 export type EffectsGraphRuntime = {
   cleanup: () => void;
@@ -21,13 +28,11 @@ export type EffectsGraphRuntime = {
     source: AudioNode,
     destination: AudioNode,
     generation?: number,
-    inputChannels?: 1 | 2
+    inputChannels?: 1 | 2,
+    settings?: OfficialSoundSettings
   ) => Promise<boolean>;
   deleteSound: (soundId: string, generation?: number) => void;
   disconnectSound: (soundId: string, generation?: number) => void;
   getPerformanceSnapshot?: () => EffectsPerformanceSnapshot | null;
-  setDryWet: (soundId: string, value: number) => void;
   setSidechainTarget: (soundId: string, targetSoundId: string | null) => void;
-  setTempo: (bpm: number) => void;
-  syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
 };

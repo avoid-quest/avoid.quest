@@ -15,6 +15,7 @@ import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
   buildNodeGraphFromTemplate,
+  KEY_IN_HANDLE,
   SPEAKERS_NODE_ID,
 } from "@/lib/node-graph/templates";
 import {
@@ -390,6 +391,56 @@ describe("NodeRack", () => {
       name: "Compressor settings, keyed by BBC Radio 4",
     });
     expect(chip.getAttribute("title")).toBe("Keyed by BBC Radio 4");
+  });
+
+  test("a keyed FX chip names every station keying it, through a Filter too", () => {
+    const keyCable = (source: string, target: string) => ({
+      ...cable(source, target),
+      id: `${source}~>${target}`,
+      targetHandle: KEY_IN_HANDLE,
+    });
+    const { view } = renderRack(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("kexp", "comp"),
+          cable("comp", SPEAKERS_NODE_ID),
+          // Two stations into one Filter make it a point of its own.
+          cable("r4", "tone"),
+          cable("ws", "tone"),
+          cable("tone", SPEAKERS_NODE_ID),
+          keyCable("tone", "comp"),
+          cable("nts", SPEAKERS_NODE_ID),
+          keyCable("nts", "comp"),
+        ],
+        nodes: [
+          station("kexp", "KEXP"),
+          station("r4", "BBC Radio 4"),
+          station("ws", "World Service"),
+          station("nts", "NTS 1"),
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("compressor", "comp"),
+                enabled: true,
+              },
+            },
+            id: "comp",
+            position,
+            type: "compressor",
+          },
+          { data: {}, id: "tone", position, type: "filter" },
+          { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+        ],
+        version: 2,
+      } satisfies NodeGraphInput)
+    );
+
+    const chip = view.getByRole("button", {
+      name: "Compressor settings, keyed by BBC Radio 4, World Service, NTS 1",
+    });
+    expect(chip.getAttribute("title")).toBe(
+      "Keyed by BBC Radio 4, World Service, NTS 1"
+    );
   });
 
   test("a key on a switched-off FX names no station, as its cable reads idle", () => {

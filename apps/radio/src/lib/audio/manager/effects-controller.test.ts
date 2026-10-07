@@ -453,6 +453,162 @@ describe("EffectsController", () => {
     controller.cleanup();
   });
 
+  test("publishes readiness once connected, and transient writes stay unauthored", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    await controller.reconcile("lane", desiredEffects([config]));
+    await controller.connectGraph(
+      "lane",
+      source as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    controller.pauseSource("lane");
+    const connecting = Promise.withResolvers<boolean>();
+    let liveThreshold = config.threshold;
+    let connected: readonly import("../dsp/effects/types.js").EffectConfig[] =
+      [];
+    runtime.connectSound.mockImplementation(
+      (_id, _source, _destination, _generation, _channels, settings) => {
+        connected = settings?.effects ?? [];
+        liveThreshold = config.threshold;
+        return connecting.promise;
+      }
+    );
+    runtime.writeEffect.mockImplementation((_id, _effectId, written) => {
+      if (written.type === "compressor") {
+        liveThreshold = written.threshold;
+      }
+      return "applied";
+    });
+    const ready = Promise.withResolvers<void>();
+    const unsubscribe = controller.subscribeRuntimeOutcome(
+      "lane",
+      (outcome) => {
+        if (outcome.backend === "official" && outcome.ready) {
+          controller.setEffectFields(
+            "lane",
+            config.id,
+            { ...config, threshold: -12 },
+            true
+          );
+          ready.resolve();
+        }
+      }
+    );
+    controller.resumeSource("lane");
+    expect(liveThreshold).toBe(config.threshold);
+    connecting.resolve(true);
+    await ready.promise;
+    expect(liveThreshold).toBe(-12);
+    // The next connection still receives the authored compressor value.
+    controller.resumeSource("lane");
+    expect(connected).toEqual([config]);
+    unsubscribe();
+    controller.cleanup();
+  });
+
+  test("a throwing outcome listener leaves the backend and other listeners working", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const controller = new EffectsController({
+      createOfficialRuntime: () => createRuntime(),
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    await controller.reconcile("lane", desiredEffects([config]));
+    await controller.connectGraph(
+      "lane",
+      source as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    const unsubscribeFailed = controller.subscribeRuntimeOutcome("lane", () => {
+      throw new Error("Overlay listener failed");
+    });
+    const observed: string[] = [];
+    const unsubscribeHealthy = controller.subscribeRuntimeOutcome(
+      "lane",
+      (outcome) => {
+        if (outcome.ready && outcome.backend) {
+          observed.push(outcome.backend);
+        }
+      }
+    );
+    try {
+      const outcome = await controller.reconcile(
+        "lane",
+        desiredEffects([{ ...config, threshold: -27 }])
+      );
+      expect(outcome).toEqual({
+        backend: "official",
+        ready: true,
+        status: "ready",
+      });
+      expect(controller.getRuntimeOutcome("lane")).toEqual(outcome);
+      expect(observed).toEqual(["official"]);
+    } finally {
+      unsubscribeFailed();
+      unsubscribeHealthy();
+      controller.cleanup();
+    }
+  });
+
+  test("runtime outcome subscriptions survive sound cleanup until unsubscribed", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const controller = new EffectsController({
+      createOfficialRuntime: () => createRuntime(),
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    const ready: string[] = [];
+    const unsubscribe = controller.subscribeRuntimeOutcome(
+      "lane",
+      (outcome) => {
+        if (outcome.ready && outcome.backend) {
+          ready.push(outcome.backend);
+        }
+      }
+    );
+    const connect = async () => {
+      await controller.reconcile("lane", desiredEffects([config]));
+      await controller.connectGraph(
+        "lane",
+        source as unknown as AudioNode,
+        new TestAudioNode(context) as unknown as AudioNode
+      );
+    };
+    await connect();
+    controller.cleanupSound("lane");
+    await connect();
+    expect(ready).toEqual(["official", "official"]);
+    unsubscribe();
+    controller.cleanupSound("lane");
+    await connect();
+    expect(ready).toEqual(["official", "official"]);
+    controller.cleanup();
+  });
+
   test("a knob edited while the key source registers reaches the connected runtime", async () => {
     const context = new TestAudioContext();
     const source = new TestAudioNode(context);

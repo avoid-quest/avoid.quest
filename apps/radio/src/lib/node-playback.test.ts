@@ -387,6 +387,7 @@ function createHarness(
     effects: options.effects ?? {
       reconcileEffects,
       setEffectFields,
+      subscribeEffectsRuntimeOutcome: () => () => undefined,
     },
     fadeOutSound,
     getEnv: () => ({
@@ -2437,6 +2438,7 @@ describe("Node Playback lane outputs", () => {
           return promise;
         }),
         setEffectFields: () => "structural",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     instantStarts(harness.context);
@@ -2504,6 +2506,7 @@ describe("Node Playback lane outputs", () => {
           return promise;
         }),
         setEffectFields: () => "structural",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     instantStarts(harness.context);
@@ -2564,6 +2567,7 @@ describe("Node Playback lane outputs", () => {
             : Promise.reject(new Error("tree failed"))
         ),
         setEffectFields: () => "structural",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     const warnings = spyOn(console, "warn").mockImplementation(() => undefined);
@@ -5987,6 +5991,7 @@ describe("Node Playback: channel strips", () => {
           })
         ),
         setEffectFields: () => "structural",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
       fadeOutSound: mock(async () => undefined),
       getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),

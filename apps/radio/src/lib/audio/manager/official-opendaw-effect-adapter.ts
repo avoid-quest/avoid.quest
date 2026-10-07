@@ -565,6 +565,14 @@ export function writeOfficialEffectFields(
     group.outputTrim?.enabled.setValue(config.enabled);
   }
   configureDevice(context, group.device, config, context.bpm);
+  if ("chains" in config) {
+    for (const chain of config.chains) {
+      const cell = group.cells.get(chain.id);
+      if (cell) {
+        writeCell(cell, chain);
+      }
+    }
+  }
 }
 
 export function syncOfficialEffectCells(

@@ -71,6 +71,7 @@ import {
   cleanupManagedChannel,
   createManagedSound,
 } from "../playback-actions-shared.js";
+import { createLaneParameters } from "./params";
 
 export type StartResult = "playing" | "failed" | "refused" | "cancelled";
 
@@ -78,6 +79,7 @@ export type EffectsBackend = EffectsRuntimeOutcome["backend"];
 
 /** What a lane needs from the engine that holds it. */
 export type LaneHost = {
+  readonly subscribeEffectsRuntimeOutcome: AudioManager["subscribeEffectsRuntimeOutcome"];
   readonly setEffectFields: AudioManager["setEffectFields"];
   readonly ctx: PlaybackActionContext;
   readonly laneOutputs: NodeLaneOutputs;
@@ -186,6 +188,7 @@ export class LaneInstance {
   private readonly controller = new AbortController();
   readonly signal = this.controller.signal;
   readonly soundId: string;
+  readonly parameters: ReturnType<typeof createLaneParameters>;
   /** The backend its effects last settled on, as the controller reported. */
   outcome: EffectsBackend | undefined;
   /**
@@ -239,6 +242,20 @@ export class LaneInstance {
       host.ctx.channels.setMuted("node", plan.channelId, plan.muted);
     }
     this.soundId = soundId;
+    this.parameters = createLaneParameters({
+      active: () => !this.retiring,
+      audio: host.ctx.audio,
+      effects: host,
+      plan: () => slot.plan,
+      soundId,
+    });
+    this.signal.addEventListener(
+      "abort",
+      host.subscribeEffectsRuntimeOutcome(soundId, () => {
+        this.parameters.reapply();
+        host.laneOutputs.refresh(slot.laneId);
+      })
+    );
     // A Track or File sound's state drives its renewal, repeat and advance.
     if (isTrackRadio(radio)) {
       host.ctx.channels.subscribeRuntime("node", plan.channelId, soundId, {
@@ -509,6 +526,7 @@ export class LaneInstance {
       this.soundId,
       plan.filter ? { ...plan.filter, enabled: true, gain: 0 } : BYPASS_FILTER
     );
+    this.parameters.reapply("strip");
   }
 
   /**
@@ -582,7 +600,9 @@ export class LaneInstance {
       const result = config
         ? this.host.setEffectFields(this.soundId, id, config)
         : "applied";
-      if (result !== "applied") {
+      if (result === "applied") {
+        this.parameters.reapply({ effectId: id });
+      } else {
         this.effectsChanged();
       }
     } catch {
@@ -656,6 +676,7 @@ export class LaneInstance {
    */
   retire(): void {
     this.controller.abort();
+    this.parameters.retire();
   }
 
   /** Fades the retired sound out, then releases its channel and outputs. */

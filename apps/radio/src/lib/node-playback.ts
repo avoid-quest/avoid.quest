@@ -749,8 +749,9 @@ export function getNodePlayback(
     effects: options.effects ?? {
       reconcileEffects: (soundId, desired) =>
         ctx.audio.reconcileEffects(soundId, desired),
-      setEffectFields: (soundId, effectId, config) =>
-        ctx.audio.setEffectFields(soundId, effectId, config),
+      setEffectFields: (...args) => ctx.audio.setEffectFields(...args),
+      subscribeEffectsRuntimeOutcome: (...args) =>
+        ctx.audio.subscribeEffectsRuntimeOutcome(...args),
     },
     fadeOutDurationMs:
       options.fadeOutDurationMs ?? DEFAULT_FADE_OUT_DURATION_MS,

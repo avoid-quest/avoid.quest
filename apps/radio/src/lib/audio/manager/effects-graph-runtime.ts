@@ -21,7 +21,8 @@ export type EffectsGraphRuntime = {
   writeEffect: (
     soundId: string,
     effectId: string,
-    config: EffectConfig
+    config: EffectConfig,
+    transient?: boolean
   ) => EffectWriteResult;
   syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
   cleanup: () => void;

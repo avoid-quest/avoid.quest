@@ -27,6 +27,11 @@ export const NODE_GRAPH_VERSION = 2;
  */
 export const MAX_EDGE_GAIN = 4;
 
+export const FILTER_PARAM_BOUNDS = {
+  frequency: { max: 20_000, min: 20 },
+  Q: { max: 30, min: 0.1 },
+};
+
 export const SOURCE_NODE_TYPES = [
   "station",
   "file",
@@ -323,7 +328,7 @@ const speakersNodeSchema = z.object({
  * A number pulled into `[min, max]` rather than refused. `z.number()`
  * still refuses NaN and the infinities, which have no place to clamp to.
  */
-function clampedNumber(min: number, max: number) {
+function clampedNumber({ min, max }: { min: number; max: number }) {
   return z.number().transform((value) => Math.min(max, Math.max(min, value)));
 }
 
@@ -333,8 +338,8 @@ const filterNodeSchema = z.object({
   // Clamped to what the old Filter allowed (Q up to 30), so a migrated
   // patch still opens rather than going invalid.
   data: z.object({
-    frequency: clampedNumber(20, 20_000).default(1000),
-    Q: clampedNumber(0.1, 30).default(1),
+    frequency: clampedNumber(FILTER_PARAM_BOUNDS.frequency).default(1000),
+    Q: clampedNumber(FILTER_PARAM_BOUNDS.Q).default(1),
     type: z.enum(["lowpass", "highpass"]).default("lowpass"),
   }),
   type: z.literal("filter"),

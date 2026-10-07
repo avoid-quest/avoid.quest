@@ -607,25 +607,33 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   writeEffect(
     soundId: string,
     effectId: string,
-    config: EffectConfig
+    config: EffectConfig,
+    transient = false
   ): EffectWriteResult {
     const unit = this.soundUnits.get(soundId);
     const group = unit?.groupsById.get(effectId);
     if (!(unit && group && this.project)) {
       return "unavailable";
     }
+    if (transient && group.config.type === "werkstatt") {
+      return "unavailable";
+    }
     if (effectFieldsAreStructural(group.config, config)) {
       return "structural";
     }
-    const authored = structuredClone(config);
+    const authored = transient ? config : structuredClone(config);
     this.transaction(() => {
       writeOfficialEffectFields(this.adapterContext(), group, authored);
-      group.config = authored;
-      syncOfficialEffectCells(this.adapterContext(), group);
+      if (!transient) {
+        group.config = authored;
+      }
       if (authored.type === "werkstatt" && authored.enabled) {
         this.compileWerkstattGroup(soundId, group, authored);
       }
     });
+    if (transient) {
+      return "applied";
+    }
     unit.effects = updateEffectFieldsInTree(unit.effects, effectId, authored);
     for (const current of unit.groupsById.values()) {
       current.config =

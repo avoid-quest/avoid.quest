@@ -45,6 +45,7 @@ import {
   laneChannelId,
 } from "@/lib/node-graph/compile";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
+import { MAX_EDGE_GAIN } from "@/lib/node-graph/schema";
 import type { OutputRouting } from "@/lib/output-routing.js";
 import {
   type ResolvePlatformStream,
@@ -70,6 +71,7 @@ import {
   LaneSlot,
   type StartResult,
 } from "./lane.js";
+import { clampParam, type EngineParamTarget } from "./param-target.js";
 
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
@@ -153,7 +155,10 @@ export type NodeEngineOptions = {
   deviceSinks: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
   laneOutputs: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
   /** Where each lane's sound reconciles its effects; AudioManager's. */
-  effects: Pick<AudioManager, "reconcileEffects" | "setEffectFields">;
+  effects: Pick<
+    AudioManager,
+    "reconcileEffects" | "setEffectFields" | "subscribeEffectsRuntimeOutcome"
+  >;
   fadeOut: (soundId: string) => Promise<void>;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
   resolveStream: ResolvePlatformStream;
@@ -182,6 +187,8 @@ function warn(message: string) {
 export function createNodeEngine(options: NodeEngineOptions) {
   const { ctx } = options;
   const slots = new Map<string, LaneSlot>();
+  /** A send belongs to its edge until that edge leaves the plan. */
+  const transientSends = new Map<string, number>();
   let plan = EMPTY_PLAN;
   let disposing = false;
   /** The latest Play all; a pause or a newer Play all stops it. */
@@ -208,16 +215,17 @@ export function createNodeEngine(options: NodeEngineOptions) {
    */
   const laneLevels = (laneId: string) => {
     const levels = new Map<string, number>();
+    const parameters = liveInstance(laneId)?.parameters;
     for (const edge of plan.edges.values()) {
       if (edge.from.id !== laneId) {
         continue;
       }
       const sinkId = edge.to.id;
       const silenced = edge.muted || plan.sinks.get(sinkId)?.muted === true;
-      levels.set(
-        sinkId,
-        (levels.get(sinkId) ?? 0) + (silenced ? 0 : edge.gain)
-      );
+      const gain = parameters?.available({ edgeId: edge.id, kind: "send" })
+        ? (transientSends.get(edge.id) ?? edge.gain)
+        : edge.gain;
+      levels.set(sinkId, (levels.get(sinkId) ?? 0) + (silenced ? 0 : gain));
     }
     return levels;
   };
@@ -321,8 +329,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       });
     },
     resolveStream: options.resolveStream,
-    setEffectFields: (soundId, effectId, config) =>
-      options.effects.setEffectFields(soundId, effectId, config),
+    setEffectFields: (...args) => options.effects.setEffectFields(...args),
     /** A lane's sound came or went: every other lane keyed from it rebinds. */
     soundChanged: (laneId) => {
       const channelId = laneChannelId(laneId);
@@ -349,6 +356,8 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
       return busy >= limit ? limit : null;
     },
+    subscribeEffectsRuntimeOutcome: (...args) =>
+      options.effects.subscribeEffectsRuntimeOutcome(...args),
   };
 
   /**
@@ -484,6 +493,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
       const previous = plan;
       const ops = diff(previous, next);
       plan = next;
+      transientSends.forEach((_value, edgeId) => {
+        if (!next.edges.has(edgeId)) {
+          transientSends.delete(edgeId);
+        }
+      });
       const removed = new Set(
         ops.flatMap((op) => (op.type === "removeLane" ? [op.laneId] : []))
       );
@@ -538,6 +552,27 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
     },
     busy: (): boolean => [...slots.values()].some((slot) => slot.busy()),
+    clearTransient(target?: EngineParamTarget) {
+      if (target) {
+        if (target.kind === "send") {
+          transientSends.delete(target.edgeId);
+          const laneId = plan.edges.get(target.edgeId)?.from.id;
+          if (laneId && liveInstance(laneId)) {
+            laneOutputs.refresh(laneId);
+          }
+        } else {
+          liveInstance(target.laneId)?.parameters.clear(target);
+        }
+      } else {
+        transientSends.clear();
+        for (const slot of slots.values()) {
+          if (!slot.current?.retiring) {
+            slot.current?.parameters.clear();
+            laneOutputs.refresh(slot.laneId);
+          }
+        }
+      }
+    },
     async dispose() {
       disposing = true;
       playAll?.abort();
@@ -573,6 +608,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       deviceSinks.dispose();
       options.sinkStatuses.setState(() => deviceSinks.statuses());
       plan = EMPTY_PLAN;
+      transientSends.clear();
       publishBadges();
       cleanupOrphanedSounds([...soundIds], ctx, "node");
     },
@@ -627,6 +663,25 @@ export function createNodeEngine(options: NodeEngineOptions) {
       if (!disposing && plan.sinks.get(sinkId)?.type === "deviceOut") {
         deviceSinks.retry(sinkId);
       }
+    },
+    setParam(target: EngineParamTarget, value: number) {
+      if (!Number.isFinite(value)) {
+        return "unavailable";
+      }
+      if (target.kind === "send") {
+        const laneId = plan.edges.get(target.edgeId)?.from.id;
+        const instance = laneId ? liveInstance(laneId) : undefined;
+        if (!(laneId && instance?.parameters.available(target))) {
+          return "unavailable";
+        }
+        transientSends.set(target.edgeId, clampParam(value, 0, MAX_EDGE_GAIN));
+        laneOutputs.refresh(laneId);
+        return "applied";
+      }
+      return (
+        liveInstance(target.laneId)?.parameters.set(target, value) ??
+        "unavailable"
+      );
     },
     /** The lane's sound, while it has one. */
     soundOf: (laneId: string) => liveInstance(laneId)?.soundId ?? null,

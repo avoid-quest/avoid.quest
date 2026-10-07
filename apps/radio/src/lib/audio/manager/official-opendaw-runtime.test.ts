@@ -1305,6 +1305,140 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   });
 
+  test("transient fields preserve the authored baseline and undo history", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    h.runtime.syncEffects("deck", [config]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
+    for (let frame = 0; frame < 1000; frame += 1) {
+      expect(
+        h.runtime.writeEffect(
+          "deck",
+          config.id,
+          { ...config, threshold: -20 - frame / 1000 },
+          true
+        )
+      ).toBe("applied");
+    }
+    expect(device.threshold.getValue()).toBeCloseTo(-20.999, 5);
+    // The same authored tree is still unchanged after transient writes.
+    h.runtime.syncEffects("deck", [config]);
+    expect(device.threshold.getValue()).toBeCloseTo(-20.999, 5);
+    expect(h.project.editing.hasNoChanges()).toBe(true);
+    expect(h.project.editing.canUndo()).toBe(false);
+    h.runtime.writeEffect("deck", config.id, config, true);
+    expect(device.threshold.getValue()).toBe(config.threshold);
+  });
+
+  test("transient targets needing a layout return structural without preparing boxes", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = {
+      ...createDefaultEffectConfig("autotune", "tune", 0),
+      enabled: true,
+    };
+    h.runtime.syncEffects("deck", [config]);
+    const before = h.project.boxGraph.boxes().slice();
+    expect(
+      h.runtime.writeEffect("deck", config.id, { ...config, dryWet: 0.5 }, true)
+    ).toBe("structural");
+    expect(
+      h.runtime.writeEffect(
+        "deck",
+        config.id,
+        { ...config, signalGain: 0.5 },
+        true
+      )
+    ).toBe("structural");
+    expect(h.project.boxGraph.boxes()).toEqual(before);
+    expect(h.project.editing.hasNoChanges()).toBe(true);
+  });
+
+  test("transient branch gain and pan restore the authored cell without replacing it", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = createDefaultEffectConfig("fxComposite", "split", 0);
+    h.runtime.syncEffects("deck", [config]);
+    const [chain] = config.chains;
+    if (!chain) {
+      throw new Error("Missing authored chain");
+    }
+    const cell = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find(
+          (box) =>
+            box instanceof h.boxes.AudioEffectCompositeCellBox &&
+            box.label.getValue() === chain.name
+        ),
+      h.boxes.AudioEffectCompositeCellBox
+    );
+    h.runtime.writeEffect(
+      "deck",
+      config.id,
+      {
+        ...config,
+        chains: config.chains.map((entry) =>
+          entry.id === chain.id ? { ...entry, gain: 0.5, pan: -0.7 } : entry
+        ),
+      },
+      true
+    );
+    expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+    expect(cell.pan.getValue()).toBeCloseTo(-0.7, 6);
+    h.runtime.syncEffects("deck", [config]);
+    expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(chain.gain));
+    expect(cell.pan.getValue()).toBe(chain.pan);
+    h.runtime.writeEffect("deck", config.id, config, true);
+    expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(chain.gain));
+    expect(cell.pan.getValue()).toBe(chain.pan);
+    expect(h.project.boxGraph.findBox(cell.address.uuid).unwrap()).toBe(cell);
+  });
+
+  test.each(["initial", "ready", "replacement"] as const)(
+    "transient Werkstatt writes are unavailable during %s compilation",
+    async (phase) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = werkstatt();
+      h.runtime.syncEffects("deck", [config]);
+      if (phase !== "initial") {
+        await finishCompile(h.compiles[0]);
+      }
+      if (phase === "replacement") {
+        config.code = werkstatt("// replacement source").code;
+        h.runtime.syncEffects("deck", [config]);
+      }
+      const device = scriptDevice(h);
+      const checksum = h.project.boxGraph.checksum();
+      const status = getWerkstattRuntimeStatus(config.id);
+      expect(
+        h.runtime.writeEffect(
+          "deck",
+          config.id,
+          { ...config, dryWet: 0.5, parameters: { amount: 0.7 } },
+          true
+        )
+      ).toBe("unavailable");
+      expect(h.project.boxGraph.checksum()).toEqual(checksum);
+      expect(getWerkstattRuntimeStatus(config.id)).toEqual(status);
+      if (phase !== "ready") {
+        await finishCompile(h.compiles[phase === "replacement" ? 1 : 0]);
+      }
+      expect(parameter(h, device).value.getValue()).toBe(0.25);
+      expect(h.project.editing.canUndo()).toBe(false);
+    }
+  );
+
   test("model and Autotune layout changes use the structural path", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);

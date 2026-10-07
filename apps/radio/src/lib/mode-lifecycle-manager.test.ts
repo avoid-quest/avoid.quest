@@ -151,6 +151,7 @@ function createModeLifecycleTestContext() {
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
       setVolume: mock((_soundId: string, _volume: number) => undefined),
+      subscribeEffectsRuntimeOutcome: () => () => undefined,
     } as unknown as AudioManager,
     audioEngine,
     channels: {

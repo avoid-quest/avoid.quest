@@ -151,7 +151,6 @@ function createRuntime() {
         _config: import("../dsp/effects/types.js").EffectConfig
       ) => "applied" as const
     ),
-    writeTransientEffect: mock(() => "applied" as const),
   } satisfies EffectsGraphRuntime;
 }
 
@@ -451,6 +450,71 @@ describe("EffectsController", () => {
     await connected;
     expect(connectedEffects).toEqual([{ ...config, threshold: -27 }]);
     expect(controller.getRuntimeOutcome("lane").backend).toBe("official");
+    controller.cleanup();
+  });
+
+  test("a resumed official runtime publishes readiness and replays transient fields without authoring them", async () => {
+    const context = new TestAudioContext();
+    const source = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map([["lane", sound("lane", source)]]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+    };
+    await controller.reconcile("lane", desiredEffects([config]));
+    await controller.connectGraph(
+      "lane",
+      source as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    controller.pauseSource("lane");
+    const connecting = Promise.withResolvers<boolean>();
+    let liveThreshold = config.threshold;
+    let connected: readonly import("../dsp/effects/types.js").EffectConfig[] =
+      [];
+    runtime.connectSound.mockImplementation(
+      (_id, _source, _destination, _generation, _channels, settings) => {
+        connected = settings?.effects ?? [];
+        liveThreshold = config.threshold;
+        return connecting.promise;
+      }
+    );
+    runtime.writeEffect.mockImplementation((_id, _effectId, written) => {
+      if (written.type === "compressor") {
+        liveThreshold = written.threshold;
+      }
+      return "applied";
+    });
+    const ready = Promise.withResolvers<void>();
+    const unsubscribe = controller.subscribeRuntimeOutcome(
+      "lane",
+      (outcome) => {
+        if (outcome.backend === "official" && outcome.ready) {
+          controller.setEffectFields(
+            "lane",
+            config.id,
+            { ...config, threshold: -12 },
+            true
+          );
+          ready.resolve();
+        }
+      }
+    );
+    controller.resumeSource("lane");
+    expect(liveThreshold).toBe(config.threshold);
+    connecting.resolve(true);
+    await ready.promise;
+    expect(liveThreshold).toBe(-12);
+    // The next connection still receives the authored compressor value.
+    controller.resumeSource("lane");
+    expect(connected).toEqual([config]);
+    unsubscribe();
     controller.cleanup();
   });
 

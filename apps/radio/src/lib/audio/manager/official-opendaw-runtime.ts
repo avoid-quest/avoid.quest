@@ -15,7 +15,6 @@ import {
   updateEffectFieldsInTree,
 } from "../dsp/routing/effect-tree.js";
 import type {
-  EffectLayoutRequirements,
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
   EffectWriteResult,
@@ -34,7 +33,6 @@ import {
   syncOfficialEffectCells,
   updateOfficialEffectGroup,
   writeOfficialEffectFields,
-  writeTransientOfficialEffectGroup,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
@@ -609,7 +607,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   writeEffect(
     soundId: string,
     effectId: string,
-    config: EffectConfig
+    config: EffectConfig,
+    transient = false
   ): EffectWriteResult {
     const unit = this.soundUnits.get(soundId);
     const group = unit?.groupsById.get(effectId);
@@ -619,65 +618,25 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (effectFieldsAreStructural(group.config, config)) {
       return "structural";
     }
-    const authored = structuredClone(config);
+    const authored = transient ? config : structuredClone(config);
     this.transaction(() => {
       writeOfficialEffectFields(this.adapterContext(), group, authored);
-      group.config = authored;
-      syncOfficialEffectCells(this.adapterContext(), group);
+      if (!transient) {
+        group.config = authored;
+      }
       if (authored.type === "werkstatt" && authored.enabled) {
         this.compileWerkstattGroup(soundId, group, authored);
       }
     });
+    if (transient) {
+      return "applied";
+    }
     unit.effects = updateEffectFieldsInTree(unit.effects, effectId, authored);
     for (const current of unit.groupsById.values()) {
       current.config =
         findEffectInTree(unit.effects, current.config.id) ?? current.config;
     }
     return "applied";
-  }
-
-  writeTransientEffect(
-    soundId: string,
-    effectId: string,
-    config: EffectConfig,
-    requirements: EffectLayoutRequirements,
-    prepare: boolean
-  ): EffectWriteResult {
-    const unit = this.soundUnits.get(soundId);
-    const group = unit?.groupsById.get(effectId);
-    if (!(unit && group && this.project) || group.config.type !== config.type) {
-      return "unavailable";
-    }
-    return this.transaction(() => {
-      if (
-        !writeTransientOfficialEffectGroup(
-          this.adapterContext(),
-          group,
-          config,
-          requirements,
-          prepare
-        )
-      ) {
-        return "structural";
-      }
-      if (prepare) {
-        const indices = new Map<OfficialEffectHost, number>();
-        for (const current of unit.groupsById.values()) {
-          const index = indices.get(current.host) ?? 0;
-          indices.set(
-            current.host,
-            index +
-              moveOfficialEffectGroup(
-                this.adapterContext(),
-                current,
-                current.host,
-                index
-              )
-          );
-        }
-      }
-      return "applied";
-    });
   }
 
   private syncEffectChain(
@@ -791,7 +750,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.initializePromise = null;
   }
 
-  transaction<T>(write: () => T): T {
+  private transaction<T>(write: () => T): T {
     const graph = this.requireProject().boxGraph;
     if (graph.inTransaction()) {
       return write();

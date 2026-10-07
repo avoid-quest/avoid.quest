@@ -387,7 +387,6 @@ function createHarness(
     effects: options.effects ?? {
       reconcileEffects,
       setEffectFields,
-      writeTransientEffect: () => "unavailable",
     },
     fadeOutSound,
     getEnv: () => ({
@@ -2438,7 +2437,7 @@ describe("Node Playback lane outputs", () => {
           return promise;
         }),
         setEffectFields: () => "structural",
-        writeTransientEffect: () => "unavailable",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     instantStarts(harness.context);
@@ -2506,7 +2505,7 @@ describe("Node Playback lane outputs", () => {
           return promise;
         }),
         setEffectFields: () => "structural",
-        writeTransientEffect: () => "unavailable",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     instantStarts(harness.context);
@@ -2567,7 +2566,7 @@ describe("Node Playback lane outputs", () => {
             : Promise.reject(new Error("tree failed"))
         ),
         setEffectFields: () => "structural",
-        writeTransientEffect: () => "unavailable",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     const warnings = spyOn(console, "warn").mockImplementation(() => undefined);
@@ -5991,7 +5990,7 @@ describe("Node Playback: channel strips", () => {
           })
         ),
         setEffectFields: () => "structural",
-        writeTransientEffect: () => "unavailable",
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
       fadeOutSound: mock(async () => undefined),
       getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),

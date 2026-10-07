@@ -13,7 +13,6 @@ import {
   getWerkstattRuntimeStatus,
   subscribeWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
-import type { OfficialEffectGroup } from "./official-opendaw-effect-adapter.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
@@ -1306,7 +1305,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   });
 
-  test("transient fields leave authored configs and undo history untouched", async () => {
+  test("transient fields preserve the authored baseline and undo history", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
     const config = {
@@ -1314,50 +1313,32 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       enabled: true,
     };
     h.runtime.syncEffects("deck", [config]);
-    const unit = (
-      Reflect.get(h.runtime, "soundUnits") as Map<
-        string,
-        {
-          effects: EffectConfig[];
-          groupsById: Map<string, OfficialEffectGroup>;
-        }
-      >
-    ).get("deck");
-    const group = unit?.groupsById.get(config.id);
-    if (!(unit && group)) {
-      throw new Error("No live group");
-    }
-    const authored = group.config;
-    const { effects } = unit;
-    const device = asInstanceOf(group.device, h.boxes.CompressorDeviceBox);
-    const requirements = { signalTrim: false, wrapper: false };
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
     for (let frame = 0; frame < 1000; frame += 1) {
       expect(
-        h.runtime.writeTransientEffect(
+        h.runtime.writeEffect(
           "deck",
           config.id,
           { ...config, threshold: -20 - frame / 1000 },
-          requirements,
-          false
+          true
         )
       ).toBe("applied");
     }
     expect(device.threshold.getValue()).toBeCloseTo(-20.999, 5);
-    expect(group.config).toBe(authored);
-    expect(unit.effects).toBe(effects);
-    expect(group.config).toEqual(config);
+    // The same authored tree is still unchanged after transient writes.
+    h.runtime.syncEffects("deck", [config]);
+    expect(device.threshold.getValue()).toBeCloseTo(-20.999, 5);
     expect(h.project.editing.hasNoChanges()).toBe(true);
-    h.runtime.writeTransientEffect(
-      "deck",
-      config.id,
-      config,
-      requirements,
-      true
-    );
+    h.runtime.writeEffect("deck", config.id, config, true);
     expect(device.threshold.getValue()).toBe(config.threshold);
   });
 
-  test("Autotune and folded Gain endpoints are retained at unity until their targets clear", async () => {
+  test("transient targets needing a layout return structural without preparing boxes", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
     const config = {
@@ -1365,78 +1346,42 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       enabled: true,
     };
     h.runtime.syncEffects("deck", [config]);
-    const device = asInstanceOf(
-      h.project.boxGraph
-        .boxes()
-        .find((box) => box instanceof h.boxes.AutotuneDeviceBox),
-      h.boxes.AutotuneDeviceBox
-    );
-    const bareBoxes = h.project.boxGraph.boxes().slice();
-    const active = { signalTrim: true, wrapper: true };
+    const before = h.project.boxGraph.boxes().slice();
     expect(
-      h.runtime.writeTransientEffect("deck", config.id, config, active, false)
+      h.runtime.writeEffect("deck", config.id, { ...config, dryWet: 0.5 }, true)
     ).toBe("structural");
     expect(
-      h.runtime.writeTransientEffect("deck", config.id, config, active, true)
-    ).toBe("applied");
-    const prepared = h.project.boxGraph.boxes().slice();
-    const wrapper = wrapperForDevice(h, device);
-    h.runtime.writeTransientEffect(
-      "deck",
-      config.id,
-      { ...config, dryWet: 0.25, signalGain: 0.4 },
-      active,
-      false
-    );
-    expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.25));
-    h.runtime.writeTransientEffect("deck", config.id, config, active, false);
-    expect(wrapper.wet.getValue()).toBe(0);
-    h.runtime.syncEffects("deck", [{ ...config, amount: 0.4 }]);
-    expect(wrapperForDevice(h, device)).toBe(wrapper);
-    expect(h.project.boxGraph.boxes()).toEqual(prepared);
-    expect(
-      h.runtime.writeTransientEffect(
+      h.runtime.writeEffect(
         "deck",
         config.id,
-        config,
-        { signalTrim: false, wrapper: false },
-        false
+        { ...config, signalGain: 0.5 },
+        true
       )
     ).toBe("structural");
-    h.runtime.writeTransientEffect(
-      "deck",
-      config.id,
-      config,
-      { signalTrim: false, wrapper: false },
-      true
-    );
-    expect(h.project.boxGraph.boxes()).toEqual(bareBoxes);
-    expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
-      device
-    );
+    expect(h.project.boxGraph.boxes()).toEqual(before);
     expect(h.project.editing.hasNoChanges()).toBe(true);
   });
 
-  test("transient branch gain and pan restore without changing the authored chain", async () => {
+  test("transient branch gain and pan restore the authored cell without replacing it", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
     const config = createDefaultEffectConfig("fxComposite", "split", 0);
     h.runtime.syncEffects("deck", [config]);
-    const group = (
-      Reflect.get(h.runtime, "soundUnits") as Map<
-        string,
-        { groupsById: Map<string, OfficialEffectGroup> }
-      >
-    )
-      .get("deck")
-      ?.groupsById.get(config.id);
     const [chain] = config.chains;
-    const cell = chain && group?.cells.get(chain.id);
-    if (!(group && chain && cell)) {
-      throw new Error("No live cell");
+    if (!chain) {
+      throw new Error("Missing authored chain");
     }
-    const authored = group.config;
-    h.runtime.writeTransientEffect(
+    const cell = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find(
+          (box) =>
+            box instanceof h.boxes.AudioEffectCompositeCellBox &&
+            box.label.getValue() === chain.name
+        ),
+      h.boxes.AudioEffectCompositeCellBox
+    );
+    h.runtime.writeEffect(
       "deck",
       config.id,
       {
@@ -1445,21 +1390,41 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
           entry.id === chain.id ? { ...entry, gain: 0.5, pan: -0.7 } : entry
         ),
       },
-      { signalTrim: false, wrapper: false },
-      false
+      true
     );
     expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(0.5));
     expect(cell.pan.getValue()).toBeCloseTo(-0.7, 6);
-    expect(group.config).toBe(authored);
-    h.runtime.writeTransientEffect(
-      "deck",
-      config.id,
-      config,
-      { signalTrim: false, wrapper: false },
-      false
-    );
+    h.runtime.syncEffects("deck", [config]);
     expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(chain.gain));
     expect(cell.pan.getValue()).toBe(chain.pan);
+    h.runtime.writeEffect("deck", config.id, config, true);
+    expect(cell.gain.getValue()).toBeCloseTo(20 * Math.log10(chain.gain));
+    expect(cell.pan.getValue()).toBe(chain.pan);
+    expect(h.project.boxGraph.findBox(cell.address.uuid).unwrap()).toBe(cell);
+  });
+
+  test("the same transient writer restores Werkstatt parameters without saving them", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt();
+    h.runtime.syncEffects("deck", [config]);
+    await finishCompile(h.compiles[0]);
+    const device = scriptDevice(h);
+    const amount = parameter(h, device);
+    h.runtime.writeEffect(
+      "deck",
+      config.id,
+      { ...config, parameters: { amount: 0.7 } },
+      true
+    );
+    expect(amount.value.getValue()).toBeCloseTo(0.7);
+    h.runtime.syncEffects("deck", [config]);
+    expect(amount.value.getValue()).toBeCloseTo(0.7);
+    h.runtime.writeEffect("deck", config.id, config, true);
+    expect(amount.value.getValue()).toBe(0.25);
+    expect(parameter(h, device)).toBe(amount);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    expect(h.project.editing.hasNoChanges()).toBe(true);
   });
 
   test("model and Autotune layout changes use the structural path", async () => {

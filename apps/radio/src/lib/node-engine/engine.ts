@@ -73,12 +73,7 @@ import {
 
 export type { EngineParamTarget } from "./param-target";
 
-import {
-  type EngineParamTarget,
-  type ParamMode,
-  paramKey,
-} from "./param-target";
-import { withLaneParam } from "./params";
+import type { EngineParamTarget } from "./param-target";
 
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
@@ -164,7 +159,7 @@ export type NodeEngineOptions = {
   /** Where each lane's sound reconciles its effects; AudioManager's. */
   effects: Pick<
     AudioManager,
-    "reconcileEffects" | "setEffectFields" | "writeTransientEffect"
+    "reconcileEffects" | "setEffectFields" | "subscribeEffectsRuntimeOutcome"
   >;
   fadeOut: (soundId: string) => Promise<void>;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
@@ -221,10 +216,6 @@ export function createNodeEngine(options: NodeEngineOptions) {
   const laneLevels = (laneId: string) => {
     const levels = new Map<string, number>();
     const parameters = liveInstance(laneId)?.parameters;
-    const transient =
-      parameters && parameters.transient.size > 0 && parameters.available()
-        ? parameters.transient
-        : undefined;
     for (const edge of plan.edges.values()) {
       if (edge.from.id !== laneId) {
         continue;
@@ -236,7 +227,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
         (levels.get(sinkId) ?? 0) +
           (silenced
             ? 0
-            : (transient?.get(paramKey({ edgeId: edge.id, kind: "send" })) ??
+            : (parameters?.value({ edgeId: edge.id, kind: "send" }) ??
               edge.gain))
       );
     }
@@ -302,24 +293,6 @@ export function createNodeEngine(options: NodeEngineOptions) {
   };
 
   const host: LaneHost = {
-    authorParam: (target, value) => {
-      if (target.kind === "send") {
-        const edge = plan.edges.get(target.edgeId);
-        if (edge) {
-          plan = {
-            ...plan,
-            edges: new Map(plan.edges).set(edge.id, { ...edge, gain: value }),
-          };
-        }
-        return;
-      }
-      const slot = slots.get(target.laneId);
-      if (slot?.plan) {
-        const lane = withLaneParam(slot.plan, target, value);
-        slot.plan = lane;
-        plan = { ...plan, lanes: new Map(plan.lanes).set(lane.id, lane) };
-      }
-    },
     commitTrack: options.commitTrack,
     ctx,
     cueTap: (laneId, tap) => {
@@ -361,8 +334,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     },
     resolveStream: options.resolveStream,
     sendGain: (edgeId) => plan.edges.get(edgeId)?.gain,
-    setEffectFields: (soundId, effectId, config) =>
-      options.effects.setEffectFields(soundId, effectId, config),
+    setEffectFields: (...args) => options.effects.setEffectFields(...args),
     /** A lane's sound came or went: every other lane keyed from it rebinds. */
     soundChanged: (laneId) => {
       const channelId = laneChannelId(laneId);
@@ -389,8 +361,8 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
       return busy >= limit ? limit : null;
     },
-    writeTransientEffect: (...args) =>
-      options.effects.writeTransientEffect(...args),
+    subscribeEffectsRuntimeOutcome: (...args) =>
+      options.effects.subscribeEffectsRuntimeOutcome(...args),
   };
 
   /**
@@ -688,13 +660,13 @@ export function createNodeEngine(options: NodeEngineOptions) {
         deviceSinks.retry(sinkId);
       }
     },
-    setParam(target: EngineParamTarget, value: number, mode: ParamMode) {
+    setParam(target: EngineParamTarget, value: number) {
       const laneId =
         target.kind === "send"
           ? plan.edges.get(target.edgeId)?.from.id
           : target.laneId;
       const instance = laneId ? liveInstance(laneId) : undefined;
-      return instance?.parameters.set(target, value, mode) ?? "unavailable";
+      return instance?.parameters.set(target, value) ?? "unavailable";
     },
     /** The lane's sound, while it has one. */
     soundOf: (laneId: string) => liveInstance(laneId)?.soundId ?? null,

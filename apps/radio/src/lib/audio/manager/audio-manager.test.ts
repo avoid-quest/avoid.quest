@@ -130,6 +130,30 @@ afterEach(() => {
 });
 
 describe("AudioManager", () => {
+  test("fresh playback awaits the effects graph even when media playback is ready", async () => {
+    const harness = createMediaPlaybackHarness();
+    const graph = Promise.withResolvers<boolean>();
+    try {
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = () => graph.promise;
+      const soundId = manager.createSound(station, "node:n:video");
+      let settled = false;
+      const playing = manager.playSound(soundId).then(() => {
+        settled = true;
+      });
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await flushMicrotasks();
+      expect(browser.audio().paused).toBe(false);
+      expect(settled).toBe(false);
+      graph.resolve(true);
+      await playing;
+      expect(settled).toBe(true);
+    } finally {
+      harness.restore();
+    }
+  });
+
   test("a fresh source's graph-start failure cleans up without advancing the playlist", async () => {
     const harness = createMediaPlaybackHarness();
     try {

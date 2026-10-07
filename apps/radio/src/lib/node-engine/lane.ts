@@ -71,7 +71,6 @@ import {
   cleanupManagedChannel,
   createManagedSound,
 } from "../playback-actions-shared.js";
-import type { EngineParamTarget } from "./param-target";
 import { LaneParameters } from "./params";
 
 export type StartResult = "playing" | "failed" | "refused" | "cancelled";
@@ -80,9 +79,8 @@ export type EffectsBackend = EffectsRuntimeOutcome["backend"];
 
 /** What a lane needs from the engine that holds it. */
 export type LaneHost = {
-  readonly writeTransientEffect: AudioManager["writeTransientEffect"];
+  readonly subscribeEffectsRuntimeOutcome: AudioManager["subscribeEffectsRuntimeOutcome"];
   readonly sendGain: (edgeId: string) => number | undefined;
-  readonly authorParam: (target: EngineParamTarget, value: number) => void;
   readonly setEffectFields: AudioManager["setEffectFields"];
   readonly ctx: PlaybackActionContext;
   readonly laneOutputs: NodeLaneOutputs;
@@ -248,16 +246,14 @@ export class LaneInstance {
     this.parameters = new LaneParameters({
       active: () => !this.retiring,
       audio: host.ctx.audio,
-      author: host.authorParam,
       effects: {
         setEffectFields: host.setEffectFields,
-        writeTransientEffect: host.writeTransientEffect,
+        subscribeEffectsRuntimeOutcome: host.subscribeEffectsRuntimeOutcome,
       },
       plan: () => slot.plan,
       refreshSends: () => host.laneOutputs.refresh(slot.laneId),
       sendGain: host.sendGain,
       soundId,
-      wake: () => slot.kick(),
     });
     // A Track or File sound's state drives its renewal, repeat and advance.
     if (isTrackRadio(radio)) {
@@ -604,7 +600,7 @@ export class LaneInstance {
         ? this.host.setEffectFields(this.soundId, id, config)
         : "applied";
       if (result === "applied") {
-        this.parameters.reapply();
+        this.parameters.reapply(id);
       } else {
         this.effectsChanged();
       }
@@ -647,7 +643,6 @@ export class LaneInstance {
     if (this.pendingFields.size > 0) {
       return this.writePendingFields(plan);
     }
-    this.parameters.prepare();
     if (this.ducked) {
       this.ducked = false;
       laneOutputs.unduck(plan.id);

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Store } from "@tanstack/react-store";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { effectFieldsAreStructural } from "@/lib/audio/dsp/routing/effect-tree";
 import type { AudioManager } from "@/lib/audio/manager/audio-manager";
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
 // biome-ignore lint/performance/noNamespaceImport: fail at the forbidden persistence boundary
@@ -11,6 +12,7 @@ import * as compiler from "@/lib/node-graph/compile";
 import {
   removeNodesHealed,
   setEffectParams,
+  setNativeParams,
 } from "@/lib/node-graph/graph-edits";
 // biome-ignore lint/performance/noNamespaceImport: fail at the forbidden authored-store boundary
 import * as editor from "@/lib/node-graph/node-store";
@@ -84,13 +86,9 @@ function graph() {
 
 function strip() {
   const parameter = (value = 0) => ({
-    constant: 0,
-    setTargetAtTime(next: number, time: number, constant: number) {
+    setTargetAtTime(next: number) {
       this.value = next;
-      this.time = time;
-      this.constant = constant;
     },
-    time: 0,
     value,
   });
   return {
@@ -101,14 +99,15 @@ function strip() {
 
 async function harness(
   backend: "official" | "compatibility" = "official",
-  connecting = false
+  connecting = false,
+  patch = graph()
 ) {
-  const patch = graph();
   const store = editor.createNodeStore(patch);
   const plan = compiler.compile(patch, { crossOriginIsolated: true });
   const live = new Set<string>();
   const authored = new Map<string, EffectConfig>();
   const fields = new Map<string, EffectConfig>();
+  let allowedEffect: string | null = null;
   const outcome: EffectsRuntimeOutcome = {
     backend: connecting ? null : backend,
     ready: !connecting,
@@ -118,6 +117,7 @@ async function harness(
   let fades: Promise<void> = Promise.resolve();
   let onConnect: ((laneId: string) => void) | undefined;
   const levels = new Map<string, number>();
+  const listeners = new Set<(outcome: EffectsRuntimeOutcome) => void>();
   const ctx = {
     audio: {
       getEffectsRuntimeOutcome: () => outcome,
@@ -184,14 +184,23 @@ async function harness(
         }
         return Promise.resolve(outcome);
       },
-      setEffectFields: (_id, id, config) => {
-        authored.set(id, config);
+      setEffectFields: (_id, id, config, transient) => {
+        const before = authored.get(id);
+        if (before && effectFieldsAreStructural(before, config)) {
+          return "structural";
+        }
+        if (transient && allowedEffect && id !== allowedEffect) {
+          throw new Error("Unrelated effect overlay was rewritten");
+        }
+        if (!transient) {
+          authored.set(id, config);
+        }
         fields.set(id, config);
         return "applied";
       },
-      writeTransientEffect: (_id, id, config) => {
-        fields.set(id, config);
-        return "applied";
+      subscribeEffectsRuntimeOutcome: (_id, listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
       },
     },
     fadeOut: () => fades,
@@ -220,6 +229,9 @@ async function harness(
   engine.apply(plan, true);
   await engine.whenSettled();
   return {
+    allowOnlyEffect(id: string) {
+      allowedEffect = id;
+    },
     authored,
     engine,
     fields,
@@ -233,9 +245,21 @@ async function harness(
       return nodes;
     },
     plan,
-    reconnect() {
-      nodes = strip();
+    ready() {
+      // A new official unit starts on the authored tree, after the native shell connected.
+      for (const [id, config] of authored) {
+        fields.set(id, config);
+      }
       Object.assign(outcome, { backend, ready: true, status: "ready" });
+      for (const listener of listeners) {
+        listener(outcome);
+      }
+    },
+    reconnect(ready = true) {
+      nodes = strip();
+      if (ready) {
+        Object.assign(outcome, { backend, ready: true, status: "ready" });
+      }
       onConnect?.("a");
     },
     store,
@@ -269,9 +293,7 @@ describe("Node engine parameters", () => {
     spyOn(editor, "commitNodeGraph").mockImplementation(forbidden);
     spyOn(sessions, "updatePlaybackSession").mockImplementation(forbidden);
     for (let frame = 0; frame < 1000; frame += 1) {
-      expect(
-        h.engine.setParam(threshold, -20 - frame / 1000, "transient")
-      ).toBe("applied");
+      expect(h.engine.setParam(threshold, -20 - frame / 1000)).toBe("applied");
     }
     expect(h.fields.get("comp")).toMatchObject({ threshold: -20.999 });
     expect(h.authored.get("comp")).toBe(config);
@@ -284,21 +306,26 @@ describe("Node engine parameters", () => {
 
   test("strip and sends use overlays and clear to the latest authored values", async () => {
     const h = await harness();
-    expect(h.engine.setParam(pan, -0.7, "transient")).toBe("applied");
-    expect(h.engine.setParam(frequency, 2400, "transient")).toBe("applied");
-    expect(h.engine.setParam(send, 0.3, "transient")).toBe("applied");
-    expect(h.nodes?.pan.pan).toMatchObject({
-      constant: 0.01,
-      time: 3,
-      value: -0.7,
-    });
-    expect(h.nodes?.filter.frequency).toMatchObject({
-      constant: 0.01,
-      value: 2400,
-    });
+    expect(h.engine.setParam(pan, -0.7)).toBe("applied");
+    expect(h.engine.setParam(frequency, 2400)).toBe("applied");
+    expect(h.engine.setParam(send, 0.3)).toBe("applied");
+    expect(h.nodes?.pan.pan.value).toBe(-0.7);
+    expect(h.nodes?.filter.frequency.value).toBe(2400);
     expect(h.levels.get("a")).toBe(0.3);
     expect(h.engine.levels("a").get("speakers")).toBe(0.3);
-    expect(h.engine.setParam(pan, 0.6, "authored")).toBe("applied");
+    editor.commitNodeGraph(
+      (patch) => setNativeParams(patch, "pan", { pan: 0.6 }),
+      h.store
+    );
+    const edited = h.store.state.graph;
+    if (!edited) {
+      throw new Error("Missing patch");
+    }
+    h.engine.apply(
+      compiler.compile(edited, { crossOriginIsolated: true }),
+      true
+    );
+    await h.engine.whenSettled();
     expect(h.nodes?.pan.pan.value).toBe(-0.7);
     h.engine.clearTransient();
     expect(h.nodes?.pan.pan.value).toBe(0.6);
@@ -307,26 +334,21 @@ describe("Node engine parameters", () => {
     expect(h.plan.lanes.get("a")?.pan).toBe(0.2);
   });
 
-  test("authored knobs under modulation change the baseline and clear uses it", async () => {
-    const h = await harness();
-    h.engine.setParam(threshold, -10, "transient");
-    expect(h.engine.setParam(threshold, -30, "authored")).toBe("applied");
-    expect(h.fields.get("comp")).toMatchObject({ threshold: -10 });
-    expect(h.authored.get("comp")).toMatchObject({ threshold: -30 });
-    h.engine.clearTransient();
-    expect(h.fields.get("comp")).toMatchObject({ threshold: -30 });
-  });
-
   test("an authored graph commit and structural effects replacement replay the overlay", async () => {
     const h = await harness();
-    h.engine.setParam(threshold, -12, "transient");
+    h.engine.setParam(threshold, -12);
     const patch = h.store.state.graph;
     if (!patch) {
       throw new Error("Missing patch");
     }
-    const edited = setEffectParams(patch, "comp", {
-      threshold: -35,
-    } as Partial<EffectConfig>);
+    editor.commitNodeGraph(
+      (current) => setEffectParams(current, "comp", { threshold: -35 }),
+      h.store
+    );
+    const edited = h.store.state.graph;
+    if (!edited) {
+      throw new Error("Missing edited patch");
+    }
     h.engine.apply(
       compiler.compile(edited, { crossOriginIsolated: true }),
       true
@@ -376,9 +398,112 @@ describe("Node engine parameters", () => {
     expect(h.fields.get("comp")).toMatchObject({ threshold: -35 });
   });
 
+  test("an authored knob replays only its own effect overlay", async () => {
+    const patch = graph();
+    const extra = nodeGraphSchema.parse({
+      ...patch,
+      edges: [
+        ...patch.edges.map((edge) =>
+          edge.source === "comp" ? { ...edge, target: "verb" } : edge
+        ),
+        {
+          id: "verb->speakers",
+          source: "verb",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+      ],
+      nodes: [
+        ...patch.nodes,
+        {
+          data: {
+            effect: {
+              ...createNodeEffectConfig("cheapReverb", "verb"),
+              enabled: true,
+            },
+          },
+          id: "verb",
+          position: { x: 0, y: 0 },
+          type: "cheapReverb",
+        },
+      ],
+    });
+    const h = await harness("official", false, extra);
+    h.engine.setParam(threshold, -12);
+    h.engine.setParam(
+      { effectId: "verb", field: "decay", kind: "effect", laneId: "a" },
+      0.7
+    );
+    h.engine.setParam(frequency, 2400);
+    h.allowOnlyEffect("comp");
+    if (!h.nodes) {
+      throw new Error("No live strip");
+    }
+    let stripRewritten = false;
+    spyOn(h.nodes.filter.frequency, "setTargetAtTime").mockImplementation(
+      () => {
+        stripRewritten = true;
+        throw new Error("Unrelated filter overlay was rewritten");
+      }
+    );
+    editor.commitNodeGraph(
+      (current) => setEffectParams(current, "comp", { threshold: -35 }),
+      h.store
+    );
+    const edited = h.store.state.graph;
+    if (!edited) {
+      throw new Error("Missing patch");
+    }
+    h.engine.apply(
+      compiler.compile(edited, { crossOriginIsolated: true }),
+      true
+    );
+    await h.engine.whenSettled();
+    expect(h.authored.get("comp")).toMatchObject({ threshold: -35 });
+    expect(h.fields.get("comp")).toMatchObject({ threshold: -12 });
+    expect(h.fields.get("verb")).toMatchObject({ decay: 0.7 });
+    expect(h.nodes.filter.frequency.value).toBe(2400);
+    expect(stripRewritten).toBe(false);
+  });
+
+  test("setParam returns structural while an effect needs an endpoint layout", async () => {
+    const patch = graph();
+    const h = await harness(
+      "official",
+      false,
+      nodeGraphSchema.parse({
+        ...patch,
+        nodes: patch.nodes.map((node) =>
+          node.id === "comp"
+            ? {
+                ...node,
+                data: {
+                  effect: {
+                    ...createNodeEffectConfig("autotune", "comp"),
+                    enabled: true,
+                  },
+                },
+                type: "autotune",
+              }
+            : node
+        ),
+      })
+    );
+    const baseline = h.fields.get("comp");
+    expect(h.engine.setParam({ ...threshold, field: "dryWet" }, 0.5)).toBe(
+      "structural"
+    );
+    expect(h.engine.setParam({ ...threshold, field: "inputGain" }, 0.5)).toBe(
+      "structural"
+    );
+    expect(h.fields.get("comp")).toBe(baseline);
+    expect(h.engine.plan).toBe(h.plan);
+  });
+
   test("removing a native Filter drops its old overlay", async () => {
     const h = await harness();
-    h.engine.setParam(frequency, 2400, "transient");
+    h.engine.setParam(frequency, 2400);
     const patch = h.store.state.graph;
     if (!patch) {
       throw new Error("Missing patch");
@@ -393,16 +518,18 @@ describe("Node engine parameters", () => {
     );
     await h.engine.whenSettled();
     expect(h.nodes?.filter.frequency.value).toBe(0);
-    expect(h.engine.setParam(frequency, 1800, "transient")).toBe("unavailable");
+    expect(h.engine.setParam(frequency, 1800)).toBe("unavailable");
   });
 
   test("connection and new strip nodes replay overlays; retirement drops them", async () => {
     const h = await harness("official", true);
-    h.engine.setParam(pan, -0.4, "transient");
-    h.engine.setParam(threshold, -17, "transient");
-    h.engine.setParam(send, 0.2, "transient");
-    h.reconnect();
+    h.engine.setParam(pan, -0.4);
+    h.engine.setParam(threshold, -17);
+    h.engine.setParam(send, 0.2);
+    h.reconnect(false);
     expect(h.nodes?.pan.pan.value).toBe(-0.4);
+    expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+    h.ready();
     expect(h.fields.get("comp")).toMatchObject({ threshold: -17 });
     h.reconnect();
     expect(h.nodes?.pan.pan.value).toBe(-0.4);
@@ -419,7 +546,7 @@ describe("Node engine parameters", () => {
       }),
     };
     h.engine.apply(replacement, true);
-    expect(h.engine.setParam(threshold, -50, "transient")).toBe("unavailable");
+    expect(h.engine.setParam(threshold, -50)).toBe("unavailable");
     expect(h.engine.levels("a").get("speakers")).toBe(1);
     release();
     await h.engine.whenSettled();
@@ -435,7 +562,7 @@ describe("Node engine parameters", () => {
   test("every target on an actual compatibility lane is unavailable", async () => {
     const h = await harness("compatibility");
     for (const target of [threshold, pan, frequency, send]) {
-      expect(h.engine.setParam(target, 0.4, "transient")).toBe("unavailable");
+      expect(h.engine.setParam(target, 0.4)).toBe("unavailable");
     }
     expect(h.engine.levels("a").get("speakers")).toBe(1);
     expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));

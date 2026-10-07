@@ -11,8 +11,6 @@ export type EngineParamTarget =
   | { kind: "filter"; laneId: string; field: "frequency" | "Q" }
   | { kind: "send"; edgeId: string };
 
-export type ParamMode = "authored" | "transient";
-
 export function paramKey(target: EngineParamTarget): string {
   return JSON.stringify(target, [
     "kind",

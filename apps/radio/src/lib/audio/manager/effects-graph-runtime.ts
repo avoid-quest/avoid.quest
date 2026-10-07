@@ -2,11 +2,6 @@ import type { EffectConfig } from "../dsp/effects/types.js";
 
 export type EffectWriteResult = "applied" | "structural" | "unavailable";
 
-export type EffectLayoutRequirements = {
-  wrapper: boolean;
-  signalTrim: boolean;
-};
-
 export type EffectsPerformanceSnapshot = {
   backend: "official";
   monitoringChannelCount: number;
@@ -23,17 +18,11 @@ export type OfficialSoundSettings = {
 
 /** EffectsController seam implemented by the openDAW and test adapters. */
 export type EffectsGraphRuntime = {
-  writeTransientEffect: (
-    soundId: string,
-    effectId: string,
-    config: EffectConfig,
-    requirements: EffectLayoutRequirements,
-    prepare: boolean
-  ) => EffectWriteResult;
   writeEffect: (
     soundId: string,
     effectId: string,
-    config: EffectConfig
+    config: EffectConfig,
+    transient?: boolean
   ) => EffectWriteResult;
   syncEffects: (soundId: string, effects: readonly EffectConfig[]) => void;
   cleanup: () => void;

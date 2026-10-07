@@ -32,7 +32,6 @@ import {
   EffectsBackendRouter,
 } from "./effects-backend-router.js";
 import type {
-  EffectLayoutRequirements,
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
   EffectWriteResult,
@@ -54,6 +53,7 @@ type SoundEffectsState = {
   officialConnected: boolean;
   officialConnectingGeneration: number | null;
   outcome: EffectsRuntimeOutcome;
+  outcomeListeners: Set<(outcome: EffectsRuntimeOutcome) => void>;
   sidechain: SidechainConnection | null;
   tempo: number;
 };
@@ -82,6 +82,7 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnected: false,
   officialConnectingGeneration: null,
   outcome: { backend: null, ready: false, status: "inactive" },
+  outcomeListeners: new Set(),
   sidechain: null,
   tempo: 120,
 });
@@ -128,6 +129,25 @@ class EffectsController {
     const state = this.states.get(soundId) ?? createSoundState();
     this.states.set(soundId, state);
     return state;
+  }
+
+  subscribeRuntimeOutcome(
+    soundId: string,
+    listener: (outcome: EffectsRuntimeOutcome) => void
+  ): () => void {
+    const { outcomeListeners } = this.getState(soundId);
+    outcomeListeners.add(listener);
+    return () => outcomeListeners.delete(listener);
+  }
+
+  private recordOutcome(
+    state: SoundEffectsState,
+    outcome: EffectsRuntimeOutcome
+  ): void {
+    state.outcome = outcome;
+    for (const listener of state.outcomeListeners) {
+      listener(outcome);
+    }
   }
 
   private advance(state: SoundEffectsState): number {
@@ -227,7 +247,11 @@ class EffectsController {
     this.pruneOfficialSidechainSources();
 
     if (!state.graph) {
-      state.outcome = { backend: null, ready: false, status: "inactive" };
+      this.recordOutcome(state, {
+        backend: null,
+        ready: false,
+        status: "inactive",
+      });
       return state.outcome;
     }
     if (unchanged && state.outcome.status === "ready") {
@@ -240,17 +264,17 @@ class EffectsController {
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
-      state.outcome = this.readyOutcome(state);
+      this.recordOutcome(state, this.readyOutcome(state));
     } catch (error) {
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
-      state.outcome = {
+      this.recordOutcome(state, {
         backend: "bypass",
         error: error instanceof Error ? error : new Error(String(error)),
         ready: true,
         status: "failed",
-      };
+      });
       this.switchBackend(soundId, state, "bypass", generation);
       captureError(error, {
         operation: "reconcileEffectsRuntime",
@@ -263,7 +287,8 @@ class EffectsController {
   setEffectFields(
     soundId: string,
     effectId: string,
-    config: EffectConfig
+    config: EffectConfig,
+    transient = false
   ): EffectWriteResult {
     const state = this.states.get(soundId);
     const before = state && findEffectInTree(state.effects, effectId);
@@ -272,6 +297,12 @@ class EffectsController {
     }
     if (effectFieldsAreStructural(before, config)) {
       return "structural";
+    }
+    if (transient) {
+      return state.officialConnected
+        ? (this.officialRuntime?.writeEffect(soundId, effectId, config, true) ??
+            "unavailable")
+        : "unavailable";
     }
     const next = updateEffectFieldsInTree(
       state.effects,
@@ -307,28 +338,6 @@ class EffectsController {
       state.effects = next;
     }
     return result;
-  }
-
-  writeTransientEffect(
-    soundId: string,
-    effectId: string,
-    config: EffectConfig,
-    requirements: EffectLayoutRequirements,
-    prepare: boolean
-  ): EffectWriteResult {
-    const state = this.states.get(soundId);
-    if (!state?.officialConnected) {
-      return "unavailable";
-    }
-    return (
-      this.officialRuntime?.writeTransientEffect(
-        soundId,
-        effectId,
-        config,
-        requirements,
-        prepare
-      ) ?? "unavailable"
-    );
   }
 
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
@@ -512,7 +521,11 @@ class EffectsController {
           }
         }
       );
-      state.outcome = { backend: "bypass", ready: true, status: "ready" };
+      this.recordOutcome(state, {
+        backend: "bypass",
+        ready: true,
+        status: "ready",
+      });
       return true;
     }
 
@@ -522,12 +535,12 @@ class EffectsController {
       const ownsGraph = state.graph?.source === source;
       if (ownsGraph && state.generation === generation) {
         this.switchBackend(soundId, state, "bypass", generation);
-        state.outcome = {
+        this.recordOutcome(state, {
           backend: "bypass",
           error: error instanceof Error ? error : new Error(String(error)),
           ready: true,
           status: "failed",
-        };
+        });
         captureError(error, {
           operation: "connectEffectsRuntime",
           surface: "ui",
@@ -541,7 +554,7 @@ class EffectsController {
     // second dry edge alongside this graph.
     const ownsGraph = state.graph?.source === source;
     if (ownsGraph && state.generation === generation) {
-      state.outcome = this.readyOutcome(state);
+      this.recordOutcome(state, this.readyOutcome(state));
     }
     return ownsGraph;
   }
@@ -1051,18 +1064,18 @@ class EffectsController {
     this.selectRuntime(soundId, state, generation)
       .then(() => {
         if (state.generation === generation) {
-          state.outcome = this.readyOutcome(state);
+          this.recordOutcome(state, this.readyOutcome(state));
         }
       })
       .catch((error: unknown) => {
         if (state.generation === generation) {
           this.switchBackend(soundId, state, "bypass", generation);
-          state.outcome = {
+          this.recordOutcome(state, {
             backend: "bypass",
             error: error instanceof Error ? error : new Error(String(error)),
             ready: true,
             status: "failed",
-          };
+          });
           captureError(error, {
             operation: "selectEffectsRuntime",
             surface: "ui",

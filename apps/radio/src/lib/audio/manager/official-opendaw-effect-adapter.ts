@@ -26,15 +26,11 @@ import {
 } from "../dsp/effects/types.js";
 import { usesDirectEffectLayout } from "../dsp/routing/effect-tree.js";
 
-import type { EffectLayoutRequirements } from "./effects-graph-runtime.js";
-
 export type OfficialEffectHost = Parameters<Project["api"]["insertEffect"]>[0];
 export type OfficialEffectGroup = {
   children: OfficialEffectGroup[];
   cells: Map<string, AudioEffectCompositeCellBox>;
   config: EffectConfig;
-  host: OfficialEffectHost;
-  layoutRequirements: EffectLayoutRequirements;
   device: EffectBox;
   model: NeuralAmpModelBox | null;
   signalTrim: StereoToolDeviceBox | null;
@@ -397,7 +393,6 @@ export function moveOfficialEffectGroup(
   host: OfficialEffectHost,
   index: number
 ): number {
-  group.host = host;
   const boxes = officialEffectBoxes(group);
   if (
     boxes.some(
@@ -419,21 +414,20 @@ function updateLayout(
   context: CreateContext,
   group: OfficialEffectGroup,
   config: EffectConfig,
-  host: OfficialEffectHost,
-  requirements?: EffectLayoutRequirements
+  host: OfficialEffectHost
 ): void {
-  if (config.signalGain === undefined && !requirements?.signalTrim) {
+  if (config.signalGain === undefined) {
     group.signalTrim?.delete();
     group.signalTrim = null;
   } else if (!group.signalTrim) {
     group.signalTrim = createTrim(
       context,
       host,
-      config.signalGain ?? 1,
+      config.signalGain,
       "Cable trim"
     );
   }
-  if (usesDirectEffectLayout(config) && !requirements?.wrapper) {
+  if (usesDirectEffectLayout(config)) {
     if (group.wrapper) {
       context.project.api.moveEffects(
         host,
@@ -516,9 +510,7 @@ export function createOfficialEffectGroup(
     children: [],
     config,
     device,
-    host,
     inputTrim: layout?.inputTrim ?? null,
-    layoutRequirements: { signalTrim: false, wrapper: false },
     model: null,
     outputTrim: layout?.outputTrim ?? null,
     signalTrim: null,
@@ -552,7 +544,7 @@ export function updateOfficialEffectGroup(
   config: EffectConfig,
   host: OfficialEffectHost
 ): void {
-  updateLayout(context, group, config, host, group.layoutRequirements);
+  updateLayout(context, group, config, host);
   writeOfficialEffectFields(context, group, config);
   group.config = config;
 }
@@ -573,28 +565,6 @@ export function writeOfficialEffectFields(
     group.outputTrim?.enabled.setValue(config.enabled);
   }
   configureDevice(context, group.device, config, context.bpm);
-}
-
-/** A non-saving write; endpoint preparation is ordered by the lane driver. */
-export function writeTransientOfficialEffectGroup(
-  context: CreateContext,
-  group: OfficialEffectGroup,
-  config: EffectConfig,
-  requirements: EffectLayoutRequirements,
-  prepare: boolean
-): boolean {
-  const wrapped = !usesDirectEffectLayout(config) || requirements.wrapper;
-  const signal = config.signalGain !== undefined || requirements.signalTrim;
-  const layoutChanged =
-    Boolean(group.wrapper) !== wrapped || Boolean(group.signalTrim) !== signal;
-  if (layoutChanged && !prepare) {
-    return false;
-  }
-  group.layoutRequirements = requirements;
-  if (layoutChanged) {
-    updateLayout(context, group, config, group.host, requirements);
-  }
-  writeOfficialEffectFields(context, group, config);
   if ("chains" in config) {
     for (const chain of config.chains) {
       const cell = group.cells.get(chain.id);
@@ -603,10 +573,6 @@ export function writeTransientOfficialEffectGroup(
       }
     }
   }
-  if (config.type === "werkstatt") {
-    restoreWerkstattParameterValues(context, group, config.parameters);
-  }
-  return true;
 }
 
 export function syncOfficialEffectCells(

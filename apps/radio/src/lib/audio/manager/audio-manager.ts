@@ -877,10 +877,10 @@ export class AudioManager {
     return this.effects.setEffectFields(...args);
   }
 
-  writeTransientEffect(
-    ...args: Parameters<EffectsController["writeTransientEffect"]>
+  subscribeEffectsRuntimeOutcome(
+    ...args: Parameters<EffectsController["subscribeRuntimeOutcome"]>
   ) {
-    return this.effects.writeTransientEffect(...args);
+    return this.effects.subscribeRuntimeOutcome(...args);
   }
 
   getStripNodes(soundId: string) {

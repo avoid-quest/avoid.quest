@@ -130,6 +130,7 @@ function play(
         audio: {
           getEffectsRuntimeOutcome: () => ready,
           getStripNodes: () => null,
+          hasEffectModulationField: () => true,
         },
         effects: { setEffectFields: () => "applied" },
         plan: unit,

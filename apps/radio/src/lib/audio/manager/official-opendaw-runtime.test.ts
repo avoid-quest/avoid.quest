@@ -6,6 +6,8 @@ import type { EffectBox, Project, RestartWorklet } from "@opendaw/studio-core";
 import * as Sentry from "@sentry/core";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { createNativeModulationSession } from "@/lib/node-graph/modulation-native";
+import { MODULATION_DATA_SCHEMAS } from "@/lib/node-graph/modulation-schema";
 import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import type { EffectConfig, OpenDawEffectType } from "../dsp/effects/types.js";
@@ -126,6 +128,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       initializing.resolve();
       return engineReady;
     },
+    wake: mock(() => undefined),
   });
   let restart: RestartWorklet | undefined;
   const context = {
@@ -188,6 +191,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     unregisterMonitoringSource: mock((uuid: Uint8Array) =>
       router.unregisterSource(uuid)
     ),
+    wake: mock(() => undefined),
   };
   let project: Project | undefined;
   const terminate = mock(() => {
@@ -218,6 +222,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
                 boxGraph: project.boxGraph,
                 editing: project.editing,
                 engine,
+                liveStreamReceiver: project.liveStreamReceiver,
                 startAudioWorklet: (hook: RestartWorklet) => {
                   restart = hook;
                   worklet.connect(context.destination, 0);
@@ -304,6 +309,7 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       await restart.unload(undefined);
       const replacement = Object.assign(audioNode("worklet"), {
         isReady: () => ready,
+        wake: mock(() => undefined),
       });
       replacement.connect(context.destination, 0);
       activeWorklet = replacement;
@@ -1480,6 +1486,63 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   );
 
+  test("plan-owned Autotune wrappers and signal trims preserve authored effect order", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const tune = {
+      ...createDefaultEffectConfig("autotune", "tune", 0),
+      enabled: true,
+    };
+    const delay = {
+      ...createDefaultEffectConfig("delay", "delay", 1),
+      enabled: true,
+    };
+    h.runtime.syncEffects("deck", [tune, delay]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.AutotuneDeviceBox),
+      h.boxes.AutotuneDeviceBox
+    );
+    const sibling = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.DelayDeviceBox),
+      h.boxes.DelayDeviceBox
+    );
+    const later = wrapperForDevice(h, sibling);
+    for (const keepWrapper of [true, false, true, false]) {
+      h.runtime.syncEffects("deck", [
+        { ...tune, keepWrapper, signalGain: keepWrapper ? 1 : undefined },
+        delay,
+      ]);
+      const first = keepWrapper ? wrapperForDevice(h, device) : device;
+      expect(first.host.targetVertex.unwrap()).toBe(
+        later.host.targetVertex.unwrap()
+      );
+      expect(first.index.getValue()).toBeLessThan(later.index.getValue());
+      if (keepWrapper) {
+        const trim = h.project.boxGraph
+          .boxes()
+          .find(
+            (box) =>
+              box instanceof h.boxes.StereoToolDeviceBox &&
+              box.label.getValue() === "Cable trim"
+          );
+        if (!(trim instanceof h.boxes.StereoToolDeviceBox)) {
+          throw new Error("Missing signal trim");
+        }
+        expect(trim.host.targetVertex.unwrap()).toBe(
+          first.host.targetVertex.unwrap()
+        );
+        expect(trim.index.getValue()).toBeLessThan(first.index.getValue());
+      }
+      expect(device.isAttached()).toBe(true);
+      expect(sibling.isAttached()).toBe(true);
+      expect(h.project.editing.hasNoChanges()).toBe(true);
+    }
+  });
+
   test("model and Autotune layout changes use the structural path", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
@@ -1947,4 +2010,121 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(h.subscriptions).toHaveLength(0);
     expect(h.compiles).toHaveLength(0);
   });
+});
+
+test("modulation output owners retain silence independently of endpoint subscribers", async () => {
+  const h = await createHarness();
+  const host = await h.runtime.getModulationHost();
+  expect(host.project.boxGraph).toBe(h.project.boxGraph);
+  const initialConnections = h.worklet.connections.size;
+  const releaseListener = host.onEndpointsChanged(() => undefined);
+  expect(h.worklet.connections.size).toBe(initialConnections);
+  const releaseFirst = host.retainOutput();
+  const releaseLast = host.retainOutput();
+  releaseListener();
+  expect(h.worklet.connections.size).toBe(initialConnections + 1);
+  releaseFirst();
+  expect(h.worklet.connections.size).toBe(initialConnections + 1);
+  releaseLast();
+  expect(h.worklet.connections.size).toBe(initialConnections);
+});
+
+test("bypass then official recreation preserves coupled Mix and signal gain requirements", async () => {
+  const h = await createHarness();
+  await h.runtime.connectSound("deck", h.source, h.destination);
+  const config = {
+    ...createDefaultEffectConfig("autotune", "tune", 0),
+    enabled: true,
+    keepWrapper: true,
+    signalGain: 1,
+  };
+  h.runtime.syncEffects("deck", [config]);
+  h.runtime.deleteSound("deck");
+  await h.runtime.connectSound("deck", h.source, h.destination);
+  h.runtime.syncEffects("deck", [config]);
+  expect(
+    h.runtime.writeEffect(
+      "deck",
+      "tune",
+      { ...config, dryWet: 0.25, signalGain: 0.5 },
+      true
+    )
+  ).toBe("applied");
+  const wrappers = h.project.boxGraph
+    .boxes()
+    .filter((box) => box instanceof h.boxes.AudioEffectCompositeBox);
+  const wrapper = wrappers.find(
+    (box) => box.label.getValue() === "Radio wrapper: autotune"
+  );
+  expect(wrapper?.wet.getValue()).toBeCloseTo(20 * Math.log10(0.25));
+  expect(wrapper?.dry.getValue()).toBeCloseTo(20 * Math.log10(0.75));
+  expect(
+    h.project.boxGraph
+      .boxes()
+      .filter((box) => box instanceof h.boxes.StereoToolDeviceBox)
+      .some((box) => Math.abs(box.volume.getValue() + 6.0206) < 0.001)
+  ).toBe(true);
+  h.runtime.syncEffects("deck", [
+    { ...config, keepWrapper: false, signalGain: undefined },
+  ]);
+  expect(
+    h.project.boxGraph
+      .boxes()
+      .filter((box) => box instanceof h.boxes.StereoToolDeviceBox)
+  ).toHaveLength(0);
+});
+
+test("#405 worklet restart keeps native modulation sources, assignments and bridge delivery running", async () => {
+  const h = await createHarness();
+  await h.runtime.connectSound("deck", h.source, h.destination);
+  const config = createDefaultEffectConfig("delay", "delay", 0);
+  h.runtime.syncEffects("deck", [config]);
+  const host = await h.runtime.getModulationHost();
+  const native = createNativeModulationSession(host, () => undefined);
+  const target = {
+    effectId: "delay",
+    field: "feedback",
+    kind: "effect" as const,
+    laneId: "lane",
+  };
+  native.sync(
+    [
+      {
+        data: MODULATION_DATA_SCHEMAS.macro.parse({ bipolar: true }),
+        id: "bridge",
+        type: "macro",
+      },
+    ],
+    [
+      {
+        depth: 0.25,
+        enabled: true,
+        id: "cable",
+        soundId: "deck",
+        source: "bridge",
+        target,
+      },
+    ]
+  );
+  const boxes = h.project.boxGraph.boxes().slice();
+  const bridge = boxes.find(
+    (box) => box instanceof h.boxes.MacroModulatorBox
+  ) as import("@opendaw/studio-boxes").MacroModulatorBox;
+  try {
+    native.frame({ bridge: 0.5 });
+    const replacement = await h.restartWorklet();
+    expect(replacement.connections.size).toBeGreaterThan(0);
+    expect(replacement.wake).toHaveBeenCalled();
+    expect(h.project.boxGraph.boxes()).toEqual(boxes);
+    expect(host.field("deck", target)).toBeDefined();
+    native.frame({ bridge: -0.5 });
+    expect(bridge.value.getValue()).toBe(0.25);
+    expect(
+      boxes
+        .filter((box) => box instanceof h.boxes.ModulationBox)
+        .every((box) => box.isAttached())
+    ).toBe(true);
+  } finally {
+    native.dispose();
+  }
 });

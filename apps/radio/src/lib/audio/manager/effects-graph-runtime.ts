@@ -1,4 +1,9 @@
 import type { EffectConfig } from "../dsp/effects/types.js";
+import type {
+  EffectParamTarget,
+  ModulationHost,
+  NativeField,
+} from "./official-modulation-target";
 
 export type EffectWriteResult = "applied" | "structural" | "unavailable";
 
@@ -21,6 +26,11 @@ export type OfficialSoundSettings = {
 
 /** EffectsController seam implemented by the openDAW and test adapters. */
 export type EffectsGraphRuntime = {
+  getModulationHost?: () => Promise<ModulationHost>;
+  modulationField?: (
+    soundId: string,
+    target: EffectParamTarget
+  ) => NativeField | undefined;
   writeEffect: (
     soundId: string,
     effectId: string,

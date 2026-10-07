@@ -76,6 +76,8 @@ export type BaseEffectConfig = {
   outputGain: number; // Linear gain: 0.0 = -∞dB, 1.0 = 0dB, ~4.0 = +12dB
   /** Compiler-only trim before both dry and wet paths; never stored in a node. */
   signalGain?: number;
+  /** Compiler-owned outer controls must retain their physical endpoints. */
+  keepWrapper?: boolean;
   sidechain?: EffectSidechainConfig;
 };
 

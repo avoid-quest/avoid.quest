@@ -293,6 +293,24 @@ class EffectsController {
     return state.outcome;
   }
 
+  async getModulationHost() {
+    if (
+      this.officialRuntimeUnavailable ||
+      globalThis.crossOriginIsolated !== true
+    ) {
+      return null;
+    }
+    this.officialRuntime ??= this.createOfficialRuntime(getAudioContext());
+    return (await this.officialRuntime.getModulationHost?.()) ?? null;
+  }
+
+  hasEffectModulationField(
+    soundId: string,
+    target: import("./official-modulation-target").EffectParamTarget
+  ): boolean {
+    return Boolean(this.officialRuntime?.modulationField?.(soundId, target));
+  }
+
   setEffectFields(
     soundId: string,
     effectId: string,

@@ -56,7 +56,10 @@ type EdgeInput = NodeGraphInput["edges"][number];
 
 const position = { x: 0, y: 0 };
 
-function station(id: string, radio = true): NodeInput {
+function station(
+  id: string,
+  radio = true
+): Extract<NodeInput, { type: "station" }> {
   return {
     data: {
       radio: radio

@@ -45,6 +45,7 @@ import {
   usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { SplitEffect } from "@/lib/audio/routing/split-stage";
+import type { EngineParamTarget } from "@/lib/node-engine/param-target";
 import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import type { GraphEdge, GraphNode } from "./schema";
 import { type IssueCode, liveAudioNodes, type WiredEdge } from "./validate";
@@ -63,7 +64,19 @@ export type NativeFilterPlan = {
 };
 
 /** A trim waiting for the next point that can apply it. */
-export type Trim = { gain: number; muted: boolean };
+export type Trim = {
+  gain: number;
+  muted: boolean;
+  sources?: string[];
+  factor?: number;
+};
+
+export type TrimPlacement = {
+  factor?: number;
+  target: EngineParamTarget;
+  sources: string[];
+  value: number;
+};
 
 export const UNITY: Trim = { gain: 1, muted: false };
 
@@ -71,7 +84,11 @@ export function addTrim(
   trim: Trim,
   edge: Pick<GraphEdge, "gain" | "muted">
 ): Trim {
-  return { gain: trim.gain * edge.gain, muted: trim.muted || edge.muted };
+  return {
+    ...trim,
+    gain: trim.gain * edge.gain,
+    muted: trim.muted || edge.muted,
+  };
 }
 
 function trimLevel(trim: Trim): number {
@@ -155,7 +172,9 @@ function lastEnabledIndex(effects: readonly EffectConfig[]): number {
 function placeTrim(
   effects: EffectConfig[],
   effect: EffectConfig,
-  trim: Trim
+  trim: Trim,
+  placements: TrimPlacement[],
+  laneId: string
 ): { effect: EffectConfig; trim: Trim } {
   if (!effect.enabled) {
     return { effect, trim };
@@ -165,11 +184,34 @@ function placeTrim(
   const previousIndex = lastEnabledIndex(effects);
   const previous = effects[previousIndex];
   if (previous && !usesDirectEffectLayout(previous)) {
+    placements.push({
+      factor: level,
+      sources: trim.sources ?? [],
+      target: {
+        effectId: previous.id,
+        field: "outputGain",
+        kind: "effect",
+        laneId,
+      },
+      value: previous.outputGain * level,
+    });
     effects[previousIndex] = {
       ...previous,
       outputGain: previous.outputGain * level,
     } as EffectConfig;
     return { effect, trim: pending };
+  }
+  if (trim.sources?.length) {
+    placements.push({
+      sources: trim.sources,
+      target: {
+        effectId: effect.id,
+        field: "signalGain",
+        kind: "effect",
+        laneId,
+      },
+      value: level,
+    });
   }
   return {
     effect: {
@@ -257,6 +299,8 @@ export type Segment = {
   /** A source's leading strip natives; null elsewhere. */
   filter: NativeFilterPlan | null;
   pan: number;
+  panSource?: string;
+  filterSource?: string;
   exits: SegmentExit[];
 };
 
@@ -402,6 +446,7 @@ export type RegionInput = {
  * nodes here, so filling it doesn't move where the patch is cut.
  */
 export class RegionLowerer {
+  readonly trims: TrimPlacement[] = [];
   private readonly byId: ReadonlyMap<string, GraphNode>;
   private readonly sinks: ReadonlySet<string>;
   private readonly patchIds: Set<string>;
@@ -435,10 +480,15 @@ export class RegionLowerer {
       }
     }
     const audio = wired.filter(
-      ({ from, to }) => from.kind === "audio" && to.kind === "audio"
+      ({ edge, from, to }) =>
+        from.kind === "audio" &&
+        to.kind === "audio" &&
+        byId.get(edge.target)?.type !== "follower"
     );
     const keys = wired.filter(
-      ({ from, to }) => from.kind === "audio" && to.kind === "sidechain"
+      ({ edge, from, to }) =>
+        from.kind === "audio" &&
+        (to.kind === "sidechain" || byId.get(edge.target)?.type === "follower")
     );
     const inner = audio.filter(({ edge }) => !sinks.has(edge.target));
     const exits = audio.filter(({ edge }) => sinks.has(edge.target));
@@ -449,7 +499,12 @@ export class RegionLowerer {
       ({ size } = live);
       const heard = live;
       live = liveAudioNodes(
-        [...exits, ...keys.filter(({ edge }) => heard.has(edge.target))],
+        [
+          ...exits,
+          ...keys.filter(
+            ({ edge }) => sinks.has(edge.target) || heard.has(edge.target)
+          ),
+        ],
         inner
       );
     }
@@ -466,7 +521,10 @@ export class RegionLowerer {
     this.settleCuts();
     // Only an effect a source plays through has a detector to feed.
     this.placeKeys(
-      keys.filter(({ edge }) => kept(edge.source) && kept(edge.target))
+      keys.filter(
+        ({ edge }) =>
+          kept(edge.source) && (sinks.has(edge.target) || kept(edge.target))
+      )
     );
   }
 
@@ -696,7 +754,9 @@ export class RegionLowerer {
       ...(this.keys.get(id) ?? []).filter(from).map(
         ({ edge }): SegmentExit => ({
           ids: [edge.id],
-          key: true,
+          ...(this.byId.get(edge.target)?.type === "follower"
+            ? {}
+            : { key: true as const }),
           target: edge.target,
           trim: addTrim(trim, edge),
         })
@@ -851,14 +911,16 @@ export class RegionLowerer {
    * strip natives are taken only from a source's own segment.
    */
   lowerSegment(head: string): Segment {
-    const segment = new SegmentLowerer(this, new FreshIds(this.patchIds));
+    const segment = new SegmentLowerer(this, new FreshIds(this.patchIds), head);
     const series = segment.lowerSeries(head, UNITY, null, 0);
     return {
       effects: series.effects,
       exits: series.exits,
       filter: segment.filter,
+      filterSource: segment.filterSource,
       nodes: segment.nodes,
       pan: segment.pan,
+      panSource: segment.panSource,
     };
   }
 
@@ -876,11 +938,15 @@ export class RegionLowerer {
 class SegmentLowerer {
   readonly nodes: string[] = [];
   pan = 0;
+  panSource?: string;
+  filterSource?: string;
   filter: NativeFilterPlan | null = null;
   private readonly regions: RegionLowerer;
   private readonly ids: FreshIds;
+  private readonly owner: string;
 
-  constructor(regions: RegionLowerer, ids: FreshIds) {
+  constructor(regions: RegionLowerer, ids: FreshIds, owner: string) {
+    this.owner = owner;
     this.regions = regions;
     this.ids = ids;
   }
@@ -922,7 +988,9 @@ class SegmentLowerer {
       const placed = placeTrim(
         effects,
         this.lowerRegion(current, meeting, level + 1, effects.length),
-        walk.trim
+        walk.trim,
+        regions.trims,
+        this.owner
       );
       effects.push(placed.effect);
       walk.trim = placed.trim;
@@ -978,7 +1046,11 @@ class SegmentLowerer {
     let config = effectOf(node);
     switch (node.type) {
       case "gain":
-        return { ...trim, gain: trim.gain * dbToGain(node.data.gainDb) };
+        return {
+          ...trim,
+          gain: trim.gain * dbToGain(node.data.gainDb),
+          sources: [...(trim.sources ?? []), id],
+        };
       case "pan":
         // Any other Pan is a module, a point no segment runs through.
         this.lowerNative(node);
@@ -1003,7 +1075,9 @@ class SegmentLowerer {
     const placed = placeTrim(
       effects,
       { ...effect, id, order: effects.length } as EffectConfig,
-      trim
+      trim,
+      this.regions.trims,
+      this.owner
     );
     effects.push(placed.effect);
     return placed.trim;
@@ -1016,8 +1090,10 @@ class SegmentLowerer {
     if (node.type === "filter") {
       const { Q, frequency, type } = node.data;
       this.filter = { frequency, Q, type };
+      this.filterSource = node.id;
     } else {
       this.pan = node.data.pan;
+      this.panSource = node.id;
     }
   }
 
@@ -1033,6 +1109,7 @@ class SegmentLowerer {
       trim: {
         gain: trim.gain * series.trim.gain,
         muted: trim.muted || series.trim.muted,
+        sources: series.trim.sources,
       },
     };
   }
@@ -1082,6 +1159,19 @@ class SegmentLowerer {
             ],
             trim: UNITY,
           };
+      if (branch.trim.sources?.length) {
+        this.regions.trims.push({
+          sources: branch.trim.sources,
+          target: {
+            chainId: chain.id,
+            effectId: split,
+            field: "gain",
+            kind: "chain",
+            laneId: this.owner,
+          },
+          value: chain.gain * branch.trim.gain,
+        });
+      }
       return [
         {
           ...chain,
@@ -1142,6 +1232,19 @@ class SegmentLowerer {
       chains: cables.map(({ edge }, index) => {
         const chainId = this.ids.fresh(`${id}:${edge.id}`);
         const branch = this.lowerBranch(edge, meeting, level);
+        if (branch.trim.sources?.length) {
+          this.regions.trims.push({
+            sources: branch.trim.sources,
+            target: {
+              chainId,
+              effectId: id,
+              field: "gain",
+              kind: "chain",
+              laneId: this.owner,
+            },
+            value: branch.trim.gain,
+          });
+        }
         return {
           effects: branch.effects,
           gain: branch.trim.gain,

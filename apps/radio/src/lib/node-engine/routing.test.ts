@@ -148,8 +148,12 @@ function createHarness() {
         audio: {
           getEffectsRuntimeOutcome: () => ready,
           getStripNodes: () => null,
+          hasEffectModulationField: () => true,
         },
-        effects: { setEffectFields: () => "applied" },
+        effects: {
+          setEffectFields: (_sound, effectId, config) =>
+            host.setEffectFields(id, effectId, config),
+        },
         plan: unit,
         soundId: id,
       }),
@@ -401,6 +405,34 @@ describe("RoutingGraph", () => {
     expect(h.host.detachEffects).not.toHaveBeenCalled();
     expect(filter?.connections.size).toBe(0);
     expect(h.sinks.get("speakers")?.size).toBe(1);
+  });
+
+  test("retiring and reviving a held unit restores its authored overlay baseline", async () => {
+    const h = createHarness();
+    const original = shared([audio("comp", "speakers")], { threshold: -20 });
+    h.apply(original);
+    h.laneSends("a");
+    await h.settle();
+    const parameters = h.routing.parametersOf("mix");
+    expect(
+      parameters?.set(
+        { effectId: "comp", field: "threshold", kind: "effect", laneId: "mix" },
+        -40
+      )
+    ).toBe("applied");
+    expect(h.effects.get("node-unit:mix")?.[0]).toMatchObject({
+      threshold: -40,
+    });
+    h.apply({ ...original, cables: new Map(), units: new Map() });
+    expect(h.effects.get("node-unit:mix")?.[0]).toMatchObject({
+      threshold: -20,
+    });
+    h.apply(original);
+    await h.settle();
+    expect(h.effects.get("node-unit:mix")?.[0]).toMatchObject({
+      threshold: -20,
+    });
+    expect(h.routing.parametersOf("mix")).toBe(parameters);
   });
 
   test("a knob turn on a shared unit writes just that effect's fields", async () => {
@@ -728,3 +760,57 @@ describe("RoutingGraph", () => {
     expect(order.at(-1)).toBe("key node-key:comp");
   });
 });
+
+test.each(["filter", "pan"] as const)(
+  "%s module overlays replay commits and restore the latest authored value",
+  async (kind) => {
+    const h = createHarness();
+    const authored = (value: number) =>
+      plan(
+        [
+          station("a"),
+          station("b"),
+          node("mix", "merge"),
+          node(
+            "control",
+            kind,
+            kind === "pan" ? { pan: value } : { frequency: value }
+          ),
+          speakers,
+        ],
+        [
+          audio("a", "mix"),
+          audio("b", "mix"),
+          audio("mix", "control"),
+          audio("control", "speakers"),
+        ]
+      );
+    const baseline = kind === "pan" ? 0.2 : 900;
+    h.apply(authored(baseline));
+    h.laneSends("a");
+    await h.settle();
+    const owner = h.routing.parametersOf("control");
+    const target =
+      kind === "pan"
+        ? { kind: "pan" as const, laneId: "control" }
+        : {
+            field: "frequency" as const,
+            kind: "filter" as const,
+            laneId: "control",
+          };
+    const param =
+      kind === "pan"
+        ? h.context.panners[0]?.pan
+        : (h.context.filters[0] as FakeFilterNode)?.frequency;
+    const modulated = kind === "pan" ? -0.6 : 2400;
+    expect(owner?.set(target, modulated)).toBe("applied");
+    expect(lastValue(param)).toBe(modulated);
+    const next = kind === "pan" ? 0.4 : 1200;
+    h.apply(authored(next));
+    expect(lastValue(param)).toBe(modulated);
+    owner?.clear(target);
+    expect(lastValue(param)).toBe(next);
+    h.apply(plan([speakers], []));
+    expect(h.routing.parametersOf("control")).toBeUndefined();
+  }
+);

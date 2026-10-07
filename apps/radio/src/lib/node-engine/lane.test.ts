@@ -249,6 +249,7 @@ function createWorld(directFields = false) {
       ),
       getPreFaderNode: mock((soundId: string) => ({ soundId })),
       getTrackProgress: mock(() => null),
+      hasEffectModulationField: () => true,
       hasSound: mock((soundId: string) => live.has(soundId)),
       pauseSound: mock((soundId: string) => {
         setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({

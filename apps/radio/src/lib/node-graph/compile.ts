@@ -36,12 +36,16 @@ import type {
 import {
   audibleEffects,
   audibleSidechainIds,
+  findEffectInTree,
   isEffectContainer,
   usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { SplitStageConfig } from "@/lib/audio/routing/split-stage";
+import type { EngineParamTarget } from "@/lib/node-engine/param-target";
 import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import { laneChannelId, laneSoundId } from "./identifiers";
+import { parameterCables } from "./modulation-parameters";
+import { modulationProgram } from "./modulation-program";
 import {
   clampPan,
   dbToGain,
@@ -59,6 +63,7 @@ import {
   type GraphEdge,
   type GraphNode,
   isMediaSourceType,
+  isModulationNode,
   isRadioSourceNode,
   isStripSource,
   type NodeGraph,
@@ -244,7 +249,20 @@ export type SinkPlan = {
   muted?: boolean;
 };
 
+export type GainPlacement = {
+  factor?: number;
+  target: EngineParamTarget;
+  sources: string[];
+  value: number;
+};
+
 export type EnginePlan = {
+  modulation: {
+    program: ReturnType<typeof modulationProgram>;
+    cables: GraphEdge[];
+  };
+  /** Authored Gain/strip provenance; resolved during this compile, never by probes. */
+  gains: GainPlacement[];
   lanes: Map<string, LanePlan>;
   units: Map<string, UnitPlan>;
   /** By endpoint key: a generated key id never meets a node's own. */
@@ -404,7 +422,12 @@ const COMPILED_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
 ]);
 
 function isCompiled(type: NodeType): boolean {
-  return COMPILED_NODE_TYPES.has(type) || isEffectNodeType(type);
+  return (
+    COMPILED_NODE_TYPES.has(type) ||
+    isEffectNodeType(type) ||
+    (getNodeDefinition(type).category === "control" &&
+      getNodeDefinition(type).ship === "v1")
+  );
 }
 
 /**
@@ -577,7 +600,11 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
       blocking.length === 0
         ? new RegionLowerer({
             byId,
-            sinks: new Set(kept.nodes.filter(isSink).map((node) => node.id)),
+            sinks: new Set(
+              kept.nodes
+                .filter((node) => isSink(node) || node.type === "follower")
+                .map((node) => node.id)
+            ),
             wired: analysis.wired,
           })
         : null;
@@ -622,14 +649,27 @@ function estimateBackend(
 }
 
 /** What a key cable hears: where it starts, a Split's port included. */
-function heardFrom({ balance, from, gain, muted }: CablePlan): string {
-  return JSON.stringify([endpointKey(from), from.port, gain, muted, balance]);
+function heardFrom(
+  { balance, from, gain, muted }: CablePlan,
+  sources: readonly string[] = []
+): string {
+  return JSON.stringify([
+    endpointKey(from),
+    from.port,
+    gain,
+    muted,
+    balance,
+    [...sources].sort(),
+  ]);
 }
 
 /** A key's cables in a fixed order: equal keys list equal cables alike. */
-function byHeard(cables: readonly CablePlan[]): CablePlan[] {
+function byHeard(
+  cables: readonly CablePlan[],
+  heard: (cable: CablePlan) => string
+): CablePlan[] {
   return [...cables].sort((left, right) =>
-    heardFrom(left).localeCompare(heardFrom(right))
+    heard(left).localeCompare(heard(right))
   );
 }
 
@@ -652,7 +692,12 @@ function balanceOf(pan: number): [number, number] | undefined {
 }
 
 function multiply(left: Trim, right: Trim): Trim {
-  return { gain: left.gain * right.gain, muted: left.muted || right.muted };
+  return {
+    factor: (left.factor ?? left.gain) * (right.factor ?? right.gain),
+    gain: left.gain * right.gain,
+    muted: left.muted || right.muted,
+    sources: [...(left.sources ?? []), ...(right.sources ?? [])],
+  };
 }
 
 /**
@@ -744,6 +789,7 @@ class SignalOrder {
  * cables reach, once, as a cable first needs its far end.
  */
 class PlanBuilder {
+  readonly gains: GainPlacement[] = [];
   readonly lanes = new Map<string, LanePlan>();
   readonly units = new Map<string, UnitPlan>();
   readonly modules = new Map<string, ModulePlan>();
@@ -791,6 +837,23 @@ class PlanBuilder {
   /** The lane's own segment, and everything its cables reach. */
   addLane(node: GraphNode, source: LiveSource, soloMuted: boolean): void {
     const segment = this.lower(node.id);
+    this.gains.push({
+      sources: [
+        `${node.id}:strip.pan`,
+        ...(segment?.panSource ? [segment.panSource] : []),
+      ],
+      target: { kind: "pan", laneId: node.id },
+      value: (segment?.pan ?? 0) + source.strip.pan,
+    });
+    if (segment?.filter && segment.filterSource) {
+      for (const field of ["frequency", "Q"] as const) {
+        this.gains.push({
+          sources: [segment.filterSource],
+          target: { field, kind: "filter", laneId: node.id },
+          value: segment.filter[field],
+        });
+      }
+    }
     const effects = segment?.effects ?? [];
     this.lanes.set(node.id, {
       backend: null,
@@ -817,7 +880,11 @@ class PlanBuilder {
     this.emit(
       segment?.exits ?? [],
       { id: node.id, kind: "lane" },
-      { gain: dbToGain(source.strip.trimDb), muted: false }
+      {
+        gain: dbToGain(source.strip.trimDb),
+        muted: false,
+        sources: [`${node.id}:strip.trimDb`],
+      }
     );
   }
 
@@ -900,7 +967,7 @@ class PlanBuilder {
     ids: readonly string[],
     from: Endpoint,
     to: Endpoint,
-    { gain, muted }: Trim,
+    { gain, muted, sources, factor }: Trim,
     kind: CablePlan["kind"] = "audio",
     balance?: [number, number]
   ): void {
@@ -910,6 +977,14 @@ class PlanBuilder {
         : this.cableIds.fresh(ids.join("+") || `${from.id}:dry`);
     const soloed =
       kind === "audio" && from.kind === "lane" && this.soloMuted.has(from.id);
+    if (sources?.length) {
+      this.gains.push({
+        factor,
+        sources,
+        target: { edgeId: id, kind: "send" },
+        value: gain,
+      });
+    }
     this.cables.set(id, {
       delay: 0,
       edges: [...ids],
@@ -917,7 +992,7 @@ class PlanBuilder {
       gain,
       id,
       kind,
-      muted: muted || soloed,
+      muted: muted === true || soloed,
       reenters: false,
       to,
       ...(balance ? { balance } : {}),
@@ -925,6 +1000,22 @@ class PlanBuilder {
   }
 
   private addModule(module: ModulePlan): void {
+    if (module.kind === "pan") {
+      this.gains.push({
+        sources: [module.id],
+        target: { kind: "pan", laneId: module.id },
+        value: module.pan,
+      });
+    }
+    if (module.kind === "filter") {
+      for (const field of ["frequency", "Q"] as const) {
+        this.gains.push({
+          sources: [module.id],
+          target: { field, kind: "filter", laneId: module.id },
+          value: module.filter[field],
+        });
+      }
+    }
     this.modules.set(endpointKey(module), module);
   }
 
@@ -953,10 +1044,35 @@ class PlanBuilder {
     });
     const on = effect.enabled;
     const mix = on ? effect.dryWet : 0;
-    const output = on ? effect.outputGain : 1;
+    const controlled = new Set(
+      parameterCables(this.prepared.graph, this.prepared)
+        .filter((cable) => {
+          const source = this.prepared.byId.get(cable.source);
+          return (
+            cable.target === id &&
+            !cable.muted &&
+            cable.depth !== 0 &&
+            isModulationNode(source) &&
+            source.data.enabled
+          );
+        })
+        .map((cable) => cable.parameter ?? "dryWet")
+    );
+    const scalar = (key: string, value: number): Trim => ({
+      factor:
+        value || (on && controlled.has(key === "dry" ? "dryWet" : key) ? 1 : 0),
+      gain: value,
+      muted: false,
+      sources: on ? [`${id}:${key}`] : [],
+    });
+    const output = scalar("outputGain", on ? effect.outputGain : 1);
     // A Split's dry signal is shared out among the ports whose audio leaves
     // it; a port that only keys carries its branch, as openDAW's entry does.
-    const carries = ({ exits }: SplitBranch) => exits.some((exit) => !exit.key);
+    const carries = ({ exits }: SplitBranch) =>
+      exits.some(
+        (exit) =>
+          !exit.key && this.regions.node(exit.target).type !== "follower"
+      );
     const audible = [...ports.values()].filter(carries).length;
     const share = effect.type === "fxComposite" ? 1 / audible : 1;
     const soloed = ({ chain, exits }: SplitBranch) =>
@@ -967,12 +1083,24 @@ class PlanBuilder {
       const { chain } = port;
       const open = !chain.muted && (!anySolo || soloed(port));
       this.emitBranch(from, port, {
-        cell: { gain: mix * output * chain.gain, muted: !open },
+        cell: multiply(scalar("dryWet", mix), {
+          ...output,
+          factor: (output.factor ?? output.gain) * chain.gain,
+          gain: output.gain * chain.gain,
+          muted: !open,
+        }),
         dry:
-          mix < 1 && carries(port)
-            ? { from, trim: { gain: (1 - mix) * share * output, muted: false } }
+          (mix < 1 || controlled.has("dryWet")) && carries(port)
+            ? {
+                from,
+                trim: multiply(scalar("dry", 1 - mix), {
+                  ...output,
+                  factor: (output.factor ?? output.gain) * share,
+                  gain: output.gain * share,
+                }),
+              }
             : undefined,
-        input: on ? effect.inputGain : 1,
+        input: scalar("inputGain", on ? effect.inputGain : 1),
         pan: chain.pan,
       });
     }
@@ -993,13 +1121,13 @@ class PlanBuilder {
       dry,
       input,
       pan,
-    }: Pick<BranchEnd, "dry"> & { cell: Trim; input: number; pan: number }
+    }: Pick<BranchEnd, "dry"> & { cell: Trim; input: Trim; pan: number }
   ): void {
     // A soloed cable leaves its port's other cables out.
     const cableSolo = exits.some((exit) => exit.solo);
     for (const exit of exits) {
       const before: Trim = {
-        gain: input * exit.trim.gain,
+        ...multiply(exit.trim, input),
         muted: exit.trim.muted || (!exit.key && cableSolo && !exit.solo),
       };
       // Without FX, the port's cable is the whole branch.
@@ -1051,6 +1179,12 @@ class PlanBuilder {
     if (this.regions.isOpenSplit(id)) {
       return this.addSplit(id);
     }
+    if (node.type === "follower") {
+      const tap: Endpoint = { id, kind: "tap" };
+      this.endpoints.set(id, tap);
+      this.addModule({ id, kind: "tap", realtime: false });
+      return tap;
+    }
     if (isSink(node)) {
       const sink: Endpoint = { id, kind: "sink" };
       this.endpoints.set(id, sink);
@@ -1090,6 +1224,33 @@ class PlanBuilder {
     return sum;
   }
 
+  /** The lane driver retains layouts needed by active universal controls. */
+  keepWrappers(): void {
+    for (const cable of parameterCables(this.prepared.graph, this.prepared)) {
+      const source = this.prepared.byId.get(cable.source);
+      if (
+        !(source && "enabled" in source.data && source.data.enabled) ||
+        cable.muted ||
+        cable.depth === 0
+      ) {
+        continue;
+      }
+      if (
+        !["dryWet", "inputGain", "outputGain"].includes(
+          cable.parameter ?? "dryWet"
+        )
+      ) {
+        continue;
+      }
+      for (const owner of [...this.lanes.values(), ...this.units.values()]) {
+        const effect = findEffectInTree(owner.effects, cable.target);
+        if (effect?.type === "autotune") {
+          effect.keepWrapper = true;
+        }
+      }
+    }
+  }
+
   /**
    * Gives each keyed FX its key: a key module summing its key cables, bound
    * only while one of them is audible, and shared by FX whose key cables
@@ -1103,14 +1264,27 @@ class PlanBuilder {
         into.set(cable.to.id, [...(into.get(cable.to.id) ?? []), cable]);
       }
     }
+    const provenance = new Map(
+      this.gains.flatMap((entry) =>
+        entry.target.kind === "send"
+          ? [[entry.target.edgeId, entry] as const]
+          : []
+      )
+    );
+    const hear = (cable: CablePlan) =>
+      heardFrom(cable, provenance.get(cable.id)?.sources);
     const order = new SignalOrder(this);
     /** Each shared key's cables, by what they hear. */
     const shared = new Map<string, CablePlan[][]>();
     const keyOf = new Map<string, string>();
     for (const [keyId, cables] of into) {
-      const audible = cables.some((cable) => !cable.muted && cable.gain > 0);
-      const mine = byHeard(cables);
-      const heard = mine.map(heardFrom).join();
+      const audible = cables.some(
+        (cable) =>
+          !cable.muted &&
+          (cable.gain > 0 || (provenance.get(cable.id)?.factor ?? 0) > 0)
+      );
+      const mine = byHeard(cables, hear);
+      const heard = mine.map(hear).join();
       const groups = shared.get(heard) ?? [];
       // A key and its FX's audio arrive together, so FX one of which
       // feeds the other can't share one.
@@ -1331,6 +1505,7 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       builder.addLane(node, source, anySolo && !source.strip.solo);
     }
   }
+  builder.keepWrappers();
   builder.bindKeys();
   builder.markRealtime();
 
@@ -1376,13 +1551,62 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   alignCables(builder);
   return {
     cables: builder.cables,
+    gains: finalizeGains(
+      [...builder.gains, ...prepared.regions.trims],
+      builder
+    ),
     issues: prepared.issues,
     lanes: builder.lanes,
+    modulation: {
+      cables: parameterCables(prepared.graph, prepared),
+      program: modulationProgram(prepared.graph, prepared),
+    },
     modules: builder.modules,
     monitoringChannels,
     sinks,
     units: builder.units,
   };
+}
+
+/** Resolve provenance against the completed tree; later folds may share a field. */
+function finalizeGains(
+  placements: GainPlacement[],
+  builder: PlanBuilder
+): GainPlacement[] {
+  const gains = new Map<string, GainPlacement>();
+  for (const placement of placements) {
+    if (
+      placement.target.kind === "send" &&
+      !builder.cables.has(placement.target.edgeId)
+    ) {
+      continue;
+    }
+    const key = JSON.stringify(placement.target);
+    const previous = gains.get(key);
+    gains.set(
+      key,
+      previous
+        ? {
+            ...placement,
+            factor: (previous.factor ?? 1) * (placement.factor ?? 1),
+            sources: [...new Set([...previous.sources, ...placement.sources])],
+          }
+        : placement
+    );
+  }
+  for (const placement of gains.values()) {
+    const { target } = placement;
+    if (target.kind === "effect") {
+      const owner =
+        builder.lanes.get(target.laneId) ?? builder.units.get(target.laneId);
+      const effect = owner && findEffectInTree(owner.effects, target.effectId);
+      const value = effect && Reflect.get(effect, target.field);
+      if (typeof value === "number") {
+        placement.value = value;
+      }
+    }
+  }
+  return [...gains.values()];
 }
 
 /** The outputs each lane reaches, through any units and modules. */

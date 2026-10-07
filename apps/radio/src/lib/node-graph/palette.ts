@@ -41,12 +41,14 @@ import {
   nextFxPosition,
   nextOutputPosition,
   nextStationPosition,
+  reconnectCandidate,
   uniqueId,
   wireToSpeakers,
   withFxColumn,
 } from "./graph-edits";
 import {
   type EffectNodeType,
+  type GraphEdge,
   type GraphNode,
   graphNodeSchema,
   isRadioSourceNode,
@@ -78,6 +80,7 @@ import {
 type Position = GraphNode["position"];
 
 export type PaletteSection =
+  | "modulators"
   | "sources"
   | "fx"
   | "routing"
@@ -96,7 +99,7 @@ export type PaletteNodeEntry = {
   kind: "node";
   /** Stable React key; also what a test or a shortcut picks by. */
   id: string;
-  section: "sources" | "fx" | "routing" | "outputs";
+  section: "sources" | "fx" | "routing" | "outputs" | "modulators";
   type: NodeType;
   name: string;
   /** Set on a Station that comes filled with this station. */
@@ -187,6 +190,7 @@ export function templatePatch(
 }
 
 const SECTION_OF = {
+  control: "modulators",
   fx: "fx",
   output: "outputs",
   routing: "routing",
@@ -197,7 +201,13 @@ const SECTION_OF = {
  * Section order: what makes sound, what shapes it, how it splits and
  * joins, where it goes.
  */
-const SECTION_ORDER = ["sources", "fx", "routing", "outputs"] as const;
+const SECTION_ORDER = [
+  "sources",
+  "fx",
+  "modulators",
+  "routing",
+  "outputs",
+] as const;
 
 /**
  * Within a section: Station, Track and File before Audio input (saved
@@ -381,7 +391,8 @@ export function portKey(nodeId: string, handle: string): string {
 export function connectableHandles(
   graph: NodeGraph,
   from: PaletteFrom,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  reconnecting?: GraphEdge
 ): Map<string, Verdict> {
   const verdicts = new Map<string, Verdict>();
   const baseline = connectionBaseline(graph, options);
@@ -389,11 +400,14 @@ export function connectableHandles(
     const definition = getNodeDefinition(node.type);
     for (const port of definition.ports) {
       if (isShipped(port.ship ?? definition.ship, options?.release ?? "v1")) {
+        const cable = cableBetween(from, node.id, port);
         verdicts.set(
           portKey(node.id, portHandleId(port)),
           connectionVerdict(
             graph,
-            cableBetween(from, node.id, port),
+            reconnecting
+              ? reconnectCandidate(graph, reconnecting, cable)
+              : cable,
             options,
             baseline
           )
@@ -494,7 +508,8 @@ function fits(
   type: NodeType,
   { from, into, ...options }: PaletteOptions
 ): boolean {
-  if (!(from || into)) {
+  const connectionRequested = from || into;
+  if (!connectionRequested) {
     return true;
   }
   const probe = createPaletteNode(type, PROBE_ID, { x: 0, y: 0 });

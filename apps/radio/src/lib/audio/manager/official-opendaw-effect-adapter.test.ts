@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { modulationParameters } from "@/lib/node-graph/modulation-parameters";
+import type { GraphNode } from "@/lib/node-graph/schema";
 import { OPENDAW_FACTORY_KEYS } from "../dsp/effects/official-opendaw-mapping.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
+import {
+  isCoupledParameter,
+  officialModulationField,
+} from "./official-modulation-target";
 import {
   createMasterRack,
   createOfficialEffectGroup,
@@ -15,7 +21,7 @@ afterEach(() => {
 });
 
 describe("official openDAW BoxGraph adapter", () => {
-  test("constructs every catalog effect with the published boxes", async () => {
+  test("every slider is coupled or resolves to a field on the published boxes", async () => {
     Reflect.set(globalThis, "AudioWorkletNode", class {});
     const [adapters, boxes, core, { Option, Terminable }] = await Promise.all([
       import("@opendaw/studio-adapters"),
@@ -246,6 +252,62 @@ describe("official openDAW BoxGraph adapter", () => {
     expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.4));
     expect(outputTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(1.5));
     expect(reverb.config).toBe(authored);
+    if (!autotune) {
+      throw new Error("Missing Autotune");
+    }
+    const nativeDevice = autotune.device;
+    project.boxGraph.beginTransaction();
+    updateOfficialEffectGroup(
+      { adapters, boxes, bpm: 120, core, project },
+      autotune,
+      { ...autotune.config, keepWrapper: true, signalGain: 1 },
+      host
+    );
+    project.boxGraph.endTransaction();
+    const authoredTune = autotune.config;
+    expect(autotune.wrapper).not.toBeNull();
+    expect(autotune.signalTrim?.volume.getValue()).toBe(0);
+    project.boxGraph.beginTransaction();
+    writeOfficialEffectFields(
+      { adapters, boxes, bpm: 120, core, project },
+      autotune,
+      { ...authoredTune, dryWet: 0.25, inputGain: 0.5 }
+    );
+    project.boxGraph.endTransaction();
+    expect(autotune.config).toBe(authoredTune);
+    expect(autotune.wrapper?.wet.getValue()).toBeCloseTo(20 * Math.log10(0.25));
+    expect(autotune.wrapper?.dry.getValue()).toBeCloseTo(20 * Math.log10(0.75));
+    project.boxGraph.beginTransaction();
+    updateOfficialEffectGroup(
+      { adapters, boxes, bpm: 120, core, project },
+      autotune,
+      { ...autotune.config, keepWrapper: false, signalGain: undefined },
+      host
+    );
+    project.boxGraph.endTransaction();
+    expect(autotune.wrapper).toBeNull();
+    expect(autotune.signalTrim).toBeNull();
+    expect(autotune.device).toBe(nativeDevice);
+    for (const group of groups) {
+      const node = {
+        data: { effect: group.config },
+        id: group.config.id,
+        position: { x: 0, y: 0 },
+        type: group.config.type,
+      } as GraphNode;
+      for (const parameter of modulationParameters(node)) {
+        const target = {
+          effectId: group.config.id,
+          field: parameter.key,
+          kind: "effect" as const,
+          laneId: "a",
+        };
+        expect(
+          isCoupledParameter(group, target) ||
+            Boolean(officialModulationField(group, target))
+        ).toBe(true);
+      }
+    }
     project.terminate();
   });
 });

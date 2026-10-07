@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { nodeGraphSchema } from "@/lib/node-graph/schema";
 import type { playbackSessionsCollection } from "../playback-sessions";
 import {
   migrateNodeGraphSession,
@@ -40,6 +41,49 @@ function readBackups(storage: { getItem: (key: string) => string | null }) {
 }
 
 describe("migrateNodeGraphSession", () => {
+  test("normalizes an existing v2 session before collection updates, once", () => {
+    const graph = {
+      edges: [
+        {
+          depth: 5,
+          id: "modulation",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "pan",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        { id: "macro", position: { x: 0, y: 0 }, type: "macro" },
+        { data: {}, id: "pan", position: { x: 0, y: 0 }, type: "pan" },
+        { id: "speakers", position: { x: 0, y: 0 }, type: "speakers" },
+      ],
+      version: 2,
+    };
+    const { record, sessions, update } = createSessions(graph);
+    const storage = createMemoryStorage();
+    migrateNodeGraphSession(sessions, storage);
+    const normalized = nodeGraphSchema.parse(record.graph);
+    expect(normalized.edges[0]?.depth).toBe(1);
+    expect(normalized.nodes[0]?.data).toMatchObject({
+      enabled: true,
+      value: 0.5,
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(readBackups(storage)).toEqual([]);
+    expect(graph.edges[0].depth).toBe(5);
+    migrateNodeGraphSession(sessions, storage);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  test("leaves future-version sessions untouched", () => {
+    const graph = { edges: [], nodes: [], version: 3 };
+    const { record, sessions, update } = createSessions(graph);
+    migrateNodeGraphSession(sessions, createMemoryStorage());
+    expect(record.graph).toBe(graph);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   test("backs up an unreadable patch before dropping it", () => {
     const { record, sessions } = createSessions(unreadable);
     const storage = createMemoryStorage();

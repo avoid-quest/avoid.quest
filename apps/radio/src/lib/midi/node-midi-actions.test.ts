@@ -245,6 +245,24 @@ describe("createNodeMidiActions", () => {
     expect(nodeGraphSchema.safeParse(store.state.graph).success).toBe(true);
   });
 
+  test("Filter resonance spans the logarithmic 0.1–30 range", () => {
+    const store = createNodeStore(buildGraph());
+    const actions = createNodeMidiActions(
+      store.state.graph as NodeGraph,
+      storeCommit(store)
+    );
+    const resonance = actions.find((action) => action.targetId === "node:lp:Q");
+    expect(resonance?.range).toEqual({ max: 30, min: 0.1, step: 0.01 });
+    resonance?.dispatch(0.5);
+    expect(
+      store.state.graph?.nodes.find((node) => node.id === "lp")?.data
+    ).toMatchObject({ Q: expect.closeTo(Math.sqrt(3), 6) });
+    resonance?.dispatch(1);
+    expect(
+      store.state.graph?.nodes.find((node) => node.id === "lp")?.data
+    ).toMatchObject({ Q: 30 });
+  });
+
   test("the signature follows the patch's shape, not its params", () => {
     const graph = buildGraph();
     const turned = setEffectParams(graph, "comp", { threshold: -12 } as never);

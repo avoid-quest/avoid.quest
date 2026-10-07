@@ -35,6 +35,7 @@ import {
   createFakeFader,
   FakeAudioContext,
   type FakeGainNode,
+  FakePannerNode,
 } from "@/lib/audio/routing/fake-audio-nodes";
 import { createNodeDeviceSinks } from "@/lib/audio/routing/node-device-sinks";
 import {
@@ -61,6 +62,8 @@ import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+// biome-ignore lint/performance/noNamespaceImport: forbid compiler access during frame delivery
+import * as graphCompiler from "@/lib/node-graph/compile";
 import { compile } from "@/lib/node-graph/compile";
 import {
   removeEdges,
@@ -68,6 +71,8 @@ import {
   setSourceRadio,
   setSourceStrip,
 } from "@/lib/node-graph/graph-edits";
+// biome-ignore lint/performance/noNamespaceImport: exercise the playback-owned modulation consumer
+import * as modulationRuntime from "@/lib/node-graph/modulation-runtime";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -102,6 +107,11 @@ import {
   type DesiredEffectsState,
   type EffectsRuntimeOutcome,
 } from "./channel-effects";
+import {
+  installModulationAudio,
+  ownModulation,
+  TestModulationWorklet,
+} from "./node-graph/modulation.test-helpers";
 import {
   type GetNodePlaybackOptions,
   getNodePlayback,
@@ -6488,5 +6498,135 @@ describe("Node Playback: shared routing", () => {
     expect(
       harness.desired.get("node-unit:comp")?.tree.map((effect) => effect.id)
     ).toEqual(["comp"]);
+  });
+});
+
+describe("Node Playback: resolved modulation", () => {
+  function controlledPatch(target = "a", parameter = "trimDb") {
+    const base = patch([station("a"), station("b")]);
+    return nodeGraphSchema.parse({
+      ...base,
+      edges: [
+        ...base.edges,
+        {
+          depth: 0.25,
+          id: "control",
+          parameter,
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target,
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        ...base.nodes,
+        { data: {}, id: "macro", position: { x: 0, y: 0 }, type: "macro" },
+      ],
+    });
+  }
+  function controls() {
+    const create = modulationRuntime.createModulationRuntime;
+    let modulation: ReturnType<typeof create> | undefined;
+    const runtime = spyOn(
+      modulationRuntime,
+      "createModulationRuntime"
+    ).mockImplementation((options) => {
+      installModulationAudio();
+      modulation = create({
+        ...options,
+        getNativeHost: async () => null,
+        getWorkletProcessorUrl: () => "/dsp.js",
+      });
+      ownModulation(modulation);
+      return modulation;
+    });
+    let outputs: NodeLaneOutputsOptions | null = null;
+    const harness = createHarness({
+      crossOriginIsolated: true,
+      laneOutputs: (options) => {
+        outputs = options;
+        return createNodeLaneOutputs(options);
+      },
+    });
+    return {
+      ...harness,
+      emit: async (values: Record<string, number>) => {
+        await modulation?.whenSettled();
+        TestModulationWorklet.current.emit(values);
+      },
+      levels: () =>
+        [...(outputs?.getSends("a").values() ?? [])].map((send) => send.level),
+      runtime,
+    };
+  }
+  test.each(["muted", "removed", "disabled", "last source removed"])(
+    "restores the latest authored trim when %s while suspended",
+    async (action) => {
+      insertNodeSession(controlledPatch());
+      const harness = controls();
+      try {
+        await harness.playback.activate();
+        const saved = getPlaybackSession("node")?.graph;
+        await harness.emit({ macro: 1 });
+        expect(harness.levels()[0]).toBeCloseTo(10 ** (9 / 20), 12);
+        expect(getPlaybackSession("node")?.graph).toBe(saved);
+        await commit(harness, (graph) => {
+          let { nodes, edges } = setSourceStrip(graph, "a", { trimDb: -6 });
+          if (action === "muted") {
+            edges = edges.map((edge) =>
+              edge.id === "control" ? { ...edge, muted: true } : edge
+            );
+          } else if (action === "removed" || action === "last source removed") {
+            edges = edges.filter((edge) => edge.id !== "control");
+          }
+          if (action === "disabled") {
+            nodes = nodes.map((node) =>
+              node.type === "macro"
+                ? { ...node, data: { ...node.data, enabled: false } }
+                : node
+            );
+          } else if (action === "last source removed") {
+            nodes = nodes.filter((node) => node.id !== "macro");
+          }
+          return { ...graph, edges, nodes };
+        });
+        expect(harness.levels()[0]).toBeCloseTo(10 ** (-6 / 20), 12);
+      } finally {
+        await harness.playback.deactivate();
+        harness.runtime.mockRestore();
+      }
+    }
+  );
+  test("frames have no compiler or session access, and clearing restores the strip", async () => {
+    insertNodeSession(controlledPatch("a", "pan"));
+    const harness = controls();
+    const audio = new FakeAudioContext();
+    const pan = new FakePannerNode(audio);
+    harness.context.audio.getStripNodes = () =>
+      ({ filter: audio.createBiquadFilter(), pan }) as unknown as ReturnType<
+        AudioManager["getStripNodes"]
+      >;
+    const compiler = spyOn(graphCompiler, "compile");
+    try {
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      const saved = getPlaybackSession("node");
+      const authored = JSON.stringify(saved);
+      compiler.mockImplementation(() => {
+        throw new Error("A frame cannot compile");
+      });
+      await harness.emit({ macro: 1 });
+      expect(pan.pan.events.at(-1)).toMatchObject({ value: 0.5 });
+      await harness.emit({ macro: -1 });
+      expect(pan.pan.events.at(-1)).toMatchObject({ value: -0.5 });
+      await harness.emit({});
+      expect(pan.pan.events.at(-1)).toMatchObject({ value: 0 });
+      expect(JSON.stringify(getPlaybackSession("node"))).toBe(authored);
+      expect(harness.store.state.history.past).toHaveLength(0);
+    } finally {
+      compiler.mockRestore();
+      await harness.playback.deactivate();
+      harness.runtime.mockRestore();
+    }
   });
 });

@@ -20,6 +20,12 @@ import {
   setEffectParams,
   setNativeParams,
 } from "@/lib/node-graph/graph-edits";
+import {
+  installModulationAudio,
+  ownModulation,
+  TestModulationWorklet,
+} from "@/lib/node-graph/modulation.test-helpers";
+import { createModulationRuntime } from "@/lib/node-graph/modulation-runtime";
 // biome-ignore lint/performance/noNamespaceImport: fail at the forbidden authored-store boundary
 import * as editor from "@/lib/node-graph/node-store";
 import { MAX_EDGE_GAIN, nodeGraphSchema } from "@/lib/node-graph/schema";
@@ -32,6 +38,68 @@ import { createNodeEngine, type NodeEngine } from "./engine";
 import type { EngineParamTarget } from "./param-target";
 
 const engines: NodeEngine[] = [];
+
+test("a small LFO movement preserves a folded +18 dB send", async () => {
+  const patch = graph();
+  patch.nodes = nodeGraphSchema.parse({
+    ...patch,
+    edges: [],
+    nodes: [
+      patch.nodes[0],
+      patch.nodes.at(-1),
+      {
+        data: { gainDb: 18 },
+        id: "gain",
+        position: { x: 0, y: 0 },
+        type: "gain",
+      },
+      { data: {}, id: "lfo", position: { x: 0, y: 0 }, type: "lfo" },
+    ],
+  }).nodes;
+  patch.edges = nodeGraphSchema.parse({
+    ...patch,
+    edges: [
+      {
+        id: "in",
+        source: "a",
+        sourceHandle: "out:audio:main",
+        target: "gain",
+        targetHandle: "in:audio:main",
+      },
+      {
+        id: "out",
+        source: "gain",
+        sourceHandle: "out:audio:main",
+        target: "speakers",
+        targetHandle: "in:audio:main",
+      },
+      {
+        depth: 0.1,
+        id: "control",
+        parameter: "gainDb",
+        source: "lfo",
+        sourceHandle: "out:control:main",
+        target: "gain",
+        targetHandle: "in:control:parameter",
+      },
+    ],
+  }).edges;
+  const h = await harness("official", false, patch);
+  expect(h.levels.get("a")).toBeCloseTo(10 ** (18 / 20));
+  installModulationAudio();
+  const runtime = createModulationRuntime({
+    engine: h.engine,
+    getNativeHost: async () => null,
+    getWorkletProcessorUrl: () => "/dsp.js",
+  });
+  ownModulation(runtime);
+  runtime.sync(patch, h.plan);
+  await runtime.whenSettled();
+  TestModulationWorklet.current.emit({ lfo: 0.1 });
+  expect(h.levels.get("a")).toBeCloseTo(10 ** (18.6 / 20));
+  runtime.dispose();
+  expect(h.levels.get("a")).toBeCloseTo(10 ** (18 / 20));
+});
 afterEach(async () => {
   mock.restore();
   await Promise.all(engines.splice(0).map((engine) => engine.dispose()));
@@ -172,6 +240,7 @@ async function harness(
       getPreFaderNode: () => nodes,
       getStripNodes: () => nodes,
       getTrackProgress: () => null,
+      hasEffectModulationField: () => true,
       hasSound: (id: string) => live.has(id),
       pauseSound: () => undefined,
       setPan: (_id: string, value: number) => {
@@ -391,7 +460,7 @@ describe("Node engine parameters", () => {
   test.each([
     [threshold, -100, -60],
     [threshold, 10, 0],
-    [{ ...threshold, field: "outputGain" }, 10, 4],
+    [{ ...threshold, field: "outputGain" }, 10, 10],
     [pan, -2, -1],
     [pan, 2, 1],
     [frequency, 1, 20],
@@ -440,15 +509,15 @@ describe("Node engine parameters", () => {
     ["gain", 0, 0],
     ["gain", 2, 2],
     ["gain", MAX_CHAIN_GAIN, MAX_CHAIN_GAIN],
-    ["gain", MAX_CHAIN_GAIN + 1, MAX_CHAIN_GAIN],
-    ["gain", Number.MAX_VALUE, MAX_CHAIN_GAIN],
+    ["gain", MAX_CHAIN_GAIN + 1, MAX_CHAIN_GAIN + 1],
+    ["gain", Number.MAX_VALUE, Number.MAX_VALUE],
     ["pan", -2, -1],
     ["pan", -1, -1],
     ["pan", 0.5, 0.5],
     ["pan", 1, 1],
     ["pan", 2, 1],
   ] as const)(
-    "a transient branch %s of %s stays within its authored range",
+    "a transient branch %s of %s uses the physical gain and pan bounds",
     async (field, value, expected) => {
       const h = await harness();
       const lane = h.plan.lanes.get("a");
@@ -565,10 +634,10 @@ describe("Node engine parameters", () => {
     [0, 0],
     [2, 2],
     [MAX_EDGE_GAIN, MAX_EDGE_GAIN],
-    [MAX_EDGE_GAIN + 1, MAX_EDGE_GAIN],
-    [Number.MAX_VALUE, MAX_EDGE_GAIN],
+    [MAX_EDGE_GAIN + 1, MAX_EDGE_GAIN + 1],
+    [Number.MAX_VALUE, Number.MAX_VALUE],
   ])(
-    "a transient send of %s stays within the cable range",
+    "a transient send of %s preserves folded levels above the cable knob range",
     async (value, gain) => {
       const h = await harness();
       expect(h.engine.setParam(send, value)).toBe("applied");

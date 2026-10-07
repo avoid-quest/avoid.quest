@@ -61,6 +61,7 @@ import {
   setSourceStrip,
   withMonitorsOff,
 } from "@/lib/node-graph/graph-edits";
+import { createModulationRuntime } from "@/lib/node-graph/modulation-runtime";
 import {
   adoptNodeGraph,
   commitNodeGraph,
@@ -260,6 +261,7 @@ function createNodePlayback(
   let unmutedMasterVolume = 1;
   /** This activation's engine; none while Node is inactive. */
   let engine: NodeEngine | null = null;
+  let modulation: ReturnType<typeof createModulationRuntime> | null = null;
   /** The last engine's deactivation, until its lanes are released. */
   let disposal: Promise<void> | null = null;
   let active = false;
@@ -311,6 +313,8 @@ function createNodePlayback(
 
   /** Retires every lane, then the engine's outputs, before the orphan check. */
   const disposeEngine = async () => {
+    modulation?.dispose();
+    modulation = null;
     const retired = engine;
     engine = null;
     if (retired) {
@@ -375,6 +379,7 @@ function createNodePlayback(
       }
     }
     engine.apply(next, strict);
+    modulation?.sync(graph, next);
   };
 
   /** Reconciles a commit not yet applied; a no-op once it has been. */
@@ -606,6 +611,11 @@ function createNodePlayback(
       seenStoredGraph = session.graph ?? null;
       adoptedGraph = null;
       engine = createEngine();
+      modulation = createModulationRuntime({
+        engine,
+        getNativeHost: () => ctx.audio.getModulationHost(),
+        getWorkletProcessorUrl: () => ctx.audio.getWorkletProcessorUrl(),
+      });
       active = true;
       subscription = store.subscribe(onStoreChange);
       globalThis.addEventListener?.("pagehide", flushBeforeLeave);

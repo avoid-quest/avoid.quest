@@ -48,7 +48,8 @@ the source of truth for availability.
 - **Accepted exception, a key into its source's own insert:** that insert
   takes its audio first hand, before the fader, so a slower key can't be
   waited for and arrives about 3–5 ms late (`alignCables` in
-  `node-graph/compile.ts`). Ducking can't hear the difference.
+  `node-graph/compile.ts`). We expect ducking not to be audibly affected,
+  but nobody has listened for it yet.
 - Curated patch membership is intentional. Automatic canvas insertion on library
   Save is a product decision, independent from source loading.
 - Recorder/export formats, rights handling and source eligibility belong to the

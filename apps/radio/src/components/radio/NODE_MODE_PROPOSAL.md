@@ -89,7 +89,7 @@ FX sidechains. A key cable can start anywhere a cable can: the key hears
 exactly what that point carries, cable gain and mute included, and a key input
 sums every cable into it, in stereo. Each keyed effect has its own key, so
 several effects on one path can be keyed independently; one whose key cables
-are all muted or silent detects on its own input. A key and the audio of the
+are all muted or have zero gain detects on its own input. A key and the audio of the
 effect it keys arrive in step: whichever comes back from openDAW later, the
 other waits for it, except in a source's own insert, which hears its source
 first hand. A key exists, silent, as soon as Node has audio, so an insert and

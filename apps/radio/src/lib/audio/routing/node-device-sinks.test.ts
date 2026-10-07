@@ -31,25 +31,32 @@ class FakeAudioElement {
 function createHarness({
   supported = true,
   ids = ["default", "usb", "hdmi"],
+  createElement,
 }: {
   supported?: boolean;
   ids?: string[];
+  createElement?: () => FakeAudioElement;
 } = {}) {
   const elements: FakeAudioElement[] = [];
   const context = new FakeAudioContext();
   const devices = { ids };
+  const mainSources = new Map<unknown, boolean>();
   let hotPlug: (() => void) | null = null;
-  const onReroute = mock((_sinkId: string) => undefined);
   const onStatus = mock(() => undefined);
   const sinks = createNodeDeviceSinks({
+    connectMain: (node, realtime) => {
+      mainSources.set(node, realtime);
+      return () => {
+        mainSources.delete(node);
+      };
+    },
     createElement: () => {
-      const element = new FakeAudioElement();
+      const element = createElement?.() ?? new FakeAudioElement();
       elements.push(element);
       return element as unknown as HTMLAudioElement;
     },
     isSupported: () => supported,
     listOutputDeviceIds: async () => devices.ids,
-    onReroute,
     onStatus,
     watchDevices: (onChange) => {
       hotPlug = onChange;
@@ -58,240 +65,358 @@ function createHarness({
       };
     },
   });
-  const send = () => context.createGain() as unknown as AudioNode;
+  const send = (from = context) => from.createGain() as unknown as FakeGainNode;
+  const connect = (sinkId: string, from = send(), realtime = false) => ({
+    release: sinks.connect(sinkId, from as unknown as AudioNode, realtime),
+    send: from,
+  });
+  /** The Output node gain a send plays through. */
+  const gainOf = (from: FakeGainNode) =>
+    [...from.connections][0] as FakeGainNode | undefined;
+  /** Where a send plays: a device's element, the main bus, or nowhere. */
+  const whereIs = (from: FakeGainNode): string => {
+    const gain = gainOf(from);
+    if (!gain) {
+      return "unconnected";
+    }
+    if (mainSources.has(gain)) {
+      return "speakers";
+    }
+    const [input] = [...gain.connections] as (FakeGainNode | undefined)[];
+    const [destination] = [...(input?.connections ?? [])];
+    const element = elements.find(
+      (candidate) =>
+        candidate.srcObject !== null &&
+        candidate.srcObject ===
+          (destination as { stream?: unknown } | undefined)?.stream
+    );
+    return element ? `device:${element.sinkId || "pending"}` : "nowhere";
+  };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   return {
+    connect,
     context,
     devices,
     elements,
+    gainOf,
     hotPlug: () => hotPlug?.(),
-    onReroute,
+    mainSources,
     onStatus,
     send,
     settle,
     sinks,
+    whereIs,
   };
 }
 
+function devicesOf(entries: [string, string | null][]) {
+  return new Map(
+    entries.map(([sinkId, deviceId]) => [sinkId, { deviceId, muted: false }])
+  );
+}
+
 describe("createNodeDeviceSinks", () => {
-  test("a send plays through a MediaStream hop into an <audio> set to the device", async () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", "usb"]]));
-    const send = harness.send();
+  test("several Output device nodes share one device, each with its own mute", async () => {
+    const h = createHarness();
+    h.sinks.sync(
+      devicesOf([
+        ["one", "usb"],
+        ["two", "usb"],
+      ])
+    );
+    const one = h.connect("one");
+    const two = h.connect("two");
+    await h.settle();
 
-    const route = harness.sinks.connect("desk", send);
-    await harness.settle();
+    expect([h.whereIs(one.send), h.whereIs(two.send)]).toEqual([
+      "device:usb",
+      "device:usb",
+    ]);
+    expect(h.elements).toHaveLength(1);
+    expect(h.gainOf(one.send)).not.toBe(h.gainOf(two.send));
 
-    expect(route.to).toBe("device");
-    const [input] = harness.context.gains.slice(-1) as FakeGainNode[];
-    const [destination] = harness.context.destinations;
-    const [element] = harness.elements;
-    expect((send as unknown as FakeGainNode).connections.has(input)).toBe(true);
-    expect(input?.connections.has(destination)).toBe(true);
+    // Muting one leaves the other's level alone.
+    h.sinks.sync(
+      new Map([
+        ["one", { deviceId: "usb", muted: true }],
+        ["two", { deviceId: "usb", muted: false }],
+      ])
+    );
+    expect(h.gainOf(one.send)?.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 0,
+    });
+    expect(h.gainOf(two.send)?.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 1,
+    });
+
+    // Removing one leaves the other playing on the same element, no gap.
+    one.release();
+    h.sinks.sync(devicesOf([["two", "usb"]]));
+    expect(h.elements[0]?.paused).toBe(false);
+    expect(h.whereIs(two.send)).toBe("device:usb");
+    expect(h.sinks.status("one")).toBeUndefined();
+    expect(h.sinks.status("two")).toEqual({ state: "ok" });
+
+    // Unplugging the device moves every node on it to Speakers.
+    h.sinks.sync(
+      devicesOf([
+        ["two", "usb"],
+        ["three", "usb"],
+      ])
+    );
+    const three = h.connect("three");
+    h.devices.ids = ["default"];
+    h.hotPlug();
+    await h.settle();
+    expect([h.whereIs(two.send), h.whereIs(three.send)]).toEqual([
+      "speakers",
+      "speakers",
+    ]);
+    expect(h.sinks.statuses()).toEqual({
+      three: { state: "unplugged" },
+      two: { state: "unplugged" },
+    });
+    h.sinks.dispose();
+  });
+
+  test("a send plays through its node's gain and a MediaStream hop into an <audio> set to the device", async () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    const { send } = h.connect("desk");
+    await h.settle();
+
+    const [element] = h.elements;
+    const [destination] = h.context.destinations;
+    expect(h.whereIs(send)).toBe("device:usb");
     expect(element?.srcObject).toBe(destination?.stream);
-    expect(element?.setSinkId).toHaveBeenCalledWith("usb");
     expect(element?.paused).toBe(false);
-    expect(harness.sinks.status("desk")).toEqual({ state: "ok" });
+    expect(h.sinks.status("desk")).toEqual({ state: "ok" });
   });
 
-  test("every send into one sink shares its graph", () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", "usb"]]));
+  test("Speakers play on the main bus through their node's gain, one per timing", () => {
+    const h = createHarness();
+    h.sinks.sync(new Map([["out", { muted: false }]]));
+    const delayed = h.connect("out");
+    const live = h.connect("out", h.send(), true);
 
-    harness.sinks.connect("desk", harness.send());
-    harness.sinks.connect("desk", harness.send());
-
-    expect(harness.elements).toHaveLength(1);
-    expect(harness.context.destinations).toHaveLength(1);
+    expect(h.whereIs(delayed.send)).toBe("speakers");
+    expect(h.whereIs(live.send)).toBe("speakers");
+    expect(h.mainSources.get(h.gainOf(delayed.send))).toBe(false);
+    expect(h.mainSources.get(h.gainOf(live.send))).toBe(true);
+    expect(h.gainOf(delayed.send)?.gain.value).toBe(1);
+    expect(h.sinks.statuses()).toEqual({});
   });
 
-  test("a send from a new AudioContext gets a new graph on it", async () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", "usb"]]));
-    harness.sinks.connect("desk", harness.send());
-    await harness.settle();
-    const [oldElement] = harness.elements;
-    const [oldDestination] = harness.context.destinations;
+  test("replacing an Output device with Speakers publishes the statuses again", () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", null]]));
+    h.onStatus.mockClear();
+
+    h.sinks.sync(new Map([["out", { muted: false }]]));
+
+    expect(h.onStatus).toHaveBeenCalled();
+    expect(h.sinks.statuses()).toEqual({});
+  });
+
+  test("every send into one node shares its gain and graph", () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+
+    const one = h.connect("desk");
+    const two = h.connect("desk");
+
+    expect(h.gainOf(one.send)).toBe(h.gainOf(two.send));
+    expect(h.elements).toHaveLength(1);
+    expect(h.context.destinations).toHaveLength(1);
+  });
+
+  test("a send from a new AudioContext gets a new gain and graph on it", async () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    h.connect("desk");
+    await h.settle();
+    const [oldElement] = h.elements;
+    const [oldDestination] = h.context.destinations;
 
     const fresh = new FakeAudioContext();
-    const send = fresh.createGain() as unknown as FakeGainNode;
-    const route = harness.sinks.connect("desk", send as unknown as AudioNode);
-    await harness.settle();
+    const { send } = h.connect("desk", h.send(fresh));
+    await h.settle();
 
-    expect(route.to).toBe("device");
     expect(oldElement?.paused).toBe(true);
     expect(oldDestination?.stopped).toEqual([true]);
-    const [input] = fresh.gains.slice(-1);
-    const [destination] = fresh.destinations;
-    expect(send.connections.has(input)).toBe(true);
-    expect(input?.connections.has(destination)).toBe(true);
-    expect(harness.elements[1]?.setSinkId).toHaveBeenCalledWith("usb");
+    expect(h.whereIs(send)).toBe("device:usb");
+    expect(h.gainOf(send)?.context).toBe(fresh);
+    expect(fresh.destinations).toHaveLength(1);
   });
 
   test("an Output device with no device picked plays nowhere", () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", null]]));
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", null]]));
 
-    expect(harness.sinks.connect("desk", harness.send())).toEqual({
-      to: "nowhere",
-    });
-    expect(harness.sinks.status("desk")).toEqual({ state: "empty" });
+    expect(h.whereIs(h.connect("desk").send)).toBe("nowhere");
+    expect(h.sinks.status("desk")).toEqual({ state: "empty" });
   });
 
   test("without setSinkId every sink plays through Speakers", () => {
-    const harness = createHarness({ supported: false });
-    harness.sinks.sync(new Map([["desk", "usb"]]));
+    const h = createHarness({ supported: false });
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
 
-    expect(harness.sinks.connect("desk", harness.send())).toEqual({
-      to: "speakers",
-    });
-    expect(harness.sinks.status("desk")).toEqual({ state: "unsupported" });
-    expect(harness.elements).toHaveLength(0);
+    expect(h.whereIs(h.connect("desk").send)).toBe("speakers");
+    expect(h.sinks.status("desk")).toEqual({ state: "unsupported" });
+    expect(h.elements).toHaveLength(0);
   });
 
-  test("a rejected setSinkId marks the sink failed and reroutes its sends", async () => {
-    const harness = createHarness();
-    const elements: FakeAudioElement[] = [];
-    const sinks = createNodeDeviceSinks({
+  test("a rejected setSinkId marks the sink failed and moves its gain to Speakers", async () => {
+    const h = createHarness({
       createElement: () => {
         const element = new FakeAudioElement();
         element.rejectSink = new Error("Permission denied");
-        elements.push(element);
-        return element as unknown as HTMLAudioElement;
+        return element;
       },
-      isSupported: () => true,
-      listOutputDeviceIds: async () => ["default", "usb"],
-      onReroute: harness.onReroute,
-      watchDevices: () => () => undefined,
     });
-    sinks.sync(new Map([["desk", "usb"]]));
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    const { send } = h.connect("desk");
+    await h.settle();
 
-    expect(sinks.connect("desk", harness.send()).to).toBe("device");
-    await harness.settle();
-
-    expect(sinks.status("desk")).toEqual({
+    expect(h.sinks.status("desk")).toEqual({
       message: "Permission denied",
       state: "failed",
     });
-    expect(harness.onReroute).toHaveBeenCalledWith("desk");
-    expect(elements[0]?.srcObject).toBeNull();
-    expect(sinks.connect("desk", harness.send())).toEqual({ to: "speakers" });
+    expect(h.elements[0]?.srcObject).toBeNull();
+    expect(h.whereIs(send)).toBe("speakers");
   });
 
   test("an unplugged device fails over to Speakers and comes back when plugged in", async () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", "usb"]]));
-    await harness.settle();
-    harness.sinks.connect("desk", harness.send());
-    await harness.settle();
-    const [element] = harness.elements;
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    await h.settle();
+    const { send } = h.connect("desk");
+    await h.settle();
+    const [element] = h.elements;
 
-    harness.devices.ids = ["default", "hdmi"];
-    harness.hotPlug();
-    await harness.settle();
+    h.devices.ids = ["default", "hdmi"];
+    h.hotPlug();
+    await h.settle();
 
-    expect(harness.sinks.status("desk")).toEqual({ state: "unplugged" });
-    expect(harness.onReroute).toHaveBeenCalledWith("desk");
+    expect(h.sinks.status("desk")).toEqual({ state: "unplugged" });
     expect(element?.pause).toHaveBeenCalled();
-    expect(harness.sinks.connect("desk", harness.send())).toEqual({
-      to: "speakers",
-    });
+    expect(h.whereIs(send)).toBe("speakers");
 
-    harness.devices.ids = ["default", "hdmi", "usb"];
-    harness.hotPlug();
-    await harness.settle();
+    h.devices.ids = ["default", "hdmi", "usb"];
+    h.hotPlug();
+    await h.settle();
 
-    expect(harness.sinks.status("desk")).toEqual({ state: "ok" });
-    expect(harness.sinks.connect("desk", harness.send()).to).toBe("device");
+    expect(h.sinks.status("desk")).toEqual({ state: "ok" });
+    expect(h.whereIs(send)).toBe("device:usb");
   });
 
   test.each(["remove", "replace", "dispose"] as const)(
     "a pending retry cannot play after %s invalidates its output",
     async (action) => {
-      const harness = createHarness();
       const attempt = Promise.withResolvers<void>();
-      const elements: FakeAudioElement[] = [];
-      const sinks = createNodeDeviceSinks({
+      let made = 0;
+      const h = createHarness({
         createElement: () => {
           const element = new FakeAudioElement();
-          if (elements.length === 0) {
+          if (made === 0) {
             element.rejectSink = new Error("Permission denied");
-          } else if (elements.length === 1) {
+          } else if (made === 1) {
             element.setSinkId = mock(() => attempt.promise);
           }
-          elements.push(element);
-          return element as unknown as HTMLAudioElement;
+          made += 1;
+          return element;
         },
-        isSupported: () => true,
-        listOutputDeviceIds: async () => ["default", "usb", "hdmi"],
-        watchDevices: () => () => undefined,
       });
-      sinks.sync(new Map([["desk", "usb"]]));
-      sinks.connect("desk", harness.send());
-      await harness.settle();
-      sinks.retry("desk");
-      sinks.connect("desk", harness.send());
+      h.sinks.sync(devicesOf([["desk", "usb"]]));
+      const { release } = h.connect("desk");
+      await h.settle();
+      h.sinks.retry("desk");
 
       if (action === "dispose") {
-        sinks.dispose();
+        h.sinks.dispose();
       } else {
-        sinks.sync(new Map(action === "replace" ? [["desk", "hdmi"]] : []));
+        release();
+        h.sinks.sync(devicesOf(action === "replace" ? [["desk", "hdmi"]] : []));
       }
       attempt.resolve();
-      await harness.settle();
+      await h.settle();
 
-      expect(elements[1]?.play).not.toHaveBeenCalled();
-      expect(elements[1]?.srcObject).toBeNull();
-      expect(harness.context.destinations[1]?.stopped).toEqual([true]);
-      expect(sinks.status("desk")).toEqual(
+      expect(h.elements[1]?.play).not.toHaveBeenCalled();
+      expect(h.elements[1]?.srcObject).toBeNull();
+      expect(h.context.destinations[1]?.stopped).toEqual([true]);
+      expect(h.sinks.status("desk")).toEqual(
         action === "replace" ? { state: "ok" } : undefined
       );
-      sinks.retry("desk");
-      expect(elements).toHaveLength(2);
+      h.sinks.retry("desk");
+      expect(h.elements).toHaveLength(2);
     }
   );
 
   test("a device list without ids (no permission yet) unplugs nothing", async () => {
-    const harness = createHarness({ ids: ["", ""] });
-    harness.sinks.sync(new Map([["desk", "usb"]]));
-    await harness.settle();
+    const h = createHarness({ ids: ["", ""] });
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    await h.settle();
 
-    expect(harness.sinks.status("desk")).toEqual({ state: "ok" });
+    expect(h.sinks.status("desk")).toEqual({ state: "ok" });
   });
 
-  test("removing an Output device disposes its <audio> and MediaStreamDestination", async () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", "usb"]]));
-    harness.sinks.connect("desk", harness.send());
-    await harness.settle();
-    const [element] = harness.elements;
-    const [destination] = harness.context.destinations;
-    const input = harness.context.gains.at(-1);
+  test("a removed Output device keeps its gain and device until its cables let go", async () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    const { release, send } = h.connect("desk");
+    await h.settle();
+    const [element] = h.elements;
+    const [destination] = h.context.destinations;
 
-    harness.sinks.sync(new Map());
+    h.sinks.sync(new Map());
 
+    // Its cable is still fading out: it plays on, through the same gain.
+    expect(h.whereIs(send)).toBe("device:usb");
+    expect(element?.paused).toBe(false);
+    expect(h.sinks.status("desk")).toBeUndefined();
+    // A new cable can't reach a node that left the plan.
+    const late = h.connect("missing");
+    expect(h.whereIs(late.send)).toBe("unconnected");
+
+    const gain = h.gainOf(send);
+    release();
+
+    expect(gain?.connections.size).toBe(0);
     expect(element?.pause).toHaveBeenCalled();
     expect(element?.srcObject).toBeNull();
     expect(destination?.stopped).toEqual([true]);
-    expect(input?.connections.size).toBe(0);
-    expect(harness.sinks.status("desk")).toBeUndefined();
   });
 
-  test("a new device on the same node reroutes its sends onto a new graph", async () => {
-    const harness = createHarness();
-    harness.sinks.sync(new Map([["desk", "usb"]]));
-    harness.sinks.connect("desk", harness.send());
-    await harness.settle();
+  test("a muted Output device mutes the cables still fading into it", () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    const fading = h.connect("desk");
 
-    harness.sinks.sync(new Map([["desk", "hdmi"]]));
-    harness.sinks.connect("desk", harness.send());
-    await harness.settle();
+    // The plan drops the cable while the node is muted: it fades out muted.
+    h.sinks.sync(new Map([["desk", { deviceId: "usb", muted: true }]]));
 
-    expect(harness.onReroute).toHaveBeenCalledWith("desk");
-    expect(harness.elements.map((element) => element.sinkId)).toEqual([
+    expect(h.gainOf(fading.send)?.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 0,
+    });
+  });
+
+  test("a new device on the same node moves its gain onto a new graph", async () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", "usb"]]));
+    const { send } = h.connect("desk");
+    await h.settle();
+
+    h.sinks.sync(devicesOf([["desk", "hdmi"]]));
+    await h.settle();
+
+    expect(h.whereIs(send)).toBe("device:hdmi");
+    expect(h.elements.map((element) => element.sinkId)).toEqual([
       "usb",
       "hdmi",
     ]);
-    expect(harness.elements[0]?.srcObject).toBeNull();
+    expect(h.elements[0]?.srcObject).toBeNull();
   });
 });

@@ -14,7 +14,6 @@ import {
   BUS_MERGE_MESSAGE,
   type Connection,
   connectionVerdict,
-  deviceOutVerdict,
   findCycles,
   type Issue,
   type IssueCode,
@@ -702,19 +701,12 @@ describe("validate: audio inputs and output devices", () => {
     expect(connectionVerdict(more, plug("c", "desk"))).toEqual({ ok: true });
   });
 
-  test("a second Output device on the same device is refused", () => {
+  test("several Output device nodes can route to the same physical device", () => {
     const twice = graph([
       desk,
       node("booth", "deviceOut", { deviceId: "usb" }),
     ]);
-    expect(check(twice.nodes)).toEqual(["one-device-out@booth"]);
-    expect(deviceOutVerdict(io, "usb")).toEqual({
-      code: "one-device-out",
-      message: "This output already has a module",
-      ok: false,
-    });
-    expect(deviceOutVerdict(io, "usb", "desk")).toEqual({ ok: true });
-    expect(deviceOutVerdict(io, "hdmi")).toEqual({ ok: true });
+    expect(check(twice.nodes)).toEqual([]);
   });
 
   test("Output devices with no device picked yet don't clash", () => {
@@ -1556,7 +1548,6 @@ describe("validate: messages", () => {
       "missing-node": ["Cable points at a missing node"],
       "no-audio-in": ["A Station makes its own sound and takes no audio in"],
       "no-out": ["The sound ends at Speakers; it has no output"],
-      "one-device-out": ["This output already has a module"],
       "one-speakers": ["A patch has one Speakers"],
       "port-max": [
         "This input takes one cable",

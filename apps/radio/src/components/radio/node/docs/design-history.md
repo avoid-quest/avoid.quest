@@ -192,7 +192,7 @@ the lane's `EffectConfig` tree. Type ids come from
 | Speakers | audio ×N | none | Play all / Pause all (N), master volume and mute, meter | Main bus through `OutputRouting.connectMain` (`apps/radio/src/lib/output-routing.ts:610-624`). Its gain is session `masterVolume`, applied as the global volume (`applySessionMasterVolume`, `apps/radio/src/lib/playback-actions-shared.ts:71-76`). Exactly one per graph | v1 |
 | Scope | audio | none | mode (level, spectrum), freeze | MeterService tap on any bus or lane (`apps/radio/src/lib/audio/manager/meter-service.ts:44-82`). Spectrum can later read the compatibility `ANALYSIS_DATA` (`processor.ts:333`), which nothing consumes today | v2 |
 | Headphones (CUE) | audio | none | level | `registerCueDeck("node:<id>", tap)` (`apps/radio/src/lib/output-routing.ts:592-608`). Hidden where setSinkId is missing | v2 |
-| Output device (`deviceOut`) | audio ×N | none | device, mute | One more output beside Speakers: `apps/radio/src/lib/audio/routing/node-device-sinks.ts` builds one GainNode → MediaStreamDestination → `<audio>.setSinkId(deviceId)` per node, the CUE sink's pattern (`browser-output-adapter.ts:129-156`), when a send first connects (inside a play). Not sample-aligned with Speakers, and the main delay does not apply. One node a device: a second on the same device is refused ("This output already has a module"). With no device picked its cables stay silent. Where it can't play, its cables play through Speakers and its body says so: "This browser can't choose an output, playing through Speakers" (no `setSinkId`), "Unplugged, playing through Speakers", or the `setSinkId` error. "Same device as Speakers" when it names the main output setting. The palette offers one per listed output, none where `isSinkIdSupported()` is false | v1 |
+| Output device (`deviceOut`) | audio ×N | none | device, mute | One more output beside Speakers: `apps/radio/src/lib/audio/routing/node-device-sinks.ts` builds one GainNode → MediaStreamDestination → `<audio>.setSinkId(deviceId)` per device, the CUE sink's pattern (`browser-output-adapter.ts:129-156`), when a send first connects (inside a play). Not sample-aligned with Speakers, and the main delay does not apply. Several nodes can play to one device, each with its own sends and mute; the device's graph goes once no node uses it. With no device picked its cables stay silent. Where it can't play, its cables play through Speakers and its body says so: "This browser can't choose an output, playing through Speakers" (no `setSinkId`), "Unplugged, playing through Speakers", or the `setSinkId` error. "Same device as Speakers" when it names the main output setting. The palette offers one per listed output, none where `isSinkIdSupported()` is false | v1 |
 | Recorder | audio | none | arm, format (webm/opus, or mp4 on Safari), max minutes | MediaStreamDestination → MediaRecorder → download. New code: nothing in `src` uses MediaRecorder today | v2 |
 
 ## 4. Wacky features
@@ -415,9 +415,7 @@ chains, with params excluded.
 - **Limits.** `max` per port is enforced by the validator ("This input takes one cable",
   "This input is full (8 cables)") and mirrored on each handle: a port counts its cables
   with `useNodeConnections` and sets `isConnectableStart`/`isConnectableEnd`, which React
-  Flow 12.12 takes as booleans only. Speakers is unique, an Output device is unique per
-  device ("This output already has a module", `deviceOutVerdict`, which the palette and the
-  node's device select also ask), and each lane allows at most one Filter, one Pan and one
+  Flow 12.12 takes as booleans only. Speakers is unique, and each lane allows at most one Filter, one Pan and one
   keyed FX.
 - **Cycles.** Tarjan SCC over audio edges. Every non-trivial SCC must contain at least one
   Loop node; otherwise the connection is refused with "That would feed the sound back into

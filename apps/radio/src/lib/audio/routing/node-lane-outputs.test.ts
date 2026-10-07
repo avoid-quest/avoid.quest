@@ -48,14 +48,16 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
   const routes = new Map<string, Set<unknown>>();
   /** Which sink each send was routed for. */
   const sendSinks = new Map<FakeGainNode, string>();
-  const route = mock<LaneSinkRoute>((sinkId, send, toMain) => {
+  const mainSources = new Set<unknown>();
+  const releaseMain = mock(() => undefined);
+  const route = mock<LaneSinkRoute>((sinkId, send) => {
     sendSinks.set(send as unknown as FakeGainNode, sinkId);
-    const into = routes.get(sinkId);
-    if (!into) {
-      return toMain();
-    }
+    const into = routes.get(sinkId) ?? mainSources;
     into.add(send);
     return () => {
+      if (into === mainSources) {
+        releaseMain();
+      }
       into.delete(send);
     };
   });
@@ -73,15 +75,7 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     wait,
   });
   const context = new FakeAudioContext();
-  const mainSources = new Set<unknown>();
-  const releaseMain = mock(() => undefined);
-  const connectMain = mock<MainOutputConnect>((source) => {
-    mainSources.add(source);
-    return () => {
-      releaseMain();
-      mainSources.delete(source);
-    };
-  });
+  const connectMain = mock<MainOutputConnect>(() => () => undefined);
 
   /** What AudioManager does inside connectAudioGraph, synchronously. */
   const connectSound = (soundId: string, into = context) => {
@@ -133,8 +127,7 @@ describe("createNodeLaneOutputs", () => {
     expect(fader.connections.has(laneOut)).toBe(true);
     expect(laneOut.gain.value).toBe(1);
     expect(send).toBeDefined();
-    expect(harness.connectMain).toHaveBeenCalledTimes(1);
-    expect(harness.connectMain).toHaveBeenCalledWith(send, false);
+    expect(harness.route).toHaveBeenCalledWith("speakers", send, false);
     expect(harness.mainSources.has(send)).toBe(true);
     expect(send?.gain.value).toBe(0);
     expect(send?.gain.events.at(-1)).toEqual({
@@ -272,24 +265,6 @@ describe("createNodeLaneOutputs", () => {
       type: "target",
       value: 0,
     });
-  });
-
-  test("reroute moves a sink's sends to where the route now says", () => {
-    const harness = createHarness();
-    const desk = new Set<unknown>();
-    harness.routes.set("desk", desk);
-    harness.setLevel("kexp", "desk", 1);
-    harness.outputs.attach("kexp", "node:n:kexp");
-    const { sendTo } = harness.connectSound("node:n:kexp");
-    const send = sendTo("desk");
-    expect(desk.has(send)).toBe(true);
-
-    // The device sink failed: its sends go to Speakers.
-    harness.routes.delete("desk");
-    harness.outputs.reroute("desk");
-
-    expect(desk.has(send)).toBe(false);
-    expect(harness.mainSources.has(send)).toBe(true);
   });
 
   test("dropSink fades a removed sink's sends out, then takes them off it", async () => {

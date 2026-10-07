@@ -744,7 +744,6 @@ export function getNodePlayback(
   }
   const playback = createNodePlayback(ctx, {
     backendBadges: options.backendBadges ?? nodeBackendBadges,
-    cueOutput: options.cueOutput ?? getOutputRouting,
     deviceSinks: options.deviceSinks ?? createNodeDeviceSinks,
     effects: options.effects ?? {
       reconcileEffects: (soundId, desired) =>
@@ -759,6 +758,9 @@ export function getNodePlayback(
     getEnv: options.getEnv ?? detectNodePlaybackEnv,
     laneOutputs: options.laneOutputs ?? createNodeLaneOutputs,
     otherTabWrites: options.otherTabWrites ?? subscribeToOtherTabSessionWrites,
+    outputRouting:
+      options.outputRouting ??
+      (() => ctx.getMainOutputRouter() ?? getOutputRouting()),
     resolveStream: options.resolveStream ?? resolveDjPlatformStreamUrl,
     sinkStatuses: options.sinkStatuses ?? nodeSinkStatuses,
     store: options.store ?? nodeStore,

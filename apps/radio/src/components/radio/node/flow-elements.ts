@@ -191,22 +191,11 @@ export type AudioInputNodeData = Extract<
   { type: "deviceIn" }
 >["data"] & { feedsOutput: boolean };
 
-/**
- * What an Output device draws: its data, and the devices other Output
- * devices already play to, which its select can't pick.
- */
+/** What an Output device draws: its own device and mute. */
 export type OutputDeviceNodeData = Extract<
   GraphNode,
   { type: "deviceOut" }
->["data"] & { taken: string[] };
-
-export function takenDevices(graph: NodeGraph, nodeId: string): string[] {
-  return graph.nodes.flatMap((node) =>
-    node.type === "deviceOut" && node.id !== nodeId && node.data.deviceId
-      ? [node.data.deviceId]
-      : []
-  );
-}
+>["data"];
 
 /** What a Merge node draws: its compiler badge and how many cables it joins. */
 export type MergeNodeData = { role: MergeRole | null; inputs: number };
@@ -312,13 +301,6 @@ export function toFlowNodes(
       const data: AudioInputNodeData = {
         ...node.data,
         feedsOutput: feedsOutput(graph, node.id),
-      };
-      return data;
-    }
-    if (node.type === "deviceOut") {
-      const data: OutputDeviceNodeData = {
-        ...node.data,
-        taken: takenDevices(graph, node.id),
       };
       return data;
     }

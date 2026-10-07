@@ -1,20 +1,30 @@
 /**
  * Node Device Sinks
  *
- * One sink per Output device node, modelled on the CUE sink
- * (browser-output-adapter.ts): lane sends into one GainNode, then a
- * MediaStream hop into an `<audio>` element set to the device:
+ * One GainNode per Output node, Speakers or an Output device, that every
+ * cable into the node passes through. Its level is the node's own (0 while
+ * muted), so a change reaches every cable into it at once, the ones still
+ * fading out included. Speakers play on the main bus; an Output device's
+ * gain goes into one graph per physical device, modelled on the CUE sink
+ * (browser-output-adapter.ts):
  *
- *   sends → input → MediaStreamDestination → <audio>.setSinkId(deviceId)
+ *   cables → node gain → main bus                                (Speakers)
+ *   cables → node gain → device input → MediaStreamDestination
+ *                                     → <audio>.setSinkId(deviceId)
  *
- * The graph is built the first time a send connects, inside a play, so the
- * element's play() follows a user gesture. A sink that can't play says why
- * in its status, and its sends go to Speakers instead (`onReroute`):
- * `setSinkId` missing (Safari), rejected, or the device unplugged. When the
- * device comes back the sink is tried again.
+ * Several nodes can play to one device, each through its own gain, so its
+ * mute and removal leave the others playing. A node's gain stays while any
+ * cable holds it, the plan's or not, so a removed node's cables fade out
+ * through it; a device's graph goes once no node uses it. The
+ * graph is built the first time a gain needs it, inside a play, so the
+ * element's play() follows a user gesture. A device that can't play says
+ * why in each of its nodes' status, and their gains go to the main bus
+ * instead: `setSinkId` missing (Safari), rejected, or the device unplugged.
+ * When the device comes back it is tried again.
  *
- * Output devices are not sample-aligned with Speakers, and the main output
- * delay does not apply to them.
+ * Realtime cables (live inputs) skip the main delay, so a node has one gain
+ * per timing it is fed with. Output devices are not sample-aligned with
+ * Speakers, and the main output delay does not apply to them.
  */
 
 import {
@@ -22,6 +32,7 @@ import {
   safeDisconnect,
   safeDisconnectFrom,
 } from "../utils";
+import { settleGain } from "./node-lane-outputs";
 
 export type DeviceSinkStatus =
   /** No device picked yet: its cables stay silent. */
@@ -35,13 +46,19 @@ export type DeviceSinkStatus =
   /** setSinkId or play() rejected: its cables play through Speakers. */
   | { state: "failed"; message: string };
 
-/** Where a send into a sink goes. */
-export type DeviceSinkRoute =
-  | { to: "device"; release: () => void }
-  | { to: "speakers" }
-  | { to: "nowhere" };
+/** An Output node as the plan has it. */
+export type NodeOutputPlan = {
+  /**
+   * An Output device's device, or null while none is picked; Speakers
+   * have none and play on the main bus.
+   */
+  deviceId?: string | null;
+  muted: boolean;
+};
 
 export type NodeDeviceSinksOptions = {
+  /** Puts a node's gain on the main bus; returns the disconnect. */
+  connectMain: (node: AudioNode, realtime: boolean) => () => void;
   isSupported?: () => boolean;
   createElement?: () => HTMLAudioElement;
   /** The audiooutput device ids the browser lists now. */
@@ -50,17 +67,18 @@ export type NodeDeviceSinksOptions = {
   watchDevices?: (onChange: () => void) => () => void;
   /** Whether playback still runs: false once it starts deactivating. */
   isActive?: () => boolean;
-  /** A sink's sends must be routed again, e.g. it failed over to Speakers. */
-  onReroute?: (sinkId: string) => void;
   /** Any sink's status changed. */
   onStatus?: () => void;
 };
 
 export type NodeDeviceSinks = {
-  /** Matches the plan's Output devices: sink id → device id. */
-  sync: (sinks: ReadonlyMap<string, string | null>) => void;
-  /** Routes one lane send into `sinkId`. */
-  connect: (sinkId: string, send: AudioNode) => DeviceSinkRoute;
+  /** Matches the plan's Output nodes, by node id. */
+  sync: (outputs: ReadonlyMap<string, NodeOutputPlan>) => void;
+  /**
+   * Connects one cable's send into Output node `sinkId` and holds the node
+   * until the returned release.
+   */
+  connect: (sinkId: string, send: AudioNode, realtime: boolean) => () => void;
   /** Tries a failed sink again from an explicit user action. */
   retry: (sinkId: string) => void;
   status: (sinkId: string) => DeviceSinkStatus | undefined;
@@ -76,12 +94,25 @@ type SinkGraph = {
   element: HTMLAudioElement;
 };
 
-type SinkEntry = {
-  deviceId: string | null;
+/** One physical device: one graph, whatever number of nodes play to it. */
+type DeviceEntry = {
   status: DeviceSinkStatus;
   graph: SinkGraph | null;
   /** Bumped when the graph is torn down, so a late setSinkId is ignored. */
   generation: number;
+};
+
+/** One Output node's gain for one timing. */
+type NodeGain = {
+  readonly sinkId: string;
+  readonly realtime: boolean;
+  readonly gain: GainNode;
+  /** The node's plan: the latest, or the last one once it left the plan. */
+  plan: NodeOutputPlan;
+  /** Cables connected into it. */
+  holds: number;
+  /** Its connection onward. */
+  release: () => void;
 };
 
 /** The main output's own id; a browser always has it while it has audio. */
@@ -113,7 +144,7 @@ function errorMessage(error: unknown): string {
     : "The browser refused this output";
 }
 
-function teardown(entry: SinkEntry): void {
+function teardown(entry: DeviceEntry): void {
   const { graph } = entry;
   entry.generation += 1;
   entry.graph = null;
@@ -133,16 +164,27 @@ function teardown(entry: SinkEntry): void {
   }
 }
 
+function levelOf(plan: NodeOutputPlan): number {
+  return plan.muted ? 0 : 1;
+}
+
+function gainKey(sinkId: string, realtime: boolean): string {
+  return `${realtime ? "realtime" : "main"}:${sinkId}`;
+}
+
 export function createNodeDeviceSinks({
+  connectMain,
   isSupported = isMediaElementSinkIdSupported,
   createElement = () => new Audio(),
   listOutputDeviceIds: listIds = listOutputDeviceIds,
   watchDevices: watch = watchDevices,
   isActive = () => true,
-  onReroute,
   onStatus,
-}: NodeDeviceSinksOptions = {}): NodeDeviceSinks {
-  const entries = new Map<string, SinkEntry>();
+}: NodeDeviceSinksOptions): NodeDeviceSinks {
+  /** The plan's Output nodes. */
+  let outputs: ReadonlyMap<string, NodeOutputPlan> = new Map();
+  const gains = new Map<string, NodeGain>();
+  const devices = new Map<string, DeviceEntry>();
   /** The last device list with real ids; null until one is read. */
   let knownIds: Set<string> | null = null;
   let unwatch: (() => void) | null = null;
@@ -150,34 +192,26 @@ export function createNodeDeviceSinks({
   const isPresent = (deviceId: string) =>
     deviceId === DEFAULT_DEVICE_ID || !knownIds || knownIds.has(deviceId);
 
-  const restingStatus = (deviceId: string | null): DeviceSinkStatus => {
+  const restingStatus = (deviceId: string): DeviceSinkStatus => {
     if (!isSupported()) {
       return { state: "unsupported" };
-    }
-    if (deviceId === null) {
-      return { state: "empty" };
     }
     return isPresent(deviceId) ? { state: "ok" } : { state: "unplugged" };
   };
 
-  /** Sets a sink's status; its sends reroute when where they go changed. */
-  const setStatus = (
-    sinkId: string,
-    entry: SinkEntry,
-    next: DeviceSinkStatus
-  ) => {
-    const routedBefore = entry.status.state;
-    entry.status = next;
-    onStatus?.();
-    if (routedBefore !== next.state) {
-      onReroute?.(sinkId);
+  const statusOf = (sinkId: string): DeviceSinkStatus | undefined => {
+    const deviceId = outputs.get(sinkId)?.deviceId;
+    if (deviceId === undefined) {
+      return;
     }
+    return deviceId === null
+      ? { state: "empty" }
+      : (devices.get(deviceId)?.status ?? restingStatus(deviceId));
   };
 
   const build = (
-    sinkId: string,
-    entry: SinkEntry,
     deviceId: string,
+    entry: DeviceEntry,
     context: BaseAudioContext
   ): SinkGraph => {
     const audio = context as AudioContext;
@@ -191,7 +225,7 @@ export function createNodeDeviceSinks({
     entry.graph = graph;
     const { generation } = entry;
     const current = () =>
-      entries.get(sinkId) === entry &&
+      devices.get(deviceId) === entry &&
       entry.generation === generation &&
       isActive();
     element
@@ -202,12 +236,103 @@ export function createNodeDeviceSinks({
           return;
         }
         teardown(entry);
-        setStatus(sinkId, entry, {
+        setStatus(deviceId, entry, {
           message: errorMessage(error),
           state: "failed",
         });
       });
     return graph;
+  };
+
+  /**
+   * Connects a node's gain where its node plays now: its device, the main
+   * bus while that device can't play, or nowhere with no device picked.
+   */
+  const place = (node: NodeGain) => {
+    node.release();
+    const { deviceId } = node.plan;
+    if (deviceId === null) {
+      node.release = () => undefined;
+      return;
+    }
+    const entry = deviceId === undefined ? undefined : devices.get(deviceId);
+    if (!(deviceId && entry?.status.state === "ok")) {
+      node.release = connectMain(node.gain, node.realtime);
+      return;
+    }
+    // A graph from an AudioContext since replaced can't take this gain.
+    if (entry.graph && entry.graph.input.context !== node.gain.context) {
+      teardown(entry);
+    }
+    const { input } = entry.graph ?? build(deviceId, entry, node.gain.context);
+    node.gain.connect(input);
+    node.release = () => {
+      safeDisconnectFrom(node.gain, input, "NodeDeviceSinks.place");
+    };
+  };
+
+  /** A device is kept while a node in the plan or a held gain uses it. */
+  const syncDevices = () => {
+    const used = new Set<string>();
+    for (const plan of [
+      ...outputs.values(),
+      ...[...gains.values()].map((node) => node.plan),
+    ]) {
+      if (plan.deviceId) {
+        used.add(plan.deviceId);
+      }
+    }
+    for (const [deviceId, entry] of devices) {
+      if (!used.has(deviceId)) {
+        teardown(entry);
+        devices.delete(deviceId);
+      }
+    }
+    for (const deviceId of used) {
+      if (!devices.has(deviceId)) {
+        devices.set(deviceId, {
+          generation: 0,
+          graph: null,
+          status: restingStatus(deviceId),
+        });
+      }
+    }
+    ensureWatching();
+  };
+
+  const drop = (node: NodeGain) => {
+    gains.delete(gainKey(node.sinkId, node.realtime));
+    node.release();
+    safeDisconnect(node.gain, "NodeDeviceSinks.drop");
+  };
+
+  /** A gain goes once no cable holds it. */
+  const collect = (node: NodeGain) => {
+    if (
+      node.holds === 0 &&
+      gains.get(gainKey(node.sinkId, node.realtime)) === node
+    ) {
+      drop(node);
+      syncDevices();
+    }
+  };
+
+  /** Sets a device's status; its gains move when where they go changed. */
+  const setStatus = (
+    deviceId: string,
+    entry: DeviceEntry,
+    next: DeviceSinkStatus
+  ) => {
+    const before = entry.status.state;
+    entry.status = next;
+    onStatus?.();
+    if (before !== next.state) {
+      for (const node of gains.values()) {
+        if (node.plan.deviceId === deviceId) {
+          place(node);
+        }
+      }
+    }
   };
 
   const checkDevices = async () => {
@@ -220,27 +345,27 @@ export function createNodeDeviceSinks({
     // Without mic permission the list has no ids: nothing to judge by.
     const real = ids.filter(Boolean);
     knownIds = real.length > 0 ? new Set(real) : null;
-    for (const [sinkId, entry] of entries) {
-      const { deviceId, status } = entry;
-      if (deviceId === null || status.state === "unsupported") {
+    for (const [deviceId, entry] of devices) {
+      const { status } = entry;
+      if (status.state === "unsupported") {
         continue;
       }
       if (!isPresent(deviceId) && status.state !== "unplugged") {
         teardown(entry);
-        setStatus(sinkId, entry, { state: "unplugged" });
+        setStatus(deviceId, entry, { state: "unplugged" });
       } else if (isPresent(deviceId) && status.state === "unplugged") {
-        setStatus(sinkId, entry, { state: "ok" });
+        setStatus(deviceId, entry, { state: "ok" });
       }
     }
   };
 
   const ensureWatching = () => {
-    if (entries.size > 0 && !unwatch) {
+    if (devices.size > 0 && !unwatch) {
       unwatch = watch(() => {
         checkDevices().catch(() => undefined);
       });
       checkDevices().catch(() => undefined);
-    } else if (entries.size === 0 && unwatch) {
+    } else if (devices.size === 0 && unwatch) {
       unwatch();
       unwatch = null;
     }
@@ -248,78 +373,92 @@ export function createNodeDeviceSinks({
 
   return {
     checkDevices,
-    connect(sinkId, send) {
-      const entry = entries.get(sinkId);
-      if (!entry || entry.deviceId === null) {
-        return { to: "nowhere" };
+    connect(sinkId, send, realtime) {
+      const key = gainKey(sinkId, realtime);
+      let node = gains.get(key);
+      const plan = outputs.get(sinkId) ?? node?.plan;
+      if (!plan) {
+        return () => undefined;
       }
-      if (entry.status.state !== "ok") {
-        return { to: "speakers" };
+      // A gain from an AudioContext since replaced carries nothing.
+      if (node && node.gain.context !== send.context) {
+        drop(node);
+        node = undefined;
       }
-      // A graph from an AudioContext since replaced can't take this send.
-      if (entry.graph && entry.graph.input.context !== send.context) {
-        teardown(entry);
+      if (!node) {
+        const gain = send.context.createGain();
+        gain.gain.value = levelOf(plan);
+        node = {
+          gain,
+          holds: 0,
+          plan,
+          realtime,
+          release: () => undefined,
+          sinkId,
+        };
+        gains.set(key, node);
+        syncDevices();
+        place(node);
       }
-      const graph =
-        entry.graph ?? build(sinkId, entry, entry.deviceId, send.context);
-      send.connect(graph.input);
-      return {
-        release: () => {
-          safeDisconnectFrom(send, graph.input, "NodeDeviceSinks.release");
-        },
-        to: "device",
+      const held = node;
+      send.connect(held.gain);
+      held.holds += 1;
+      return () => {
+        safeDisconnectFrom(send, held.gain, "NodeDeviceSinks.release");
+        held.holds -= 1;
+        collect(held);
       };
     },
     dispose() {
-      for (const entry of entries.values()) {
+      for (const node of [...gains.values()]) {
+        drop(node);
+      }
+      for (const entry of devices.values()) {
         teardown(entry);
       }
-      entries.clear();
+      devices.clear();
+      outputs = new Map();
       ensureWatching();
     },
     retry(sinkId) {
-      const entry = entries.get(sinkId);
-      if (entry?.status.state === "failed") {
-        setStatus(sinkId, entry, restingStatus(entry.deviceId));
+      const deviceId = outputs.get(sinkId)?.deviceId;
+      const entry = deviceId ? devices.get(deviceId) : undefined;
+      if (deviceId && entry?.status.state === "failed") {
+        setStatus(deviceId, entry, restingStatus(deviceId));
       }
     },
-    status: (sinkId) => entries.get(sinkId)?.status,
+    status: statusOf,
     statuses: () =>
       Object.fromEntries(
-        [...entries].map(([sinkId, entry]) => [sinkId, entry.status])
+        [...outputs.keys()].flatMap((sinkId) => {
+          const status = statusOf(sinkId);
+          return status ? [[sinkId, status]] : [];
+        })
       ),
-    sync(sinks) {
-      let changed = false;
-      for (const [sinkId, entry] of entries) {
-        if (!sinks.has(sinkId)) {
-          teardown(entry);
-          entries.delete(sinkId);
-          changed = true;
-        }
-      }
-      for (const [sinkId, deviceId] of sinks) {
-        const entry = entries.get(sinkId);
-        if (entry?.deviceId === deviceId) {
+    sync(next) {
+      const changed =
+        outputs.size !== next.size ||
+        [...next].some(
+          ([sinkId, plan]) =>
+            !outputs.has(sinkId) ||
+            outputs.get(sinkId)?.deviceId !== plan.deviceId
+        );
+      outputs = new Map(next);
+      syncDevices();
+      for (const node of gains.values()) {
+        const plan = outputs.get(node.sinkId);
+        if (!plan) {
           continue;
         }
-        changed = true;
-        if (entry) {
-          // A new device: its sends are routed again, onto a new graph.
-          teardown(entry);
-          entry.deviceId = deviceId;
-          entry.status = restingStatus(deviceId);
-          onReroute?.(sinkId);
-        } else {
-          entries.set(sinkId, {
-            deviceId,
-            generation: 0,
-            graph: null,
-            status: restingStatus(deviceId),
-          });
+        const moved = plan.deviceId !== node.plan.deviceId;
+        node.plan = plan;
+        settleGain(node.gain, levelOf(plan));
+        if (moved) {
+          place(node);
         }
       }
+      syncDevices();
       if (changed) {
-        ensureWatching();
         onStatus?.();
       }
     },

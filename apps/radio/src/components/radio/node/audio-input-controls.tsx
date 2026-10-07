@@ -121,7 +121,6 @@ export function DeviceSelect({
   devices,
   value,
   isLoading,
-  disabledReason,
   onChange,
   onRefresh,
 }: {
@@ -131,8 +130,6 @@ export function DeviceSelect({
   devices: readonly NodeDevice[];
   value: string | null;
   isLoading: boolean;
-  /** Why a device can't be picked here, or null when it can. */
-  disabledReason?: (deviceId: string) => string | null;
   onChange: (device: NodeDevice) => void;
   onRefresh: () => void;
 }) {
@@ -153,19 +150,11 @@ export function DeviceSelect({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
-          {devices.map((device) => {
-            const reason = disabledReason?.(device.deviceId) ?? null;
-            return (
-              <SelectItem
-                disabled={reason !== null}
-                key={device.deviceId}
-                title={reason ?? undefined}
-                value={device.deviceId}
-              >
-                {device.label}
-              </SelectItem>
-            );
-          })}
+          {devices.map((device) => (
+            <SelectItem key={device.deviceId} value={device.deviceId}>
+              {device.label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
       <Button

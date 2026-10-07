@@ -70,7 +70,6 @@ import {
   type Connection,
   connectionBaseline,
   connectionVerdict,
-  deviceOutVerdict,
   kindsPatch,
   parseHandleId,
   type ValidateOptions,
@@ -542,7 +541,7 @@ export function paletteEntries(
       continue;
     }
     if (type === "deviceOut") {
-      entries.push(...outputDeviceEntries(graph, devices.outputs));
+      entries.push(...outputDeviceEntries(devices.outputs));
       continue;
     }
     entries.push(
@@ -647,12 +646,11 @@ function inputDeviceEntries(
 
 /**
  * One Output device per output the browser lists, set to it, leaving out
- * the main output Speakers already play on and any device an Output device
- * already has. With none but the main output listed yet, one to set up in
- * its body.
+ * the main output Speakers already play on. A device another Output device
+ * plays to is offered again: each node keeps its own cables and mute. With
+ * none but the main output listed yet, one to set up in its body.
  */
 function outputDeviceEntries(
-  graph: NodeGraph,
   outputs: readonly PaletteDevice[]
 ): PaletteNodeEntry[] {
   const { name } = getNodeDefinition("deviceOut");
@@ -670,16 +668,14 @@ function outputDeviceEntries(
       },
     ];
   }
-  return others
-    .filter((device) => deviceOutVerdict(graph, device.deviceId).ok)
-    .map((device) => ({
-      device,
-      id: `deviceOut:${device.deviceId}`,
-      kind: "node",
-      name: device.label,
-      section: "outputs",
-      type: "deviceOut",
-    }));
+  return others.map((device) => ({
+    device,
+    id: `deviceOut:${device.deviceId}`,
+    kind: "node",
+    name: device.label,
+    section: "outputs",
+    type: "deviceOut",
+  }));
 }
 
 /** The effects an FX node can swap to: every other shipped non-split FX. */

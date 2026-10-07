@@ -371,7 +371,6 @@ function createWorld(directFields = false) {
       release: (laneId) => {
         connected.delete(laneId);
       },
-      reroute: () => undefined,
       unduck: (laneId) => {
         log.push(`unduck ${laneId}`);
       },

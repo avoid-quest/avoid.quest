@@ -26,12 +26,7 @@ import {
   probeBrowserReadableAudio,
 } from "@/lib/audio/playback/browser-audio-probe";
 import type { PlatformMetadata } from "@/lib/platform-types";
-
-export const BANDCAMP_RELAY_BASE_URLS = [
-  "https://seep.eu.org/",
-  "https://proxy.cors.sh/",
-  "https://cors.zme.ink/",
-] as const;
+import { BANDCAMP_RELAY_BASE_URLS } from "./bandcamp-relays";
 
 type BandcampRelayBaseUrl = (typeof BANDCAMP_RELAY_BASE_URLS)[number];
 
@@ -50,7 +45,6 @@ type PlatformItemPreparationOptions = {
 };
 
 const BANDCAMP_RELAY_PROBE_TIMEOUT_MS = 5000;
-const BANDCAMP_RELAY_CONTENT_RANGE_PATTERN = /^bytes 0-0\/\d+$/;
 
 export type PlatformItem = {
   format?: "hls" | "progressive";
@@ -128,20 +122,30 @@ async function probeBandcampRelay(
       isPlayableResponse: async (response) => {
         const contentType =
           response.headers.get("content-type")?.toLowerCase() ?? "";
-        const contentRange =
-          response.headers.get("content-range")?.toLowerCase() ?? "";
+        const contentLength = response.headers.get("content-length");
         const ready =
           response.status === 206 &&
           contentType.startsWith("audio/") &&
-          BANDCAMP_RELAY_CONTENT_RANGE_PATTERN.test(contentRange);
+          (contentLength === null || contentLength === "1");
         if (!ready || response.body === null) {
           return false;
         }
 
         const reader = response.body.getReader();
         try {
-          const { done, value } = await reader.read();
-          return !done && value !== undefined && value.byteLength > 0;
+          let length = 0;
+          while (length < 2) {
+            // biome-ignore lint/performance/noAwaitInLoops: stop once a second byte disproves the one-byte range
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+            length += value.byteLength;
+            if (contentLength !== null) {
+              return length > 0;
+            }
+          }
+          return length === 1;
         } finally {
           await reader.cancel().catch(() => undefined);
           reader.releaseLock();

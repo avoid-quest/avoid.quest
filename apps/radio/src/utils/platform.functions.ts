@@ -33,6 +33,7 @@ import {
 } from "@avoid.quest/platforms/spotify";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { BANDCAMP_RELAY_BASE_URLS } from "@/lib/bandcamp-relays";
 import { workerMetadataCache } from "@/lib/metadata/edge-cache";
 import type { PlatformMetadata } from "@/lib/platform-types";
 import { getCachedRadioGardenItem } from "@/lib/stations/directory-cache";
@@ -117,7 +118,9 @@ function providerError(
 }
 
 async function resolveBandcampItem(url: string): Promise<ResolvedPlatformItem> {
-  const result = await getBandcampItem(url);
+  const result = await getBandcampItem(url, {
+    relayBaseUrls: BANDCAMP_RELAY_BASE_URLS,
+  });
   if (!result.success) {
     throw providerError(
       "bandcamp",

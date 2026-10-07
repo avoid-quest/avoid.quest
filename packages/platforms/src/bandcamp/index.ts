@@ -16,8 +16,15 @@ export type {
 
 import { load } from "cheerio";
 import { decode } from "html-entities";
-
+import { BROWSER_USER_AGENT } from "../browser-user-agent.js";
+import type { FetchLike } from "../redirects/validated-redirects.js";
+import {
+  fetchWithValidatedRedirects,
+  ValidatedRedirectError,
+} from "../redirects/validated-redirects.js";
+import { normalizePlatformHostname } from "../url-policy/hostname.js";
 import { detectBandcampItemType } from "./detect.js";
+import { isBandcampHostname, validateBandcampCdnUrl } from "./url-policy.js";
 
 export {
   BANDCAMP_HTML_MARKERS,
@@ -46,6 +53,7 @@ const TRAILING_SLASH_RE = /\/?$/;
 const FAN_ID_RE = /fan_id["\s:]+(\d+)/;
 const USERNAME_RE = /bandcamp\.com\/([^/]+)/;
 const LEADING_DASH_RE = /^\s*-\s*/;
+const CHALLENGE_RE = /captcha|challenge/i;
 
 type BandcampBasicData = {
   name: string;
@@ -64,9 +72,24 @@ type RawBandcampTrack = {
 
 type BandcampExtraData = {
   trackinfo?: RawBandcampTrack[];
+  url?: string;
+};
+
+export type BandcampItemOptions = {
+  fetchImpl?: FetchLike;
+  relayBaseUrls?: readonly string[];
+  signal?: AbortSignal;
+};
+
+type BandcampLoadOptions = BandcampItemOptions & {
+  // Shared with child pages so one item load emits at most one diagnostic.
+  directFallback: { logged: boolean };
+  signal: AbortSignal;
 };
 
 const REQUEST_TIMEOUT_MS = 10_000;
+// Four page loads keep shared Worker egress from bursting at public relays.
+const PAGE_CONCURRENCY = 4;
 const MAX_ARTIST_ALBUMS = 10;
 // Fetch more collection items since many won't have free streaming
 const MAX_COLLECTION_ITEMS = 50;
@@ -85,22 +108,39 @@ function createErrorResponse(message: string): BandcampItemError {
 }
 
 export async function getBandcampItem(
-  url: string
+  url: string,
+  options: BandcampItemOptions = {}
+): Promise<BandcampItemResponse> {
+  return await loadBandcampItem(url, {
+    ...options,
+    directFallback: { logged: false },
+    signal: options.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+}
+
+async function loadBandcampItem(
+  url: string,
+  options: BandcampLoadOptions
 ): Promise<BandcampItemResponse> {
   try {
-    const itemType = detectBandcampItemType(url);
+    options.signal.throwIfAborted();
+    const pageUrl = bandcampPageUrl(url);
+    const parsed = new URL(pageUrl);
+    const itemType = detectBandcampItemType(
+      `${parsed.protocol}//${parsed.hostname}${parsed.pathname}`
+    );
 
     if (itemType === "album") {
-      return await getBandcampAlbum(url);
+      return await getBandcampAlbum(pageUrl, options);
     }
     if (itemType === "track") {
-      return await getBandcampTrack(url);
+      return await getBandcampTrack(pageUrl, options);
     }
     if (itemType === "artist") {
-      return await getBandcampArtist(url);
+      return await getBandcampArtist(pageUrl, options);
     }
     if (itemType === "collection") {
-      return await getBandcampCollection(url);
+      return await getBandcampCollection(pageUrl, options);
     }
 
     return createErrorResponse(`${itemType} pages are not yet supported`);
@@ -111,39 +151,197 @@ export async function getBandcampItem(
   }
 }
 
-async function fetchBandcampPage(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+function bandcampPageUrl(url: string): string {
+  const parsed = URL.canParse(url) ? new URL(url) : null;
+  if (
+    !parsed ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    !isBandcampHostname(parsed.hostname) ||
+    parsed.port ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new ValidatedRedirectError("unsafe-bandcamp-url", url);
+  }
+  parsed.protocol = "https:";
+  parsed.hostname = normalizePlatformHostname(parsed.hostname);
+  return parsed.origin + parsed.pathname + parsed.search;
+}
 
+function bandcampReleaseUrl(
+  href: string | undefined,
+  base: string
+): string | null {
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      },
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Bandcamp page: ${response.statusText}`);
+    if (!href) {
+      return null;
     }
-
-    return await response.text();
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request to ${url} timed out after 10 seconds`, {
-        cause: error,
-      });
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+    const parsed = new URL(bandcampPageUrl(new URL(href, base).href));
+    return parsed.pathname.startsWith("/album/") ||
+      parsed.pathname.startsWith("/track/")
+      ? parsed.origin + parsed.pathname
+      : null;
+  } catch {
+    return null;
   }
 }
 
-function parseBandcampData(html: string) {
+function bandcampArtworkUrl(url: string | undefined): string | undefined {
+  const validated = validateBandcampCdnUrl(url ?? null);
+  return validated.ok ? validated.url : undefined;
+}
+
+function warnBandcampDirectFallback(
+  url: string,
+  response: Response | undefined,
+  html: string,
+  options: BandcampLoadOptions
+) {
+  if (!options.relayBaseUrls?.length || options.directFallback.logged) {
+    return;
+  }
+  const $ = load(html);
+  const jsonLd = $('script[type="application/ld+json"]');
+  options.directFallback.logged = true;
+  console.warn({
+    bodyLength: html.length,
+    hasChallenge: CHALLENGE_RE.test(html),
+    hasJsonLd: jsonLd.length > 0,
+    hasTralbum: html.includes("data-tralbum"),
+    headers: Object.fromEntries(
+      [...(response?.headers ?? [])].flatMap(([name, value]) =>
+        ["server", "content-type", "cf-mitigated", "content-length"].includes(
+          name
+        )
+          ? [[name, value.slice(0, 80)]]
+          : []
+      )
+    ),
+    hostname: new URL(url).hostname,
+    stage: "bandcamp-direct",
+    status: response?.status ?? null,
+    title: $("title").text().trim().slice(0, 80),
+  });
+}
+
+async function readBandcampPageBody(
+  response: Response,
+  relay: string,
+  options: BandcampLoadOptions
+): Promise<string> {
+  if (response.ok) {
+    return response.text();
+  }
+  if (
+    relay ||
+    !options.relayBaseUrls?.length ||
+    options.directFallback.logged
+  ) {
+    return "";
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return "";
+  }
+  const bytes = new Uint8Array(8192);
+  let length = 0;
+  try {
+    while (length < bytes.length) {
+      // biome-ignore lint/performance/noAwaitInLoops: read only a bounded prefix for diagnostics
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = value.subarray(0, bytes.length - length);
+      bytes.set(chunk, length);
+      length += chunk.length;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return new TextDecoder().decode(bytes.subarray(0, length));
+}
+
+async function fetchBandcampPage<T>(
+  url: string,
+  options: BandcampLoadOptions,
+  parse: (html: string, url: string) => T
+): Promise<T> {
+  const rebuilt = bandcampPageUrl(url);
+  let lastError: unknown;
+  for (const relay of ["", ...(options.relayBaseUrls ?? [])]) {
+    let response: Response | undefined;
+    let html = "";
+    try {
+      options.signal.throwIfAborted();
+      // Encode once so a relay's single decode preserves the validated URL.
+      const target = relay ? relay + encodeURIComponent(rebuilt) : rebuilt;
+      // biome-ignore lint/performance/noAwaitInLoops: direct first, then relays in priority order
+      const fetched = await fetchWithValidatedRedirects({
+        fetchImpl: options.fetchImpl ?? fetch,
+        init: {
+          headers: {
+            Accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "User-Agent": BROWSER_USER_AGENT,
+          },
+          signal: options.signal,
+        },
+        invalidUrlReason: "unsafe-bandcamp-url",
+        maxRedirects: relay ? 0 : undefined,
+        url: target,
+        validateUrl: (nextUrl) => {
+          try {
+            return {
+              ok: true,
+              url: relay ? nextUrl : bandcampPageUrl(nextUrl),
+            };
+          } catch {
+            return { ok: false, reason: "unsafe-bandcamp-url" };
+          }
+        },
+      });
+      ({ response } = fetched);
+      html = await readBandcampPageBody(response, relay, options);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Bandcamp page: ${response.status}`);
+      }
+      return parse(html, relay ? rebuilt : fetched.resolvedUrl);
+    } catch (error) {
+      options.signal.throwIfAborted();
+      if (error instanceof ValidatedRedirectError) {
+        throw error;
+      }
+      warnBandcampDirectFallback(rebuilt, response, html, options);
+      lastError = error;
+    } finally {
+      if (!response?.bodyUsed) {
+        await response?.body?.cancel().catch(() => undefined);
+      }
+    }
+  }
+  throw lastError;
+}
+
+async function loadBandcampItems(urls: string[], options: BandcampLoadOptions) {
+  const results: BandcampItemResponse[] = [];
+  const pending = urls.entries();
+  await Promise.all(
+    Array.from(
+      { length: Math.min(PAGE_CONCURRENCY, urls.length) },
+      async () => {
+        for (const [index, url] of pending) {
+          // biome-ignore lint/performance/noAwaitInLoops: each worker owns one page load at a time
+          results[index] = await loadBandcampItem(url, options);
+        }
+      }
+    )
+  );
+  return results;
+}
+
+function parseBandcampData(html: string, url: string) {
   const $ = load(html);
   const rawBasic = $('script[type="application/ld+json"]').html();
   const rawExtra = $("script[data-tralbum]").attr("data-tralbum");
@@ -177,28 +375,51 @@ function parseBandcampData(html: string) {
     );
   }
 
+  let identityUrl: string;
+  try {
+    identityUrl = bandcampPageUrl(
+      $("meta[property='og:url']").attr("content") ?? extra.url ?? ""
+    );
+  } catch (error) {
+    throw new Error(
+      "Failed to parse Bandcamp data: missing or unsafe page URL",
+      { cause: error }
+    );
+  }
+  if (new URL(identityUrl).hostname !== new URL(url).hostname) {
+    throw new Error(
+      "Failed to parse Bandcamp data: page hostname does not match request"
+    );
+  }
+
   return { basic, extra };
 }
 
 async function getBandcampAlbum(
-  url: string
+  url: string,
+  options: BandcampLoadOptions
 ): Promise<BandcampItemResult | BandcampItemError> {
-  const html = await fetchBandcampPage(url);
-  const { basic, extra } = parseBandcampData(html);
+  const { basic, extra } = await fetchBandcampPage(
+    url,
+    options,
+    parseBandcampData
+  );
 
   if (!extra.trackinfo || extra.trackinfo.length === 0) {
     return createErrorResponse("No tracks found in album");
   }
 
   const mappedTracks = extra.trackinfo.flatMap((track, index) => {
-    const streamUrl = track.file?.["mp3-128"]?.trim();
-    return streamUrl
+    const stream = validateBandcampCdnUrl(
+      track.file?.["mp3-128"]?.trim() ?? null
+    );
+    return stream.ok
       ? [
           {
             duration: track.duration,
             format: "progressive" as const,
             name: track.title,
-            streamUrl,
+            streamUrl: stream.url,
             trackNumber: track.track_num || index + 1,
           },
         ]
@@ -219,7 +440,7 @@ async function getBandcampAlbum(
     metadata: {
       albumName: basic.name,
       artist: basic.byArtist.name,
-      artwork: basic.image,
+      artwork: bandcampArtworkUrl(basic.image),
       duration: totalDuration > 0 ? totalDuration : undefined,
       itemType: "album",
       name: basic.name,
@@ -235,15 +456,22 @@ async function getBandcampAlbum(
 }
 
 async function getBandcampTrack(
-  url: string
+  url: string,
+  options: BandcampLoadOptions
 ): Promise<BandcampItemResult | BandcampItemError> {
-  const html = await fetchBandcampPage(url);
-  const { basic, extra } = parseBandcampData(html);
+  const { basic, extra } = await fetchBandcampPage(
+    url,
+    options,
+    parseBandcampData
+  );
 
   const trackInfo = extra.trackinfo?.[0];
 
-  if (!trackInfo?.file?.["mp3-128"]) {
-    return createErrorResponse("No stream URL found for track");
+  const stream = validateBandcampCdnUrl(
+    trackInfo?.file?.["mp3-128"]?.trim() ?? null
+  );
+  if (!(trackInfo && stream.ok)) {
+    return createErrorResponse("No playable tracks found for track");
   }
 
   return {
@@ -251,15 +479,15 @@ async function getBandcampTrack(
     metadata: {
       albumName: basic.inAlbum?.name,
       artist: basic.byArtist.name,
-      artwork: basic.image || basic.album?.image,
+      artwork: bandcampArtworkUrl(basic.image || basic.album?.image),
       duration: trackInfo.duration,
       itemType: "track",
       name: basic.name,
       platform: "bandcamp",
-      streamUrl: trackInfo.file["mp3-128"],
+      streamUrl: stream.url,
       url,
     },
-    streamUrl: trackInfo.file["mp3-128"],
+    streamUrl: stream.url,
     success: true,
   };
 }
@@ -295,48 +523,32 @@ function parseArtistDiscography(
   const seen = new Set<string>();
 
   $("a[href*='/album/'], a[href*='/track/']").each((_, el) => {
-    const href = $(el).attr("href");
-    if (!href) {
-      return;
-    }
-
-    let fullUrl: string | null = null;
-    if (href.startsWith("http")) {
-      fullUrl = href;
-    } else if (href.startsWith("/")) {
-      try {
-        const base = new URL(baseUrl);
-        fullUrl = `${base.origin}${href}`;
-      } catch {
-        return;
-      }
-    }
-
+    const fullUrl = bandcampReleaseUrl($(el).attr("href"), baseUrl);
     if (fullUrl && !seen.has(fullUrl)) {
       seen.add(fullUrl);
       albumUrls.push(fullUrl);
     }
   });
 
-  return { albumUrls, artistName, artwork };
+  return { albumUrls, artistName, artwork: bandcampArtworkUrl(artwork) };
 }
 
 /**
  * Extract tracks from successful fetch results
  */
 function aggregateTracksFromResults(
-  results: PromiseSettledResult<BandcampItemResponse>[],
+  results: BandcampItemResponse[],
   initialArtwork?: string
 ): { tracks: BandcampTrackInfo[]; artwork?: string } {
   const allTracks: BandcampTrackInfo[] = [];
   let firstArtwork = initialArtwork;
 
   for (const result of results) {
-    if (result.status !== "fulfilled" || !result.value.success) {
+    if (!result.success) {
       continue;
     }
 
-    const meta = result.value.metadata;
+    const meta = result.metadata;
     if (!firstArtwork && meta.artwork) {
       firstArtwork = meta.artwork;
     }
@@ -356,7 +568,7 @@ function aggregateTracksFromResults(
     } else if (meta.streamUrl) {
       allTracks.push({
         duration: meta.duration,
-        format: bandcampStreamFormat(result.value.format),
+        format: bandcampStreamFormat(result.format),
         name: meta.name || "Unknown Track",
         streamUrl: meta.streamUrl,
         trackNumber: allTracks.length + 1,
@@ -368,7 +580,8 @@ function aggregateTracksFromResults(
 }
 
 async function getBandcampArtist(
-  url: string
+  url: string,
+  options: BandcampLoadOptions
 ): Promise<BandcampItemResult | BandcampItemError> {
   let musicUrl = url;
   const hasPath =
@@ -379,17 +592,20 @@ async function getBandcampArtist(
     musicUrl = url.replace(TRAILING_SLASH_RE, "/music");
   }
 
-  const html = await fetchBandcampPage(musicUrl);
-  const { albumUrls, artistName, artwork } = parseArtistDiscography(html, url);
-
-  if (albumUrls.length === 0) {
-    return createErrorResponse("No albums or tracks found on artist page");
-  }
+  const { albumUrls, artistName, artwork } = await fetchBandcampPage(
+    musicUrl,
+    options,
+    (html) => {
+      const discography = parseArtistDiscography(html, url);
+      if (discography.albumUrls.length === 0) {
+        throw new Error("No albums or tracks found on artist page");
+      }
+      return discography;
+    }
+  );
 
   const urlsToFetch = albumUrls.slice(0, MAX_ARTIST_ALBUMS);
-  const results = await Promise.allSettled(
-    urlsToFetch.map((albumUrl) => getBandcampItem(albumUrl))
-  );
+  const results = await loadBandcampItems(urlsToFetch, options);
 
   const { tracks: allTracks, artwork: finalArtwork } =
     aggregateTracksFromResults(results, artwork);
@@ -454,52 +670,20 @@ function extractFanId(html: string): string | null {
   return null;
 }
 
-type CollectionItem = { url: string; name: string; artist: string };
-
-/**
- * Strip query parameters from URL to get canonical form for deduplication
- */
-function getCanonicalUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
-  } catch {
-    // If URL parsing fails, strip everything after ?
-    const queryIndex = url.indexOf("?");
-    return queryIndex === -1 ? url : url.slice(0, queryIndex);
-  }
-}
-
-function parseVisibleCollectionItems(html: string): CollectionItem[] {
+function parseVisibleCollectionItems(html: string, base: string): string[] {
   const $ = load(html);
-  const items: CollectionItem[] = [];
+  const items: string[] = [];
   const seen = new Set<string>();
 
   $("a[href*='.bandcamp.com/album/'], a[href*='.bandcamp.com/track/']").each(
     (_, el) => {
-      const href = $(el).attr("href");
-      if (!href) {
+      const url = bandcampReleaseUrl($(el).attr("href"), base);
+      if (!url || seen.has(url)) {
         return;
       }
-      // Normalize URL to avoid duplicates like track/foo and track/foo?action=buy
-      const canonical = getCanonicalUrl(href);
-      if (seen.has(canonical)) {
-        return;
-      }
-      seen.add(canonical);
+      seen.add(url);
 
-      const parent = $(el).closest(
-        ".collection-item-container, .item-link-container, li"
-      );
-      const name =
-        parent.find(".collection-item-title, .item-title").text().trim() ||
-        $(el).text().trim() ||
-        "Unknown";
-      const artist =
-        parent.find(".collection-item-artist, .item-artist").text().trim() ||
-        "";
-
-      items.push({ artist, name, url: href });
+      items.push(url);
     }
   );
 
@@ -509,16 +693,15 @@ function parseVisibleCollectionItems(html: string): CollectionItem[] {
 type CollectionApiResponse = {
   items?: Array<{
     item_url?: string;
-    item_title?: string;
-    band_name?: string;
   }>;
 };
 
 async function fetchCollectionFromApi(
-  fanId: string
-): Promise<CollectionItem[]> {
+  fanId: string,
+  options: BandcampLoadOptions
+): Promise<string[]> {
   const apiUrl = "https://bandcamp.com/api/fancollection/1/collection_items";
-  const response = await fetch(apiUrl, {
+  const response = await (options.fetchImpl ?? fetch)(apiUrl, {
     body: JSON.stringify({
       count: MAX_COLLECTION_ITEMS,
       fan_id: Number(fanId),
@@ -526,14 +709,15 @@ async function fetchCollectionFromApi(
     }),
     headers: {
       "Content-Type": "application/json",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "User-Agent": BROWSER_USER_AGENT,
     },
     method: "POST",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    redirect: "manual",
+    signal: options.signal,
   });
 
   if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
     console.warn(`[Bandcamp] fetchCollectionFromApi HTTP ${response.status}`);
     return [];
   }
@@ -543,13 +727,10 @@ async function fetchCollectionFromApi(
     return [];
   }
 
-  return data.items
-    .filter((item) => item.item_url)
-    .map((item) => ({
-      artist: item.band_name || "",
-      name: item.item_title || "Unknown",
-      url: item.item_url || "",
-    }));
+  return data.items.flatMap((item) => {
+    const url = bandcampReleaseUrl(item.item_url, apiUrl);
+    return url ? [url] : [];
+  });
 }
 
 /**
@@ -564,18 +745,19 @@ function formatCollectionTrackName(artist: string, name: string): string {
 /**
  * Aggregate tracks from collection results (with artist prefix)
  */
-function aggregateCollectionTracks(
-  results: PromiseSettledResult<BandcampItemResponse>[]
-): { tracks: BandcampTrackInfo[]; artwork?: string } {
+function aggregateCollectionTracks(results: BandcampItemResponse[]): {
+  tracks: BandcampTrackInfo[];
+  artwork?: string;
+} {
   const allTracks: BandcampTrackInfo[] = [];
   let firstArtwork: string | undefined;
 
   for (const result of results) {
-    if (result.status !== "fulfilled" || !result.value.success) {
+    if (!result.success) {
       continue;
     }
 
-    const meta = result.value.metadata;
+    const meta = result.metadata;
     firstArtwork ??= meta.artwork;
 
     if (meta.tracks && meta.tracks.length > 0) {
@@ -597,7 +779,7 @@ function aggregateCollectionTracks(
     } else if (meta.streamUrl) {
       allTracks.push({
         duration: meta.duration,
-        format: bandcampStreamFormat(result.value.format),
+        format: bandcampStreamFormat(result.format),
         name: formatCollectionTrackName(meta.artist || "", meta.name || ""),
         streamUrl: meta.streamUrl,
         trackNumber: allTracks.length + 1,
@@ -609,21 +791,31 @@ function aggregateCollectionTracks(
 }
 
 async function getBandcampCollection(
-  url: string
+  url: string,
+  options: BandcampLoadOptions
 ): Promise<BandcampItemResult | BandcampItemError> {
-  const html = await fetchBandcampPage(url);
+  const collectionData = await fetchBandcampPage(url, options, (html) => {
+    const fanId = extractFanId(html);
+    const visibleItems = parseVisibleCollectionItems(html, url);
+    if (!fanId && visibleItems.length === 0) {
+      throw new Error("No collection data found on Bandcamp page");
+    }
+    return { fanId, visibleItems };
+  });
 
   const usernameMatch = url.match(USERNAME_RE);
   const username = usernameMatch?.[1] || "Unknown User";
 
-  const fanId = extractFanId(html);
+  let collectionItems: string[] = [];
 
-  let collectionItems: CollectionItem[] = [];
-
-  if (fanId) {
+  if (collectionData.fanId) {
     try {
-      collectionItems = await fetchCollectionFromApi(fanId);
+      collectionItems = await fetchCollectionFromApi(
+        collectionData.fanId,
+        options
+      );
     } catch (error) {
+      options.signal?.throwIfAborted();
       console.warn(
         "[Bandcamp] Collection API failed, falling back to HTML parsing:",
         error
@@ -632,7 +824,7 @@ async function getBandcampCollection(
   }
 
   if (collectionItems.length === 0) {
-    collectionItems = parseVisibleCollectionItems(html);
+    collectionItems = collectionData.visibleItems;
   }
 
   if (collectionItems.length === 0) {
@@ -642,9 +834,7 @@ async function getBandcampCollection(
   }
 
   const urlsToFetch = collectionItems.slice(0, MAX_COLLECTION_ITEMS);
-  const results = await Promise.allSettled(
-    urlsToFetch.map((item) => getBandcampItem(item.url))
-  );
+  const results = await loadBandcampItems(urlsToFetch, options);
 
   const { tracks: allTracks, artwork } = aggregateCollectionTracks(results);
 

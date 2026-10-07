@@ -199,6 +199,12 @@ describe("a full key", () => {
       ok: false,
     });
     expect(canConnect(graph, connection)).toBe(false);
+    // The keyboard Connect… dialog doesn't offer it either.
+    expect(
+      connectPorts(graph, "fip")
+        .flatMap((port) => port.targets)
+        .some((target) => target.key === "comp in:sidechain:key")
+    ).toBe(false);
     expect(
       dropOnNode(
         graph,

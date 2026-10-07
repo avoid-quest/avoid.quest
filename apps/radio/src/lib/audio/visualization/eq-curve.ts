@@ -1,198 +1,15 @@
 /**
  * EQ Frequency Response Calculator
  *
- * Computes combined frequency response for the 7-band Revamp EQ.
- * Uses biquad filter coefficient math from the Audio EQ Cookbook.
+ * Computes combined frequency response for the 7-band Revamp EQ with
+ * openDAW's lib-dsp biquads, configured the way the Revamp processor does.
  */
 
+import { BiquadCoeff, gainToDb } from "@opendaw/lib-dsp";
 import type { RevampConfig } from "../dsp/effects/types.js";
 
-const TAU = 2 * Math.PI;
-
-type BiquadCoeffs = {
-  b0: number;
-  b1: number;
-  b2: number;
-  a1: number;
-  a2: number;
-};
-
-function normalizeCoeffs(
-  b0: number,
-  b1: number,
-  b2: number,
-  a0: number,
-  a1: number,
-  a2: number
-): BiquadCoeffs {
-  const inv = 1 / a0;
-  return {
-    a1: a1 * inv,
-    a2: a2 * inv,
-    b0: b0 * inv,
-    b1: b1 * inv,
-    b2: b2 * inv,
-  };
-}
-
-function lowpassCoeffs(
-  frequency: number,
-  q: number,
-  sampleRate: number
-): BiquadCoeffs {
-  const cutoff = frequency / sampleRate;
-  if (cutoff >= 0.5) {
-    return normalizeCoeffs(1, 0, 0, 1, 0, 0);
-  }
-  if (cutoff <= 0) {
-    return normalizeCoeffs(0, 0, 0, 1, 0, 0);
-  }
-  const theta = TAU * cutoff;
-  const alpha = Math.sin(theta) / (2 * q);
-  const cosw = Math.cos(theta);
-  const beta = (1 - cosw) / 2;
-  return normalizeCoeffs(beta, 2 * beta, beta, 1 + alpha, -2 * cosw, 1 - alpha);
-}
-
-function highpassCoeffs(
-  frequency: number,
-  q: number,
-  sampleRate: number
-): BiquadCoeffs {
-  const cutoff = frequency / sampleRate;
-  if (cutoff >= 0.5) {
-    return normalizeCoeffs(0, 0, 0, 1, 0, 0);
-  }
-  if (cutoff <= 0) {
-    return normalizeCoeffs(1, 0, 0, 1, 0, 0);
-  }
-  const theta = TAU * cutoff;
-  const alpha = Math.sin(theta) / (2 * q);
-  const cosw = Math.cos(theta);
-  const beta = (1 + cosw) / 2;
-  return normalizeCoeffs(
-    beta,
-    -2 * beta,
-    beta,
-    1 + alpha,
-    -2 * cosw,
-    1 - alpha
-  );
-}
-
-function lowShelfCoeffs(
-  frequency: number,
-  gainDb: number,
-  sampleRate: number
-): BiquadCoeffs {
-  const cutoff = frequency / sampleRate;
-  const a = 10 ** (gainDb / 40);
-  if (cutoff >= 0.5) {
-    return normalizeCoeffs(a * a, 0, 0, 1, 0, 0);
-  }
-  if (cutoff <= 0) {
-    return normalizeCoeffs(1, 0, 0, 1, 0, 0);
-  }
-  const w0 = TAU * cutoff;
-  const alpha = 0.5 * Math.sin(w0) * Math.sqrt((a + 1 / a) * (1 - 1) + 2);
-  const k = Math.cos(w0);
-  const k2 = 2 * Math.sqrt(a) * alpha;
-  const aPlusOne = a + 1;
-  const aMinusOne = a - 1;
-  return normalizeCoeffs(
-    a * (aPlusOne - aMinusOne * k + k2),
-    2 * a * (aMinusOne - aPlusOne * k),
-    a * (aPlusOne - aMinusOne * k - k2),
-    aPlusOne + aMinusOne * k + k2,
-    -2 * (aMinusOne + aPlusOne * k),
-    aPlusOne + aMinusOne * k - k2
-  );
-}
-
-function highShelfCoeffs(
-  frequency: number,
-  gainDb: number,
-  sampleRate: number
-): BiquadCoeffs {
-  const cutoff = frequency / sampleRate;
-  const a = 10 ** (gainDb / 40);
-  if (cutoff >= 0.5) {
-    return normalizeCoeffs(1, 0, 0, 1, 0, 0);
-  }
-  if (cutoff <= 0) {
-    return normalizeCoeffs(a * a, 0, 0, 1, 0, 0);
-  }
-  const w0 = TAU * cutoff;
-  const alpha = 0.5 * Math.sin(w0) * Math.sqrt((a + 1 / a) * (1 - 1) + 2);
-  const k = Math.cos(w0);
-  const k2 = 2 * Math.sqrt(a) * alpha;
-  const aPlusOne = a + 1;
-  const aMinusOne = a - 1;
-  return normalizeCoeffs(
-    a * (aPlusOne + aMinusOne * k + k2),
-    -2 * a * (aMinusOne + aPlusOne * k),
-    a * (aPlusOne + aMinusOne * k - k2),
-    aPlusOne - aMinusOne * k + k2,
-    2 * (aMinusOne - aPlusOne * k),
-    aPlusOne - aMinusOne * k - k2
-  );
-}
-
-function peakingCoeffs(
-  frequency: number,
-  q: number,
-  gainDb: number,
-  sampleRate: number
-): BiquadCoeffs {
-  const cutoff = frequency / sampleRate;
-  if (cutoff <= 0 || cutoff >= 0.5 || q <= 0) {
-    return normalizeCoeffs(1, 0, 0, 1, 0, 0);
-  }
-  const a = 10 ** (gainDb / 40);
-  const w0 = TAU * cutoff;
-  const alpha = Math.sin(w0) / (2 * q);
-  const k = Math.cos(w0);
-  return normalizeCoeffs(
-    1 + alpha * a,
-    -2 * k,
-    1 - alpha * a,
-    1 + alpha / a,
-    -2 * k,
-    1 - alpha / a
-  );
-}
-
-/**
- * Compute frequency response magnitude for a single biquad filter.
- * Returns magnitude in linear scale.
- */
-function getFrequencyResponse(
-  coeffs: BiquadCoeffs,
-  normalizedFreq: number
-): number {
-  const { b0, b1, b2, a1, a2 } = coeffs;
-  const omega = -TAU * normalizedFreq;
-  const zReal = Math.cos(omega);
-  const zImag = Math.sin(omega);
-
-  const numReal = b0 + (b1 + b2 * zReal) * zReal - b2 * zImag * zImag;
-  const numImag = (b1 + b2 * zReal) * zImag + b2 * zImag * zReal;
-  const denReal = 1 + (a1 + a2 * zReal) * zReal - a2 * zImag * zImag;
-  const denImag = (a1 + a2 * zReal) * zImag + a2 * zImag * zReal;
-
-  const denom = denReal * denReal + denImag * denImag;
-  const respReal = (numReal * denReal + numImag * denImag) / denom;
-  const respImag = (numImag * denReal - numReal * denImag) / denom;
-
-  return Math.sqrt(respReal * respReal + respImag * respImag);
-}
-
-/**
- * Convert linear gain to decibels
- */
-function gainToDb(gain: number): number {
-  return 20 * Math.log10(Math.max(gain, 1e-10));
-}
+// Floor for silent bins, so the curve stays finite (-200 dB).
+const MIN_GAIN = 1e-10;
 
 export type EQBandResponse = {
   enabled: boolean;
@@ -227,130 +44,91 @@ export function computeEQCurve(
   frequencies: Float32Array,
   sampleRate = 48_000
 ): EQCurveResult {
-  const numPoints = frequencies.length;
-  const totalDb = new Float32Array(numPoints);
+  const normalized = frequencies.map((frequency) => frequency / sampleRate);
+  const magnitude = new Float32Array(frequencies.length);
+  const phase = new Float32Array(frequencies.length);
 
-  // Create response arrays for each band
-  const highPassDb = new Float32Array(numPoints);
-  const lowShelfDb = new Float32Array(numPoints);
-  const lowBellDb = new Float32Array(numPoints);
-  const midBellDb = new Float32Array(numPoints);
-  const highBellDb = new Float32Array(numPoints);
-  const highShelfDb = new Float32Array(numPoints);
-  const lowPassDb = new Float32Array(numPoints);
-
-  for (let i = 0; i < numPoints; i += 1) {
-    const freq = frequencies[i];
-    if (freq === undefined) {
-      continue;
+  // Pass filters cascade `order` identical biquads, as BiquadStack does.
+  const respond = (
+    enabled: boolean,
+    coeff: BiquadCoeff,
+    order = 1
+  ): EQBandResponse => {
+    const dbResponse = new Float32Array(frequencies.length);
+    if (enabled) {
+      coeff.getFrequencyResponse(normalized, magnitude, phase);
+      for (let i = 0; i < dbResponse.length; i += 1) {
+        dbResponse[i] = order * gainToDb(Math.max(magnitude[i] ?? 0, MIN_GAIN));
+      }
     }
-    const normalizedFreq = freq / sampleRate;
-    let totalGain = 1;
+    return { dbResponse, enabled };
+  };
 
-    // High Pass
-    if (config.highPassEnabled) {
-      const coeffs = highpassCoeffs(
-        config.highPassFrequency,
-        config.highPassQ,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      // Apply filter order (cascaded filters)
-      const orderGain = gain ** config.highPassOrder;
-      highPassDb[i] = gainToDb(orderGain);
-      totalGain *= orderGain;
-    }
-
-    // Low Shelf
-    if (config.lowShelfEnabled) {
-      const coeffs = lowShelfCoeffs(
-        config.lowShelfFrequency,
-        config.lowShelfGain,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      lowShelfDb[i] = gainToDb(gain);
-      totalGain *= gain;
-    }
-
-    // Low Bell
-    if (config.lowBellEnabled) {
-      const coeffs = peakingCoeffs(
-        config.lowBellFrequency,
-        config.lowBellQ,
-        config.lowBellGain,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      lowBellDb[i] = gainToDb(gain);
-      totalGain *= gain;
-    }
-
-    // Mid Bell
-    if (config.midBellEnabled) {
-      const coeffs = peakingCoeffs(
-        config.midBellFrequency,
-        config.midBellQ,
-        config.midBellGain,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      midBellDb[i] = gainToDb(gain);
-      totalGain *= gain;
-    }
-
-    // High Bell
-    if (config.highBellEnabled) {
-      const coeffs = peakingCoeffs(
-        config.highBellFrequency,
+  const bands: EQCurveResult["bands"] = {
+    highBell: respond(
+      config.highBellEnabled,
+      new BiquadCoeff().setPeakingParams(
+        config.highBellFrequency / sampleRate,
         config.highBellQ,
-        config.highBellGain,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      highBellDb[i] = gainToDb(gain);
-      totalGain *= gain;
-    }
+        config.highBellGain
+      )
+    ),
+    highPass: respond(
+      config.highPassEnabled,
+      new BiquadCoeff().setHighpassParams(
+        config.highPassFrequency / sampleRate,
+        config.highPassQ
+      ),
+      config.highPassOrder
+    ),
+    highShelf: respond(
+      config.highShelfEnabled,
+      new BiquadCoeff().setHighShelfParams(
+        config.highShelfFrequency / sampleRate,
+        config.highShelfGain
+      )
+    ),
+    lowBell: respond(
+      config.lowBellEnabled,
+      new BiquadCoeff().setPeakingParams(
+        config.lowBellFrequency / sampleRate,
+        config.lowBellQ,
+        config.lowBellGain
+      )
+    ),
+    lowPass: respond(
+      config.lowPassEnabled,
+      new BiquadCoeff().setLowpassParams(
+        config.lowPassFrequency / sampleRate,
+        config.lowPassQ
+      ),
+      config.lowPassOrder
+    ),
+    lowShelf: respond(
+      config.lowShelfEnabled,
+      new BiquadCoeff().setLowShelfParams(
+        config.lowShelfFrequency / sampleRate,
+        config.lowShelfGain
+      )
+    ),
+    midBell: respond(
+      config.midBellEnabled,
+      new BiquadCoeff().setPeakingParams(
+        config.midBellFrequency / sampleRate,
+        config.midBellQ,
+        config.midBellGain
+      )
+    ),
+  };
 
-    // High Shelf
-    if (config.highShelfEnabled) {
-      const coeffs = highShelfCoeffs(
-        config.highShelfFrequency,
-        config.highShelfGain,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      highShelfDb[i] = gainToDb(gain);
-      totalGain *= gain;
+  const totalDb = new Float32Array(frequencies.length);
+  for (const band of Object.values(bands)) {
+    if (band.enabled) {
+      for (let i = 0; i < totalDb.length; i += 1) {
+        totalDb[i] = (totalDb[i] ?? 0) + (band.dbResponse[i] ?? 0);
+      }
     }
-
-    // Low Pass
-    if (config.lowPassEnabled) {
-      const coeffs = lowpassCoeffs(
-        config.lowPassFrequency,
-        config.lowPassQ,
-        sampleRate
-      );
-      const gain = getFrequencyResponse(coeffs, normalizedFreq);
-      // Apply filter order (cascaded filters)
-      const orderGain = gain ** config.lowPassOrder;
-      lowPassDb[i] = gainToDb(orderGain);
-      totalGain *= orderGain;
-    }
-
-    totalDb[i] = gainToDb(totalGain);
   }
 
-  return {
-    bands: {
-      highBell: { dbResponse: highBellDb, enabled: config.highBellEnabled },
-      highPass: { dbResponse: highPassDb, enabled: config.highPassEnabled },
-      highShelf: { dbResponse: highShelfDb, enabled: config.highShelfEnabled },
-      lowBell: { dbResponse: lowBellDb, enabled: config.lowBellEnabled },
-      lowPass: { dbResponse: lowPassDb, enabled: config.lowPassEnabled },
-      lowShelf: { dbResponse: lowShelfDb, enabled: config.lowShelfEnabled },
-      midBell: { dbResponse: midBellDb, enabled: config.midBellEnabled },
-    },
-    totalDb,
-  };
+  return { bands, totalDb };
 }

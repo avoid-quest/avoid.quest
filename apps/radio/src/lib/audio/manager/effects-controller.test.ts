@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { DesiredEffectsState } from "../../channel-effects.js";
+import type {
+  DesiredEffectsState,
+  EffectsRuntimeOutcome,
+} from "../../channel-effects.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import type { WorkletManager } from "../playback/index.js";
@@ -231,6 +234,59 @@ describe("EffectsController", () => {
     expect(
       (await controller.reconcile("unit", desiredEffects([effect]))).status
     ).toBe("failed");
+  });
+
+  test("a compatibility runtime error on an insert fails its outcome", async () => {
+    Object.defineProperty(globalThis, "crossOriginIsolated", {
+      configurable: true,
+      value: false,
+    });
+    const context = new TestAudioContext();
+    const manager = createManager(context);
+    const handlers = new Map<string, (payload: unknown) => void>();
+    Object.assign(manager, {
+      on: (event: string, handler: (payload: unknown) => void) => {
+        handlers.set(event, handler);
+      },
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => createRuntime(),
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const outcomes: EffectsRuntimeOutcome[] = [];
+    controller.subscribeRuntimeOutcome("unit", (outcome) => {
+      outcomes.push(outcome);
+    });
+    const effect = {
+      ...createDefaultEffectConfig("compressor", "fx", 0),
+      enabled: true,
+    };
+    const attached = await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([effect])
+    );
+    expect(attached.backend).toBe("compatibility");
+
+    handlers.get("sourceError")?.({
+      code: "EFFECT_INIT_FAILED",
+      effectId: "fx",
+      error: "Could not start",
+      id: "err-1",
+      sourceId: "unit",
+      timestamp: 1,
+    });
+
+    expect(outcomes.at(-1)).toMatchObject({
+      backend: "compatibility",
+      error: new Error("[fx] Could not start"),
+      status: "failed",
+    });
+    expect(controller.getRuntimeOutcome("unit").status).toBe("failed");
   });
 
   test("an insert detached before its runtime settles leaves nothing connected", async () => {

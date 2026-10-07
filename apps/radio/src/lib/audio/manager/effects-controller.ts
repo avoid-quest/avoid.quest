@@ -526,6 +526,17 @@ class EffectsController {
         sounds: this.sounds,
         wm: manager,
       });
+      // An insert has no sound to show a runtime error: its outcome does.
+      if (this.inserts.has(soundId)) {
+        manager.on("sourceError", ({ effectId, error }) => {
+          this.recordOutcome(soundId, state, {
+            backend: "compatibility",
+            error: new Error(effectId ? `[${effectId}] ${error}` : error),
+            ready: true,
+            status: "failed",
+          });
+        });
+      }
       this.refreshSidechains();
       return manager;
     });

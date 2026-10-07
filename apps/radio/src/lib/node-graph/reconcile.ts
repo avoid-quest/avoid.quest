@@ -25,6 +25,7 @@ import {
 } from "@/lib/audio/dsp/routing/effect-tree";
 import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
 import type { Radio } from "@/lib/audio/playback/types";
+import { findSidechainChannelId } from "@/lib/channel-effects";
 import type {
   ChannelSelectionPlan,
   EdgePlan,
@@ -148,13 +149,19 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
   const laneId = next.id;
   if (previous.layoutSignature !== next.layoutSignature) {
     ops.push({ effects: next.effects, laneId, type: "replaceLaneEffects" });
+  } else if (
+    previous.backend !== next.backend ||
+    findSidechainChannelId(previous.effects) !==
+      findSidechainChannelId(next.effects)
+  ) {
+    ops.push({ effects: next.effects, laneId, type: "setLaneEffects" });
   } else if (!same(previous.effects, next.effects)) {
     const before = new Map<string, EffectConfig>();
     visitEffectTree(previous.effects, (effect) =>
       before.set(effect.id, effect)
     );
     const fields: Op[] = [];
-    let structural = previous.backend !== next.backend;
+    let structural = false;
     visitEffectTree(next.effects, (config) => {
       const existing = before.get(config.id);
       if (!existing || effectFieldsAreStructural(existing, config)) {

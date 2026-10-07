@@ -5,6 +5,7 @@ import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   clearWerkstattRuntimeStatus,
+  getWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
 import {
@@ -886,6 +887,15 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     );
     const source = compiler.stripHeader(werkstattSource(config));
     if (this.werkstattSources.get(group) === source) {
+      if (getWerkstattRuntimeStatus(config.id).state === "ready") {
+        this.transaction(() =>
+          restoreWerkstattParameterValues(
+            this.adapterContext(),
+            group,
+            config.parameters
+          )
+        );
+      }
       return;
     }
     this.subscribeWerkstattMessages(group, config.id);

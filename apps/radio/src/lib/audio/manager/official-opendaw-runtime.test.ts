@@ -1494,6 +1494,27 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(getWerkstattRuntimeStatus(first.id).state).toBe("ready");
   });
 
+  test("parameter edits wait for a replacement script instead of changing the old declarations", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const first = werkstatt();
+    h.runtime.syncEffects("deck", [first]);
+    await finishCompile(h.compiles[0]);
+    const device = scriptDevice(h);
+    const amount = parameter(h, device);
+    const second = werkstatt("// replacement script");
+    h.runtime.syncEffects("deck", [second]);
+    expect(
+      h.runtime.writeEffect("deck", second.id, {
+        ...second,
+        parameters: { amount: 0.75 },
+      })
+    ).toBe("applied");
+    expect(amount.value.getValue()).toBe(0.25);
+    await finishCompile(h.compiles[1]);
+    expect(parameter(h, device).value.getValue()).toBe(0.75);
+  });
+
   test.each(["replace", "remove"] as const)(
     "ignores compile completion and messages after %s",
     async (action) => {

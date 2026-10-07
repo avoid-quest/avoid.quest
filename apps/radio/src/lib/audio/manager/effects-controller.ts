@@ -280,11 +280,19 @@ class EffectsController {
     if (state.outcome.backend === "compatibility") {
       return "structural";
     }
-    if (state.officialConnectingGeneration !== null || !state.graph) {
+    if (
+      (state.officialConnectingGeneration !== null &&
+        !state.officialConnected) ||
+      !state.graph
+    ) {
       state.effects = next;
       return "applied";
     }
     if (!state.officialConnected) {
+      if (!this.shouldProcess(state)) {
+        state.effects = next;
+        return "applied";
+      }
       return "structural";
     }
     if (!(config.enabled || isOfficialOpenDawEffect(config))) {

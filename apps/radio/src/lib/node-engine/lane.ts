@@ -578,10 +578,15 @@ export class LaneInstance {
     }
     this.pendingFields.delete(id);
     const config = findEffectInTree(plan.effects, id);
-    const result = config
-      ? this.host.setEffectFields(this.soundId, id, config)
-      : "applied";
-    if (result !== "applied") {
+    try {
+      const result = config
+        ? this.host.setEffectFields(this.soundId, id, config)
+        : "applied";
+      if (result !== "applied") {
+        this.effectsChanged();
+      }
+    } catch {
+      // A failed field transaction leaves the live graph behind the plan.
       this.effectsChanged();
     }
     return this.effectsStep(plan);

@@ -565,15 +565,6 @@ export function writeOfficialEffectFields(
     group.outputTrim?.enabled.setValue(config.enabled);
   }
   configureDevice(context, group.device, config, context.bpm);
-  // A new source must finish compiling before its parameters can be restored.
-  if (
-    config.type === "werkstatt" &&
-    group.config.type === "werkstatt" &&
-    (group.config.code ?? group.config.source) ===
-      (config.code ?? config.source)
-  ) {
-    restoreWerkstattParameterValues(context, group, config.parameters);
-  }
 }
 
 export function syncOfficialEffectCells(

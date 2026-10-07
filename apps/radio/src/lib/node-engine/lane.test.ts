@@ -194,6 +194,7 @@ function createWorld(directFields = false) {
   /** Lanes with an output to duck: their sound was attached to play. */
   const connected = new Set<string>();
   const options = {
+    failFields: false as boolean,
     holdDucks: false as boolean,
     holdFades: false as boolean,
     holdPlays: false as boolean,
@@ -335,6 +336,9 @@ function createWorld(directFields = false) {
         return { backend: null, ready: false, status: options.reconcileStatus };
       },
       setEffectFields: (soundId, id, config) => {
+        if (options.failFields) {
+          throw new Error("Field transaction failed");
+        }
         if (!directFields) {
           return "structural";
         }
@@ -1095,6 +1099,27 @@ afterEach(async () => {
 });
 
 describe("Node lane transitions", () => {
+  test("a failed field transaction reconciles the latest knob value", async () => {
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: [],
+      crossfadePosition: 0.5,
+      graph: compressed(),
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+    const world = createWorld(true);
+    activeWorld = world;
+    await world.playback.activate();
+    await settled(world);
+    world.options.failFields = true;
+    commit(world, threshold(-24));
+    await world.playback.whenSettled();
+    expect(world.log).toEqual([`reconcile ${sound("a")} [comp@-24]`]);
+    await world.playback.deactivate();
+  });
+
   test("knobs reach the live sound in place and never the retiring sound", async () => {
     playbackSessionsCollection.insert({
       activeChannelId: null,

@@ -233,6 +233,75 @@ describe("diff", () => {
     }
   });
 
+  test("freeing monitoring channels reselects an unchanged downstream lane", () => {
+    const lanes = ["a", "b", "c", "d", "e"];
+    const budgeted = (enabled: boolean) =>
+      plan(
+        [
+          ...lanes.map((id) => station(id)),
+          ...lanes.map((id) =>
+            fx(`${id}-fx`, "autotune", { enabled: id !== "a" || enabled })
+          ),
+          speakers,
+        ],
+        lanes.flatMap((id) => [
+          audio(id, `${id}-fx`),
+          audio(`${id}-fx`, "speakers"),
+        ])
+      );
+    const before = budgeted(true);
+    const after = budgeted(false);
+    expect(before.lanes.get("e")?.backend).toBe("compat");
+    expect(after.lanes.get("e")?.backend).toBe("official");
+    expect(before.lanes.get("e")?.effects).toEqual(
+      after.lanes.get("e")?.effects
+    );
+    expect(diff(before, after)).toContainEqual({
+      effects: after.lanes.get("e")?.effects ?? [],
+      laneId: "e",
+      type: "setLaneEffects",
+    });
+  });
+
+  test("enabling a keyed effect rebinds the active sidechain on the same backend", () => {
+    const keyed = (enabled: boolean) =>
+      plan(
+        [
+          station("music"),
+          station("talk"),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("comp", "compressor", { enabled }),
+          speakers,
+        ],
+        [
+          audio("music", "verb"),
+          audio("verb", "comp"),
+          audio("comp", "speakers"),
+          audio("talk", "speakers"),
+          {
+            ...audio("talk", "comp"),
+            id: "key",
+            targetHandle: "in:sidechain:key",
+          },
+        ]
+      );
+    const before = keyed(false);
+    const after = keyed(true);
+    expect(before.lanes.get("music")?.backend).toBe(
+      after.lanes.get("music")?.backend
+    );
+    expect(before.lanes.get("music")?.layoutSignature).toBe(
+      after.lanes.get("music")?.layoutSignature
+    );
+    expect(diff(before, after)).toEqual([
+      {
+        effects: after.lanes.get("music")?.effects ?? [],
+        laneId: "music",
+        type: "setLaneEffects",
+      },
+    ]);
+  });
+
   test.each([
     ["add", ["verb"], ["verb", "crush"]],
     ["remove", ["verb", "crush"], ["crush"]],

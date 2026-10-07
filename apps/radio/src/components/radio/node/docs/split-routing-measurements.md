@@ -20,10 +20,12 @@ deleted) against the criteria in the routing design (§2.3), fixed before it ran
 
 **A passes the self-consistency checks**: its ports partition the signal,
 and branch gain, pan, mute, solo and the trims hold. The run showed three
-gaps, each pinned by a test in `split-stage.test.ts`, which lands with the
-Split routing that uses the stage:
+gaps, pinned by `split-stage.test.ts` and `open-splits.test.ts`, which land
+with the Split routing that uses the stage. The stage distributes each
+branch's input; the compiled cables place the wet input trim before its
+effects and gain, balance, mute, solo, mix and output trim at its exit:
 
-- Pan read about 3 dB off openDAW's cell: the stage now uses openDAW's linear
+- Pan read about 3 dB off openDAW's cell: branch cables use openDAW's linear
   balance (`StereoMatrix.panningToGains`), not `StereoPannerNode`.
 - Trims did not follow openDAW's wrapper: the input trim now acts on the wet
   path only, and the output trim stays at unity while the split is off.

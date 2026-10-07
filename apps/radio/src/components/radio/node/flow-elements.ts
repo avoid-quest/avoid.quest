@@ -17,6 +17,7 @@ import {
 } from "@/lib/node-graph/branches";
 import { getNodeDefinition, isShipped } from "@/lib/node-graph/catalogue";
 import {
+  type Endpoint,
   type EnginePlan,
   laneChannelId,
   type MergeRole,
@@ -328,11 +329,15 @@ export function toFlowNodes(
   );
 }
 
-/** What a solo silences and where a Split's dry signal plays. */
-type Mix = Pick<EnginePlan, "dry" | "soloedOut">;
+/**
+ * What a solo silences, where a Split's dry signal plays, and the point
+ * each key cable taps.
+ */
+type Mix = Pick<EnginePlan, "cables" | "dry" | "soloedOut">;
 
-/** A patch with no plan yet: no solo, no dry signal. */
+/** A patch with no plan yet: no solo, no dry signal, no keys. */
 const NO_MIX: Mix = {
+  cables: new Map(),
   dry: { cables: new Set(), meetings: new Map() },
   soloedOut: { branches: new Set(), sources: new Set() },
 };
@@ -435,13 +440,15 @@ function branchOf(
 /**
  * A key cable draws in the Key amber, long-dashed, and says when it keys
  * nothing and why. It carries its point's audio to a detector, not on
- * air, so it never glows Live; audio reaching it only thickens it. A
- * playing station's does, soloed out or not, as the engine taps the raw
- * lane.
+ * air, so it never glows Live; audio reaching it only thickens it. One
+ * tapping a playing lane (`from`, the point the compiler taps), from its
+ * source or an FX folded into it, does, soloed out or not, as the engine
+ * taps the raw lane.
  */
 function keyOf(
   edge: GraphEdge,
   label: string,
+  from: Endpoint | undefined,
   {
     live,
     liveLanes,
@@ -454,8 +461,9 @@ function keyOf(
   if (idle) {
     className += " node-edge-key-idle";
   } else if (
-    live.has(edge.source) ||
-    liveLanes.has(laneChannelId(edge.source))
+    from?.kind === "lane"
+      ? liveLanes.has(laneChannelId(from.id))
+      : live.has(from?.id ?? edge.source)
   ) {
     className += " node-edge-key-live";
   }
@@ -491,6 +499,11 @@ export function toFlowEdges(
     graph.nodes.filter(isDrawn).map((node) => [node.id, node])
   );
   const live = liveNodeIds(graph, liveLanes, mix);
+  const keyFrom = new Map(
+    [...mix.cables.values()]
+      .filter((cable) => cable.kind === "key")
+      .flatMap((cable) => cable.edges.map((id) => [id, cable.from] as const))
+  );
   return graph.edges
     .filter((edge) => drawn.has(edge.source) && drawn.has(edge.target))
     .map((edge) => {
@@ -506,7 +519,13 @@ export function toFlowEdges(
             ? "node-edge-live"
             : undefined,
         ...(kind === "sidechain"
-          ? keyOf(edge, label, { live, liveLanes }, idleKeys)
+          ? keyOf(
+              edge,
+              label,
+              keyFrom.get(edge.id),
+              { live, liveLanes },
+              idleKeys
+            )
           : undefined),
         ...(kind === "control"
           ? { className: "node-edge-control", type: "control" }

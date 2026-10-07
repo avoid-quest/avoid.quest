@@ -1066,16 +1066,9 @@ class PlanBuilder {
     });
     const on = effect.enabled;
     const mix = on ? effect.dryWet : 0;
-    const controlled = this.controlled(id);
-    const dryPlays = playsDry(effect, controlled);
-    const scalar = (key: string, value: number): Trim => ({
-      factor:
-        value || (on && controlled.has(key === "dry" ? "dryWet" : key) ? 1 : 0),
-      gain: value,
-      muted: false,
-      sources: on ? [`${id}:${key}`] : [],
-    });
+    const scalar = this.splitScalar(id, effect);
     const output = scalar("outputGain", on ? effect.outputGain : 1);
+    const splitDry = dryOf(effect, scalar);
     // A Split's dry signal is shared out among the ports whose audio leaves
     // it; a port that only keys carries its branch, as openDAW's entry does.
     const carries = ({ exits }: SplitBranch) =>
@@ -1093,18 +1086,14 @@ class PlanBuilder {
       const { chain } = port;
       const open = !chain.muted && (!anySolo || soloed(port));
       const dry =
-        dryPlays && carries(port)
+        splitDry && carries(port)
           ? {
               from,
-              trim: multiply(scalar("dry", 1 - mix), {
-                ...output,
-                factor: (output.factor ?? output.gain) * share,
-                gain: output.gain * share,
-              }),
+              trim: multiply(splitDry, { gain: share, muted: false }),
             }
           : undefined;
       this.leaveOutSoloed(port, anySolo && !soloed(port));
-      if (dry) {
+      if (dry && plays(dry.trim)) {
         this.rideDry(port);
       }
       this.emitBranch(from, port, {
@@ -1154,12 +1143,32 @@ class PlanBuilder {
     );
   }
 
+  /**
+   * A Split's control `key` at `value` as a trim, at unity in `factor`
+   * while a modulator moves it from zero; a switched-off Split's are fixed.
+   */
+  private splitScalar(
+    id: string,
+    effect: EffectConfig
+  ): (key: string, value: number) => Trim {
+    const on = effect.enabled;
+    const controlled = this.controlled(id);
+    return (key, value) => ({
+      factor:
+        value || (on && controlled.has(key === "dry" ? "dryWet" : key) ? 1 : 0),
+      gain: value,
+      muted: false,
+      sources: on ? [`${id}:${key}`] : [],
+    });
+  }
+
   /** Each closed Split playing its dry signal, to the node it meets at. */
   dryMeetings(): Map<string, string> {
     return new Map(
       [...this.regions.meetings].filter(([split]) => {
         const effect = effectOf(this.regions.node(split));
-        return effect !== null && playsDry(effect, this.controlled(split));
+        const dry = effect && dryOf(effect, this.splitScalar(split, effect));
+        return dry !== null && plays(dry);
       })
     );
   }
@@ -1650,14 +1659,24 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
 }
 
 /**
- * Whether a Split plays its dry signal: switched off, below a full mix, or
- * with its mix moving (`controlled`).
+ * A Split's dry signal through its mix and output trim, as openDAW's
+ * container runs it: null while the mix plays none, which it does with
+ * the Split off, below a full mix, or with its mix moving.
  */
-function playsDry(
+function dryOf(
   effect: EffectConfig,
-  controlled: ReadonlySet<string>
-): boolean {
-  return !effect.enabled || effect.dryWet < 1 || controlled.has("dryWet");
+  scalar: (key: string, value: number) => Trim
+): Trim | null {
+  const on = effect.enabled;
+  const dry = scalar("dry", 1 - (on ? effect.dryWet : 0));
+  return plays(dry)
+    ? multiply(dry, scalar("outputGain", on ? effect.outputGain : 1))
+    : null;
+}
+
+/** Whether a trim lets signal through, now or once a modulator moves it. */
+function plays(trim: Trim): boolean {
+  return !trim.muted && (trim.factor ?? trim.gain) !== 0;
 }
 
 /** Resolve provenance against the completed tree; later folds may share a field. */

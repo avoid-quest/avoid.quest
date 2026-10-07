@@ -600,18 +600,19 @@ describe("flow elements", () => {
     });
   });
 
-  test("a key from a later point lights only while audio reaches that point", () => {
+  test("a key lights while its compiled point hears audio: a lane soloed off air still keys from its FX", () => {
     const wire = (
       id: string,
       source: string,
       target: string,
-      into = "main"
+      extra: object = {}
     ) => ({
       id,
       source,
       sourceHandle: "out:audio:main",
       target,
-      targetHandle: into === "key" ? "in:sidechain:key" : "in:audio:main",
+      targetHandle: "in:audio:main",
+      ...extra,
     });
     const effect = (id: string, type: "compressor" | "cheapReverb") => ({
       data: {
@@ -621,15 +622,27 @@ describe("flow elements", () => {
       position: { x: 240, y: 0 },
       type,
     });
-    const keyClass = (solo: boolean) => {
+    const keyClass = (solo: boolean, via: "lane" | "split") => {
       const graph: NodeGraph = nodeGraphSchema.parse({
         ...patch,
         edges: [
           wire("kexp->comp", "src-kexp", "comp"),
           wire("comp->speakers", "comp", "speakers"),
-          wire("nts->verb", "src-nts", "verb"),
+          ...(via === "lane"
+            ? [wire("nts->verb", "src-nts", "verb")]
+            : [
+                wire("nts->split", "src-nts", "split"),
+                wire("split->verb", "split", "verb", {
+                  sourceHandle: "out:audio:branch-1",
+                }),
+                wire("split->desk", "split", "desk", {
+                  sourceHandle: "out:audio:branch-2",
+                }),
+              ]),
           wire("verb->speakers", "verb", "speakers"),
-          wire("verb->key", "verb", "comp", "key"),
+          wire("verb->key", "verb", "comp", {
+            targetHandle: "in:sidechain:key",
+          }),
         ],
         nodes: [
           ...patch.nodes.map((node) =>
@@ -645,6 +658,18 @@ describe("flow elements", () => {
           ),
           effect("comp", "compressor"),
           effect("verb", "cheapReverb"),
+          {
+            data: { effect: createNodeEffectConfig("fxComposite", "split") },
+            id: "split",
+            position: { x: 120, y: 0 },
+            type: "fxComposite",
+          },
+          {
+            data: { deviceId: "usb" },
+            id: "desk",
+            position: { x: 480, y: 200 },
+            type: "deviceOut",
+          },
         ],
       });
       const plan = compile(graph, { crossOriginIsolated: false });
@@ -656,9 +681,15 @@ describe("flow elements", () => {
       }).find((edge) => edge.id === "verb->key")?.className;
     };
 
-    expect(keyClass(false)).toBe("node-edge-key node-edge-key-live");
-    // KEXP's solo mutes NTS into the Reverb, so the Reverb's key is quiet.
-    expect(keyClass(true)).toBe("node-edge-key");
+    for (const via of ["lane", "split"] as const) {
+      expect(keyClass(false, via)).toBe("node-edge-key node-edge-key-live");
+    }
+    // The Reverb folds into NTS's lane, and KEXP's solo leaves the lane's
+    // key tap on: the Compressor still hears the Reverb.
+    expect(keyClass(true, "lane")).toBe("node-edge-key node-edge-key-live");
+    // Past a Split the Reverb is a point of its own, and KEXP's solo mutes
+    // NTS into it, so the Reverb's key is quiet.
+    expect(keyClass(true, "split")).toBe("node-edge-key");
   });
 
   test("a branch another branch's solo silences stops the live glow", () => {
@@ -826,7 +857,7 @@ describe("flow elements", () => {
     });
   });
 
-  test("a Split's dry signal keeps glowing past a soloed branch that plays nothing", () => {
+  test("a Split's dry signal keeps glowing past a soloed branch that plays nothing, until its output trim turns it down", () => {
     const wire = (
       id: string,
       source: string,
@@ -841,10 +872,27 @@ describe("flow elements", () => {
       ...extra,
     });
     const split = createNodeEffectConfig("fxComposite", "split");
-    const classes = (dryWet: number, into: "merge" | "desk") => {
+    const classes = (
+      dryWet: number,
+      into: "merge" | "desk",
+      { enabled = true, outputGain = 1, outputMoves = false } = {}
+    ) => {
       const graph: NodeGraph = nodeGraphSchema.parse({
         ...patch,
         edges: [
+          ...(outputMoves
+            ? [
+                {
+                  depth: 0.25,
+                  id: "macro->split",
+                  parameter: "outputGain",
+                  source: "macro",
+                  sourceHandle: "out:control:main",
+                  target: "split",
+                  targetHandle: "in:control:parameter",
+                },
+              ]
+            : []),
           wire("kexp->split", "src-kexp", "split"),
           // The soloed branch is muted, so only the dry signal plays.
           wire("split->comp", "split", "comp", {
@@ -862,11 +910,12 @@ describe("flow elements", () => {
         nodes: [
           ...patch.nodes,
           {
-            data: { effect: { ...split, dryWet, enabled: true } },
+            data: { effect: { ...split, dryWet, enabled, outputGain } },
             id: "split",
             position: { x: 240, y: 0 },
             type: "fxComposite",
           },
+          { id: "macro", position: { x: 0, y: 200 }, type: "macro" },
           {
             data: { effect: createNodeEffectConfig("compressor", "comp") },
             id: "comp",
@@ -922,6 +971,25 @@ describe("flow elements", () => {
       "gate->desk": undefined,
       "merge->speakers": undefined,
     });
+    // The output trim turns the dry signal down with the wet, unless it
+    // moves; a switched-off Split passes everything, its trim and all.
+    for (const into of ["merge", "desk"] as const) {
+      expect(classes(0.5, into, { outputGain: 0 })).toMatchObject({
+        "merge->speakers": undefined,
+        "split->comp": undefined,
+      });
+      for (const settings of [
+        { outputGain: 0, outputMoves: true },
+        { enabled: false, outputGain: 0 },
+      ]) {
+        expect(classes(0.5, into, settings)["merge->speakers"]).toBe(
+          "node-edge-live"
+        );
+      }
+    }
+    expect(classes(0.5, "desk", { outputGain: 0 })["gate->desk"]).toBe(
+      undefined
+    );
   });
 
   test("an open Split's muted or silent cable glows while the dry signal beside it plays, as the compiler leaves the dry cable untrimmed", () => {

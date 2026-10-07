@@ -11,12 +11,12 @@ import {
   OPENDAW_WAVESHAPER_EQUATIONS,
 } from "./types.js";
 
-// Order options for HP/LP filters
+// Order options for HP/LP filters: each order cascades one 12 dB/oct biquad.
 export const orderOptions: SelectOption[] = [
-  { label: "6 dB/oct", value: "1" },
-  { label: "12 dB/oct", value: "2" },
-  { label: "18 dB/oct", value: "3" },
-  { label: "24 dB/oct", value: "4" },
+  { label: "12 dB/oct", value: "1" },
+  { label: "24 dB/oct", value: "2" },
+  { label: "36 dB/oct", value: "3" },
+  { label: "48 dB/oct", value: "4" },
 ];
 
 // Oversample options for distortion

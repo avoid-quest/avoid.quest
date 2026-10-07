@@ -165,4 +165,22 @@ describe("stock compatibility processors", () => {
       expect(Number.isFinite(output[0][64])).toBe(true);
     }
   });
+
+  test("Waveshaper fallback shapes like openDAW's Waveshaper device", () => {
+    const effect = new WaveshaperEffect();
+    const output = stereo(0);
+    const shaped = (curve: string, value: number) => {
+      effect.setCurve(curve);
+      effect.process(stereo(value), output, 0, 128);
+      return output[0][64] ?? Number.NaN;
+    };
+    // Values from openDAW's curves: https://www.desmos.com/calculator/04tpdtpkfy
+    expect(shaped("cubicSoft", 0.75)).toBeCloseTo(0.914_062_5, 6);
+    expect(shaped("cubicSoft", 2)).toBeCloseTo(1, 6);
+    expect(shaped("sigmoid", 0.75)).toBeCloseTo(1 - Math.exp(-0.75), 6);
+    expect(shaped("asymmetric", 0.75)).toBeCloseTo(0.75 / 1.75, 6);
+    expect(shaped("asymmetric", -0.5)).toBeCloseTo(-0.5, 6);
+    expect(shaped("asymmetric", -0.75)).toBeCloseTo(-0.765_625, 6);
+    expect(shaped("hardClip", 1.5)).toBeCloseTo(1, 6);
+  });
 });

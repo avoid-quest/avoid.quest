@@ -8,6 +8,7 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { memo, useEffect, useRef } from "react";
 import type { CompressorConfig } from "@/lib/audio/dsp/effects/types";
+import { computeCompressorCurve } from "@/lib/audio/visualization/compressor-curve";
 
 type CompressorCanvasProps = {
   config: CompressorConfig;
@@ -25,45 +26,6 @@ const UNITY_LINE_COLOR = "rgba(128, 128, 128, 0.4)";
 const THRESHOLD_COLOR = "rgba(239, 68, 68, 0.6)";
 const GR_METER_COLOR = "rgba(34, 197, 94, 0.8)";
 
-/**
- * Compute compressor output level for a given input level.
- * Includes soft knee handling.
- */
-function computeCompressorOutput(
-  inputDb: number,
-  threshold: number,
-  ratio: number,
-  knee: number,
-  makeup: number
-): number {
-  const halfKnee = knee / 2;
-  const kneeStart = threshold - halfKnee;
-  const kneeEnd = threshold + halfKnee;
-
-  let outputDb: number;
-
-  if (inputDb < kneeStart) {
-    // Below knee - no compression
-    outputDb = inputDb;
-  } else if (inputDb > kneeEnd) {
-    // Above knee - full compression
-    const excess = inputDb - threshold;
-    outputDb = threshold + excess / ratio;
-  } else if (knee > 0) {
-    // In knee region - soft transition
-    const kneeProgress = (inputDb - kneeStart) / knee;
-    const compression = 1 + (1 / ratio - 1) * kneeProgress;
-    const excess = inputDb - kneeStart;
-    outputDb = kneeStart + excess * compression;
-  } else {
-    // No knee, hard transition
-    const excess = inputDb - threshold;
-    outputDb = threshold + excess / ratio;
-  }
-
-  return outputDb + makeup;
-}
-
 export const CompressorCanvas = memo(function CompressorCanvasComponent({
   config,
   className,
@@ -80,6 +42,9 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
       return;
     }
     const { canvas } = ctx;
+    // Compression starts where the input, after the device's input gain,
+    // reaches the threshold.
+    const thresholdDb = config.threshold - (config.inputgain ?? 0);
 
     const draw = () => {
       const { width: cssWidth, height: cssHeight } = sizeRef.current;
@@ -139,7 +104,7 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
       ctx.setLineDash([]);
 
       // Draw threshold line
-      const thresholdX = dbToX(config.threshold);
+      const thresholdX = dbToX(thresholdDb);
       ctx.strokeStyle = THRESHOLD_COLOR;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
@@ -157,18 +122,14 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
       ctx.beginPath();
 
       const numPoints = Math.floor(w);
+      const inputDb = Float32Array.from(
+        { length: numPoints + 1 },
+        (_, i) => minDb + (i / numPoints) * dbRange
+      );
+      const outputDb = computeCompressorCurve(config, inputDb);
       for (let i = 0; i <= numPoints; i += 1) {
-        const inputDb = minDb + (i / numPoints) * dbRange;
-        const outputDb = computeCompressorOutput(
-          inputDb,
-          config.threshold,
-          config.ratio,
-          config.knee,
-          config.makeup
-        );
-
-        const x = dbToX(inputDb);
-        const y = dbToY(Math.max(minDb, Math.min(maxDb, outputDb)));
+        const x = dbToX(inputDb[i] ?? minDb);
+        const y = dbToY(Math.max(minDb, Math.min(maxDb, outputDb[i] ?? minDb)));
 
         if (i === 0) {
           ctx.moveTo(x, y);

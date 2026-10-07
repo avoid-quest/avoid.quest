@@ -1,19 +1,14 @@
 /**
  * DSP Module
  *
- * openDAW-powered DSP processing for audio effects, analysis, and routing.
+ * openDAW-powered DSP processing for audio effects and routing.
  */
 
-// Analysis
-export { FFTAnalyzer, PeakMeter, RMSMeter } from "./analysis/index.js";
 // Effects
 export {
   AVAILABLE_EFFECTS,
   type BaseEffectConfig,
   BiquadFilter,
-  type BiquadFilterParams,
-  type BiquadFilterType,
-  Compressor,
   type CompressorConfig,
   type CrusherConfig,
   CrusherEffect,
@@ -27,13 +22,11 @@ export {
   Distortion,
   type DistortionConfig,
   EFFECT_DEFINITIONS,
-  EFFECT_PARAMETER_ROLE_MAP,
   EFFECT_SCHEMAS,
   type EffectConfig,
   type EffectDefinition,
   type EffectMetadata,
   type EffectParamDef,
-  type EffectParameterRole,
   type EffectProcessor,
   type EffectSchema,
   type EffectType,
@@ -62,7 +55,6 @@ export {
   type TidalConfig,
   TidalEffect,
   UNIVERSAL_EFFECT_PARAM_DEFS,
-  UNIVERSAL_EFFECT_PARAMETER_ROLES,
   type VisualizationType,
 } from "./effects/index.js";
 // Processor

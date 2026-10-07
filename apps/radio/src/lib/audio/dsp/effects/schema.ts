@@ -14,11 +14,6 @@ export {
 export * from "./param-traversal.js";
 export * from "./param-types.js";
 export {
-  EFFECT_PARAMETER_ROLE_MAP,
-  type EffectParameterRole,
-  UNIVERSAL_EFFECT_PARAMETER_ROLES,
-} from "./parameter-roles.js";
-export {
   UNIVERSAL_EFFECT_PARAM_DEFS,
   UNIVERSAL_EFFECT_PARAM_KEYS,
 } from "./universal-params.js";

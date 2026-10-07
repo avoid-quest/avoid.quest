@@ -6,17 +6,14 @@ import type {
 
 const MessageType = {
   ADD_EFFECT: "ADD_EFFECT",
-  ADD_FILTER: "ADD_FILTER",
   CREATE_SOURCE: "CREATE_SOURCE",
   PAUSE_SOURCE: "PAUSE_SOURCE",
   REMOVE_EFFECT: "REMOVE_EFFECT",
-  REMOVE_FILTER: "REMOVE_FILTER",
   REMOVE_SOURCE: "REMOVE_SOURCE",
   REORDER_EFFECTS: "REORDER_EFFECTS",
   RESUME_SOURCE: "RESUME_SOURCE",
   SEEK_SOURCE: "SEEK_SOURCE",
   SET_EFFECTS_DRY_WET: "SET_EFFECTS_DRY_WET",
-  SET_FILTER_PARAM: "SET_FILTER_PARAM",
   SET_PARAM: "SET_PARAM",
   SET_SOURCE_PAN: "SET_SOURCE_PAN",
   SET_SOURCE_VOLUME: "SET_SOURCE_VOLUME",
@@ -28,16 +25,6 @@ const MessageType = {
   STREAM_READY: "STREAM_READY",
   UPDATE_EFFECT: "UPDATE_EFFECT",
 } as const;
-
-type FilterType =
-  | "lowpass"
-  | "highpass"
-  | "bandpass"
-  | "lowshelf"
-  | "highshelf"
-  | "peaking"
-  | "notch"
-  | "allpass";
 
 type WorkletManagerEvents = {
   sourceEnded: SourceEndedPayload;
@@ -55,10 +42,5 @@ type WorkletPortMessage = {
   payload?: unknown;
 };
 
-export type {
-  ActiveSource,
-  FilterType,
-  WorkletManagerEvents,
-  WorkletPortMessage,
-};
+export type { ActiveSource, WorkletManagerEvents, WorkletPortMessage };
 export { MessageType };

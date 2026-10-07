@@ -237,7 +237,10 @@ export class LaneInstance {
     });
     this.signal.addEventListener(
       "abort",
-      host.subscribeEffectsRuntimeOutcome(soundId, () => {
+      // The controller can switch on its own, e.g. back to openDAW once
+      // channels come free: its badge and overlays follow.
+      host.subscribeEffectsRuntimeOutcome(soundId, (outcome) => {
+        this.effects.record(outcome);
         this.parameters.reapply();
         host.laneOutputs.refresh(slot.laneId);
       })

@@ -5,8 +5,10 @@ import type {
 } from "../../channel-effects.js";
 import {
   canUseOfficialOpenDawRuntime,
+  type EffectsFallbackCause,
   hasEnabledEffects,
   isOfficialOpenDawEffect,
+  radioOnlyFallback,
   selectOfficialEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
@@ -33,10 +35,11 @@ import {
   type EffectsBackend,
   EffectsBackendRouter,
 } from "./effects-backend-router.js";
-import type {
-  EffectsGraphRuntime,
-  EffectsPerformanceSnapshot,
-  EffectWriteResult,
+import {
+  type EffectsGraphRuntime,
+  type EffectsPerformanceSnapshot,
+  type EffectWriteResult,
+  MonitoringChannelsFullError,
 } from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
@@ -47,6 +50,8 @@ type SoundEffectsState = {
   desiredSidechainSoundId: string | null;
   dryWet: number;
   effects: EffectConfig[];
+  /** Why it last went to the compatibility engine. */
+  fallback: EffectsFallbackCause | null;
   generation: number;
   graph: EffectsBackendRouter | null;
   inputChannels: 1 | 2;
@@ -77,6 +82,7 @@ const createSoundState = (): SoundEffectsState => ({
   desiredSidechainSoundId: null,
   dryWet: 1,
   effects: [],
+  fallback: null,
   generation: 0,
   graph: null,
   inputChannels: 2,
@@ -103,6 +109,11 @@ class EffectsController {
   private nextOfficialRuntimeGeneration = 0;
   private nextGeneration = 0;
   private readonly states = new Map<string, SoundEffectsState>();
+  private readonly capacityListeners = new Set<() => void>();
+  /** A capacity signal is queued: later releases in this task join it. */
+  private capacitySignalQueued = false as boolean;
+  /** The last selection for an insert openDAW was too full for. */
+  private capacityRetry: Promise<unknown> = Promise.resolve();
   private readonly outcomeListeners = new Map<
     string,
     Set<(outcome: EffectsRuntimeOutcome) => void>
@@ -197,10 +208,15 @@ class EffectsController {
     return generation;
   }
 
+  /**
+   * Lets go of a registration; a held one frees its channels unless
+   * `frees` is false, for one its owner's failed attempt made.
+   */
   private deleteOfficialSound(
     soundId: string,
     runtime = this.officialRuntime,
-    expectedOwner?: number
+    expectedOwner?: number,
+    frees = true
   ): boolean {
     if (
       !runtime ||
@@ -210,8 +226,39 @@ class EffectsController {
       return false;
     }
     runtime.deleteSound(soundId, this.claimOfficialSound(soundId));
-    this.officialRegisteredSoundIds.delete(soundId);
+    if (this.officialRegisteredSoundIds.delete(soundId) && frees) {
+      this.capacityFreed();
+    }
     return true;
+  }
+
+  /** Calls `listener` once openDAW channels come free. */
+  subscribeCapacityFreed(listener: () => void): () => void {
+    this.capacityListeners.add(listener);
+    return () => {
+      this.capacityListeners.delete(listener);
+    };
+  }
+
+  /** Channels came free: once whatever let them go is done, say so once. */
+  private capacityFreed(): void {
+    if (this.capacitySignalQueued) {
+      return;
+    }
+    this.capacitySignalQueued = true;
+    queueMicrotask(() => {
+      this.capacitySignalQueued = false;
+      for (const listener of this.capacityListeners) {
+        try {
+          listener();
+        } catch (error) {
+          captureError(error, {
+            operation: "notifyEffectsCapacityFreed",
+            surface: "ui",
+          });
+        }
+      }
+    });
   }
 
   private shouldProcess(state: SoundEffectsState): boolean {
@@ -263,13 +310,18 @@ class EffectsController {
       });
       return state.outcome;
     }
-    if (unchanged && state.outcome.status === "ready") {
+    // Unchanged, one openDAW was too full for asks again: channels came free.
+    if (
+      unchanged &&
+      state.outcome.status === "ready" &&
+      state.outcome.fallback !== "capacity"
+    ) {
       return state.outcome;
     }
 
     const generation = this.advance(state);
     try {
-      await this.selectRuntime(soundId, state, generation);
+      await this.select(soundId, state, generation);
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
@@ -492,8 +544,16 @@ class EffectsController {
     if (!this.shouldProcess(state)) {
       return { backend: "bypass", ready: true, status: "ready" };
     }
-    if (state.selected === "official" || state.selected === "compatibility") {
-      return { backend: state.selected, ready: true, status: "ready" };
+    if (state.selected === "official") {
+      return { backend: "official", ready: true, status: "ready" };
+    }
+    if (state.selected === "compatibility" && state.fallback) {
+      return {
+        backend: "compatibility",
+        fallback: state.fallback,
+        ready: true,
+        status: "ready",
+      };
     }
     return {
       backend: null,
@@ -624,6 +684,7 @@ class EffectsController {
           this.recordOutcome(soundId, state, {
             backend: "compatibility",
             error: new Error(effectId ? `[${effectId}] ${error}` : error),
+            fallback: state.fallback ?? undefined,
             ready: true,
             status: "failed",
           });
@@ -689,7 +750,7 @@ class EffectsController {
     }
 
     try {
-      await this.selectRuntime(soundId, state, generation);
+      await this.select(soundId, state, generation);
     } catch (error) {
       const ownsGraph = state.graph?.source === source;
       if (ownsGraph && state.generation === generation) {
@@ -827,6 +888,17 @@ class EffectsController {
     this.pruneOfficialSidechainSources();
   }
 
+  /**
+   * Lets go of an openDAW runtime that failed to start, so the next insert
+   * starts a new one; a running one stays.
+   */
+  discardFailedRuntime(): void {
+    if (this.officialRuntime?.startupFailed) {
+      this.officialRuntime.cleanup();
+      this.officialRuntime = null;
+    }
+  }
+
   cleanup(): void {
     for (const [soundId, state] of this.states) {
       this.advance(state);
@@ -848,6 +920,28 @@ class EffectsController {
     this.officialRuntime = null;
   }
 
+  /**
+   * Every runtime selection starts here. One for an insert openDAW was too
+   * full for waits for the last such, so one's partial registration never
+   * refuses another's.
+   */
+  private select(
+    soundId: string,
+    state: SoundEffectsState,
+    generation: number
+  ): Promise<void> {
+    if (state.outcome.fallback !== "capacity") {
+      return this.selectRuntime(soundId, state, generation);
+    }
+    const selecting = this.capacityRetry.then(() =>
+      state.generation === generation
+        ? this.selectRuntime(soundId, state, generation)
+        : undefined
+    );
+    this.capacityRetry = selecting.catch(() => undefined);
+    return selecting;
+  }
+
   private async selectRuntime(
     soundId: string,
     state: SoundEffectsState,
@@ -862,15 +956,16 @@ class EffectsController {
       return;
     }
 
-    if (
-      canUseOfficialOpenDawRuntime(state.effects) &&
-      (await this.connectOfficial(soundId, state, generation))
-    ) {
+    const fallback =
+      radioOnlyFallback(state.effects) ??
+      (await this.connectOfficial(soundId, state, generation));
+    if (!fallback) {
       this.switchBackend(soundId, state, "official", generation);
       return;
     }
 
     if (await this.ensureCompatibilitySource(soundId, state, generation)) {
+      state.fallback = fallback;
       this.switchBackend(soundId, state, "compatibility", generation);
       await this.registerNonOfficialSource(soundId, state, generation);
     }
@@ -897,54 +992,74 @@ class EffectsController {
     soundId: string,
     state: SoundEffectsState,
     runtime = this.officialRuntime,
-    runtimeGeneration?: number
+    runtimeGeneration?: number,
+    frees = true
   ): boolean {
     if (
       this.states.get(soundId) !== state ||
-      !this.deleteOfficialSound(soundId, runtime, runtimeGeneration)
+      !this.deleteOfficialSound(soundId, runtime, runtimeGeneration, frees)
     ) {
       return false;
     }
     state.officialConnected = false;
-    this.pruneOfficialSidechainSources();
+    this.pruneOfficialSidechainSources(this.officialSidechainTargets(), frees);
     return true;
   }
 
+  /**
+   * What the failed attempt made frees nothing; only channels it held as a
+   * key no official effect keys from any more come free.
+   */
   private handleOfficialConnectionFailure(
     soundId: string,
     state: SoundEffectsState,
     runtime: EffectsGraphRuntime,
     runtimeGeneration: number,
     wasOfficialConnected: boolean,
+    heldAsKey: boolean,
     isStale: boolean,
     error: unknown
   ): void {
-    if (!wasOfficialConnected) {
-      this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
+    if (
+      !wasOfficialConnected &&
+      this.releaseOfficialSound(
+        soundId,
+        state,
+        runtime,
+        runtimeGeneration,
+        false
+      ) &&
+      heldAsKey &&
+      !this.officialSidechainTargets().has(soundId)
+    ) {
+      this.capacityFreed();
     }
     if (!isStale) {
       this.reportOfficialRuntimeFailure(error);
     }
   }
 
+  /** Connects the insert to openDAW; why it can't, or null once it is. */
   private async connectOfficial(
     soundId: string,
     state: SoundEffectsState,
     generation: number
-  ): Promise<boolean> {
+  ): Promise<EffectsFallbackCause | null> {
     if (this.officialRuntimeUnavailable) {
-      return false;
+      return "not-isolated";
     }
     if (globalThis.crossOriginIsolated !== true) {
       this.officialRuntimeUnavailable = true;
       this.reportOfficialRuntimeFailure(
         new Error("Cross-origin isolation is unavailable")
       );
-      return false;
+      return "not-isolated";
     }
     const { graph } = state;
+    // A stale attempt's cause is never shown: its newer one's is.
+    const refused = () => radioOnlyFallback(state.effects) ?? "startup-failed";
     if (!(graph && canUseOfficialOpenDawRuntime(state.effects))) {
-      return false;
+      return refused();
     }
 
     const runtime =
@@ -953,6 +1068,8 @@ class EffectsController {
     this.officialRuntime = runtime;
     state.officialConnectingGeneration = generation;
     const wasOfficialConnected = state.officialConnected;
+    // Its channels as a key, which a failed attempt lets go of too.
+    const heldAsKey = this.officialRegisteredSoundIds.has(soundId);
     const runtimeGeneration = this.claimOfficialSound(soundId);
     try {
       const connectingEffects = state.effects;
@@ -984,7 +1101,7 @@ class EffectsController {
         if (connected && state.officialConnectingGeneration === generation) {
           this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
         }
-        return false;
+        return refused();
       }
 
       // Knobs may have changed while the worklet initialized; connect used a snapshot.
@@ -996,11 +1113,11 @@ class EffectsController {
       // Its keys take their input channels with it; if one can't, it
       // falls back, as an insert that can't fit does.
       await this.registerNonOfficialSources(runtime, soundId);
-      return (
-        state.generation === generation &&
+      return state.generation === generation &&
         state.graph === graph &&
         state.officialConnected
-      );
+        ? null
+        : refused();
     } catch (error) {
       const isStale =
         state.generation !== generation ||
@@ -1015,10 +1132,13 @@ class EffectsController {
         runtime,
         runtimeGeneration,
         wasOfficialConnected,
+        heldAsKey,
         isStale,
         error
       );
-      return false;
+      return error instanceof MonitoringChannelsFullError
+        ? "capacity"
+        : "startup-failed";
     } finally {
       if (state.officialConnectingGeneration === generation) {
         state.officialConnectingGeneration = null;
@@ -1108,7 +1228,8 @@ class EffectsController {
   }
 
   private pruneOfficialSidechainSources(
-    targets = this.officialSidechainTargets()
+    targets = this.officialSidechainTargets(),
+    frees = true
   ): void {
     const runtime = this.officialRuntime;
     if (!runtime) {
@@ -1121,12 +1242,12 @@ class EffectsController {
         state.officialConnectingGeneration === null &&
         !targets.has(soundId)
       ) {
-        this.deleteOfficialSound(soundId, runtime);
+        this.deleteOfficialSound(soundId, runtime, undefined, frees);
       }
     }
     for (const id of this.keys.keys()) {
       if (this.officialRegisteredSoundIds.has(id) && !targets.has(id)) {
-        this.deleteOfficialSound(id, runtime);
+        this.deleteOfficialSound(id, runtime, undefined, frees);
       }
     }
   }
@@ -1204,10 +1325,9 @@ class EffectsController {
       if (backend !== "compatibility" && backend !== "muted" && state.manager) {
         this.releaseCompatibilityRuntime(state);
       }
-      if (
-        backend !== "official" &&
-        this.officialRegisteredSoundIds.has(soundId)
-      ) {
+      // Once off openDAW, its official registration becomes a key's; one
+      // that is a key's already stays as it is.
+      if (backend !== "official" && state.officialConnected) {
         this.releaseOfficialSound(soundId, state);
         this.registerNonOfficialSource(soundId, state, generation).catch(
           (error: unknown) => {
@@ -1232,7 +1352,7 @@ class EffectsController {
       return;
     }
     const generation = this.advance(state);
-    this.selectRuntime(soundId, state, generation)
+    this.select(soundId, state, generation)
       .then(() => {
         if (state.generation === generation) {
           this.recordOutcome(soundId, state, this.readyOutcome(state));

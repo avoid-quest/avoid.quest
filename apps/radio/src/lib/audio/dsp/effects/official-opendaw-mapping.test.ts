@@ -8,6 +8,7 @@ import {
   isOfficialOpenDawEffectType,
   MAX_MONITORING_CHANNELS,
   OPENDAW_FACTORY_KEYS,
+  radioOnlyFallback,
   selectOfficialEffects,
 } from "./official-opendaw-mapping";
 import { createDefaultEffectConfig } from "./registry";
@@ -106,6 +107,20 @@ describe("official openDAW runtime selection", () => {
         effect("limiter", "legacy", true),
       ])
     ).toBe(false);
+  });
+
+  test("a keyed effect openDAW keys falls back by its configuration, not its type", () => {
+    const keyed = (type: "compressor" | "delay") => ({
+      ...effect(type, type, true),
+      sidechain: { channelId: "key" },
+    });
+    expect(radioOnlyFallback([keyed("compressor")])).toBeNull();
+    expect(radioOnlyFallback([keyed("delay")])).toBe(
+      "unsupported-config:delay"
+    );
+    expect(radioOnlyFallback([effect("limiter", "legacy", true)])).toBe(
+      "radio-only:limiter"
+    );
   });
 
   test("an enabled nested legacy effect keeps the chain compatible", () => {

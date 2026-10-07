@@ -13,12 +13,53 @@
  * none.
  */
 
+import type { EffectsFallbackCause } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { findEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
 import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtime";
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
+import type { LanePlan } from "@/lib/node-graph/compile";
 
 export type EffectsBackend = EffectsRuntimeOutcome["backend"];
+
+/**
+ * What an FX node's badge says. None while its lane runs as planned or has
+ * no effects runtime; `compat` on the compatibility worklet, with why when
+ * known; `bypassed` when the controller fell back dry.
+ */
+export type BackendBadge =
+  | { kind: "compat"; cause?: EffectsFallbackCause }
+  | { kind: "bypassed" };
+
+/**
+ * A lane's or unit's badge: the controller's outcome once it reported one,
+ * else the compile estimate. The controller decides the channel cap, so an
+ * official lane past it flips to `compat` and a lane the estimate put past
+ * it may still get openDAW; an effect or page openDAW can't run is certain,
+ * so an official outcome there is stale. Modulation reads it too.
+ */
+export function laneBackendBadge(
+  estimate: Pick<LanePlan, "backend" | "fallback">,
+  outcome: EffectsRuntimeOutcome | undefined
+): BackendBadge | null {
+  const certain =
+    estimate.backend === "compat" && estimate.fallback !== "capacity";
+  if (
+    estimate.backend === null ||
+    (outcome?.backend === "official" && !certain)
+  ) {
+    return null;
+  }
+  if (outcome?.backend === "bypass") {
+    return { kind: "bypassed" };
+  }
+  if (outcome?.backend === "compatibility") {
+    return { cause: outcome.fallback ?? estimate.fallback, kind: "compat" };
+  }
+  return estimate.backend === "compat"
+    ? { cause: estimate.fallback, kind: "compat" }
+    : null;
+}
 
 /** What an insert's effects are reconciled from. */
 export type EffectsPlan = {
@@ -52,8 +93,8 @@ export type EffectsSlotOptions<Plan extends EffectsPlan> = {
 };
 
 export class EffectsSlot<Plan extends EffectsPlan> {
-  /** The backend its effects last settled on, as the controller reported. */
-  outcome: EffectsBackend | undefined;
+  /** What its effects last settled on, as the controller reported. */
+  outcome: EffectsRuntimeOutcome | undefined;
   /** The FX layout last in its tree, by layout signature; null if unknown. */
   private layout: string | null;
   /** Its effects changed since they were last reconciled. */
@@ -73,6 +114,18 @@ export class EffectsSlot<Plan extends EffectsPlan> {
   /** Its effects changed; the next step reconciles. */
   changed(): void {
     this.stale = true;
+  }
+
+  /**
+   * openDAW's channels came free: one it was too full for reconciles again
+   * as its next step. Whether it will.
+   */
+  capacityFreed(): boolean {
+    if (this.outcome?.fallback !== "capacity") {
+      return false;
+    }
+    this.changed();
+    return true;
   }
 
   /** One effect's fields changed, its layout kept; the next step writes them. */
@@ -151,7 +204,7 @@ export class EffectsSlot<Plan extends EffectsPlan> {
       outcome.status === "inactive" ||
       (outcome.backend === "bypass" && outcome.status !== "failed")
         ? undefined
-        : outcome.backend;
+        : outcome;
     this.options.outcomeChanged();
   }
 }

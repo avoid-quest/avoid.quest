@@ -14,14 +14,14 @@ import {
   controlDepth,
   modulationParameters,
 } from "@/lib/node-graph/modulation-parameters";
-import { modulationTargetAvailability } from "@/lib/node-graph/modulation-runtime";
+import { unappliedModulation } from "@/lib/node-graph/modulation-runtime";
 import {
   commitNodeGraph,
   type NodeStore,
   nodeStore,
   snapshotNodeGraph,
 } from "@/lib/node-graph/node-store";
-import { type GraphEdge, isModulationNode } from "@/lib/node-graph/schema";
+import type { GraphEdge } from "@/lib/node-graph/schema";
 import { ModuleKnob, ModuleSwitch, useReleaseStep } from "./module-frame";
 
 export function ModulationCableControls({
@@ -31,13 +31,9 @@ export function ModulationCableControls({
   edgeId: string;
   store?: NodeStore;
 }) {
-  const available = useStore(
-    modulationTargetAvailability,
-    (state) => state[edgeId]
-  );
+  const unapplied = useStore(unappliedModulation, (state) => state[edgeId]);
   const graph = useStore(store, (state) => state.graph);
   const edge = graph?.edges.find((entry) => entry.id === edgeId);
-  const source = graph?.nodes.find((entry) => entry.id === edge?.source);
   const target = graph?.nodes.find((entry) => entry.id === edge?.target);
   const release = useReleaseStep(() => snapshotNodeGraph(store));
   if (!(graph && edge && target)) {
@@ -61,13 +57,12 @@ export function ModulationCableControls({
     );
   return (
     <div className="space-y-2" {...release}>
-      {available === false &&
-      !edge.muted &&
-      edge.depth !== 0 &&
-      isModulationNode(source) &&
-      source.data.enabled ? (
-        <p className="text-muted-foreground text-xs">
-          unavailable on Safari/fallback
+      {unapplied ? (
+        <p className="max-w-56 text-muted-foreground text-xs">
+          <span className="font-medium text-foreground">
+            {unapplied.partly ? "Partly applied." : "Not applied."}
+          </span>{" "}
+          {unapplied.why}.
         </p>
       ) : null}
       {parameters.length > 0 ? (

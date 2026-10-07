@@ -140,6 +140,7 @@ function createModeLifecycleTestContext() {
   const context = {
     audio: {
       cleanupSound: mock((_soundId: string) => undefined),
+      discardFailedEffectsRuntime: () => undefined,
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
@@ -151,6 +152,7 @@ function createModeLifecycleTestContext() {
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
       setVolume: mock((_soundId: string, _volume: number) => undefined),
+      subscribeEffectsCapacityFreed: () => () => undefined,
       subscribeEffectsRuntimeOutcome: () => () => undefined,
     } as unknown as AudioManager,
     audioEngine,

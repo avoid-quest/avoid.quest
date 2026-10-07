@@ -44,6 +44,17 @@ const idle = () => ({
   values: {} as Record<string, number>,
 });
 export const modulationReadouts = new Store(idle());
+/** Why a cable's target isn't moved; `partly` while others it binds are. */
+export type Unapplied = { why: string; partly: boolean };
+/**
+ * Modulation cables that would move something but aren't wholly applied, by
+ * cable id, from the same check delivery makes: the canvas and each cable's
+ * controls say it.
+ */
+export const unappliedModulation = new Store<
+  Readonly<Record<string, Unapplied>>
+>({});
+const UNRESOLVED = "This parameter can't be modulated here";
 const commands = new Set<(message: ModulationMessage) => void>();
 export function runModulation(): void {
   resumeAudioContext().catch((error: unknown) =>
@@ -78,7 +89,7 @@ type Options = {
     NodeEngine,
     | "setParam"
     | "clearTransient"
-    | "paramAvailable"
+    | "paramUnavailable"
     | "paramSoundId"
     | "tap"
     | "onParamsChanged"
@@ -91,9 +102,12 @@ type Options = {
 /** One serial startup owns one worklet, native session and all input subscriptions. */
 export function createModulationRuntime(options: Options) {
   const { engine, getWorkletProcessorUrl, getNativeHost } = options;
+  let logical: ReturnType<typeof logicalParameters> = {
+    parameters: [],
+    unresolved: new Map(),
+  };
   let parameters = new Map<string, PhysicalParameter>();
   let nativeDestinations: NativeDestination[] = [];
-  let cables: GraphEdge[] = [];
   const overlays = new Map<
     string,
     { target: EngineParamTarget; value: number }
@@ -116,27 +130,41 @@ export function createModulationRuntime(options: Options) {
   };
   const refreshParameters = () => {
     nativeDestinations = [];
-    const available: Record<string, boolean> = {};
+    const reasons = new Map<string, string>();
     for (const [key, physical] of parameters) {
       const { target } = physical.binding;
-      const supported = engine.paramAvailable(target);
-      if (!supported) {
+      const reason = engine.paramUnavailable(target);
+      if (reason) {
+        reasons.set(key, reason);
         clear(key);
       }
-      for (const entry of physical.contributions) {
-        for (const cable of entry.cables) {
-          available[cable.id] = (available[cable.id] ?? true) && supported;
-        }
-      }
-      const soundId = supported && engine.paramSoundId(target);
+      const soundId = !reason && engine.paramSoundId(target);
       if (soundId) {
         nativeDestinations.push(...destinations(physical, soundId));
       }
     }
-    for (const cable of cables) {
-      available[cable.id] ??= false;
+    const unapplied: Record<string, Unapplied> = Object.fromEntries(
+      [...logical.unresolved].map(([id, why]) => [id, { partly: false, why }])
+    );
+    for (const { bindings, cables } of logical.parameters) {
+      const missed = bindings.flatMap(
+        (binding) => reasons.get(paramKey(binding.target)) ?? []
+      );
+      const [why] = missed;
+      for (const cable of cables) {
+        if (why) {
+          unapplied[cable.id] ??= {
+            partly: missed.length < bindings.length,
+            why,
+          };
+        }
+      }
     }
-    modulationTargetAvailability.setState(() => available);
+    if (
+      JSON.stringify(unapplied) !== JSON.stringify(unappliedModulation.state)
+    ) {
+      unappliedModulation.setState(() => unapplied);
+    }
   };
   const writeOverlay = (
     key: string,
@@ -144,9 +172,10 @@ export function createModulationRuntime(options: Options) {
     values: Readonly<Record<string, number>>
   ) => {
     const { target } = physical.binding;
-    const value = engine.paramAvailable(target)
-      ? effectiveValue(physical, values)
-      : undefined;
+    const value =
+      engine.paramUnavailable(target) === null
+        ? effectiveValue(physical, values)
+        : undefined;
     if (value === undefined) {
       return overlays.has(key) ? () => clear(key) : undefined;
     }
@@ -610,23 +639,22 @@ export function createModulationRuntime(options: Options) {
         clear(key);
       }
       parameters.clear();
+      logical = { parameters: [], unresolved: new Map() };
       nativeDestinations = [];
-      modulationTargetAvailability.setState(() => ({}));
+      unappliedModulation.setState(() => ({}));
       releaseWorklet();
       modulationReadouts.setState(idle);
     },
     refresh,
     sync(graph: NodeGraph, plan: EnginePlan) {
-      const resolved = resolveParameters(graph, plan);
+      logical = logicalParameters(graph, plan);
+      const resolved = resolveParameters(logical.parameters);
       for (const key of overlays.keys()) {
         if (!resolved.has(key)) {
           clear(key);
         }
       }
       parameters = resolved;
-      cables = graph.edges.filter(
-        (edge) => edge.targetHandle === "in:control:parameter"
-      );
       refreshParameters();
       ({ program } = plan.modulation);
       resolveSources();
@@ -670,9 +698,6 @@ export function createModulationRuntime(options: Options) {
   };
 }
 
-export const modulationTargetAvailability = new Store<Record<string, boolean>>(
-  {}
-);
 type Cable = { id: string; source: string; depth: number };
 type LogicalParameter = {
   range: ModulationParameter;
@@ -687,6 +712,11 @@ type PhysicalParameter = {
   coupled: boolean;
   contributions: Contribution[];
 };
+/**
+ * The parameter a live cable moves; null when it moves nothing anyway (off,
+ * at zero depth or from a switched-off modulator), undefined when its target
+ * has no such parameter.
+ */
 function acceptedRange(
   cable: GraphEdge,
   nodes: ReadonlyMap<string, GraphNode>
@@ -698,29 +728,57 @@ function acceptedRange(
     cable.muted ||
     cable.depth === 0
   ) {
-    return;
+    return null;
   }
   const ranges = modulationParameters(target);
   return ranges.find(
     (entry) => entry.key === (cable.parameter ?? ranges[0]?.key)
   );
 }
+/**
+ * Each parameter live cables move, and why each live cable that binds none
+ * doesn't: the issue that refused its cable or target, if any.
+ */
 function logicalParameters(graph: NodeGraph, plan: EnginePlan) {
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
   const parameters = new Map<string, LogicalParameter>();
+  const unresolved = new Map<string, string>();
+  const refuse = (cable: GraphEdge) =>
+    unresolved.set(
+      cable.id,
+      plan.issues.find(
+        ({ id, target }) =>
+          (target === "edge" && id === cable.id) ||
+          (target === "node" && id === cable.target)
+      )?.message ?? UNRESOLVED
+    );
+  const planned = new Set(plan.modulation.cables.map((cable) => cable.id));
+  for (const cable of graph.edges) {
+    if (
+      cable.targetHandle === "in:control:parameter" &&
+      !planned.has(cable.id) &&
+      acceptedRange(cable, nodes) !== null
+    ) {
+      refuse(cable);
+    }
+  }
   for (const cable of plan.modulation.cables) {
     const range = acceptedRange(cable, nodes);
     if (!range) {
+      if (range === undefined) {
+        refuse(cable);
+      }
       continue;
     }
     const key = `${cable.target}:${range.key}`;
     let parameter = parameters.get(key);
     if (!parameter) {
-      parameter = {
-        bindings: bindParam(graph, cable.target, range.key, plan),
-        cables: [],
-        range,
-      };
+      const bindings = bindParam(graph, cable.target, range.key, plan);
+      if (bindings.length === 0) {
+        unresolved.set(cable.id, UNRESOLVED);
+        continue;
+      }
+      parameter = { bindings, cables: [], range };
       parameters.set(key, parameter);
     }
     parameter.cables.push({
@@ -729,11 +787,11 @@ function logicalParameters(graph: NodeGraph, plan: EnginePlan) {
       source: cable.source,
     });
   }
-  return parameters.values();
+  return { parameters: [...parameters.values()], unresolved };
 }
-function resolveParameters(graph: NodeGraph, plan: EnginePlan) {
+function resolveParameters(moved: readonly LogicalParameter[]) {
   const parameters = new Map<string, PhysicalParameter>();
-  for (const logical of logicalParameters(graph, plan)) {
+  for (const logical of moved) {
     for (const binding of logical.bindings) {
       const key = paramKey(binding.target);
       let physical = parameters.get(key);

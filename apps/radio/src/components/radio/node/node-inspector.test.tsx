@@ -107,7 +107,7 @@ let useNodeInspector: InspectorModule["useNodeInspector"];
 let NodeRack: typeof import("./node-rack")["NodeRack"];
 let StepsEditor: typeof import("./modulation-editors")["StepsEditor"];
 let ModulationCableControls: typeof import("./modulation-cables")["ModulationCableControls"];
-let modulationTargetAvailability: typeof import("@/lib/node-graph/modulation-runtime")["modulationTargetAvailability"];
+let unappliedModulation: typeof import("@/lib/node-graph/modulation-runtime")["unappliedModulation"];
 let CurveEditor: typeof import("./modulation-editors")["CurveEditor"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let useIsMobile: typeof import("@avoid.quest/ui/hooks/use-mobile")["useIsMobile"];
@@ -125,7 +125,7 @@ beforeAll(async () => {
   ({ NodeRack } = await import("./node-rack"));
   ({ StepsEditor, CurveEditor } = await import("./modulation-editors"));
   ({ ModulationCableControls } = await import("./modulation-cables"));
-  ({ modulationTargetAvailability } = await import(
+  ({ unappliedModulation } = await import(
     "@/lib/node-graph/modulation-runtime"
   ));
   ({ NodeActionsProvider } = await import("./node-actions"));
@@ -221,46 +221,49 @@ describe("modulation cable availability", () => {
     expect(store.state.graph?.edges[0]?.parameter).toBe("Q");
   });
 
-  test.each(["active", "muted", "zero depth", "disabled source"])(
-    "%s cable shows a fallback warning only when active",
-    (state) => {
-      const graph = nodeGraphSchema.parse({
-        edges: [
-          {
-            depth: state === "zero depth" ? 0 : 0.25,
-            id: "control",
-            muted: state === "muted",
-            parameter: "pan",
-            source: "macro",
-            sourceHandle: "out:control:control",
-            target: "pan",
-            targetHandle: "in:control:parameter",
-          },
-        ],
-        nodes: [
-          {
-            data: { enabled: state !== "disabled source" },
-            id: "macro",
-            position,
-            type: "macro",
-          },
-          { data: {}, id: "pan", position, type: "pan" },
-          { data: {}, id: "out", position, type: "speakers" },
-        ],
-        version: 2,
-      });
-      modulationTargetAvailability.setState(() => ({ control: false }));
+  test.each([
+    ["Not applied.", "Nothing plays through it yet", false],
+    ["Not applied.", "openDAW has no control for this here", false],
+    ["Partly applied.", "Nothing plays through it yet", true],
+    [null, null, false],
+  ] as const)("a cable's controls say %s why: %s", (state, why, partly) => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          depth: 0.25,
+          id: "control",
+          parameter: "pan",
+          source: "macro",
+          sourceHandle: "out:control:control",
+          target: "pan",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        { data: {}, id: "macro", position, type: "macro" },
+        { data: {}, id: "pan", position, type: "pan" },
+        { data: {}, id: "out", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    unappliedModulation.setState(() => ({
+      ...(why && { control: { partly, why } }),
+    }));
+    try {
       const view = render(
         <ModulationCableControls
           edgeId="control"
           store={nodeStoreModule.createNodeStore(graph)}
         />
       );
-      expect(Boolean(view.queryByText("unavailable on Safari/fallback"))).toBe(
-        state === "active"
-      );
+      expect(
+        view.queryByText(state ?? "Not applied.")?.parentElement?.textContent ??
+          null
+      ).toBe(why && `${state} ${why}.`);
+    } finally {
+      act(() => unappliedModulation.setState(() => ({})));
     }
-  );
+  });
 });
 
 describe("modulation pattern editors", () => {

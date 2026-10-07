@@ -1,4 +1,7 @@
-import { isOfficialOpenDawEffect } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
+import {
+  describeFallback,
+  isOfficialOpenDawEffect,
+} from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
@@ -10,6 +13,7 @@ import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtim
 import { isCoupledParameter } from "@/lib/audio/manager/official-modulation-target";
 import type { LanePlan } from "@/lib/node-graph/compile";
 import { FILTER_PARAM_BOUNDS } from "@/lib/node-graph/schema";
+import { laneBackendBadge } from "./effects-slot";
 import { clampParam, type EngineParamTarget, paramKey } from "./param-target";
 
 type EffectTarget = Extract<EngineParamTarget, { kind: "effect" | "chain" }>;
@@ -20,6 +24,9 @@ const PARAM_BOUNDS = {
   pan: { max: 1, min: -1 },
   ...FILTER_PARAM_BOUNDS,
 };
+
+/** Why a target whose owner isn't running can't be moved. */
+export const NOT_RUNNING = "Nothing plays through it yet";
 
 function effectParamOwner(config: EffectConfig, target: EffectTarget) {
   if (target.kind === "effect") {
@@ -34,7 +41,7 @@ function effectParamOwner(config: EffectConfig, target: EffectTarget) {
  * What an effects owner's parameters read their authored values from: a
  * lane's plan, or a graph unit's, which has no strip.
  */
-type ParamPlan = Pick<LanePlan, "effects" | "backend"> &
+type ParamPlan = Pick<LanePlan, "effects" | "backend" | "fallback"> &
   Partial<Pick<LanePlan, "pan" | "filter">>;
 
 type ParamHost = {
@@ -90,17 +97,31 @@ function readAuthored(host: ParamHost, target: LaneParamTarget) {
 export function createParameters(host: ParamHost) {
   let transient = new Map<string, Overlay>();
 
-  function available(target: EngineParamTarget): boolean {
+  /**
+   * Why `target` can't be moved now, or null while it can: what delivers
+   * modulation and what the canvas says about a cable both read this. Its
+   * owner isn't running, openDAW has no field for it there, or it's an
+   * effect whose owner runs on the compatibility engine as its badge says
+   * or plays dry. Strip, Filter/Pan and sends are Web Audio's on any engine.
+   */
+  function unavailable(target: EngineParamTarget): string | null {
     const plan = host.plan();
-    const outcome = host.audio.getEffectsRuntimeOutcome(host.soundId);
-    return (
-      host.active() &&
-      Boolean(plan) &&
-      (target.kind === "send" || resolves(target)) &&
-      outcome.backend !== "compatibility" &&
-      (!("effectId" in target) || outcome.status !== "failed") &&
-      plan?.backend !== "compat"
-    );
+    if (!(host.active() && plan)) {
+      return NOT_RUNNING;
+    }
+    if ("effectId" in target) {
+      const outcome = host.audio.getEffectsRuntimeOutcome(host.soundId);
+      const badge = laneBackendBadge(plan, outcome);
+      if (badge?.kind === "compat") {
+        return `Modulation needs openDAW, but this runs on the compatibility engine${badge.cause ? ` because ${describeFallback(badge.cause)}` : ""}`;
+      }
+      if (outcome.status === "failed") {
+        return "The effects engine couldn't start, so this effect plays dry";
+      }
+    }
+    return target.kind === "send" || resolves(target)
+      ? null
+      : "openDAW has no control for this here";
   }
 
   function resolves(target: LaneParamTarget): boolean {
@@ -121,7 +142,7 @@ export function createParameters(host: ParamHost) {
 
   function set(target: LaneParamTarget, requested?: number): EffectWriteResult {
     const authored = readAuthored(host, target);
-    const supported = available(target);
+    const supported = unavailable(target) === null;
     if (requested !== undefined && !(authored && supported)) {
       return "unavailable";
     }
@@ -214,7 +235,7 @@ export function createParameters(host: ParamHost) {
     );
     for (const { target, value } of overlays) {
       const authored = readAuthored(host, target);
-      if (!(available(target) && authored)) {
+      if (!(unavailable(target) === null && authored)) {
         clear(target);
       } else if (authored.effect) {
         effects.set(authored.effect.id, authored.effect);
@@ -235,7 +256,7 @@ export function createParameters(host: ParamHost) {
     }
   }
 
-  return { available, clear, reapply, retire: clear, set };
+  return { clear, reapply, retire: clear, set, unavailable };
 }
 
 export type OwnerParameters = ReturnType<typeof createParameters>;

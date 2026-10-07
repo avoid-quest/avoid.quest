@@ -901,6 +901,15 @@ export class AudioManager {
     return this.effects.subscribeRuntimeOutcome(...args);
   }
 
+  subscribeEffectsCapacityFreed(listener: () => void) {
+    return this.effects.subscribeCapacityFreed(listener);
+  }
+
+  /** Lets go of an openDAW runtime that failed to start, so it can retry. */
+  discardFailedEffectsRuntime(): void {
+    this.effects.discardFailedRuntime();
+  }
+
   getStripNodes(soundId: string) {
     const nodes = this.sounds.get(soundId)?.nodes;
     return nodes ? { filter: nodes.filter, pan: nodes.pan } : null;

@@ -97,13 +97,15 @@ test("availability rejects Werkstatt, absent authored values and unresolved nati
     kind: "effect" as const,
     laneId: "a",
   };
-  expect(owner.available(threshold)).toBe(false);
+  expect(owner.unavailable(threshold)).toBe(
+    "openDAW has no control for this here"
+  );
   expect(owner.set(threshold, -10)).toBe("unavailable");
   fieldsExist = true;
-  expect(owner.available(threshold)).toBe(true);
-  expect(owner.available({ ...threshold, field: "missing" })).toBe(false);
-  expect(owner.available({ ...threshold, effectId: "missing" })).toBe(false);
+  expect(owner.unavailable(threshold)).toBeNull();
+  expect(owner.unavailable({ ...threshold, field: "missing" })).toBeTruthy();
+  expect(owner.unavailable({ ...threshold, effectId: "missing" })).toBeTruthy();
   expect(
-    owner.available({ ...threshold, effectId: "script", field: "dryWet" })
-  ).toBe(false);
+    owner.unavailable({ ...threshold, effectId: "script", field: "dryWet" })
+  ).toBeTruthy();
 });

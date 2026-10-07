@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
+import { unappliedModulation } from "@/lib/node-graph/modulation-runtime";
 import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
@@ -532,6 +533,8 @@ function Canvas({
   const plan = compiledPlan(graph, env);
   const roles = mergeRoles(graph, plan);
   const badges = useStore(nodeBackendBadges);
+  // The runtime's, on each modulation cable, for its "not applied" tag.
+  const unapplied = useStore(unappliedModulation);
 
   const nodes = toFlowNodes(graph, {
     measured,
@@ -545,6 +548,7 @@ function Canvas({
     liveLanes,
     mix: plan,
     selection,
+    unappliedModulation: unapplied,
   });
 
   const aimInsert = (target: InsertTarget | null) => {

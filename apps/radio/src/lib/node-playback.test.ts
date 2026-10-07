@@ -326,9 +326,13 @@ function createTestContext(): PlaybackActionContext {
 }
 
 type Harness = {
+  /** openDAW's channels came free, as the effects controller says. */
+  capacityFreed: () => void;
   context: PlaybackActionContext;
   /** Each sound's or unit's effects, as last reconciled or attached. */
   desired: Map<string, DesiredEffectsState>;
+  /** Lets go of an openDAW that failed to start, as the controller does. */
+  discardFailedEffectsRuntime: ReturnType<typeof mock>;
   /** Units' effects inserts: attached, by id, with their input and output. */
   inserts: Map<string, { input: AudioNode; output: AudioNode }>;
   /** What units and modules put on the main bus. */
@@ -352,7 +356,7 @@ function createHarness(
     context?: PlaybackActionContext;
     crossOriginIsolated?: boolean;
     effects?: GetNodePlaybackOptions["effects"];
-    effectsOutcome?: () => EffectsRuntimeOutcome;
+    effectsOutcome?: (state: DesiredEffectsState) => EffectsRuntimeOutcome;
     fadeOutSound?: (soundId: string, durationMs: number) => Promise<void>;
     laneOutputs?: GetNodePlaybackOptions["laneOutputs"];
     deviceSinks?: GetNodePlaybackOptions["deviceSinks"];
@@ -368,7 +372,7 @@ function createHarness(
     (soundId: string, state: DesiredEffectsState) => {
       desired.set(soundId, state);
       return Promise.resolve<EffectsRuntimeOutcome>(
-        effectsOutcome?.() ?? {
+        effectsOutcome?.(state) ?? {
           backend: null,
           ready: false,
           status: "inactive",
@@ -408,7 +412,7 @@ function createHarness(
       inserts.set(id, { input, output });
       desired.set(id, state);
       return Promise.resolve<EffectsRuntimeOutcome>(
-        effectsOutcome?.() ?? {
+        effectsOutcome?.(state) ?? {
           backend: null,
           ready: false,
           status: "inactive",
@@ -419,7 +423,9 @@ function createHarness(
   const detachEffectsInsert = mock((id: string) => {
     inserts.delete(id);
   });
+  const discardFailedEffectsRuntime = mock(() => undefined);
   const keys = new Map<string, AudioNode>();
+  const capacityListeners = new Set<() => void>();
   const otherTabListeners = new Set<() => void>();
   // Node Playback routes through its context's output routing by default;
   // a context without one of its own gets this one.
@@ -451,11 +457,16 @@ function createHarness(
         keys.set(id, node);
       },
       detachEffectsInsert,
+      discardFailedEffectsRuntime,
       reconcileEffects,
       releaseEffectsKey: (id: string) => {
         keys.delete(id);
       },
       setEffectFields,
+      subscribeEffectsCapacityFreed: (listener: () => void) => {
+        capacityListeners.add(listener);
+        return () => capacityListeners.delete(listener);
+      },
       subscribeEffectsRuntimeOutcome: () => () => undefined,
     },
     fadeOutSound,
@@ -474,8 +485,14 @@ function createHarness(
   });
   harnessPlaybacks.add(playback);
   return {
+    capacityFreed: () => {
+      for (const listener of capacityListeners) {
+        listener();
+      }
+    },
     context,
     desired,
+    discardFailedEffectsRuntime,
     fadeOutSound,
     inserts,
     keys,
@@ -2523,6 +2540,7 @@ describe("Node Playback lane outputs", () => {
         attachEffectsInsert: mock(async () => ready),
         connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
         // The lane's dry tree, as its sound is made, reconciles at once.
         reconcileEffects: mock((_soundId, { tree }) => {
           if (tree.length === 0) {
@@ -2535,6 +2553,7 @@ describe("Node Playback lane outputs", () => {
         }),
         releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
@@ -2595,6 +2614,7 @@ describe("Node Playback lane outputs", () => {
         attachEffectsInsert: mock(async () => ready),
         connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
         // The lane's dry tree, as its sound is made, reconciles at once.
         reconcileEffects: mock((_soundId, { tree }) => {
           if (tree.length === 0) {
@@ -2607,6 +2627,7 @@ describe("Node Playback lane outputs", () => {
         }),
         releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
@@ -2661,6 +2682,7 @@ describe("Node Playback lane outputs", () => {
         attachEffectsInsert: mock(() => Promise.reject(new Error("no"))),
         connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
         reconcileEffects: mock((_soundId, { tree }) =>
           tree.length === 0
             ? Promise.resolve<EffectsRuntimeOutcome>({
@@ -2672,6 +2694,7 @@ describe("Node Playback lane outputs", () => {
         ),
         releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
@@ -2804,6 +2827,67 @@ describe("Node Playback FX lanes", () => {
       } as Partial<EffectConfig>);
   }
 
+  test("an openDAW that failed to start gets one more try once Node starts again", async () => {
+    insertNodeSession(insertCompressor(patch([station("a")])));
+    // As the controller does: an attempt makes openDAW's runtime, the first
+    // fails to start, and only a failed one is let go of.
+    const startups = [false, true];
+    let started: boolean | undefined;
+    const outcome = (): EffectsRuntimeOutcome =>
+      started === false
+        ? {
+            backend: "compatibility",
+            fallback: "startup-failed",
+            ready: true,
+            status: "ready",
+          }
+        : { backend: "official", ready: true, status: "ready" };
+    const badges = new Store<NodeBackendBadges>({});
+    const context = createTestContext();
+    context.audio.getEffectsRuntimeOutcome = outcome;
+    const harness = createHarness({
+      backendBadges: badges,
+      context,
+      crossOriginIsolated: true,
+      effectsOutcome: () => {
+        started ??= startups.shift();
+        return outcome();
+      },
+    });
+    harness.discardFailedEffectsRuntime.mockImplementation(() => {
+      if (started === false) {
+        started = undefined;
+      }
+    });
+    instantStarts(harness.context);
+    const attempts = () =>
+      harness.reconcileEffects.mock.calls.filter(
+        ([soundId]) => soundId === soundOf("a")
+      ).length;
+    const play = async () => {
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      await harness.playback.whenSettled();
+    };
+
+    await play();
+    const compat = { cause: "startup-failed", kind: "compat" } as const;
+    expect(badges.state).toEqual({ a: compat, comp: compat });
+    // Within one activation, a failed startup stays failed.
+    await harness.playback.setPlaying("a", false);
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.whenSettled();
+    expect(startups).toEqual([true]);
+    expect(badges.state).toEqual({ a: compat, comp: compat });
+
+    await harness.playback.deactivate();
+    const before = attempts();
+    await play();
+    expect(attempts()).toBe(before + 1);
+    expect(startups).toEqual([]);
+    expect(badges.state).toEqual({});
+  });
+
   test("a Compressor joins its lane under its node id, and a knob writes its fields in place", async () => {
     insertNodeSession(patch([station("a")]));
     const swaps: string[] = [];
@@ -2923,7 +3007,8 @@ describe("Node Playback FX lanes", () => {
 
     await harness.playback.activate();
 
-    expect(badges.state).toEqual({ a: "compat", comp: "compat" });
+    const compat = { cause: "not-isolated", kind: "compat" } as const;
+    expect(badges.state).toEqual({ a: compat, comp: compat });
 
     // With the FX off there is no effects runtime, so no badge.
     await commit(harness, (graph) =>
@@ -2962,7 +3047,10 @@ describe("Node Playback FX lanes", () => {
     harness.setEffectFields.mockReturnValueOnce("structural");
     await commit(harness, threshold(-30));
 
-    expect(badges.state).toEqual({ a: "bypassed", comp: "bypassed" });
+    expect(badges.state).toEqual({
+      a: { kind: "bypassed" },
+      comp: { kind: "bypassed" },
+    });
   });
 
   test("switching an FX back on never flashes bypassed while its runtime connects", async () => {
@@ -2999,7 +3087,9 @@ describe("Node Playback FX lanes", () => {
     subscription.unsubscribe();
 
     expect(
-      seen.some((state) => Object.values(state).includes("bypassed"))
+      seen.some((state) =>
+        Object.values(state).some((badge) => badge.kind === "bypassed")
+      )
     ).toBe(false);
     expect(badges.state).toEqual({});
   });
@@ -3011,6 +3101,7 @@ describe("Node Playback FX lanes", () => {
     context.audio.getEffectsRuntimeOutcome = mock(
       (_soundId: string): EffectsRuntimeOutcome => ({
         backend: "compatibility",
+        fallback: "capacity",
         ready: true,
         status: "ready",
       })
@@ -3030,20 +3121,45 @@ describe("Node Playback FX lanes", () => {
     expect(context.audio.getEffectsRuntimeOutcome).toHaveBeenCalledWith(
       soundOf("a")
     );
-    expect(badges.state).toEqual({ a: "compat", comp: "compat" });
+    const compat = { cause: "capacity", kind: "compat" } as const;
+    expect(badges.state).toEqual({ a: compat, comp: compat });
 
     await harness.playback.deactivate();
     expect(badges.state).toEqual({});
   });
 
   test("laneBackendBadge trusts the controller over the estimate", () => {
-    expect(laneBackendBadge(null, "bypass")).toBeNull();
-    expect(laneBackendBadge("compat", undefined)).toBe("compat");
-    expect(laneBackendBadge("official", undefined)).toBeNull();
-    expect(laneBackendBadge("compat", "official")).toBeNull();
-    expect(laneBackendBadge("official", "compatibility")).toBe("compat");
-    expect(laneBackendBadge("official", "bypass")).toBe("bypassed");
-    expect(laneBackendBadge("compat", null)).toBe("compat");
+    const ready = (
+      backend: EffectsRuntimeOutcome["backend"],
+      fallback?: EffectsRuntimeOutcome["fallback"]
+    ): EffectsRuntimeOutcome => ({
+      backend,
+      fallback,
+      ready: true,
+      status: "ready",
+    });
+    const planned = { backend: "compat", fallback: "capacity" } as const;
+    expect(laneBackendBadge({ backend: null }, ready("bypass"))).toBeNull();
+    expect(laneBackendBadge(planned, undefined)).toEqual({
+      cause: "capacity",
+      kind: "compat",
+    });
+    expect(laneBackendBadge({ backend: "official" }, undefined)).toBeNull();
+    expect(laneBackendBadge(planned, ready("official"))).toBeNull();
+    // The controller's cause, not the estimate's.
+    expect(
+      laneBackendBadge(
+        { backend: "official" },
+        ready("compatibility", "startup-failed")
+      )
+    ).toEqual({ cause: "startup-failed", kind: "compat" });
+    expect(laneBackendBadge({ backend: "official" }, ready("bypass"))).toEqual({
+      kind: "bypassed",
+    });
+    expect(laneBackendBadge(planned, ready(null))).toEqual({
+      cause: "capacity",
+      kind: "compat",
+    });
   });
 });
 
@@ -6244,6 +6360,7 @@ describe("Node Playback: channel strips", () => {
         ),
         connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
         reconcileEffects: mock(
           async (): Promise<EffectsRuntimeOutcome> => ({
             backend: null,
@@ -6253,6 +6370,7 @@ describe("Node Playback: channel strips", () => {
         ),
         releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
       fadeOutSound: mock(async () => undefined),
@@ -6473,6 +6591,72 @@ describe("Node Playback: shared routing", () => {
     expect(newSend).not.toBe(oldSend);
     expect(newSend?.connections.has(input)).toBe(true);
     expect(oldSend?.connections.has(input)).toBe(false);
+  });
+
+  test("once openDAW's channels come free, each lane and unit it was too full for reconciles again", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("a", "verb"),
+          cable("verb", "comp"),
+          cable("b", "comp"),
+          cable("comp", "speakers"),
+        ],
+        nodes: [
+          station("a"),
+          station("b"),
+          reverb("verb"),
+          compressor("comp"),
+          speakers,
+        ],
+        version: 2,
+      }),
+      1
+    );
+    let full = true as boolean;
+    const outcome = (): EffectsRuntimeOutcome =>
+      full
+        ? {
+            backend: "compatibility",
+            fallback: "capacity",
+            ready: true,
+            status: "ready",
+          }
+        : { backend: "official", ready: true, status: "ready" };
+    const harness = createHarness({
+      effectsOutcome: ({ tree }) =>
+        tree.length === 0
+          ? { backend: "bypass", ready: true, status: "ready" }
+          : outcome(),
+    });
+    // What lane a's play call settled on.
+    Object.assign(harness.context.audio, {
+      getEffectsRuntimeOutcome: (soundId: string) =>
+        soundId === soundOf("a")
+          ? outcome()
+          : { backend: "bypass", ready: true, status: "ready" },
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    connect(harness, "a");
+    connect(harness, "b");
+    await harness.playback.whenSettled();
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+    const asked = () => harness.reconcileEffects.mock.calls.map(([id]) => id);
+    const before = asked().length;
+
+    full = false;
+    harness.capacityFreed();
+    await harness.playback.whenSettled();
+    expect(asked().slice(before).sort()).toEqual(
+      ["node-unit:comp", soundOf("a")].sort()
+    );
+
+    // On openDAW now, neither asks again.
+    harness.capacityFreed();
+    await harness.playback.whenSettled();
+    expect(asked()).toHaveLength(before + 2);
   });
 
   test("parameter edits keep output routes connected and refresh trim and solo", async () => {

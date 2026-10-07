@@ -327,6 +327,7 @@ function createWorld(directFields = false) {
       }),
       connectEffectsKey: () => undefined,
       detachEffectsInsert: () => undefined,
+      discardFailedEffectsRuntime: () => undefined,
       reconcileEffects: async (soundId, desired) => {
         const tree = desired.tree.map((effect) =>
           "threshold" in effect ? `${effect.id}@${effect.threshold}` : effect.id
@@ -356,6 +357,7 @@ function createWorld(directFields = false) {
         );
         return "applied";
       },
+      subscribeEffectsCapacityFreed: () => () => undefined,
       subscribeEffectsRuntimeOutcome: () => () => undefined,
     },
     fadeOutSound: () =>

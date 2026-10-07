@@ -41,8 +41,16 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
     };
     const createProject = mock(() => project);
     const context = {
+      addEventListener: () => undefined,
+      createConstantSource: () => ({
+        start: () => undefined,
+        stop: () => undefined,
+      }),
+      currentTime: 0,
       destination: {},
+      removeEventListener: () => undefined,
       sampleRate: 48_000,
+      state: "running",
     } as unknown as AudioContext;
     const runtime = new OfficialOpenDawRuntime(
       context,

@@ -300,6 +300,7 @@ async function harness(
       attachEffectsInsert: () => Promise.resolve(outcome),
       connectEffectsKey: () => undefined,
       detachEffectsInsert: () => undefined,
+      discardFailedEffectsRuntime: () => undefined,
       reconcileEffects: (_id, desired) => {
         for (const config of desired.tree) {
           authored.set(config.id, config);
@@ -331,6 +332,7 @@ async function harness(
         fields.set(id, config);
         return "applied";
       },
+      subscribeEffectsCapacityFreed: () => () => undefined,
       subscribeEffectsRuntimeOutcome: (_id, listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -612,21 +614,18 @@ describe("Node engine parameters", () => {
     }
   );
 
-  test.each([false, true])(
-    "backend outcomes refresh sends and preserve their edge overlay (clear=%s)",
-    async (clear) => {
-      const h = await harness();
-      expect(h.engine.setParam(send, 0.3)).toBe("applied");
-      h.ready("compatibility");
-      expect(h.levels.get("a")).toBe(1);
-      expect(h.engine.setParam(send, 0.8)).toBe("unavailable");
-      if (clear) {
-        h.engine.clearTransient(send);
-      }
-      h.ready("official");
-      expect(h.levels.get("a")).toBe(clear ? 1 : 0.3);
-    }
-  );
+  test("a lane's send keeps its overlay and takes new ones through a compatibility fallback", async () => {
+    const h = await harness();
+    expect(h.engine.setParam(send, 0.3)).toBe("applied");
+    h.ready("compatibility");
+    expect(h.levels.get("a")).toBe(0.3);
+    expect(h.engine.setParam(send, 0.8)).toBe("applied");
+    expect(h.levels.get("a")).toBe(0.8);
+    h.ready("official");
+    expect(h.levels.get("a")).toBe(0.8);
+    h.engine.clearTransient(send);
+    expect(h.levels.get("a")).toBe(1);
+  });
 
   test.each([
     [-1, 0],
@@ -1084,7 +1083,7 @@ describe("Node engine parameters", () => {
     expect(h.fields.get("comp")).toBe(baseline);
   });
 
-  test("a compatibility plan rejects transient writes despite a stale official outcome", async () => {
+  test("a compatibility plan rejects effect writes despite a stale official outcome", async () => {
     const h = await harness();
     const patch = graph();
     const compatible = nodeGraphSchema.parse({
@@ -1111,25 +1110,37 @@ describe("Node engine parameters", () => {
     await h.engine.whenSettled();
     expect(h.engine.plan.lanes.get("a")?.backend).toBe("compat");
     const baseline = h.fields.get("comp");
-    for (const target of [
-      { ...threshold, field: "outputGain" },
-      pan,
-      frequency,
-      send,
-    ]) {
-      expect(h.engine.setParam(target, 0.4)).toBe("unavailable");
-    }
-    expect(h.levels.get("a")).toBe(1);
+    expect(h.engine.setParam({ ...threshold, field: "outputGain" }, 0.4)).toBe(
+      "unavailable"
+    );
     expect(h.fields.get("comp")).toBe(baseline);
+    // Strip, Filter and sends are Web Audio's on either engine.
+    expect(h.engine.setParam(pan, 0.4)).toBe("applied");
+    expect(h.engine.setParam(send, 0.4)).toBe("applied");
+    expect(h.nodes?.pan.pan.value).toBe(0.4);
+    expect(h.levels.get("a")).toBe(0.4);
   });
 
-  test("every target on an actual compatibility lane is unavailable", async () => {
+  test("on an actual compatibility lane only effect fields go unmodulated", async () => {
     const h = await harness("compatibility");
-    for (const target of [threshold, pan, frequency, send]) {
-      expect(h.engine.setParam(target, 0.4)).toBe("unavailable");
-    }
-    expect(h.levels.get("a")).toBe(1);
+    expect(h.engine.paramUnavailable(threshold)).toStartWith(
+      "Modulation needs openDAW, but this runs on the compatibility engine"
+    );
+    expect(h.engine.setParam(threshold, -12)).toBe("unavailable");
     expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+    for (const target of [pan, frequency, send]) {
+      expect(h.engine.paramUnavailable(target)).toBeNull();
+    }
+    expect(h.engine.setParam(pan, -0.7)).toBe("applied");
+    expect(h.engine.setParam(frequency, 2400)).toBe("applied");
+    expect(h.engine.setParam(send, 0.3)).toBe("applied");
+    expect(h.nodes?.pan.pan.value).toBe(-0.7);
+    expect(h.nodes?.filter.frequency.value).toBe(2400);
+    expect(h.levels.get("a")).toBe(0.3);
+    h.engine.clearTransient();
+    expect(h.nodes?.pan.pan.value).toBe(0.2);
+    expect(h.nodes?.filter.frequency.value).toBe(900);
+    expect(h.levels.get("a")).toBe(1);
   });
   test("a shared unit's FX and its sends take transient values and clear to the plan", async () => {
     const h = await harness("official", false, sharedGraph());

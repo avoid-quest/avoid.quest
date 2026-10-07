@@ -15,7 +15,10 @@ import {
   getWerkstattRuntimeStatus,
   subscribeWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
-import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
+import {
+  OfficialOpenDawRuntime,
+  OPENDAW_STARTUP_SECONDS,
+} from "./official-opendaw-runtime.js";
 
 const originalAudioWorkletNode = globalThis.AudioWorkletNode;
 const runtimes: OfficialOpenDawRuntime[] = [];
@@ -131,7 +134,15 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     wake: mock(() => undefined),
   });
   let restart: RestartWorklet | undefined;
+  /** Startup deadlines, each ending once the audio clock reaches its stop. */
+  const deadlines: {
+    onended: (() => void) | null;
+    stop: ReturnType<typeof mock>;
+  }[] = [];
+  const stateListeners = new Set<() => void>();
   const context = {
+    addEventListener: (_type: "statechange", listener: () => void) =>
+      stateListeners.add(listener),
     audioWorklet: {
       addModule: mock((url: string) => {
         expect(url.startsWith("blob:")).toBe(true);
@@ -142,10 +153,23 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     },
     createChannelMerger: () => audioNode("merger"),
     createChannelSplitter: () => audioNode("splitter"),
+    createConstantSource: () => {
+      const deadline = {
+        onended: null,
+        start: () => undefined,
+        stop: mock(() => undefined),
+      };
+      deadlines.push(deadline);
+      return deadline;
+    },
     createGain: audioNode,
     createStereoPanner: audioNode,
+    currentTime: 0,
     destination: audioNode(),
+    removeEventListener: (_type: "statechange", listener: () => void) =>
+      stateListeners.delete(listener),
     sampleRate: 48_000,
+    state: "running",
   } as unknown as AudioContext;
   // Exercise the installed router too: its teardown leaves input edges behind.
   const { MonitoringRouter } = await import(
@@ -253,9 +277,23 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
   return {
     adapters,
     boxes,
+    /** The context closes, as a page tearing its audio down does. */
+    close: () => {
+      Object.assign(context, { state: "closed" });
+      for (const listener of stateListeners) {
+        listener();
+      }
+    },
     compiles,
     createSource: () => audioNode() as unknown as AudioNode,
+    deadlines,
     destination: audioNode() as unknown as AudioNode,
+    /** The audio clock runs past every startup deadline. */
+    elapse: () => {
+      for (const deadline of deadlines.splice(0)) {
+        deadline.onended?.();
+      }
+    },
     engine,
     initializing,
     get project() {
@@ -2047,6 +2085,57 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       expect(h.engine.registerMonitoringSource).toHaveBeenCalledTimes(1);
     }
   );
+
+  test("a startup that never gets ready gives up on the audio clock and lets go", async () => {
+    const readiness = deferred();
+    const h = await createHarness(readiness.promise);
+    const connection = h.runtime.connectSound("deck", h.source, h.destination);
+    await h.initializing.promise;
+    // A suspended context's clock stands still, so the bound waits for it.
+    expect(h.deadlines[0]?.stop).toHaveBeenCalledWith(OPENDAW_STARTUP_SECONDS);
+    expect(h.runtime.startupFailed).toBe(false);
+
+    h.elapse();
+    await expect(connection).rejects.toThrow("didn't start");
+    expect(h.terminate).toHaveBeenCalledTimes(1);
+    expect(h.runtime.isReady).toBe(false);
+    expect(h.runtime.startupFailed).toBe(true);
+
+    // Getting ready late revives nothing, and a later sound falls back at
+    // once instead of waiting out a startup of its own.
+    readiness.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(h.runtime.isReady).toBe(false);
+    expect(h.engine.registerMonitoringSource).not.toHaveBeenCalled();
+    await expect(
+      h.runtime.connectSound("mic", h.createSource(), h.destination)
+    ).rejects.toThrow("didn't start");
+    expect(h.deadlines).toHaveLength(0);
+    expect(h.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  test("a context that closes as openDAW starts gives up at once", async () => {
+    const readiness = deferred();
+    const h = await createHarness(readiness.promise);
+    const connection = h.runtime.connectSound("deck", h.source, h.destination);
+    await h.initializing.promise;
+
+    // A closed context's clock never reaches the deadline.
+    h.close();
+    await expect(connection).rejects.toThrow("closed");
+    expect(h.terminate).toHaveBeenCalledTimes(1);
+    expect(h.runtime.isReady).toBe(false);
+  });
+
+  test("a context closed already doesn't start openDAW", async () => {
+    const h = await createHarness();
+    h.close();
+    await expect(
+      h.runtime.connectSound("deck", h.source, h.destination)
+    ).rejects.toThrow("closed audio context");
+    expect(h.deadlines).toHaveLength(0);
+    expect(h.engine.registerMonitoringSource).not.toHaveBeenCalled();
+  });
 
   test("cleanup during initialization prevents pending sound registration", async () => {
     const readiness = deferred();

@@ -1,4 +1,5 @@
-import type { EffectConfig, OpenDawEffectType } from "./types.js";
+import { getEffectDefinition } from "./param-traversal.js";
+import type { EffectConfig, EffectType, OpenDawEffectType } from "./types.js";
 
 // Mirrors the private constant in @opendaw/studio-core/dist/MonitoringRouter.js; the package exports do not expose it.
 export const MAX_MONITORING_CHANNELS = 8;
@@ -43,24 +44,72 @@ export function isOfficialOpenDawEffect(
 }
 
 /**
- * Radio-only effects cannot be silently discarded during an official-engine
- * migration. Containers are traversed so nested legacy effects keep the whole
- * sound on the compatibility path until a hybrid graph is explicitly added.
+ * Why effects run on the compatibility engine, not openDAW: its input
+ * channels are taken, it couldn't start, the page isn't cross-origin
+ * isolated, an effect only the compatibility engine runs, or an effect set
+ * up in a way only it runs, by type.
  */
-function areOfficialOpenDawEffects(effects: readonly EffectConfig[]): boolean {
-  return effects.every(
-    (effect) =>
-      !effect.enabled ||
-      (isOfficialOpenDawEffect(effect) &&
-        (!effect.sidechain ||
-          effect.type === "compressor" ||
-          effect.type === "gate" ||
-          effect.type === "vocoder") &&
-        (!("chains" in effect) ||
-          effect.chains.every((chain) =>
-            areOfficialOpenDawEffects(chain.effects)
-          )))
-  );
+export type EffectsFallbackCause =
+  | "capacity"
+  | "not-isolated"
+  | "startup-failed"
+  | `radio-only:${EffectType}`
+  | `unsupported-config:${EffectType}`;
+
+/**
+ * Why openDAW can't run these effects, from the first enabled one it can't,
+ * containers' chains included; null if it runs them all. Radio-only effects
+ * cannot be silently discarded during an official-engine migration, so one
+ * keeps the whole sound on the compatibility path until a hybrid graph is
+ * explicitly added.
+ */
+export function radioOnlyFallback(
+  effects: readonly EffectConfig[]
+): EffectsFallbackCause | null {
+  for (const effect of effects) {
+    if (!effect.enabled) {
+      continue;
+    }
+    if (!isOfficialOpenDawEffect(effect)) {
+      return `radio-only:${effect.type}`;
+    }
+    if (
+      effect.sidechain &&
+      effect.type !== "compressor" &&
+      effect.type !== "gate" &&
+      effect.type !== "vocoder"
+    ) {
+      return `unsupported-config:${effect.type}`;
+    }
+    const nested =
+      "chains" in effect
+        ? effect.chains
+            .map((chain) => radioOnlyFallback(chain.effects))
+            .find(Boolean)
+        : null;
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+/** `cause` in plain words, as a clause after "because". */
+export function describeFallback(cause: EffectsFallbackCause): string {
+  if (cause === "capacity") {
+    return `openDAW's ${MAX_MONITORING_CHANNELS} monitoring input channels are in use: each stereo FX lane or unit takes two, and so does each distinct key input`;
+  }
+  if (cause === "not-isolated") {
+    return "this browser can't run openDAW";
+  }
+  if (cause === "startup-failed") {
+    return "openDAW couldn't start";
+  }
+  const [kind, type] = cause.split(":") as [string, EffectType];
+  const name = getEffectDefinition(type)?.name ?? "an effect";
+  return kind === "radio-only"
+    ? `${name} only runs there`
+    : `this ${name} configuration only runs there`;
 }
 
 export function hasEnabledEffects(effects: readonly EffectConfig[]): boolean {
@@ -96,5 +145,5 @@ export function selectOfficialEffects(
 export function canUseOfficialOpenDawRuntime(
   effects: readonly EffectConfig[]
 ): boolean {
-  return hasEnabledEffects(effects) && areOfficialOpenDawEffects(effects);
+  return hasEnabledEffects(effects) && !radioOnlyFallback(effects);
 }

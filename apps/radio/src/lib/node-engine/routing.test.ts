@@ -497,7 +497,7 @@ describe("RoutingGraph", () => {
     h.apply(shared());
     h.laneSends("a");
     await h.settle();
-    expect(h.routing.outcomeOf("mix")).toBe("official");
+    expect(h.routing.outcomeOf("mix")?.backend).toBe("official");
 
     h.listeners.get("node-unit:mix")?.({
       backend: "compatibility",
@@ -505,7 +505,7 @@ describe("RoutingGraph", () => {
       status: "ready",
     });
 
-    expect(h.routing.outcomeOf("mix")).toBe("compatibility");
+    expect(h.routing.outcomeOf("mix")?.backend).toBe("compatibility");
     expect(h.host.outcomeChanged).toHaveBeenCalled();
   });
 

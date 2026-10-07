@@ -61,7 +61,7 @@ import {
   type UnitPlan,
 } from "@/lib/node-graph/compile";
 import { effectsChange } from "@/lib/node-graph/reconcile";
-import { type EffectsBackend, EffectsSlot } from "./effects-slot";
+import { EffectsSlot } from "./effects-slot";
 
 import { createParameters, type OwnerParameters } from "./params";
 
@@ -345,8 +345,17 @@ export class RoutingGraph {
     };
   }
 
-  /** The backend a unit's effects settled on, while it runs. */
-  outcomeOf(unitId: string): EffectsBackend | undefined {
+  /** openDAW's channels came free: each unit it was too full for asks again. */
+  capacityFreed(): void {
+    for (const point of this.points.values()) {
+      if (point.live?.effects?.capacityFreed()) {
+        this.kick(point);
+      }
+    }
+  }
+
+  /** What a unit's effects settled on, while it runs. */
+  outcomeOf(unitId: string): EffectsRuntimeOutcome | undefined {
     return this.points.get(endpointKey({ id: unitId, kind: "unit" }))?.live
       ?.effects?.outcome;
   }

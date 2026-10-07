@@ -15,11 +15,12 @@ import {
   localEffectConfig,
   updateEffectFieldsInTree,
 } from "../dsp/routing/effect-tree.js";
-import type {
-  EffectsGraphRuntime,
-  EffectsPerformanceSnapshot,
-  EffectWriteResult,
-  OfficialSoundSettings,
+import {
+  type EffectsGraphRuntime,
+  type EffectsPerformanceSnapshot,
+  type EffectWriteResult,
+  MonitoringChannelsFullError,
+  type OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 import {
   type EffectParamTarget,
@@ -68,6 +69,9 @@ type WerkstattCompiler = ReturnType<
   typeof import("@opendaw/studio-adapters").ScriptCompiler.create
 >;
 type Terminable = { terminate: () => void };
+
+/** How long openDAW may take to start, in seconds of a running context. */
+export const OPENDAW_STARTUP_SECONDS = 10;
 
 type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
   effects: EffectConfig[];
@@ -146,6 +150,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private modulationOutputs = 0;
   private readonly modulationListeners = new Set<() => void>();
   private initializePromise: Promise<void> | null = null;
+  /** The startup in flight: a deadline or a cleanup aborts it. */
+  private startup: AbortController | null = null;
   private project: Project | null = null;
   private modules: RuntimeModules | null = null;
   private werkstattCompiler: WerkstattCompiler | null = null;
@@ -167,6 +173,10 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   get isReady(): boolean {
     return this.project !== null;
+  }
+
+  get startupFailed(): boolean {
+    return this.initializePromise !== null && !(this.startup || this.isReady);
   }
 
   get soundCount(): number {
@@ -197,15 +207,19 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (this.isReady) {
       return;
     }
+    // A failed startup stays failed for this runtime, so each later sound
+    // falls back at once instead of waiting out a startup of its own; Node
+    // lets go of it as it deactivates, so its next activation tries again.
     this.initializePromise ??= this.initializeEngine();
-    try {
-      await this.initializePromise;
-    } catch (error) {
-      this.initializePromise = null;
-      throw error;
-    }
+    await this.initializePromise;
   }
 
+  /**
+   * A startup that never settles would leave every FX lane silent, so it
+   * gets a deadline on the audio clock, which stands still while the
+   * context is suspended waiting for a gesture, and for good once it
+   * closes: closing gives up at once.
+   */
   private async initializeEngine(): Promise<void> {
     if (
       typeof AudioWorkletNode === "undefined" ||
@@ -215,8 +229,52 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         "openDAW requires AudioWorklet and cross-origin-isolated SharedArrayBuffer support"
       );
     }
+    if (this.context.state === "closed") {
+      throw new Error("openDAW can't start on a closed audio context");
+    }
+    const startup = new AbortController();
+    this.startup = startup;
+    const closed = () => {
+      if (this.context.state === "closed") {
+        startup.abort(new Error("The audio context closed as openDAW started"));
+      }
+    };
+    this.context.addEventListener("statechange", closed);
+    // A started source renders unconnected, so its scheduled stop fires
+    // `ended` (Chromium 154: on time running, held while suspended).
+    const deadline = this.context.createConstantSource();
+    deadline.onended = () =>
+      startup.abort(
+        new Error(`openDAW didn't start within ${OPENDAW_STARTUP_SECONDS} s`)
+      );
+    deadline.start();
+    deadline.stop(this.context.currentTime + OPENDAW_STARTUP_SECONDS);
+    try {
+      await this.startEngine(startup.signal);
+    } finally {
+      this.context.removeEventListener("statechange", closed);
+      deadline.onended = null;
+      try {
+        deadline.stop();
+      } catch {
+        // The deadline may already have ended.
+      }
+      if (this.startup === startup) {
+        this.startup = null;
+      }
+    }
+  }
 
-    const modules = await this.moduleLoader();
+  private async startEngine(signal: AbortSignal): Promise<void> {
+    const aborted = new Promise<never>((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    });
+    /** `step`, unless the startup is abandoned first. */
+    const until = <T>(step: Promise<T>) => Promise.race([step, aborted]);
+
+    const modules = await until(this.moduleLoader());
     const {
       AudioWorklets,
       Project: OpenDawProject,
@@ -229,14 +287,16 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       wasmUrl: this.urls.wasmUrl,
     });
 
-    const [audioWorklets, wasmReady] = await Promise.all([
-      ensureOpenDawAudioWorklets(
-        this.context,
-        AudioWorklets,
-        this.urls.processorUrl
-      ),
-      modules.wasm.WasmEngine.ensureReady(this.context),
-    ]);
+    const [audioWorklets, wasmReady] = await until(
+      Promise.all([
+        ensureOpenDawAudioWorklets(
+          this.context,
+          AudioWorklets,
+          this.urls.processorUrl
+        ),
+        modules.wasm.WasmEngine.ensureReady(this.context),
+      ])
+    );
     if (!wasmReady) {
       throw new Error("openDAW WASM engine assets failed to load");
     }
@@ -313,11 +373,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         },
       });
       load(initialWorklet);
-      await ready.promise;
-
-      if (this.closed) {
-        throw new Error("openDAW runtime initialization was canceled");
-      }
+      await until(ready.promise);
 
       this.werkstattCompiler = modules.adapters.ScriptCompiler.create({
         functionName: "werkstatt",
@@ -327,6 +383,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.modules = modules;
       this.project = project;
     } catch (error) {
+      // What this startup made goes with it; openDAW restarts no worklet
+      // for a terminated project.
+      this.worklet = null;
       project.terminate();
       throw error;
     }
@@ -463,7 +522,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       0
     );
     if (occupiedChannels + inputChannels > MAX_MONITORING_CHANNELS) {
-      throw new Error(
+      throw new MonitoringChannelsFullError(
         `openDAW monitoring supports at most ${MAX_MONITORING_CHANNELS} input channels`
       );
     }
@@ -769,6 +828,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return;
     }
     this.closed = true;
+    this.startup?.abort(
+      new Error("openDAW runtime initialization was canceled")
+    );
     this.worklet = null;
     this.modulationListeners.clear();
     for (const soundId of this.soundUnits.keys()) {

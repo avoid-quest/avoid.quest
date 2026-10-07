@@ -6,6 +6,7 @@ import {
   initializeSettings,
   setPlayerMode,
   settingsCollection,
+  shouldUseNativeSinglePlayback,
   updatePlayerSettings,
 } from "./settings";
 
@@ -20,6 +21,26 @@ async function clearSettings() {
 
 beforeEach(clearSettings);
 afterEach(clearSettings);
+
+test.each([
+  ["default", 0, true],
+  ["default", 50, false],
+  ["custom", 0, false],
+] as const)(
+  "Single on output %s with delay %s uses native playback: %s",
+  (mainOutputId, mainDelayMs, native) => {
+    settingsCollection.insert({
+      audio: {
+        cueOutputId: null,
+        delay: { cueDelayMs: 0, mainDelayMs },
+        mainOutputId,
+      },
+      id: SETTINGS_ID,
+      player: { mode: "single", restoreStateOnLoad: true },
+    });
+    expect(shouldUseNativeSinglePlayback()).toBe(native);
+  }
+);
 
 describe("player mode", () => {
   test("accepts node alongside the existing modes", () => {

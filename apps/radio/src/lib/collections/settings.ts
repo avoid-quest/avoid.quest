@@ -7,7 +7,6 @@ import {
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
-import { supportsMediaElementVolumeControl } from "../audio/playback/media-element-volume-control.js";
 import { CHANGELOG_STORAGE_KEY, settings as defaultSettings } from "../const";
 import { normalizePlayerMode } from "../normalize-player-mode";
 
@@ -231,14 +230,11 @@ export function getDelaySettings(): {
   return audio.delay ?? { cueDelayMs: 0, mainDelayMs: 0 };
 }
 
-export function shouldUseNativeSinglePlayback(): boolean {
-  const audio = getAudioSettings();
+export function shouldUseNativeSinglePlayback(
+  audio = getAudioSettings()
+): boolean {
   const mainDelayMs = audio.delay?.mainDelayMs ?? 0;
-  return (
-    audio.mainOutputId === "default" &&
-    mainDelayMs === 0 &&
-    supportsMediaElementVolumeControl()
-  );
+  return audio.mainOutputId === "default" && mainDelayMs === 0;
 }
 
 /**

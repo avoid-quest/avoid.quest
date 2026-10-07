@@ -24,6 +24,7 @@ import { getOutputRouting, type OutputRouting } from "../../output-routing.js";
 import {
   type AudioState,
   type AudioStateCallback,
+  assertSupportedRadioGraph,
   type ChannelSelection,
   createDeviceSource,
   createPlaybackSource,
@@ -291,10 +292,13 @@ export class AudioManager {
       this.playbackRequests.get(soundId) === request &&
       !request.cancelled;
     try {
-      const useGraph = instance.outputMode !== "native";
-      const context = useGraph ? getAudioContext() : null;
-      if (useGraph && !context) {
-        throw new Error("Audio context not available");
+      let context: AudioContext | null = null;
+      if (instance.outputMode !== "native") {
+        assertSupportedRadioGraph(instance.radio);
+        context = getAudioContext();
+        if (!context) {
+          throw new Error("Audio context not available");
+        }
       }
       const setupPromise = context
         ? this.handleDeferredRejection(this.ensurePlaybackSetup(context))
@@ -1102,15 +1106,16 @@ export class AudioManager {
       this.playbackRequests.get(soundId) === request &&
       !request.cancelled;
 
-    // Update loading state
-    instance.loading = true;
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      error: null,
-      isLoading: true,
-      isPlaying: false,
-    });
-
     try {
+      if (instance.outputMode !== "native") {
+        assertSupportedRadioGraph(refreshedRadio);
+      }
+      instance.loading = true;
+      notifySoundState(this.notifyListeners, soundId, instance, {
+        error: null,
+        isLoading: true,
+        isPlaying: false,
+      });
       // A pause while the new URL loads keeps the sound paused.
       const playing = await source.refreshUrl(
         toPlaybackInput(refreshedRadio),
@@ -1133,8 +1138,7 @@ export class AudioManager {
       if (!isCurrent()) {
         throw error;
       }
-      instance.loading = false;
-      instance.playing = false;
+      this.rollbackEarlyPlayback(soundId, instance, null);
 
       notifySoundError(
         this.notifyListeners,

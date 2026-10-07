@@ -402,12 +402,12 @@ function createNodePlayback(
     });
   };
 
-  /** Lanes can commit again (a track change), so settle to empty. */
+  /** Lanes can commit again (a track change), so settle to empty, writes last. */
   const whenSettled = async (): Promise<void> => {
     await batch;
-    await persistence.whenSettled();
     await disposal;
     await engine?.whenSettled();
+    await persistence.whenSettled();
     if (batch || engine?.busy()) {
       return whenSettled();
     }

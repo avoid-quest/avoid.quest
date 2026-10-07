@@ -5388,6 +5388,47 @@ describe("Node Playback: Track and File sources", () => {
     );
   });
 
+  test("settling waits for a playlist's next track to be stored after a live edit", async () => {
+    insertNodeSession(
+      patch([trackNode("playlist", youtubePlaylist), station("a")])
+    );
+    const resolution = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("playlist", true);
+    const stored = spyOn(playbackSessionsCollection.utils, "acceptMutations");
+    setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+
+    const settling = harness.playback.whenSettled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // A live edit's write holds the next one back for the pacing window.
+    commitNodeGraph(withStation("a", { volume: 0.4 }), harness.store);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/two.m4a",
+    });
+    await settling;
+
+    expect(
+      stored.mock.calls.at(-1)?.[0].mutations[0]?.modified.channels
+    ).toContainEqual(
+      expect.objectContaining({
+        radio: expect.objectContaining({
+          streamUrl: "https://media.example/two.m4a",
+        }),
+      })
+    );
+    stored.mockRestore();
+  });
+
   test("a third playing Track past the mobile budget is refused with its message", async () => {
     insertNodeSession(
       patch([

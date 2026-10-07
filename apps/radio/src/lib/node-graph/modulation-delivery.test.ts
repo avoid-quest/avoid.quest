@@ -598,7 +598,7 @@ describe("resolved modulation delivery", () => {
       base.value
     );
   });
-  test("refused source handles, node and cable overflow stay inert", async () => {
+  test("refused handles stay inert while sources and cables past the former caps modulate", async () => {
     const graph = patch();
     const cable = graph.edges.find(
       (edge) => edge.targetHandle === "in:control:parameter"
@@ -623,21 +623,24 @@ describe("resolved modulation delivery", () => {
         cable,
       ],
     };
-    expect(parameterCables(overflow)).toEqual([]);
+    expect(parameterCables(overflow)).toHaveLength(1);
     const nodes = {
       ...graph,
-      edges: [{ ...cable, source: "extra-20" }],
+      edges: [
+        ...graph.edges.filter((edge) => edge !== cable),
+        { ...cable, source: "extra-20" },
+      ],
       nodes: [
         ...graph.nodes,
         ...Array.from({ length: 21 }, (_, index) =>
-          palette("macro", `extra-${index}`)
+          palette("curve", `extra-${index}`)
         ),
       ],
     };
-    expect(parameterCables(nodes)).toEqual([]);
+    expect(parameterCables(nodes)).toHaveLength(1);
     const runtime = await harness(nodes);
     runtime.emit({ "extra-20": 1 });
-    expect(runtime.values.size).toBe(0);
+    expect(runtime.values.size).toBeGreaterThan(0);
   });
 });
 

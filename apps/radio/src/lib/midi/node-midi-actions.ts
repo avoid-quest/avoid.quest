@@ -22,10 +22,7 @@ import {
   setEffectParams,
   setNativeParams,
 } from "@/lib/node-graph/graph-edits";
-import {
-  MODULATION_COMMON_FIELDS,
-  MODULATION_FIELDS,
-} from "@/lib/node-graph/modulation-fields";
+import { modulationFields } from "@/lib/node-graph/modulation-fields";
 import {
   NATIVE_PARAM_RANGES,
   setModulatorParams,
@@ -35,7 +32,11 @@ import {
   commitNodeGraph,
   type NodeCommitHistory,
 } from "@/lib/node-graph/node-store";
-import type { GraphNode, NodeGraph } from "@/lib/node-graph/schema";
+import {
+  type GraphNode,
+  isModulationNode,
+  type NodeGraph,
+} from "@/lib/node-graph/schema";
 import { NODE_TARGET_PREFIX } from "./midi-control";
 import type { MidiAction, MidiTargetId } from "./types";
 
@@ -191,8 +192,8 @@ export function nodeMidiGroups(graph: NodeGraph): Map<string, string> {
 
 /**
  * What the actions depend on: nodes with params, their groups and a split's
- * branches. Knob turns leave it alone, so MIDI settings and every learn
- * badge re-render only when the patch's shape changes.
+ * branches and envelope stage counts. Knob turns leave it alone, so MIDI
+ * settings and every learn badge re-render only when the patch's shape changes.
  */
 export function nodeMidiSignature(graph: NodeGraph): string {
   const groups = nodeMidiGroups(graph);
@@ -207,7 +208,15 @@ export function nodeMidiSignature(graph: NodeGraph): string {
         effect && isEffectContainer(effect)
           ? effect.chains.map((chain) => `${chain.id}=${chain.name}`)
           : [];
-      return [[node.id, node.type, group, ...chains].join("\t")];
+      return [
+        [
+          node.id,
+          node.type,
+          group,
+          ...chains,
+          ...(node.type === "multiEnvelope" ? [node.data.points.length] : []),
+        ].join("\t"),
+      ];
     })
     .join("\n");
 }
@@ -234,11 +243,8 @@ export function createNodeMidiActions(
     if (isNativeNode(node)) {
       return nativeActions(node, group, commit);
     }
-    if (isModulationType(node.type)) {
-      return [
-        ...MODULATION_FIELDS[node.type],
-        ...MODULATION_COMMON_FIELDS,
-      ].flatMap((field): MidiAction[] => {
+    if (isModulationNode(node)) {
+      return modulationFields(node).flatMap((field): MidiAction[] => {
         if (field.kind !== "number") {
           return [];
         }

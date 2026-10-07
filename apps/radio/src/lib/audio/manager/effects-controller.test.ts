@@ -1503,6 +1503,47 @@ describe("EffectsController", () => {
     });
   });
 
+  test("uses compatibility when a fifth stereo input exceeds openDAW's monitoring limit", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const ids = ["one", "two", "three", "four", "five"];
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => createManager(context),
+      notifyListeners: () => undefined,
+      sounds: new Map(ids.map((id) => [id, sound(id, filter)])),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    for (const id of ids) {
+      const reverb = createDefaultEffectConfig(
+        "plateReverb",
+        `reverb-${id}`,
+        0
+      );
+      reverb.enabled = true;
+      // biome-ignore lint/performance/noAwaitInLoops: fill the shared runtime before rejecting the fifth input
+      await controller.reconcile(id, desiredEffects([reverb]));
+      if (id === "five") {
+        runtime.connectSound.mockRejectedValueOnce(
+          new Error("openDAW monitoring supports at most 8 input channels")
+        );
+      }
+      expect(
+        await controller.connectGraph(
+          id,
+          filter as unknown as AudioNode,
+          new TestAudioNode(context) as unknown as AudioNode
+        )
+      ).toBe(true);
+      expect(controller.getRuntimeOutcome(id)).toEqual({
+        backend: id === "five" ? "compatibility" : "official",
+        ready: true,
+        status: "ready",
+      });
+    }
+  });
+
   test("reports a ready bypass when resumed runtime selection fails", async () => {
     const context = new TestAudioContext();
     const filter = new TestAudioNode(context);

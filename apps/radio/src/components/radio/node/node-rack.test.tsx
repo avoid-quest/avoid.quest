@@ -91,7 +91,7 @@ afterEach(() => {
   revealNode.mockClear();
 });
 
-const ENV: CompileEnv = { crossOriginIsolated: false, profile: "desktop" };
+const ENV: CompileEnv = { crossOriginIsolated: false };
 const position = { x: 0, y: 0 };
 const noop = () => undefined;
 const asyncNoop = async () => undefined;

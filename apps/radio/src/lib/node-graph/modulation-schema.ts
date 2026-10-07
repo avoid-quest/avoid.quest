@@ -53,7 +53,6 @@ export type ModulationPoint = z.infer<typeof point>;
 const points = z
   .array(point)
   .min(2)
-  .max(16)
   .refine(
     (values) =>
       values[0]?.time === 0 &&
@@ -107,18 +106,23 @@ export const MODULATION_DATA_SCHEMAS = {
     control: z.number().int().min(0).max(127).default(1),
     mode: z.enum(["cc", "gate", "velocity", "key"]).default("cc"),
   }),
-  multiEnvelope: z.object({
-    ...common,
-    duration: z.number().min(0.05).max(120).default(4),
-    points: points.length(8).default(
-      [0, 1, 0.3, 0.8, 0.2, 0.6, 0.4, 0].map((value, index) => ({
-        bend: 0,
-        time: index / 7,
-        value,
-      }))
-    ),
-    sustainPoint: z.number().int().min(-1).max(6).default(3),
-  }),
+  multiEnvelope: z
+    .object({
+      ...common,
+      duration: z.number().min(0.05).max(120).default(4),
+      points: points.default(
+        [0, 1, 0.3, 0.8, 0.2, 0.6, 0.4, 0].map((value, index) => ({
+          bend: 0,
+          time: index / 7,
+          value,
+        }))
+      ),
+      sustainPoint: z.number().int().min(-1).default(3),
+    })
+    .refine((data) => data.sustainPoint <= data.points.length - 2, {
+      message: "Hold point must precede the final envelope point",
+      path: ["sustainPoint"],
+    }),
   randomiser: z.object({
     ...timed,
     levels: z.number().int().min(0).max(32).default(0),
@@ -141,6 +145,7 @@ export const MODULATION_DATA_SCHEMAS = {
       .enum(["forward", "backward", "pingPong", "alternate", "random"])
       .default("forward"),
     smooth: unit.default(0),
+    // openDAW StepsModulatorBox stores exactly 64 native step fields.
     values: z
       .array(unit)
       .min(1)
@@ -167,7 +172,7 @@ export function normalizeModulationData(
   data: unknown
 ) {
   const stored = data && typeof data === "object" ? data : {};
-  return Object.fromEntries(
+  const normalized = Object.fromEntries(
     Object.entries(MODULATION_DATA_SCHEMAS[type].shape).map(([key, schema]) => {
       let value = Reflect.get(stored, key);
       const field = schema.unwrap();
@@ -188,4 +193,11 @@ export function normalizeModulationData(
       return [key, parsed.success ? parsed.data : schema.parse(undefined)];
     })
   );
+  if (type === "multiEnvelope") {
+    normalized.sustainPoint = Math.min(
+      normalized.sustainPoint,
+      normalized.points.length - 2
+    );
+  }
+  return normalized;
 }

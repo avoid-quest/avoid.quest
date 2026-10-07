@@ -127,7 +127,7 @@ function seriesPair(
 
 /**
  * P: two FX in series become Split → both → Merge. Refused when the result
- * would not compile, e.g. past the cable budget, as P adds three cables.
+ * would not compile.
  */
 export function seriesToParallel(
   graph: NodeGraph,

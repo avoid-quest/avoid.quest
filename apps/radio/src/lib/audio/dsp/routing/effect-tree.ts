@@ -6,6 +6,7 @@ import type {
 } from "../effects/types.js";
 
 export { DEFAULT_EFFECT_TEMPO } from "../effects/tempo.js";
+/** Saved FX and compiled Node channels share this recursive parsing limit. */
 export const MAX_EFFECT_TREE_DEPTH = 8;
 
 export function isEffectContainerType(type: EffectType): boolean {
@@ -116,31 +117,23 @@ function orderEffects(effects: readonly EffectConfig[]): EffectConfig[] {
 }
 
 function normalizeChains(
-  chains: readonly EffectChainConfig[],
-  depth: number
+  chains: readonly EffectChainConfig[]
 ): EffectChainConfig[] {
   return [...chains]
     .sort((left, right) => left.order - right.order)
     .map((chain, order) => ({
       ...chain,
-      effects: normalizeEffectTree(chain.effects, depth + 1),
+      effects: normalizeEffectTree(chain.effects),
       order,
     }));
 }
 
 export function normalizeEffectTree(
-  effects: readonly EffectConfig[],
-  depth = 0
+  effects: readonly EffectConfig[]
 ): EffectConfig[] {
-  if (depth > MAX_EFFECT_TREE_DEPTH) {
-    throw new Error(
-      `Effect tree exceeds the maximum depth of ${MAX_EFFECT_TREE_DEPTH}`
-    );
-  }
-
   return orderEffects(effects).map((effect) =>
     isEffectContainer(effect)
-      ? ({ ...effect, chains: normalizeChains(effect.chains, depth) } as
+      ? ({ ...effect, chains: normalizeChains(effect.chains) } as
           | Extract<EffectConfig, { type: "fxComposite" }>
           | Extract<EffectConfig, { type: "stereoSplit" }>
           | Extract<EffectConfig, { type: "frequencySplit" }>)
@@ -394,11 +387,7 @@ export function validateEffectTree(
   const effectIds = new Set<string>();
   const chainIds = new Set<string>();
 
-  const visit = (current: readonly EffectConfig[], depth: number): void => {
-    if (depth > MAX_EFFECT_TREE_DEPTH) {
-      errors.push(`Effect tree exceeds depth ${MAX_EFFECT_TREE_DEPTH}`);
-      return;
-    }
+  const visit = (current: readonly EffectConfig[]): void => {
     for (const effect of current) {
       if (effectIds.has(effect.id)) {
         errors.push(`Duplicate effect id: ${effect.id}`);
@@ -426,12 +415,12 @@ export function validateEffectTree(
           errors.push(`Duplicate effect chain id: ${chain.id}`);
         }
         chainIds.add(chain.id);
-        visit(chain.effects, depth + 1);
+        visit(chain.effects);
       }
     }
   };
 
-  visit(effects, 0);
+  visit(effects);
   return errors;
 }
 

@@ -90,8 +90,6 @@ export type LaneHost = {
     soundId: string,
     plan: LanePlan
   ) => Promise<EffectsRuntimeOutcome>;
-  /** The stream limit a start on `slot` would pass, or null while it fits. */
-  streamLimit: (slot: LaneSlot) => number | null;
   /** A lane's effects backend changed. */
   outcomeChanged: () => void;
   /** Taps a sound pre-fader onto the headphone cue bus. */
@@ -323,19 +321,9 @@ export class LaneInstance {
   }
 
   /**
-   * Starts the sound, synchronously up to its play call, inside the budget
-   * and with its connector and strip on. A failed platform URL renews once.
+   * Starts the sound with its connector and strip on. A failed platform URL renews once.
    */
   async start(plan: LanePlan, signal: AbortSignal): Promise<StartResult> {
-    const limit = this.host.streamLimit(this.slot);
-    if (limit !== null) {
-      this.slot.fail(
-        null,
-        `Up to ${limit} streams can play at once here. Pause one to start this.`,
-        false
-      );
-      return "refused";
-    }
     clearManagedPlaybackErrors([plan.channelId]);
     // Before the play call: the sound's graph connects inside it.
     this.host.laneOutputs.attach(plan.id, this.soundId);
@@ -807,15 +795,6 @@ export class LaneSlot {
    * Whether the lane takes a stream slot: starting, renewing or playing a
    * stream. A live input is no stream.
    */
-  busyStream(): boolean {
-    if (this.plan?.source.kind === "device") {
-      return false;
-    }
-    const { attempt } = this;
-    const stepping = attempt?.state === "running" && attempt.kind !== "pick";
-    return stepping || isAudible(this.channelId);
-  }
-
   /** Shows and reports a failure, worded by `userMessage` or its cause. */
   fail(cause: unknown, userMessage?: string, report = true): void {
     const radio = this.plan?.radio as Radio | undefined;

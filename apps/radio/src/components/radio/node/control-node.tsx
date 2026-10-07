@@ -4,10 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import { type KeyboardEvent, useEffect, useRef } from "react";
 import { getMidiControl } from "@/lib/midi";
 import { findPort, getNodeDefinition } from "@/lib/node-graph/catalogue";
-import {
-  MODULATION_COMMON_FIELDS,
-  MODULATION_FIELDS,
-} from "@/lib/node-graph/modulation-fields";
+import { modulationFields } from "@/lib/node-graph/modulation-fields";
 import { setModulatorParams } from "@/lib/node-graph/modulation-parameters";
 import {
   gateModulator,
@@ -171,7 +168,7 @@ export function ModulationControls({
       store,
       step ? "snapshot" : undefined
     );
-  const fields = [...MODULATION_FIELDS[node.type], ...MODULATION_COMMON_FIELDS];
+  const fields = modulationFields(node);
   const gated = findPort(node.type, "in", "control", "gate") !== undefined;
   return (
     <>
@@ -237,7 +234,6 @@ export function ModulationControls({
       ) : null}
       {node.type === "curve" || node.type === "multiEnvelope" ? (
         <CurveEditor
-          fixed={node.type === "multiEnvelope"}
           onChange={(points) => commit({ points })}
           points={node.data.points}
         />

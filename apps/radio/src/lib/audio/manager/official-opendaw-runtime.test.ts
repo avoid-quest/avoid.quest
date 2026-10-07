@@ -372,6 +372,60 @@ function wrapperForDevice(
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
+  test("accepts four stereo inputs and rejects a fifth", async () => {
+    const h = await createHarness();
+    for (const id of ["one", "two", "three", "four"]) {
+      // biome-ignore lint/performance/noAwaitInLoops: fill the shared monitoring channels in order
+      expect(await h.runtime.connectSound(id, h.source, h.destination)).toBe(
+        true
+      );
+    }
+    await expect(
+      h.runtime.connectSound("five", h.source, h.destination)
+    ).rejects.toThrow("openDAW monitoring supports at most 8 input channels");
+    expect(h.runtime.getPerformanceSnapshot()).toMatchObject({
+      monitoringChannelCount: 8,
+      soundCount: 4,
+    });
+  });
+
+  test("keeps more than four parallel chains in the published openDAW composite", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = createDefaultEffectConfig("fxComposite", "split", 0);
+    const [chain] = config.chains;
+    if (!chain) {
+      throw new Error("Expected a default chain");
+    }
+    config.enabled = true;
+    config.chains = Array.from({ length: 12 }, (_, order) => ({
+      ...chain,
+      effects: [createDefaultEffectConfig("delay", `delay-${order}`, 0)],
+      id: `chain-${order}`,
+      order,
+    }));
+    h.runtime.syncEffects("deck", [config]);
+    const composite = h.project.boxGraph
+      .boxes()
+      .find(
+        (box) =>
+          box instanceof h.boxes.AudioEffectCompositeBox &&
+          box.label.getValue() === "FX Composite"
+      );
+    if (!(composite instanceof h.boxes.AudioEffectCompositeBox)) {
+      throw new Error("Expected an openDAW Split");
+    }
+    const cells = composite.entries.pointerHub.incoming().map(({ box }) => box);
+    expect(cells).toHaveLength(12);
+    expect(
+      cells.every(
+        (box) =>
+          box instanceof h.boxes.AudioEffectCompositeCellBox &&
+          box.audioEffects.pointerHub.incoming().length > 0
+      )
+    ).toBe(true);
+  });
+
   test("startup follows replacement worklets when earlier processors never become ready", async () => {
     const initial = deferred();
     const replacement = deferred();

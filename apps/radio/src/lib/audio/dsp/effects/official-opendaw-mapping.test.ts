@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
   isOfficialOpenDawEffectType,
+  MAX_MONITORING_CHANNELS,
   OPENDAW_FACTORY_KEYS,
   selectOfficialEffects,
 } from "./official-opendaw-mapping";
@@ -29,6 +33,20 @@ const effect = (
   }) as EffectConfig;
 
 describe("official openDAW runtime selection", () => {
+  test("mirrors the installed MonitoringRouter channel limit", () => {
+    const coreEntry = createRequire(import.meta.url).resolve(
+      "@opendaw/studio-core"
+    );
+    const router = readFileSync(
+      path.join(path.dirname(coreEntry), "MonitoringRouter.js"),
+      "utf8"
+    );
+    expect(router).toContain(
+      `const MAX_MONITORING_CHANNELS = ${MAX_MONITORING_CHANNELS};`
+    );
+    expect(MAX_MONITORING_CHANNELS).toBe(8);
+  });
+
   test("maps every official effect exactly once and no radio-only effect", () => {
     expect(Object.keys(OPENDAW_FACTORY_KEYS).sort()).toEqual(
       [...OPENDAW_EFFECT_TYPES].sort()

@@ -59,8 +59,14 @@ class ModulationWorklet extends FakeGainNode {
       }
     },
   };
-  constructor(context: ModulationContext) {
+  readonly numberOfInputs: number;
+  constructor(
+    context: ModulationContext,
+    _name: string,
+    options: AudioWorkletNodeOptions
+  ) {
     super(context);
+    this.numberOfInputs = options.numberOfInputs ?? 1;
     ModulationWorklet.current = this;
   }
 }
@@ -102,7 +108,9 @@ function harness(
   const tap = new FakeGainNode(context);
   const inputs: number[] = [];
   tap.connect = (_destination, _output = 0, input = 0) => {
-    if (input >= 8) {
+    if (
+      input >= (_destination as unknown as ModulationWorklet).numberOfInputs
+    ) {
       throw new Error("IndexSizeError");
     }
     if (context.rejectInput === input) {
@@ -263,6 +271,35 @@ function nativeHost() {
 }
 
 describe("modulation runtime startup", () => {
+  test("followers past eight keep their audio inputs when the patch grows", async () => {
+    const h = harness();
+    const followers = (count: number) =>
+      graph(
+        ...Array.from({ length: count }, (_, index) =>
+          palette("follower", `f${index}`, { x: 0, y: 0 })
+        )
+      );
+    h.runtime.sync(followers(12));
+    const first = await start(h.context);
+    expect(h.context.connectedTaps.size).toBe(12);
+    expect(modulationReadouts.state.error).toBeNull();
+    h.runtime.sync(followers(33));
+    await h.runtime.whenSettled();
+    expect(h.context.connectedTaps.size).toBe(33);
+    const worklet = ModulationWorklet.current;
+    if (!worklet) {
+      throw new Error("Missing modulation worklet");
+    }
+    expect(first.port.onmessage).toBeNull();
+    const values = worklet.dsp.process(
+      Array.from({ length: 33 }, () => [new Float32Array(1000).fill(0.25)]),
+      1000
+    );
+    expect(Object.keys(values)).toHaveLength(33);
+    expect(values.f32).toBeGreaterThan(0);
+    expect(modulationReadouts.state.error).toBeNull();
+  });
+
   test.each([false, true])(
     "removed native telemetry cannot override an Envelope reusing its id (surviving native=%s)",
     async (keepNative) => {

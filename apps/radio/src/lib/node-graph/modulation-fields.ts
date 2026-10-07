@@ -1,6 +1,7 @@
 import {
   MODULATION_SYNC,
   type ModulationNodeType,
+  type ModulationSpec,
 } from "@/lib/node-graph/modulation-schema";
 
 type Knob = {
@@ -48,7 +49,7 @@ const timed: ModulationField[] = [
   number("phase", "Phase", 0, 1),
 ];
 
-export const MODULATION_FIELDS: Record<ModulationNodeType, ModulationField[]> =
+const MODULATION_FIELDS_BY_TYPE: Record<ModulationNodeType, ModulationField[]> =
   {
     clock: timed,
     curve: [
@@ -85,10 +86,7 @@ export const MODULATION_FIELDS: Record<ModulationNodeType, ModulationField[]> =
       number("channel", "Channel", 0, 15, 1),
       number("control", "CC", 0, 127, 1),
     ],
-    multiEnvelope: [
-      number("duration", "Duration s", 0.05, 120, 0.01, "log"),
-      number("sustainPoint", "Hold point", -1, 6, 1),
-    ],
+    multiEnvelope: [number("duration", "Duration s", 0.05, 120, 0.01, "log")],
     randomiser: [
       ...timed,
       number("smooth", "Smooth", 0, 1),
@@ -115,7 +113,26 @@ export const MODULATION_FIELDS: Record<ModulationNodeType, ModulationField[]> =
     ],
   };
 
-export const MODULATION_COMMON_FIELDS: ModulationField[] = [
+const MODULATION_COMMON_FIELDS: ModulationField[] = [
   number("amount", "Amount", 0, 1),
   { key: "bipolar", kind: "toggle", label: "Bipolar" },
 ];
+
+/** Controls and MIDI share the ranges of the current envelope. */
+export function modulationFields(node: ModulationSpec): ModulationField[] {
+  return [
+    ...MODULATION_FIELDS_BY_TYPE[node.type],
+    ...(node.type === "multiEnvelope"
+      ? [
+          number(
+            "sustainPoint",
+            "Hold point",
+            -1,
+            node.data.points.length - 2,
+            1
+          ),
+        ]
+      : []),
+    ...MODULATION_COMMON_FIELDS,
+  ];
+}

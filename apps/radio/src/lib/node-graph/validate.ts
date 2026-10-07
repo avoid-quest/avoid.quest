@@ -2,13 +2,14 @@
  * Node Graph Validation
  *
  * Checks a patch against the port-kind rules, per-port limits, the feedback
- * rule (key cables included) and the device budgets. Every problem is an Issue keyed
+ * rule (key cables included). Every problem is an Issue keyed
  * by the node or cable it belongs to; invalid cables never reach the compiler.
  * The same check runs on drag, on load and on import, and every "can this
  * cable connect?" question goes through `connectionVerdict`.
  */
 
 import {
+  findPort,
   getNodeDefinition,
   isShipped,
   type NodeDefinition,
@@ -22,19 +23,10 @@ import {
   connectionParameter,
   modulationParameters,
 } from "./modulation-parameters";
-import {
-  type GraphEdge,
-  type GraphNode,
-  isModulationNode,
-  type NodeGraph,
-  type NodeType,
-} from "./schema";
-
-export type Profile = "desktop" | "mobile";
+import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
 
 export type IssueCode =
   | "modulation-target"
-  | "budget-modulators"
   | "unshipped"
   | "missing-node"
   | "bad-handle"
@@ -49,13 +41,6 @@ export type IssueCode =
   | "one-speakers"
   | "feedback-needs-loop"
   | "control-cycle"
-  | "budget-playing"
-  | "budget-sources"
-  | "budget-loops"
-  | "budget-tape-warp"
-  | "budget-tape-warp-time"
-  | "budget-lfos"
-  | "budget-edges"
   // Raised by the compiler, where the patch's shape is known.
   | "split-depth"
   | "split-branches"
@@ -68,45 +53,9 @@ export type Issue = {
   id: string;
 };
 
-export type NodeBudget = {
-  /** Stream sources playing at once: each costs a decoder, hls.js and a worklet. */
-  playingStreams: number;
-  sources: number;
-  loops: number;
-  tapeWarps: number;
-  tapeWarpSeconds: number;
-  lfos: number;
-  edges: number;
-};
-
-/** Mobile is a coarse pointer or iOS, where every FX lane is one worklet. */
-export const NODE_BUDGETS: Readonly<Record<Profile, NodeBudget>> = {
-  desktop: {
-    edges: 64,
-    lfos: 8,
-    loops: 4,
-    playingStreams: 6,
-    sources: 24,
-    tapeWarpSeconds: 30,
-    tapeWarps: 2,
-  },
-  mobile: {
-    edges: 64,
-    lfos: 8,
-    loops: 4,
-    playingStreams: 4,
-    sources: 24,
-    tapeWarpSeconds: 10,
-    tapeWarps: 1,
-  },
-};
-
 export type ValidateOptions = {
-  profile?: Profile;
   /** Node types and ports beyond this ship level are refused. */
   release?: ShipLevel;
-  /** Source node ids that are playing or starting, oldest first. */
-  playing?: readonly string[];
 };
 
 export type Connection = {
@@ -155,7 +104,6 @@ type Context = {
   graph: ValidatableGraph;
   nodes: Map<string, GraphNode>;
   release: ShipLevel;
-  budget: NodeBudget;
   issues: Issue[];
 };
 
@@ -211,12 +159,7 @@ function resolvePort(
   if (!parsed || parsed.direction !== direction) {
     return "bad-handle";
   }
-  const port = definitionOf(node).ports.find(
-    (entry) =>
-      entry.direction === direction &&
-      entry.kind === parsed.kind &&
-      entry.id === parsed.name
-  );
+  const port = findPort(node.type, direction, parsed.kind, parsed.name);
   return port && !isInactiveBand(node, port) ? port : "unknown-port";
 }
 
@@ -667,98 +610,6 @@ export function liveAudioNodes(
   return live;
 }
 
-function overBudget<T>(
-  items: readonly T[],
-  limit: number,
-  flag: (item: T) => void
-): void {
-  for (const item of items.slice(limit)) {
-    flag(item);
-  }
-}
-
-function checkBudgets(context: Context, playing: readonly string[]): void {
-  const { budget, graph } = context;
-  const ofType = (type: NodeType) =>
-    graph.nodes.filter((node) => node.type === type);
-  const flagNodes = (
-    nodes: readonly GraphNode[],
-    limit: number,
-    code: IssueCode,
-    message: string
-  ) =>
-    overBudget(nodes, limit, (node) => nodeIssue(context, node, code, message));
-
-  const streams = [...new Set(playing)]
-    .map((id) => context.nodes.get(id))
-    .filter((node): node is GraphNode =>
-      Boolean(node && definitionOf(node).stream)
-    );
-  flagNodes(
-    streams,
-    budget.playingStreams,
-    "budget-playing",
-    `Up to ${budget.playingStreams} streams can play at once`
-  );
-  flagNodes(
-    graph.nodes.filter((node) => definitionOf(node).source),
-    budget.sources,
-    "budget-sources",
-    `Up to ${budget.sources} sources per patch`
-  );
-
-  flagNodes(
-    ofType("loop"),
-    budget.loops,
-    "budget-loops",
-    `Up to ${budget.loops} Loops per patch`
-  );
-  const tapeWarps = ofType("tapeWarp");
-  flagNodes(
-    tapeWarps,
-    budget.tapeWarps,
-    "budget-tape-warp",
-    `Up to ${budget.tapeWarps} Tape Warp per patch`
-  );
-  for (const node of tapeWarps) {
-    if (node.type === "tapeWarp" && node.data.time > budget.tapeWarpSeconds) {
-      nodeIssue(
-        context,
-        node,
-        "budget-tape-warp-time",
-        `Tape Warp is limited to ${budget.tapeWarpSeconds} s here`
-      );
-    }
-  }
-  flagNodes(
-    ofType("lfo"),
-    budget.lfos,
-    "budget-lfos",
-    `Up to ${budget.lfos} LFOs per patch`
-  );
-  flagNodes(
-    graph.nodes.filter(isModulationNode),
-    32,
-    "budget-modulators",
-    "Up to 32 modulators per patch"
-  );
-  flagNodes(
-    ofType("follower"),
-    8,
-    "budget-modulators",
-    "Up to 8 audio followers per patch"
-  );
-
-  overBudget(graph.edges, budget.edges, (edge) =>
-    edgeIssue(
-      context,
-      edge,
-      "budget-edges",
-      `Up to ${budget.edges} cables per patch`
-    )
-  );
-}
-
 export type GraphAnalysis = {
   issues: Issue[];
   /** Cables that passed the port and cycle checks. */
@@ -768,10 +619,9 @@ export type GraphAnalysis = {
 /** Validates a patch and keeps what the compiler builds on. */
 export function analyseGraph(
   graph: ValidatableGraph,
-  { playing = [], profile = "desktop", release = "v1" }: ValidateOptions = {}
+  { release = "v1" }: ValidateOptions = {}
 ): GraphAnalysis {
   const context: Context = {
-    budget: NODE_BUDGETS[profile],
     graph,
     issues: [],
     nodes: new Map(graph.nodes.map((node) => [node.id, node])),
@@ -779,7 +629,6 @@ export function analyseGraph(
   };
   checkNodes(context);
   const wired = checkCycles(context, checkEdges(context));
-  checkBudgets(context, playing);
   return { issues: context.issues, wired };
 }
 

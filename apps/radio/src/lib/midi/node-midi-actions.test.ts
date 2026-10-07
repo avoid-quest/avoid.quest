@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { removeNodes, setEffectParams } from "@/lib/node-graph/graph-edits";
+import { setModulatorParams } from "@/lib/node-graph/modulation-parameters";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -291,6 +292,36 @@ describe("createNodeMidiActions", () => {
     expect(
       store.state.graph?.nodes.find((node) => node.id === "lp")?.data
     ).toMatchObject({ Q: 30 });
+  });
+
+  test("MIDI hold range grows with envelope stages and survives storage parsing", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: {}, id: "env", position, type: "multiEnvelope" },
+        { id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const points = Array.from({ length: 10 }, (_, index) => ({
+      bend: 0,
+      time: index / 9,
+      value: index / 9,
+    }));
+    const extended = setModulatorParams(graph, "env", { points });
+    expect(nodeMidiSignature(extended)).not.toBe(nodeMidiSignature(graph));
+    const store = createNodeStore(extended);
+    const hold = createNodeMidiActions(extended, storeCommit(store)).find(
+      (action) => action.targetId === "node:env:sustainPoint"
+    );
+    expect(hold?.range).toEqual({ max: 8, min: -1, step: 1 });
+    hold?.dispatch(1);
+    expect(
+      nodeGraphSchema.parse(store.state.graph).nodes[0]?.data
+    ).toMatchObject({
+      points,
+      sustainPoint: 8,
+    });
   });
 
   test("the signature follows the patch's shape, not its params", () => {

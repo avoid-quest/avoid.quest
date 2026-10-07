@@ -17,8 +17,15 @@ import {
   isEffectContainer,
   isEffectContainerType,
 } from "@/lib/audio/dsp/routing/effect-tree";
-import { defaultChainGain, MAX_SPLIT_BRANCHES } from "./compile";
-import type { EffectNodeType, GraphEdge, GraphNode, NodeGraph } from "./schema";
+import { findPort, getNodeDefinition, type NodePort } from "./catalogue";
+import { defaultChainGain, MAX_BANDS } from "./compile";
+import type {
+  EffectNodeType,
+  GraphEdge,
+  GraphNode,
+  NodeGraph,
+  NodeType,
+} from "./schema";
 import { parseHandleId } from "./validate";
 
 export type SplitType = "fxComposite" | "stereoSplit" | "frequencySplit";
@@ -60,7 +67,7 @@ function effectOf(node: SplitNode): EffectConfig {
 
 export function bandCountOf(effect: FrequencySplitConfig): BandCount {
   const count = effect.crossoverFrequencies.length + 1;
-  return Math.min(4, Math.max(2, count)) as BandCount;
+  return Math.min(MAX_BANDS, Math.max(2, count)) as BandCount;
 }
 
 /** The port index a split's out handle names: `branch-2` → 2, `right` → 2. */
@@ -73,7 +80,7 @@ export function branchIndex(handle: string): number {
     return 2;
   }
   const index = Number.parseInt(name.split("-").at(-1) ?? "", 10);
-  return Number.isFinite(index) ? index : 0;
+  return Number.isSafeInteger(index) ? index : 0;
 }
 
 /** The out port ids a split shows: every band, both sides, or the branches in use plus one. */
@@ -91,15 +98,49 @@ export function splitPortIds(
       (_, index) => `band-${index + 1}`
     );
   }
-  // A Split grows a port as each one is cabled, from two up to four.
-  const used = edges
-    .filter((edge) => edge.source === node.id)
-    .map((edge) => branchIndex(edge.sourceHandle));
-  const count = Math.min(
-    MAX_SPLIT_BRANCHES,
-    Math.max(2, Math.max(0, ...used) + 1)
+  // Keep cabled branches and one spare; the spare fills the lowest gap.
+  const used = new Set(
+    edges
+      .filter((edge) => edge.source === node.id)
+      .map((edge) => branchIndex(edge.sourceHandle))
+      .filter((index) => index > 0)
   );
-  return Array.from({ length: count }, (_, index) => `branch-${index + 1}`);
+  let spare = 1;
+  while (used.has(spare)) {
+    spare += 1;
+  }
+  used.add(spare);
+  if (used.size < 2) {
+    used.add(spare + 1);
+  }
+  return [...used]
+    .sort((left, right) => left - right)
+    .map((index) => `branch-${index}`);
+}
+
+/** Catalogue inputs with the requested audio outputs, in port order. */
+export function portsWithOutputs(
+  type: NodeType,
+  outputIds: readonly string[]
+): readonly NodePort[] {
+  const { ports } = getNodeDefinition(type);
+  return [
+    ...ports.filter((port) => port.direction === "in"),
+    ...outputIds.flatMap((id) => {
+      const port = findPort(type, "out", "audio", id);
+      return port ? [port] : [];
+    }),
+  ];
+}
+
+/** Catalogue ports with a Split's cabled branches and its spare output. */
+export function nodePorts(
+  node: GraphNode,
+  edges: readonly GraphEdge[]
+): readonly NodePort[] {
+  return node.type === "fxComposite"
+    ? portsWithOutputs(node.type, splitPortIds(node as SplitNode, edges))
+    : getNodeDefinition(node.type).ports;
 }
 
 /** A branch as the canvas and inspector name it: "Branch 2", "Left", "Mid". */

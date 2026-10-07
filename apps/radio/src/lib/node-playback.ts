@@ -77,7 +77,6 @@ import {
 } from "@/lib/node-graph/schema";
 import { deriveNodeChannels } from "@/lib/node-graph/session-channels";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
-import { NODE_BUDGETS, type Profile } from "@/lib/node-graph/validate";
 import { getOutputRouting } from "@/lib/output-routing.js";
 import { seekSound } from "@/lib/source-strip";
 import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
@@ -147,7 +146,6 @@ export type NodePlayback = {
 };
 
 export type NodePlaybackEnv = {
-  profile: Profile;
   crossOriginIsolated: boolean;
 };
 
@@ -158,10 +156,7 @@ type FadeOutSound = (
 ) => Promise<void>;
 
 export type GetNodePlaybackOptions = Partial<
-  Omit<
-    NodeEngineOptions,
-    "commitTrack" | "fadeOut" | "masterVolume" | "streamLimit"
-  >
+  Omit<NodeEngineOptions, "commitTrack" | "fadeOut" | "masterVolume">
 > & {
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
@@ -175,25 +170,11 @@ export type GetNodePlaybackOptions = Partial<
 type SourceData = { volume: number; muted: boolean };
 
 const DEFAULT_FADE_OUT_DURATION_MS = 150;
-const IOS_USER_AGENT = /iPad|iPhone|iPod/;
-/** iPadOS reports a Mac user agent; touch points give it away. */
-const MAC_USER_AGENT = /Macintosh/;
 const instances = new WeakMap<PlaybackActionContext, NodePlayback>();
 
-/** Mobile is a coarse pointer or iOS, which gets the smaller budgets. */
+/** openDAW needs cross-origin isolation, read once by the caller. */
 export function detectNodePlaybackEnv(): NodePlaybackEnv {
-  if (typeof window === "undefined") {
-    return { crossOriginIsolated: false, profile: "desktop" };
-  }
-  const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-  const { maxTouchPoints, userAgent } = window.navigator;
-  const iOS =
-    IOS_USER_AGENT.test(userAgent) ||
-    (MAC_USER_AGENT.test(userAgent) && maxTouchPoints > 1);
-  return {
-    crossOriginIsolated: globalThis.crossOriginIsolated === true,
-    profile: coarse || iOS ? "mobile" : "desktop",
-  };
+  return { crossOriginIsolated: globalThis.crossOriginIsolated === true };
 }
 
 /** Whether two values store as the same JSON, in any key order. */
@@ -308,7 +289,6 @@ function createNodePlayback(
       fadeOut: (soundId) =>
         options.fadeOutSound(soundId, options.fadeOutDurationMs, true),
       masterVolume: () => getPlaybackSession("node")?.masterVolume ?? 1,
-      streamLimit: () => NODE_BUDGETS[getEnv().profile].playingStreams,
     });
 
   /** Retires every lane, then the engine's outputs, before the orphan check. */

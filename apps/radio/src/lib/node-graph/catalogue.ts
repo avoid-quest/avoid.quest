@@ -49,11 +49,10 @@ export type NodeDefinition = {
   native?: "filter" | "pan" | "gain";
   /** Starts a lane: one managed sound. */
   source?: true;
-  /** Plays a stream and so counts toward the playing budget. */
-  stream?: true;
 };
 
 const UNLIMITED = Number.POSITIVE_INFINITY;
+const SPLIT_BRANCH_ID = /^branch-[1-9]\d*$/;
 
 /** Effects whose external sidechain a key cable can drive. */
 export const SIDECHAIN_EFFECT_TYPES = [
@@ -100,8 +99,8 @@ const keyIn: NodePort = {
   max: UNLIMITED,
 };
 
-function numberedOuts(prefix: string, label: string): NodePort[] {
-  return [1, 2, 3, 4].map((index) =>
+function numberedOuts(prefix: string, label: string, count = 4): NodePort[] {
+  return Array.from({ length: count }, (_, index) => index + 1).map((index) =>
     audioOut(`${prefix}-${index}`, `${label} ${index}`)
   );
 }
@@ -115,7 +114,7 @@ const CONTAINER_NAMES: Partial<Record<EffectType, string>> = {
 function containerOuts(type: EffectType): NodePort[] {
   switch (type) {
     case "fxComposite":
-      return numberedOuts("branch", "Branch");
+      return numberedOuts("branch", "Branch", 2);
     case "stereoSplit":
       return [audioOut("left", "Left"), audioOut("right", "Right")];
     case "frequencySplit":
@@ -209,7 +208,6 @@ const OTHER_DEFINITIONS: Record<
     ports: [controlIn("parameter", "Parameter"), audioOut()],
     ship: "v1",
     source: true,
-    stream: true,
   },
   filter: {
     category: "fx",
@@ -333,7 +331,6 @@ const OTHER_DEFINITIONS: Record<
     ports: [controlIn("parameter", "Parameter"), audioOut()],
     ship: "v1",
     source: true,
-    stream: true,
   },
   randomiser: {
     category: "control",
@@ -408,7 +405,6 @@ const OTHER_DEFINITIONS: Record<
     ],
     ship: "v1",
     source: true,
-    stream: true,
   },
   steps: {
     category: "control",
@@ -475,6 +471,15 @@ export function findPort(
   kind: PortKind,
   id: string
 ): NodePort | undefined {
+  if (
+    type === "fxComposite" &&
+    direction === "out" &&
+    kind === "audio" &&
+    SPLIT_BRANCH_ID.test(id) &&
+    Number.isSafeInteger(Number(id.slice("branch-".length)))
+  ) {
+    return audioOut(id, `Branch ${id.slice("branch-".length)}`);
+  }
   return NODE_DEFINITIONS[type].ports.find(
     (port) =>
       port.direction === direction && port.kind === kind && port.id === id

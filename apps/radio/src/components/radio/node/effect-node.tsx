@@ -192,6 +192,7 @@ function BodyControlView({
 
 export type EffectNodeBodyProps = {
   effect: EffectConfig;
+  minHeight?: number;
   selected?: boolean;
   badge?: BackendBadge | null;
   /** A knob turn: folds into the next undo step. */
@@ -219,6 +220,7 @@ export type EffectNodeBodyProps = {
  */
 export function EffectNodeBody({
   effect,
+  minHeight,
   selected = false,
   badge = null,
   onChange,
@@ -233,6 +235,7 @@ export function EffectNodeBody({
   const controls = custom ? [] : firstLayoutRow(effect.type);
   return (
     <ModuleFrame
+      minHeight={minHeight}
       on={effect.enabled}
       selected={selected}
       width={moduleWidth(

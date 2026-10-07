@@ -111,8 +111,8 @@ invalid topology to audio.
 
 The catalogue's ship flags define the available v1 nodes and ports. The schema
 also describes future nodes so migrations can identify them; schema membership
-alone does not make a node playable. `validate.ts` owns device budgets and graph
-issues, and the runtime enforces the playing-stream limit at start time.
+alone does not make a node playable. `validate.ts` owns graph issues. openDAW's
+8 live-input channels are handled by automatic compatibility fallback.
 
 Each source strip has trim, pan, mute and solo. Track and File add speed, key lock,
 seek/cue, whole-track Loop and headphone cue listening. Their Loop suppresses
@@ -163,7 +163,7 @@ throttled graph or engine writes.
 | --- | --- |
 | Document versions, source strip defaults | [`schema.ts`](../../lib/node-graph/schema.ts) |
 | Available nodes, typed ports and FX defaults | [`catalogue.ts`](../../lib/node-graph/catalogue.ts) |
-| Budgets, diagnostics, connection verdict | [`validate.ts`](../../lib/node-graph/validate.ts) |
+| Diagnostics, connection verdict | [`validate.ts`](../../lib/node-graph/validate.ts) |
 | Lane lowering, branch shape and sidechains | [`compile.ts`](../../lib/node-graph/compile.ts) |
 | Parameter versus structural engine changes | [`reconcile.ts`](../../lib/node-graph/reconcile.ts) |
 | Pure graph edits, templates, undo/history | [`graph-edits.ts`](../../lib/node-graph/graph-edits.ts), [`templates.ts`](../../lib/node-graph/templates.ts), [`node-store.ts`](../../lib/node-graph/node-store.ts) |

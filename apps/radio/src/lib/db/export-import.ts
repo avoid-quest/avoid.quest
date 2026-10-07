@@ -30,7 +30,7 @@ import {
   migrateNodeGraph,
   type NodeGraph,
 } from "@/lib/node-graph/schema";
-import { type Issue, validate } from "@/lib/node-graph/validate";
+import { validate } from "@/lib/node-graph/validate";
 import {
   normalizePlayerMode,
   type PlayerMode,
@@ -98,18 +98,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * A budget depends on the device and is enforced by the compiler, which
- * reports the Stations past it. The app itself saves such patches (Start from
- * Multiple over many stations, the search bar adding one more), so a backup
- * of one must import.
- */
-function isBudgetIssue(issue: Issue): boolean {
-  return issue.code.startsWith("budget-");
-}
-
-/**
  * Parses a Node patch through the same gate as a stored one: Zod, then
- * `migrateNodeGraph`, then `validate()`. Any problem but a budget throws.
+ * `migrateNodeGraph`, then `validate()`. Any problem throws.
  */
 function parseImportedNodeGraph(raw: unknown): NodeGraph {
   const migration = migrateNodeGraph(raw);
@@ -119,9 +109,7 @@ function parseImportedNodeGraph(raw: unknown): NodeGraph {
   if (migration.status === "invalid") {
     throw new Error(`Invalid patch: ${migration.error}`);
   }
-  const issue = validate(migration.graph).find(
-    (candidate) => !isBudgetIssue(candidate)
-  );
+  const [issue] = validate(migration.graph);
   if (issue) {
     throw new Error(`Invalid patch: ${issue.message}`);
   }

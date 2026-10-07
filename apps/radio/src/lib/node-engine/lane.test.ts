@@ -360,7 +360,7 @@ function createWorld(directFields = false) {
     },
     fadeOutSound: () =>
       options.holdFades ? hold(heldFades, () => undefined) : Promise.resolve(),
-    getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
+    getEnv: () => ({ crossOriginIsolated: false }),
     laneOutputs: (): NodeLaneOutputs => ({
       attach: (laneId) => {
         connected.add(laneId);

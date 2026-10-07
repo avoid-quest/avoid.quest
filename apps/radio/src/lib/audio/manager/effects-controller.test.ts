@@ -429,16 +429,38 @@ describe("EffectsController", () => {
       enabled,
       sidechain: { channelId: `node-key:${id}` },
     });
+    const keyTwo = new TestAudioNode(context) as unknown as AudioNode;
+    controller.connectKey(
+      "node-key:one",
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    controller.connectKey("node-key:two", keyTwo);
     await controller.attachInsert(
       "unit",
       new TestAudioNode(context) as unknown as AudioNode,
       new TestAudioNode(context) as unknown as AudioNode,
       desiredEffects([keyed("one", true), keyed("two", false)])
     );
+    const registered = () =>
+      (runtime.connectSidechainSource.mock.calls as unknown as [string][]).map(
+        ([id]) => id
+      );
+    expect(registered()).not.toContain("node-key:two");
 
     // A field write can't register the second key's channels.
     expect(controller.setEffectFields("unit", "two", keyed("two", true))).toBe(
       "structural"
+    );
+    // The reconcile that follows does.
+    await controller.reconcile(
+      "unit",
+      desiredEffects([keyed("one", true), keyed("two", true)])
+    );
+    expect(runtime.connectSidechainSource).toHaveBeenCalledWith(
+      "node-key:two",
+      keyTwo,
+      expect.any(Number),
+      2
     );
     // With the same keys listening, a knob writes in place.
     expect(

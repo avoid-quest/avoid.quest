@@ -3,7 +3,6 @@ import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
-import type { ExternalToast } from "sonner";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -790,24 +789,26 @@ describe("NodeCanvas: dragging a cable", () => {
       element.classList.contains("node-port-locked") &&
       !element.classList.contains("connectableend");
 
-    expect(accept(port("speakers", "in:audio:main"))).toBe(true);
-    expect(accept(port("verb", "in:audio:main"))).toBe(true);
+    // Every input sums, its key included.
+    for (const [node, handle] of [
+      ["speakers", "in:audio:main"],
+      ["verb", "in:audio:main"],
+      ["comp", "in:audio:main"],
+      ["comp", "in:sidechain:key"],
+    ] as const) {
+      expect(accept(port(node, handle))).toBe(true);
+    }
     expect(port("verb", "in:audio:main").title).toBe("Input");
 
     for (const [node, handle] of [
       ["kexp", "out:audio:main"],
       ["fip", "out:audio:main"],
       ["nts", "out:audio:main"],
-      ["comp", "in:sidechain:key"],
-      ["comp", "in:audio:main"],
     ] as const) {
       expect(locked(port(node, handle))).toBe(true);
     }
     expect(port("fip", "out:audio:main").title).toBe(
       validateModule.SAME_SIDE_MESSAGE
-    );
-    expect(port("comp", "in:sidechain:key").title).toBe(
-      "This input takes one cable"
     );
     expect(port("comp", "in:sidechain:key").getAttribute("data-kind")).toBe(
       "sidechain"
@@ -846,7 +847,7 @@ describe("NodeCanvas: dragging a cable", () => {
     }
   });
 
-  test("a drop on a locked port says why in one toast", async () => {
+  test("dropping on an occupied key sums both cables and one undo removes only the new one", async () => {
     const { port } = await mountPatch();
     const toast = spyOn(sonner, "toast");
     try {
@@ -858,64 +859,20 @@ describe("NodeCanvas: dragging a cable", () => {
       const key = port("comp", "in:sidechain:key");
       move(-5000, key);
       release(key);
-      const [[message, options]] = toast.mock.calls as [
-        [string, ExternalToast],
-      ];
-      // The full key gives way to the audio input, which would make the
-      // Compressor shared, and a shared Compressor takes no station key.
-      expect(message).toBe("A key only works on a station lane");
-      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
+      expect(toast).not.toHaveBeenCalled();
+      const keys = () =>
+        nodeStoreModule.nodeStore.state.graph?.edges
+          .filter(
+            (edge) =>
+              edge.target === "comp" && edge.targetHandle === "in:sidechain:key"
+          )
+          .map((edge) => edge.source);
+      expect(keys()).toEqual(["nts", "kexp"]);
 
-      // Replace moves the key's cable to KEXP, in one undo step.
-      const action = options.action as { label: string; onClick: () => void };
-      expect(action.label).toBe("Replace");
-      action.onClick();
-      const keys = nodeStoreModule.nodeStore.state.graph?.edges.filter(
-        (edge) =>
-          edge.target === "comp" && edge.targetHandle === "in:sidechain:key"
-      );
-      expect(keys?.map((edge) => edge.source)).toEqual(["kexp"]);
-      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
-    } finally {
-      toast.mockRestore();
-    }
-  });
-
-  test("Replace leaves alone a port's cable moved since the toast", async () => {
-    const { port } = await mountPatch();
-    const toast = spyOn(sonner, "toast");
-    try {
-      fireEvent.mouseDown(port("kexp", "out:audio:main"), {
-        button: 0,
-        clientX: 0,
-        clientY: 0,
-      });
-      const key = port("comp", "in:sidechain:key");
-      move(-5000, key);
-      release(key);
-      const [[, options]] = toast.mock.calls as [[string, ExternalToast]];
-      const action = options.action as { label: string; onClick: () => void };
-
-      // The key's cable goes to the Reverb before Replace is clicked.
       act(() => {
-        nodeStoreModule.commitNodeGraph(
-          (current) => ({
-            ...current,
-            edges: current.edges.map((edge) =>
-              edge.id === "nts->comp"
-                ? { ...edge, target: "verb", targetHandle: "in:audio:main" }
-                : edge
-            ),
-          }),
-          nodeStoreModule.nodeStore,
-          "snapshot"
-        );
+        nodeStoreModule.undoNodeGraph();
       });
-      const moved = nodeStoreModule.nodeStore.state.graph;
-      action.onClick();
-      expect(nodeStoreModule.nodeStore.state.graph?.edges).toEqual(
-        moved?.edges ?? []
-      );
+      expect(keys()).toEqual(["nts"]);
     } finally {
       toast.mockRestore();
     }
@@ -1113,7 +1070,7 @@ describe("NodeCanvas: dragging a cable", () => {
     ).not.toContain("fip->comp");
   });
 
-  test("tap-then-tap lights the ports after the first tap and explains a refused second tap", async () => {
+  test("tap-then-tap lights the ports after the first tap and connects to an occupied input", async () => {
     const { port } = await mountPatch();
     const toast = spyOn(sonner, "toast");
     const tap = (element: HTMLElement) => {
@@ -1126,22 +1083,19 @@ describe("NodeCanvas: dragging a cable", () => {
         port("verb", "in:audio:main").classList.contains("node-port-accept")
       ).toBe(true);
       const key = port("comp", "in:sidechain:key");
-      expect(key.classList.contains("node-port-locked")).toBe(true);
-      expect(key.title).toBe("This input takes one cable");
+      expect(key.classList.contains("node-port-accept")).toBe(true);
 
       tap(key);
-      expect(toast.mock.calls.map(([message]) => message)).toEqual([
-        "A key only works on a station lane",
-      ]);
-      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
+      expect(toast).not.toHaveBeenCalled();
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(5);
       expect(
         port("verb", "in:audio:main").classList.contains("node-port-accept")
       ).toBe(false);
 
       tap(port("kexp", "out:audio:main"));
       tap(port("verb", "in:audio:main"));
-      expect(toast).toHaveBeenCalledTimes(1);
-      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(5);
+      expect(toast).not.toHaveBeenCalled();
+      expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(6);
     } finally {
       toast.mockRestore();
     }

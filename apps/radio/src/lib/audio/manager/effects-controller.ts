@@ -12,9 +12,11 @@ import {
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
+  audibleSidechainIds,
   effectFieldsAreStructural,
   findEffectInTree,
   updateEffectFieldsInTree,
+  withCompatibilityKey,
 } from "../dsp/routing/effect-tree.js";
 import {
   type AudioState,
@@ -53,6 +55,8 @@ type SoundEffectsState = {
   officialConnected: boolean;
   officialConnectingGeneration: number | null;
   outcome: EffectsRuntimeOutcome;
+  /** The backend its router last switched to: what plays. */
+  selected: EffectsBackend | null;
   sidechain: SidechainConnection | null;
   tempo: number;
 };
@@ -81,6 +85,7 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnected: false,
   officialConnectingGeneration: null,
   outcome: { backend: null, ready: false, status: "inactive" },
+  selected: null,
   sidechain: null,
   tempo: 120,
 });
@@ -88,6 +93,8 @@ const createSoundState = (): SoundEffectsState => ({
 class EffectsController {
   /** Inserts that are not playback sounds, e.g. Node graph units. */
   private readonly inserts = new Set<string>();
+  /** Keys effects can name besides sounds, e.g. a Node key's summed input. */
+  private readonly keys = new Map<string, AudioNode>();
   private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false as boolean;
   private officialRuntimeWarningReported = false as boolean;
@@ -311,7 +318,13 @@ class EffectsController {
       effectId,
       toPlainEffectConfig(config)
     );
-    if (state.outcome.backend === "compatibility") {
+    // A key that starts or stops listening registers or releases its
+    // channels, which only a reconcile does.
+    if (
+      state.outcome.backend === "compatibility" ||
+      JSON.stringify(audibleSidechainIds(state.effects)) !==
+        JSON.stringify(audibleSidechainIds(next))
+    ) {
       return "structural";
     }
     if (
@@ -396,15 +409,73 @@ class EffectsController {
     this.cleanupSound(id);
   }
 
+  /**
+   * Makes `node` a key effects can name in their `sidechain`: openDAW
+   * registers it, silent, while an official effect keys from it, and the
+   * compatibility engine binds it as a sound's key.
+   */
+  connectKey(id: string, node: AudioNode): void {
+    this.keys.set(id, node);
+    this.refreshSidechains();
+    const runtime = this.officialRuntime;
+    if (runtime && this.officialSidechainTargets().has(id)) {
+      // A key that can't get its channels takes its inserts to their
+      // fallback, which selects again without it.
+      this.registerKey(runtime, id).catch(() => {
+        for (const [soundId, state] of this.states) {
+          if (
+            state.officialConnected &&
+            audibleSidechainIds(state.effects).includes(id)
+          ) {
+            this.refreshRuntimeSelection(soundId);
+          }
+        }
+      });
+    }
+  }
+
+  releaseKey(id: string): void {
+    this.keys.delete(id);
+    if (this.officialRegisteredSoundIds.has(id)) {
+      this.deleteOfficialSound(id);
+    }
+    this.refreshSidechains();
+  }
+
+  /** Registers a key with openDAW while an official effect still names it. */
+  private async registerKey(
+    runtime: EffectsGraphRuntime,
+    id: string
+  ): Promise<void> {
+    const node = this.keys.get(id);
+    if (!node || this.officialRegisteredSoundIds.has(id)) {
+      return;
+    }
+    const owner = this.claimOfficialSound(id);
+    let connected = false;
+    try {
+      connected = await runtime.connectSidechainSource(id, node, owner, 2);
+    } finally {
+      if (
+        connected &&
+        this.keys.get(id) === node &&
+        this.officialSoundOwners.get(id) === owner &&
+        this.officialSidechainTargets().has(id)
+      ) {
+        this.officialRegisteredSoundIds.add(id);
+      } else {
+        // What the runtime made before it failed or went stale goes too.
+        this.deleteOfficialSound(id, runtime, owner);
+      }
+    }
+  }
+
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
     if (!this.shouldProcess(state)) {
       return { backend: "bypass", ready: true, status: "ready" };
     }
-    if (state.officialConnected) {
-      return { backend: "official", ready: true, status: "ready" };
-    }
-    if (state.compatibilitySourceCreated) {
-      return { backend: "compatibility", ready: true, status: "ready" };
+    if (state.selected === "official" || state.selected === "compatibility") {
+      return { backend: state.selected, ready: true, status: "ready" };
     }
     return {
       backend: null,
@@ -417,13 +488,15 @@ class EffectsController {
   private reconcileCompatibility(
     soundId: string,
     state: SoundEffectsState,
-    previous: readonly EffectConfig[],
-    next: readonly EffectConfig[]
+    previousTree: readonly EffectConfig[],
+    nextTree: readonly EffectConfig[]
   ): void {
     const { manager } = state;
     if (!manager) {
       return;
     }
+    const previous = withCompatibilityKey(previousTree);
+    const next = withCompatibilityKey(nextTree);
     const previousById = new Map(previous.map((effect) => [effect.id, effect]));
     const nextById = new Map(next.map((effect) => [effect.id, effect]));
 
@@ -473,8 +546,9 @@ class EffectsController {
     if (!(state.desiredSidechainSoundId && state.compatibilitySourceCreated)) {
       return true;
     }
-    const source = this.sounds.get(state.desiredSidechainSoundId)?.nodes
-      ?.filter;
+    const source =
+      this.keys.get(state.desiredSidechainSoundId) ??
+      this.sounds.get(state.desiredSidechainSoundId)?.nodes?.filter;
     const target = state.manager?.node;
     if (!(source && target)) {
       return false;
@@ -666,9 +740,9 @@ class EffectsController {
     if (!manager) {
       return;
     }
-    for (const effect of state.effects
-      .slice()
-      .sort((left, right) => left.order - right.order)) {
+    for (const effect of withCompatibilityKey(state.effects).sort(
+      (left, right) => left.order - right.order
+    )) {
       manager.addEffect(
         soundId,
         effect.id,
@@ -749,6 +823,7 @@ class EffectsController {
     }
     this.states.clear();
     this.inserts.clear();
+    this.keys.clear();
     this.officialRegisteredSoundIds.clear();
     this.officialSoundOwners.clear();
     this.officialRuntime?.cleanup();
@@ -872,7 +947,6 @@ class EffectsController {
         {
           dryWet: state.dryWet,
           effects: selectOfficialEffects(state.effects),
-          sidechainSoundId: state.desiredSidechainSoundId,
           tempo: state.tempo,
         }
       );
@@ -901,6 +975,8 @@ class EffectsController {
       }
       this.officialRegisteredSoundIds.add(soundId);
       state.officialConnected = true;
+      // Its keys take their input channels with it; if one can't, it
+      // falls back, as an insert that can't fit does.
       await this.registerNonOfficialSources(runtime, soundId);
       return (
         state.generation === generation &&
@@ -951,8 +1027,11 @@ class EffectsController {
       // biome-ignore lint/performance/noAwaitInLoops: registrations mutate shared runtime ownership in order
       await this.registerNonOfficialSource(soundId, state, state.generation);
     }
-    for (const [soundId, state] of this.states) {
-      runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
+    for (const id of this.keys.keys()) {
+      if (targets.has(id)) {
+        // biome-ignore lint/performance/noAwaitInLoops: registrations mutate shared runtime ownership in order
+        await this.registerKey(runtime, id);
+      }
     }
   }
 
@@ -963,11 +1042,7 @@ class EffectsController {
   ): Promise<void> {
     const runtime = this.officialRuntime;
     const { graph } = state;
-    const isOfficialSidechain = [...this.states.values()].some(
-      (candidate) =>
-        candidate.officialConnected &&
-        candidate.desiredSidechainSoundId === soundId
-    );
+    const isOfficialSidechain = this.officialSidechainTargets().has(soundId);
     if (
       !(runtime && graph && isOfficialSidechain) ||
       state.officialConnected ||
@@ -1001,13 +1076,17 @@ class EffectsController {
     this.officialRegisteredSoundIds.add(soundId);
   }
 
+  /** The sounds and keys official effects key from. */
   private officialSidechainTargets(): Set<string> {
-    return new Set(
-      [...this.states.values()]
-        .filter((state) => state.officialConnected)
-        .map((state) => state.desiredSidechainSoundId)
-        .filter((soundId): soundId is string => soundId !== null)
-    );
+    const targets = new Set<string>();
+    for (const state of this.states.values()) {
+      if (state.officialConnected) {
+        for (const id of audibleSidechainIds(state.effects)) {
+          targets.add(id);
+        }
+      }
+    }
+    return targets;
   }
 
   private pruneOfficialSidechainSources(
@@ -1025,6 +1104,11 @@ class EffectsController {
         !targets.has(soundId)
       ) {
         this.deleteOfficialSound(soundId, runtime);
+      }
+    }
+    for (const id of this.keys.keys()) {
+      if (this.officialRegisteredSoundIds.has(id) && !targets.has(id)) {
+        this.deleteOfficialSound(id, runtime);
       }
     }
   }
@@ -1094,6 +1178,7 @@ class EffectsController {
       return;
     }
 
+    state.selected = backend;
     graph.switchTo(backend, () => {
       if (state.graph !== graph || state.generation !== generation) {
         return;

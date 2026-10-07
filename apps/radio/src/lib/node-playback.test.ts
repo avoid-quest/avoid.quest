@@ -324,6 +324,8 @@ type Harness = {
   inserts: Map<string, { input: AudioNode; output: AudioNode }>;
   /** What units and modules put on the main bus. */
   mainSources: Set<AudioNode>;
+  /** Keys effects can name, as connected, by key id. */
+  keys: Map<string, AudioNode>;
   reconcileEffects: ReturnType<typeof mock<AudioManager["reconcileEffects"]>>;
   setEffectFields: ReturnType<typeof mock<AudioManager["setEffectFields"]>>;
   fadeOutSound: ReturnType<typeof mock>;
@@ -409,6 +411,7 @@ function createHarness(
   const detachEffectsInsert = mock((id: string) => {
     inserts.delete(id);
   });
+  const keys = new Map<string, AudioNode>();
   const otherTabListeners = new Set<() => void>();
   // Node Playback routes through its context's output routing by default;
   // a context without one of its own gets this one.
@@ -436,8 +439,14 @@ function createHarness(
     ctx: context,
     effects: options.effects ?? {
       attachEffectsInsert,
+      connectEffectsKey: (id: string, node: AudioNode) => {
+        keys.set(id, node);
+      },
       detachEffectsInsert,
       reconcileEffects,
+      releaseEffectsKey: (id: string) => {
+        keys.delete(id);
+      },
       setEffectFields,
       subscribeEffectsRuntimeOutcome: () => () => undefined,
     },
@@ -462,6 +471,7 @@ function createHarness(
     desired,
     fadeOutSound,
     inserts,
+    keys,
     mainSources,
     otherTabListeners,
     playback,
@@ -2490,6 +2500,7 @@ describe("Node Playback lane outputs", () => {
     const harness = createHarness({
       effects: {
         attachEffectsInsert: mock(async () => ready),
+        connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
         // The lane's dry tree, as its sound is made, reconciles at once.
         reconcileEffects: mock((_soundId, { tree }) => {
@@ -2501,6 +2512,7 @@ describe("Node Playback lane outputs", () => {
           replaces.push({ done: () => resolve(ready), tree });
           return promise;
         }),
+        releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
@@ -2560,6 +2572,7 @@ describe("Node Playback lane outputs", () => {
     const harness = createHarness({
       effects: {
         attachEffectsInsert: mock(async () => ready),
+        connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
         // The lane's dry tree, as its sound is made, reconciles at once.
         reconcileEffects: mock((_soundId, { tree }) => {
@@ -2571,6 +2584,7 @@ describe("Node Playback lane outputs", () => {
           replaces.push({ done: () => resolve(ready), tree });
           return promise;
         }),
+        releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
@@ -2624,6 +2638,7 @@ describe("Node Playback lane outputs", () => {
     const harness = createHarness({
       effects: {
         attachEffectsInsert: mock(() => Promise.reject(new Error("no"))),
+        connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
         reconcileEffects: mock((_soundId, { tree }) =>
           tree.length === 0
@@ -2634,6 +2649,7 @@ describe("Node Playback lane outputs", () => {
               })
             : Promise.reject(new Error("tree failed"))
         ),
+        releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
@@ -3052,11 +3068,12 @@ describe("Node Playback key cables", () => {
     });
   }
 
-  test("a key cable from Station b to a Compressor in a's lane binds b's sound as a's sidechain", async () => {
+  test("a key cable from Station b keys a's Compressor through its own key", async () => {
     insertNodeSession(duckPatch(false));
     const harness = createHarness();
     const { desired } = harness;
     const settled = () => harness.playback.whenSettled();
+    instantStarts(harness.context);
     await harness.playback.activate();
     await settled();
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
@@ -3067,19 +3084,45 @@ describe("Node Playback key cables", () => {
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
       expect.objectContaining({
         id: "comp",
-        sidechain: { channelId: channelOf("b") },
+        sidechain: { channelId: "node-key:comp" },
       }),
     ]);
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
     // The key listens; it never puts FX or a key on b's own lane.
     expect(desired.get(soundOf("b"))?.sidechainSoundId).toBeNull();
+
+    // b's sound reaches the key through its key cable as it plays.
+    await harness.playback.setPlaying("b", true);
+    const register = harness.context.audio
+      .setSoundOutputConnector as ReturnType<
+      typeof mock<
+        (soundId: string, connect: SoundOutputConnector | null) => void
+      >
+    >;
+    const connector = register.mock.calls
+      .filter(([soundId]) => soundId === soundOf("b"))
+      .at(-1)?.[1];
+    const { fader, node } = createFakeFader(new FakeAudioContext());
+    connector?.(node, false, () => () => undefined);
+    const laneOut = [...fader.connections][0] as FakeGainNode;
+    const key = harness.keys.get("node-key:comp");
+    expect(
+      [...laneOut.connections].some((send) =>
+        (send as FakeGainNode).connections.has(key)
+      )
+    ).toBe(true);
 
     await commit(harness, () => duckPatch(false));
     await settled();
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
+    // The key goes once its cable has faded out.
+    expect(harness.keys.has("node-key:comp")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, LANE_DROP_MS + 5));
+    await settled();
+    expect(harness.keys.has("node-key:comp")).toBe(false);
   });
 
-  test("a patch opened with its key binds once both lanes exist", async () => {
+  test("a patch opened with its key binds it at once", async () => {
     insertNodeSession(duckPatch(true));
     const harness = createHarness();
     const { desired } = harness;
@@ -3088,41 +3131,26 @@ describe("Node Playback key cables", () => {
     await harness.playback.activate();
     await settled();
 
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
   });
 
-  test("replacing a key lane's sound rebinds the lanes keyed from it", async () => {
+  test("replacing a key source's sound leaves the keyed lane's effects alone", async () => {
     insertNodeSession(duckPatch(true));
     const harness = createHarness();
-    const events: string[] = [];
-    const { activate } = harness.context.channels;
-    harness.context.channels.activate = mock(
-      (...args: Parameters<typeof activate>) => {
-        events.push(`create ${args[1]}`);
-        return activate(...args);
-      }
-    );
-    const record = harness.reconcileEffects.getMockImplementation();
-    harness.reconcileEffects.mockImplementation((soundId, state) => {
-      if (soundId === soundOf("a")) {
-        events.push(`key ${state.sidechainSoundId}`);
-      }
-      return record?.(soundId, state) as Promise<EffectsRuntimeOutcome>;
-    });
     await harness.playback.activate();
     await harness.playback.whenSettled();
-    events.length = 0;
+    harness.reconcileEffects.mockClear();
 
     await commit(harness, withStation("b", { radio: radio("b2") }));
 
-    // The old key's sound goes, then a's sidechain follows the new one.
-    expect(events).toEqual([
-      "key null",
-      `create ${channelOf("b")}`,
-      `key ${soundOf("b")}`,
-    ]);
+    // The key is its own point: a new sound feeds it, nothing rebinds.
+    expect(
+      harness.reconcileEffects.mock.calls.filter(
+        ([soundId]) => soundId === soundOf("a")
+      )
+    ).toEqual([]);
     expect(harness.desired.get(soundOf("a"))?.sidechainSoundId).toBe(
-      soundOf("b")
+      "node-key:comp"
     );
   });
 
@@ -3198,10 +3226,10 @@ describe("Node Playback key cables", () => {
     await settled();
     expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
       modulatorSource: "external",
-      sidechain: { channelId: channelOf("b") },
+      sidechain: { channelId: "node-key:comp" },
       type: "vocoder",
     });
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
 
     await commit(harness, (graph) => removeEdges(graph, [KEY_EDGE_ID]));
     await settled();
@@ -6200,6 +6228,7 @@ describe("Node Playback: channel strips", () => {
             status: "inactive",
           })
         ),
+        connectEffectsKey: mock(() => undefined),
         detachEffectsInsert: mock(() => undefined),
         reconcileEffects: mock(
           async (): Promise<EffectsRuntimeOutcome> => ({
@@ -6208,6 +6237,7 @@ describe("Node Playback: channel strips", () => {
             status: "inactive",
           })
         ),
+        releaseEffectsKey: mock(() => undefined),
         setEffectFields: () => "structural",
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },

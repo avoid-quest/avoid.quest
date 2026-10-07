@@ -9,7 +9,8 @@
  * (regions.ts) the patch is a routing graph after the faders: graph units
  * (FX chains several sources share, or that a branch takes on its own),
  * modules (sums, and Filters and Pans off the strip), outputs, and one
- * cable per connection between them. Key cables become sidechain bindings.
+ * cable per connection between them. A key cable taps any point: it is a
+ * cable into the key it feeds, a sum the keyed effect's sidechain binds to.
  * Nothing here touches audio; `reconcile.ts` diffs two plans' lanes.
  *
  * Each source's channel strip folds in here too: its trim multiplies into
@@ -29,19 +30,17 @@ import {
 } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
-  isEffectChainActive,
+  audibleEffects,
+  audibleSidechainIds,
   isEffectContainer,
   usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
-import {
-  getNodeDefinition,
-  isEffectNodeType,
-  SIDECHAIN_EFFECT_TYPES,
-} from "./catalogue";
+import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import { laneChannelId, laneSoundId } from "./identifiers";
 import {
   clampPan,
   dbToGain,
+  ENCLOSED_KEY_MESSAGE,
   FreshIds,
   LoweringError,
   type NativeFilterPlan,
@@ -53,6 +52,7 @@ import {
   UNITY,
 } from "./regions";
 import {
+  type GraphEdge,
   type GraphNode,
   isMediaSourceType,
   isRadioSourceNode,
@@ -67,7 +67,6 @@ import {
   analyseGraph,
   type Issue,
   type IssueCode,
-  type Lane,
   parseHandleId,
   type ValidateOptions,
   type WiredEdge,
@@ -191,6 +190,11 @@ export type CablePlan = {
    * loop through the worklet wants one.
    */
   reenters: boolean;
+  /**
+   * A key cable feeds a key, not audio: another source's solo leaves it on,
+   * as a detector input is never on air.
+   */
+  kind: "audio" | "key";
 };
 
 /** One FX chain in the routing graph, after the faders feeding it. */
@@ -205,11 +209,17 @@ export type UnitPlan = {
   realtime: boolean;
 };
 
-/** A Web Audio point in the routing graph: a sum, a Filter or a Pan. */
+/**
+ * A Web Audio point in the routing graph: a sum, a Filter or a Pan; a key,
+ * the stereo sum of key cables keyed effects bind their sidechain to; or a
+ * tap, the same sum handed to a follower (control, next layer).
+ */
 export type ModulePlan = { id: string; realtime: boolean } & (
   | { kind: "sum" }
   | { kind: "filter"; filter: NativeFilterPlan }
   | { kind: "pan"; pan: number }
+  | { kind: "key" }
+  | { kind: "tap" }
 );
 
 export type SinkPlan = {
@@ -224,6 +234,7 @@ export type SinkPlan = {
 export type EnginePlan = {
   lanes: Map<string, LanePlan>;
   units: Map<string, UnitPlan>;
+  /** By endpoint key: a generated key id never meets a node's own. */
   modules: Map<string, ModulePlan>;
   cables: Map<string, CablePlan>;
   sinks: Map<string, SinkPlan>;
@@ -385,11 +396,10 @@ function isCompiled(type: NodeType): boolean {
 
 /**
  * Issues that leave the node in the plan: the playing budget is enforced
- * when a stream starts, and a second key simply stays unkeyed.
+ * when a stream starts.
  */
 const ADVISORY_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
   "budget-playing",
-  "lane-key",
 ]);
 
 type CompileGraph = Pick<NodeGraph, "nodes" | "edges">;
@@ -426,18 +436,24 @@ export function layoutSignature(effects: readonly EffectConfig[]): string {
   return hash(JSON.stringify(layoutOf(effects)));
 }
 
-/** Writes the key on the first keyed FX in tree order, and on no other. */
+/**
+ * A keyed FX's own key id, apart from every sound id as a graph unit's
+ * effects id is.
+ */
+function keyIdOf(fxId: string): string {
+  return `node-key:${fxId}`;
+}
+
+/** Writes the key each keyed FX binds, by its own key id, into the tree. */
 function keyEffects(
   effects: readonly EffectConfig[],
   keys: ReadonlyMap<string, string>
 ): EffectConfig[] {
-  let keyed = false;
   const visit = (current: readonly EffectConfig[]): EffectConfig[] =>
     current.map((effect) => {
-      const channelId = keys.get(effect.id);
+      const channelId = keys.get(keyIdOf(effect.id));
       let next = effect;
-      if (!keyed && channelId !== undefined) {
-        keyed = true;
+      if (channelId !== undefined) {
         // A key overrides the runtime modulator, preserving the authored
         // choice so removing the cable restores it, including after undo.
         next = {
@@ -459,49 +475,12 @@ function keyEffects(
   return visit(effects);
 }
 
-/**
- * The effects that hear the lane, in tree order, as the runtime looks for a
- * key (`findSidechainChannelId` in channel-effects.ts): enabled, and not
- * inside a switched-off container or a muted, silent or unsoloed chain.
- */
-function activeEffects(
-  effects: readonly EffectConfig[],
-  into: EffectConfig[] = []
-): EffectConfig[] {
-  for (const effect of effects) {
-    if (!effect.enabled) {
-      continue;
-    }
-    into.push(effect);
-    if (isEffectContainer(effect)) {
-      const hasSolo = effect.chains.some((chain) => chain.solo);
-      for (const chain of effect.chains) {
-        if (chain.gain !== 0 && isEffectChainActive(chain, hasSolo)) {
-          activeEffects(chain.effects, into);
-        }
-      }
-    }
-  }
-  return into;
-}
-
-/** The lane channel the runtime keys this tree from, or null. */
-function boundKeyChannel(effects: readonly EffectConfig[]): string | null {
-  return (
-    activeEffects(effects).find((effect) => effect.sidechain)?.sidechain
-      ?.channelId ?? null
-  );
-}
-
 type Prepared = {
   graph: CompileGraph;
   byId: Map<string, GraphNode>;
   issues: Issue[];
   wired: WiredEdge[];
-  labels: ReadonlyMap<string, Lane>;
   regions: RegionLowerer;
-  /** Keyed FX the validator flagged as a lane's second key. */
-  extraKeys: ReadonlySet<string>;
 };
 
 function withoutExcluded(
@@ -542,16 +521,29 @@ function refuse(graph: CompileGraph): Issue[] {
   );
 }
 
-/** Splits whose branches part ways, which this compiler cannot lower yet. */
-function refuseOpenSplits(regions: RegionLowerer): Issue[] {
-  return regions.openSplits().map(
-    (id): Issue => ({
-      code: "split-open",
-      id,
-      message: OPEN_SPLIT_MESSAGE,
-      target: "node",
-    })
-  );
+/**
+ * Splits whose branches part ways, which this compiler cannot lower yet,
+ * and keys inside a Split whose branches meet again.
+ */
+function refuseRegions(regions: RegionLowerer): Issue[] {
+  return [
+    ...regions.openSplits().map(
+      (id): Issue => ({
+        code: "split-open",
+        id,
+        message: OPEN_SPLIT_MESSAGE,
+        target: "node",
+      })
+    ),
+    ...regions.keysInsideRegions().map(
+      (id): Issue => ({
+        code: "key-enclosed",
+        id,
+        message: ENCLOSED_KEY_MESSAGE,
+        target: "edge",
+      })
+    ),
+  ];
 }
 
 /**
@@ -590,19 +582,13 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
           })
         : null;
     if (regions) {
-      blocking = refuseOpenSplits(regions);
+      blocking = refuseRegions(regions);
     }
     if (regions && blocking.length === 0) {
       return {
         byId,
-        extraKeys: new Set(
-          advisory
-            .filter((issue) => issue.code === "lane-key")
-            .map((issue) => issue.id)
-        ),
         graph: kept,
         issues: [...issues, ...advisory],
-        labels: analysis.topology.lanes,
         regions,
         wired: analysis.wired,
       };
@@ -612,38 +598,6 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
       (issue.target === "node" ? excludedNodes : excludedEdges).add(issue.id);
     }
   }
-}
-
-/** Keyed FX node id → the lane channel keying it. */
-function planKeys({
-  byId,
-  extraKeys,
-  labels,
-  wired,
-}: Prepared): Map<string, string> {
-  const keys = new Map<string, string>();
-  for (const { edge, to } of wired) {
-    const from = labels.get(edge.source);
-    // Only a key straight from its station binds: the engine taps the raw lane.
-    const station = from === edge.source ? byId.get(from) : undefined;
-    const target = byId.get(edge.target);
-    if (
-      to.kind !== "sidechain" ||
-      typeof labels.get(edge.target) !== "string" ||
-      !(station && isSourceLive(station)) ||
-      // The key the validator flagged stays unkeyed, so the badge is honest.
-      extraKeys.has(edge.target) ||
-      !(target && isKeyable(target))
-    ) {
-      continue;
-    }
-    keys.set(edge.target, laneChannelId(station.id));
-  }
-  return keys;
-}
-
-function isKeyable(node: GraphNode): boolean {
-  return (SIDECHAIN_EFFECT_TYPES as readonly string[]).includes(node.type);
 }
 
 /**
@@ -667,8 +621,104 @@ function estimateBackend(
     : "compat";
 }
 
+/** Where a key cable comes from and at what level. */
+function heardFrom({ from, gain, muted }: CablePlan): string {
+  return JSON.stringify([endpointKey(from), gain, muted]);
+}
+
+/** A key's cables in a fixed order: equal keys list equal cables alike. */
+function byHeard(cables: readonly CablePlan[]): CablePlan[] {
+  return [...cables].sort((left, right) =>
+    heardFrom(left).localeCompare(heardFrom(right))
+  );
+}
+
 function multiply(left: Trim, right: Trim): Trim {
   return { gain: left.gain * right.gain, muted: left.muted || right.muted };
+}
+
+/**
+ * The order signal flows in between a plan's points, where a keyed chain
+ * and the keys its FX bind count as one, as they arrive together. It
+ * stays a strict order: two keys join only when neither reaches the other.
+ */
+class SignalOrder {
+  private readonly cables: ReadonlyMap<string, CablePlan>;
+  private readonly parent = new Map<string, string>();
+
+  constructor({
+    cables,
+    lanes,
+    units,
+  }: Pick<PlanBuilder, "cables" | "lanes" | "units">) {
+    this.cables = cables;
+    for (const [kind, chains] of [
+      ["lane", lanes],
+      ["unit", units],
+    ] as const) {
+      for (const chain of chains.values()) {
+        for (const node of chain.nodes) {
+          this.union(
+            endpointKey({ id: keyIdOf(node), kind: "key" }),
+            endpointKey({ id: chain.id, kind })
+          );
+        }
+      }
+    }
+  }
+
+  canJoin(keyId: string, other: string): boolean {
+    const mine = this.find(endpointKey({ id: keyId, kind: "key" }));
+    const theirs = this.find(endpointKey({ id: other, kind: "key" }));
+    return (
+      mine === theirs ||
+      !(this.reaches(mine, theirs) || this.reaches(theirs, mine))
+    );
+  }
+
+  join(keyId: string, other: string): void {
+    this.union(
+      endpointKey({ id: keyId, kind: "key" }),
+      endpointKey({ id: other, kind: "key" })
+    );
+  }
+
+  private find(key: string): string {
+    const parent = this.parent.get(key);
+    if (parent === undefined || parent === key) {
+      return key;
+    }
+    const root = this.find(parent);
+    this.parent.set(key, root);
+    return root;
+  }
+
+  private union(left: string, right: string): void {
+    this.parent.set(this.find(left), this.find(right));
+  }
+
+  private reaches(from: string, to: string): boolean {
+    const next = new Map<string, string[]>();
+    for (const cable of this.cables.values()) {
+      const source = this.find(endpointKey(cable.from));
+      next.set(source, [
+        ...(next.get(source) ?? []),
+        this.find(endpointKey(cable.to)),
+      ]);
+    }
+    const seen = new Set<string>();
+    const queue = [...(next.get(from) ?? [])];
+    for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
+      if (key === to) {
+        return true;
+      }
+      if (!seen.has(key)) {
+        seen.add(key);
+        queue.push(...(next.get(key) ?? []));
+      }
+    }
+    return false;
+  }
 }
 
 /**
@@ -682,12 +732,12 @@ class PlanBuilder {
   readonly cables = new Map<string, CablePlan>();
   private readonly endpoints = new Map<string, Endpoint>();
   private readonly prepared: Prepared;
-  private readonly keys: ReadonlyMap<string, string>;
+  /** Lanes another source's solo silences. */
+  private readonly soloMuted = new Set<string>();
   private readonly cableIds: FreshIds;
 
   constructor(prepared: Prepared) {
     this.prepared = prepared;
-    this.keys = planKeys(prepared);
     this.cableIds = new FreshIds(
       new Set(prepared.graph.edges.map((edge) => edge.id))
     );
@@ -715,14 +765,10 @@ class PlanBuilder {
     }
   }
 
-  keyed(effects: readonly EffectConfig[]): EffectConfig[] {
-    return keyEffects(effects, this.keys);
-  }
-
   /** The lane's own segment, and everything its cables reach. */
   addLane(node: GraphNode, source: LiveSource, soloMuted: boolean): void {
     const segment = this.lower(node.id);
-    const effects = this.keyed(segment?.effects ?? []);
+    const effects = segment?.effects ?? [];
     this.lanes.set(node.id, {
       backend: null,
       channelId: laneChannelId(node.id),
@@ -742,10 +788,13 @@ class PlanBuilder {
     });
     // Trim and solo act on the cables, downstream of the fader, so the
     // volume controller keeps the fader.
+    if (soloMuted) {
+      this.soloMuted.add(node.id);
+    }
     this.emit(
       segment?.exits ?? [],
       { id: node.id, kind: "lane" },
-      { gain: dbToGain(source.strip.trimDb), muted: soloMuted }
+      { gain: dbToGain(source.strip.trimDb), muted: false }
     );
   }
 
@@ -757,6 +806,12 @@ class PlanBuilder {
   ): void {
     for (const exit of exits) {
       const trim = multiply(carry, exit.trim);
+      if (exit.key) {
+        // A key for each keyed FX; keys that hear the same cables merge.
+        const key: Endpoint = { id: keyIdOf(exit.target), kind: "key" };
+        this.connect(exit.ids, from, key, trim, "key");
+        continue;
+      }
       if (this.regions.isCutBefore(exit.target)) {
         this.connect(exit.ids, from, this.endpointOf(exit.target), trim);
         continue;
@@ -781,26 +836,34 @@ class PlanBuilder {
     ids: readonly string[],
     from: Endpoint,
     to: Endpoint,
-    { gain, muted }: Trim
+    { gain, muted }: Trim,
+    kind: CablePlan["kind"] = "audio"
   ): void {
     const id =
       ids.length === 1 && ids[0] !== undefined
         ? this.cableIds.claim(ids[0])
         : this.cableIds.fresh(ids.join("+"));
+    const soloed =
+      kind === "audio" && from.kind === "lane" && this.soloMuted.has(from.id);
     this.cables.set(id, {
       delay: 0,
       edges: [...ids],
       from,
       gain,
       id,
-      muted,
+      kind,
+      muted: muted || soloed,
       reenters: false,
       to,
     });
   }
 
+  private addModule(module: ModulePlan): void {
+    this.modules.set(endpointKey(module), module);
+  }
+
   private addUnit(id: string, segment: Segment): Endpoint {
-    const effects = this.keyed(segment.effects);
+    const { effects } = segment;
     this.units.set(id, {
       backend: null,
       effects,
@@ -827,8 +890,7 @@ class PlanBuilder {
     if (node.type === "filter" || node.type === "pan") {
       const module: Endpoint = { id, kind: node.type };
       this.endpoints.set(id, module);
-      this.modules.set(
-        id,
+      this.addModule(
         node.type === "filter"
           ? {
               filter: {
@@ -842,15 +904,7 @@ class PlanBuilder {
             }
           : { id, kind: "pan", pan: node.data.pan, realtime: false }
       );
-      this.emit(
-        this.regions.outsOf(id).map(({ edge }) => ({
-          ids: [edge.id],
-          target: edge.target,
-          trim: { gain: edge.gain, muted: edge.muted },
-        })),
-        module,
-        UNITY
-      );
+      this.emit(this.regions.exitsOf(id), module, UNITY);
       return module;
     }
     // A sum: its own segment, as a unit when that has FX.
@@ -861,10 +915,68 @@ class PlanBuilder {
         : { id, kind: "sum" };
     this.endpoints.set(id, sum);
     if (sum.kind === "sum") {
-      this.modules.set(id, { id, kind: "sum", realtime: false });
+      this.addModule({ id, kind: "sum", realtime: false });
     }
     this.emit(segment?.exits ?? [], sum, UNITY);
     return sum;
+  }
+
+  /**
+   * Gives each keyed FX its key: a key module summing its key cables, bound
+   * only while one of them is audible, and shared by FX whose key cables
+   * come from the same places at the same levels. An FX left with no key
+   * detects on its own input, and a Vocoder takes its authored modulator.
+   */
+  bindKeys(): void {
+    const into = new Map<string, CablePlan[]>();
+    for (const cable of this.cables.values()) {
+      if (cable.kind === "key") {
+        into.set(cable.to.id, [...(into.get(cable.to.id) ?? []), cable]);
+      }
+    }
+    const order = new SignalOrder(this);
+    /** Each shared key's cables, by what they hear. */
+    const shared = new Map<string, CablePlan[][]>();
+    const keyOf = new Map<string, string>();
+    for (const [keyId, cables] of into) {
+      const audible = cables.some((cable) => !cable.muted && cable.gain > 0);
+      const mine = byHeard(cables);
+      const heard = mine.map(heardFrom).join();
+      const groups = shared.get(heard) ?? [];
+      // A key and its FX's audio arrive together, so FX one of which
+      // feeds the other can't share one.
+      const kept = groups.find((group) =>
+        order.canJoin(keyId, group[0]?.to.id ?? keyId)
+      );
+      const owner = audible ? (kept?.[0]?.to.id ?? keyId) : null;
+      if (owner === keyId) {
+        shared.set(heard, [...groups, mine]);
+        this.addModule({ id: keyId, kind: "key", realtime: false });
+      } else {
+        this.mergeKey(mine, owner ? (kept ?? []) : []);
+      }
+      if (owner !== null) {
+        order.join(keyId, owner);
+        keyOf.set(keyId, owner);
+      }
+    }
+    for (const chain of [...this.lanes.values(), ...this.units.values()]) {
+      chain.effects = keyEffects(chain.effects, keyOf);
+      chain.layoutSignature = layoutSignature(chain.effects);
+    }
+  }
+
+  /**
+   * Drops a key's cables; the shared key's equal cables, if any, stand for
+   * them too, each carrying both cables' patch cables.
+   */
+  private mergeKey(cables: readonly CablePlan[], into: readonly CablePlan[]) {
+    for (const cable of cables) {
+      this.cables.delete(cable.id);
+    }
+    for (const [index, cable] of into.entries()) {
+      cable.edges.push(...(cables[index]?.edges ?? []));
+    }
   }
 
   /**
@@ -900,20 +1012,19 @@ class PlanBuilder {
   }
 }
 
-/** A signal at a point's output: how late it is, and whether openDAW made it. */
-type Arrival = { quanta: number; processed: boolean };
-
 /**
  * Delays cables so every cable into a point arrives in step. A signal that
  * came out of openDAW and goes back into it is read a render quantum late,
  * as Web Audio marks the one worklet processed before it pulls its inputs:
  * that lateness is the loop's own, so the cable adds none, and the faster
- * cables into the same point wait the difference on a DelayNode. This
- * aligns rejoining branches when Chromium renders the faster sibling first;
- * when it renders the loop first, that sibling lands one quantum late. Web
- * Audio leaves that order to the browser, so same-source paths that rejoin
- * across a re-entry can be off by one quantum. Backends are the compile
- * estimate.
+ * cables into the same point wait the difference on a DelayNode, and a
+ * keyed effect's audio and its key arrive together: whichever is later, the
+ * other waits. A source's own insert takes its audio first hand, so a later
+ * key there can't be waited for. This aligns rejoining branches when
+ * Chromium renders the faster sibling first; when it renders the loop first,
+ * that sibling lands one quantum late. Web Audio leaves that order to the
+ * browser, so same-source paths that rejoin across a re-entry can be off by
+ * one quantum. Backends are the compile estimate.
  */
 function alignCables(
   plan: Pick<EnginePlan, "cables" | "lanes" | "units">
@@ -926,40 +1037,106 @@ function alignCables(
   const official = ({ id, kind }: Endpoint) =>
     (kind === "lane" ? plan.lanes.get(id) : plan.units.get(id))?.backend ===
     "official";
-  const arrivals = new Map<string, Arrival>();
-  const arrive = (to: Endpoint): Arrival => {
-    const key = endpointKey(to);
-    const known = arrivals.get(key);
-    if (known) {
+  const together = keyedTogether(plan);
+  /** A key goes into openDAW when an effect there listens to it. */
+  const intoOpenDaw = (to: Endpoint) =>
+    to.kind === "key"
+      ? (together.get(endpointKey(to)) ?? []).some(official)
+      : to.kind === "unit" && official(to);
+  // A keyed chain and its keys arrive together: one arrival for them all.
+  const groupOf = new Map<string, string[]>();
+  for (const [key, others] of together) {
+    const group = [
+      ...new Set([
+        ...(groupOf.get(key) ?? [key]),
+        ...others.flatMap((other) => {
+          const otherKey = endpointKey(other);
+          return groupOf.get(otherKey) ?? [otherKey];
+        }),
+      ]),
+    ];
+    for (const member of group) {
+      groupOf.set(member, group);
+    }
+  }
+  const processed = new Map<string, boolean>();
+  const arrivals = new Map<string, number>();
+  /** Whether audio out of `from` has been through openDAW. */
+  const isProcessed = (from: Endpoint): boolean => {
+    const key = endpointKey(from);
+    const known = processed.get(key);
+    if (known !== undefined) {
       return known;
     }
-    const reentry = to.kind === "unit" && official(to);
-    const sources = (into.get(key) ?? []).map((cable) => {
-      const from = outOf(cable.from);
-      cable.reenters = reentry && from.processed;
-      return { cable, from, quanta: from.quanta + (cable.reenters ? 1 : 0) };
-    });
-    const quanta = Math.max(0, ...sources.map((source) => source.quanta));
-    for (const source of sources) {
-      source.cable.delay = quanta - source.quanta;
-    }
-    const arrival = {
-      processed: sources.some(({ from }) => from.processed),
-      quanta,
-    };
-    arrivals.set(key, arrival);
-    return arrival;
+    // Settled before its inputs, so a cycle, which validation refuses,
+    // ends here.
+    processed.set(key, false);
+    const result =
+      official(from) ||
+      (from.kind !== "lane" &&
+        (into.get(key) ?? []).some((cable) => isProcessed(cable.from)));
+    processed.set(key, result);
+    return result;
   };
-  const outOf = (from: Endpoint): Arrival => {
-    if (from.kind === "lane") {
-      return { processed: official(from), quanta: 0 };
+  /** Render quanta after the sources that audio out of `from` is. */
+  const quantaOf = (from: Endpoint): number =>
+    from.kind === "lane" ? 0 : arrivalOf(endpointKey(from));
+  /** When every cable into a point, and into its group, arrives. */
+  const arrivalOf = (key: string): number => {
+    const known = arrivals.get(key);
+    if (known !== undefined) {
+      return known;
     }
-    const { processed, quanta } = arrive(from);
-    return { processed: processed || official(from), quanta };
+    const group = groupOf.get(key) ?? [key];
+    // As above: a cycle ends here rather than recursing.
+    for (const member of group) {
+      arrivals.set(member, 0);
+    }
+    const quanta = Math.max(
+      0,
+      ...group.flatMap((member) =>
+        (into.get(member) ?? []).map(
+          (cable) =>
+            quantaOf(cable.from) +
+            (intoOpenDaw(cable.to) && isProcessed(cable.from) ? 1 : 0)
+        )
+      )
+    );
+    for (const member of group) {
+      arrivals.set(member, quanta);
+    }
+    return quanta;
   };
   for (const cable of plan.cables.values()) {
-    arrive(cable.to);
+    cable.reenters = intoOpenDaw(cable.to) && isProcessed(cable.from);
+    cable.delay =
+      arrivalOf(endpointKey(cable.to)) -
+      quantaOf(cable.from) -
+      (cable.reenters ? 1 : 0);
   }
+}
+
+/** Each keyed chain with the keys it listens to, both ways round. */
+function keyedTogether(
+  plan: Pick<EnginePlan, "lanes" | "units">
+): Map<string, Endpoint[]> {
+  const together = new Map<string, Endpoint[]>();
+  const pair = (from: Endpoint, to: Endpoint) => {
+    const key = endpointKey(from);
+    together.set(key, [...(together.get(key) ?? []), to]);
+  };
+  for (const [kind, chains] of [
+    ["lane", plan.lanes],
+    ["unit", plan.units],
+  ] as const) {
+    for (const chain of chains.values()) {
+      for (const id of audibleSidechainIds(chain.effects)) {
+        pair({ id: chain.id, kind }, { id, kind: "key" });
+        pair({ id, kind: "key" }, { id: chain.id, kind });
+      }
+    }
+  }
+  return together;
 }
 
 /** Compiles a patch into the plan the node engine reconciles against. */
@@ -985,11 +1162,11 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
       builder.addLane(node, source, anySolo && !source.strip.solo);
     }
   }
+  builder.bindKeys();
   builder.markRealtime();
 
   // Channel users in patch order: lane inserts, then units. Each takes its
-  // own input and the key lane feeding it, which the runtime registers
-  // whatever that lane's own backend.
+  // own input and each key its effects listen to, a key once for all.
   let monitoringChannels = 0;
   const monitored = new Set<string>();
   const order = new Map(
@@ -1008,8 +1185,8 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   ];
   for (const { channel, plan } of users) {
     const inputs = new Set(
-      [channel, boundKeyChannel(plan.effects)].filter(
-        (id): id is string => id !== null && !monitored.has(id)
+      [channel, ...audibleSidechainIds(plan.effects)].filter(
+        (id) => !monitored.has(id)
       )
     );
     const added = inputs.size * LANE_CHANNELS;
@@ -1094,7 +1271,9 @@ export function mergeRoles(
     if (node.type !== "merge") {
       continue;
     }
-    const point = plan.modules.has(node.id) || plan.units.has(node.id);
+    const point =
+      plan.modules.has(endpointKey({ id: node.id, kind: "sum" })) ||
+      plan.units.has(node.id);
     if (point && (inputs.get(node.id) ?? 0) > 1) {
       roles.set(node.id, "sum");
     } else if (point || inChains.has(node.id)) {
@@ -1141,34 +1320,54 @@ function silentSource(node: GraphNode | undefined): string | null {
     : "The station is hidden";
 }
 
-/**
- * Why each key cable that keys nothing is idle, by cable id, as the canvas
- * says it: the issue that refused it (a lane's second key, a key from a
- * shared signal), an empty or hidden source, or an effect switched off. A
- * key that reaches its effect's sidechain is left out.
- */
 /** Every lane's and unit's effects by id, and the ones that hear audio. */
 function chainEffects(plan: EnginePlan) {
   const byId = new Map<string, EffectConfig>();
   const active = new Set<EffectConfig>();
   for (const chain of [...plan.lanes.values(), ...plan.units.values()]) {
     effectsById(chain.effects, byId);
-    for (const effect of activeEffects(chain.effects)) {
+    for (const effect of audibleEffects(chain.effects)) {
       active.add(effect);
     }
   }
   return { active, byId };
 }
 
+/**
+ * Why each key cable that keys nothing is idle, by cable id, as the canvas
+ * says it: the issue that refused it, a mute, an empty or hidden source, an
+ * effect switched off, a chain the runtime plays dry, or a second key the
+ * compatibility engine can't bind. A key that reaches its effect's
+ * sidechain is left out. `badges` are the live backend badges by FX node
+ * id, as node playback publishes them: a chain the runtime bypassed or
+ * moved to compatibility shows it too.
+ */
 export function idleKeys(
   graph: Pick<NodeGraph, "nodes" | "edges">,
-  plan: EnginePlan
+  plan: EnginePlan,
+  badges: Readonly<Record<string, string>> = {}
 ): Map<string, string> {
   const { active, byId: inChain } = chainEffects(plan);
-  const laneOf = new Map<string, LanePlan>();
-  for (const lane of plan.lanes.values()) {
-    for (const id of lane.nodes) {
-      laneOf.set(id, lane);
+  // What the runtime leaves unkeyed: every key of a chain it plays dry, and
+  // all but the first key of one on the compatibility engine.
+  const unbound = new Map<EffectConfig, string>();
+  for (const chain of [...plan.lanes.values(), ...plan.units.values()]) {
+    const audible = audibleEffects(chain.effects);
+    const live = new Set(audible.map((effect) => badges[effect.id]));
+    const [key] = audibleSidechainIds(chain.effects);
+    for (const effect of audible) {
+      if (live.has("bypassed")) {
+        unbound.set(
+          effect,
+          "The effects engine couldn't start, so the key isn't used"
+        );
+      } else if (
+        (chain.backend === "compat" || live.has("compat")) &&
+        effect.sidechain &&
+        effect.sidechain.channelId !== key
+      ) {
+        unbound.set(effect, "This key needs the openDAW engine");
+      }
     }
   }
   const issues = new Map(
@@ -1176,36 +1375,42 @@ export function idleKeys(
   );
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const idle = new Map<string, string>();
-  for (const edge of graph.edges) {
-    if (parseHandleId(edge.targetHandle)?.kind !== "sidechain") {
-      continue;
-    }
-    // A refused cable can share its lane with the one that keys, so its own
-    // issue wins over a matching channel.
-    const refusal = issues.get(`edge:${edge.id}`);
-    if (refusal) {
-      idle.set(edge.id, refusal);
-      continue;
+  // A shared key's cable stands for every equal key cable it took over.
+  const bound = new Set(
+    [...plan.cables.values()].flatMap((cable) =>
+      cable.kind === "key" ? cable.edges : []
+    )
+  );
+  const reasonFor = (edge: GraphEdge): string | null => {
+    if (edge.muted || edge.gain === 0) {
+      return "This key is muted";
     }
     const effect = inChain.get(edge.target);
-    const channelId = laneOf.get(edge.source)?.channelId;
-    if (channelId && effect?.sidechain?.channelId === channelId) {
-      if (!effect.enabled) {
-        idle.set(edge.id, "Switch the effect on to use its key");
-      } else if (!active.has(effect)) {
-        // The runtime binds no key under an off Split or a silent branch.
-        idle.set(edge.id, "Its branch is off, so the key isn't used");
-      }
-      continue;
-    }
-    idle.set(
-      edge.id,
-      issues.get(`edge:${edge.id}`) ??
+    if (!(bound.has(edge.id) && effect?.sidechain)) {
+      return (
         issues.get(`node:${edge.target}`) ??
         silentSource(byId.get(edge.source)) ??
         issues.get(`node:${edge.source}`) ??
         "This key isn't used"
-    );
+      );
+    }
+    if (!effect.enabled) {
+      return "Switch the effect on to use its key";
+    }
+    if (!active.has(effect)) {
+      // The runtime binds no key under an off Split or a silent branch.
+      return "Its branch is off, so the key isn't used";
+    }
+    return unbound.get(effect) ?? null;
+  };
+  for (const edge of graph.edges) {
+    if (parseHandleId(edge.targetHandle)?.kind !== "sidechain") {
+      continue;
+    }
+    const reason = issues.get(`edge:${edge.id}`) ?? reasonFor(edge);
+    if (reason) {
+      idle.set(edge.id, reason);
+    }
   }
   return idle;
 }

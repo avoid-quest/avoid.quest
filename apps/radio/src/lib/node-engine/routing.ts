@@ -12,6 +12,12 @@
  *          pan:    panner → output → cables
  *          sum:    one gain, its input and output → cables
  *
+ * A key is a point with only an input: the sum of its key cables, which
+ * keyed effects bind their sidechain to through `connectKey`. It is made,
+ * silent, as soon as the graph has an AudioContext, so an insert keyed
+ * from it takes its input channels together with the key's. A tap is the
+ * same sum, handed to whatever follows it (`tap`).
+ *
  * Each point is keyed by kind and id and follows the plan level-triggered:
  * a parameter edit updates it in place, a node that changes kind is a new
  * point, and a point the plan drops stops being wanted at once. It stays
@@ -87,6 +93,9 @@ export type RoutingHost = {
   /** A cable's transient level while one overlays it. */
   sendOverlay: (cable: CablePlan) => number | undefined;
   detachEffects: (unitId: string) => void;
+  /** Registers a key's summed input for the effects keyed from it. */
+  connectKey: (keyId: string, input: AudioNode) => void;
+  releaseKey: (keyId: string) => void;
   /** A unit's effects backend changed. */
   outcomeChanged: () => void;
   onFailure: (error: unknown) => void;
@@ -116,11 +125,11 @@ type Live = {
   readonly context: BaseAudioContext;
   /** Where its cables in connect, and sum. */
   readonly input: AudioNode;
-  /** Its retirement fade, where its cables out start. */
-  readonly output: GainNode;
+  /** Its retirement fade, where its cables out start; a key or tap has none. */
+  readonly output: GainNode | null;
   /** A unit's layout duck, where its FX end. */
   readonly duck: GainNode | null;
-  readonly sends: Sends;
+  readonly sends: Sends | null;
   readonly effects: EffectsSlot<UnitPlan> | null;
   /** A unit's transient parameter overlays. */
   readonly parameters: OwnerParameters | null;
@@ -169,6 +178,9 @@ function setFilter(
 
 export class RoutingGraph {
   private readonly points = new Map<string, Point>();
+  private readonly tapListeners = new Set<() => void>();
+  /** The AudioContext points are made in, once audio reached one. */
+  private context: BaseAudioContext | null = null;
   private readonly host: RoutingHost;
   private readonly wait: (ms: number) => Promise<void>;
 
@@ -216,7 +228,7 @@ export class RoutingGraph {
     }
     // Every cable that went starts fading before a new one looks for loops.
     for (const [point] of changed) {
-      point.live?.sends.retire(this.sendPlans(point));
+      point.live?.sends?.retire(this.sendPlans(point));
     }
     for (const [point, previous] of changed) {
       const { live } = point;
@@ -226,6 +238,19 @@ export class RoutingGraph {
         this.settleSends(point, live);
       }
       this.kick(point);
+    }
+    if (this.context) {
+      this.reserveKeys(this.context);
+    }
+  }
+
+  /** Makes every key the plan wants in `context`, silent till cabled. */
+  reserveKeys(context: BaseAudioContext): void {
+    this.context = context;
+    for (const point of this.points.values()) {
+      if (point.wanted && !isUnit(point.plan) && point.plan.kind === "key") {
+        this.materialize(point, context);
+      }
     }
   }
 
@@ -290,15 +315,20 @@ export class RoutingGraph {
       : this.hold({ id, kind: kind as Endpoint["kind"] }, send, from);
   }
 
-  /** Units whose effects `affects` matches reconcile again, e.g. a new key. */
-  effectsChanged(affects: (unit: UnitPlan) => boolean): void {
-    for (const point of this.points.values()) {
-      const { live, plan } = point;
-      if (live?.effects && isUnit(plan) && point.wanted && affects(plan)) {
-        live.effects.changed();
-        this.kick(point);
-      }
-    }
+  /** The summed input a tap module hands on, while audio reaches it. */
+  tap(nodeId: string): AudioNode | null {
+    const point = this.points.get(endpointKey({ id: nodeId, kind: "tap" }));
+    return point && !isUnit(point.plan) && point.plan.kind === "tap"
+      ? (point.live?.input ?? null)
+      : null;
+  }
+
+  /** Calls `listener` whenever a tap's input comes or goes. */
+  onTapsChanged(listener: () => void): () => void {
+    this.tapListeners.add(listener);
+    return () => {
+      this.tapListeners.delete(listener);
+    };
   }
 
   /** The backend a unit's effects settled on, while it runs. */
@@ -378,7 +408,7 @@ export class RoutingGraph {
         continue;
       }
       seen.add(key);
-      for (const edge of this.points.get(key)?.live?.sends.edges() ?? []) {
+      for (const edge of this.points.get(key)?.live?.sends?.edges() ?? []) {
         if (edge.gone) {
           fading.push(edge.gone);
         }
@@ -398,18 +428,26 @@ export class RoutingGraph {
     if (current) {
       this.release(point, current);
     }
+    this.context = context;
     const audio = context as AudioContext;
     const { plan } = point;
-    const output = audio.createGain();
-    let input: AudioNode = output;
+    const gain = audio.createGain();
+    // A key or tap is its summed input only: nothing leaves it as audio.
+    const output =
+      isUnit(plan) || (plan.kind !== "key" && plan.kind !== "tap")
+        ? gain
+        : null;
+    let input: AudioNode = gain;
     let duck: GainNode | null = null;
     const controller = new AbortController();
     let effects: EffectsSlot<UnitPlan> | null = null;
     let parameters: OwnerParameters | null = null;
     if (isUnit(plan)) {
+      // Its keys are in before its FX attach and take their channels.
+      this.reserveKeys(context);
       const unitInput = audio.createGain();
       const unitDuck = audio.createGain();
-      unitDuck.connect(output);
+      unitDuck.connect(gain);
       input = unitInput;
       duck = unitDuck;
       const id = unitEffectsId(plan.id);
@@ -454,12 +492,12 @@ export class RoutingGraph {
     } else if (plan.kind === "filter") {
       const filter = audio.createBiquadFilter();
       setFilter(filter, plan.filter, false);
-      filter.connect(output);
+      filter.connect(gain);
       input = filter;
     } else if (plan.kind === "pan") {
       const panner = audio.createStereoPanner();
       panner.pan.value = plan.pan;
-      panner.connect(output);
+      panner.connect(gain);
       input = panner;
     }
     const live: Live = {
@@ -472,15 +510,37 @@ export class RoutingGraph {
       input,
       output,
       parameters,
-      sends: new Sends(
-        output,
-        (to, send, realtime) => this.route(to, send, realtime, point.key),
-        this.wait
-      ),
+      sends:
+        output &&
+        new Sends(
+          output,
+          (to, send, realtime) => this.route(to, send, realtime, point.key),
+          this.wait
+        ),
     };
     point.live = live;
     this.settleSends(point, live);
+    this.publish(point, live);
     return live;
+  }
+
+  /** A key or tap's input is handed on as it comes and goes. */
+  private publish(point: Point, live: Live | null): void {
+    const { plan } = point;
+    if (isUnit(plan)) {
+      return;
+    }
+    if (plan.kind === "key") {
+      if (live) {
+        this.host.connectKey(plan.id, live.input);
+      } else {
+        this.host.releaseKey(plan.id);
+      }
+    } else if (plan.kind === "tap") {
+      for (const listener of this.tapListeners) {
+        listener();
+      }
+    }
   }
 
   /**
@@ -507,7 +567,7 @@ export class RoutingGraph {
 
   /** A point wanted or held again while it fades comes back. */
   private revive(live: Live): void {
-    if (live.fading) {
+    if (live.fading && live.output) {
       live.fading = false;
       rampGain(live.output, 1);
     }
@@ -524,7 +584,7 @@ export class RoutingGraph {
 
   /** One send per cable out of the point, each ramped to its level. */
   private settleSends(point: Point, live: Live): void {
-    live.sends.settle(this.sendPlans(point));
+    live.sends?.settle(this.sendPlans(point));
   }
 
   private kick(point: Point): void {
@@ -554,7 +614,7 @@ export class RoutingGraph {
         if (!step) {
           return;
         }
-      } else if (live.fading) {
+      } else if (live.fading || !live.output) {
         this.release(point, live);
         continue;
       } else {
@@ -575,11 +635,12 @@ export class RoutingGraph {
   private release(point: Point, live: Live): void {
     live.controller.abort();
     point.live = null;
-    live.sends.drop();
+    live.sends?.drop();
     if (live.effects && isUnit(point.plan)) {
       this.host.detachEffects(unitEffectsId(point.plan.id));
       this.host.outcomeChanged();
     }
+    this.publish(point, null);
     safeDisconnect(live.input, "RoutingGraph.release");
     safeDisconnect(live.duck, "RoutingGraph.release");
     safeDisconnect(live.output, "RoutingGraph.release");

@@ -70,7 +70,7 @@ export class EffectsSlot<Plan extends EffectsPlan> {
     this.reconcile = options.connect ?? options.reconcile;
   }
 
-  /** Its effects, or what keys them, changed; the next step reconciles. */
+  /** Its effects changed; the next step reconciles. */
   changed(): void {
     this.stale = true;
   }

@@ -1,8 +1,8 @@
 /**
  * Node Graph Validation
  *
- * Checks a patch against the port-kind rules, per-port limits, lane rules,
- * the feedback rule and the device budgets. Every problem is an Issue keyed
+ * Checks a patch against the port-kind rules, per-port limits, the feedback
+ * rule (key cables included) and the device budgets. Every problem is an Issue keyed
  * by the node or cable it belongs to; invalid cables never reach the compiler.
  * The same check runs on drag, on load and on import, and every "can this
  * cable connect?" question goes through `connectionVerdict`.
@@ -34,9 +34,6 @@ export type IssueCode =
   | "duplicate-edge"
   | "port-max"
   | "one-speakers"
-  | "sidechain-source"
-  | "sidechain-target"
-  | "lane-key"
   | "feedback-needs-loop"
   | "control-cycle"
   | "budget-playing"
@@ -49,7 +46,8 @@ export type IssueCode =
   // Raised by the compiler, where the patch's shape is known.
   | "split-depth"
   | "split-branches"
-  | "split-open";
+  | "split-open"
+  | "key-enclosed";
 
 export type Issue = {
   code: IssueCode;
@@ -132,15 +130,6 @@ export function parseHandleId(
   }
   return { direction, kind: kind as PortKind, name };
 }
-
-/** Nodes that always mix their sources: they sum or delay across lanes. */
-const BUS_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
-  "crossfade",
-  "dial",
-  "loop",
-  "return",
-  "tapeWarp",
-]);
 
 /** A cable that passed the port checks, with both ends resolved. */
 export type WiredEdge = {
@@ -562,11 +551,13 @@ function checkCycles(
   const rejected = new Set<WiredEdge>();
   const nodeIds = context.graph.nodes.map((node) => node.id);
   const isLoop = (id: string) => context.nodes.get(id)?.type === "loop";
-  // A key cable taps its lane before the FX, so it closes no cycle; taking
-  // the Loop nodes out leaves exactly the delay-free cycles.
+  // A key cable feeds its effect's detector, so it closes a cycle as an
+  // audio cable does; taking the Loop nodes out leaves exactly the
+  // delay-free cycles.
   const inCycles = (kind: "audio" | "control") => (wire: WiredEdge) =>
     wire.from.kind === kind &&
-    wire.to.kind === kind &&
+    (wire.to.kind === kind ||
+      (kind === "audio" && wire.to.kind === "sidechain")) &&
     !(
       kind === "audio" &&
       (isLoop(wire.edge.source) || isLoop(wire.edge.target))
@@ -617,34 +608,6 @@ function checkCycles(
   return kept;
 }
 
-/** undefined: not fed by any source; string: that source's lane; null: several sources. */
-export type Lane = string | null | undefined;
-
-function joinLane(current: Lane, next: Lane): Lane {
-  if (current === undefined) {
-    return next;
-  }
-  if (next === undefined || next === current) {
-    return current;
-  }
-  return null;
-}
-
-export type Topology = {
-  lanes: Map<string, Lane>;
-};
-
-function laneFromInputs(node: GraphNode, inputs: readonly Lane[]): Lane {
-  if (definitionOf(node).category === "output") {
-    return;
-  }
-  const lane = inputs.reduce<Lane>(joinLane, undefined);
-  if (lane !== undefined && BUS_NODE_TYPES.has(node.type)) {
-    return null;
-  }
-  return lane;
-}
-
 function audioInputs(wired: readonly WiredEdge[]): Map<string, string[]> {
   const inputs = new Map<string, string[]>();
   for (const { edge, to } of wired) {
@@ -673,138 +636,6 @@ export function liveAudioNodes(
     queue.push(...(inputs.get(id) ?? []));
   }
   return live;
-}
-
-function audioOutputs(
-  inputs: ReadonlyMap<string, readonly string[]>
-): Map<string, string[]> {
-  const outputs = new Map<string, string[]>();
-  for (const [target, sources] of inputs) {
-    for (const source of sources) {
-      const targets = outputs.get(source) ?? [];
-      targets.push(target);
-      outputs.set(source, targets);
-    }
-  }
-  return outputs;
-}
-
-/**
- * Labels each node with the lane it belongs to, or as a bus when it sums
- * more than one lane. A monotone fixpoint, so audio cycles settle too. A
- * worklist revisits only what a change feeds, and a label only moves from
- * none to a lane to a bus, so a long imported chain stays linear whatever
- * order its nodes are stored in.
- */
-function labelLanes(
-  context: Context,
-  inputs: ReadonlyMap<string, readonly string[]>
-): Map<string, Lane> {
-  const lanes = new Map<string, Lane>();
-  for (const node of context.graph.nodes) {
-    lanes.set(node.id, definitionOf(node).source ? node.id : undefined);
-  }
-  const outputs = audioOutputs(inputs);
-  const pending = context.graph.nodes
-    .filter((node) => !definitionOf(node).source)
-    .reverse();
-  const queued = new Set(pending.map((node) => node.id));
-  for (let node = pending.pop(); node; node = pending.pop()) {
-    queued.delete(node.id);
-    const upstream = (inputs.get(node.id) ?? []).map((id) => lanes.get(id));
-    const next = joinLane(lanes.get(node.id), laneFromInputs(node, upstream));
-    if (next === lanes.get(node.id)) {
-      continue;
-    }
-    lanes.set(node.id, next);
-    for (const id of outputs.get(node.id) ?? []) {
-      const target = context.nodes.get(id);
-      if (target && !definitionOf(target).source && !queued.has(id)) {
-        queued.add(id);
-        pending.push(target);
-      }
-    }
-  }
-  return lanes;
-}
-
-function findTopology(context: Context, wired: WiredEdge[]): Topology {
-  const inputs = audioInputs(wired);
-  const lanes = labelLanes(context, inputs);
-  return { lanes };
-}
-
-function checkSidechains(
-  context: Context,
-  wired: WiredEdge[],
-  { lanes }: Topology
-): Set<string> {
-  const keyed = new Set<string>();
-  for (const { edge, to } of wired) {
-    if (to.kind !== "sidechain") {
-      continue;
-    }
-    const lane = lanes.get(edge.source);
-    if (typeof lane !== "string") {
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-source",
-        "A key must come from a station lane"
-      );
-    } else if (lane !== edge.source) {
-      // The engine keys from the station's raw signal, so a cable drawn after
-      // its Gain or FX would claim a tap it doesn't get.
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-source",
-        "A key must come from the station itself"
-      );
-    } else if (typeof lanes.get(edge.target) === "string") {
-      keyed.add(edge.target);
-    } else {
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-target",
-        "A key only works on a station lane"
-      );
-    }
-  }
-  return keyed;
-}
-
-function checkLanes(context: Context, topology: Topology, keyed: Set<string>) {
-  const seen = new Map<string, Set<IssueCode>>();
-  const rules: {
-    code: IssueCode;
-    message: string;
-    test: (node: GraphNode) => boolean;
-  }[] = [
-    {
-      code: "lane-key",
-      message: "One key per lane",
-      test: (node) => keyed.has(node.id),
-    },
-  ];
-  for (const node of context.graph.nodes) {
-    const lane = topology.lanes.get(node.id);
-    if (typeof lane !== "string") {
-      continue;
-    }
-    const laneSeen = seen.get(lane) ?? new Set<IssueCode>();
-    seen.set(lane, laneSeen);
-    for (const rule of rules) {
-      if (!rule.test(node)) {
-        continue;
-      }
-      if (laneSeen.has(rule.code)) {
-        nodeIssue(context, node, rule.code, rule.message);
-      }
-      laneSeen.add(rule.code);
-    }
-  }
 }
 
 function overBudget<T>(
@@ -891,7 +722,6 @@ export type GraphAnalysis = {
   issues: Issue[];
   /** Cables that passed the port and cycle checks. */
   wired: WiredEdge[];
-  topology: Topology;
 };
 
 /** Validates a patch and keeps what the compiler builds on. */
@@ -908,11 +738,8 @@ export function analyseGraph(
   };
   checkNodes(context);
   const wired = checkCycles(context, checkEdges(context));
-  const topology = findTopology(context, wired);
-  const keyed = checkSidechains(context, wired, topology);
-  checkLanes(context, topology, keyed);
   checkBudgets(context, playing);
-  return { issues: context.issues, topology, wired };
+  return { issues: context.issues, wired };
 }
 
 /** Validates a whole patch. An empty list means the compiler may take it. */

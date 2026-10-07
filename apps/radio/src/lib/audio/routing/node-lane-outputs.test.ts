@@ -161,7 +161,7 @@ describe("createNodeLaneOutputs", () => {
 
     harness.connectSound("node:n:kexp");
 
-    expect(onConnect).toHaveBeenCalledWith("kexp");
+    expect(onConnect).toHaveBeenCalledWith("kexp", harness.context);
   });
 
   test("attach is a no-op for the attached sound, and laneOut is stable", () => {

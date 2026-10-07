@@ -41,7 +41,6 @@ import {
   nextFxPosition,
   nextOutputPosition,
   nextStationPosition,
-  reconnectEdge,
   uniqueId,
   wireToSpeakers,
   withFxColumn,
@@ -826,7 +825,8 @@ export function addPaletteNode(
 
 /**
  * The cable to make when a drag from `from` ends on node `nodeId` rather
- * than on a port: set only when exactly one of its ports fits.
+ * than on a port: set only when exactly one of its ports fits. Audio in
+ * comes before a key, as a drop on the body means to play through it.
  */
 export function autoConnection(
   graph: NodeGraph,
@@ -840,7 +840,11 @@ export function autoConnection(
     return null;
   }
   const cables = validCables(graph, node, from, options, baseline);
-  return cables.length === 1 ? (cables[0] ?? null) : null;
+  const audio = cables.filter(
+    (cable) => parseHandleId(cable.targetHandle)?.kind === "audio"
+  );
+  const [only] = cables.length === 1 ? cables : audio;
+  return cables.length === 1 || audio.length === 1 ? (only ?? null) : null;
 }
 
 type Refusal = Extract<Verdict, { ok: false }>;
@@ -928,16 +932,8 @@ function noPortRefusal(
     : null;
 }
 
-/** The cable a refused one can take the place of, and the cable it becomes. */
-export type Replacement = { edge: string; connection: Connection };
-
-/**
- * What a cable let go over a node does: connect, or say why it can't. A
- * refusal for a one-cable port that has its cable offers to replace it.
- */
-export type DropOutcome =
-  | { connect: Connection }
-  | { refuse: string | null; replace?: Replacement };
+/** What a cable let go over a node does: connect, or say why it can't. */
+export type DropOutcome = { connect: Connection } | { refuse: string | null };
 
 /**
  * A cable let go on one of `nodeId`'s ports takes that port or is refused
@@ -982,67 +978,7 @@ export function dropOnNode(
   if (cable) {
     return { connect: cable };
   }
-  const refuse = dropRefusal(graph, from, nodeId, options, baseline);
-  const replace = refuse
-    ? replacement(graph, from, nodeId, port, options, baseline)
-    : null;
-  return replace ? { refuse, replace } : { refuse };
-}
-
-/**
- * The one full port a refused drop could go into instead, when that port
- * takes a single cable: its cable moves to the drop's far end, so the drop
- * replaces it. Let go on the body, only when one such port faces the cable
- * and the refusal is only that it is full.
- */
-function replacement(
-  graph: NodeGraph,
-  from: PaletteFrom,
-  nodeId: string,
-  port: string | null,
-  options?: ValidateOptions,
-  baseline: ReadonlySet<string> = connectionBaseline(graph, options)
-): Replacement | null {
-  const node = graph.nodes.find((entry) => entry.id === nodeId);
-  const kind = parseHandleId(from.handle)?.kind;
-  if (!node || node.id === from.node || !kind) {
-    return null;
-  }
-  const patches = (facing: NodePort) =>
-    from.type === "source"
-      ? kindsPatch(kind, facing.kind)
-      : kindsPatch(facing.kind, kind);
-  const verdicts = facingPorts(node, from)
-    .filter((facing) =>
-      port === null ? patches(facing) : portHandleId(facing) === port
-    )
-    .map((facing) => {
-      const cable = cableBetween(from, node.id, facing);
-      return {
-        cable,
-        verdict: connectionVerdict(graph, cable, options, baseline),
-      };
-    });
-  // A port refused for a truer reason than being full says that instead.
-  if (
-    verdicts.some(({ verdict }) => !verdict.ok && verdict.code !== "port-max")
-  ) {
-    return null;
-  }
-  const found = verdicts.flatMap(({ cable }): Replacement[] => {
-    const held = graph.edges.filter((edge) =>
-      from.type === "source"
-        ? edge.target === node.id && edge.targetHandle === cable.targetHandle
-        : edge.source === node.id && edge.sourceHandle === cable.sourceHandle
-    );
-    const [only] = held;
-    return held.length === 1 &&
-      only &&
-      reconnectEdge(graph, only.id, cable, options).ok
-      ? [{ connection: cable, edge: only.id }]
-      : [];
-  });
-  return found.length === 1 ? (found[0] ?? null) : null;
+  return { refuse: dropRefusal(graph, from, nodeId, options, baseline) };
 }
 
 export type ConnectTarget = {

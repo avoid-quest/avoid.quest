@@ -3,6 +3,7 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { useStore } from "@tanstack/react-store";
 import { KeyRoundIcon, ListMusicIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { Radio } from "@/lib/audio";
@@ -10,7 +11,9 @@ import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
   type CompileEnv,
+  type Endpoint,
   type EnginePlan,
+  endpointKey,
   idleKeys,
   type LanePlan,
   laneRoutes,
@@ -23,8 +26,11 @@ import {
   type NodeGraph,
 } from "@/lib/node-graph/schema";
 import { isTrackRadio } from "@/lib/node-graph/sources";
-import { parseHandleId } from "@/lib/node-graph/validate";
-import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
+import {
+  detectNodePlaybackEnv,
+  getNodePlayback,
+  nodeBackendBadges,
+} from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { EmptyHint } from "../empty-hint";
 import { InlineError } from "../inline-error";
@@ -115,33 +121,47 @@ function RackSection({
 }
 
 /**
- * The station keying each FX, by FX node id, for the key cables the plan
+ * The stations keying each FX, by FX node id, for the key cables the plan
  * keys with: the same verdict the canvas's idle key tags show, so a key
  * on a switched-off FX, or one the runtime won't bind, names no station.
+ * A key from a Filter, a Pan or a shared unit names the stations feeding
+ * it.
  */
 function keyingStations(
   graph: NodeGraph,
-  plan: EnginePlan
+  plan: EnginePlan,
+  badges: Readonly<Record<string, string>>
 ): Map<string, string> {
-  const idle = idleKeys(graph, plan);
-  const stationOf = new Map<string, string>();
-  for (const lane of plan.lanes.values()) {
-    for (const id of lane.nodes) {
-      stationOf.set(id, lane.radio.name);
+  const idle = idleKeys(graph, plan, badges);
+  const into = new Map<string, Endpoint[]>();
+  for (const cable of plan.cables.values()) {
+    if (cable.kind === "audio") {
+      const key = endpointKey(cable.to);
+      into.set(key, [...(into.get(key) ?? []), cable.from]);
     }
   }
-  const keyed = new Map<string, string>();
-  for (const edge of graph.edges) {
-    const station = stationOf.get(edge.source);
-    if (
-      station &&
-      parseHandleId(edge.targetHandle)?.kind === "sidechain" &&
-      !idle.has(edge.id)
-    ) {
-      keyed.set(edge.target, station);
+  const stationsOf = (from: Endpoint): string[] => {
+    const lane = from.kind === "lane" ? plan.lanes.get(from.id) : undefined;
+    return lane
+      ? [lane.radio.name]
+      : (into.get(endpointKey(from)) ?? []).flatMap(stationsOf);
+  };
+  const targetOf = new Map(graph.edges.map((edge) => [edge.id, edge.target]));
+  const keyed = new Map<string, Set<string>>();
+  for (const cable of plan.cables.values()) {
+    for (const id of cable.kind === "key" ? cable.edges : []) {
+      const target = targetOf.get(id);
+      if (target && !idle.has(id)) {
+        keyed.set(
+          target,
+          new Set([...(keyed.get(target) ?? []), ...stationsOf(cable.from)])
+        );
+      }
     }
   }
-  return keyed;
+  return new Map(
+    [...keyed].map(([id, stations]) => [id, [...stations].join(", ")])
+  );
 }
 
 /**
@@ -155,7 +175,7 @@ function LaneChain({
 }: {
   lane: LanePlan;
   nodesById: Map<string, GraphNode>;
-  /** The station keying each FX whose key cable keys, by FX node id. */
+  /** The stations keying each FX whose key cable keys, by FX node id. */
   keyedBy: ReadonlyMap<string, string>;
 }) {
   const actions = useNodeActions();
@@ -289,7 +309,8 @@ export function NodeRack({
   const plan = compiledPlan(graph, env ?? detectedEnv);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const groups = groupLanes(plan, nodesById);
-  const keyedBy = keyingStations(graph, plan);
+  const badges = useStore(nodeBackendBadges);
+  const keyedBy = keyingStations(graph, plan, badges);
   const hidden = graph.nodes.flatMap((node) =>
     node.type === "station" && node.data.radio?.enabled === false
       ? [{ id: node.id, radio: node.data.radio as Radio }]

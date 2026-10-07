@@ -190,29 +190,25 @@ describe("one rule for every way to connect", () => {
   });
 });
 
-describe("a full key", () => {
-  test("refuses a second key, and a drop on it offers to replace the first", () => {
-    const connection = plug("fip", "comp", { to: "in:sidechain:key" });
-    expect(connectionVerdict(graph, connection)).toEqual({
-      code: "port-max",
-      message: "This input takes one cable",
-      ok: false,
-    });
-    expect(canConnect(graph, connection)).toBe(false);
-    // The keyboard Connect… dialog doesn't offer it either.
+describe("an occupied key", () => {
+  test("sums another key, and a drop on it connects", () => {
+    const connection = plug("kexp", "comp", { to: "in:sidechain:key" });
+    expect(connectionVerdict(graph, connection)).toEqual({ ok: true });
+    expect(canConnect(graph, connection)).toBe(true);
+    // The keyboard Connect… dialog offers it too.
     expect(
-      connectPorts(graph, "fip")
+      connectPorts(graph, "kexp")
         .flatMap((port) => port.targets)
         .some((target) => target.key === "comp in:sidechain:key")
-    ).toBe(false);
+    ).toBe(true);
     expect(
       dropOnNode(
         graph,
-        { handle: "out:audio:main", node: "fip", type: "source" },
+        { handle: "out:audio:main", node: "kexp", type: "source" },
         "comp",
         "in:sidechain:key"
       )
-    ).toMatchObject({ replace: { connection, edge: "nts->comp" } });
+    ).toEqual({ connect: connection });
   });
 });
 
@@ -226,11 +222,13 @@ describe("connectableHandles", () => {
         type: "source",
       });
       // Inputs: Compressor in and key, Reverb in, Delay in, Speakers in.
-      // The Delay's input sums its Reverb with a new cable.
+      // Every input sums a new cable with what it has.
       expect(spy).toHaveBeenCalledTimes(5);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
       ).toEqual([
+        "comp in:audio:main",
+        "comp in:sidechain:key",
         "verb in:audio:main",
         "echo in:audio:main",
         "speakers in:audio:main",
@@ -258,6 +256,8 @@ describe("connectableHandles", () => {
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
       ).toEqual([
+        "comp in:audio:main",
+        "comp in:sidechain:key",
         "verb in:audio:main",
         "echo in:audio:main",
         "speakers in:audio:main",

@@ -741,7 +741,7 @@ describe("dropRefusal", () => {
       expect(dropRefusal(keyed, fromFip, "gate")).toBeNull();
     });
 
-    test("a key dropped on a node in no lane says why", () => {
+    test("a key can connect from a loose effect", () => {
       const unkeyed = {
         ...keyed,
         edges: keyed.edges.filter(
@@ -753,11 +753,12 @@ describe("dropRefusal", () => {
         node: "duck",
         type: "target",
       };
-      expect(autoConnection(unkeyed, fromKey, "crusher")).toBeNull();
-      expect(dropRefusal(unkeyed, fromKey, "crusher")).toBe(
-        "A key must come from a station lane"
-      );
-      // A station would take it: the drop was fine.
+      expect(autoConnection(unkeyed, fromKey, "crusher")).toEqual({
+        source: "crusher",
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: "duck",
+        targetHandle: "in:sidechain:key",
+      });
       expect(dropRefusal(unkeyed, fromKey, "src-fip")).toBeNull();
     });
   });
@@ -775,11 +776,16 @@ describe("dropOnNode", () => {
   }
   const loose = { ...patch, nodes: [...patch.nodes, comp] } as typeof patch;
 
-  test("a key let go on a loose Compressor's key input is refused, not rewired as audio", () => {
+  test("a key let go on a Compressor's key input keys it; on the body, it plays through", () => {
     expect(dropOnNode(loose, fromB, "comp", "in:sidechain:key")).toEqual({
-      refuse: "A key only works on a station lane",
+      connect: {
+        source: "src-b",
+        sourceHandle: AUDIO_OUT_HANDLE,
+        target: "comp",
+        targetHandle: "in:sidechain:key",
+      },
     });
-    // On the body, the one port that fits still takes it.
+    // On the body, its audio input comes before its key.
     expect(dropOnNode(loose, fromB, "comp", null)).toEqual({
       connect: {
         source: "src-b",
@@ -821,7 +827,7 @@ describe("dropOnNode", () => {
   });
 });
 
-describe("dropOnNode: Replace", () => {
+describe("dropOnNode: occupied inputs", () => {
   const comp = createPaletteNode("compressor", "comp", { x: 400, y: 0 });
   if (!comp) {
     throw new Error("Expected a Compressor");
@@ -845,13 +851,13 @@ describe("dropOnNode: Replace", () => {
     node: "src-b",
     type: "source",
   };
-  test("a full one-cable key gives way to the node's audio input", () => {
+  test("an occupied key sums another key cable", () => {
     expect(dropOnNode(fed, fromB, "comp", "in:sidechain:key")).toEqual({
       connect: {
         source: "src-b",
         sourceHandle: AUDIO_OUT_HANDLE,
         target: "comp",
-        targetHandle: AUDIO_IN_HANDLE,
+        targetHandle: "in:sidechain:key",
       },
     });
   });

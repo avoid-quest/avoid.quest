@@ -146,7 +146,6 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
           unregisterMonitoringSource: mock(() => undefined),
         },
       },
-      sidechainTargets: new Map(),
       soundUnits: new Map([["mic", unit]]),
     });
 

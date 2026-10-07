@@ -324,6 +324,7 @@ function createWorld(directFields = false) {
         ready: false,
         status: "inactive",
       }),
+      connectEffectsKey: () => undefined,
       detachEffectsInsert: () => undefined,
       reconcileEffects: async (soundId, desired) => {
         const tree = desired.tree.map((effect) =>
@@ -341,6 +342,7 @@ function createWorld(directFields = false) {
         }
         return { backend: null, ready: false, status: options.reconcileStatus };
       },
+      releaseEffectsKey: () => undefined,
       setEffectFields: (soundId, id, config) => {
         if (options.failFields) {
           throw new Error("Field transaction failed");
@@ -751,10 +753,11 @@ const transitions: Row[] = [
   },
   {
     expected(world) {
+      // The key is the Compressor's own: it doesn't wait for b's sound.
       expect(world.log).toEqual([
-        "duck a",
         `reconcile ${sound("b")} []`,
-        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}] key ${sound("b")}`,
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}] key node-key:comp#0`,
         "unduck a",
       ]);
     },

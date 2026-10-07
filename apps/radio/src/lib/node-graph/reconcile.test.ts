@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EffectConfig, EffectType } from "@/lib/audio/dsp/effects/types";
 import { createNodeEffectConfig } from "./catalogue";
 import { compile, type EnginePlan } from "./compile";
-import { diff, type Op } from "./reconcile";
+import { diff, effectsChange, type Op } from "./reconcile";
 import { type NodeGraphInput, type NodeType, nodeGraphSchema } from "./schema";
 
 type NodeInput = NodeGraphInput["nodes"][number];
@@ -561,5 +561,38 @@ describe("diff: audio inputs", () => {
 
   test("a relabelled device keeps its capture", () => {
     expect(diff(mic(), mic({ deviceLabel: "Desk mic" }))).toEqual([]);
+  });
+});
+
+describe("effectsChange", () => {
+  const keyed = (id: string, enabled: boolean, channelId = `node-key:${id}`) =>
+    ({
+      ...createNodeEffectConfig("compressor", id),
+      enabled,
+      sidechain: { channelId },
+    }) as EffectConfig;
+  const owner = (effects: EffectConfig[]) => ({
+    backend: "official" as const,
+    effects,
+    layoutSignature: "same",
+  });
+
+  test("a second keyed effect switching on is structural, so its key registers", () => {
+    expect(
+      effectsChange(
+        owner([keyed("one", true), keyed("two", false)]),
+        owner([keyed("one", true), keyed("two", true)])
+      )
+    ).toEqual({ kind: "structural" });
+  });
+
+  test("a keyed effect's knob with the same keys listening writes its fields", () => {
+    const turned = { ...keyed("two", true), threshold: -30 } as EffectConfig;
+    expect(
+      effectsChange(
+        owner([keyed("one", true), keyed("two", true)]),
+        owner([keyed("one", true), turned])
+      )
+    ).toEqual({ effectIds: ["two"], kind: "fields" });
   });
 });

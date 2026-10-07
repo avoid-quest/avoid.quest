@@ -85,15 +85,13 @@ export type LaneHost = {
   readonly laneOutputs: NodeLaneOutputs;
   readonly resolveStream: ResolvePlatformStream;
   fadeOut: (soundId: string) => Promise<void>;
-  /** Reconciles the sound's effects with `plan`'s, keyed from its key lane. */
+  /** Reconciles the sound's effects with `plan`'s, each keyed from its key. */
   reconcileEffects: (
     soundId: string,
     plan: LanePlan
   ) => Promise<EffectsRuntimeOutcome>;
   /** The stream limit a start on `slot` would pass, or null while it fits. */
   streamLimit: (slot: LaneSlot) => number | null;
-  /** A lane's sound was made or released. */
-  soundChanged: (laneId: string) => void;
   /** A lane's effects backend changed. */
   outcomeChanged: () => void;
   /** Taps a sound pre-fader onto the headphone cue bus. */
@@ -915,7 +913,7 @@ export class LaneSlot {
     }
   }
 
-  /** The lane's effects or its key lane's sound changed. */
+  /** The lane's effects changed. */
   effectsChanged(): void {
     this.current?.effects.changed();
     this.kick();
@@ -964,7 +962,6 @@ export class LaneSlot {
   private async release(instance: LaneInstance): Promise<void> {
     await instance.release();
     this.current = null;
-    this.host.soundChanged(this.laneId);
   }
 
   private create(plan: LanePlan): void {
@@ -980,8 +977,6 @@ export class LaneSlot {
       } else {
         this.host.laneFailed(this, error);
       }
-      return;
     }
-    this.host.soundChanged(this.laneId);
   }
 }

@@ -23,6 +23,7 @@ import {
   isSoloActive,
   isSourceLive,
   type LanePlan,
+  laneChannelId,
   layoutSignature,
   mergeRoles,
 } from "./compile";
@@ -169,19 +170,50 @@ function fingerprint(value: unknown): string {
   return hash.toString(36);
 }
 
-/** A plan's lane inserts and routes, as main's compiler wrote them. */
-function lanePlans(plan: EnginePlan): string {
+/**
+ * A plan's lane inserts and routes, as main's compiler wrote them. Main
+ * named a key by its station's channel; a key cable is no route.
+ */
+function lanePlans(
+  plan: EnginePlan,
+  patch: Pick<NodeGraph, "nodes" | "edges">
+): string {
+  const keyedBy = new Map(
+    patch.edges
+      .filter((edge) => edge.targetHandle === "in:sidechain:key")
+      .map((edge) => [edge.target, laneChannelId(edge.source)])
+  );
+  const asMain = (effects: readonly EffectConfig[]): EffectConfig[] =>
+    effects.map(
+      (effect) =>
+        ({
+          ...effect,
+          ...(effect.sidechain
+            ? { sidechain: { channelId: keyedBy.get(effect.id) } }
+            : {}),
+          ...("chains" in effect
+            ? {
+                chains: effect.chains.map((chain) => ({
+                  ...chain,
+                  effects: asMain(chain.effects),
+                })),
+              }
+            : {}),
+        }) as EffectConfig
+    );
   return fingerprint({
-    edges: [...plan.cables.values()].map((cable) => ({
-      from: cable.from.id,
-      gain: cable.gain,
-      id: cable.id,
-      muted: cable.muted,
-      to: cable.to.id,
-    })),
+    edges: [...plan.cables.values()]
+      .filter((cable) => cable.kind === "audio")
+      .map((cable) => ({
+        from: cable.from.id,
+        gain: cable.gain,
+        id: cable.id,
+        muted: cable.muted,
+        to: cable.to.id,
+      })),
     lanes: [...plan.lanes.values()].map((entry) => ({
       backend: entry.backend,
-      effects: entry.effects,
+      effects: asMain(entry.effects),
       filter: entry.filter,
       id: entry.id,
       layoutSignature: entry.layoutSignature,
@@ -287,6 +319,7 @@ describe("compile: the migrated Multiple layout", () => {
       from: { id: "a", kind: "lane" },
       gain: 1,
       id: "a->speakers",
+      kind: "audio",
       muted: false,
       reenters: false,
       to: { id: "speakers", kind: "sink" },
@@ -717,7 +750,7 @@ describe("compile: lanes in series", () => {
     expect(plan.issues).toEqual([]);
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
     expect(lane(plan, "a").filter).toBeNull();
-    expect(plan.modules.get("cut")).toEqual({
+    expect(plan.modules.get("filter:cut")).toEqual({
       filter: { frequency: 900, Q: 2, type: "lowpass" },
       id: "cut",
       kind: "filter",
@@ -971,7 +1004,7 @@ describe("Filter and Pan: connection and compile agree", () => {
       }
       const plan = compile(patch, ENV);
       expect(plan.issues).toEqual([]);
-      expect(plan.modules.get("native")?.kind).toBe(type);
+      expect(plan.modules.get(`${type}:native`)?.kind).toBe(type);
       expect(routes(plan)).toEqual(
         [`lane:a>${type}:native`, `${type}:native>sink:speakers`].sort()
       );
@@ -1003,11 +1036,14 @@ describe("Filter and Pan: connection and compile agree", () => {
     // The leading Filter stays on the strip, before the insert.
     expect(lane(plan, "a").filter).toMatchObject({ frequency: 120 });
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
-    expect(plan.modules.get("high")).toMatchObject({
+    expect(plan.modules.get("filter:high")).toMatchObject({
       filter: { frequency: 6000, type: "lowpass" },
       kind: "filter",
     });
-    expect(plan.modules.get("wide")).toMatchObject({ kind: "pan", pan: -0.5 });
+    expect(plan.modules.get("pan:wide")).toMatchObject({
+      kind: "pan",
+      pan: -0.5,
+    });
     expect(routes(plan)).toEqual([
       "filter:high>pan:wide",
       "lane:a>filter:high",
@@ -1239,7 +1275,10 @@ describe("Filter and Pan between FX", () => {
     // Web Audio's panner moves the left side right at +1; no openDAW device
     // does the same, so the Pan runs as the panner itself.
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
-    expect(plan.modules.get("width")).toMatchObject({ kind: "pan", pan: 1 });
+    expect(plan.modules.get("pan:width")).toMatchObject({
+      kind: "pan",
+      pan: 1,
+    });
     expect(plan.cables.get("width->echo")).toMatchObject({
       delay: 0,
       from: { id: "width", kind: "pan" },
@@ -1262,7 +1301,7 @@ describe("Filter and Pan between FX", () => {
       ENV
     );
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
-    expect(plan.modules.get("tone")?.kind).toBe("filter");
+    expect(plan.modules.get("filter:tone")?.kind).toBe("filter");
   });
 });
 
@@ -1628,7 +1667,7 @@ describe("compile: series-parallel regions", () => {
 
     expect(plan.issues).toEqual([]);
     expect(mergeRoles(merged, plan)).toEqual(new Map([["merge", "sum"]]));
-    expect(plan.modules.get("merge")).toMatchObject({ kind: "sum" });
+    expect(plan.modules.get("sum:merge")).toMatchObject({ kind: "sum" });
     expect(routes(plan)).toEqual([
       "lane:a>sum:merge",
       "lane:b>sum:merge",
@@ -1648,7 +1687,7 @@ describe("compile: series-parallel regions", () => {
     );
     const plan = compile(merged, ENV);
 
-    expect(plan.modules.get("merge")).toMatchObject({ kind: "sum" });
+    expect(plan.modules.get("sum:merge")).toMatchObject({ kind: "sum" });
     expect(plan.cables.has("b->merge")).toBe(false);
     expect(mergeRoles(merged, plan)).toEqual(new Map([["merge", "closes"]]));
   });
@@ -2039,7 +2078,7 @@ describe("compile: key cables", () => {
       const keyed = connectNodes(patch, key("talk", "voc"));
       expect(vocoderOf(keyed)).toMatchObject({
         modulatorSource: "external",
-        sidechain: { channelId: "n:talk" },
+        sidechain: { channelId: "node-key:voc" },
       });
 
       const keyEdge = keyed.edges.at(-1);
@@ -2067,7 +2106,7 @@ describe("compile: key cables", () => {
     };
     expect(vocoderOf(rewired)).toMatchObject({
       modulatorSource: "external",
-      sidechain: { channelId: "n:news" },
+      sidechain: { channelId: "node-key:voc" },
     });
     expect(vocoderOf(removeNodes(rewired, ["news"]))).toMatchObject({
       modulatorSource: "noise-pink",
@@ -2100,7 +2139,7 @@ describe("compile: key cables", () => {
     undoNodeGraph(store);
     expect(vocoderOf(store.state.graph)).toMatchObject({
       modulatorSource: "external",
-      sidechain: { channelId: "n:talk" },
+      sidechain: { channelId: "node-key:voc" },
     });
     redoNodeGraph(store);
     expect(vocoderOf(store.state.graph)).toMatchObject({
@@ -2108,29 +2147,236 @@ describe("compile: key cables", () => {
     });
   });
 
-  test("a key cable writes sidechain.channelId n:<source>", () => {
-    const plan = build(
-      [station("music"), station("talk"), fx("comp", "compressor"), speakers],
-      [
-        audio("music", "comp"),
-        audio("comp", "speakers"),
-        audio("talk", "speakers"),
-        key("talk", "comp"),
-      ]
-    );
-    expect(plan.issues).toEqual([]);
-    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
-      channelId: "n:talk",
-    });
-    expect(lane(plan, "talk").effects).toEqual([]);
-  });
-
-  test("only the first keyed FX in the lane takes the key", () => {
+  test("keys tap the cabled point, sum inputs and honor cable gain", () => {
     const plan = build(
       [
         station("music"),
         station("talk"),
         station("news"),
+        fx("comp", "compressor"),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "speakers"),
+        { ...key("talk", "comp"), gain: 0.5 },
+        key("news", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
+    expect(plan.modules.get("key:node-key:comp")).toEqual({
+      id: "node-key:comp",
+      kind: "key",
+      realtime: false,
+    });
+    expect(plan.cables.get("talk~>comp")).toEqual({
+      delay: 0,
+      edges: ["talk~>comp"],
+      from: { id: "talk", kind: "lane" },
+      gain: 0.5,
+      id: "talk~>comp",
+      kind: "key",
+      muted: false,
+      reenters: false,
+      to: { id: "node-key:comp", kind: "key" },
+    });
+    expect(plan.cables.get("news~>comp")?.to).toEqual({
+      id: "node-key:comp",
+      kind: "key",
+    });
+    // Key cables are no route: another station's solo leaves them on.
+    const soloed = build(
+      [
+        {
+          ...station("music"),
+          data: { ...station("music").data, strip: { solo: true } },
+        } as NodeInput,
+        station("talk"),
+        fx("comp", "compressor"),
+        speakers,
+      ],
+      [audio("music", "comp"), audio("comp", "speakers"), key("talk", "comp")]
+    );
+    expect(soloed.cables.get("talk~>comp")?.muted).toBe(false);
+  });
+
+  test("a node named like a key id keeps its own point beside the key", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor"),
+        node("node-key:comp", "filter", {
+          frequency: 900,
+          Q: 1,
+          type: "lowpass",
+        }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "node-key:comp"),
+        audio("node-key:comp", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(routes(plan)).toEqual(
+      [
+        "filter:node-key:comp>sink:speakers",
+        "lane:music>filter:node-key:comp",
+        "lane:talk>key:node-key:comp",
+      ].sort()
+    );
+    // Every point a cable reaches is one the routing graph makes.
+    const points = new Set(
+      [...plan.modules.values()].map((module) => endpointKey(module))
+    );
+    for (const cable of plan.cables.values()) {
+      if (cable.to.kind !== "sink") {
+        expect(points.has(endpointKey(cable.to))).toBe(true);
+      }
+    }
+  });
+
+  test("several processed or summed signals key several FX independently", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        fx("comp", "compressor"),
+        fx("gate", "gate"),
+        fx("crush", "crusher"),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        audio("talk", "crush"),
+        audio("crush", "speakers"),
+        audio("news", "speakers"),
+        key("talk", "comp"),
+        key("crush", "gate"),
+        key("news", "gate"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [comp, gate] = lane(plan, "music").effects;
+    expect(comp?.sidechain).toEqual({ channelId: "node-key:comp" });
+    expect(gate?.sidechain).toEqual({ channelId: "node-key:gate" });
+    // Talk is tapped, so its Crusher runs after its fader, and keys from there.
+    expect(lane(plan, "talk").effects).toEqual([]);
+    expect(routes(plan)).toEqual([
+      "lane:music>sink:speakers",
+      "lane:news>key:node-key:gate",
+      "lane:news>sink:speakers",
+      "lane:talk>key:node-key:comp",
+      "lane:talk>unit:crush",
+      "unit:crush>key:node-key:gate",
+      "unit:crush>sink:speakers",
+    ]);
+  });
+
+  test("FX one after the other keyed from the same cables each get their own key, in step", () => {
+    const pan = node("pan", "pan", { pan: 0.2 });
+    const started = performance.now();
+    const plan = build(
+      [
+        station("a"),
+        station("b"),
+        station("talk"),
+        node("mix", "merge"),
+        fx("comp", "compressor", { enabled: true }),
+        pan,
+        fx("gate", "gate", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("a", "mix"),
+        audio("b", "mix"),
+        audio("mix", "comp"),
+        audio("comp", "pan"),
+        audio("pan", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        key("talk", "gate"),
+      ]
+    );
+    // It settles at once: one key can't arrive with both.
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(plan.issues).toEqual([]);
+    expect(plan.units.get("mix")?.effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
+    expect(plan.units.get("gate")?.effects[0]?.sidechain).toEqual({
+      channelId: "node-key:gate",
+    });
+    // The gate's audio comes back from openDAW once more: its key waits.
+    expect(plan.cables.get("pan->gate")).toMatchObject({
+      delay: 0,
+      reenters: true,
+    });
+    expect(plan.cables.get("talk~>comp")?.delay).toBe(0);
+    expect(plan.cables.get("talk~>gate")?.delay).toBe(1);
+  });
+
+  test("FX apart keyed from the same cables share one key, and both wait for it", () => {
+    const plan = build(
+      [
+        station("a"),
+        station("b"),
+        station("c"),
+        station("d"),
+        station("talk"),
+        node("mix", "merge"),
+        node("mix2", "merge"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("verb", "cheapReverb", { enabled: true }),
+        node("pan", "pan", { pan: 0.2 }),
+        fx("gate", "gate", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("a", "mix"),
+        audio("b", "mix"),
+        audio("mix", "comp"),
+        audio("comp", "speakers"),
+        audio("c", "mix2"),
+        audio("d", "mix2"),
+        audio("mix2", "verb"),
+        audio("verb", "pan"),
+        audio("pan", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        key("talk", "gate"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(plan.units.get("gate")?.effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
+    expect(
+      [...plan.cables.values()].map((cable) => cable.edges)
+    ).toContainEqual(["talk~>comp", "talk~>gate"]);
+    // The gate's audio is a quantum late: the key and the Compressor's
+    // audio wait for it.
+    expect(plan.cables.get("pan->gate")?.reenters).toBe(true);
+    expect(plan.cables.get("talk~>comp")?.delay).toBe(1);
+    expect(plan.cables.get("a->mix")?.delay).toBe(1);
+    expect(plan.cables.get("b->mix")?.delay).toBe(1);
+  });
+
+  test("FX keyed from the same cables share one key", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
         fx("comp", "compressor"),
         fx("gate", "gate"),
         speakers,
@@ -2140,24 +2386,20 @@ describe("compile: key cables", () => {
         audio("comp", "gate"),
         audio("gate", "speakers"),
         key("talk", "comp"),
-        key("news", "gate"),
+        { ...key("talk", "gate"), id: "talk~>gate" },
       ]
     );
-    expect(codes(plan)).toEqual(["lane-key@gate"]);
     const [comp, gate] = lane(plan, "music").effects;
-    expect(comp?.sidechain).toEqual({ channelId: "n:talk" });
-    expect(gate?.sidechain).toBeUndefined();
-  });
-
-  test("the key goes to the FX the validator did not flag", () => {
-    const plan = build(
+    expect(comp?.sidechain).toEqual({ channelId: "node-key:comp" });
+    expect(gate?.sidechain).toEqual({ channelId: "node-key:comp" });
+    expect([...plan.modules.keys()]).toEqual(["key:node-key:comp"]);
+    // Both cables key their FX through the one key: neither is idle.
+    const playing = graph(
       [
         station("music"),
         station("talk"),
-        station("news"),
-        // Listed first, so the validator flags the compressor as the extra key.
-        fx("gate", "gate", { enabled: true }),
         fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
         speakers,
       ],
       [
@@ -2165,13 +2407,337 @@ describe("compile: key cables", () => {
         audio("comp", "gate"),
         audio("gate", "speakers"),
         key("talk", "comp"),
-        key("news", "gate"),
+        { ...key("talk", "gate"), id: "talk~>gate" },
       ]
     );
-    expect(codes(plan)).toEqual(["lane-key@comp"]);
-    const [comp, gate] = lane(plan, "music").effects;
-    expect(comp?.sidechain).toBeUndefined();
-    expect(gate?.sidechain).toEqual({ channelId: "n:news" });
+    expect(idleKeys(playing, compile(playing, ENV))).toEqual(new Map());
+  });
+
+  test("a key's id is never a sound's, whatever the node ids", () => {
+    // Under `<fx>:key`, this Compressor's key was the second station's sound.
+    const plan = build(
+      [
+        station("music"),
+        station("x:key"),
+        fx("node:n:x", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "node:n:x"),
+        audio("node:n:x", "speakers"),
+        audio("x:key", "speakers"),
+        key("x:key", "node:n:x"),
+      ]
+    );
+    const sounds = [...plan.lanes.values()].map(({ soundId }) => soundId);
+    const keys = [...plan.modules.values()]
+      .filter((module) => module.kind === "key")
+      .map((module) => module.id);
+    expect(keys).toHaveLength(1);
+    expect(sounds).not.toContain(keys[0]);
+  });
+
+  test("shared key cables whose ids hold a + are still bound", () => {
+    const playing = graph(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        { ...key("talk", "comp"), id: "talk+comp" },
+        { ...key("talk", "gate"), id: "talk+gate" },
+      ]
+    );
+    const plan = compile(playing, ENV);
+    expect([...plan.modules.keys()]).toEqual(["key:node-key:comp"]);
+    expect(idleKeys(playing, plan)).toEqual(new Map());
+  });
+
+  test("a key on a station keeps the Filter and Pan after it, as modules", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        node("tone", "filter", { frequency: 400 }),
+        node("width", "pan", { pan: 0.4 }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "tone"),
+        audio("tone", "width"),
+        audio("width", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    // The key taps Talk's fader: its Filter and Pan run after that point.
+    expect(lane(plan, "talk")).toMatchObject({ filter: null, pan: 0 });
+    expect(routes(plan)).toEqual([
+      "filter:tone>pan:width",
+      "lane:music>sink:speakers",
+      "lane:talk>filter:tone",
+      "lane:talk>key:node-key:comp",
+      "pan:width>sink:speakers",
+    ]);
+  });
+
+  test("a Filter or Pan module keys an effect from its own output", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("verb", "cheapReverb", { enabled: true }),
+        node("tone", "filter", { frequency: 2000 }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "verb"),
+        audio("verb", "tone"),
+        audio("tone", "speakers"),
+        key("tone", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(routes(plan)).toContain("filter:tone>key:node-key:comp");
+    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
+  });
+
+  test.each([
+    ["an effect on a branch", "verb", "main"],
+    ["a branch's port", "split", "branch-2"],
+  ])(
+    "a key from %s of a Split whose branches meet is refused; the Split plays on",
+    (_label, source, port) => {
+      const patch = graph(
+        [
+          station("a"),
+          station("music"),
+          fx("split", "fxComposite", { enabled: true }),
+          fx("verb", "cheapReverb", { enabled: true }),
+          node("merge", "merge"),
+          fx("comp", "compressor", { enabled: true }),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "verb", { from: "branch-1", id: "one" }),
+          audio("verb", "merge"),
+          audio("split", "merge", { from: "branch-2", id: "two" }),
+          audio("merge", "speakers"),
+          audio("music", "comp"),
+          audio("comp", "speakers"),
+          { ...key(source, "comp"), sourceHandle: `out:audio:${port}` },
+        ]
+      );
+      const plan = compile(patch, ENV);
+      expect(codes(plan)).toEqual([`key-enclosed@${source}~>comp`]);
+      expect(shape(lane(plan, "a").effects)).toEqual([
+        ["fxComposite", "split", [[["cheapReverb", "verb"]], []]],
+      ]);
+      expect(lane(plan, "music").effects[0]?.sidechain).toBeUndefined();
+      expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
+        [`${source}~>comp`]:
+          "A key can't start inside a Split whose branches meet again",
+      });
+    }
+  );
+
+  test("a key on a fan-out's head keeps the head a point", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("verb", "cheapReverb", { enabled: true }),
+        fx("echo", "delay", { enabled: true }),
+        node("mix", "merge"),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "verb"),
+        audio("talk", "echo"),
+        audio("verb", "mix"),
+        audio("echo", "mix"),
+        audio("mix", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(routes(plan)).toContain("lane:talk>key:node-key:comp");
+    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
+    expect(lane(plan, "talk").effects).toEqual([]);
+  });
+
+  test.each([
+    ["with its head keyed too", true],
+    ["alone", false],
+  ])(
+    "a key inside a fan-out whose branches meet opens it, %s",
+    (_label, headKeyed) => {
+      const plan = build(
+        [
+          station("music"),
+          station("talk"),
+          fx("comp", "compressor", { enabled: true }),
+          fx("gate", "gate", { enabled: true }),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("echo", "delay", { enabled: true }),
+          node("mix", "merge"),
+          speakers,
+        ],
+        [
+          audio("music", "comp"),
+          audio("comp", "gate"),
+          audio("gate", "speakers"),
+          audio("talk", "verb"),
+          audio("talk", "echo"),
+          audio("verb", "mix"),
+          audio("echo", "mix"),
+          audio("mix", "speakers"),
+          key("verb", "gate"),
+          ...(headKeyed ? [key("talk", "comp")] : []),
+        ]
+      );
+      expect(plan.issues).toEqual([]);
+      expect(routes(plan)).toContain("unit:verb>key:node-key:gate");
+      expect(lane(plan, "music").effects[1]).toMatchObject({
+        id: "gate",
+        sidechain: { channelId: "node-key:gate" },
+      });
+    }
+  );
+
+  test("a key reaching only another key is live, however many hops back", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        fx("a", "compressor", { enabled: true }),
+        fx("b", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("talk", "a"),
+        key("a", "b"),
+        audio("music", "b"),
+        audio("b", "speakers"),
+        key("news", "a"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(routes(plan)).toEqual(
+      [
+        "lane:music>sink:speakers",
+        "lane:news>key:node-key:a",
+        "lane:talk>key:node-key:b",
+      ].sort()
+    );
+    expect(lane(plan, "talk").effects[0]).toMatchObject({
+      id: "a",
+      sidechain: { channelId: "node-key:a" },
+    });
+  });
+
+  test("a processed key and its effect's audio arrive in step", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("news"),
+        station("talk"),
+        node("mix", "merge"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("eq", "revamp", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "mix"),
+        audio("news", "mix"),
+        audio("mix", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "eq"),
+        audio("eq", "speakers"),
+        key("eq", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(lane(plan, "talk").backend).toBe("official");
+    expect(plan.units.get("mix")?.backend).toBe("official");
+    const cables = Object.fromEntries(
+      [...plan.cables.values()].map((cable) => [
+        cable.id,
+        [cable.delay, cable.reenters],
+      ])
+    );
+    // The key comes back into openDAW from Talk's insert a quantum late on
+    // its own; the Compressor's audio waits that quantum for it.
+    expect(cables).toMatchObject({
+      "eq~>comp": [0, true],
+      "music->mix": [1, false],
+      "news->mix": [1, false],
+    });
+  });
+
+  test("muting every key restores a Vocoder's authored mode", () => {
+    const vocoderKeys = (muted: boolean) =>
+      nodeGraphSchema.parse({
+        ...vocoderPatch("noise-pink"),
+        edges: [
+          ...vocoderPatch("noise-pink").edges,
+          { ...key("talk", "voc"), muted },
+          { ...key("news", "voc"), muted: true },
+        ],
+      });
+    expect(vocoderOf(vocoderKeys(false))).toMatchObject({
+      modulatorSource: "external",
+      sidechain: { channelId: "node-key:voc" },
+    });
+    const unkeyed = vocoderOf(vocoderKeys(true));
+    expect(unkeyed).toMatchObject({ modulatorSource: "noise-pink" });
+    expect(unkeyed?.sidechain).toBeUndefined();
+    expect(compile(vocoderKeys(true), ENV).modules.size).toBe(0);
+  });
+
+  test("a key into shared FX connects", () => {
+    const plan = build(
+      [
+        station("a"),
+        station("b"),
+        station("talk"),
+        node("mix", "merge"),
+        fx("comp", "compressor", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("a", "mix"),
+        audio("b", "mix"),
+        audio("mix", "comp"),
+        audio("comp", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(plan.units.get("mix")?.effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
   });
 
   test("a stale sidechain without a key cable is dropped", () => {
@@ -2186,7 +2752,7 @@ describe("compile: key cables", () => {
     expect(lane(plan, "a").effects[0]?.sidechain).toBeUndefined();
   });
 
-  test("idleKeys leaves a working key out and says why the others idle", () => {
+  test("disabled FX and empty or muted key sources report an idle reason", () => {
     const patch = graph(
       [
         station("music"),
@@ -2208,7 +2774,7 @@ describe("compile: key cables", () => {
         key("talk", "comp"),
         key("news", "gate"),
         key("empty", "idle"),
-        // The loose gate is in no lane, so its key has nothing to key.
+        // The loose gate plays nowhere, so its key has nothing to key.
         key("music", "loose"),
       ]
     );
@@ -2216,8 +2782,7 @@ describe("compile: key cables", () => {
 
     expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
       "empty~>idle": "The station slot is empty",
-      "music~>loose": "A key only works on a station lane",
-      "news~>gate": "One key per lane",
+      "music~>loose": "This key isn't used",
     });
 
     const keyedOff = graph(
@@ -2227,6 +2792,87 @@ describe("compile: key cables", () => {
     expect(
       Object.fromEntries(idleKeys(keyedOff, compile(keyedOff, ENV)))
     ).toEqual({ "talk~>off": "Switch the effect on to use its key" });
+
+    const muted = graph(
+      [station("music"), station("talk"), fx("on", "compressor"), speakers],
+      [
+        audio("music", "on"),
+        audio("on", "speakers"),
+        { ...key("talk", "on"), muted: true },
+      ]
+    );
+    expect(Object.fromEntries(idleKeys(muted, compile(muted, ENV)))).toEqual({
+      "talk~>on": "This key is muted",
+    });
+  });
+
+  test("the compatibility engine keys one FX a chain; the next says so", () => {
+    const patch = graph(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        { ...key("talk", "gate"), gain: 0.5 },
+      ]
+    );
+    const compat = compile(patch, { crossOriginIsolated: false });
+    expect(Object.fromEntries(idleKeys(patch, compat))).toEqual({
+      "talk~>gate": "This key needs the openDAW engine",
+    });
+    expect(idleKeys(patch, compile(patch, ENV)).size).toBe(0);
+    // An openDAW chain the runtime moved to compatibility says so too.
+    expect(
+      Object.fromEntries(
+        idleKeys(patch, compile(patch, ENV), { comp: "compat", gate: "compat" })
+      )
+    ).toEqual({ "talk~>gate": "This key needs the openDAW engine" });
+    // FX sharing its one key both hear it.
+    const shared = {
+      ...patch,
+      edges: patch.edges.map((edge) =>
+        edge.id === "talk~>gate" ? { ...edge, gain: 1 } : edge
+      ),
+    };
+    const sharedPlan = compile(shared, { crossOriginIsolated: false });
+    expect(idleKeys(shared, sharedPlan).size).toBe(0);
+  });
+
+  test("a chain the runtime plays dry keys nothing", () => {
+    const patch = graph(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        { ...key("talk", "gate"), gain: 0.5 },
+      ]
+    );
+    const bypassed = { comp: "bypassed", gate: "bypassed" };
+    for (const env of [ENV, { crossOriginIsolated: false }]) {
+      expect(
+        Object.fromEntries(idleKeys(patch, compile(patch, env), bypassed))
+      ).toEqual({
+        "talk~>comp":
+          "The effects engine couldn't start, so the key isn't used",
+        "talk~>gate":
+          "The effects engine couldn't start, so the key isn't used",
+      });
+    }
   });
 
   test("idleKeys flags a key on an FX in a branch the runtime skips", () => {
@@ -2286,14 +2932,14 @@ describe("compile: key cables", () => {
 
     expect(codes(plan)).toEqual(["duplicate-edge@again"]);
     expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
-      channelId: "n:talk",
+      channelId: "node-key:comp",
     });
     expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
       again: plan.issues[0]?.message,
     });
   });
 
-  test("a key drawn after the station's FX is refused and binds nothing", () => {
+  test("a key drawn after a station's FX keys from that point", () => {
     const patch = graph(
       [
         station("music"),
@@ -2307,17 +2953,22 @@ describe("compile: key cables", () => {
         audio("comp", "speakers"),
         audio("talk", "crush"),
         audio("crush", "speakers"),
-        // The engine keys from talk's raw signal, not from after the crusher.
         key("crush", "comp"),
       ]
     );
     const plan = compile(patch, ENV);
 
-    expect(codes(plan)).toEqual(["sidechain-source@crush~>comp"]);
-    expect(lane(plan, "music").effects[0]?.sidechain).toBeUndefined();
-    expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
-      "crush~>comp": "A key must come from the station itself",
+    expect(plan.issues).toEqual([]);
+    expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
     });
+    // The tap ends Talk's insert at the Crusher: the key hears its output.
+    expect(shape(lane(plan, "talk").effects)).toEqual([["crusher", "crush"]]);
+    expect(plan.cables.get("crush~>comp")?.from).toEqual({
+      id: "talk",
+      kind: "lane",
+    });
+    expect(idleKeys(patch, plan).size).toBe(0);
   });
 
   test("a key from an empty station slot binds nothing", () => {
@@ -2406,26 +3057,30 @@ describe("compile: backend estimate", () => {
     expect(plan.monitoringChannels).toBe(6);
   });
 
-  test("a keying lane that is official itself counts once", () => {
+  test("a key counts once for every FX keyed from it", () => {
     const plan = build(
       [
         station("music"),
         fx("duck", "compressor", { enabled: true }),
+        station("news"),
+        fx("news-duck", "compressor", { enabled: true }),
         station("talk"),
-        fx("talk-comp", "compressor", { enabled: true }),
         speakers,
       ],
       [
         audio("music", "duck"),
         audio("duck", "speakers"),
-        audio("talk", "talk-comp"),
-        audio("talk-comp", "speakers"),
+        audio("news", "news-duck"),
+        audio("news-duck", "speakers"),
+        audio("talk", "speakers"),
         key("talk", "duck"),
+        { ...key("talk", "news-duck"), id: "talk~>news-duck" },
       ]
     );
     expect(lane(plan, "music").backend).toBe("official");
-    expect(lane(plan, "talk").backend).toBe("official");
-    expect(plan.monitoringChannels).toBe(4);
+    expect(lane(plan, "news").backend).toBe("official");
+    // Two lanes and the one key they share.
+    expect(plan.monitoringChannels).toBe(6);
   });
 
   test("radio-only FX force compat, and a dry lane has no FX runtime", () => {
@@ -2534,19 +3189,18 @@ describe("compile: validation first", () => {
     ]);
   });
 
-  test("an issue a dropped node uncovers is reported too", () => {
+  test("a dropped node's cables go with it, and the rest re-validates", () => {
     const ids = Array.from({ length: 25 }, (_, index) => `s${index + 1}`);
     const plan = build(
       [...ids.map((id) => station(id)), fx("comp", "compressor"), speakers],
       [audio("s25", "comp"), audio("comp", "speakers"), key("s1", "comp")]
     );
-    // s25 is over the source budget; without it the key has no lane to key.
-    expect(codes(plan)).toEqual([
-      "budget-sources@s25",
-      "sidechain-target@s1~>comp",
-    ]);
+    // s25 is over the source budget; without it the Compressor and its key
+    // play nowhere.
+    expect(codes(plan)).toEqual(["budget-sources@s25"]);
     expect(plan.lanes.has("s25")).toBe(false);
     expect(plan.cables.size).toBe(0);
+    expect(plan.modules.size).toBe(0);
   });
 
   test("the playing budget keeps the lane in the plan", () => {
@@ -2615,8 +3269,52 @@ describe("compile: patches main accepted", () => {
       picked?: string[];
     }
   >;
-  /** Patches whose plan changes on purpose, each with the reason. */
-  const exceptions = new Map<string, string>();
+  /**
+   * Patches whose plan changes on purpose: each turns its plan back into
+   * main's, undoing just that change.
+   */
+  const exceptions = new Map<string, (plan: EnginePlan) => EnginePlan>([
+    [
+      // A key taps its station after the fader, so the keyed station's
+      // own FX run after its fader too, as a unit, and the key takes two
+      // channels of its own where main's was the station's.
+      "1sbwrnhleu4r",
+      (plan) => {
+        const unit = plan.units.get("talk-comp");
+        const talk = plan.lanes.get("talk");
+        expect(plan.units.size).toBe(1);
+        expect(talk?.effects).toEqual([]);
+        expect(plan.monitoringChannels).toBe(6);
+        if (!(unit && talk)) {
+          throw new Error("Expected talk's FX as a unit");
+        }
+        const insert = {
+          ...talk,
+          backend: unit.backend,
+          effects: unit.effects,
+          layoutSignature: unit.layoutSignature,
+          nodes: [...talk.nodes, ...unit.nodes],
+        };
+        const cables = [...plan.cables.values()].filter(
+          (cable) => cable.to.id !== unit.id
+        );
+        return {
+          ...plan,
+          cables: new Map(
+            cables.map((cable) => [
+              cable.id,
+              cable.from.id === unit.id
+                ? { ...cable, from: { id: talk.id, kind: "lane" } }
+                : cable,
+            ])
+          ),
+          lanes: new Map([...plan.lanes, [talk.id, insert]]),
+          monitoringChannels: plan.monitoringChannels - 2,
+          units: new Map(),
+        };
+      },
+    ],
+  ]);
 
   test.each(Object.keys(fixtures))("%s compiles as it did on main", (name) => {
     const fixture = fixtures[name];
@@ -2626,14 +3324,16 @@ describe("compile: patches main accepted", () => {
     for (const url of fixture.picked ?? []) {
       keepLocalFileUrl(url);
     }
-    const plan = compile(fixture.graph, fixture.env);
+    const compiled = compile(fixture.graph, fixture.env);
     forgetLocalFileUrls();
-    if (exceptions.has(name)) {
-      expect(lanePlans(plan)).not.toBe(fixture.plan);
-      return;
-    }
-    expect(plan.units.size + plan.modules.size).toBe(0);
-    expect(lanePlans(plan)).toBe(fixture.plan);
+    const plan = exceptions.get(name)?.(compiled) ?? compiled;
+    const asMain = lanePlans(plan, fixture.graph);
+    // A key is its effect's sidechain, not a route.
+    const routed = [...plan.modules.values()].filter(
+      (module) => module.kind !== "key"
+    );
+    expect(plan.units.size + routed.length).toBe(0);
+    expect(asMain).toBe(fixture.plan);
   });
 
   test("every exception is a fixture", () => {

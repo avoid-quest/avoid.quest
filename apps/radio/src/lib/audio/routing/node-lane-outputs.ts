@@ -51,10 +51,10 @@ export type NodeLaneOutputsOptions = {
   getSends: (laneId: string) => ReadonlyMap<string, SendPlan>;
   route: LaneSinkRoute;
   /**
-   * Runs as the lane's sound connects: its native nodes exist from here,
-   * and its playback has not started yet.
+   * Runs as the lane's sound connects, before its effects do: its native
+   * nodes exist from here, in `context`, and its playback has not started.
    */
-  onConnect?: (laneId: string) => void;
+  onConnect?: (laneId: string, context: BaseAudioContext) => void;
   wait?: (ms: number) => Promise<void>;
 };
 
@@ -121,7 +121,7 @@ export function createNodeLaneOutputs({
   const connectorFor =
     (laneId: string, lane: LaneOutput): SoundOutputConnector =>
     (source) => {
-      onConnect?.(laneId);
+      onConnect?.(laneId, source.context);
       const out = ensureOut(lane, source.context);
       source.connect(out);
       lane.sends?.settle(getSends(laneId));

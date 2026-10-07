@@ -756,9 +756,11 @@ export function getNodePlayback(
     effects: options.effects ?? {
       attachEffectsInsert: (id, input, output, desired) =>
         ctx.audio.attachEffectsInsert(id, input, output, desired),
+      connectEffectsKey: (id, node) => ctx.audio.connectEffectsKey(id, node),
       detachEffectsInsert: (id) => ctx.audio.detachEffectsInsert(id),
       reconcileEffects: (soundId, desired) =>
         ctx.audio.reconcileEffects(soundId, desired),
+      releaseEffectsKey: (id) => ctx.audio.releaseEffectsKey(id),
       setEffectFields: (...args) => ctx.audio.setEffectFields(...args),
       subscribeEffectsRuntimeOutcome: (...args) =>
         ctx.audio.subscribeEffectsRuntimeOutcome(...args),

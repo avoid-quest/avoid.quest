@@ -229,6 +229,7 @@ async function harness(
     }),
     effects: {
       attachEffectsInsert: () => Promise.resolve(outcome),
+      connectEffectsKey: () => undefined,
       detachEffectsInsert: () => undefined,
       reconcileEffects: (_id, desired) => {
         for (const config of desired.tree) {
@@ -240,6 +241,7 @@ async function harness(
         }
         return Promise.resolve(outcome);
       },
+      releaseEffectsKey: () => undefined,
       setEffectFields: (_id, id, config, transient) => {
         if (transient && effectWriteError) {
           throw effectWriteError;
@@ -275,7 +277,7 @@ async function harness(
           .filter(({ to }) => to === "sink:speakers")
           .reduce((sum, { level }) => sum + level, 0);
       onConnect = (id) => {
-        options.onConnect?.(id);
+        options.onConnect?.(id, new FakeAudioContext() as never);
         levels.set(id, speakers(id));
       };
       return {

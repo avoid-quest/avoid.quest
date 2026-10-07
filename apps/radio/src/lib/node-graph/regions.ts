@@ -15,7 +15,8 @@
  *   and comes back a quantum late. A Pan has no exact openDAW equal (Web
  *   Audio's panner moves one side into the other), so it stays a module;
  * - after a node whose output goes to several places that don't meet
- *   again (an open fan-out);
+ *   again (an open fan-out), or that a key cable taps, so the key hears
+ *   exactly what the node's cables carry;
  * - before every output (sink).
  *
  * A **segment** is the series between points, its split regions included:
@@ -47,6 +48,10 @@ import { type IssueCode, liveAudioNodes, type WiredEdge } from "./validate";
 
 /** A Split, Band Split or implicit fan-out takes 2 to 4 branches. */
 export const MAX_SPLIT_BRANCHES = 4;
+
+/** Why a key inside a closed Split is refused. */
+export const ENCLOSED_KEY_MESSAGE =
+  "A key can't start inside a Split whose branches meet again";
 
 /** Why an explicit Split whose branches go different ways is refused. */
 export const OPEN_SPLIT_MESSAGE =
@@ -229,8 +234,11 @@ export class FreshIds {
 export type SegmentExit = {
   /** The cable ids it folds, joined into the plan cable's id. */
   ids: string[];
+  /** The node it reaches; a key cable's keyed effect. */
   target: string;
   trim: Trim;
+  /** A key cable: it feeds its target's detector, not its audio. */
+  key?: true;
 };
 
 export type Segment = {
@@ -325,6 +333,10 @@ export class RegionLowerer {
   private readonly patchIds: Set<string>;
   private readonly outs = new Map<string, WiredEdge[]>();
   private readonly ins = new Map<string, WiredEdge[]>();
+  /** Key cables by the node they tap. */
+  private readonly keys = new Map<string, WiredEdge[]>();
+  /** Key cables tapping inside a closed Split, which plays in openDAW. */
+  private readonly enclosedKeys: string[] = [];
   private readonly postDominators = new Map<string, Set<string>>();
   private readonly regionCache = new Map<string, Set<string>>();
   /** Filter and Pan nodes on their source's strip. */
@@ -351,24 +363,71 @@ export class RegionLowerer {
     const audio = wired.filter(
       ({ from, to }) => from.kind === "audio" && to.kind === "audio"
     );
-    const live = liveAudioNodes(
-      audio.filter(({ edge }) => sinks.has(edge.target)),
-      audio.filter(({ edge }) => !sinks.has(edge.target))
+    const keys = wired.filter(
+      ({ from, to }) => from.kind === "audio" && to.kind === "sidechain"
     );
+    const inner = audio.filter(({ edge }) => !sinks.has(edge.target));
+    const exits = audio.filter(({ edge }) => sinks.has(edge.target));
+    // What keys an effect that plays is live too, though it reaches no
+    // output, and so on back along every key and cable until nothing new.
+    let live = liveAudioNodes(exits, inner);
+    for (let size = -1; size !== live.size; ) {
+      ({ size } = live);
+      const heard = live;
+      live = liveAudioNodes(
+        [...exits, ...keys.filter(({ edge }) => heard.has(edge.target))],
+        inner
+      );
+    }
     const fed = this.fedNodes(audio);
+    const kept = (source: string) => fed.has(source) && live.has(source);
     for (const wire of audio) {
       const { source, target } = wire.edge;
-      if (
-        fed.has(source) &&
-        live.has(source) &&
-        (sinks.has(target) || live.has(target))
-      ) {
+      if (kept(source) && (sinks.has(target) || live.has(target))) {
         push(this.outs, source, wire);
         push(this.ins, target, wire);
       }
     }
     this.findLeading();
     this.settleCuts();
+    // Only an effect a source plays through has a detector to feed.
+    this.placeKeys(
+      keys.filter(({ edge }) => kept(edge.source) && kept(edge.target))
+    );
+  }
+
+  /**
+   * Makes each key's tap a point. A closed Split's signals stay inside its
+   * openDAW container, its ports included, so a key there can't hear one
+   * without opening the Split: it is refused. An implicit fan-out has no
+   * container: a tap on its head or inside it is a point that opens it.
+   */
+  private placeKeys(keys: readonly WiredEdge[]): void {
+    const enclosed = new Set(
+      [...this.closed].flatMap(([head, meeting]) => {
+        const effect = effectOf(this.byId.get(head));
+        return effect && isEffectContainer(effect)
+          ? [head, ...this.regionOf(head, meeting)]
+          : [];
+      })
+    );
+    for (const wire of keys) {
+      if (enclosed.has(wire.edge.source)) {
+        this.enclosedKeys.push(wire.edge.id);
+      } else {
+        push(this.keys, wire.edge.source, wire);
+      }
+    }
+    // Each tap left is a point, outside every closed Split.
+    if (this.keys.size > 0) {
+      this.findLeading();
+      this.settleCuts();
+    }
+  }
+
+  /** Key cables that tap inside a closed Split. */
+  keysInsideRegions(): readonly string[] {
+    return this.enclosedKeys;
   }
 
   /** Nodes a source reaches along audio cables, the sources included. */
@@ -416,6 +475,7 @@ export class RegionLowerer {
    * series, before any FX, branch or join.
    */
   private findLeading(): void {
+    this.leading.clear();
     for (const node of this.byId.values()) {
       if (!getNodeDefinition(node.type).source) {
         continue;
@@ -433,8 +493,10 @@ export class RegionLowerer {
         }
         const outs = this.outsOf(id);
         const next = outs[0]?.edge.target;
+        // A key tap is a point: the strip ends there.
         id =
           getNodeDefinition(type).effectType ||
+          this.keys.has(id) ||
           outs.length !== 1 ||
           next === undefined ||
           this.sinks.has(next) ||
@@ -488,7 +550,33 @@ export class RegionLowerer {
 
   /** A point after the node: its output is a real signal. */
   isCutAfter(id: string): boolean {
-    return this.isModule(id) || (this.isRegionHead(id) && !this.closed.has(id));
+    return (
+      this.isModule(id) ||
+      this.keys.has(id) ||
+      (this.isRegionHead(id) && !this.closed.has(id))
+    );
+  }
+
+  /**
+   * Where the signal leaving `id` goes as a point: each cable out, and each
+   * key cable tapping it, with `trim` still pending.
+   */
+  exitsOf(id: string, trim: Trim = UNITY): SegmentExit[] {
+    return [
+      ...this.outsOf(id).map(({ edge }) => ({
+        ids: [edge.id],
+        target: edge.target,
+        trim: addTrim(trim, edge),
+      })),
+      ...(this.keys.get(id) ?? []).map(
+        ({ edge }): SegmentExit => ({
+          ids: [edge.id],
+          key: true,
+          target: edge.target,
+          trim: addTrim(trim, edge),
+        })
+      ),
+    ];
   }
 
   private isRegionHead(id: string): boolean {
@@ -589,7 +677,11 @@ export class RegionLowerer {
     );
     const heads = new Map<string, string>();
     for (const id of this.outs.keys()) {
-      const meeting = this.isRegionHead(id) ? this.meetingPoint(id) : null;
+      // A tapped head is a point: its key hears the real fan-out signal.
+      const meeting =
+        this.isRegionHead(id) && !this.keys.has(id)
+          ? this.meetingPoint(id)
+          : null;
       if (meeting !== null) {
         heads.set(id, meeting);
       }
@@ -743,11 +835,7 @@ class SegmentLowerer {
     if (regions.isCutAfter(current) || outs.length !== 1) {
       return {
         effects,
-        exits: outs.map(({ edge }) => ({
-          ids: [edge.id],
-          target: edge.target,
-          trim: addTrim(walk.trim, edge),
-        })),
+        exits: regions.exitsOf(current, walk.trim),
         trim: walk.trim,
       };
     }

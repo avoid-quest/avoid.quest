@@ -439,7 +439,9 @@ export function createNodeDeviceSinks({
       const changed =
         outputs.size !== next.size ||
         [...next].some(
-          ([sinkId, plan]) => outputs.get(sinkId)?.deviceId !== plan.deviceId
+          ([sinkId, plan]) =>
+            !outputs.has(sinkId) ||
+            outputs.get(sinkId)?.deviceId !== plan.deviceId
         );
       outputs = new Map(next);
       syncDevices();

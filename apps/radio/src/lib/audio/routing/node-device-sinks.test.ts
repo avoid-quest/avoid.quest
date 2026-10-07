@@ -209,6 +209,17 @@ describe("createNodeDeviceSinks", () => {
     expect(h.sinks.statuses()).toEqual({});
   });
 
+  test("replacing an Output device with Speakers publishes the statuses again", () => {
+    const h = createHarness();
+    h.sinks.sync(devicesOf([["desk", null]]));
+    h.onStatus.mockClear();
+
+    h.sinks.sync(new Map([["out", { muted: false }]]));
+
+    expect(h.onStatus).toHaveBeenCalled();
+    expect(h.sinks.statuses()).toEqual({});
+  });
+
   test("every send into one node shares its gain and graph", () => {
     const h = createHarness();
     h.sinks.sync(devicesOf([["desk", "usb"]]));

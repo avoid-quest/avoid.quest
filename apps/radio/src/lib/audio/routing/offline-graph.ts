@@ -107,9 +107,13 @@ function mono(signal: Signal, frames: number): Float32Array {
 }
 
 export class OfflineGraph {
-  readonly sampleRate = 48_000;
+  readonly sampleRate: number;
   readonly currentTime = 0;
   readonly nodes: OfflineNode[] = [];
+
+  constructor(sampleRate = 48_000) {
+    this.sampleRate = sampleRate;
+  }
 
   createGain(): OfflineNode {
     return new OfflineNode(this, ([input = []], node) =>
@@ -162,10 +166,10 @@ export class OfflineGraph {
       return [
         sum([input], this.frames).map((channel) => {
           const out = zeros(channel.length);
-          out.set(
-            channel.subarray(0, Math.max(0, channel.length - samples)),
-            samples
-          );
+          // A delay as long as the render leaves it silent.
+          if (samples < channel.length) {
+            out.set(channel.subarray(0, channel.length - samples), samples);
+          }
           return out;
         }),
       ];

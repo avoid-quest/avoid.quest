@@ -245,13 +245,17 @@ export class LaneInstance {
     this.parameters = new LaneParameters({
       active: () => !this.retiring,
       audio: host.ctx.audio,
-      effects: {
-        setEffectFields: host.setEffectFields,
-        subscribeEffectsRuntimeOutcome: host.subscribeEffectsRuntimeOutcome,
-      },
+      effects: host,
       plan: () => slot.plan,
       soundId,
     });
+    this.signal.addEventListener(
+      "abort",
+      host.subscribeEffectsRuntimeOutcome(soundId, () => {
+        this.parameters.reapply();
+        host.laneOutputs.refresh(slot.laneId);
+      })
+    );
     // A Track or File sound's state drives its renewal, repeat and advance.
     if (isTrackRadio(radio)) {
       host.ctx.channels.subscribeRuntime("node", plan.channelId, soundId, {

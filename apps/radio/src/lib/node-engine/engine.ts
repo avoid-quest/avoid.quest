@@ -45,6 +45,7 @@ import {
   laneChannelId,
 } from "@/lib/node-graph/compile";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
+import { MAX_EDGE_GAIN } from "@/lib/node-graph/schema";
 import type { OutputRouting } from "@/lib/output-routing.js";
 import {
   type ResolvePlatformStream,
@@ -676,7 +677,10 @@ export function createNodeEngine(options: NodeEngineOptions) {
         ) {
           return "unavailable";
         }
-        transientSends.set(target.edgeId, value);
+        transientSends.set(
+          target.edgeId,
+          Math.max(0, Math.min(MAX_EDGE_GAIN, value))
+        );
         laneOutputs.refresh(laneId);
         return "applied";
       }

@@ -38,10 +38,7 @@ type ParamHost = {
   plan: () => LanePlan | null;
   active: () => boolean;
   audio: Pick<AudioManager, "getStripNodes" | "getEffectsRuntimeOutcome">;
-  effects: Pick<
-    AudioManager,
-    "setEffectFields" | "subscribeEffectsRuntimeOutcome"
-  >;
+  effects: Pick<AudioManager, "setEffectFields">;
 };
 
 /** Scalar overlays belong to one sound; baselines always come from its latest plan. */
@@ -51,14 +48,9 @@ export class LaneParameters {
     { target: LaneParamTarget; value: number }
   >();
   private readonly host: ParamHost;
-  private readonly unsubscribe: () => void;
 
   constructor(host: ParamHost) {
     this.host = host;
-    this.unsubscribe = host.effects.subscribeEffectsRuntimeOutcome(
-      host.soundId,
-      () => this.reapply()
-    );
   }
 
   available(target: EngineParamTarget): boolean {
@@ -109,16 +101,9 @@ export class LaneParameters {
     ) {
       return "unavailable";
     }
-    const key = paramKey(target);
-    const previous = this.transient.get(key);
-    this.transient.set(key, { target, value });
     const result = this.write(target, value);
-    if (result !== "applied") {
-      if (previous) {
-        this.transient.set(key, previous);
-      } else {
-        this.transient.delete(key);
-      }
+    if (result === "applied") {
+      this.transient.set(paramKey(target), { target, value });
     }
     return result;
   }
@@ -144,7 +129,7 @@ export class LaneParameters {
 
   private write(target: LaneParamTarget, value: number): EffectWriteResult {
     if ("effectId" in target) {
-      return this.writeEffect(target.effectId);
+      return this.writeEffect(target.effectId, { target, value });
     }
     const nodes = this.host.audio.getStripNodes(this.host.soundId);
     if (nodes) {
@@ -159,7 +144,10 @@ export class LaneParameters {
     return "applied";
   }
 
-  private writeEffect(effectId: string): EffectWriteResult {
+  private writeEffect(
+    effectId: string,
+    overlay?: { target: EffectTarget; value: number }
+  ): EffectWriteResult {
     let config = findEffectInTree(this.host.plan()?.effects ?? [], effectId);
     if (!config) {
       return "unavailable";
@@ -169,6 +157,9 @@ export class LaneParameters {
       if ("effectId" in target && target.effectId === effectId) {
         config = withEffectParam(config, target, value);
       }
+    }
+    if (overlay) {
+      config = withEffectParam(config, overlay.target, overlay.value);
     }
     if (effectFieldsAreStructural(authored, config)) {
       return "structural";
@@ -218,7 +209,6 @@ export class LaneParameters {
   }
 
   retire(): void {
-    this.unsubscribe();
     this.transient.clear();
   }
 }

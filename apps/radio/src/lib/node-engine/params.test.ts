@@ -17,7 +17,7 @@ import {
 } from "@/lib/node-graph/graph-edits";
 // biome-ignore lint/performance/noNamespaceImport: fail at the forbidden authored-store boundary
 import * as editor from "@/lib/node-graph/node-store";
-import { nodeGraphSchema } from "@/lib/node-graph/schema";
+import { MAX_EDGE_GAIN, nodeGraphSchema } from "@/lib/node-graph/schema";
 import type { PlaybackActionContext } from "@/lib/playback-action-context";
 import {
   resetAllPlaybackRuntime,
@@ -109,6 +109,7 @@ async function harness(
   const authored = new Map<string, EffectConfig>();
   const fields = new Map<string, EffectConfig>();
   let allowedEffect: string | null = null;
+  let effectWriteError: Error | null = null;
   const outcome: EffectsRuntimeOutcome = {
     backend: connecting ? null : backend,
     ready: !connecting,
@@ -190,6 +191,9 @@ async function harness(
         return Promise.resolve(outcome);
       },
       setEffectFields: (_id, id, config, transient) => {
+        if (transient && effectWriteError) {
+          throw effectWriteError;
+        }
         if (transient && !effectReady) {
           return "unavailable";
         }
@@ -266,13 +270,17 @@ async function harness(
       return nodes;
     },
     plan,
-    ready() {
+    ready(nextBackend = backend) {
       effectReady = true;
       // A new official unit starts on the authored tree, after the native shell connected.
       for (const [id, config] of authored) {
         fields.set(id, config);
       }
-      Object.assign(outcome, { backend, ready: true, status: "ready" });
+      Object.assign(outcome, {
+        backend: nextBackend,
+        ready: true,
+        status: "ready",
+      });
       for (const listener of listeners) {
         listener(outcome);
       }
@@ -285,6 +293,9 @@ async function harness(
       onConnect?.("a");
     },
     store,
+    throwOnEffectWrite(error: Error | null) {
+      effectWriteError = error;
+    },
   };
 }
 
@@ -303,6 +314,66 @@ const frequency: EngineParamTarget = {
 const send: EngineParamTarget = { edgeId: "comp->speakers", kind: "send" };
 
 describe("Node engine parameters", () => {
+  test.each([undefined, -12])(
+    "a throwing effect write keeps the previous overlay (%s)",
+    async (previous) => {
+      const h = await harness();
+      const baseline = h.authored.get("comp");
+      if (baseline?.type !== "compressor") {
+        throw new Error("Missing authored compressor");
+      }
+      if (previous !== undefined) {
+        expect(h.engine.setParam(threshold, previous)).toBe("applied");
+      }
+      h.throwOnEffectWrite(new Error("Transaction failed"));
+      expect(() => h.engine.setParam(threshold, -30)).toThrow(
+        "Transaction failed"
+      );
+      h.throwOnEffectWrite(null);
+      h.ready();
+      expect(h.fields.get("comp")).toEqual(
+        previous === undefined ? baseline : { ...baseline, threshold: previous }
+      );
+      h.engine.clearTransient(threshold);
+      expect(h.fields.get("comp")).toEqual(baseline);
+    }
+  );
+
+  test.each([false, true])(
+    "backend outcomes refresh sends and preserve their edge overlay (clear=%s)",
+    async (clear) => {
+      const h = await harness();
+      expect(h.engine.setParam(send, 0.3)).toBe("applied");
+      h.ready("compatibility");
+      expect(h.levels.get("a")).toBe(1);
+      expect(h.engine.setParam(send, 0.8)).toBe("unavailable");
+      if (clear) {
+        h.engine.clearTransient(send);
+      }
+      h.ready("official");
+      expect(h.levels.get("a")).toBe(clear ? 1 : 0.3);
+    }
+  );
+
+  test.each([
+    [-1, 0],
+    [0, 0],
+    [2, 2],
+    [MAX_EDGE_GAIN, MAX_EDGE_GAIN],
+    [MAX_EDGE_GAIN + 1, MAX_EDGE_GAIN],
+    [Number.MAX_VALUE, MAX_EDGE_GAIN],
+  ])(
+    "a transient send of %s stays within the cable range",
+    async (value, gain) => {
+      const h = await harness();
+      expect(h.engine.setParam(send, value)).toBe("applied");
+      expect(h.levels.get("a")).toBe(gain);
+      expect(h.engine.plan.edges.get("comp->speakers")?.gain).toBe(1);
+      h.engine.clearTransient(send);
+      expect(h.levels.get("a")).toBe(1);
+    }
+  );
+
   test("transient frames never compile, commit the store, persist, or change authored plans/configs", async () => {
     const h = await harness();
     const { state } = h.store;

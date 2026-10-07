@@ -614,13 +614,16 @@ export class RegionLowerer {
     );
   }
 
-  /** An explicit Split whose branches don't meet again: a split module. */
+  /**
+   * An explicit Split whose branches don't meet again, or whose ports only
+   * key: a split module.
+   */
   isOpenSplit(id: string): boolean {
     const effect = effectOf(this.byId.get(id));
     return (
       effect !== null &&
       isEffectContainer(effect) &&
-      this.outs.has(id) &&
+      (this.outs.has(id) || this.keys.has(id)) &&
       !this.closed.has(id)
     );
   }

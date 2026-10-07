@@ -964,8 +964,11 @@ class PlanBuilder {
     const on = effect.enabled;
     const mix = on ? effect.dryWet : 0;
     const output = on ? effect.outputGain : 1;
-    // A Split's dry signal is shared out among the ports it reaches.
-    const share = effect.type === "fxComposite" ? 1 / ports.size : 1;
+    // A Split's dry signal is shared out among the ports whose audio leaves
+    // it; a port that only keys carries its branch, as openDAW's entry does.
+    const carries = ({ exits }: SplitBranch) => exits.some((exit) => !exit.key);
+    const audible = [...ports.values()].filter(carries).length;
+    const share = effect.type === "fxComposite" ? 1 / audible : 1;
     const soloed = ({ chain, exits }: SplitBranch) =>
       chain.solo || exits.some((exit) => exit.solo);
     const anySolo = [...ports.values()].some(soloed);
@@ -977,7 +980,7 @@ class PlanBuilder {
         balance: balanceOf(chain.pan),
         cell: { gain: mix * output * chain.gain, muted: !open },
         dry:
-          mix < 1
+          mix < 1 && carries(port)
             ? { from, trim: { gain: (1 - mix) * share * output, muted: false } }
             : undefined,
         input: on ? effect.inputGain : 1,

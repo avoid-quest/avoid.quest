@@ -205,7 +205,7 @@ function play(
 }
 
 function split(
-  type: "fxComposite" | "frequencySplit",
+  type: "fxComposite" | "frequencySplit" | "stereoSplit",
   overrides: Record<string, unknown> = {},
   chains: (chain: EffectChainConfig, index: number) => EffectChainConfig = (
     chain
@@ -569,6 +569,53 @@ describe("Splits whose branches go different places", () => {
       )
     );
     expect(residualDb(played.key("gate"), expected, TAIL)).toBeLessThan(-90);
+  });
+
+  test("a key from a port that only keys hears that port's branch", () => {
+    const played = play(
+      split("stereoSplit", { dryWet: 1 }, (chain) => ({ ...chain, gain: 0.5 })),
+      [
+        cable("a", "split"),
+        cable("a", "gate"),
+        cable("gate", "speakers"),
+        {
+          ...cable("split", "gate", { from: "left" }),
+          id: "key",
+          targetHandle: "in:sidechain:key",
+        },
+      ]
+    );
+    const [left = new Float32Array(FRAMES)] = played.input;
+    expect(
+      residualDb(
+        played.key("gate"),
+        [left.map((sample) => sample * 0.5), new Float32Array(FRAMES)],
+        TAIL
+      )
+    ).toBeLessThan(-90);
+  });
+
+  test("a port that only keys takes no share of the dry signal", () => {
+    const played = play(split("fxComposite", { dryWet: 0.5 }), [
+      ...twoWays(),
+      cable("a", "gate"),
+      cable("gate", "speakers"),
+      {
+        ...cable("split", "gate", { from: "branch-3" }),
+        id: "key",
+        targetHandle: "in:sidechain:key",
+      },
+    ]);
+    const gain =
+      createNodeEffectConfig("fxComposite", "split").chains[0]?.gain ?? 1;
+    // The desk's branch takes half the dry signal, as the fx branch does.
+    const desk = played.input.map((channel) =>
+      channel.map((sample) => sample * (0.5 * 0.5 + 0.5 * gain))
+    );
+    expect(residualDb(played.output("desk"), desk, TAIL)).toBeLessThan(-90);
+    expect(
+      residualDb(played.key("gate"), branch(played.input, 0.5 * gain, 0), TAIL)
+    ).toBeLessThan(-90);
   });
 
   test.each([0, 0.5, 1])(

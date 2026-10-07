@@ -1052,12 +1052,12 @@ describe("Filter and Pan: connection and compile agree", () => {
   });
 
   test.each(["filter", "pan"] as const)(
-    "a %s inside a Split branch waits for open Splits, with the reason",
+    "a %s on a Split branch makes the Split a stage whose ports route on their own",
     (type) => {
       const patch = graph(
         [
           station("a"),
-          fx("split", "fxComposite"),
+          fx("split", "fxComposite", { enabled: true }),
           node("native", type),
           node("merge", "merge"),
           speakers,
@@ -1071,11 +1071,19 @@ describe("Filter and Pan: connection and compile agree", () => {
         ]
       );
       const plan = compile(patch, ENV);
-      expect(codes(plan)).toEqual(["split-open@split"]);
-      expect(plan.issues[0]?.message).toBe(
-        "Sending a Split's branches to different places comes with the next update"
-      );
-      expect(plan.cables.size).toBe(0);
+      expect(plan.issues).toEqual([]);
+      expect(plan.modules.get("split:split")).toMatchObject({
+        kind: "split",
+        split: { cabled: [0, 1] },
+      });
+      expect(
+        [...plan.cables.values()]
+          .filter((cable) => cable.from.kind === "split")
+          .map((cable) => [cable.from.port, endpointKey(cable.to)])
+      ).toEqual([
+        [0, `${type}:native`],
+        [1, "sum:merge"],
+      ]);
     }
   );
 
@@ -1381,6 +1389,190 @@ describe("compile: cables arrive in step", () => {
       true
     );
   });
+});
+
+describe("compile: Splits whose branches go different places", () => {
+  test("each cabled port routes on its own, a branch with FX as its own unit", () => {
+    const base = createNodeEffectConfig("fxComposite", "split");
+    const chains = base.chains.map((chain, index) => ({
+      ...chain,
+      gain: index === 0 ? 0.5 : chain.gain,
+      pan: index === 0 ? -0.25 : 0,
+    }));
+    const plan = build(
+      [
+        station("a"),
+        {
+          data: { effect: { ...base, chains, enabled: true } },
+          id: "split",
+          position: { x: 0, y: 0 },
+          type: "fxComposite",
+        } as NodeInput,
+        fx("verb", "cheapReverb", { enabled: true }),
+        node("desk", "deviceOut", { deviceId: "usb" }),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        {
+          ...audio("split", "verb", { from: "branch-1" }),
+          pan: 0.5,
+          solo: true,
+        },
+        audio("verb", "speakers", { gain: 0.8 }),
+        audio("split", "desk", { from: "branch-2" }),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const split = plan.modules.get("split:split");
+    if (split?.kind !== "split") {
+      throw new Error("no split stage");
+    }
+    expect(split.split.cabled).toEqual([0, 1]);
+    // The chain's gain and pan follow the reverb, as openDAW's cell has
+    // them after its FX; the cable's pan adds to the chain's there.
+    expect(plan.cables.get("split->verb")).toMatchObject({
+      gain: 1,
+      muted: false,
+    });
+    expect(plan.cables.get("split->verb")?.balance).toBeUndefined();
+    expect(plan.cables.get("verb->speakers")).toMatchObject({
+      balance: [0.75, 1],
+      gain: 0.4,
+      muted: false,
+    });
+    // The cable's solo leaves the other branch out.
+    expect(plan.cables.get("split->desk")?.muted).toBe(true);
+    expect(shape(plan.units.get("verb")?.effects ?? [])).toEqual([
+      ["cheapReverb", "verb"],
+    ]);
+    expect(routes(plan)).toEqual([
+      "lane:a>split:split",
+      "split:split>sink:desk",
+      "split:split>unit:verb",
+      "unit:verb>sink:speakers",
+    ]);
+  });
+
+  test("keys from different ports of a Split stay apart", () => {
+    const plan = build(
+      [
+        station("a"),
+        station("music"),
+        fx("split", "stereoSplit", { enabled: true }),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        node("desk", "deviceOut", { deviceId: "usb" }),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        audio("split", "speakers", { from: "left" }),
+        audio("split", "desk", { from: "right" }),
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        { ...key("split", "comp"), sourceHandle: "out:audio:left" },
+        { ...key("split", "gate"), sourceHandle: "out:audio:right" },
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [comp, gate] = lane(plan, "music").effects;
+    expect(comp?.sidechain).toEqual({ channelId: "node-key:comp" });
+    expect(gate?.sidechain).toEqual({ channelId: "node-key:gate" });
+    expect(
+      [...plan.cables.values()]
+        .filter((cable) => cable.kind === "key")
+        .map((cable) => [cable.from.port, cable.to.id])
+    ).toEqual([
+      [0, "node-key:comp"],
+      [1, "node-key:gate"],
+    ]);
+  });
+
+  test("a Band Split whose bands go different places keeps its crossovers", () => {
+    const base = createNodeEffectConfig("frequencySplit", "bands");
+    const plan = build(
+      [
+        station("a"),
+        {
+          data: {
+            effect: {
+              ...base,
+              chains: base.chains.slice(0, 2),
+              crossoverFrequencies: [500],
+              enabled: true,
+            },
+          },
+          id: "bands",
+          position: { x: 0, y: 0 },
+          type: "frequencySplit",
+        } as NodeInput,
+        node("desk", "deviceOut", { deviceId: "usb" }),
+        speakers,
+      ],
+      [
+        audio("a", "bands"),
+        audio("bands", "speakers", { from: "band-1" }),
+        audio("bands", "desk", { from: "band-2" }),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const bands = plan.modules.get("split:bands");
+    expect(bands).toMatchObject({
+      kind: "split",
+      split: { cabled: [0, 1], effect: { crossoverFrequencies: [500] } },
+    });
+    expect(
+      [...plan.cables.values()].map((cable) => [cable.from.port, cable.to.id])
+    ).toEqual([
+      [0, "speakers"],
+      [1, "desk"],
+      [undefined, "bands"],
+    ]);
+  });
+
+  test.each([
+    ["go different places", "desk"],
+    ["meet again", "speakers"],
+  ])(
+    "FX nested in a Split's chain are refused when its branches %s",
+    (_, second) => {
+      // An imported Split with a Compressor inside its first chain, which the
+      // canvas can't make: its branches are the nodes cabled from its ports.
+      const base = createNodeEffectConfig("fxComposite", "split");
+      const comp = createNodeEffectConfig("compressor", "nested-comp");
+      const chains = base.chains.map((chain, index) =>
+        index === 0 ? { ...chain, effects: [comp] } : chain
+      );
+      const plan = build(
+        [
+          station("a"),
+          {
+            data: { effect: { ...base, chains, enabled: true } },
+            id: "split",
+            position: { x: 0, y: 0 },
+            type: "fxComposite",
+          } as NodeInput,
+          node("desk", "deviceOut", { deviceId: "usb" }),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "speakers", { from: "branch-1" }),
+          audio("split", second, { from: "branch-2", id: "two" }),
+        ]
+      );
+      expect(codes(plan)).toEqual(["split-branches@split"]);
+      expect(plan.issues[0]?.message).toBe(
+        "FX inside a Split's branches don't play: cable them from its ports"
+      );
+      // Nothing plays the branch dry.
+      expect(routes(plan).filter((route) => route.includes("sink:"))).toEqual(
+        []
+      );
+    }
+  );
 });
 
 describe("compile: series-parallel regions", () => {

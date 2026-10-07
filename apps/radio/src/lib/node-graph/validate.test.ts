@@ -1303,7 +1303,7 @@ describe("validate: messages", () => {
   // compile.test.ts.
   type ValidatorCode = Exclude<
     IssueCode,
-    "split-depth" | "split-branches" | "split-open" | "key-enclosed"
+    "split-depth" | "split-branches" | "key-enclosed"
   >;
   const v2 = { release: "v2" } as const;
   const scenarios: Issue[][] = [

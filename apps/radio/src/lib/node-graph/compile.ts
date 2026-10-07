@@ -23,18 +23,23 @@
  * node this compiler can't lower is refused with an issue, never dropped.
  */
 
+import { Mixing, StereoMatrix } from "@opendaw/lib-dsp";
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
   MAX_MONITORING_CHANNELS,
 } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
-import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import type {
+  EffectChainConfig,
+  EffectConfig,
+} from "@/lib/audio/dsp/effects/types";
 import {
   audibleEffects,
   audibleSidechainIds,
   isEffectContainer,
   usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
+import type { SplitStageConfig } from "@/lib/audio/routing/split-stage";
 import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import { laneChannelId, laneSoundId } from "./identifiers";
 import {
@@ -44,7 +49,6 @@ import {
   FreshIds,
   LoweringError,
   type NativeFilterPlan,
-  OPEN_SPLIT_MESSAGE,
   RegionLowerer,
   type Segment,
   type SegmentExit,
@@ -154,9 +158,11 @@ export type LanePlan = {
 export type Endpoint = {
   kind: "lane" | "unit" | ModulePlan["kind"] | "sink";
   id: string;
+  /** A split's output: its port, by position. */
+  port?: number;
 };
 
-/** An endpoint as one string: a point changes with its kind. */
+/** A point as one string, its ports one point: it changes with its kind. */
 export function endpointKey({ kind, id }: Endpoint): string {
   return `${kind}:${id}`;
 }
@@ -177,6 +183,11 @@ export type CablePlan = {
   to: Endpoint;
   /** Linear, with the strip trim, Gains and cable trims folded in. */
   gain: number;
+  /**
+   * Each side's gain, for a Split branch's cable: its pan added to its
+   * chain's, as openDAW's linear balance.
+   */
+  balance?: [number, number];
   /** Muted, by its own cables or by another source's solo. */
   muted: boolean;
   /**
@@ -220,6 +231,8 @@ export type ModulePlan = { id: string; realtime: boolean } & (
   | { kind: "pan"; pan: number }
   | { kind: "key" }
   | { kind: "tap" }
+  /** An explicit Split whose branches go different ways: its stage. */
+  | { kind: "split"; split: SplitStageConfig }
 );
 
 export type SinkPlan = {
@@ -521,34 +534,21 @@ function refuse(graph: CompileGraph): Issue[] {
   );
 }
 
-/**
- * Splits whose branches part ways, which this compiler cannot lower yet,
- * and keys inside a Split whose branches meet again.
- */
-function refuseRegions(regions: RegionLowerer): Issue[] {
-  return [
-    ...regions.openSplits().map(
-      (id): Issue => ({
-        code: "split-open",
-        id,
-        message: OPEN_SPLIT_MESSAGE,
-        target: "node",
-      })
-    ),
-    ...regions.keysInsideRegions().map(
-      (id): Issue => ({
-        code: "key-enclosed",
-        id,
-        message: ENCLOSED_KEY_MESSAGE,
-        target: "edge",
-      })
-    ),
-  ];
+/** Keys inside a Split whose branches meet again. */
+function refuseEnclosedKeys(regions: RegionLowerer): Issue[] {
+  return regions.keysInsideRegions().map(
+    (id): Issue => ({
+      code: "key-enclosed",
+      id,
+      message: ENCLOSED_KEY_MESSAGE,
+      target: "edge",
+    })
+  );
 }
 
 /**
  * Drops what failed validation, then refuses what this compiler cannot lower
- * yet (other sources, control, a Split whose branches part ways),
+ * yet (other sources, control),
  * re-validating after every round until the patch is stable, so an issue a
  * drop uncovers is reported too. Each round drops at least one node or
  * cable, so this always settles. Advisory issues come from the final
@@ -582,7 +582,7 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
           })
         : null;
     if (regions) {
-      blocking = refuseRegions(regions);
+      blocking = refuseEnclosedKeys(regions);
     }
     if (regions && blocking.length === 0) {
       return {
@@ -621,9 +621,9 @@ function estimateBackend(
     : "compat";
 }
 
-/** Where a key cable comes from and at what level. */
-function heardFrom({ from, gain, muted }: CablePlan): string {
-  return JSON.stringify([endpointKey(from), gain, muted]);
+/** What a key cable hears: where it starts, a Split's port included. */
+function heardFrom({ balance, from, gain, muted }: CablePlan): string {
+  return JSON.stringify([endpointKey(from), from.port, gain, muted, balance]);
 }
 
 /** A key's cables in a fixed order: equal keys list equal cables alike. */
@@ -631,6 +631,24 @@ function byHeard(cables: readonly CablePlan[]): CablePlan[] {
   return [...cables].sort((left, right) =>
     heardFrom(left).localeCompare(heardFrom(right))
   );
+}
+
+/** An open Split's port: its chain, and its cables out. */
+type SplitBranch = { chain: EffectChainConfig; exits: SegmentExit[] };
+
+/** The end of an open Split's branch: its balance, and its dry signal. */
+type BranchEnd = {
+  balance?: [number, number];
+  dry?: { from: Endpoint; trim: Trim };
+};
+
+/** A pan as openDAW's linear balance; none for the centre. */
+function balanceOf(pan: number): [number, number] | undefined {
+  if (pan === 0) {
+    return;
+  }
+  const [left, right] = StereoMatrix.panningToGains(pan, Mixing.Linear);
+  return [left, right];
 }
 
 function multiply(left: Trim, right: Trim): Trim {
@@ -749,8 +767,13 @@ class PlanBuilder {
 
   /** A segment, or null when it can't lower: it then plays into nothing. */
   lower(head: string): Segment | null {
+    return this.lowered(() => this.regions.lowerSegment(head));
+  }
+
+  /** What `lowering` makes, or null with its issue when it can't. */
+  private lowered<T>(lowering: () => T): T | null {
     try {
-      return this.regions.lowerSegment(head);
+      return lowering();
     } catch (error) {
       if (!(error instanceof LoweringError)) {
         throw error;
@@ -798,37 +821,78 @@ class PlanBuilder {
     );
   }
 
-  /** Cables from `from` for each exit, through whatever has no FX. */
+  /**
+   * Cables from `from` for each exit, through whatever has no FX. The end
+   * of an open Split's branch (`end`) gives the cables its balance, and
+   * its dry signal a cable of its own to each place they reach.
+   */
   private emit(
     exits: readonly SegmentExit[],
     from: Endpoint,
-    carry: Trim
+    carry: Trim,
+    end?: BranchEnd
   ): void {
     for (const exit of exits) {
       const trim = multiply(carry, exit.trim);
+      const next = end && {
+        ...end,
+        dry: end.dry && {
+          from: end.dry.from,
+          trim: multiply(end.dry.trim, exit.trim),
+        },
+      };
       if (exit.key) {
         // A key for each keyed FX; keys that hear the same cables merge.
         const key: Endpoint = { id: keyIdOf(exit.target), kind: "key" };
-        this.connect(exit.ids, from, key, trim, "key");
+        this.land(exit.ids, from, key, trim, next, "key");
         continue;
       }
-      if (this.regions.isCutBefore(exit.target)) {
-        this.connect(exit.ids, from, this.endpointOf(exit.target), trim);
-        continue;
+      const reached = this.reach(exit.target);
+      if (reached?.to) {
+        this.land(exit.ids, from, reached.to, trim, next);
       }
-      // Past a fan-out: a branch with FX is a unit of its own; one
-      // without folds into the cables out of it.
-      const segment = this.lower(exit.target);
-      if (!segment) {
-        continue;
+      if (reached?.segment && reached.to) {
+        this.emit(reached.segment.exits, reached.to, UNITY);
+      } else if (reached?.segment) {
+        this.emit(reached.segment.exits, from, trim, next);
       }
-      if (segment.effects.length > 0) {
-        const unit = this.addUnit(exit.target, segment);
-        this.connect(exit.ids, from, unit, trim);
-        this.emit(segment.exits, unit, UNITY);
-      } else {
-        this.emit(segment.exits, from, trim);
-      }
+    }
+  }
+
+  /**
+   * Where a cable into `target` goes: a point, a unit for a segment with
+   * FX, or on past a segment without (no point); null when it can't lower.
+   * Past a fan-out, a branch with FX is a unit of its own; one without
+   * folds into the cables out of it.
+   */
+  private reach(
+    target: string
+  ): { to: Endpoint | null; segment: Segment | null } | null {
+    if (this.regions.isCutBefore(target)) {
+      return { segment: null, to: this.endpointOf(target) };
+    }
+    const segment = this.lower(target);
+    if (!segment) {
+      return null;
+    }
+    return {
+      segment,
+      to: segment.effects.length > 0 ? this.addUnit(target, segment) : null,
+    };
+  }
+
+  /** A cable into `to`, and the dry cable beside it at a branch's end. */
+  private land(
+    ids: readonly string[],
+    from: Endpoint,
+    to: Endpoint,
+    trim: Trim,
+    end?: BranchEnd,
+    kind: CablePlan["kind"] = "audio"
+  ): void {
+    this.connect(ids, from, to, trim, kind, end?.balance);
+    if (end?.dry) {
+      this.connect([], end.dry.from, to, end.dry.trim, kind);
     }
   }
 
@@ -837,12 +901,13 @@ class PlanBuilder {
     from: Endpoint,
     to: Endpoint,
     { gain, muted }: Trim,
-    kind: CablePlan["kind"] = "audio"
+    kind: CablePlan["kind"] = "audio",
+    balance?: [number, number]
   ): void {
     const id =
       ids.length === 1 && ids[0] !== undefined
         ? this.cableIds.claim(ids[0])
-        : this.cableIds.fresh(ids.join("+"));
+        : this.cableIds.fresh(ids.join("+") || `${from.id}:dry`);
     const soloed =
       kind === "audio" && from.kind === "lane" && this.soloMuted.has(from.id);
     this.cables.set(id, {
@@ -855,11 +920,109 @@ class PlanBuilder {
       muted: muted || soloed,
       reenters: false,
       to,
+      ...(balance ? { balance } : {}),
     });
   }
 
   private addModule(module: ModulePlan): void {
     this.modules.set(endpointKey(module), module);
+  }
+
+  /**
+   * An open Split: its stage, and each port's cables from there. As in
+   * openDAW's container, a branch's input trim comes before its FX, and
+   * its gain, balance, mute, solo, the mix and the output trim after them,
+   * where the dry signal joins it: each cable out of the branch carries
+   * them, and a dry cable runs beside it. A cable out of a port carries
+   * its own gain and solo where it is, before the FX, and its pan, added
+   * to its chain's as in a closed Split's chain, at the exit.
+   */
+  private addSplit(id: string): Endpoint | null {
+    const split = this.lowered(() => this.regions.openSplit(id));
+    if (!split) {
+      return null;
+    }
+    const { effect, ports } = split;
+    const endpoint: Endpoint = { id, kind: "split" };
+    this.endpoints.set(id, endpoint);
+    this.addModule({
+      id,
+      kind: "split",
+      realtime: false,
+      split: { cabled: [...ports.keys()], effect },
+    });
+    const on = effect.enabled;
+    const mix = on ? effect.dryWet : 0;
+    const output = on ? effect.outputGain : 1;
+    // A Split's dry signal is shared out among the ports whose audio leaves
+    // it; a port that only keys carries its branch, as openDAW's entry does.
+    const carries = ({ exits }: SplitBranch) => exits.some((exit) => !exit.key);
+    const audible = [...ports.values()].filter(carries).length;
+    const share = effect.type === "fxComposite" ? 1 / audible : 1;
+    const soloed = ({ chain, exits }: SplitBranch) =>
+      chain.solo || exits.some((exit) => exit.solo);
+    const anySolo = [...ports.values()].some(soloed);
+    for (const [position, port] of ports) {
+      const from: Endpoint = { ...endpoint, port: position };
+      const { chain } = port;
+      const open = !chain.muted && (!anySolo || soloed(port));
+      this.emitBranch(from, port, {
+        cell: { gain: mix * output * chain.gain, muted: !open },
+        dry:
+          mix < 1 && carries(port)
+            ? { from, trim: { gain: (1 - mix) * share * output, muted: false } }
+            : undefined,
+        input: on ? effect.inputGain : 1,
+        pan: chain.pan,
+      });
+    }
+    return endpoint;
+  }
+
+  /**
+   * An open Split's port's cables: each one's gain and solo before the
+   * branch's FX, with the input trim; the branch's `cell` controls and
+   * the cable's pan plus the chain's `pan` after them, where its dry
+   * signal joins.
+   */
+  private emitBranch(
+    from: Endpoint,
+    { exits }: SplitBranch,
+    {
+      cell,
+      dry,
+      input,
+      pan,
+    }: Pick<BranchEnd, "dry"> & { cell: Trim; input: number; pan: number }
+  ): void {
+    // A soloed cable leaves its port's other cables out.
+    const cableSolo = exits.some((exit) => exit.solo);
+    for (const exit of exits) {
+      const before: Trim = {
+        gain: input * exit.trim.gain,
+        muted: exit.trim.muted || (!exit.key && cableSolo && !exit.solo),
+      };
+      // Without FX, the port's cable is the whole branch.
+      const wet = multiply(before, cell);
+      const tail = { balance: balanceOf(clampPan(pan + (exit.pan ?? 0))), dry };
+      if (exit.key) {
+        const key: Endpoint = { id: keyIdOf(exit.target), kind: "key" };
+        this.connect(exit.ids, from, key, wet, "key", tail.balance);
+        if (dry) {
+          this.connect([], dry.from, key, multiply(dry.trim, exit.trim), "key");
+        }
+        continue;
+      }
+      const { segment = null, to = null } = this.reach(exit.target) ?? {};
+      if (segment && to) {
+        this.connect(exit.ids, from, to, before);
+        this.emit(segment.exits, to, cell, tail);
+      } else if (to) {
+        this.land(exit.ids, from, to, wet, tail);
+      } else if (segment) {
+        this.emit(segment.exits, from, wet, tail);
+      }
+    }
   }
 
   private addUnit(id: string, segment: Segment): Endpoint {
@@ -875,13 +1038,19 @@ class PlanBuilder {
     return { id, kind: "unit" };
   }
 
-  /** The point a cable into `id` ends at, built the first time. */
-  private endpointOf(id: string): Endpoint {
+  /**
+   * The point a cable into `id` ends at, built the first time; null for a
+   * Split that can't lower, which plays into nothing.
+   */
+  private endpointOf(id: string): Endpoint | null {
     const known = this.endpoints.get(id);
     if (known) {
       return known;
     }
     const node = this.regions.node(id);
+    if (this.regions.isOpenSplit(id)) {
+      return this.addSplit(id);
+    }
     if (isSink(node)) {
       const sink: Endpoint = { id, kind: "sink" };
       this.endpoints.set(id, sink);

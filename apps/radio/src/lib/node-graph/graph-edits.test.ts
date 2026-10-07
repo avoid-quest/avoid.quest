@@ -1464,17 +1464,13 @@ describe("toggleBypass", () => {
 
     expect(effectIn(bypassed, "compressor").enabled).toBe(false);
     const ops = diff(compile(start, ENV), compile(bypassed, ENV));
-    expect(ops.map((op) => op.type)).toEqual([
-      "duckLane",
-      "replaceLaneEffects",
-      "unduckLane",
-    ]);
+    expect(ops.map((op) => op.type)).toEqual(["replaceLaneEffects"]);
 
     const back = toggleBypass(bypassed, ["compressor"]);
     expect(effectIn(back, "compressor").enabled).toBe(true);
     expect(
       diff(compile(bypassed, ENV), compile(back, ENV)).map((op) => op.type)
-    ).toEqual(["duckLane", "replaceLaneEffects", "unduckLane"]);
+    ).toEqual(["replaceLaneEffects"]);
   });
 
   test("a mixed selection bypasses all; nothing to bypass is a no-op", () => {

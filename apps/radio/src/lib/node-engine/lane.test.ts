@@ -1,6 +1,6 @@
 /**
  * A lane's transitions, as a table: each row drives Node playback through
- * its public calls on a fake AudioManager whose plays, fades, effects
+ * its public calls on a fake AudioManager whose plays, fades, ducks, effects
  * reconciles and track resolutions the row holds and releases, and checks
  * what a listener would hear. Sounds are named by their activation too
  * (`node:n:a#2` is lane a's second sound), so a row shows which sound a
@@ -168,32 +168,38 @@ type Held = { release: () => void; reject: (error: Error) => void };
 
 /**
  * A fake AudioManager, channel facade and lane outputs. A sound is live
- * from its channel's activation to its release; plays, fades and effects
- * reconciles are held while `holdPlays`, `holdFades` or `holdReconciles` is
- * on, and track resolutions always are.
+ * from its channel's activation to its release; plays, fades, ducks and
+ * effects reconciles are held while `holdPlays`, `holdFades`, `holdDucks`
+ * or `holdReconciles` is on, and track resolutions always are.
  */
 function createWorld() {
   const live = new Set<string>();
   const activations = new Map<string, number>();
   const instanceOf = (soundId: string) =>
     `${soundId}#${activations.get(soundId) ?? 0}`;
-  /** What reached the lanes' effects, in order. */
+  /** What reached the lanes' effects and outputs, in order. */
   const log: string[] = [];
   /** Sounds activated while their lane's previous sound was still live. */
   const overlaps: string[] = [];
   const plays: string[] = [];
   const heldPlays: Held[] = [];
   const heldFades: Held[] = [];
+  const heldDucks: Held[] = [];
   const heldReconciles: Held[] = [];
   const heldResolutions: Array<{
     videoId: string;
     resolve: (value: PlatformStreamResolution | null) => void;
   }> = [];
   const refreshes: string[] = [];
+  /** Lanes with an output to duck: their sound was attached to play. */
+  const connected = new Set<string>();
   const options = {
+    holdDucks: false as boolean,
     holdFades: false as boolean,
     holdPlays: false as boolean,
     holdReconciles: false as boolean,
+    /** How each effects reconcile ends, as the controller reports it. */
+    reconcileStatus: "inactive" as EffectsRuntimeOutcome["status"] | "rejected",
   };
   let stateListener: ((state: AudioState) => boolean | undefined) | null = null;
 
@@ -323,20 +329,38 @@ function createWorld() {
         if (options.holdReconciles) {
           await hold(heldReconciles, () => undefined);
         }
-        return { backend: null, ready: false, status: "inactive" };
+        if (options.reconcileStatus === "rejected") {
+          throw new Error("reconcile rejected");
+        }
+        return { backend: null, ready: false, status: options.reconcileStatus };
       },
     },
     fadeOutSound: () =>
       options.holdFades ? hold(heldFades, () => undefined) : Promise.resolve(),
     getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
     laneOutputs: (): NodeLaneOutputs => ({
-      attach: () => undefined,
+      attach: (laneId) => {
+        connected.add(laneId);
+      },
       dispose: () => undefined,
       dropSink: () => undefined,
+      duck: (laneId) => {
+        log.push(`duck ${laneId}`);
+        if (!connected.has(laneId)) {
+          return null;
+        }
+        return options.holdDucks
+          ? hold(heldDucks, () => undefined)
+          : Promise.resolve();
+      },
       refresh: () => undefined,
-      release: () => undefined,
+      release: (laneId) => {
+        connected.delete(laneId);
+      },
       reroute: () => undefined,
-      swap: (_laneId, replace) => replace(),
+      unduck: (laneId) => {
+        log.push(`unduck ${laneId}`);
+      },
     }),
     otherTabWrites: () => () => undefined,
     resolveStream: (input) =>
@@ -352,6 +376,7 @@ function createWorld() {
 
   return {
     context,
+    heldDucks,
     heldFades,
     heldPlays,
     heldReconciles,
@@ -413,6 +438,13 @@ function commit(world: World, edit: (graph: NodeGraph) => NodeGraph) {
 async function settled(world: World) {
   await world.playback.whenSettled();
   world.log.length = 0;
+}
+
+/** Plays the lane once, so it has an output a layout swap ducks. */
+async function playedOnce(world: World, laneId: string, playing = true) {
+  await world.playback.setPlaying(laneId, true);
+  await world.playback.setPlaying(laneId, playing);
+  await settled(world);
 }
 
 function interrupt(world: World) {
@@ -697,6 +729,229 @@ const transitions: Row[] = [
       releaseAll(world.heldFades);
     },
     when: "removed, re-added and removed in one fade: no sound is made",
+  },
+  {
+    expected(world) {
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("b")} []`,
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}] key ${sound("b")}`,
+        "unduck a",
+      ]);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await playedOnce(world, "a");
+      commit(world, () => compressed(true));
+    },
+    when: "a new FX layout keyed from a new lane: its keyed tree is in before the duck lifts",
+  },
+  {
+    expected(world) {
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+        `reconcile ${sound("a")} [comp@-12]`,
+        "unduck a",
+      ]);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await playedOnce(world, "a");
+      world.options.holdReconciles = true;
+      commit(world, () => compressed());
+      await tick();
+      commit(world, threshold(-12));
+      releaseAll(world.heldReconciles);
+      await tick();
+      expect(world.log).not.toContain("unduck a");
+      releaseAll(world.heldReconciles);
+    },
+    when: "a knob turned while a new FX layout reconciles is in before the duck lifts",
+  },
+  {
+    expected(world) {
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@-12]`,
+        "unduck a",
+      ]);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await playedOnce(world, "a");
+      commit(world, () => compressed());
+      commit(world, threshold(-12));
+    },
+    when: "a knob turned in the same turn as a new FX layout swaps in with it",
+  },
+  {
+    expected(world) {
+      expect(world.plays).toEqual([sound("a"), sound("a")]);
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+        "unduck a",
+      ]);
+      expect(getPlaybackChannelRuntime(channelOf("a")).isPlaying).toBe(true);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await playedOnce(world, "a", false);
+      world.options.holdDucks = true;
+      commit(world, () => compressed());
+      const start = world.playback.setPlaying("a", true);
+      // Still inside the gesture's task, and the lane still ducked.
+      expect(world.plays).toEqual([sound("a"), sound("a")]);
+      expect(world.log).toEqual(["duck a"]);
+      releaseAll(world.heldDucks);
+      await start;
+    },
+    when: "a start during a layout swap is synchronous up to the play call, ducked",
+  },
+  {
+    expected(world) {
+      expect(world.plays).toEqual([sound("a")]);
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+        "duck a",
+        `reconcile ${sound("a")} []`,
+        "unduck a",
+      ]);
+      expect(getPlaybackChannelRuntime(channelOf("a")).isPlaying).toBe(true);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await settled(world);
+      world.options.holdReconciles = true;
+      commit(world, () => compressed());
+      const start = world.playback.setPlaying("a", true);
+      // Nothing played yet to duck: the sound connects with its new layout
+      // already reconciling, so its effects come up silent, never dry.
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+      ]);
+      expect(world.plays).toEqual([sound("a")]);
+      // It plays now, so the next layout swaps under a duck.
+      commit(world, () => patch([station("a")]));
+      world.options.holdReconciles = false;
+      releaseAll(world.heldReconciles);
+      await start;
+    },
+    when: "the first play after a new FX layout connects with that layout in",
+  },
+  {
+    expected(world) {
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+        "unduck a",
+        "duck a",
+        `reconcile ${sound("a")} [comp@-12]`,
+        "unduck a",
+      ]);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await playedOnce(world, "a");
+      world.options.holdReconciles = true;
+      commit(world, () => compressed());
+      await tick();
+      for (const held of world.heldReconciles.splice(0)) {
+        held.reject(new Error("The effects runtime failed"));
+      }
+      world.options.holdReconciles = false;
+      // It waits for the next change rather than retrying at once.
+      await world.playback.whenSettled();
+      expect(world.log).toHaveLength(3);
+      commit(world, threshold(-12));
+    },
+    when: "a new FX layout that failed to go in swaps again, ducked, on the next change",
+  },
+  ...(
+    [
+      ["failed", "is undone", () => patch([station("a")]), "[]"],
+      ["superseded", "has a knob turned", threshold(-12), "[comp@-12]"],
+      ["rejected", "is undone", () => patch([station("a")]), "[]"],
+    ] as const
+  ).map(
+    ([status, edit, next, tree]): Row => ({
+      expected(world) {
+        // The graph may hold neither layout, so the next change swaps too.
+        expect(world.log).toEqual([
+          "duck a",
+          `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+          "unduck a",
+          "duck a",
+          `reconcile ${sound("a")} ${tree}`,
+          "unduck a",
+        ]);
+      },
+      initial: patch([station("a")]),
+      async run(world) {
+        await playedOnce(world, "a");
+        world.options.reconcileStatus = status;
+        commit(world, () => compressed());
+        await world.playback.whenSettled();
+        world.options.reconcileStatus = "inactive";
+        commit(world, next);
+      },
+      when: `a new FX layout whose reconcile ${status} swaps again, ducked, when it ${edit}`,
+    })
+  ),
+  {
+    expected(world) {
+      expect(world.live).toEqual(new Set([soundOf("a")]));
+      // The abandoned swap never lifts a duck or reaches the new sound.
+      expect(world.log).toEqual([
+        "duck a",
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}]`,
+        `reconcile ${sound("a", 2)} []`,
+      ]);
+    },
+    initial: patch([station("a")]),
+    async run(world) {
+      await settled(world);
+      world.options.holdReconciles = true;
+      commit(world, () => compressed());
+      await tick();
+      commit(world, () => patch([]));
+      // The removal doesn't wait for the swap's reconcile.
+      await world.playback.whenSettled();
+      expect(world.live.size).toBe(0);
+      world.options.holdReconciles = false;
+      commit(world, () => patch([station("a")]));
+      releaseAll(world.heldReconciles);
+    },
+    when: "retire during a layout swap: the lane releases at once",
+  },
+  {
+    expected(world) {
+      expect(world.live.size).toBe(0);
+      expect(world.refreshes).toEqual([]);
+      expect(world.log).not.toContain("unduck a");
+    },
+    initial: compressed(false, [track("v")]),
+    async run(world) {
+      await world.playback.setPlaying("v", true);
+      await settled(world);
+      interrupt(world);
+      world.options.holdDucks = true;
+      commit(world, () => patch([station("a"), track("v")]));
+      // Deactivation ends while the swap and the stream refresh are pending.
+      await world.playback.deactivate();
+      expect(world.live.size).toBe(0);
+      releaseAll(world.heldDucks);
+      for (const resolution of world.heldResolutions.splice(0)) {
+        resolution.resolve({
+          streamFormat: "progressive",
+          streamUrl: "https://media.example/renewed.m4a",
+        });
+      }
+    },
+    when: "dispose during a layout swap and a stream refresh: nothing waits on them",
   },
   {
     expected(world) {

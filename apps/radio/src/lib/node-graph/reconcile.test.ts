@@ -168,9 +168,7 @@ describe("diff", () => {
 
   test("bypassing the first FX moves the signal trim to the next FX", () => {
     expect(types(diff(base(), base({ verb: { enabled: false } })))).toEqual([
-      "duckLane",
       "replaceLaneEffects",
-      "unduckLane",
     ]);
   });
 
@@ -206,17 +204,15 @@ describe("diff", () => {
     ["add", ["verb"], ["verb", "crush"]],
     ["remove", ["verb", "crush"], ["crush"]],
     ["reorder", ["verb", "crush"], ["crush", "verb"]],
-  ])("an FX %s ducks, replaces and unducks the lane", (_label, from, to) => {
+  ])("an FX %s replaces the lane's layout", (_label, from, to) => {
     const next = base({ order: to });
     const ops = diff(base({ order: from }), next);
     expect(ops).toEqual([
-      { laneId: "a", type: "duckLane" },
       {
         effects: next.lanes.get("a")?.effects ?? [],
         laneId: "a",
         type: "replaceLaneEffects",
       },
-      { laneId: "a", type: "unduckLane" },
     ]);
   });
 

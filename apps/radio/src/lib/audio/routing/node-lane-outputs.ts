@@ -63,10 +63,12 @@ export type NodeLaneOutputs = {
   /** Ramps each of the lane's sends to its current level. */
   refresh: (laneId: string) => void;
   /**
-   * The layout duck: ramps laneOut to 0, runs `replace` once silent, awaits
-   * its outcome, then ramps back. Without a laneOut it just replaces.
+   * The layout duck: ramps laneOut to 0 and resolves once it is silent;
+   * null without a laneOut. The lane swaps its tree, then unducks.
    */
-  swap: <T>(laneId: string, replace: () => Promise<T>) => Promise<T>;
+  duck: (laneId: string) => Promise<void> | null;
+  /** Ramps laneOut back from the layout duck. */
+  unduck: (laneId: string) => void;
   /**
    * Reconnects every send into `sinkId` (every send without it) through
    * `route`, e.g. when a device sink fails over to Speakers.
@@ -96,10 +98,8 @@ type LaneOutput = {
   connectMain: MainOutputConnect | null;
   realtime: boolean;
   sends: Map<string, LaneSend>;
-  /** Swaps in flight; laneOut stays at 0 until the last one ends. */
-  ducks: number;
-  /** Resolves once laneOut is silent for the swaps in flight. */
-  silent: Promise<void> | null;
+  /** Under a layout duck: a rebuilt laneOut starts silent too. */
+  ducked: boolean;
 };
 
 function delay(ms: number): Promise<void> {
@@ -202,7 +202,7 @@ export function createNodeLaneOutputs({
     }
     dropOut(lane);
     const out = context.createGain();
-    out.gain.value = lane.ducks > 0 ? 0 : 1;
+    out.gain.value = lane.ducked ? 0 : 1;
     lane.out = out;
     return out;
   };
@@ -255,12 +255,11 @@ export function createNodeLaneOutputs({
       release(laneId);
       const lane: LaneOutput = {
         connectMain: null,
-        ducks: 0,
+        ducked: false,
         host,
         out: null,
         realtime: false,
         sends: new Map(),
-        silent: null,
         soundId,
       };
       lanes.set(laneId, lane);
@@ -288,6 +287,19 @@ export function createNodeLaneOutputs({
         );
       }
     },
+    duck(laneId) {
+      const lane = lanes.get(laneId);
+      if (!lane?.out) {
+        return null;
+      }
+      lane.ducked = true;
+      rampLinear(lane.out, 0);
+      try {
+        return wait(LANE_DUCK_MS);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
     refresh(laneId) {
       const lane = lanes.get(laneId);
       if (lane) {
@@ -300,30 +312,13 @@ export function createNodeLaneOutputs({
         rerouteLane(lane, sinkId);
       }
     },
-    async swap(laneId, replace) {
+    unduck(laneId) {
       const lane = lanes.get(laneId);
-      if (!lane?.out) {
-        return await replace();
+      if (lane) {
+        lane.ducked = false;
       }
-      lane.ducks += 1;
-      // Inside the try, so a duck that fails to start still lifts.
-      try {
-        // A swap arriving mid-duck waits for that same duck to reach 0;
-        // restarting the ramp would move its end past the first swap's wait.
-        if (!lane.silent) {
-          rampLinear(lane.out, 0);
-          lane.silent = wait(LANE_DUCK_MS);
-        }
-        await lane.silent;
-        return await replace();
-      } finally {
-        lane.ducks -= 1;
-        if (lane.ducks === 0) {
-          lane.silent = null;
-          if (lane.out && lanes.get(laneId) === lane) {
-            rampLinear(lane.out, 1);
-          }
-        }
+      if (lane?.out) {
+        rampLinear(lane.out, 1);
       }
     },
   };

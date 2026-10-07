@@ -185,11 +185,7 @@ describe("cable surgery shortcuts", () => {
       compile(start, ENV),
       compile(store.state.graph as NodeGraph, ENV)
     );
-    expect(ops.map((op) => op.type)).toEqual([
-      "duckLane",
-      "replaceLaneEffects",
-      "unduckLane",
-    ]);
+    expect(ops.map((op) => op.type)).toEqual(["replaceLaneEffects"]);
 
     undo();
     expect(store.state.graph).toBe(start);

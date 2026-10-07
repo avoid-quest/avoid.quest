@@ -16,7 +16,7 @@
  * ramp each send to the sum of the lane's unmuted cables into that output.
  * Speakers sends go to the main bus; an Output device's go to its device
  * sink (node-device-sinks), or to the main bus while that sink can't play.
- * An FX layout change ducks laneOut around the tree swap.
+ * A lane ducks laneOut around its own FX layout swaps.
  */
 
 import { Store } from "@tanstack/react-store";
@@ -441,12 +441,9 @@ export function createNodeEngine(options: NodeEngineOptions) {
     refreshLane: (laneId: string | undefined) => void
   ) => {
     switch (op.type) {
-      // Lanes took their plans before their ops apply; a lane's driver
-      // ducks its own layout swaps.
+      // Lanes took their plans before their ops apply.
       case "addLane":
       case "removeLane":
-      case "duckLane":
-      case "unduckLane":
         break;
       // A new layout swaps, ducked, as the lane's driver reconciles it.
       case "setLaneEffects":

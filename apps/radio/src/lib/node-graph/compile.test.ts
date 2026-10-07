@@ -3100,11 +3100,50 @@ describe("compile: patches main accepted", () => {
       picked?: string[];
     }
   >;
-  /** Patches whose plan changes on purpose, each with the reason. */
-  const exceptions = new Map<string, string>([
+  /**
+   * Patches whose plan changes on purpose: each turns its plan back into
+   * main's, undoing just that change.
+   */
+  const exceptions = new Map<string, (plan: EnginePlan) => EnginePlan>([
     [
+      // A key taps its station after the fader, so the keyed station's
+      // own FX run after its fader too, as a unit, and the key takes two
+      // channels of its own where main's was the station's.
       "1sbwrnhleu4r",
-      "A key taps its station after the fader, so the keyed station's own FX run after its fader too",
+      (plan) => {
+        const unit = plan.units.get("talk-comp");
+        const talk = plan.lanes.get("talk");
+        expect(plan.units.size).toBe(1);
+        expect(talk?.effects).toEqual([]);
+        expect(plan.monitoringChannels).toBe(6);
+        if (!(unit && talk)) {
+          throw new Error("Expected talk's FX as a unit");
+        }
+        const insert = {
+          ...talk,
+          backend: unit.backend,
+          effects: unit.effects,
+          layoutSignature: unit.layoutSignature,
+          nodes: [...talk.nodes, ...unit.nodes],
+        };
+        const cables = [...plan.cables.values()].filter(
+          (cable) => cable.to.id !== unit.id
+        );
+        return {
+          ...plan,
+          cables: new Map(
+            cables.map((cable) => [
+              cable.id,
+              cable.from.id === unit.id
+                ? { ...cable, from: { id: talk.id, kind: "lane" } }
+                : cable,
+            ])
+          ),
+          lanes: new Map([...plan.lanes, [talk.id, insert]]),
+          monitoringChannels: plan.monitoringChannels - 2,
+          units: new Map(),
+        };
+      },
     ],
   ]);
 
@@ -3116,13 +3155,10 @@ describe("compile: patches main accepted", () => {
     for (const url of fixture.picked ?? []) {
       keepLocalFileUrl(url);
     }
-    const plan = compile(fixture.graph, fixture.env);
+    const compiled = compile(fixture.graph, fixture.env);
     forgetLocalFileUrls();
+    const plan = exceptions.get(name)?.(compiled) ?? compiled;
     const asMain = lanePlans(plan, fixture.graph);
-    if (exceptions.has(name)) {
-      expect(asMain).not.toBe(fixture.plan);
-      return;
-    }
     // A key is its effect's sidechain, not a route.
     const routed = [...plan.modules.values()].filter(
       (module) => module.kind !== "key"

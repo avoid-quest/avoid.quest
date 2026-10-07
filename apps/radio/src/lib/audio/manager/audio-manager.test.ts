@@ -124,6 +124,14 @@ const station = {
   name: "Station",
   streamUrl: "https://radio.example/station.mp3",
 };
+const providerTrack = {
+  ...station,
+  platformMetadata: {
+    itemType: "track" as const,
+    platform: "soundcloud" as const,
+    url: "https://soundcloud.com/artist/track",
+  },
+};
 
 afterEach(() => {
   AudioManager.resetInstance();
@@ -153,6 +161,94 @@ describe("AudioManager", () => {
       harness.restore();
     }
   });
+
+  test("unsupported Safari live radio leaves the Node sound stopped", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      Object.defineProperty(navigator, "userAgent", {
+        value:
+          "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/27.0 Safari/605.1.15",
+      });
+      const { manager, effects } = harness;
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(station, "node:n:radio");
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+      await expect(manager.playSound(soundId)).rejects.toMatchObject({
+        code: "UNSUPPORTED_RADIO_GRAPH",
+        expected: true,
+      });
+      expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+      expect(effects.connectGraph).not.toHaveBeenCalled();
+      expect(states.at(-1)).toMatchObject({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      });
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test.each(["audio-graph", "native"] as const)(
+    "Safari HLS refresh rejects a graph but permits native playback (%s)",
+    async (mode) => {
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser, effects } = harness;
+        Object.defineProperty(navigator, "userAgent", {
+          value: "AppleWebKit/605.1.15",
+        });
+        effects.connectGraph = mock(async () => true);
+        const soundId = manager.createSound(providerTrack, "track", mode);
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.nativeHlsSupport = "probably";
+        audio.emit("canplay");
+        await starting;
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const refreshing = manager.refreshStreamUrl(
+          soundId,
+          "https://cf-hls-media.sndcdn.com/extensionless",
+          undefined,
+          "hls"
+        );
+        if (mode === "audio-graph") {
+          await expect(refreshing).rejects.toMatchObject({
+            code: "UNSUPPORTED_RADIO_GRAPH",
+            expected: true,
+          });
+          expect(audio.loadSources).not.toContain(
+            "https://cf-hls-media.sndcdn.com/extensionless"
+          );
+          expect(audio.paused).toBe(true);
+          expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+          expect(states.at(-1)).toMatchObject({
+            isBuffering: false,
+            isLoading: false,
+            isPlaying: false,
+          });
+          // The rejected stream never shows as loading.
+          expect(states.map((state) => state.isLoading)).not.toContain(true);
+          await expect(manager.playSound(soundId)).rejects.toMatchObject({
+            code: "UNSUPPORTED_RADIO_GRAPH",
+          });
+        } else {
+          await flushMicrotasks();
+          audio.emit("canplay");
+          await refreshing;
+          expect(audio.paused).toBe(false);
+          expect(audio.src).toBe(
+            "https://cf-hls-media.sndcdn.com/extensionless"
+          );
+        }
+      } finally {
+        harness.restore();
+      }
+    }
+  );
 
   test("a fresh source's graph-start failure cleans up without advancing the playlist", async () => {
     const harness = createMediaPlaybackHarness();
@@ -599,7 +695,7 @@ describe("AudioManager", () => {
     "a stream refresh reports playing only when its source plays on (%p)",
     async (playsOn) => {
       const manager = AudioManager.getInstance();
-      const soundId = manager.createSound(station, "node:n:track");
+      const soundId = manager.createSound(providerTrack, "node:n:track");
       const instance = getRegistry(manager).get(soundId);
       if (!instance) {
         throw new Error("sound was not created");
@@ -629,7 +725,7 @@ describe("AudioManager", () => {
 
   test("a renewed stream load rejection retains its cause and promise reporting owner", async () => {
     const manager = AudioManager.getInstance();
-    const soundId = manager.createSound(station, "node:n:track");
+    const soundId = manager.createSound(providerTrack, "node:n:track");
     const instance = getRegistry(manager).get(soundId);
     if (!instance) {
       throw new Error("sound was not created");

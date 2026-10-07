@@ -2,6 +2,26 @@ import { afterEach, describe, expect, jest, mock, test } from "bun:test";
 import { type FakeAudioElement, installBrowser } from "./fake-media-browser";
 import { MediaElementPlaybackSource } from "./media-element-playback-source.js";
 
+test("native mute works when iOS ignores media volume writes", () => {
+  const browser = installBrowser();
+  const source = new MediaElementPlaybackSource(null, "single");
+  const audio = browser.audio();
+  Object.defineProperty(audio, "volume", {
+    get: () => 1,
+    set: () => undefined,
+  });
+  try {
+    source.volume = 0;
+    expect(audio.muted).toBe(true);
+    expect(source.volume).toBe(0);
+    source.volume = 0.5;
+    expect(audio.muted).toBe(false);
+  } finally {
+    source.cleanup();
+    browser.restore();
+  }
+});
+
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();

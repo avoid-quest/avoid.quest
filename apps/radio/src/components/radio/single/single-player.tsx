@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import { isMediaVolumeLocked } from "@/lib/audio/playback/media-element-volume-control";
+import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -10,6 +12,7 @@ import {
   isSessionRadio,
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
+import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { useSingleSession } from "@/lib/hooks/use-single-session";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
@@ -48,6 +51,10 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     setVolume,
     toggleMute,
   } = useSingleSession();
+  const audioSettings = useAudioSettings();
+  // iOS ignores media volume, so native Single plays at device volume.
+  const deviceVolume =
+    shouldUseNativeSinglePlayback(audioSettings) && isMediaVolumeLocked();
 
   const { metadata } = useRadioMetadata({
     poll: isPlaying && !isLoading,
@@ -159,6 +166,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
           <MobileNowPlayingPanel
             actions={currentRadioActions}
+            deviceVolume={deviceVolume}
             error={error}
             isLoading={isLoading}
             isMuted={isMuted}
@@ -195,6 +203,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
           <div className="relative hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
             <NowPlayingPanel
               actions={currentRadioActions}
+              deviceVolume={deviceVolume}
               error={error}
               isLoading={isLoading}
               isMuted={isMuted}

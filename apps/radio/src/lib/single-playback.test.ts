@@ -610,6 +610,7 @@ describe("Single Playback", () => {
 
   test("reports routing errors on the active Single Channel", async () => {
     insertSingleSession(station("current"), true, SINGLE_STANDBY_CHANNEL_ID);
+    setMainDelayMs(120);
     const context = createTestContext();
     context.channels.getOutputMode = mock(() => "native" as const);
     context.audio.playSound = mock(() =>

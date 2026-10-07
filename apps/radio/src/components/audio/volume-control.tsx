@@ -16,6 +16,8 @@ export type VolumeControlProps = {
   onVolumeCommit?: () => void;
   /** Names what the control affects, e.g. "all" reads "Mute all". */
   target?: string;
+  /** The browser ignores media volume, so the slider would do nothing. */
+  deviceVolume?: boolean;
   className?: string;
 };
 
@@ -34,6 +36,7 @@ export function VolumeControl({
   onVolumeChange,
   onVolumeCommit,
   target,
+  deviceVolume = false,
   className,
 }: VolumeControlProps) {
   const VolumeIcon = getVolumeIcon(volume, isMuted);
@@ -51,18 +54,24 @@ export function VolumeControl({
       >
         <VolumeIcon />
       </Button>
-      <Slider
-        aria-label={`Volume${suffix}`}
-        aria-valuetext={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
-        className="min-w-0 flex-1"
-        defaultValue={[1]}
-        max={1}
-        min={0}
-        onValueChange={handleValueChange}
-        onValueCommit={onVolumeCommit}
-        step={0.01}
-        value={[isMuted ? 0 : volume]}
-      />
+      {deviceVolume ? (
+        <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">
+          Use device volume
+        </span>
+      ) : (
+        <Slider
+          aria-label={`Volume${suffix}`}
+          aria-valuetext={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
+          className="min-w-0 flex-1"
+          defaultValue={[1]}
+          max={1}
+          min={0}
+          onValueChange={handleValueChange}
+          onValueCommit={onVolumeCommit}
+          step={0.01}
+          value={[isMuted ? 0 : volume]}
+        />
+      )}
     </div>
   );
 }

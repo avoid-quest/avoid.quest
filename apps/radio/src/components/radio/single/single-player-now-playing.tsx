@@ -15,6 +15,7 @@ type SharedPanelProps = {
   error: string | null;
   volume: number;
   isMuted: boolean;
+  deviceVolume?: boolean;
   metadata?: RadioNowPlayingMetadata | null;
   actions?: ReactNode;
   onPlayPause: () => void;
@@ -48,6 +49,7 @@ function PlayerPanel({
   error,
   volume,
   isMuted,
+  deviceVolume,
   metadata,
   actions,
   onPlayPause,
@@ -86,6 +88,7 @@ function PlayerPanel({
         />
         <VolumeControl
           className="flex-1"
+          deviceVolume={deviceVolume}
           isMuted={isMuted}
           onToggleMute={onMuteToggle}
           onVolumeChange={onVolumeChange}

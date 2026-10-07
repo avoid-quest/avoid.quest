@@ -334,18 +334,18 @@ describe("EffectsController", () => {
     const keyed = {
       ...createDefaultEffectConfig("compressor", "comp", 0),
       enabled: true,
-      sidechain: { channelId: "comp:key" },
+      sidechain: { channelId: "node-key:comp" },
     };
-    controller.connectKey("comp:key", key);
+    controller.connectKey("node-key:comp", key);
     await controller.attachInsert(
       "unit",
       new TestAudioNode(context) as unknown as AudioNode,
       new TestAudioNode(context) as unknown as AudioNode,
-      desiredEffects([keyed], { sidechainSoundId: "comp:key" })
+      desiredEffects([keyed], { sidechainSoundId: "node-key:comp" })
     );
 
     expect(runtime.connectSidechainSource).toHaveBeenCalledWith(
-      "comp:key",
+      "node-key:comp",
       key,
       expect.any(Number),
       2
@@ -354,8 +354,8 @@ describe("EffectsController", () => {
     const { sidechain: _, ...unkeyed } = keyed;
     await controller.reconcile("unit", desiredEffects([unkeyed]));
     const deleted = runtime.deleteSound.mock.calls as unknown as [string][];
-    expect(deleted.map(([id]) => id)).toContain("comp:key");
-    controller.releaseKey("comp:key");
+    expect(deleted.map(([id]) => id)).toContain("node-key:comp");
+    controller.releaseKey("node-key:comp");
   });
 
   test("a keyed effect on a muted branch takes no key channels", async () => {
@@ -378,10 +378,10 @@ describe("EffectsController", () => {
     const keyed = {
       ...createDefaultEffectConfig("compressor", "comp", 0),
       enabled: true,
-      sidechain: { channelId: "comp:key" },
+      sidechain: { channelId: "node-key:comp" },
     };
     controller.connectKey(
-      "comp:key",
+      "node-key:comp",
       new TestAudioNode(context) as unknown as AudioNode
     );
     await controller.attachInsert(
@@ -411,8 +411,8 @@ describe("EffectsController", () => {
     const connected = runtime.connectSidechainSource.mock.calls as unknown as [
       string,
     ][];
-    expect(connected.map(([id]) => id)).not.toContain("comp:key");
-    controller.releaseKey("comp:key");
+    expect(connected.map(([id]) => id)).not.toContain("node-key:comp");
+    controller.releaseKey("node-key:comp");
   });
 
   test("a knob that starts a second key listening reconciles, so that key registers", async () => {
@@ -427,7 +427,7 @@ describe("EffectsController", () => {
     const keyed = (id: string, enabled: boolean) => ({
       ...createDefaultEffectConfig("compressor", id, 0),
       enabled,
-      sidechain: { channelId: `${id}:key` },
+      sidechain: { channelId: `node-key:${id}` },
     });
     await controller.attachInsert(
       "unit",
@@ -469,20 +469,20 @@ describe("EffectsController", () => {
       const keyed = {
         ...createDefaultEffectConfig("compressor", "comp", 0),
         enabled: true,
-        sidechain: { channelId: "comp:key" },
+        sidechain: { channelId: "node-key:comp" },
       };
       if (order === "before") {
-        controller.connectKey("comp:key", key);
+        controller.connectKey("node-key:comp", key);
       }
       const outcome = await controller.attachInsert(
         "unit",
         new TestAudioNode(context) as unknown as AudioNode,
         new TestAudioNode(context) as unknown as AudioNode,
-        desiredEffects([keyed], { sidechainSoundId: "comp:key" })
+        desiredEffects([keyed], { sidechainSoundId: "node-key:comp" })
       );
       if (order === "after") {
         expect(outcome.backend).toBe("official");
-        controller.connectKey("comp:key", key);
+        controller.connectKey("node-key:comp", key);
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 

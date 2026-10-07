@@ -620,7 +620,7 @@ describe("RoutingGraph", () => {
     await h.settle();
 
     // The key hears the Merge's sum, at its cable's level, on its own input.
-    const key = h.keys.get("comp:key") as FakeGainNode | undefined;
+    const key = h.keys.get("node-key:comp") as FakeGainNode | undefined;
     expect(key).toBeDefined();
     const intoKey = h.context.gains.filter((gain) => gain.connections.has(key));
     expect(intoKey).toHaveLength(1);
@@ -634,7 +634,7 @@ describe("RoutingGraph", () => {
       )
     );
     await h.endFades();
-    expect(h.keys.has("comp:key")).toBe(false);
+    expect(h.keys.has("node-key:comp")).toBe(false);
   });
 
   test("the tap() API returns the summed input and changes with cables", async () => {
@@ -650,6 +650,7 @@ describe("RoutingGraph", () => {
     };
     tapped.cables.set("a~>follow", {
       delay: 0,
+      edges: ["a~>follow"],
       from: { id: "a", kind: "lane" },
       gain: 1,
       id: "a~>follow",
@@ -719,11 +720,11 @@ describe("RoutingGraph", () => {
     h.laneSends("music");
     await h.settle();
 
-    expect(order).toEqual(["key comp:key", "attach node-unit:mix"]);
+    expect(order).toEqual(["key node-key:comp", "attach node-unit:mix"]);
     // A key added while the graph plays is made at once, too.
     h.apply(keyed(false));
     await h.endFades();
     h.apply(keyed(true));
-    expect(order.at(-1)).toBe("key comp:key");
+    expect(order.at(-1)).toBe("key node-key:comp");
   });
 });

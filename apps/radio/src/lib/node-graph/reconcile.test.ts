@@ -565,7 +565,7 @@ describe("diff: audio inputs", () => {
 });
 
 describe("effectsChange", () => {
-  const keyed = (id: string, enabled: boolean, channelId = `${id}:key`) =>
+  const keyed = (id: string, enabled: boolean, channelId = `node-key:${id}`) =>
     ({
       ...createNodeEffectConfig("compressor", id),
       enabled,

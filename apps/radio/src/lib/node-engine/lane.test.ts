@@ -757,7 +757,7 @@ const transitions: Row[] = [
       expect(world.log).toEqual([
         `reconcile ${sound("b")} []`,
         "duck a",
-        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}] key comp:key#0`,
+        `reconcile ${sound("a")} [comp@${DEFAULT_THRESHOLD}] key node-key:comp#0`,
         "unduck a",
       ]);
     },

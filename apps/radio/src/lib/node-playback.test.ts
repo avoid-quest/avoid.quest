@@ -3084,10 +3084,10 @@ describe("Node Playback key cables", () => {
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
       expect.objectContaining({
         id: "comp",
-        sidechain: { channelId: "comp:key" },
+        sidechain: { channelId: "node-key:comp" },
       }),
     ]);
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("comp:key");
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
     // The key listens; it never puts FX or a key on b's own lane.
     expect(desired.get(soundOf("b"))?.sidechainSoundId).toBeNull();
 
@@ -3105,7 +3105,7 @@ describe("Node Playback key cables", () => {
     const { fader, node } = createFakeFader(new FakeAudioContext());
     connector?.(node, false, () => () => undefined);
     const laneOut = [...fader.connections][0] as FakeGainNode;
-    const key = harness.keys.get("comp:key");
+    const key = harness.keys.get("node-key:comp");
     expect(
       [...laneOut.connections].some((send) =>
         (send as FakeGainNode).connections.has(key)
@@ -3116,10 +3116,10 @@ describe("Node Playback key cables", () => {
     await settled();
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
     // The key goes once its cable has faded out.
-    expect(harness.keys.has("comp:key")).toBe(true);
+    expect(harness.keys.has("node-key:comp")).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, LANE_DROP_MS + 5));
     await settled();
-    expect(harness.keys.has("comp:key")).toBe(false);
+    expect(harness.keys.has("node-key:comp")).toBe(false);
   });
 
   test("a patch opened with its key binds it at once", async () => {
@@ -3131,7 +3131,7 @@ describe("Node Playback key cables", () => {
     await harness.playback.activate();
     await settled();
 
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("comp:key");
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
   });
 
   test("replacing a key source's sound leaves the keyed lane's effects alone", async () => {
@@ -3150,7 +3150,7 @@ describe("Node Playback key cables", () => {
       )
     ).toEqual([]);
     expect(harness.desired.get(soundOf("a"))?.sidechainSoundId).toBe(
-      "comp:key"
+      "node-key:comp"
     );
   });
 
@@ -3226,10 +3226,10 @@ describe("Node Playback key cables", () => {
     await settled();
     expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
       modulatorSource: "external",
-      sidechain: { channelId: "comp:key" },
+      sidechain: { channelId: "node-key:comp" },
       type: "vocoder",
     });
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("comp:key");
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
 
     await commit(harness, (graph) => removeEdges(graph, [KEY_EDGE_ID]));
     await settled();

@@ -434,14 +434,22 @@ export function layoutSignature(effects: readonly EffectConfig[]): string {
   return hash(JSON.stringify(layoutOf(effects)));
 }
 
-/** Writes each keyed FX's own key into the tree, by effect id. */
+/**
+ * A keyed FX's own key id, apart from every sound id as a graph unit's
+ * effects id is.
+ */
+function keyIdOf(fxId: string): string {
+  return `node-key:${fxId}`;
+}
+
+/** Writes the key each keyed FX binds, by its own key id, into the tree. */
 function keyEffects(
   effects: readonly EffectConfig[],
   keys: ReadonlyMap<string, string>
 ): EffectConfig[] {
   const visit = (current: readonly EffectConfig[]): EffectConfig[] =>
     current.map((effect) => {
-      const channelId = keys.get(effect.id);
+      const channelId = keys.get(keyIdOf(effect.id));
       let next = effect;
       if (channelId !== undefined) {
         // A key overrides the runtime modulator, preserving the authored
@@ -615,6 +623,90 @@ function multiply(left: Trim, right: Trim): Trim {
 }
 
 /**
+ * The order signal flows in between a plan's points, where a keyed chain
+ * and the keys its FX bind count as one, as they arrive together. It
+ * stays a strict order: two keys join only when neither reaches the other.
+ */
+class SignalOrder {
+  private readonly cables: ReadonlyMap<string, CablePlan>;
+  private readonly parent = new Map<string, string>();
+
+  constructor({
+    cables,
+    lanes,
+    units,
+  }: Pick<PlanBuilder, "cables" | "lanes" | "units">) {
+    this.cables = cables;
+    for (const [kind, chains] of [
+      ["lane", lanes],
+      ["unit", units],
+    ] as const) {
+      for (const chain of chains.values()) {
+        for (const node of chain.nodes) {
+          this.union(
+            endpointKey({ id: keyIdOf(node), kind: "key" }),
+            endpointKey({ id: chain.id, kind })
+          );
+        }
+      }
+    }
+  }
+
+  canJoin(keyId: string, other: string): boolean {
+    const mine = this.find(endpointKey({ id: keyId, kind: "key" }));
+    const theirs = this.find(endpointKey({ id: other, kind: "key" }));
+    return (
+      mine === theirs ||
+      !(this.reaches(mine, theirs) || this.reaches(theirs, mine))
+    );
+  }
+
+  join(keyId: string, other: string): void {
+    this.union(
+      endpointKey({ id: keyId, kind: "key" }),
+      endpointKey({ id: other, kind: "key" })
+    );
+  }
+
+  private find(key: string): string {
+    const parent = this.parent.get(key);
+    if (parent === undefined || parent === key) {
+      return key;
+    }
+    const root = this.find(parent);
+    this.parent.set(key, root);
+    return root;
+  }
+
+  private union(left: string, right: string): void {
+    this.parent.set(this.find(left), this.find(right));
+  }
+
+  private reaches(from: string, to: string): boolean {
+    const next = new Map<string, string[]>();
+    for (const cable of this.cables.values()) {
+      const source = this.find(endpointKey(cable.from));
+      next.set(source, [
+        ...(next.get(source) ?? []),
+        this.find(endpointKey(cable.to)),
+      ]);
+    }
+    const seen = new Set<string>();
+    const queue = [...(next.get(from) ?? [])];
+    for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
+      if (key === to) {
+        return true;
+      }
+      if (!seen.has(key)) {
+        seen.add(key);
+        queue.push(...(next.get(key) ?? []));
+      }
+    }
+    return false;
+  }
+}
+
+/**
  * Builds the plan from the segments: each lane's, then each segment its
  * cables reach, once, as a cable first needs its far end.
  */
@@ -701,7 +793,7 @@ class PlanBuilder {
       const trim = multiply(carry, exit.trim);
       if (exit.key) {
         // A key for each keyed FX; keys that hear the same cables merge.
-        const key: Endpoint = { id: `${exit.target}:key`, kind: "key" };
+        const key: Endpoint = { id: keyIdOf(exit.target), kind: "key" };
         this.connect(exit.ids, from, key, trim, "key");
         continue;
       }
@@ -824,23 +916,30 @@ class PlanBuilder {
         into.set(cable.to.id, [...(into.get(cable.to.id) ?? []), cable]);
       }
     }
+    const order = new SignalOrder(this);
     /** Each shared key's cables, by what they hear. */
-    const shared = new Map<string, CablePlan[]>();
+    const shared = new Map<string, CablePlan[][]>();
     const keyOf = new Map<string, string>();
     for (const [keyId, cables] of into) {
       const audible = cables.some((cable) => !cable.muted && cable.gain > 0);
       const mine = byHeard(cables);
       const heard = mine.map(heardFrom).join();
-      const kept = shared.get(heard);
+      const groups = shared.get(heard) ?? [];
+      // A key and its FX's audio arrive together, so FX one of which
+      // feeds the other can't share one.
+      const kept = groups.find((group) =>
+        order.canJoin(keyId, group[0]?.to.id ?? keyId)
+      );
       const owner = audible ? (kept?.[0]?.to.id ?? keyId) : null;
       if (owner === keyId) {
-        shared.set(heard, mine);
+        shared.set(heard, [...groups, mine]);
         this.modules.set(keyId, { id: keyId, kind: "key", realtime: false });
       } else {
         this.mergeKey(mine, owner ? (kept ?? []) : []);
       }
       if (owner !== null) {
-        keyOf.set(keyId.slice(0, -":key".length), owner);
+        order.join(keyId, owner);
+        keyOf.set(keyId, owner);
       }
     }
     for (const chain of [...this.lanes.values(), ...this.units.values()]) {
@@ -851,16 +950,14 @@ class PlanBuilder {
 
   /**
    * Drops a key's cables; the shared key's equal cables, if any, stand for
-   * them too, each carrying both ids.
+   * them too, each carrying both cables' patch cables.
    */
   private mergeKey(cables: readonly CablePlan[], into: readonly CablePlan[]) {
     for (const cable of cables) {
       this.cables.delete(cable.id);
     }
     for (const [index, cable] of into.entries()) {
-      this.cables.delete(cable.id);
-      cable.id = `${cable.id}+${cables[index]?.id}`;
-      this.cables.set(cable.id, cable);
+      cable.edges.push(...(cables[index]?.edges ?? []));
     }
   }
 
@@ -928,50 +1025,75 @@ function alignCables(
     to.kind === "key"
       ? (together.get(endpointKey(to)) ?? []).some(official)
       : to.kind === "unit" && official(to);
-  const arrivals = new Map<string, number>();
-  const processed = new Set<string>();
-  const outOf = (from: Endpoint) => {
-    const key = endpointKey(from);
-    return from.kind === "lane"
-      ? { processed: official(from), quanta: 0 }
-      : {
-          processed: processed.has(key) || official(from),
-          quanta: arrivals.get(key) ?? 0,
-        };
-  };
-  /** Moves a point's arrival to its slowest cable's; true if it moved. */
-  const settle = (key: string, cables: readonly CablePlan[]): boolean => {
-    const late = cables.some((cable) => intoOpenDaw(cable.to));
-    const sources = cables.map((cable) => outOf(cable.from));
-    const quanta = Math.max(
-      arrivals.get(key) ?? 0,
-      ...sources.map((from) => from.quanta + (late && from.processed ? 1 : 0)),
-      ...(together.get(key) ?? []).map(
-        (other) => arrivals.get(endpointKey(other)) ?? 0
-      )
-    );
-    const made = sources.some((from) => from.processed);
-    const moved =
-      quanta !== (arrivals.get(key) ?? 0) || (made && !processed.has(key));
-    arrivals.set(key, quanta);
-    if (made) {
-      processed.add(key);
-    }
-    return moved;
-  };
-  // Arrivals only grow, and a loop is invalid, so this settles.
-  for (let moved = true; moved; ) {
-    moved = false;
-    for (const [key, cables] of into) {
-      moved = settle(key, cables) || moved;
+  // A keyed chain and its keys arrive together: one arrival for them all.
+  const groupOf = new Map<string, string[]>();
+  for (const [key, others] of together) {
+    const group = [
+      ...new Set([
+        ...(groupOf.get(key) ?? [key]),
+        ...others.flatMap((other) => {
+          const otherKey = endpointKey(other);
+          return groupOf.get(otherKey) ?? [otherKey];
+        }),
+      ]),
+    ];
+    for (const member of group) {
+      groupOf.set(member, group);
     }
   }
+  const processed = new Map<string, boolean>();
+  const arrivals = new Map<string, number>();
+  /** Whether audio out of `from` has been through openDAW. */
+  const isProcessed = (from: Endpoint): boolean => {
+    const key = endpointKey(from);
+    const known = processed.get(key);
+    if (known !== undefined) {
+      return known;
+    }
+    // Settled before its inputs, so a cycle, which validation refuses,
+    // ends here.
+    processed.set(key, false);
+    const result =
+      official(from) ||
+      (from.kind !== "lane" &&
+        (into.get(key) ?? []).some((cable) => isProcessed(cable.from)));
+    processed.set(key, result);
+    return result;
+  };
+  /** Render quanta after the sources that audio out of `from` is. */
+  const quantaOf = (from: Endpoint): number =>
+    from.kind === "lane" ? 0 : arrivalOf(endpointKey(from));
+  /** When every cable into a point, and into its group, arrives. */
+  const arrivalOf = (key: string): number => {
+    const known = arrivals.get(key);
+    if (known !== undefined) {
+      return known;
+    }
+    const group = groupOf.get(key) ?? [key];
+    // As above: a cycle ends here rather than recursing.
+    for (const member of group) {
+      arrivals.set(member, 0);
+    }
+    const quanta = Math.max(
+      0,
+      ...group.flatMap((member) =>
+        (into.get(member) ?? []).map(
+          (cable) =>
+            quantaOf(cable.from) +
+            (intoOpenDaw(cable.to) && isProcessed(cable.from) ? 1 : 0)
+        )
+      )
+    );
+    for (const member of group) {
+      arrivals.set(member, quanta);
+    }
+    return quanta;
+  };
   for (const cable of plan.cables.values()) {
-    const from = outOf(cable.from);
-    cable.reenters = intoOpenDaw(cable.to) && from.processed;
+    cable.reenters = intoOpenDaw(cable.to) && isProcessed(cable.from);
     cable.delay =
-      (arrivals.get(endpointKey(cable.to)) ?? 0) -
-      from.quanta -
+      arrivalOf(endpointKey(cable.to)) -
+      quantaOf(cable.from) -
       (cable.reenters ? 1 : 0);
   }
 }
@@ -1222,7 +1344,7 @@ export function idleKeys(
   // A shared key's cable stands for every equal key cable it took over.
   const bound = new Set(
     [...plan.cables.values()].flatMap((cable) =>
-      cable.kind === "key" ? cable.id.split("+") : []
+      cable.kind === "key" ? cable.edges : []
     )
   );
   const reasonFor = (edge: GraphEdge): string | null => {

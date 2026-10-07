@@ -35,6 +35,13 @@ the source of truth for availability.
 - Werkstatt and a React Flow major-version upgrade need their own backend and
   migration checks. Attribution was deliberately removed in the implemented v1;
   the old proposal question is closed.
+- Accepted timing exception: a path that leaves openDAW and re-enters it (for
+  example a Pan or a summing point between official FX) arrives one render
+  quantum late, and Chromium's render order decides whether its rejoining
+  siblings are compensated exactly or land one quantum (about 2.7 ms) apart.
+  Only same-source paths that rejoin across such a loop are affected; closed
+  regions without native points stay inside one openDAW chain. Removing it
+  would need routing changes, not more compensation.
 - Seamless structural FX swaps, sample-aligned cross-source routing, optional
   loudness limiting and layout/performance optimizations need evidence and a
   bounded design. The existing v1 duck/swap path and browser output capabilities

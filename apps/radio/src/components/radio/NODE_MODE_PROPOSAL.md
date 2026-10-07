@@ -66,7 +66,10 @@ stays Web Audio's panner, which no openDAW device matches. Where a path
 leaves openDAW and goes back in, Web Audio reads it a render quantum late on
 its own; that cable passes a DelayNode that adds nothing, as every loop
 through the worklet wants one, and the other cables into the same point wait
-the quantum on theirs, so they arrive in step. So stations mix into shared FX through a Merge or any FX
+the quantum on theirs. Chromium decides which of them it renders first, so
+same-source paths that rejoin across such a loop can still land one quantum
+(about 2.7 ms) apart; closed regions without native points never leave
+openDAW and stay exact. So stations mix into shared FX through a Merge or any FX
 input, Filters and Pans repeat anywhere, and one output can feed several
 places. Gain nodes
 and cable trims retain the whole signal level, including the dry path at

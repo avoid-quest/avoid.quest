@@ -885,8 +885,11 @@ type Arrival = { quanta: number; processed: boolean };
  * came out of openDAW and goes back into it is read a render quantum late,
  * as Web Audio marks the one worklet processed before it pulls its inputs:
  * that lateness is the loop's own, so the cable adds none, and the faster
- * cables into the same point wait the difference on a DelayNode, so
- * branches of one source rejoin in step. Backends are the compile
+ * cables into the same point wait the difference on a DelayNode. This
+ * aligns rejoining branches when Chromium renders the faster sibling first;
+ * when it renders the loop first, that sibling lands one quantum late. Web
+ * Audio leaves that order to the browser, so same-source paths that rejoin
+ * across a re-entry can be off by one quantum. Backends are the compile
  * estimate.
  */
 function alignCables(

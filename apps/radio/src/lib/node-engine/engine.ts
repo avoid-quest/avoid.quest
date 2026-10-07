@@ -71,7 +71,7 @@ import {
   LaneSlot,
   type StartResult,
 } from "./lane.js";
-import type { EngineParamTarget } from "./param-target.js";
+import { clampParam, type EngineParamTarget } from "./param-target.js";
 
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
@@ -665,22 +665,16 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
     },
     setParam(target: EngineParamTarget, value: number) {
+      if (!Number.isFinite(value)) {
+        return "unavailable";
+      }
       if (target.kind === "send") {
         const laneId = plan.edges.get(target.edgeId)?.from.id;
         const instance = laneId ? liveInstance(laneId) : undefined;
-        if (
-          !(
-            laneId &&
-            instance?.parameters.available(target) &&
-            Number.isFinite(value)
-          )
-        ) {
+        if (!(laneId && instance?.parameters.available(target))) {
           return "unavailable";
         }
-        transientSends.set(
-          target.edgeId,
-          Math.max(0, Math.min(MAX_EDGE_GAIN, value))
-        );
+        transientSends.set(target.edgeId, clampParam(value, 0, MAX_EDGE_GAIN));
         laneOutputs.refresh(laneId);
         return "applied";
       }

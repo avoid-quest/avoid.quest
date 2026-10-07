@@ -11,6 +11,14 @@ export type EngineParamTarget =
   | { kind: "filter"; laneId: string; field: "frequency" | "Q" }
   | { kind: "send"; edgeId: string };
 
+export function clampParam(
+  value: number,
+  min = Number.NEGATIVE_INFINITY,
+  max = Number.POSITIVE_INFINITY
+) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export function paramKey(target: EngineParamTarget): string {
   return JSON.stringify(target, [
     "kind",

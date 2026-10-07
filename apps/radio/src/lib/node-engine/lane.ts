@@ -71,7 +71,7 @@ import {
   cleanupManagedChannel,
   createManagedSound,
 } from "../playback-actions-shared.js";
-import { LaneParameters } from "./params";
+import { createLaneParameters } from "./params";
 
 export type StartResult = "playing" | "failed" | "refused" | "cancelled";
 
@@ -188,7 +188,7 @@ export class LaneInstance {
   private readonly controller = new AbortController();
   readonly signal = this.controller.signal;
   readonly soundId: string;
-  readonly parameters: LaneParameters;
+  readonly parameters: ReturnType<typeof createLaneParameters>;
   /** The backend its effects last settled on, as the controller reported. */
   outcome: EffectsBackend | undefined;
   /**
@@ -242,7 +242,7 @@ export class LaneInstance {
       host.ctx.channels.setMuted("node", plan.channelId, plan.muted);
     }
     this.soundId = soundId;
-    this.parameters = new LaneParameters({
+    this.parameters = createLaneParameters({
       active: () => !this.retiring,
       audio: host.ctx.audio,
       effects: host,

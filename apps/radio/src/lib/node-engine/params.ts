@@ -1,4 +1,6 @@
+import { MAX_CHAIN_GAIN } from "@/lib/audio/dsp/effects/effect-config-schema";
 import { isOfficialOpenDawEffect } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
+import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   effectFieldsAreStructural,
@@ -8,29 +10,25 @@ import {
 import type { AudioManager } from "@/lib/audio/manager/audio-manager";
 import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtime";
 import type { LanePlan } from "@/lib/node-graph/compile";
-import { type EngineParamTarget, paramKey } from "./param-target";
+import { FILTER_PARAM_BOUNDS } from "@/lib/node-graph/schema";
+import { clampParam, type EngineParamTarget, paramKey } from "./param-target";
 
 type EffectTarget = Extract<EngineParamTarget, { kind: "effect" | "chain" }>;
 type LaneParamTarget = Exclude<EngineParamTarget, { kind: "send" }>;
+type Overlay = { target: LaneParamTarget; value: number };
+const PARAM_BOUNDS = {
+  gain: { max: MAX_CHAIN_GAIN, min: 0 },
+  pan: { max: 1, min: -1 },
+  ...FILTER_PARAM_BOUNDS,
+};
 
-function withEffectParam(
-  config: EffectConfig,
-  target: EffectTarget,
-  value: number
-): EffectConfig {
+function effectParamOwner(config: EffectConfig, target: EffectTarget) {
   if (target.kind === "effect") {
-    return { ...config, [target.field]: value };
+    return config;
   }
   return isEffectContainer(config)
-    ? {
-        ...config,
-        chains: config.chains.map((chain) =>
-          chain.id === target.chainId
-            ? { ...chain, [target.field]: value }
-            : chain
-        ),
-      }
-    : config;
+    ? config.chains.find((chain) => chain.id === target.chainId)
+    : undefined;
 }
 
 type ParamHost = {
@@ -41,23 +39,47 @@ type ParamHost = {
   effects: Pick<AudioManager, "setEffectFields">;
 };
 
-/** Scalar overlays belong to one sound; baselines always come from its latest plan. */
-export class LaneParameters {
-  private readonly transient = new Map<
-    string,
-    { target: LaneParamTarget; value: number }
-  >();
-  private readonly host: ParamHost;
-
-  constructor(host: ParamHost) {
-    this.host = host;
+function readAuthored(host: ParamHost, target: LaneParamTarget) {
+  const plan = host.plan();
+  if (target.kind === "pan" || target.kind === "filter") {
+    const field = target.kind === "pan" ? "pan" : target.field;
+    const value =
+      target.kind === "pan" ? plan?.pan : plan?.filter?.[target.field];
+    return value === undefined
+      ? undefined
+      : { bounds: PARAM_BOUNDS[field], effect: undefined, value };
   }
+  const config = findEffectInTree(plan?.effects ?? [], target.effectId);
+  if (
+    !(config && isOfficialOpenDawEffect(config)) ||
+    target.field === "order" ||
+    config.type === "werkstatt"
+  ) {
+    return;
+  }
+  const value =
+    Reflect.get(effectParamOwner(config, target) ?? {}, target.field) ??
+    (target.field === "signalGain" ? 1 : undefined);
+  const bounds =
+    target.kind === "chain"
+      ? PARAM_BOUNDS[target.field]
+      : getEffectMidiParamDefs(config.type).find(
+          (param) => param.key === target.field
+        );
+  return typeof value === "number"
+    ? { bounds, effect: config, value }
+    : undefined;
+}
 
-  available(target: EngineParamTarget): boolean {
-    const plan = this.host.plan();
-    const outcome = this.host.audio.getEffectsRuntimeOutcome(this.host.soundId);
+/** Scalar overlays belong to one sound; baselines always come from its latest plan. */
+export function createLaneParameters(host: ParamHost) {
+  let transient = new Map<string, Overlay>();
+
+  function available(target: EngineParamTarget): boolean {
+    const plan = host.plan();
+    const outcome = host.audio.getEffectsRuntimeOutcome(host.soundId);
     return (
-      this.host.active() &&
+      host.active() &&
       Boolean(plan) &&
       outcome.backend !== "compatibility" &&
       (!("effectId" in target) || outcome.status !== "failed") &&
@@ -65,150 +87,111 @@ export class LaneParameters {
     );
   }
 
-  private authored(target: LaneParamTarget): number | undefined {
-    const plan = this.host.plan();
-    if (target.kind === "pan") {
-      return plan?.pan;
-    }
-    if (target.kind === "filter") {
-      return plan?.filter?.[target.field];
-    }
-    const config = findEffectInTree(plan?.effects ?? [], target.effectId);
-    if (!(config && isOfficialOpenDawEffect(config))) {
-      return undefined;
-    }
-    if (target.kind === "chain") {
-      return isEffectContainer(config)
-        ? config.chains.find((chain) => chain.id === target.chainId)?.[
-            target.field
-          ]
-        : undefined;
-    }
-    if (target.field === "order" || config.type === "werkstatt") {
-      return undefined;
-    }
-    const value =
-      target.field === "signalGain"
-        ? (config.signalGain ?? 1)
-        : (config as unknown as Record<string, unknown>)[target.field];
-    return typeof value === "number" ? value : undefined;
-  }
-
-  set(target: LaneParamTarget, value: number): EffectWriteResult {
-    if (
-      !(this.available(target) && Number.isFinite(value)) ||
-      this.authored(target) === undefined
-    ) {
+  function set(target: LaneParamTarget, requested?: number): EffectWriteResult {
+    const authored = readAuthored(host, target);
+    const supported = available(target);
+    if (requested !== undefined && !(authored && supported)) {
       return "unavailable";
     }
-    const result = this.write(target, value);
-    if (result === "applied") {
-      this.transient.set(paramKey(target), { target, value });
+    let value = authored?.value;
+    const key = paramKey(target);
+    const previous = transient;
+    transient = new Map(previous);
+    transient.delete(key);
+    if (requested !== undefined) {
+      const { min, max } = authored?.bounds ?? {};
+      value = clampParam(requested, min, max);
+      transient.set(key, { target, value });
     }
-    return result;
+    let result: EffectWriteResult | undefined;
+    try {
+      result =
+        authored !== undefined &&
+        host.active() &&
+        (supported || !("effectId" in target))
+          ? write(target, value ?? authored.value, authored.effect)
+          : "applied";
+      return result;
+    } finally {
+      if (result !== "applied") {
+        transient = previous;
+      }
+    }
   }
 
-  clear(target?: LaneParamTarget): void {
+  function clear(target?: LaneParamTarget): void {
     const targets = target
       ? [target]
-      : [...this.transient.values()].map((entry) => entry.target);
+      : [...transient.values()].map((entry) => entry.target);
     for (const current of targets) {
-      if (!this.transient.delete(paramKey(current))) {
-        continue;
-      }
-      const value = this.authored(current);
-      if (
-        value !== undefined &&
-        this.host.active() &&
-        (this.available(current) || !("effectId" in current))
-      ) {
-        this.write(current, value);
+      if (transient.has(paramKey(current))) {
+        set(current);
       }
     }
   }
 
-  private write(target: LaneParamTarget, value: number): EffectWriteResult {
+  function write(
+    target: LaneParamTarget,
+    value: number,
+    effect?: EffectConfig
+  ): EffectWriteResult {
     if ("effectId" in target) {
-      return this.writeEffect(target.effectId, { target, value });
+      return effect ? writeEffect(effect) : "unavailable";
     }
-    const nodes = this.host.audio.getStripNodes(this.host.soundId);
+    const nodes = host.audio.getStripNodes(host.soundId);
     if (nodes) {
       const param =
         target.kind === "pan" ? nodes.pan.pan : nodes.filter[target.field];
-      param.setTargetAtTime(
-        target.kind === "pan" ? Math.max(-1, Math.min(1, value)) : value,
-        nodes.pan.context.currentTime,
-        0.01
-      );
+      param.setTargetAtTime(value, nodes.pan.context.currentTime, 0.01);
     }
     return "applied";
   }
 
-  private writeEffect(
-    effectId: string,
-    overlay?: { target: EffectTarget; value: number }
-  ): EffectWriteResult {
-    let config = findEffectInTree(this.host.plan()?.effects ?? [], effectId);
-    if (!config) {
-      return "unavailable";
+  function writeEffect(authored: EffectConfig): EffectWriteResult {
+    const { audio, effects, soundId } = host;
+    const config = { ...authored };
+    if (isEffectContainer(config)) {
+      config.chains = config.chains.map((chain) => ({ ...chain }));
     }
-    const authored = config;
-    for (const { target, value } of this.transient.values()) {
-      if ("effectId" in target && target.effectId === effectId) {
-        config = withEffectParam(config, target, value);
+    for (const { target, value } of transient.values()) {
+      if ("effectId" in target && target.effectId === authored.id) {
+        Object.assign(effectParamOwner(config, target) ?? {}, {
+          [target.field]: value,
+        });
       }
-    }
-    if (overlay) {
-      config = withEffectParam(config, overlay.target, overlay.value);
     }
     if (effectFieldsAreStructural(authored, config)) {
       return "structural";
     }
-    if (
-      this.host.audio.getEffectsRuntimeOutcome(this.host.soundId).backend !==
-      "official"
-    ) {
-      return "applied";
-    }
-    const result = this.host.effects.setEffectFields(
-      this.host.soundId,
-      effectId,
-      config,
-      true
-    );
+    const { backend } = audio.getEffectsRuntimeOutcome(soundId);
+    const result =
+      backend === "official"
+        ? effects.setEffectFields(soundId, authored.id, config, true)
+        : "applied";
     return result === "unavailable" ? "applied" : result;
   }
 
-  reapply(scope?: "strip" | { effectId: string }): void {
-    if (this.transient.size === 0) {
-      return;
-    }
-    const effects = new Set<string>();
-    for (const [key, { target, value }] of this.transient) {
-      if (
-        scope === "strip"
-          ? target.kind !== "pan" && target.kind !== "filter"
-          : scope &&
-            (!("effectId" in target) || target.effectId !== scope.effectId)
-      ) {
-        continue;
-      }
-      if (!this.available(target)) {
-        this.clear(target);
-      } else if (this.authored(target) === undefined) {
-        this.transient.delete(key);
-      } else if ("effectId" in target) {
-        effects.add(target.effectId);
+  function reapply(scope?: "strip" | { effectId: string }): void {
+    const effects = new Map<string, EffectConfig>();
+    const overlays = [...transient.values()].filter(({ target }) =>
+      scope === "strip"
+        ? !("effectId" in target)
+        : !scope || ("effectId" in target && target.effectId === scope.effectId)
+    );
+    for (const { target, value } of overlays) {
+      const authored = readAuthored(host, target);
+      if (!(available(target) && authored)) {
+        clear(target);
+      } else if (authored.effect) {
+        effects.set(authored.effect.id, authored.effect);
       } else {
-        this.write(target, value);
+        write(target, value);
       }
     }
-    for (const id of effects) {
-      this.writeEffect(id);
+    for (const config of effects.values()) {
+      writeEffect(config);
     }
   }
 
-  retire(): void {
-    this.transient.clear();
-  }
+  return { available, clear, reapply, retire: () => transient.clear(), set };
 }

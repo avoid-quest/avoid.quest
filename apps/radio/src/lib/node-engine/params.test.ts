@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Store } from "@tanstack/react-store";
+import { MAX_CHAIN_GAIN } from "@/lib/audio/dsp/effects/effect-config-schema";
 import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { effectFieldsAreStructural } from "@/lib/audio/dsp/routing/effect-tree";
@@ -314,6 +315,137 @@ const frequency: EngineParamTarget = {
 const send: EngineParamTarget = { edgeId: "comp->speakers", kind: "send" };
 
 describe("Node engine parameters", () => {
+  test.each([
+    [threshold, -100, -60],
+    [threshold, 10, 0],
+    [{ ...threshold, field: "outputGain" }, 10, 4],
+    [pan, -2, -1],
+    [pan, 2, 1],
+    [frequency, 1, 20],
+    [frequency, 30_000, 20_000],
+    [{ ...frequency, field: "Q" }, 0, 0.1],
+    [{ ...frequency, field: "Q" }, 40, 30],
+  ] as const)(
+    "transient target %j clamps %s to its schema bound",
+    async (target, value, expected) => {
+      const h = await harness();
+      expect(h.engine.setParam(target, value)).toBe("applied");
+      const actual = () => {
+        if (target.kind === "effect") {
+          return Reflect.get(h.fields.get("comp") ?? {}, target.field);
+        }
+        return target.kind === "pan"
+          ? h.nodes?.pan.pan.value
+          : h.nodes?.filter[target.field].value;
+      };
+      expect(actual()).toBe(expected);
+      h.ready();
+      h.reconnect();
+      expect(actual()).toBe(expected);
+      h.engine.clearTransient(target);
+      expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+      expect(h.nodes?.pan.pan.value).toBe(0.2);
+      expect(h.nodes?.filter.frequency.value).toBe(900);
+      expect(h.nodes?.filter.Q.value).toBe(2);
+    }
+  );
+
+  test.each([Number.NaN, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY])(
+    "non-finite values are unavailable for every parameter target (%s)",
+    async (value) => {
+      const h = await harness();
+      for (const target of [threshold, pan, frequency, send]) {
+        expect(h.engine.setParam(target, value)).toBe("unavailable");
+      }
+      expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+      expect(h.levels.get("a")).toBe(1);
+    }
+  );
+
+  test.each([
+    ["gain", -1, 0],
+    ["gain", 0, 0],
+    ["gain", 2, 2],
+    ["gain", MAX_CHAIN_GAIN, MAX_CHAIN_GAIN],
+    ["gain", MAX_CHAIN_GAIN + 1, MAX_CHAIN_GAIN],
+    ["gain", Number.MAX_VALUE, MAX_CHAIN_GAIN],
+    ["pan", -2, -1],
+    ["pan", -1, -1],
+    ["pan", 0.5, 0.5],
+    ["pan", 1, 1],
+    ["pan", 2, 1],
+  ] as const)(
+    "a transient branch %s of %s stays within its authored range",
+    async (field, value, expected) => {
+      const h = await harness();
+      const lane = h.plan.lanes.get("a");
+      const container = createNodeEffectConfig("fxComposite", "comp");
+      if (!lane || container.type !== "fxComposite") {
+        throw new Error("Missing lane or container");
+      }
+      h.engine.apply(
+        {
+          ...h.plan,
+          lanes: new Map(h.plan.lanes).set("a", {
+            ...lane,
+            effects: [{ ...container, enabled: true }],
+            layoutSignature: "container",
+          }),
+        },
+        true
+      );
+      await h.engine.whenSettled();
+      const baseline = h.authored.get("comp");
+      if (baseline?.type !== "fxComposite") {
+        throw new Error("Missing authored container");
+      }
+      const target: EngineParamTarget = {
+        chainId: container.chains[0].id,
+        effectId: container.id,
+        field,
+        kind: "chain",
+        laneId: "a",
+      };
+      expect(h.engine.setParam(target, value)).toBe("applied");
+      const changed = {
+        ...baseline,
+        chains: container.chains.map((chain, index) =>
+          index === 0 ? { ...chain, [field]: expected } : chain
+        ),
+      };
+      expect(h.fields.get("comp")).toEqual(changed);
+      h.ready();
+      expect(h.fields.get("comp")).toEqual(changed);
+      expect(h.authored.get("comp")).toBe(baseline);
+      h.engine.clearTransient(target);
+      h.ready();
+      expect(h.fields.get("comp")).toEqual(baseline);
+    }
+  );
+
+  test.each([threshold, undefined])(
+    "a throwing clear preserves the overlay for replay and retry (%s)",
+    async (target) => {
+      const h = await harness();
+      const baseline = h.authored.get("comp");
+      if (baseline?.type !== "compressor") {
+        throw new Error("Missing authored compressor");
+      }
+      expect(h.engine.setParam(threshold, -12)).toBe("applied");
+      h.throwOnEffectWrite(new Error("Transaction failed"));
+      expect(() => h.engine.clearTransient(target)).toThrow(
+        "Transaction failed"
+      );
+      h.throwOnEffectWrite(null);
+      h.ready();
+      expect(h.fields.get("comp")).toEqual({ ...baseline, threshold: -12 });
+      h.engine.clearTransient(target);
+      h.ready();
+      expect(h.fields.get("comp")).toEqual(baseline);
+      expect(h.authored.get("comp")).toBe(baseline);
+    }
+  );
+
   test.each([undefined, -12])(
     "a throwing effect write keeps the previous overlay (%s)",
     async (previous) => {

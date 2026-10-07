@@ -52,6 +52,27 @@ The local feedback availability request returned HTTP 502. It did not prevent
 these Node interactions. No audio playback, permission grant or hardware routing
 success is inferred from this run.
 
+## Recorded modulation checks
+
+Checked on 2026-10-07 in T3 Code's collaborative preview with Chromium
+154.0.8037.92, a 1280×800 desktop viewport and cross-origin isolation enabled.
+The tested code is this `node-modulation/editors` implementation on parent
+`f901fc81`. Palette actions used browser controls; authored fixtures, gates,
+MIDI messages and the silent FX harness used exported application APIs.
+
+| Scenario | Result and evidence |
+| --- | --- |
+| Palette and twelve sources | **Passed:** Add/search created Macro. All twelve sources ran together: four openDAW sources and eight sources in the Radio worklet, with no runtime warning. LFO, Steps, Randomiser, Curve, Shaped LFO and Clock changed over time. |
+| Amount, polarity and downstream control | **Passed:** Macro value 0.75, amount 0.8 and bipolar produced 0.400; connected Slew reached 0.400. Neither transformation was applied twice. |
+| Gates and synthetic MIDI | **Passed:** held ADSR reached 0.500, Multi-stage reached 0.800, and synthetic note-on reached MIDI gate 1. Release/note-off returned all three to zero. Saved graph JSON remained unchanged. |
+| Live native and scalar targets | **Passed in a silent API harness:** twelve native assignments shared a Delay feedback field; nine Macros comprised the native Macro plus eight source bridges. Feedback's authored value stayed 0.500 while its controlled value moved. Twelve connected Web Audio gains followed source values; outer Mix transient writes returned `applied`, with the authored effect config unchanged. |
+| Anti-phase follower | **Passed in the same harness:** a stereo 440 Hz oscillator with opposite channel polarity produced a nonzero follower value (about 0.568 after sensitivity), then released after its tap disconnected. No microphone or music input was used. |
+
+Fixture nodes were removed and the original preview graph restored. The
+isolated harness uses the production runtime and public FX writer; its synthetic
+audio and parameter observations establish wiring, not listening quality.
+Feedback availability still returned HTTP 502 independently of modulation.
+
 ## Pending device and listening gates
 
 Every row below is **unverified**. The preview has no physical iPhone, external
@@ -68,8 +89,11 @@ and passing regression tests cover modeled behavior, not these acceptance gates.
 | Audible branch and FX behavior | Gain/cable trims remain audible on dry and wet paths at 0/50/100% mix. Structural swaps follow the duck/swap path without clipping or stale audio. Vocoder external key removal restores the authored modulator. |
 | NAM backup across browsers | Export a patch with local NAM assets, import into a fresh browser and listen to the restored model. Rejected import preserves the existing patch and model bytes. |
 | Live providers and local files | Search/load platform media, select tracks rapidly, pause an advancing playlist and exercise initial/mid-play URL renewal against real providers. Local-file Undo remains playable; reload asks to pick the file again. |
+| Modulation listening and timing | Listen to native and bridged sweeps, Mix/gain extremes, Clock/MIDI gates and real mono/stereo follower inputs. Measure bridge latency/jitter, hidden-tab holds, native reset phase and long-session CPU/heap/underruns. Test native telemetry's short-crossing limits, openDAW restart and physical MIDI unplug/reconnect. |
 
 Use the [current contract and source map](../../NODE_MODE_PROPOSAL.md) to find the
 affected seam, and the repository's [validation contract](../../../../../../../AGENTS.md)
 for code checks. Update this evidence when the tested commit or browser behavior
 changes; pending gates remain pending until their observations are recorded.
+
+LFO shape and Steps/Random repetition run inside openDAW's engine. The Radio worklet supplies LFO delay/fade amounts and the other DSP sources; editors use emitted native telemetry.

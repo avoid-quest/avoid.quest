@@ -8,6 +8,7 @@
  * same as a knob turn, so node playback applies it and undo covers it.
  */
 
+import { ValueMapping } from "@opendaw/lib-std";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/schema";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
@@ -20,6 +21,16 @@ import {
   setEffectParams,
   setNativeParams,
 } from "@/lib/node-graph/graph-edits";
+import {
+  MODULATION_COMMON_FIELDS,
+  MODULATION_FIELDS,
+} from "@/lib/node-graph/modulation-fields";
+import {
+  NATIVE_PARAM_RANGES,
+  type NativeParamRange,
+  setModulatorParams,
+} from "@/lib/node-graph/modulation-parameters";
+import { isModulationType } from "@/lib/node-graph/modulation-schema";
 import {
   commitNodeGraph,
   type NodeCommitHistory,
@@ -35,38 +46,6 @@ export type NodeMidiCommit = (
 ) => void;
 
 type NativeNodeType = "filter" | "pan" | "gain";
-type NativeKey = "frequency" | "Q" | "pan" | "gainDb";
-
-export type NativeParamRange = {
-  key: NativeKey;
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  /** A log knob spreads its travel by ratio, as the node's own knob does. */
-  scale?: "log";
-};
-
-/** The native strip's knobs, shared by their node bodies and MIDI. */
-export const NATIVE_PARAM_RANGES: Record<
-  NativeNodeType,
-  readonly NativeParamRange[]
-> = {
-  filter: [
-    {
-      key: "frequency",
-      label: "Cutoff",
-      max: 20_000,
-      min: 20,
-      scale: "log",
-      step: 1,
-    },
-    { key: "Q", label: "Q", max: 10, min: 0.1, scale: "log", step: 0.01 },
-  ],
-  // The schema's full range, so a stored +24 dB trim stays put.
-  gain: [{ key: "gainDb", label: "Gain", max: 24, min: -40, step: 0.1 }],
-  pan: [{ key: "pan", label: "Pan", max: 1, min: -1, step: 0.01 }],
-};
 
 const CHAIN_PARAMS = [
   ["gain", "gain", 0, 4, 0.01],
@@ -91,11 +70,13 @@ function withinRange(
 
 /** Maps a 0..1 controller value onto a param's range. */
 function scaled(value: number, range: { min: number; max: number }): number {
-  return withinRange(range.min + value * (range.max - range.min), range);
+  const mapping = ValueMapping.linear(range.min, range.max);
+  return mapping.clamp(mapping.y(value));
 }
 
 function logScaled(value: number, range: NativeParamRange): number {
-  return withinRange(range.min * (range.max / range.min) ** value, range);
+  const mapping = ValueMapping.exponential(range.min, range.max);
+  return mapping.clamp(mapping.y(value));
 }
 
 function isNativeNode(
@@ -209,7 +190,13 @@ export function nodeMidiGroups(graph: NodeGraph): Map<string, string> {
   const groups = new Map<string, string>();
   const seen = new Map<string, number>();
   for (const node of graph.nodes) {
-    if (!(isEffectNodeType(node.type) || isNativeNode(node))) {
+    if (
+      !(
+        isEffectNodeType(node.type) ||
+        isNativeNode(node) ||
+        isModulationType(node.type)
+      )
+    ) {
       continue;
     }
     const title = getNodeDefinition(node.type).name;
@@ -264,6 +251,36 @@ export function createNodeMidiActions(
     }
     if (isNativeNode(node)) {
       return nativeActions(node, group, commit);
+    }
+    if (isModulationType(node.type)) {
+      return [
+        ...MODULATION_FIELDS[node.type],
+        ...MODULATION_COMMON_FIELDS,
+      ].flatMap((field): MidiAction[] => {
+        if (field.kind !== "number") {
+          return [];
+        }
+        return [
+          {
+            dispatch: (value) =>
+              commit((current) => {
+                const bounded = withinRange(value, { max: 1, min: 0 });
+                const next =
+                  field.scale === "log"
+                    ? ValueMapping.exponential(field.min, field.max).y(bounded)
+                    : scaled(bounded, field);
+                return setModulatorParams(current, node.id, {
+                  [field.key]: Math.round(next / field.step) * field.step,
+                });
+              }),
+            group,
+            label: field.label,
+            range: { max: field.max, min: field.min, step: field.step },
+            targetId: `${nodeMidiTargetPrefix(node.id)}:${field.key}`,
+            type: "continuous",
+          },
+        ];
+      });
     }
     const { effect } = node.data as { effect: EffectConfig };
     return effectActions(node.id, effect, group, commit);

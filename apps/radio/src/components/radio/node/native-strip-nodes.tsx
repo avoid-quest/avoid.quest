@@ -1,15 +1,16 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
+
 import { paramFormatters } from "@/components/audio/effect-params/param-definitions";
-import {
-  NATIVE_PARAM_RANGES,
-  type NativeParamRange,
-  nodeMidiTargetPrefix,
-} from "@/lib/midi/node-midi-actions";
+import { nodeMidiTargetPrefix } from "@/lib/midi/node-midi-actions";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
   type NativeParams,
   setNativeParams,
 } from "@/lib/node-graph/graph-edits";
+import {
+  NATIVE_PARAM_RANGES,
+  type NativeParamRange,
+} from "@/lib/node-graph/modulation-parameters";
 import {
   commitNodeGraph,
   nodeStore,

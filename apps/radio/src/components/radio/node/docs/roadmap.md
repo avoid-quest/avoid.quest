@@ -12,12 +12,9 @@ the source of truth for availability.
   Shared FX already run as graph units after the faders, and keys tap any
   point (`node-engine/routing.ts`). A pre-fader send must tap the lane's
   `preFaderSend`, because `nodes.gain` is already post-fader.
-- **Control graph:** Macro, MIDI-in cables, LFO, Clock, Randomiser, Follower,
-  song/title triggers and Sundial. Preserve graph validation and define how
-  modulation reaches current engine parameters before exposing those ports.
-  Graph commits and `channelEffects.change` persist authored values and trigger
-  reconciliation. Continuous modulation therefore needs a transient runtime
-  parameter path that changes neither the session nor the authored base value.
+- **Control graph:** twelve modulators and parameter cables are implemented.
+  Song/title triggers and Sundial remain deferred. See `modulation.md` for the
+  native assignments, transient scalar targets and device acceptance gates.
 - **Additional routing/output nodes:** delayed feedback Loop, Tape Warp, Scope,
   Headphones and Recorder. The shipped per-source whole-track Loop and cue bus do
   not imply these authored nodes are implemented.

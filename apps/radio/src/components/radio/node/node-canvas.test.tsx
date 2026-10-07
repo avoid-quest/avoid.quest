@@ -214,6 +214,57 @@ function mountGraph(
 }
 
 describe("NodeCanvas", () => {
+  test("Gate cables use unity depth and parameter cables name the selected parameter", async () => {
+    const view = mountGraph(
+      schema.nodeGraphSchema.parse({
+        edges: [
+          {
+            id: "gate",
+            source: "clock",
+            sourceHandle: "out:control:main",
+            target: "envelope",
+            targetHandle: "in:control:gate",
+          },
+          {
+            id: "cutoff",
+            source: "macro",
+            sourceHandle: "out:control:main",
+            target: "filter",
+            targetHandle: "in:control:parameter",
+          },
+        ],
+        nodes: [
+          { data: {}, id: "clock", position: { x: 0, y: 0 }, type: "clock" },
+          {
+            data: {},
+            id: "envelope",
+            position: { x: 300, y: 0 },
+            type: "envelope",
+          },
+          { data: {}, id: "macro", position: { x: 0, y: 300 }, type: "macro" },
+          {
+            data: {},
+            id: "filter",
+            position: { x: 300, y: 300 },
+            type: "filter",
+          },
+          { id: "speakers", position: { x: 600, y: 0 }, type: "speakers" },
+        ],
+        version: 2,
+      })
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(
+      view.getByRole("button", { name: "Edit Gate modulation" }).textContent
+    ).toBe("Gate · 100%");
+    expect(
+      view.getByRole("button", { name: "Edit Cutoff modulation" }).textContent
+    ).toBe("Cutoff · 25%");
+  });
+
   test("draws no React Flow attribution", () => {
     const view = mountStarter();
 
@@ -831,16 +882,15 @@ describe("NodeCanvas: dragging a cable", () => {
         clientY: 0,
       });
       move(-5000);
-      // One per input in the patch: Compressor in and key, Reverb in,
-      // Speakers in. Stations have no shipped inputs.
-      expect(spy).toHaveBeenCalledTimes(4);
+      // Audio inputs plus each source/FX parameter input, once at drag start.
+      expect(spy).toHaveBeenCalledTimes(9);
 
       const speakersIn = port("speakers", "in:audio:main");
       for (const x of [-4990, -4980, -4970]) {
         move(x, speakersIn);
       }
       move(-4960, port("comp", "in:sidechain:key"));
-      expect(spy).toHaveBeenCalledTimes(4);
+      expect(spy).toHaveBeenCalledTimes(9);
     } finally {
       spy.mockRestore();
       release(null);
@@ -899,7 +949,7 @@ describe("NodeCanvas: dragging a cable", () => {
       toast.mockRestore();
     }
   });
-  test("an Audio input draws only an audio out, an Output device only an audio in, and neither takes the wrong cable", async () => {
+  test("an Audio input draws control in and audio out, an Output device draws audio in, and neither takes the wrong audio cable", async () => {
     const view = mountGraph(
       schema.nodeGraphSchema.parse({
         edges: [],
@@ -933,7 +983,7 @@ describe("NodeCanvas: dragging a cable", () => {
         ),
       ].map((element) => element.getAttribute("data-handleid"));
 
-    expect(handles("mic")).toEqual(["out:audio:main"]);
+    expect(handles("mic")).toEqual(["in:control:parameter", "out:audio:main"]);
     expect(handles("desk")).toEqual(["in:audio:main"]);
     expect(
       view.container.querySelector('.react-flow__node[data-id="mic"]')
@@ -985,15 +1035,141 @@ describe("NodeCanvas: dragging a cable", () => {
   });
 
   /** Grabs the end of cable `edgeId` at its input, as a rewire starts. */
-  const grabCableEnd = (container: HTMLElement, edgeId: string) => {
+  const grabCableEnd = (
+    container: HTMLElement,
+    edgeId: string,
+    side: "source" | "target" = "target"
+  ) => {
     const end = container.querySelector(
-      `.react-flow__edge[data-id="${edgeId}"] .react-flow__edgeupdater-target`
+      `.react-flow__edge[data-id="${edgeId}"] .react-flow__edgeupdater-${side}`
     );
     if (!end) {
       throw new Error(`No cable end on ${edgeId}`);
     }
     fireEvent.mouseDown(end, { button: 0, clientX: 0, clientY: 0 });
   };
+
+  async function mountControlPatch(parameter = "Q") {
+    const view = mountGraph(
+      schema.nodeGraphSchema.parse({
+        edges: [
+          {
+            depth: -0.5,
+            id: "modulation",
+            parameter,
+            source: "macro",
+            sourceHandle: "out:control:main",
+            target: "filter",
+            targetHandle: "in:control:parameter",
+          },
+          {
+            id: "occupied-source-default",
+            parameter: "frequency",
+            source: "other",
+            sourceHandle: "out:control:main",
+            target: "filter",
+            targetHandle: "in:control:parameter",
+          },
+          {
+            id: "occupied-target-default",
+            parameter: "frequency",
+            source: "macro",
+            sourceHandle: "out:control:main",
+            target: "other-filter",
+            targetHandle: "in:control:parameter",
+          },
+        ],
+        nodes: [
+          { id: "macro", position: at, type: "macro" },
+          { id: "other", position: at, type: "macro" },
+          { data: {}, id: "filter", position: at, type: "filter" },
+          { data: {}, id: "other-filter", position: at, type: "filter" },
+          { data: {}, id: "pan", position: at, type: "pan" },
+          { id: "speakers", position: at, type: "speakers" },
+        ],
+        version: 2,
+      })
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const port = (node: string, handle: string): HTMLElement => {
+      const found = view.container.querySelector(
+        `.react-flow__handle[data-nodeid="${node}"][data-handleid="${handle}"]`
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error(`Missing control port ${node} ${handle}`);
+      }
+      return found;
+    };
+    return { port, view };
+  }
+
+  test.each(["source", "target"] as const)(
+    "rewiring a Q cable's %s end keeps its cached parameter verdict despite an occupied Cutoff",
+    async (side) => {
+      const { port, view } = await mountControlPatch();
+      const before = nodeStoreModule.nodeStore.state.graph;
+      const toast = spyOn(sonner, "toast");
+      const validate = spyOn(validateModule, "validateConnection");
+      try {
+        grabCableEnd(view.container, "modulation", side);
+        move(-5000);
+        const otherPort =
+          side === "source"
+            ? port("other", "out:control:main")
+            : port("other-filter", "in:control:parameter");
+        expect(otherPort.classList.contains("node-port-accept")).toBe(true);
+        const validations = validate.mock.calls.length;
+        move(-4990, otherPort);
+        move(-4980, otherPort);
+        expect(validate).toHaveBeenCalledTimes(validations);
+        release(otherPort);
+        expect(toast).not.toHaveBeenCalled();
+        const next = nodeStoreModule.nodeStore.state.graph;
+        expect(
+          next?.edges.find((edge) => edge.id === "modulation")
+        ).toMatchObject({
+          depth: -0.5,
+          parameter: "Q",
+          source: side === "source" ? "other" : "macro",
+          target: side === "source" ? "filter" : "other-filter",
+        });
+        expect(next && validateModule.validate(next)).toEqual([]);
+        act(() => {
+          nodeStoreModule.undoNodeGraph();
+        });
+        expect(nodeStoreModule.nodeStore.state.graph).toEqual(before);
+      } finally {
+        validate.mockRestore();
+        toast.mockRestore();
+      }
+    }
+  );
+
+  test("rewiring Cutoff modulation to Pan saves the compatible parameter", async () => {
+    const { port, view } = await mountControlPatch("frequency");
+    const toast = spyOn(sonner, "toast");
+    try {
+      grabCableEnd(view.container, "modulation");
+      const target = port("pan", "in:control:parameter");
+      move(-5000, target);
+      expect(target.classList.contains("node-port-accept")).toBe(true);
+      release(target);
+      const next = nodeStoreModule.nodeStore.state.graph;
+      const reconnected = next?.edges.find((edge) => edge.id === "modulation");
+      expect(reconnected).toMatchObject({
+        depth: -0.5,
+        parameter: "pan",
+        target: "pan",
+      });
+      expect(next && validateModule.validate(next)).toEqual([]);
+      expect(toast).not.toHaveBeenCalled();
+    } finally {
+      toast.mockRestore();
+    }
+  });
 
   test("dragging a cable's end frees the input it leaves and rewires it in one undo step", async () => {
     const { port, view } = await mountPatch();

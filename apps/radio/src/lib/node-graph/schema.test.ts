@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createNodeEffectConfig } from "./catalogue";
 import {
+  MODULATION_DATA_SCHEMAS,
+  MODULATION_NODE_TYPES,
+} from "./modulation-schema";
+import {
   DEFAULT_INPUT_STRIP,
   DEFAULT_MEDIA_STRIP,
   DEFAULT_STATION_STRIP,
+  graphEdgeSchema,
   migrateNodeGraph,
   NODE_GRAPH_VERSION,
   nodeGraphSchema,
@@ -11,6 +16,31 @@ import {
 } from "./schema";
 
 const position = { x: 0, y: 0 };
+
+test("saved v2 LFO data is clamped before strict parsing", () => {
+  const saved = {
+    edges: [],
+    nodes: [
+      { data: {}, id: "speakers", position, type: "speakers" },
+      {
+        data: { amount: -2, rate: 100, tempo: 900 },
+        id: "lfo",
+        position,
+        type: "lfo",
+      },
+    ],
+    version: 2,
+  };
+  const result = migrateNodeGraph(saved);
+  expect(result.status).toBe("ok");
+  if (result.status === "ok") {
+    expect(
+      result.graph.nodes.find((node) => node.id === "lfo")?.data
+    ).toMatchObject({ amount: 0, rate: 10, tempo: 300 });
+  }
+  expect(saved.nodes[1].data.rate).toBe(100);
+  expect(nodeGraphSchema.safeParse(saved).success).toBe(false);
+});
 
 function migratedLayout(version: number = NODE_GRAPH_VERSION) {
   return {
@@ -60,6 +90,45 @@ function migratedLayout(version: number = NODE_GRAPH_VERSION) {
 }
 
 describe("migrateNodeGraph", () => {
+  test.each([...MODULATION_NODE_TYPES])(
+    "fills an omitted %s data object in an existing v2 patch",
+    (type) => {
+      const result = migrateNodeGraph({
+        edges: [],
+        nodes: [
+          { id: "modulator", position, type },
+          { id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      });
+      expect(result.status).toBe("ok");
+      expect(result.status === "ok" && result.graph.nodes[0]?.data).toEqual(
+        MODULATION_DATA_SCHEMAS[type].parse({})
+      );
+    }
+  );
+
+  test("normalizes finite legacy depths while refusing nonnumeric depths", () => {
+    const [edge] = migratedLayout().edges;
+    for (const [depth, expected] of [
+      [-4, -1],
+      [3, 1],
+      [0.7, 0.7],
+    ]) {
+      const raw = { ...migratedLayout(), edges: [{ ...edge, depth }] };
+      const result = migrateNodeGraph(raw);
+      expect(result.status).toBe("ok");
+      expect(result.status === "ok" && result.graph.edges[0]?.depth).toBe(
+        expected
+      );
+      expect(raw.edges[0].depth).toBe(depth);
+    }
+    expect(graphEdgeSchema.parse(edge).depth).toBeUndefined();
+    for (const depth of [Number.NaN, Number.POSITIVE_INFINITY, "1"]) {
+      expect(graphEdgeSchema.safeParse({ ...edge, depth }).success).toBe(false);
+    }
+  });
+
   test.each([0, 2])("rejects a current patch with %i Speakers", (count) => {
     const raw = {
       edges: [],

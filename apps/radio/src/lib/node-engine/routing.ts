@@ -62,7 +62,8 @@ import {
 } from "@/lib/node-graph/compile";
 import { effectsChange } from "@/lib/node-graph/reconcile";
 import { type EffectsBackend, EffectsSlot } from "./effects-slot";
-import type { OwnerParameters } from "./params";
+
+import { createParameters, type OwnerParameters } from "./params";
 
 export type RoutingHost = {
   /** Connects a cable into an output; `realtime` skips the main delay. */
@@ -214,6 +215,7 @@ export class RoutingGraph {
     }
     for (const point of this.points.values()) {
       if (!wanted.has(point.key)) {
+        point.live?.parameters?.retire();
         point.wanted = false;
         this.kick(point);
       }
@@ -246,6 +248,7 @@ export class RoutingGraph {
       if (live) {
         this.revive(live);
         this.update(live, previous, point.plan);
+        live.parameters?.reapply();
         this.settleSends(point, live);
       }
       this.kick(point);
@@ -348,10 +351,13 @@ export class RoutingGraph {
       ?.effects?.outcome;
   }
 
-  /** A wanted unit's transient parameters, while it runs. */
-  parametersOf(unitId: string): OwnerParameters | undefined {
-    const point = this.points.get(endpointKey({ id: unitId, kind: "unit" }));
-    return (point?.wanted && point.live?.parameters) || undefined;
+  /** A wanted point's parameters, while it runs. */
+  parametersOf(id: string): OwnerParameters | undefined {
+    for (const point of this.points.values()) {
+      if (point.plan.id === id && point.wanted) {
+        return point.live?.parameters ?? undefined;
+      }
+    }
   }
 
   /** Whether a wanted point's send of `cableId` takes a transient level. */
@@ -370,6 +376,11 @@ export class RoutingGraph {
     if (point?.live) {
       this.settleSends(point, point.live);
     }
+  }
+
+  soundOf(unitId: string): string | null {
+    const point = this.points.get(endpointKey({ id: unitId, kind: "unit" }));
+    return point?.wanted && point.live ? unitEffectsId(unitId) : null;
   }
 
   /** Every unit drops its transient overlays; every send takes its plan. */
@@ -518,6 +529,33 @@ export class RoutingGraph {
       input.connect(gain);
       gain.connect(stage.input);
     }
+    if (!isUnit(plan) && (plan.kind === "filter" || plan.kind === "pan")) {
+      parameters = createParameters({
+        active: () => point.wanted && !controller.signal.aborted,
+        audio: {
+          getEffectsRuntimeOutcome: () => ({
+            backend: "bypass",
+            ready: true,
+            status: "ready",
+          }),
+          getStripNodes: () => null,
+          hasEffectModulationField: () => false,
+        },
+        effects: { setEffectFields: () => "unavailable" },
+        nodes: () => {
+          const latest = point.plan;
+          if (!isUnit(latest) && latest.kind === "filter") {
+            return { filter: input as BiquadFilterNode };
+          }
+          if (!isUnit(latest) && latest.kind === "pan") {
+            return { pan: input as StereoPannerNode };
+          }
+          return null;
+        },
+        plan: () => ({ backend: null, effects: [], ...point.plan }),
+        soundId: plan.id,
+      });
+    }
     const live: Live = {
       context,
       controller,
@@ -539,6 +577,7 @@ export class RoutingGraph {
 
   /** A key or tap's input is handed on as it comes and goes. */
   private publish(point: Point, live: Live | null): void {
+    this.host.outcomeChanged();
     const { plan } = point;
     if (isUnit(plan)) {
       return;

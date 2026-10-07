@@ -194,3 +194,13 @@ MIDI hardware, touch drag/pinch/rewire and audible structural FX swaps. Platform
 search/resolve depends on live providers and also needs release checks. Record the
 browser/device, scenario and observed result when completing each gate; mark a
 missing device or unavailable provider as unverified.
+
+## Parameter modulation
+
+Twelve control sources, parameter cables, signed depths and pattern editors are
+implemented. Ordinary openDAW effect fields use native assignments. Logical Mix,
+linear/folded gains and Crusher/Fold compensation use transient scalar writes;
+Web Audio pan/filter/sends use the same owned parameter path. Frames never
+compile or save a patch. Native Steps has no custom seed. Compatibility targets
+show unavailable on Safari/fallback. See [modulation](node/docs/modulation.md)
+and [device acceptance](node/docs/acceptance.md) for timing and verification.

@@ -39,6 +39,7 @@ import {
 } from "@/lib/node-graph/node-store";
 import {
   type GraphNode,
+  isModulationNode,
   isRadioSourceNode,
   isStripSource,
   type StripSourceNode,
@@ -53,8 +54,10 @@ import {
 import { TracklistView } from "../dj/deck/deck-tracklist";
 import { AudioInputNodeContent } from "./audio-input-content";
 import { BackendBadge } from "./backend-badge";
+import { ModulationControls } from "./control-node";
 import { FileNodeContent } from "./file-content";
 import { feedsOutput } from "./flow-elements";
+import { ModulationAssignments } from "./modulation-cables";
 import { useReleaseStep } from "./module-frame";
 import { NativeControls } from "./native-strip-nodes";
 import { nodeIcon } from "./node-icons";
@@ -115,6 +118,7 @@ export function isInspectable(node: GraphNode | undefined): boolean {
   return Boolean(
     node &&
       (isEffectNodeType(node.type) ||
+        isModulationNode(node) ||
         node.type === "filter" ||
         node.type === "pan" ||
         node.type === "gain" ||
@@ -285,6 +289,8 @@ function InspectorParams({
   let params: React.ReactNode;
   if (isStripSource(node)) {
     params = <SourceInspectorParams node={node} store={store} />;
+  } else if (isModulationNode(node)) {
+    params = <ModulationControls node={node} store={store} />;
   } else if (node.type === "deviceOut") {
     params = (
       <OutputDeviceNodeContent data={node.data} id={node.id} store={store} />
@@ -337,6 +343,7 @@ function InspectorParams({
   return (
     <div className={INSPECTOR_BODY} data-vaul-no-drag {...release}>
       {params}
+      <ModulationAssignments nodeId={node.id} store={store} />
     </div>
   );
 }

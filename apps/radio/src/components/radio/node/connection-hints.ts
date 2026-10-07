@@ -15,7 +15,7 @@ import {
   type PaletteFrom,
   portKey,
 } from "@/lib/node-graph/palette";
-import type { NodeGraph } from "@/lib/node-graph/schema";
+import type { GraphEdge, NodeGraph } from "@/lib/node-graph/schema";
 import {
   type Connection,
   connectionVerdict,
@@ -39,12 +39,13 @@ export function startConnectionHints(
   graph: NodeGraph,
   from: PaletteFrom,
   options?: ValidateOptions,
-  store: ConnectionHintStore = connectionHints
+  store: ConnectionHintStore = connectionHints,
+  reconnecting?: GraphEdge
 ): void {
   store.setState(() => ({
     from,
     graph,
-    verdicts: connectableHandles(graph, from, options),
+    verdicts: connectableHandles(graph, from, options, reconnecting),
   }));
 }
 

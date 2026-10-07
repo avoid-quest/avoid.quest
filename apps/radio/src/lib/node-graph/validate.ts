@@ -17,11 +17,24 @@ import {
   type PortKind,
   type ShipLevel,
 } from "./catalogue";
-import type { GraphEdge, GraphNode, NodeGraph, NodeType } from "./schema";
+import {
+  connectionKey,
+  connectionParameter,
+  modulationParameters,
+} from "./modulation-parameters";
+import {
+  type GraphEdge,
+  type GraphNode,
+  isModulationNode,
+  type NodeGraph,
+  type NodeType,
+} from "./schema";
 
 export type Profile = "desktop" | "mobile";
 
 export type IssueCode =
+  | "modulation-target"
+  | "budget-modulators"
   | "unshipped"
   | "missing-node"
   | "bad-handle"
@@ -98,6 +111,7 @@ export type ValidateOptions = {
 
 export type Connection = {
   id?: string;
+  parameter?: string;
   source: string;
   sourceHandle: string | null | undefined;
   target: string;
@@ -341,6 +355,22 @@ function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
     edgeIssue(context, edge, kind.code, kind.message);
     return null;
   }
+  if (to.kind === "control" && to.id === "parameter") {
+    const parameters = modulationParameters(target);
+    if (
+      parameters.length === 0 ||
+      (edge.parameter !== undefined &&
+        !parameters.some((parameter) => parameter.key === edge.parameter))
+    ) {
+      edgeIssue(
+        context,
+        edge,
+        "modulation-target",
+        "Choose a numeric parameter this module can modulate"
+      );
+      return null;
+    }
+  }
   return { edge, from, to };
 }
 
@@ -367,7 +397,7 @@ function checkEdges(context: Context): CheckedEdges {
     if (!result) {
       continue;
     }
-    const cable = `${edge.source}\u0000${edge.sourceHandle}\u0000${edge.target}\u0000${edge.targetHandle}`;
+    const cable = connectionKey(context.graph, edge);
     if (cables.has(cable)) {
       edgeIssue(context, edge, "duplicate-edge", "These are already connected");
       continue;
@@ -706,6 +736,18 @@ function checkBudgets(context: Context, playing: readonly string[]): void {
     "budget-lfos",
     `Up to ${budget.lfos} LFOs per patch`
   );
+  flagNodes(
+    graph.nodes.filter(isModulationNode),
+    32,
+    "budget-modulators",
+    "Up to 32 modulators per patch"
+  );
+  flagNodes(
+    ofType("follower"),
+    8,
+    "budget-modulators",
+    "Up to 8 audio followers per patch"
+  );
 
   overBudget(graph.edges, budget.edges, (edge) =>
     edgeIssue(
@@ -805,6 +847,7 @@ export function validateConnection(
     gain: 1,
     id: connection.id ?? candidateEdgeId(graph),
     muted: false,
+    parameter: connectionParameter(graph, connection),
     source: connection.source,
     sourceHandle: connection.sourceHandle ?? "",
     target: connection.target,

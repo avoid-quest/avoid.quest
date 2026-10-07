@@ -587,6 +587,7 @@ export class LaneInstance {
   retire(): void {
     this.controller.abort();
     this.parameters.retire();
+    this.host.outcomeChanged();
   }
 
   /** Fades the retired sound out, then releases its channel and outputs. */

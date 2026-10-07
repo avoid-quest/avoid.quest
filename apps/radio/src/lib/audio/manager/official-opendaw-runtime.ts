@@ -22,6 +22,11 @@ import type {
   OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 import {
+  type EffectParamTarget,
+  type ModulationHost,
+  officialModulationField,
+} from "./official-modulation-target";
+import {
   bindOfficialSidechain,
   createMasterRack,
   createOfficialEffectGroup,
@@ -137,6 +142,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     OfficialEffectGroup,
     Terminable
   >();
+  private worklet: EngineWorklet | null = null;
+  private modulationOutputs = 0;
+  private readonly modulationListeners = new Set<() => void>();
   private initializePromise: Promise<void> | null = null;
   private project: Project | null = null;
   private modules: RuntimeModules | null = null;
@@ -256,10 +264,15 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     try {
       const ready = Promise.withResolvers<void>();
       const load = (worklet: EngineWorklet): void => {
+        this.worklet = worklet;
         worklet.isReady().then(ready.resolve, ready.reject);
         // Every worklet starts with master output 0 connected. Radio uses only
         // monitoring returns, including after openDAW replaces a failed worklet.
         worklet.disconnect(this.context.destination, 0, 0);
+        if (this.modulationOutputs > 0) {
+          worklet.connect(this.getSilentDestination(), 0, 0);
+          worklet.wake();
+        }
         for (const unit of this.soundUnits.values()) {
           if (unit.source && unit.destination) {
             this.registerMonitoringSource(unit, project);
@@ -274,6 +287,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       const initialWorklet = project.startAudioWorklet({
         load,
         unload: () => {
+          this.worklet = null;
           this.disconnectMonitoringInputs();
           if (this.project !== project || this.closed) {
             return Promise.resolve();
@@ -315,6 +329,41 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     } catch (error) {
       project.terminate();
       throw error;
+    }
+  }
+
+  async getModulationHost(): Promise<ModulationHost> {
+    await this.initialize();
+    const project = this.requireProject();
+    project.engine.wake();
+    return {
+      field: (soundId, target) => this.modulationField(soundId, target),
+      onEndpointsChanged: (listener) => {
+        this.modulationListeners.add(listener);
+        return () => {
+          this.modulationListeners.delete(listener);
+        };
+      },
+      project,
+      retainOutput: () => {
+        this.modulationOutputs += 1;
+        if (this.modulationOutputs === 1) {
+          this.worklet?.connect(this.getSilentDestination(), 0, 0);
+        }
+        return () => {
+          this.modulationOutputs -= 1;
+          if (this.modulationOutputs === 0) {
+            this.worklet?.disconnect(this.getSilentDestination(), 0, 0);
+          }
+        };
+      },
+      transaction: (write) => this.transaction(write),
+    };
+  }
+
+  private notifyModulationEndpoints(): void {
+    for (const listener of this.modulationListeners) {
+      listener();
     }
   }
 
@@ -546,6 +595,11 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     this.rebindSidechains();
   }
 
+  modulationField(soundId: string, target: EffectParamTarget) {
+    const group = this.soundUnits.get(soundId)?.groupsById.get(target.effectId);
+    return group ? officialModulationField(group, target) : undefined;
+  }
+
   syncEffects(soundId: string, effects: readonly EffectConfig[]): void {
     const unit = this.soundUnits.get(soundId);
     if (!(unit && this.project)) {
@@ -565,6 +619,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       const retired = [...unit.groupsById.values()].filter(
         (group) => nextGroups.get(group.config.id) !== group
       );
+      unit.groupsById = nextGroups;
+      this.notifyModulationEndpoints();
       deleteOfficialEffectGroups(retired);
       for (const cell of obsoleteCells) {
         cell.delete();
@@ -713,6 +769,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return;
     }
     this.closed = true;
+    this.worklet = null;
+    this.modulationListeners.clear();
     for (const soundId of this.soundUnits.keys()) {
       this.disconnectSoundUnit(soundId);
     }

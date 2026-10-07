@@ -477,6 +477,7 @@ export function effectFieldsAreStructural(
 export function usesDirectEffectLayout(effect: EffectConfig): boolean {
   return (
     effect.type === "autotune" &&
+    !effect.keepWrapper &&
     effect.dryWet === 1 &&
     effect.inputGain === 1 &&
     effect.outputGain === 1

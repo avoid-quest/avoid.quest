@@ -1,14 +1,13 @@
-import { MAX_CHAIN_GAIN } from "@/lib/audio/dsp/effects/effect-config-schema";
 import { isOfficialOpenDawEffect } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
-  effectFieldsAreStructural,
   findEffectInTree,
   isEffectContainer,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { AudioManager } from "@/lib/audio/manager/audio-manager";
 import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtime";
+import { isCoupledParameter } from "@/lib/audio/manager/official-modulation-target";
 import type { LanePlan } from "@/lib/node-graph/compile";
 import { FILTER_PARAM_BOUNDS } from "@/lib/node-graph/schema";
 import { clampParam, type EngineParamTarget, paramKey } from "./param-target";
@@ -17,7 +16,7 @@ type EffectTarget = Extract<EngineParamTarget, { kind: "effect" | "chain" }>;
 type LaneParamTarget = Exclude<EngineParamTarget, { kind: "send" }>;
 type Overlay = { target: LaneParamTarget; value: number };
 const PARAM_BOUNDS = {
-  gain: { max: MAX_CHAIN_GAIN, min: 0 },
+  gain: { max: Number.POSITIVE_INFINITY, min: 0 },
   pan: { max: 1, min: -1 },
   ...FILTER_PARAM_BOUNDS,
 };
@@ -43,7 +42,11 @@ type ParamHost = {
   soundId: string;
   plan: () => ParamPlan | null;
   active: () => boolean;
-  audio: Pick<AudioManager, "getStripNodes" | "getEffectsRuntimeOutcome">;
+  audio: Pick<
+    AudioManager,
+    "getStripNodes" | "getEffectsRuntimeOutcome" | "hasEffectModulationField"
+  >;
+  nodes?: () => { pan?: StereoPannerNode; filter?: BiquadFilterNode } | null;
   effects: Pick<AudioManager, "setEffectFields">;
 };
 
@@ -68,13 +71,14 @@ function readAuthored(host: ParamHost, target: LaneParamTarget) {
   const value =
     Reflect.get(effectParamOwner(config, target) ?? {}, target.field) ??
     (target.field === "signalGain" ? 1 : undefined);
+  const effectBounds = ["signalGain", "outputGain"].includes(target.field)
+    ? { max: Number.POSITIVE_INFINITY, min: 0 }
+    : getEffectMidiParamDefs(config.type).find(
+        (param) => param.key === target.field
+      );
   const bounds =
-    target.kind === "chain"
-      ? PARAM_BOUNDS[target.field]
-      : getEffectMidiParamDefs(config.type).find(
-          (param) => param.key === target.field
-        );
-  return typeof value === "number"
+    target.kind === "chain" ? PARAM_BOUNDS[target.field] : effectBounds;
+  return typeof value === "number" && bounds
     ? { bounds, effect: config, value }
     : undefined;
 }
@@ -92,9 +96,26 @@ export function createParameters(host: ParamHost) {
     return (
       host.active() &&
       Boolean(plan) &&
+      (target.kind === "send" || resolves(target)) &&
       outcome.backend !== "compatibility" &&
       (!("effectId" in target) || outcome.status !== "failed") &&
       plan?.backend !== "compat"
+    );
+  }
+
+  function resolves(target: LaneParamTarget): boolean {
+    const authored = readAuthored(host, target);
+    return Boolean(
+      authored &&
+        (!authored.effect ||
+          isCoupledParameter(
+            { config: authored.effect },
+            target as EffectTarget
+          ) ||
+          host.audio.hasEffectModulationField(
+            host.soundId,
+            target as EffectTarget
+          ))
     );
   }
 
@@ -149,11 +170,16 @@ export function createParameters(host: ParamHost) {
     if ("effectId" in target) {
       return effect ? writeEffect(effect) : "unavailable";
     }
-    const nodes = host.audio.getStripNodes(host.soundId);
+    const nodes = host.nodes
+      ? host.nodes()
+      : host.audio.getStripNodes(host.soundId);
     if (nodes) {
       const param =
-        target.kind === "pan" ? nodes.pan.pan : nodes.filter[target.field];
-      param.setTargetAtTime(value, nodes.pan.context.currentTime, 0.01);
+        target.kind === "pan" ? nodes.pan?.pan : nodes.filter?.[target.field];
+      const context = (nodes.pan ?? nodes.filter)?.context;
+      if (context) {
+        param?.setTargetAtTime(value, context.currentTime, 0.01);
+      }
     }
     return "applied";
   }
@@ -170,9 +196,6 @@ export function createParameters(host: ParamHost) {
           [target.field]: value,
         });
       }
-    }
-    if (effectFieldsAreStructural(authored, config)) {
-      return "structural";
     }
     const { backend } = audio.getEffectsRuntimeOutcome(soundId);
     const result =
@@ -200,11 +223,19 @@ export function createParameters(host: ParamHost) {
       }
     }
     for (const config of effects.values()) {
-      writeEffect(config);
+      try {
+        writeEffect(config);
+      } catch (error) {
+        console.warn(
+          "[NodePlayback] Could not replay effect overlays",
+          config.id,
+          error
+        );
+      }
     }
   }
 
-  return { available, clear, reapply, retire: () => transient.clear(), set };
+  return { available, clear, reapply, retire: clear, set };
 }
 
 export type OwnerParameters = ReturnType<typeof createParameters>;

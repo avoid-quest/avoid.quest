@@ -50,7 +50,6 @@ import type {
   LaneBackend,
 } from "@/lib/node-graph/compile";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
-import { MAX_EDGE_GAIN } from "@/lib/node-graph/schema";
 import type { OutputRouting } from "@/lib/output-routing.js";
 import {
   type ResolvePlatformStream,
@@ -191,8 +190,10 @@ const PLAY_ALL_CONCURRENCY = 3;
 const NODE_CHANNEL_PREFIX = "n:";
 const EMPTY_PLAN: EnginePlan = {
   cables: new Map(),
+  gains: [],
   issues: [],
   lanes: new Map(),
+  modulation: { cables: [], program: { followers: [], links: [], nodes: [] } },
   modules: new Map(),
   monitoringChannels: 0,
   sinks: new Map(),
@@ -213,6 +214,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
   const sendOverlays = new Map<string, number>();
   let plan = EMPTY_PLAN;
   let disposing = false;
+  const paramListeners = new Set<() => void>();
   /** The latest Play all; a pause or a newer Play all stops it. */
   let playAll: AbortController | null = null;
   /** Whether a tap opened the cue output. */
@@ -349,7 +351,13 @@ export function createNodeEngine(options: NodeEngineOptions) {
   });
 
   /** Writes every lane's badge, and its FX nodes', when one changed. */
+  const notifyParameters = () => {
+    for (const listener of paramListeners) {
+      listener();
+    }
+  };
   const publishBadges = () => {
+    notifyParameters();
     const badges: Record<string, BackendBadge> = {};
     for (const lane of plan.lanes.values()) {
       const badge = laneBackendBadge(
@@ -651,6 +659,29 @@ export function createNodeEngine(options: NodeEngineOptions) {
     masterVolumeChanged() {
       syncSinks(plan);
     },
+    onParamsChanged(listener: () => void) {
+      paramListeners.add(listener);
+      return () => {
+        paramListeners.delete(listener);
+      };
+    },
+    onTapsChanged: (listener: () => void) => routing.onTapsChanged(listener),
+    paramAvailable(target: EngineParamTarget): boolean {
+      if (disposing) {
+        return false;
+      }
+      if (target.kind === "send") {
+        const cable = plan.cables.get(target.edgeId);
+        return Boolean(cable && sendAvailable(cable));
+      }
+      return parametersOf(target.laneId)?.available(target) ?? false;
+    },
+    paramSoundId(target: EngineParamTarget): string | null {
+      return "laneId" in target
+        ? (liveInstance(target.laneId)?.soundId ??
+            routing.soundOf(target.laneId))
+        : null;
+    },
     pause(laneId: string) {
       slots.get(laneId)?.pause(true);
     },
@@ -712,7 +743,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
         if (!(cable && sendAvailable(cable))) {
           return "unavailable";
         }
-        sendOverlays.set(target.edgeId, clampParam(value, 0, MAX_EDGE_GAIN));
+        sendOverlays.set(target.edgeId, clampParam(value, 0));
         refreshSender(cable.from);
         return "applied";
       }
@@ -720,6 +751,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     },
     /** The lane's sound, while it has one. */
     soundOf: (laneId: string) => liveInstance(laneId)?.soundId ?? null,
+    tap: (id: string) => routing.tap(id),
     /**
      * Lanes and points can start more work (a re-add after a fade, a point
      * released once a lane's cables go), so settle to empty.

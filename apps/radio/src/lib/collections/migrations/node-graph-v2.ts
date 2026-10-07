@@ -7,8 +7,8 @@
  * v1 release stored is upgraded here first, in `initializePlaybackSessions`
  * before anything updates the collection, as `migrateMultipleSession` does.
  *
- * It is idempotent: a current graph, or none, is left alone. A graph from a
- * newer release stays as stored, read-only to this one. A graph that can't
+ * It is idempotent: a normalized current graph, or none, is left alone.
+ * A graph from a newer release stays as stored, read-only to this one. A graph that can't
  * be read is copied to localStorage `radio-app-node-graph-backup` and then
  * dropped, so Node starts from the Starter patch rather than every session
  * update failing on it. When the copy can't be stored the graph stays.
@@ -96,11 +96,18 @@ export function migrateNodeGraphSession(
 ): void {
   const stored: unknown = sessions.state.get("node")?.graph;
   const version = storedVersion(stored);
-  if (stored === undefined || version === NODE_GRAPH_VERSION) {
+  if (stored === undefined) {
     return;
   }
   const migration = migrateNodeGraph(stored);
   if (migration.status === "read-only") {
+    return;
+  }
+  if (
+    migration.status === "ok" &&
+    version === NODE_GRAPH_VERSION &&
+    JSON.stringify(stored) === JSON.stringify(migration.graph)
+  ) {
     return;
   }
   if (

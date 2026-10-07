@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { createNodeEffectConfig } from "./catalogue";
+import { MODULATION_NODE_TYPES } from "./modulation-schema";
 import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
 import {
   addPaletteNode,
@@ -54,6 +55,14 @@ const emptyStation: PaletteNodeEntry = {
 };
 
 describe("paletteEntries", () => {
+  test("offers all twelve modulators", () => {
+    expect(
+      paletteEntries(patch)
+        .filter((entry) => entry.section === "modulators")
+        .map((entry) => entry.id)
+        .sort()
+    ).toEqual([...MODULATION_NODE_TYPES].sort());
+  });
   test("offers Stations, saved stations and templates, not a second Speakers", () => {
     const entries = paletteEntries(patch, {
       displayCapture: true,
@@ -62,7 +71,9 @@ describe("paletteEntries", () => {
 
     expect(
       entries
-        .filter((entry) => entry.section !== "fx")
+        .filter(
+          (entry) => entry.section !== "fx" && entry.section !== "modulators"
+        )
         .map((entry) => `${entry.section}:${entry.name}`)
     ).toEqual([
       "sources:Station",
@@ -173,7 +184,10 @@ describe("paletteEntries", () => {
     expect(entries.length).toBeGreaterThan(0);
     expect(
       entries.every(
-        (entry) => entry.section === "fx" || entry.section === "routing"
+        (entry) =>
+          entry.section === "fx" ||
+          entry.section === "routing" ||
+          (entry.kind === "node" && entry.type === "follower")
       )
     ).toBe(true);
   });

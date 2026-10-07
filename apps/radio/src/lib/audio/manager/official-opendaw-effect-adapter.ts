@@ -423,7 +423,7 @@ function updateLayout(
     group.signalTrim = createTrim(
       context,
       host,
-      config.signalGain,
+      config.signalGain as number,
       "Cable trim"
     );
   }
@@ -554,7 +554,7 @@ export function writeOfficialEffectFields(
   group: OfficialEffectGroup,
   config: EffectConfig
 ): void {
-  group.signalTrim?.volume.setValue(gainToDb(config.signalGain ?? 1));
+  group.signalTrim?.volume.setValue(gainToDb(config.signalGain as number));
   group.signalTrim?.enabled.setValue(config.enabled);
   if (group.wrapper) {
     group.wrapper.enabled.setValue(config.enabled);

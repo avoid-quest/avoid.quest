@@ -364,6 +364,7 @@ describe("split ports", () => {
       );
     expect(handles()).toEqual([
       "in:audio:main",
+      "in:control:parameter",
       "out:audio:branch-1",
       "out:audio:branch-2",
     ]);
@@ -372,7 +373,7 @@ describe("split ports", () => {
       [...view.container.querySelectorAll("[data-handle]")].map((handle) =>
         handle.getAttribute("title")
       )
-    ).toEqual(["Input", "Branch 1", "Branch 2"]);
+    ).toEqual(["Input", "Parameter input", "Branch 1", "Branch 2"]);
     const measured = updateNodeInternals.mock.calls.length;
 
     view.rerender(

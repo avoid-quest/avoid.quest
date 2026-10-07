@@ -873,6 +873,20 @@ export class AudioManager {
     return this.effects.reconcile(soundId, desired);
   }
 
+  getWorkletProcessorUrl(): string {
+    return workletProcessorUrl;
+  }
+
+  getModulationHost() {
+    return this.effects.getModulationHost();
+  }
+
+  hasEffectModulationField(
+    ...args: Parameters<EffectsController["hasEffectModulationField"]>
+  ) {
+    return this.effects.hasEffectModulationField(...args);
+  }
+
   setEffectFields(...args: Parameters<EffectsController["setEffectFields"]>) {
     return this.effects.setEffectFields(...args);
   }

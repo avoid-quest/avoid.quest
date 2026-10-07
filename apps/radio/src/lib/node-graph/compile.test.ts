@@ -2828,6 +2828,12 @@ describe("compile: key cables", () => {
       "talk~>gate": "This key needs the openDAW engine",
     });
     expect(idleKeys(patch, compile(patch, ENV)).size).toBe(0);
+    // An openDAW chain the runtime moved to compatibility says so too.
+    expect(
+      Object.fromEntries(
+        idleKeys(patch, compile(patch, ENV), { comp: "compat", gate: "compat" })
+      )
+    ).toEqual({ "talk~>gate": "This key needs the openDAW engine" });
     // FX sharing its one key both hear it.
     const shared = {
       ...patch,

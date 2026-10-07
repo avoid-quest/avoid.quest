@@ -1320,12 +1320,6 @@ function silentSource(node: GraphNode | undefined): string | null {
     : "The station is hidden";
 }
 
-/**
- * Why each key cable that keys nothing is idle, by cable id, as the canvas
- * says it: the issue that refused it, a mute, an empty or hidden source, an
- * effect switched off, or a second key the compatibility engine can't
- * bind. A key that reaches its effect's sidechain is left out.
- */
 /** Every lane's and unit's effects by id, and the ones that hear audio. */
 function chainEffects(plan: EnginePlan) {
   const byId = new Map<string, EffectConfig>();
@@ -1339,17 +1333,30 @@ function chainEffects(plan: EnginePlan) {
   return { active, byId };
 }
 
+/**
+ * Why each key cable that keys nothing is idle, by cable id, as the canvas
+ * says it: the issue that refused it, a mute, an empty or hidden source, an
+ * effect switched off, or a second key the compatibility engine can't
+ * bind. A key that reaches its effect's sidechain is left out. `badges` are
+ * the live backend badges by FX node id, as node playback publishes them:
+ * a chain the runtime moved to compatibility shows it too.
+ */
 export function idleKeys(
   graph: Pick<NodeGraph, "nodes" | "edges">,
-  plan: EnginePlan
+  plan: EnginePlan,
+  badges: Readonly<Record<string, string>> = {}
 ): Map<string, string> {
   const { active, byId: inChain } = chainEffects(plan);
   // The compatibility engine keys a chain from one key: its first.
   const compatOnly = new Set<EffectConfig>();
   for (const chain of [...plan.lanes.values(), ...plan.units.values()]) {
-    if (chain.backend === "compat") {
+    const audible = audibleEffects(chain.effects);
+    if (
+      chain.backend === "compat" ||
+      audible.some((effect) => badges[effect.id] === "compat")
+    ) {
       const [key] = audibleSidechainIds(chain.effects);
-      for (const effect of audibleEffects(chain.effects)) {
+      for (const effect of audible) {
         if (effect.sidechain && effect.sidechain.channelId !== key) {
           compatOnly.add(effect);
         }

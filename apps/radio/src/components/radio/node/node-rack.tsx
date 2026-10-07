@@ -3,6 +3,7 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { useStore } from "@tanstack/react-store";
 import { KeyRoundIcon, ListMusicIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { Radio } from "@/lib/audio";
@@ -24,7 +25,11 @@ import {
 } from "@/lib/node-graph/schema";
 import { isTrackRadio } from "@/lib/node-graph/sources";
 import { parseHandleId } from "@/lib/node-graph/validate";
-import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
+import {
+  detectNodePlaybackEnv,
+  getNodePlayback,
+  nodeBackendBadges,
+} from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { EmptyHint } from "../empty-hint";
 import { InlineError } from "../inline-error";
@@ -121,9 +126,10 @@ function RackSection({
  */
 function keyingStations(
   graph: NodeGraph,
-  plan: EnginePlan
+  plan: EnginePlan,
+  badges: Readonly<Record<string, string>>
 ): Map<string, string> {
-  const idle = idleKeys(graph, plan);
+  const idle = idleKeys(graph, plan, badges);
   const stationOf = new Map<string, string>();
   for (const lane of plan.lanes.values()) {
     for (const id of lane.nodes) {
@@ -289,7 +295,8 @@ export function NodeRack({
   const plan = compiledPlan(graph, env ?? detectedEnv);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const groups = groupLanes(plan, nodesById);
-  const keyedBy = keyingStations(graph, plan);
+  const badges = useStore(nodeBackendBadges);
+  const keyedBy = keyingStations(graph, plan, badges);
   const hidden = graph.nodes.flatMap((node) =>
     node.type === "station" && node.data.radio?.enabled === false
       ? [{ id: node.id, radio: node.data.radio as Radio }]

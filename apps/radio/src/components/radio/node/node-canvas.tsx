@@ -36,7 +36,7 @@ import {
 } from "@/lib/node-graph/series-parallel";
 import { STATION_ROW_HEIGHT } from "@/lib/node-graph/templates";
 import type { Connection, ValidateOptions } from "@/lib/node-graph/validate";
-import { detectNodePlaybackEnv } from "@/lib/node-playback";
+import { detectNodePlaybackEnv, nodeBackendBadges } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { AudioInputNode } from "./audio-input-node";
 import { BranchEdge } from "./branch-edge";
@@ -527,6 +527,7 @@ function Canvas({
   // each key cable, for its idle tag.
   const plan = compiledPlan(graph, env);
   const roles = mergeRoles(graph, plan);
+  const badges = useStore(nodeBackendBadges);
 
   const nodes = toFlowNodes(graph, {
     measured,
@@ -535,7 +536,7 @@ function Canvas({
     selection,
   });
   const edges = toFlowEdges(graph, {
-    idleKeys: idleKeys(graph, plan),
+    idleKeys: idleKeys(graph, plan, badges),
     insertTarget: insertTarget?.edge ?? null,
     liveLanes,
     selection,

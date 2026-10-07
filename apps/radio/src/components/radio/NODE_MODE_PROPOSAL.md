@@ -85,8 +85,10 @@ on every cable into the node, those still fading out included, so shared FX
 sound the same at any master level.
 
 Audio cables carry signal and branch controls; dashed key cables feed supported
-FX sidechains. A key cable can start anywhere a cable can: the key hears
-exactly what that point carries, cable gain and mute included, and a key input
+FX sidechains. A key cable can start anywhere a cable can, except inside a
+Split whose branches meet again, whose signals stay inside its openDAW
+container: the key hears exactly what that point carries, cable gain and mute
+included, and a key input
 sums every cable into it, in stereo. Each keyed effect has its own key, so
 several effects on one path can be keyed independently; one whose key cables
 are all muted or have zero gain detects on its own input. A key and the audio of the

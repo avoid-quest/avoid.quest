@@ -49,6 +49,10 @@ import { type IssueCode, liveAudioNodes, type WiredEdge } from "./validate";
 /** A Split, Band Split or implicit fan-out takes 2 to 4 branches. */
 export const MAX_SPLIT_BRANCHES = 4;
 
+/** Why a key inside a closed region is refused. */
+export const ENCLOSED_KEY_MESSAGE =
+  "A key can't start inside a Split whose branches meet again";
+
 /** Why an explicit Split whose branches go different ways is refused. */
 export const OPEN_SPLIT_MESSAGE =
   "Sending a Split's branches to different places comes with the next update";
@@ -331,6 +335,8 @@ export class RegionLowerer {
   private readonly ins = new Map<string, WiredEdge[]>();
   /** Key cables by the node they tap. */
   private readonly keys = new Map<string, WiredEdge[]>();
+  /** Key cables tapping inside a closed region, which plays in openDAW. */
+  private readonly enclosedKeys: string[] = [];
   private readonly postDominators = new Map<string, Set<string>>();
   private readonly regionCache = new Map<string, Set<string>>();
   /** Filter and Pan nodes on their source's strip. */
@@ -382,14 +388,48 @@ export class RegionLowerer {
         push(this.ins, target, wire);
       }
     }
+    this.findLeading();
+    this.settleCuts();
+    // Only an effect a source plays through has a detector to feed.
+    this.placeKeys(
+      keys.filter(({ edge }) => kept(edge.source) && kept(edge.target))
+    );
+  }
+
+  /**
+   * Makes each key's tap a point. A closed region's signals stay inside
+   * its openDAW container, a Split's ports included, so a key there can't
+   * hear one without opening the region: it is refused. A fan-out's head
+   * carries one signal, which a key taps as a point, and its meeting node
+   * the region's output.
+   */
+  private placeKeys(keys: readonly WiredEdge[]): void {
+    const enclosed = new Set(
+      [...this.closed].flatMap(([head, meeting]) => {
+        const effect = effectOf(this.byId.get(head));
+        return [
+          ...(effect && isEffectContainer(effect) ? [head] : []),
+          ...this.regionOf(head, meeting),
+        ];
+      })
+    );
     for (const wire of keys) {
-      // Only an effect a source plays through has a detector to feed.
-      if (kept(wire.edge.source) && kept(wire.edge.target)) {
+      if (enclosed.has(wire.edge.source)) {
+        this.enclosedKeys.push(wire.edge.id);
+      } else {
         push(this.keys, wire.edge.source, wire);
       }
     }
-    this.findLeading();
-    this.settleCuts();
+    // Each tap left is a point, outside every closed region.
+    if (this.keys.size > 0) {
+      this.findLeading();
+      this.settleCuts();
+    }
+  }
+
+  /** Key cables that tap inside a closed region. */
+  keysInsideRegions(): readonly string[] {
+    return this.enclosedKeys;
   }
 
   /** Nodes a source reaches along audio cables, the sources included. */
@@ -437,6 +477,7 @@ export class RegionLowerer {
    * series, before any FX, branch or join.
    */
   private findLeading(): void {
+    this.leading.clear();
     for (const node of this.byId.values()) {
       if (!getNodeDefinition(node.type).source) {
         continue;

@@ -40,6 +40,7 @@ import { laneChannelId, laneSoundId } from "./identifiers";
 import {
   clampPan,
   dbToGain,
+  ENCLOSED_KEY_MESSAGE,
   FreshIds,
   LoweringError,
   type NativeFilterPlan,
@@ -519,16 +520,29 @@ function refuse(graph: CompileGraph): Issue[] {
   );
 }
 
-/** Splits whose branches part ways, which this compiler cannot lower yet. */
-function refuseOpenSplits(regions: RegionLowerer): Issue[] {
-  return regions.openSplits().map(
-    (id): Issue => ({
-      code: "split-open",
-      id,
-      message: OPEN_SPLIT_MESSAGE,
-      target: "node",
-    })
-  );
+/**
+ * Splits whose branches part ways, which this compiler cannot lower yet,
+ * and keys inside a Split whose branches meet again.
+ */
+function refuseRegions(regions: RegionLowerer): Issue[] {
+  return [
+    ...regions.openSplits().map(
+      (id): Issue => ({
+        code: "split-open",
+        id,
+        message: OPEN_SPLIT_MESSAGE,
+        target: "node",
+      })
+    ),
+    ...regions.keysInsideRegions().map(
+      (id): Issue => ({
+        code: "key-enclosed",
+        id,
+        message: ENCLOSED_KEY_MESSAGE,
+        target: "edge",
+      })
+    ),
+  ];
 }
 
 /**
@@ -567,7 +581,7 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
           })
         : null;
     if (regions) {
-      blocking = refuseOpenSplits(regions);
+      blocking = refuseRegions(regions);
     }
     if (regions && blocking.length === 0) {
       return {

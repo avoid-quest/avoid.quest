@@ -2471,6 +2471,46 @@ describe("compile: key cables", () => {
     });
   });
 
+  test.each([
+    ["an effect on a branch", "verb", "main"],
+    ["a branch's port", "split", "branch-2"],
+  ])(
+    "a key from %s of a Split whose branches meet is refused; the Split plays on",
+    (_label, source, port) => {
+      const patch = graph(
+        [
+          station("a"),
+          station("music"),
+          fx("split", "fxComposite", { enabled: true }),
+          fx("verb", "cheapReverb", { enabled: true }),
+          node("merge", "merge"),
+          fx("comp", "compressor", { enabled: true }),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "verb", { from: "branch-1", id: "one" }),
+          audio("verb", "merge"),
+          audio("split", "merge", { from: "branch-2", id: "two" }),
+          audio("merge", "speakers"),
+          audio("music", "comp"),
+          audio("comp", "speakers"),
+          { ...key(source, "comp"), sourceHandle: `out:audio:${port}` },
+        ]
+      );
+      const plan = compile(patch, ENV);
+      expect(codes(plan)).toEqual([`key-enclosed@${source}~>comp`]);
+      expect(shape(lane(plan, "a").effects)).toEqual([
+        ["fxComposite", "split", [[["cheapReverb", "verb"]], []]],
+      ]);
+      expect(lane(plan, "music").effects[0]?.sidechain).toBeUndefined();
+      expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
+        [`${source}~>comp`]:
+          "A key can't start inside a Split whose branches meet again",
+      });
+    }
+  );
+
   test("a key on a fan-out's head keeps the head a point", () => {
     const plan = build(
       [

@@ -57,6 +57,10 @@ export function validateBandcampCdnRedirectUrl(
     return { ok: false, reason: "invalid-url" };
   }
 
+  if (parsed.username || parsed.password) {
+    return { ok: false, reason: "invalid-url" };
+  }
+
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return { ok: false, reason: "invalid-protocol" };
   }

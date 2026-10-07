@@ -9,6 +9,16 @@ function expectInvalidBandcampUrl(
 }
 
 describe("validateBandcampCdnUrl", () => {
+  test("rejects credentials before a relay can decode them into another host", () => {
+    expectInvalidBandcampUrl(
+      "https://evil.example%2F@t4.bcbits.com/track.mp3",
+      "invalid-url"
+    );
+    expectInvalidBandcampUrl(
+      "https://169.254.169.254%2F@t4.bcbits.com/track.mp3",
+      "invalid-url"
+    );
+  });
   test("allows normalized bcbits CDN hostnames", () => {
     expect(validateBandcampCdnUrl("https://t4.bcbits.com/track.mp3").ok).toBe(
       true

@@ -24,6 +24,7 @@ export {
   validateBandcampCdnRedirectUrl,
   validateBandcampCdnUrl,
 } from "./bandcamp/url-policy.js";
+export { BROWSER_USER_AGENT } from "./browser-user-agent.js";
 // Unified detection
 export {
   BANDCAMP_HTML_MARKERS,

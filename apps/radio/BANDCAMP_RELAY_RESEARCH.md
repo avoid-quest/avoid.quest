@@ -3,57 +3,55 @@
 Research date: **2026-07-10** (Europe/Rome; live probes between 09:27 and
 09:56 UTC)
 
+Rechecked: **2026-10-07**. The July byte measurements below are historical;
+`proxy.cors.sh` and `cors.zme.ink` now return NXDOMAIN and have been removed.
+`seep.eu.org` is the only shipped relay, and its deployed implementation is now
+a Go rewrite rather than the Node source inspected in July.
+
 ## Decision
 
-Three anonymous public URL prefixes, spanning two independent software/operator
-families, passed the Bandcamp byte contract:
+Three anonymous public URL prefixes passed the Bandcamp byte contract in July.
+Only one remains in the shared metadata/browser relay list:
 
 ```text
 https://seep.eu.org/<fresh-bcbits-stream-url>
-https://proxy.cors.sh/<fresh-bcbits-stream-url>
-https://cors.zme.ink/<fresh-bcbits-stream-url>
 ```
 
-All three returned real MP3 bytes, preserved exact `206 Partial Content` range
-semantics, returned `audio/mpeg`, and allowed `https://radio.avoid.quest` with
+In July, all three returned real MP3 bytes, preserved exact
+`206 Partial Content` range semantics, returned `audio/mpeg`, and allowed
+`https://radio.avoid.quest` with
 `Access-Control-Allow-Origin: *`. Both Netnr endpoints returned complete exact
 5,605,667-byte and 8,408,365-byte files, two isolated ranges, and six concurrent
 disjoint ranges. CORS.SH passed the same core checks plus ten concurrent ranges
 and an open-ended range. All three passed a production-origin `Range` preflight,
 and complete-file SHA-256 hashes matched direct upstream downloads.
 
-The selected order is:
+The current dispositions are:
 
 1. **`seep.eu.org` — selected primary.** It is the public URL in the
-   current Netnr README, and the operator's service page labels it unrestricted.
-2. **`proxy.cors.sh` — selected independent secondary.** It has a modern
-   documented service model, but its anonymous live behavior and response-size
-   behavior conflict with its published key/6 MB contract.
-3. **`cors.zme.ink` — selected reserve, not independent redundancy.**
-   It returned the same `x-release: Netnr/10.0.8` as `seep.eu.org`, is not the
-   current README's canonical endpoint, and should be treated as the same
-   failure domain.
+   inspected Netnr README, and the operator's service page labels it unrestricted.
+2. **`proxy.cors.sh` — dead (NXDOMAIN), removed.** Its July anonymous media
+   pass and Chrome playback result no longer make it a usable fallback.
+3. **`cors.zme.ink` — dead (NXDOMAIN), removed.** Its July
+   `x-release: Netnr/10.0.8` matched seep; it never provided independent redundancy.
 
-The browser ships these endpoints as a curated, release-tested pool. It probes
-all three concurrently under one five-second deadline, consumes an actual media
-byte, and selects the highest-priority healthy relay. This is not an SLA-backed
-production guarantee: Netnr publishes public usage and no application-level
-rate, timeout, or response-size cap is present in the tested source, but the
-service offers no availability promise and its hosting layer can still impose
-limits. See the
+The browser probes seep under one five-second deadline and consumes an actual
+media byte before playback. There is no second provider if seep fails. Netnr
+publishes public usage but offers no availability promise. The July Node source
+had no application-level rate, timeout, or response-size cap; those source
+observations do not establish the Go deployment's limits. Historical sources:
 [Netnr proxy README at the tested revision](https://github.com/netnr/proxy/blob/72163906423daa0712cb5036a455879c061618b6/README.md#L1-L27),
 [operator service page](https://netnr.com/134), and [streaming proxy
 implementation](https://github.com/netnr/proxy/blob/72163906423daa0712cb5036a455879c061618b6/app.js#L30-L116).
 
-CORS.SH's committed service spec retains an anonymous tier at 30 requests per
-10 seconds per IP, but its public API documentation now calls the API key
-required. The same source records unresolved provider-AUP, observability, and
-legal/ToS work. Its published contract says 6 MB per request while the live
-implementation allowed the larger probe. Depending on that mismatch would be
-fragile. See [CORS.SH's committed service spec at the tested
+CORS.SH's July service spec retained an anonymous tier at 30 requests per
+10 seconds per IP, while its public API documentation required an API key.
+The same source recorded unresolved provider-AUP, observability, and legal/ToS
+work. Its published contract said 6 MB per request while the July deployment
+allowed the larger probe. See [CORS.SH's committed service spec at the tested
 revision](https://github.com/gridaco/cors.sh/blob/f64fa2d38a4494b94bfaf54383d51a38c7794209/SPEC.md#L11-L26),
 [its anonymous-tier policy](https://github.com/gridaco/cors.sh/blob/f64fa2d38a4494b94bfaf54383d51a38c7794209/SPEC.md#L77-L101),
-and [its current proxy implementation](https://github.com/gridaco/cors.sh/blob/f64fa2d38a4494b94bfaf54383d51a38c7794209/workers/proxy/src/index.ts#L13-L97).
+and [its inspected proxy implementation](https://github.com/gridaco/cors.sh/blob/f64fa2d38a4494b94bfaf54383d51a38c7794209/workers/proxy/src/index.ts#L13-L97).
 
 No Tent instance is usable by the current DJ audio graph. Seven of the eleven
 listed clearnet instances did relay the complete MP3, but every one omitted
@@ -81,7 +79,9 @@ For this app, a usable relay must provide all of the following:
    `https://radio.avoid.quest`;
 3. real MP3 bytes, not a metadata response or download-job page;
 4. exact single-range forwarding with `206`, `Content-Range`, and
-   `Accept-Ranges: bytes`;
+   `Accept-Ranges: bytes` in release probes; the browser readiness probe requires
+   `Content-Length: 1` when present (CORS-safelisted), but accepts a hidden
+   `Content-Range`;
 5. correct media content type;
 6. no size limit below ordinary Bandcamp tracks;
 7. an intended public-use model that does not treat application traffic as
@@ -161,7 +161,7 @@ Prefix form:
 https://seep.eu.org/<absolute-t4.bcbits.com-url>
 ```
 
-Observed from the production origin:
+Historical July measurements from the production origin:
 
 | Probe                                 | Result                                               |
 | ------------------------------------- | ---------------------------------------------------- |
@@ -178,29 +178,57 @@ This endpoint has the clearest bare-public-URL intent found. The current Netnr
 README gives `seep.eu.org/{URL}` as the usage contract, and the operator's
 service page labels `seep.eu.org` unrestricted while separately warning that
 its older `cors.eu.org` endpoint is limited and high-volume use is banned. The
-distinction matters: `seep.eu.org` is the canonical Netnr primary; the
-independent CORS.SH endpoint remains the second pool member.
+distinction matters: `seep.eu.org` is the canonical Netnr primary. Both former
+fallback hostnames are now dead.
 
-The live behavior matches the source. The proxy pipes the incoming request,
-including `Range`, to the target; preserves upstream response status and
-headers; adds ACAO `*`; exposes response headers; and follows at most five
+The July behavior matched the inspected Node source. That proxy piped the
+incoming request, including `Range`, to the target; preserved upstream status
+and headers; added ACAO `*`; exposed response headers; and followed at most five
 redirects. See [CORS response handling](https://github.com/netnr/proxy/blob/72163906423daa0712cb5036a455879c061618b6/app.js#L30-L47),
 [request streaming](https://github.com/netnr/proxy/blob/72163906423daa0712cb5036a455879c061618b6/app.js#L57-L116),
 and [redirect handling](https://github.com/netnr/proxy/blob/72163906423daa0712cb5036a455879c061618b6/app.js#L118-L197).
 
+The October live probes report `x-release: Netnr.Proxy go1.27.0`. This is a Go
+rewrite, not the open-source Node cors-anywhere fork linked above. It forwards
+client headers and Bandcamp's `Link: ...; rel="canonical"`, follows upstream
+redirects internally, and returns the final body as a plain `200`. There is no
+option to disable that redirect-following and no `Location`, `x-final-url`,
+`x-request-url`, or `X-CORS-*` final-target signal in the resulting response.
+The canonical Link header alone does not verify page identity. Album/track
+parsing instead validates `og:url` first, using `data-tralbum.url` only when
+`og:url` is missing. The identity must be a Bandcamp URL on the validated final
+hostname for direct fetches, or the requested hostname for relayed pages whose
+final URL is unavailable; slug paths may differ after a rename. Missing, unsafe,
+or wrong-host identity raises a parse error and tries the next source, then
+fails closed if no matching page is available. Artist and collection pages
+only yield validated release links, whose fetched pages undergo this check.
+
+The round-4 local workerd/Vite probe forced direct metadata fetches to fail.
+`AMBIENT 106-3000` resolved through seep and passed the browser's one-byte relay
+probe. Loading the canonical link through the Bandcamp card onto DJ deck A
+then played to `0:23 / 5:50`, with nonzero left/right Web Audio meter samples,
+`isPlaying: true`, and no playback error. Seep returned
+`x-release: Netnr.Proxy go1.27.0 2026-09-20`, the canonical Link, and none of the
+final-URL headers above. This checks local workerd resolution and Chromium
+playback, not deployed Worker egress or physical listening. Temporary forced
+failure/logging code was removed after the probe.
+
 No application-level request-rate, timeout, or response-size limit was found in
 the tested revision, and the 8.41 MB object passed. Those are absences in the
-source, not an SLA: Cloudflare and the origin host can impose undocumented
-limits. Further risks are that this is a general open proxy with no target or
-origin allowlist, and its current deployment configuration disables upstream
-TLS certificate verification. avoid.quest must therefore validate the fresh
+July source, not an SLA or evidence about the current Go deployment: Cloudflare
+and the origin host can impose undocumented limits. The inspected Node
+configuration disabled upstream TLS certificate verification; current Go TLS
+and redirect limits remain unverified. avoid.quest must validate the fresh
 Bandcamp CDN hostname before prefixing it and must never expose a general relay
 input. See [the deployed configuration in source](https://github.com/netnr/proxy/blob/72163906423daa0712cb5036a455879c061618b6/app.js#L461-L480).
 
 **Disposition:** first pool choice, subject to routine release probes. Do not
 interpret “unrestricted” as an availability or bandwidth guarantee.
 
-### 2. CORS.SH anonymous — selected independent secondary; Chrome DJ passed
+### 2. CORS.SH anonymous — dead (NXDOMAIN), removed; July Chrome DJ passed
+
+The October DNS probe returns NXDOMAIN for `proxy.cors.sh`. The measurements
+and provider documentation below describe the July candidate, not a live relay.
 
 Prefix form:
 
@@ -249,16 +277,18 @@ Risks that prevent an unconditional recommendation:
   observability, and legal/trust work;
 - any public generic proxy is a single third-party bandwidth dependency.
 
-**Disposition:** independent second pool choice and currently the best
-end-to-end-validated candidate. Restrict targets to validated `*.bcbits.com`
-media URLs. Before calling it production-reliable, ask the operator for explicit
-open-source/production permission or create an origin-pinned live key. CORS.SH
+**Disposition:** removed from the shared metadata/browser relay list because
+the hostname is dead. In July it was the independent second choice with a
+Chrome playback pass. CORS.SH
 documents frontend-visible, origin-pinned keys as its intended production
 model; the free account quota is 10,000 requests and 5 GB per month, while Pro
 is 500,000 requests and 500 GB. See [authentication](https://cors.sh/docs/authentication)
 and [limits](https://cors.sh/docs/limits).
 
-### 3. Netnr `cors.zme.ink` — healthy reserve in the same failure domain
+### 3. Netnr `cors.zme.ink` — dead (NXDOMAIN), removed
+
+The October DNS probe returns NXDOMAIN. The results below are historical July
+measurements, and this hostname is no longer in the relay list.
 
 Prefix form:
 
@@ -272,8 +302,8 @@ checks as `seep.eu.org`. It also returned the identical
 `x-release: Netnr/10.0.8` marker. It is not listed as the usage URL in the
 current Netnr proxy README, so its intended lifecycle is less explicit.
 
-**Verdict:** technically viable reserve, but do not count it as independent
-redundancy or prefer it over `seep.eu.org`. It did not receive a Chrome DJ run.
+**Verdict:** dead, removed. Its July pass did not establish independent
+redundancy. It did not receive a Chrome DJ run.
 
 ### 4. CORS.SH origin-pinned live key — technically strongest, not anonymous
 
@@ -431,12 +461,30 @@ and [hosted API policy](https://github.com/imputnet/cobalt/blob/main/docs/api.md
 
 Keep provider choice static and the playback path small:
 
-1. keep the existing canonical Bandcamp metadata/search resolver;
-2. validate the freshly resolved URL with the existing Bandcamp CDN URL policy;
-3. probe `seep.eu.org`, `proxy.cors.sh`, and `cors.zme.ink` concurrently under
-   one deadline with an exact one-byte range request;
+1. keep the existing canonical Bandcamp metadata/search resolver. Page metadata
+   tries a direct HTTPS fetch first, then the app-owned relay list in order when
+   the request fails or lacks usable page data. Direct Worker fetches appear to
+   be challenged by Bandcamp; this is unconfirmed, so the relay is a fallback;
+   artist and collection item loads use four workers and one shared deadline;
+   successful child loads remain available when that deadline expires. Only
+   Bandcamp album/track links are followed; page targets require a Bandcamp
+   hostname, no credentials or custom ports, and are rebuilt from
+   `origin + pathname + search`, and are percent-encoded as a whole for the
+   relay's single decode. Direct redirects remain manually validated, and relay
+   requests allow zero HTTP redirects. Since seep follows its upstream redirects
+   without exposing the final URL, album/track parsing requires a safe Bandcamp
+   `data-tralbum.url` with the requested hostname, allowing slug renames. Missing
+   or mismatched identity falls through as a parse error, then fails closed.
+   Artist/collection pages need no identity check; their release URLs are
+   validated before fetching and their release pages are checked when parsed;
+2. validate every resolved stream URL and artwork URL inside
+   `@avoid.quest/platforms` with the Bandcamp CDN URL policy (`bcbits.com`, no
+   credentials); the browser retains its stream check before adding the relay;
+3. probe the sole live relay, `seep.eu.org`, under one deadline with an exact
+   one-byte range request; the two NXDOMAIN hosts are removed;
 4. select the highest-priority response that returns `206`, an audio MIME type,
-   an exact `Content-Range`, and a real body byte;
+   `Content-Length: 1` when present, and a real body byte. `Content-Range`
+   is not required because these relays can hide it from browser CORS;
 5. apply that prefix exactly once; do not add a server-side byte fallback or
    arbitrary custom-proxy input;
 6. persist the canonical Bandcamp item, not its signed CDN URL, and re-resolve
@@ -450,14 +498,30 @@ dependency auditable. Do not add Tent as a fallback: it increases code and
 still cannot feed the Web Audio graph. Also do not count both Netnr hostnames as
 two independent reliability providers.
 
+Direct page fetches now send a Chrome 155 User-Agent (checked against the
+[official stable release catalog](https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Windows&num=1))
+plus normal `Accept` and `Accept-Language` headers. This is a small egress
+diagnostic step, not proof that deployed Worker fetches work. The follow-up remains
+`wrangler dev --remote` / `wrangler tail` to inspect direct production egress.
+
+Production Chromium/macOS reported missing JSON-LD/tralbum data from the
+deployed Worker on October 7, while Observability only showed the server-function
+request. A single `console.warn` with `stage: "bandcamp-direct"` now records
+direct network/HTTP failures or missing page data only when falling back.
+It includes the requested hostname, status, the four allowed response headers
+(`server`, `content-type`, `cf-mitigated` when present, `content-length`), body
+length, data/challenge booleans, and an 80-character title. It excludes URL
+queries, response bodies, cookies, IPs, and error messages. The direct attempt
+owns the warning, so it emits at most once per item load; relay failures,
+security rejections, purchase-only pages, and loads without a relay do not emit it.
+
 ## Final ship/no-ship statement
 
 - **Netnr `seep.eu.org`:** shipped primary; clearest bare-public intent and an
-  exact HTTP media pass, but no separate Chrome DJ run.
-- **CORS.SH anonymous:** shipped independent secondary and the only candidate
-  with a successful Chrome DJ/Web Audio run.
-- **Netnr `cors.zme.ink`:** shipped reserve; same Netnr failure domain and a less
-  explicit lifecycle.
+  historical exact HTTP media pass; October local workerd resolution and
+  Chromium DJ/Web Audio playback passed with direct metadata fetch forced to fail.
+- **CORS.SH anonymous:** dead (NXDOMAIN), removed; historical Chrome DJ pass.
+- **Netnr `cors.zme.ink`:** dead (NXDOMAIN), removed; same July failure domain.
 - **CORS.SH origin-pinned key:** preferred production form if the owner accepts
   an account/quota and obtains explicit provider assurance.
 - **Tent fleet:** no ship.
@@ -471,5 +535,4 @@ two independent reliability providers.
 There are indeed many public endpoints in this space, but the majority are
 metadata resolvers, download-job APIs, development demos, or proxies that do
 not preserve the media/CORS contract required by a DJ Web Audio graph. The
-usable shortlist is two independent families, not dozens of interchangeable
-reliable relays.
+shipped shortlist is now one live relay with no independent fallback.

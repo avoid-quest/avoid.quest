@@ -446,7 +446,9 @@ export function createNodeDeviceSinks({
             outputs.get(sinkId)?.deviceId !== plan.deviceId
         );
       outputs = new Map(next);
-      master = level;
+      // A stored level can be anything finite; the gain takes 0–1, as
+      // the global volume does.
+      master = Math.max(0, Math.min(1, level));
       syncDevices();
       for (const node of gains.values()) {
         // A removed node's gain keeps its last plan, its mute included.

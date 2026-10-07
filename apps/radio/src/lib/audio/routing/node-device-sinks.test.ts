@@ -228,6 +228,17 @@ describe("createNodeDeviceSinks", () => {
     expect(h.sinks.statuses()).toEqual({});
   });
 
+  test("an Output node's gain keeps the master level within 0–1", () => {
+    const h = createHarness();
+    const speakers = new Map([["out", { muted: false }]]);
+    h.sinks.sync(speakers, 3);
+    const { send } = h.connect("out");
+    expect(h.gainOf(send)?.gain.value).toBe(1);
+
+    h.sinks.sync(speakers, -0.5);
+    expect(h.gainOf(send)?.gain.events.at(-1)).toMatchObject({ value: 0 });
+  });
+
   test("every send into one node shares its gain and graph", () => {
     const h = createHarness();
     h.sinks.sync(devicesOf([["desk", "usb"]]));

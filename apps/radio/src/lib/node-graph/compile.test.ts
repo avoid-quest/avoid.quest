@@ -1429,15 +1429,15 @@ describe("compile: Splits whose branches go different places", () => {
       throw new Error("no split stage");
     }
     expect(split.split.cabled).toEqual([0, 1]);
-    // The cable's pan is its own, before the reverb; the chain's gain and
-    // pan follow it, as openDAW's cell has them after its FX.
+    // The chain's gain and pan follow the reverb, as openDAW's cell has
+    // them after its FX; the cable's pan adds to the chain's there.
     expect(plan.cables.get("split->verb")).toMatchObject({
-      balance: [0.5, 1],
       gain: 1,
       muted: false,
     });
+    expect(plan.cables.get("split->verb")?.balance).toBeUndefined();
     expect(plan.cables.get("verb->speakers")).toMatchObject({
-      balance: [1, 0.75],
+      balance: [0.75, 1],
       gain: 0.4,
       muted: false,
     });

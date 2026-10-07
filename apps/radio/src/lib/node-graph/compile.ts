@@ -184,7 +184,7 @@ export type CablePlan = {
   /** Linear, with the strip trim, Gains and cable trims folded in. */
   gain: number;
   /**
-   * Each side's gain, for a Split branch's cable: its pan, and its
+   * Each side's gain, for a Split branch's cable: its pan added to its
    * chain's, as openDAW's linear balance.
    */
   balance?: [number, number];
@@ -651,17 +651,6 @@ function balanceOf(pan: number): [number, number] | undefined {
   return [left, right];
 }
 
-/** Two balances one after the other. */
-function inSeries(
-  first: [number, number] | undefined,
-  second: [number, number] | undefined
-): [number, number] | undefined {
-  if (!(first && second)) {
-    return first ?? second;
-  }
-  return [first[0] * second[0], first[1] * second[1]];
-}
-
 function multiply(left: Trim, right: Trim): Trim {
   return { gain: left.gain * right.gain, muted: left.muted || right.muted };
 }
@@ -945,7 +934,8 @@ class PlanBuilder {
    * its gain, balance, mute, solo, the mix and the output trim after them,
    * where the dry signal joins it: each cable out of the branch carries
    * them, and a dry cable runs beside it. A cable out of a port carries
-   * its own gain, pan and solo where it is, before the FX.
+   * its own gain and solo where it is, before the FX, and its pan, added
+   * to its chain's as in a closed Split's chain, at the exit.
    */
   private addSplit(id: string): Endpoint | null {
     const split = this.lowered(() => this.regions.openSplit(id));
@@ -977,27 +967,33 @@ class PlanBuilder {
       const { chain } = port;
       const open = !chain.muted && (!anySolo || soloed(port));
       this.emitBranch(from, port, {
-        balance: balanceOf(chain.pan),
         cell: { gain: mix * output * chain.gain, muted: !open },
         dry:
           mix < 1 && carries(port)
             ? { from, trim: { gain: (1 - mix) * share * output, muted: false } }
             : undefined,
         input: on ? effect.inputGain : 1,
+        pan: chain.pan,
       });
     }
     return endpoint;
   }
 
   /**
-   * An open Split's port's cables: each one's gain, pan and solo before
-   * the branch's FX, with the input trim; the branch's `cell` controls and
-   * `balance` after them, where its dry signal joins.
+   * An open Split's port's cables: each one's gain and solo before the
+   * branch's FX, with the input trim; the branch's `cell` controls and
+   * the cable's pan plus the chain's `pan` after them, where its dry
+   * signal joins.
    */
   private emitBranch(
     from: Endpoint,
     { exits }: SplitBranch,
-    { balance, cell, dry, input }: BranchEnd & { cell: Trim; input: number }
+    {
+      cell,
+      dry,
+      input,
+      pan,
+    }: Pick<BranchEnd, "dry"> & { cell: Trim; input: number; pan: number }
   ): void {
     // A soloed cable leaves its port's other cables out.
     const cableSolo = exits.some((exit) => exit.solo);
@@ -1006,10 +1002,9 @@ class PlanBuilder {
         gain: input * exit.trim.gain,
         muted: exit.trim.muted || (!exit.key && cableSolo && !exit.solo),
       };
-      const own = balanceOf(exit.pan ?? 0);
       // Without FX, the port's cable is the whole branch.
       const wet = multiply(before, cell);
-      const tail = { balance: inSeries(own, balance), dry };
+      const tail = { balance: balanceOf(clampPan(pan + (exit.pan ?? 0))), dry };
       if (exit.key) {
         const key: Endpoint = { id: keyIdOf(exit.target), kind: "key" };
         this.connect(exit.ids, from, key, wet, "key", tail.balance);
@@ -1020,8 +1015,8 @@ class PlanBuilder {
       }
       const { segment = null, to = null } = this.reach(exit.target) ?? {};
       if (segment && to) {
-        this.connect(exit.ids, from, to, before, "audio", own);
-        this.emit(segment.exits, to, cell, { balance, dry });
+        this.connect(exit.ids, from, to, before);
+        this.emit(segment.exits, to, cell, tail);
       } else if (to) {
         this.land(exit.ids, from, to, wet, tail);
       } else if (segment) {

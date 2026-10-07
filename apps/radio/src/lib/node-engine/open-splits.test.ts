@@ -417,21 +417,22 @@ describe("Splits whose branches go different places", () => {
     ).toBeLessThan(-90);
   });
 
-  test("a branch's gain and pan act after its FX, its cable's before them", () => {
+  test("a branch's gain acts after its FX, its cable's before; their pans add after", () => {
     // A level-dependent effect: it clips at 0.2.
     const clip = (sample: number) => Math.max(-0.2, Math.min(0.2, sample));
     const played = play(
       split("fxComposite", { dryWet: 1 }, shaped),
-      twoWays({ fx: { gain: 2, pan: 0.5 } }),
+      twoWays({ desk: { pan: -0.5 }, fx: { gain: 2, pan: 0.75 } }),
       clip
     );
-    const [toLeft, toRight] = StereoMatrix.panningToGains(0.5, Mixing.Linear);
-    const into = played.input.map((channel, side) =>
-      channel.map((x) => clip(2 * x * (side === 0 ? toLeft : toRight)))
-    );
+    const into = played.input.map((channel) => channel.map((x) => clip(2 * x)));
     expect(
-      residualDb(played.output("speakers"), branch(into, 0.5, -0.5), TAIL)
+      residualDb(played.output("speakers"), branch(into, 0.5, 0.25), TAIL)
     ).toBeLessThan(-90);
+    // Without FX too: a pan that cancels its chain's leaves it centred.
+    expect(residualDb(played.output("desk"), played.input, TAIL)).toBeLessThan(
+      -90
+    );
   });
 
   test("signal trim reaches both paths, wet input trim precedes FX, and dry bypasses them", () => {
@@ -450,11 +451,11 @@ describe("Splits whose branches go different places", () => {
       twoWays({ fx: { gain: 0.5, pan: 0.5 } }),
       clip
     );
-    const into = branch(played.input, 0.5 * 2 * 0.5, 0.5);
+    const into = branch(played.input, 0.5 * 2 * 0.5, 0);
     const wet = branch(
       into.map((channel) => channel.map(clip)),
       0.25 * 3 * 0.5,
-      -0.5
+      0
     );
     const expected = played.input.map((channel, side) =>
       channel.map(
@@ -502,8 +503,9 @@ describe("Splits whose branches go different places", () => {
       split("fxComposite", { dryWet: 1 }, shaped),
       cables(false)
     );
+    // Each cable's pan adds to the chain's.
     const panned = (pan: number) =>
-      branch(branch(both.input, 1, pan), 0.5, -0.5);
+      branch(both.input, 0.5, Math.max(-1, pan - 0.5));
     expect(residualDb(both.output("speakers"), panned(-1), TAIL)).toBeLessThan(
       -90
     );

@@ -3237,6 +3237,41 @@ describe("Node Playback audio inputs and output devices", () => {
     }
   );
 
+  test("Off while Go live requests permission mutes the late real capture", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const capture = createDeviceCaptureHarness();
+    try {
+      const context = createTestContext();
+      context.audio = capture.manager;
+      const { activate } = context.channels;
+      context.channels.activate = (...args) => {
+        const soundId = activate(...args);
+        capture.manager.createSound(args[2], soundId);
+        return soundId;
+      };
+      const harness = createHarness({ context });
+      await harness.playback.activate();
+      const start = harness.playback.setPlaying("mic", true);
+      const request = await capture.request();
+
+      await harness.playback.setPlaying("mic", false);
+      request.resolve(capturedStream().stream);
+      await start;
+      await settle();
+
+      const gain = capture.manager.getPostFaderNode(
+        soundOf("mic")
+      ) as unknown as FakeGainNode;
+      expect(gain.gain.events.at(-1)).toMatchObject({
+        type: "target",
+        value: 0.0001,
+      });
+      expect(getPlaybackChannelRuntime(channelOf("mic")).isPlaying).toBe(false);
+    } finally {
+      capture.restore();
+    }
+  });
+
   test("Go live opens the device with its echo cancellation and selected channels", async () => {
     insertNodeSession(
       wired(

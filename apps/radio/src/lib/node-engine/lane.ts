@@ -284,7 +284,7 @@ export class LaneInstance {
    */
   private async play(
     signal: AbortSignal,
-    play = playManagedSound(
+    play: Promise<unknown> = playManagedSound(
       "node",
       this.soundId,
       this.slot.plan ? getChannelPlayVolume(this.slot.plan) : 1,
@@ -378,13 +378,16 @@ export class LaneInstance {
       startDevice: (...args) => ctx.audio.playDeviceSound(...args),
     };
     await abortable(
-      startDeviceInput(
-        audio,
-        this.soundId,
-        plan.source,
-        () => !signal.aborted,
-        (isLoading) =>
-          setPlaybackChannelRuntime(this.channelId, () => ({ isLoading }))
+      this.play(
+        signal,
+        startDeviceInput(
+          audio,
+          this.soundId,
+          plan.source,
+          () => !signal.aborted,
+          (isLoading) =>
+            setPlaybackChannelRuntime(this.channelId, () => ({ isLoading }))
+        )
       ),
       signal
     );

@@ -16,6 +16,7 @@ import {
   effectFieldsAreStructural,
   findEffectInTree,
   updateEffectFieldsInTree,
+  withCompatibilityKey,
 } from "../dsp/routing/effect-tree.js";
 import {
   type AudioState,
@@ -484,13 +485,15 @@ class EffectsController {
   private reconcileCompatibility(
     soundId: string,
     state: SoundEffectsState,
-    previous: readonly EffectConfig[],
-    next: readonly EffectConfig[]
+    previousTree: readonly EffectConfig[],
+    nextTree: readonly EffectConfig[]
   ): void {
     const { manager } = state;
     if (!manager) {
       return;
     }
+    const previous = withCompatibilityKey(previousTree);
+    const next = withCompatibilityKey(nextTree);
     const previousById = new Map(previous.map((effect) => [effect.id, effect]));
     const nextById = new Map(next.map((effect) => [effect.id, effect]));
 
@@ -734,9 +737,9 @@ class EffectsController {
     if (!manager) {
       return;
     }
-    for (const effect of state.effects
-      .slice()
-      .sort((left, right) => left.order - right.order)) {
+    for (const effect of withCompatibilityKey(state.effects).sort(
+      (left, right) => left.order - right.order
+    )) {
       manager.addEffect(
         soundId,
         effect.id,

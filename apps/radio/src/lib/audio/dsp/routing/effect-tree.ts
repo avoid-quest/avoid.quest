@@ -66,6 +66,34 @@ export function audibleSidechainIds(
   ];
 }
 
+/**
+ * The tree as the compatibility engine can key it, from one key: an effect
+ * keyed from any other detects on its own input. Every effect says whether
+ * it listens, so a processor that listened stops.
+ */
+export function withCompatibilityKey(
+  effects: readonly EffectConfig[]
+): EffectConfig[] {
+  const [key] = audibleSidechainIds(effects);
+  const visit = (current: readonly EffectConfig[]): EffectConfig[] =>
+    current.map((effect) => {
+      const next =
+        key !== undefined && effect.sidechain?.channelId === key
+          ? effect
+          : ({ ...effect, sidechain: undefined } as EffectConfig);
+      return isEffectContainer(next)
+        ? ({
+            ...next,
+            chains: next.chains.map((chain) => ({
+              ...chain,
+              effects: visit(chain.effects),
+            })),
+          } as EffectConfig)
+        : next;
+    });
+  return visit(effects);
+}
+
 export function isValidFrequencySplitShape(
   chains: readonly EffectChainConfig[],
   crossoverFrequencies: readonly number[]

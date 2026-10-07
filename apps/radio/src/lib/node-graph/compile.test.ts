@@ -2704,6 +2704,15 @@ describe("compile: key cables", () => {
       "talk~>gate": "This key needs the openDAW engine",
     });
     expect(idleKeys(patch, compile(patch, ENV)).size).toBe(0);
+    // FX sharing its one key both hear it.
+    const shared = {
+      ...patch,
+      edges: patch.edges.map((edge) =>
+        edge.id === "talk~>gate" ? { ...edge, gain: 1 } : edge
+      ),
+    };
+    const sharedPlan = compile(shared, { crossOriginIsolated: false });
+    expect(idleKeys(shared, sharedPlan).size).toBe(0);
   });
 
   test("idleKeys flags a key on an FX in a branch the runtime skips", () => {

@@ -235,6 +235,55 @@ describe("EffectsController", () => {
     ).toBe("failed");
   });
 
+  test("the compatibility engine keys only the effects on its one key", async () => {
+    Object.defineProperty(globalThis, "crossOriginIsolated", {
+      configurable: true,
+      value: false,
+    });
+    const context = new TestAudioContext();
+    const manager = createManager(context);
+    const controller = new EffectsController({
+      createOfficialRuntime: () => createRuntime(),
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const keyed = (id: string, key: string, order: number) => ({
+      ...createDefaultEffectConfig("compressor", id, order),
+      enabled: true,
+      sidechain: { channelId: key },
+    });
+    await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([
+        keyed("first", "node-key:first", 0),
+        keyed("same", "node-key:first", 1),
+        keyed("other", "node-key:other", 2),
+      ])
+    );
+
+    const added = manager.addEffect as unknown as ReturnType<
+      typeof mock<
+        (
+          soundId: string,
+          effectId: string,
+          type: string,
+          config: { sidechainEnabled?: number }
+        ) => void
+      >
+    >;
+    expect(
+      added.mock.calls.map(([, id, , config]) => [id, config.sidechainEnabled])
+    ).toEqual([
+      ["first", 1],
+      ["same", 1],
+      ["other", 0],
+    ]);
+  });
+
   test("a compatibility runtime error on an insert fails its outcome", async () => {
     Object.defineProperty(globalThis, "crossOriginIsolated", {
       configurable: true,

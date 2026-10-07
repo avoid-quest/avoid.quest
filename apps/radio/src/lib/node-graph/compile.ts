@@ -1324,15 +1324,15 @@ export function idleKeys(
   plan: EnginePlan
 ): Map<string, string> {
   const { active, byId: inChain } = chainEffects(plan);
-  // The compatibility engine keys one FX a chain: its first keyed one.
+  // The compatibility engine keys a chain from one key: its first.
   const compatOnly = new Set<EffectConfig>();
   for (const chain of [...plan.lanes.values(), ...plan.units.values()]) {
     if (chain.backend === "compat") {
-      const keyed = audibleEffects(chain.effects).filter(
-        (effect) => effect.sidechain
-      );
-      for (const effect of keyed.slice(1)) {
-        compatOnly.add(effect);
+      const [key] = audibleSidechainIds(chain.effects);
+      for (const effect of audibleEffects(chain.effects)) {
+        if (effect.sidechain && effect.sidechain.channelId !== key) {
+          compatOnly.add(effect);
+        }
       }
     }
   }

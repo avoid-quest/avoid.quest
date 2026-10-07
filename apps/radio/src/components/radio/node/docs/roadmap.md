@@ -14,7 +14,9 @@ the source of truth for availability.
   `preFaderSend`, because `nodes.gain` is already post-fader.
 - **Split branches to different places:** an explicit Split, Stereo Split or
   Band Split whose branches don't meet again is refused until its split stage
-  lands, chosen by measurement (`node-engine/bench`).
+  lands: the native split stage, chosen provisionally until beta checks the
+  Band Split against openDAW's container and counts clicks
+  ([split-routing-measurements.md](split-routing-measurements.md)).
 - **Control graph:** Macro, MIDI-in cables, LFO, Clock, Randomiser, Follower,
   song/title triggers and Sundial. Preserve graph validation and define how
   modulation reaches current engine parameters before exposing those ports.

@@ -263,7 +263,7 @@ class EffectsController {
     soundId: string,
     effectId: string,
     config: EffectConfig
-  ): EffectWriteResult | Promise<EffectWriteResult> {
+  ): EffectWriteResult {
     const state = this.states.get(soundId);
     const before = state && findEffectInTree(state.effects, effectId);
     if (!(before && this.sounds.has(soundId))) {
@@ -278,12 +278,7 @@ class EffectsController {
       toPlainEffectConfig(config)
     );
     if (state.outcome.backend === "compatibility") {
-      return this.reconcile(soundId, {
-        dryWet: state.dryWet,
-        sidechainSoundId: state.desiredSidechainSoundId,
-        tempo: state.tempo,
-        tree: next,
-      }).then(() => "applied");
+      return "structural";
     }
     if (state.officialConnectingGeneration !== null || !state.graph) {
       state.effects = next;

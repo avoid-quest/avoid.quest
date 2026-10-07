@@ -1405,6 +1405,27 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(device.code.getValue()).toContain("// another edit while off");
   });
 
+  test("enabling a script through a field write compiles it and preserves its device", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = { ...werkstatt(), enabled: false };
+    h.runtime.syncEffects("deck", [config]);
+    const device = scriptDevice(h);
+    const enabled = { ...config, enabled: true };
+    expect(h.runtime.writeEffect("deck", config.id, enabled)).toBe("applied");
+    await finishCompile(h.compiles[0]);
+    expect(scriptDevice(h)).toBe(device);
+    expect(device.code.getValue()).toContain("// first version");
+    expect(parameter(h, device).value.getValue()).toBe(0.25);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    h.runtime.writeEffect("deck", config.id, {
+      ...enabled,
+      parameters: { amount: 0.7 },
+    });
+    expect(parameter(h, device).value.getValue()).toBeCloseTo(0.7);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+  });
+
   test("a failed script keeps its error until its source changes", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);

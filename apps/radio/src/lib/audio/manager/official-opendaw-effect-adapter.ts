@@ -53,8 +53,6 @@ function outputGain(config: EffectConfig): number {
     : config.outputGain;
 }
 
-export { usesDirectEffectLayout as usesDirectOfficialEffectLayout } from "../dsp/routing/effect-tree.js";
-
 function optionIndex(
   division: string | undefined,
   fractions: readonly string[]

@@ -41,7 +41,6 @@ export type Op =
       type: "setEffectFields";
       laneId: string;
       effectId: string;
-      config: EffectConfig;
     }
   | { type: "setLaneEffects"; laneId: string; effects: EffectConfig[] }
   | { type: "replaceLaneEffects"; laneId: string; effects: EffectConfig[] }
@@ -164,7 +163,6 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
         !same(localEffectConfig(existing), localEffectConfig(config))
       ) {
         fields.push({
-          config,
           effectId: config.id,
           laneId,
           type: "setEffectFields",

@@ -581,13 +581,6 @@ export class LaneInstance {
     const result = config
       ? this.host.setEffectFields(this.soundId, id, config)
       : "applied";
-    if (typeof result !== "string") {
-      return result.then((written) => {
-        if (written !== "applied") {
-          this.effectsChanged();
-        }
-      });
-    }
     if (result !== "applied") {
       this.effectsChanged();
     }

@@ -970,11 +970,6 @@ function hash(text: string): string {
   return value.toString(36);
 }
 
-/**
- * openDAW keeps a default Autotune as a bare device and wraps it otherwise
- * (`usesDirectOfficialEffectLayout`), so that flip is a layout change too.
- */
-
 function layoutOf(effects: readonly EffectConfig[]): unknown[] {
   return effects.map((effect) => [
     effect.id,

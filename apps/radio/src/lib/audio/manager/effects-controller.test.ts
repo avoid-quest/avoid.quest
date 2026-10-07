@@ -243,12 +243,13 @@ describe("EffectsController", () => {
         destination as unknown as AudioNode
       );
       const connections = [...source.connections];
-      expect(
-        await controller.setEffectFields("lane", config.id, {
-          ...config,
-          threshold: -23,
-        })
-      ).toBe("applied");
+      const edited = { ...config, threshold: -23 };
+      expect(controller.setEffectFields("lane", config.id, edited)).toBe(
+        official ? "applied" : "structural"
+      );
+      if (!official) {
+        await controller.reconcile("lane", desiredEffects([edited]));
+      }
       expect(controller.getRuntimeOutcome("lane").backend).toBe(
         official ? "official" : "compatibility"
       );

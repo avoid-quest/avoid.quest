@@ -159,7 +159,6 @@ describe("diff", () => {
     const ops = diff(base(), next);
     expect(ops).toEqual([
       {
-        config: next.lanes.get("a")?.effects[0] as EffectConfig,
         effectId: "verb",
         laneId: "a",
         type: "setEffectFields",

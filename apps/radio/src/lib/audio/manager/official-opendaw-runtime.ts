@@ -625,6 +625,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         );
       }
     });
+    if (authored.type === "werkstatt" && authored.enabled) {
+      this.compileWerkstattGroup(group, authored);
+    }
     unit.effects = updateEffectInTree(unit.effects, effectId, authored);
     for (const current of unit.groupsById.values()) {
       current.config =

@@ -48,7 +48,6 @@ import {
 } from "@/lib/audio/routing/sends";
 import {
   createSplitStage,
-  portCapacity,
   type SplitStage,
 } from "@/lib/audio/routing/split-stage";
 import { safeDisconnect, safeDisconnectFrom } from "@/lib/audio/utils";
@@ -606,6 +605,7 @@ export class RoutingGraph {
    */
   private settleSends(point: Point, live: Live): void {
     const ports = new Set(point.cables.map((cable) => cable.from.port ?? 0));
+    let retiring = false;
     for (const [port, sends] of live.sends) {
       if (ports.has(port)) {
         continue;
@@ -617,6 +617,7 @@ export class RoutingGraph {
         continue;
       }
       ports.add(port);
+      retiring = true;
       Promise.all(fading).then(() => {
         // A released point let go of its stage and sends already.
         if (point.live === live) {
@@ -625,15 +626,17 @@ export class RoutingGraph {
       });
     }
     const { plan } = point;
-    if (live.stage && !isUnit(plan) && plan.kind === "split") {
+    // A port whose cables fade out keeps the part of the signal it had,
+    // its band or its side, until they are gone: another kind of split or
+    // band count waits for them.
+    if (
+      live.stage &&
+      !isUnit(plan) &&
+      plan.kind === "split" &&
+      !(retiring && live.stage.relayouts(plan.split.effect))
+    ) {
       const cabled = [...ports].sort((left, right) => left - right);
-      const capacity = portCapacity(plan.split.effect);
-      // A port the split no longer has, fewer bands or a Stereo Split now,
-      // keeps its fading cables fed, in the layout it had, until they are
-      // gone.
-      if (cabled.every((port) => port < capacity)) {
-        live.stage.update({ ...plan.split, cabled });
-      }
+      live.stage.update({ ...plan.split, cabled });
     }
     for (const port of ports) {
       const from = live.stage ? live.stage.port(port) : live.output;

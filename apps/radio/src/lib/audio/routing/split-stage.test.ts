@@ -92,6 +92,17 @@ describe("createSplitStage", () => {
     expect(residualDb(port(0), input, TAIL)).toBeLessThan(-90);
   });
 
+  test("a stage made with its trim at 0 is silent from the start", () => {
+    const { graph, port } = render(
+      split("fxComposite", { signalGain: 0 }),
+      [0]
+    );
+    graph.progress = 0.5;
+    expect(
+      port(0).every((channel) => channel.every((sample) => sample === 0))
+    ).toBe(true);
+  });
+
   test("Band Split ports keep their bands, on or off, and sum to the input", () => {
     for (const overrides of [{ enabled: false }, { enabled: true }]) {
       const bands = split("frequencySplit", overrides);

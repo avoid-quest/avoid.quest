@@ -423,6 +423,47 @@ describe("Splits whose branches go different places", () => {
     }
   });
 
+  test("a Band Split turned Split fades its dropped band out as that band, then plays whole", async () => {
+    const flat = (chain: EffectChainConfig) => ({ ...chain, gain: 1, pan: 0 });
+    const branches = [
+      cable("a", "split"),
+      cable("split", "fx", { from: "branch-1" }),
+      cable("fx", "speakers"),
+      cable("split", "desk", { from: "branch-2" }),
+    ];
+    const whole = split("fxComposite", { dryWet: 1 }, flat);
+    const played = play(threeBands(), bandCables);
+
+    const sends = played.sent("desk");
+    const before = new Map(sends.map((send) => [send, played.sending(send)]));
+
+    // Same node, now a Split: band 3's cable fades out first, still
+    // carrying band 3. Half way, it plays band 3 at half its level.
+    played.apply(branches, whole);
+    const fading = sends.filter((send) => send.gain.value === 0);
+    expect(fading).toHaveLength(1);
+    for (const send of fading) {
+      const level = before.get(send) ?? SILENCE;
+      expect(
+        residualDb(
+          played.sending(send, 0.5),
+          level.map((channel) => channel.map((x) => x / 2)),
+          TAIL
+        )
+      ).toBeLessThan(-90);
+      expect(residualDb(level, played.input, TAIL)).toBeGreaterThan(-20);
+    }
+
+    // Once it faded out, every branch carries the whole signal.
+    await played.endFades();
+    const plain = play(whole, branches);
+    for (const sink of ["speakers", "desk"]) {
+      expect(
+        residualDb(played.output(sink), plain.output(sink), TAIL)
+      ).toBeLessThan(-90);
+    }
+  });
+
   test("a muted branch, and one a solo leaves out, go silent with FX or not", () => {
     const muted = play(
       split("fxComposite", { dryWet: 1 }, (chain, index) => ({

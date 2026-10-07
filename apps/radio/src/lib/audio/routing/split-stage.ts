@@ -48,6 +48,11 @@ export type SplitStage = {
   readonly input: AudioNode;
   /** The output of the port at `position`, while it is cabled. */
   port: (position: number) => AudioNode | null;
+  /**
+   * Whether `effect` gives a port another part of the signal: another kind
+   * of split, or another number of bands.
+   */
+  relayouts: (effect: SplitEffect) => boolean;
   update: (config: SplitStageConfig) => void;
   dispose: () => void;
 };
@@ -68,13 +73,23 @@ function shapeOf({ effect, cabled }: SplitStageConfig): string {
 }
 
 /** How many ports `effect` has: a Split grows one for each cable. */
-export function portCapacity(effect: SplitEffect): number {
+function portCapacity(effect: SplitEffect): number {
   if (effect.type === "stereoSplit") {
     return 2;
   }
   return effect.type === "frequencySplit"
     ? effect.crossoverFrequencies.length + 1
     : Number.POSITIVE_INFINITY;
+}
+
+/** Which part of the signal each port carries. */
+function layoutOf(effect: SplitEffect): string {
+  return `${effect.type}:${portCapacity(effect)}`;
+}
+
+/** The official wrapper's signal trim, before both dry and wet paths. */
+function trimOf(effect: SplitEffect): number {
+  return effect.enabled ? (effect.signalGain ?? 1) : 1;
 }
 
 /** The lowpass at `frequency` as an IIRFilterNode, lib-dsp's coefficients. */
@@ -94,10 +109,13 @@ export function createSplitStage(
   initial: SplitStageConfig
 ): SplitStage {
   const input = context.createGain();
+  // Its first trim holds from the start: later ones ramp.
+  input.gain.value = trimOf(initial.effect);
   const ports = new Map<number, GainNode>();
   /** Rebuilt with the shape. */
   let wiring: Wiring | null = null;
   let shape = "";
+  let layout = "";
 
   const portFor = (position: number): GainNode => {
     const known = ports.get(position) ?? context.createGain();
@@ -161,13 +179,13 @@ export function createSplitStage(
   };
 
   const update = ({ effect, cabled }: SplitStageConfig) => {
-    // The official wrapper's signal trim precedes both dry and wet paths.
-    settleGain(input, effect.enabled ? (effect.signalGain ?? 1) : 1);
+    settleGain(input, trimOf(effect));
     const next = shapeOf({ cabled, effect });
     if (next === shape) {
       return;
     }
     shape = next;
+    layout = layoutOf(effect);
     for (const [position, port] of ports) {
       if (!cabled.includes(position)) {
         safeDisconnect(port, "SplitStage.rewire");
@@ -213,6 +231,7 @@ export function createSplitStage(
     },
     input,
     port: (position) => ports.get(position) ?? null,
+    relayouts: (effect) => layoutOf(effect) !== layout,
     update,
   };
 }

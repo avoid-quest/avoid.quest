@@ -59,8 +59,9 @@ occupy its native strip, and the FX only it feeds are its insert, before its
 fader. Past the first point (`node-graph/regions.ts`) the patch is a routing
 graph after the faders: a node whose input sums several cables, a Filter or
 Pan off the strip, and an output whose branches go different ways are points
-in Web Audio, and the FX between points run as graph units, one openDAW chain
-each. A Filter in series between FX runs inside their chain as Revamp's
+in Web Audio, except a node that closes a Split region, which stays inside
+that region's `EffectConfig` tree; the FX between points run as graph units,
+one openDAW chain each. A Filter in series between FX runs inside their chain as Revamp's
 pass filter, which does the same, so the signal stays in openDAW; a Pan
 stays Web Audio's panner, which no openDAW device matches. Where a path
 leaves openDAW and goes back in, Web Audio reads it a render quantum late on

@@ -577,11 +577,13 @@ describe("EffectsController", () => {
     const filter = new TestAudioNode(context);
     const runtime = createRuntime();
     const pending = Promise.withResolvers<boolean>();
+    const started = Promise.withResolvers<void>();
     let owner: number | undefined;
     let appliedTempo = 120;
     runtime.connectSound.mockImplementation(
       async (_id, _source, _destination, generation, _channels, settings) => {
         owner = generation;
+        started.resolve();
         await pending.promise;
         if (owner !== generation) {
           return false;
@@ -600,6 +602,7 @@ describe("EffectsController", () => {
       workletProcessorUrl: () => "/worklet.js",
     });
     const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
     await controller.reconcile(
       "target",
       desiredEffects([reverb], { tempo: 150 })
@@ -609,7 +612,7 @@ describe("EffectsController", () => {
       filter as unknown as AudioNode,
       new TestAudioNode(context) as unknown as AudioNode
     );
-    await Promise.resolve();
+    await started.promise;
     await controller.reconcile("target", desiredEffects([]));
     pending.resolve(true);
     await connecting;

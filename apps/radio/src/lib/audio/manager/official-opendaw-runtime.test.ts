@@ -535,6 +535,132 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+  test("a retained effect retries the same field edit after its transaction rolls back", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      threshold: -12,
+    };
+    h.runtime.syncEffects("deck", [config]);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox),
+      h.boxes.CompressorDeviceBox
+    );
+    const checksum = h.project.boxGraph.checksum();
+    const updated = { ...config, threshold: -24 };
+    const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+    endTransaction.mockImplementationOnce(() => {
+      throw new Error("edit failed");
+    });
+    try {
+      expect(() => h.runtime.syncEffects("deck", [updated])).toThrow(
+        "edit failed"
+      );
+    } finally {
+      endTransaction.mockRestore();
+    }
+    expect(h.project.boxGraph.checksum()).toEqual(checksum);
+    expect(device.threshold.getValue()).toBe(-12);
+    h.runtime.syncEffects("deck", [updated]);
+    expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
+      device
+    );
+    expect(device.threshold.getValue()).toBe(-24);
+  });
+
+  test.each(["sync", "connect"] as const)(
+    "a failed %s commits no script until the enclosing graph transaction succeeds",
+    async (operation) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = werkstatt();
+      h.runtime.syncEffects("deck", [config]);
+      await finishCompile(h.compiles[0]);
+      const device = scriptDevice(h);
+      const code = device.code.getValue();
+      const checksum = h.project.boxGraph.checksum();
+      const updated = werkstatt("// retry after rollback");
+      const sync = () =>
+        operation === "sync"
+          ? Promise.resolve().then(() =>
+              h.runtime.syncEffects("deck", [updated])
+            )
+          : h.runtime.connectSound(
+              "deck",
+              h.source,
+              h.destination,
+              undefined,
+              2,
+              {
+                dryWet: 1,
+                effects: [updated],
+                sidechainSoundId: null,
+                tempo: 120,
+              }
+            );
+      const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
+      endTransaction.mockImplementationOnce(() => {
+        throw new Error("script edit failed");
+      });
+      try {
+        await expect(sync()).rejects.toThrow("script edit failed");
+      } finally {
+        endTransaction.mockRestore();
+      }
+      expect(h.project.boxGraph.checksum()).toEqual(checksum);
+      expect(device.code.getValue()).toBe(code);
+      expect(h.compiles).toHaveLength(1);
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      await sync();
+      expect(h.compiles).toHaveLength(2);
+      await finishCompile(h.compiles[1]);
+      expect(scriptDevice(h)).toBe(device);
+      expect(device.code.getValue()).toContain("// retry after rollback");
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    }
+  );
+
+  test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
+    "%s defers descendant scripts while an ancestor is disabled",
+    async (type) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const script = werkstatt("// first inactive version");
+      const inner = {
+        ...createDefaultEffectConfig(type, "inner", 0),
+        enabled: true,
+      };
+      inner.chains[0].effects = [script];
+      const outer = {
+        ...createDefaultEffectConfig("fxComposite", "outer", 0),
+        enabled: false,
+      };
+      outer.chains[0].effects = [inner];
+      const compressor = createDefaultEffectConfig("compressor", "comp", 1);
+      h.runtime.syncEffects("deck", [outer, compressor]);
+      const device = scriptDevice(h);
+      expect(h.compiles).toHaveLength(0);
+      expect(getWerkstattRuntimeStatus(script.id).state).toBe("idle");
+      const edited = structuredClone(outer);
+      const [editedInner] = edited.chains[0].effects;
+      if (!("chains" in editedInner)) {
+        throw new Error("Inner container missing");
+      }
+      editedInner.chains[0].effects = [werkstatt("// latest inactive version")];
+      h.runtime.syncEffects("deck", [edited, compressor]);
+      expect(h.compiles).toHaveLength(0);
+      h.runtime.syncEffects("deck", [{ ...edited, enabled: true }, compressor]);
+      expect(h.compiles).toHaveLength(1);
+      await finishCompile(h.compiles[0]);
+      expect(scriptDevice(h)).toBe(device);
+      expect(device.code.getValue()).toContain("// latest inactive version");
+      expect(getWerkstattRuntimeStatus(script.id).state).toBe("ready");
+    }
+  );
+
   test("an existing sound can sync again after its effect transaction rolls back", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
@@ -543,7 +669,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       ...createDefaultEffectConfig("compressor", "comp", 0),
       sidechain: { channelId: "key" },
     };
-    const liveBoxes = h.project.boxGraph.boxes();
+    const liveBoxes = h.project.boxGraph.boxes().slice();
     const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
     endTransaction.mockImplementationOnce(() => {
       throw new Error("effect sync failed");
@@ -818,6 +944,8 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         device
       );
       expect(h.project.editing.hasNoChanges()).toBe(true);
+      h.runtime.syncEffects("deck", []);
+      expect(h.project.boxGraph.boxes()).toEqual(baseline);
     }
   );
 

@@ -184,6 +184,12 @@ describe("official openDAW BoxGraph adapter", () => {
     ) {
       throw new Error("Missing reverb signal trim");
     }
+    const sibling = groups.find((group) => group.config.type === "delay");
+    if (!(sibling?.wrapper && sibling.device instanceof boxes.DelayDeviceBox)) {
+      throw new Error("Delay sibling missing");
+    }
+    const { device: siblingDevice, wrapper: siblingWrapper } = sibling;
+    const siblingDelay = siblingDevice.delayMillis.getValue();
     const { signalTrim, wrapper, inputTrim: wetTrim, outputTrim } = reverb;
     // The published BoxGraph places gain before the point where dry and wet split.
     expect(signalTrim.host.targetVertex.unwrap()).toBe(
@@ -229,6 +235,12 @@ describe("official openDAW BoxGraph adapter", () => {
     expect(signalTrim.enabled.getValue()).toBe(true);
     expect(signalTrim.volume.getValue()).toBeCloseTo(20 * Math.log10(0.5));
     expect(reverb.device).toBe(device);
+    expect(project.boxGraph.findBox(siblingDevice.address.uuid).unwrap()).toBe(
+      siblingDevice
+    );
+    expect(siblingDevice.isAttached()).toBe(true);
+    expect(siblingWrapper.host.targetVertex.unwrap()).toBe(host);
+    expect(siblingDevice.delayMillis.getValue()).toBe(siblingDelay);
     const authored = reverb.config;
     project.editing.modify(() =>
       writeOfficialEffectFields(

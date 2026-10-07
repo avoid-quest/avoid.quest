@@ -546,7 +546,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     }
     const nextEffects = structuredClone(effects);
     const nextGroups = new Map<string, OfficialEffectGroup>();
-    const groups = this.transaction(() => {
+    const { groups, retired: retiredGroups } = this.transaction(() => {
       const obsoleteCells: ReturnType<typeof syncOfficialEffectCells> = [];
       const next = this.syncEffectChain(
         unit.groupsById,
@@ -558,20 +558,34 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       const retired = [...unit.groupsById.values()].filter(
         (group) => nextGroups.get(group.config.id) !== group
       );
-      this.afterCommit(() => {
-        for (const group of retired) {
-          this.releaseWerkstattGroup(group);
-        }
-      });
       deleteOfficialEffectGroups(retired);
       for (const cell of obsoleteCells) {
         cell.delete();
       }
       this.bindSidechains({ groups: next, soundId });
-      return next;
+      return { groups: next, retired };
     });
     unit.groups = groups;
     unit.groupsById = nextGroups;
+    this.afterCommit(() => {
+      for (const group of retiredGroups) {
+        this.releaseWerkstattGroup(group);
+      }
+      this.compileWerkstattChain(unit.groups);
+    });
+  }
+
+  private compileWerkstattChain(groups: readonly OfficialEffectGroup[]): void {
+    for (const group of groups) {
+      const { config } = group;
+      if (!config.enabled) {
+        continue;
+      }
+      if (config.type === "werkstatt") {
+        this.compileWerkstattGroup(group, config);
+      }
+      this.compileWerkstattChain(group.children);
+    }
   }
 
   private syncEffectChain(
@@ -627,9 +641,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
                   : [];
               })
             : [];
-        if (config.type === "werkstatt" && config.enabled) {
-          this.afterCommit(() => this.compileWerkstattGroup(group, config));
-        }
         return group;
       });
   }

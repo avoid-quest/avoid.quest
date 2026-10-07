@@ -202,6 +202,37 @@ describe("diff", () => {
     ]);
   });
 
+  test("toggling the only effect reselects the lane backend", () => {
+    const autotuned = (enabled: boolean) =>
+      plan(
+        [
+          station("a"),
+          fx("tune", "autotune", { enabled, signalGain: 1 }),
+          speakers,
+        ],
+        [audio("a", "tune"), audio("tune", "speakers")]
+      );
+    const on = autotuned(true);
+    const off = autotuned(false);
+    expect(on.lanes.get("a")?.backend).toBe("official");
+    expect(off.lanes.get("a")?.backend).toBeNull();
+    expect(on.lanes.get("a")?.layoutSignature).toBe(
+      off.lanes.get("a")?.layoutSignature
+    );
+    for (const [previous, next] of [
+      [on, off],
+      [off, on],
+    ] as const) {
+      expect(diff(previous, next)).toEqual([
+        {
+          effects: next.lanes.get("a")?.effects ?? [],
+          laneId: "a",
+          type: "setLaneEffects",
+        },
+      ]);
+    }
+  });
+
   test.each([
     ["add", ["verb"], ["verb", "crush"]],
     ["remove", ["verb", "crush"], ["crush"]],

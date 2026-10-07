@@ -617,13 +617,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       writeOfficialEffectFields(this.adapterContext(), group, authored);
       group.config = authored;
       syncOfficialEffectCells(this.adapterContext(), group);
-      if (authored.type === "werkstatt") {
-        restoreWerkstattParameterValues(
-          this.adapterContext(),
-          group,
-          authored.parameters
-        );
-      }
     });
     if (authored.type === "werkstatt" && authored.enabled) {
       this.compileWerkstattGroup(group, authored);
@@ -661,13 +654,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
             JSON.stringify(localEffectConfig(config));
         if (group === existing && changed) {
           updateOfficialEffectGroup(context, group, config, host);
-          if (
-            config.type === "werkstatt" &&
-            before?.type === "werkstatt" &&
-            werkstattSource(before) === werkstattSource(config)
-          ) {
-            restoreWerkstattParameterValues(context, group, config.parameters);
-          }
         } else {
           group.config = config;
         }

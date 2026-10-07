@@ -469,6 +469,7 @@ function interrupt(world: World) {
 }
 
 type Row = {
+  directFields?: boolean;
   /** The lane's transition. */
   when: string;
   initial: NodeGraph;
@@ -887,6 +888,7 @@ const transitions: Row[] = [
     ] as const
   ).map(
     ([status, edit, next, tree]): Row => ({
+      directFields: true,
       expected(world) {
         // The graph may hold neither layout, so the next change swaps too.
         expect(world.log).toEqual([
@@ -1134,7 +1136,7 @@ describe("Node lane transitions", () => {
         id: "node",
         masterVolume: 1,
       });
-      const world = createWorld();
+      const world = createWorld(row.directFields);
       activeWorld = world;
       await world.playback.activate();
 

@@ -1479,6 +1479,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     h.runtime.syncEffects("deck", [second]);
 
     expect(scriptDevice(h)).toBe(device);
+    expect(amount.value.getValue()).toBeCloseTo(0.1);
     expect(h.compiles).toHaveLength(2);
     expect(h.subscriptions).toHaveLength(1);
     expect(getWerkstattRuntimeStatus(first.id).state).toBe("compiling");

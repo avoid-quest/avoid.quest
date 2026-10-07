@@ -154,7 +154,7 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
       before.set(effect.id, effect)
     );
     const fields: Op[] = [];
-    let structural = false;
+    let structural = previous.backend !== next.backend;
     visitEffectTree(next.effects, (config) => {
       const existing = before.get(config.id);
       if (!existing || effectFieldsAreStructural(existing, config)) {

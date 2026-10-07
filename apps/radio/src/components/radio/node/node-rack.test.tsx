@@ -124,6 +124,14 @@ function cable(source: string, target: string) {
   };
 }
 
+function keyCable(source: string, target: string) {
+  return {
+    ...cable(source, target),
+    id: `${source}~>${target}`,
+    targetHandle: KEY_IN_HANDLE,
+  };
+}
+
 /**
  * KEXP straight to Speakers, NTS through a Delay, FIP with no cable out and
  * a hidden station still wired in.
@@ -394,11 +402,6 @@ describe("NodeRack", () => {
   });
 
   test("a keyed FX chip names every station keying it, through a Filter too", () => {
-    const keyCable = (source: string, target: string) => ({
-      ...cable(source, target),
-      id: `${source}~>${target}`,
-      targetHandle: KEY_IN_HANDLE,
-    });
     const { view } = renderRack(
       nodeGraphSchema.parse({
         edges: [
@@ -441,6 +444,50 @@ describe("NodeRack", () => {
     expect(chip.getAttribute("title")).toBe(
       "Keyed by BBC Radio 4, World Service, NTS 1"
     );
+  });
+
+  test("a key from inside a Loop's feedback path names the stations feeding it", () => {
+    const { view } = renderRack(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("kexp", "comp"),
+          cable("comp", SPEAKERS_NODE_ID),
+          cable("r4", "tone"),
+          cable("ws", "tone"),
+          cable("tone", SPEAKERS_NODE_ID),
+          // Tone feeds itself back through the Loop, and keys the Compressor.
+          cable("tone", "echo"),
+          cable("echo", "tone"),
+          keyCable("tone", "comp"),
+        ],
+        nodes: [
+          station("kexp", "KEXP"),
+          station("r4", "BBC Radio 4"),
+          station("ws", "World Service"),
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("compressor", "comp"),
+                enabled: true,
+              },
+            },
+            id: "comp",
+            position,
+            type: "compressor",
+          },
+          { data: {}, id: "tone", position, type: "filter" },
+          { data: {}, id: "echo", position, type: "loop" },
+          { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+        ],
+        version: 2,
+      } satisfies NodeGraphInput)
+    );
+
+    expect(
+      view.getByRole("button", {
+        name: "Compressor settings, keyed by BBC Radio 4, World Service",
+      })
+    ).toBeTruthy();
   });
 
   test("a key on a switched-off FX names no station, as its cable reads idle", () => {

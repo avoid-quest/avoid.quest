@@ -2586,6 +2586,45 @@ describe("compile: key cables", () => {
     expect(lane(plan, "talk").effects).toEqual([]);
   });
 
+  test.each([
+    ["with its head keyed too", true],
+    ["alone", false],
+  ])(
+    "a key inside a fan-out whose branches meet opens it, %s",
+    (_label, headKeyed) => {
+      const plan = build(
+        [
+          station("music"),
+          station("talk"),
+          fx("comp", "compressor", { enabled: true }),
+          fx("gate", "gate", { enabled: true }),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("echo", "delay", { enabled: true }),
+          node("mix", "merge"),
+          speakers,
+        ],
+        [
+          audio("music", "comp"),
+          audio("comp", "gate"),
+          audio("gate", "speakers"),
+          audio("talk", "verb"),
+          audio("talk", "echo"),
+          audio("verb", "mix"),
+          audio("echo", "mix"),
+          audio("mix", "speakers"),
+          key("verb", "gate"),
+          ...(headKeyed ? [key("talk", "comp")] : []),
+        ]
+      );
+      expect(plan.issues).toEqual([]);
+      expect(routes(plan)).toContain("unit:verb>key:node-key:gate");
+      expect(lane(plan, "music").effects[1]).toMatchObject({
+        id: "gate",
+        sidechain: { channelId: "node-key:gate" },
+      });
+    }
+  );
+
   test("a key reaching only another key is live, however many hops back", () => {
     const plan = build(
       [

@@ -199,7 +199,7 @@ function createWorld() {
     holdPlays: false as boolean,
     holdReconciles: false as boolean,
     /** How each effects reconcile ends, as the controller reports it. */
-    reconcileStatus: "inactive" as EffectsRuntimeOutcome["status"],
+    reconcileStatus: "inactive" as EffectsRuntimeOutcome["status"] | "rejected",
   };
   let stateListener: ((state: AudioState) => boolean | undefined) | null = null;
 
@@ -328,6 +328,9 @@ function createWorld() {
         log.push(`reconcile ${instanceOf(soundId)} [${tree.join(" ")}]${key}`);
         if (options.holdReconciles) {
           await hold(heldReconciles, () => undefined);
+        }
+        if (options.reconcileStatus === "rejected") {
+          throw new Error("reconcile rejected");
         }
         return { backend: null, ready: false, status: options.reconcileStatus };
       },
@@ -871,6 +874,7 @@ const transitions: Row[] = [
     [
       ["failed", "is undone", () => patch([station("a")]), "[]"],
       ["superseded", "has a knob turned", threshold(-12), "[comp@-12]"],
+      ["rejected", "is undone", () => patch([station("a")]), "[]"],
     ] as const
   ).map(
     ([status, edit, next, tree]): Row => ({

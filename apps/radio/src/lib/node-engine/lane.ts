@@ -566,8 +566,9 @@ export class LaneInstance {
   /**
    * The driver's next effects step toward `plan`, or null once they match:
    * changed effects in a new FX layout duck first, unless nothing plays,
-   * and the duck lifts once nothing is left. A failed or superseded
-   * reconcile leaves the layout unknown: the next change swaps, ducked.
+   * and the duck lifts once nothing is left. The layout stays unknown
+   * until a reconcile succeeds, since a failed, superseded or rejected one
+   * may have half-switched the graph: the next change swaps, ducked.
    */
   effectsStep(plan: LanePlan): Promise<void> | null {
     const { laneOutputs } = this.host;
@@ -585,9 +586,11 @@ export class LaneInstance {
       return ducking;
     }
     this.effectsStale = false;
+    this.layout = null;
     return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
-      const unknown = ["failed", "superseded"].includes(outcome.status);
-      this.layout = unknown ? null : plan.layoutSignature;
+      if (!["failed", "superseded"].includes(outcome.status)) {
+        this.layout = plan.layoutSignature;
+      }
       this.recordOutcome(outcome);
     }, reportNodeFailure("Could not apply lane effects"));
   }

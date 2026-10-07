@@ -94,7 +94,6 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import {
-  type ChannelEffectsResult,
   createChannelEffects,
   type DesiredEffectsState,
   type EffectsRuntimeOutcome,
@@ -181,6 +180,11 @@ function channelOf(nodeId: string): string {
 
 function soundOf(nodeId: string): string {
   return `node:n:${nodeId}`;
+}
+
+/** A lane's sound as Node activates it: it reconciles its own effects. */
+function ownedSound(nodeId: string) {
+  return { ownsEffects: true, soundId: soundOf(nodeId) };
 }
 
 async function resetCollections(): Promise<void> {
@@ -310,7 +314,9 @@ function createTestContext(): PlaybackActionContext {
 
 type Harness = {
   context: PlaybackActionContext;
-  effectsChange: ReturnType<typeof mock>;
+  /** Each sound's effects, as last reconciled. */
+  desired: Map<string, DesiredEffectsState>;
+  reconcileEffects: ReturnType<typeof mock<AudioManager["reconcileEffects"]>>;
   fadeOutSound: ReturnType<typeof mock>;
   /** What hears of another tab's session writes while Node is active. */
   otherTabListeners: Set<() => void>;
@@ -338,11 +344,18 @@ function createHarness(
   const context = options.context ?? createTestContext();
   const store = createNodeStore();
   const { effectsOutcome } = options;
-  const effectsChange = mock(
-    async () =>
-      (effectsOutcome
-        ? { runtime: effectsOutcome() }
-        : {}) as ChannelEffectsResult
+  const desired = new Map<string, DesiredEffectsState>();
+  const reconcileEffects = mock(
+    (soundId: string, state: DesiredEffectsState) => {
+      desired.set(soundId, state);
+      return Promise.resolve<EffectsRuntimeOutcome>(
+        effectsOutcome?.() ?? {
+          backend: null,
+          ready: false,
+          status: "inactive",
+        }
+      );
+    }
   );
   const fadeOutSound = mock(
     options.fadeOutSound ?? (async (_soundId: string) => undefined)
@@ -351,7 +364,7 @@ function createHarness(
   const playback = getNodePlayback({
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
-    effects: options.effects ?? { change: effectsChange },
+    effects: options.effects ?? { reconcileEffects },
     fadeOutSound,
     getEnv: () => ({
       crossOriginIsolated: options.crossOriginIsolated ?? false,
@@ -370,12 +383,20 @@ function createHarness(
   harnessPlaybacks.add(playback);
   return {
     context,
-    effectsChange,
+    desired,
     fadeOutSound,
     otherTabListeners,
     playback,
+    reconcileEffects,
     store,
   };
+}
+
+/** The effect trees reconciled for a lane's sound, oldest first. */
+function reconciledTrees(harness: Harness, nodeId: string) {
+  return harness.reconcileEffects.mock.calls
+    .filter(([soundId]) => soundId === soundOf(nodeId))
+    .map(([, state]) => state.tree);
 }
 
 /**
@@ -505,7 +526,7 @@ describe("Node Playback", () => {
       "node",
       channelOf("a"),
       expect.objectContaining({ id: "a" }),
-      soundOf("a")
+      ownedSound("a")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.8);
@@ -543,7 +564,7 @@ describe("Node Playback", () => {
       "node",
       channelOf("authored"),
       expect.objectContaining({ id: "authored" }),
-      soundOf("authored")
+      ownedSound("authored")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     expect(harness.context.audioEngine.playback.play).not.toHaveBeenCalled();
@@ -671,14 +692,9 @@ describe("Node Playback", () => {
       ),
     }));
 
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
-    expect(harness.effectsChange).toHaveBeenCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ dryWet: 0.25, id: "verb" }),
+    ]);
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
     expect(harness.context.channels.deactivate).not.toHaveBeenCalled();
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
@@ -734,7 +750,7 @@ describe("Node Playback", () => {
       "node",
       channelOf("b"),
       expect.objectContaining({ id: "b" }),
-      soundOf("b")
+      ownedSound("b")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     expect(
@@ -787,7 +803,7 @@ describe("Node Playback", () => {
       "node",
       channelOf("a"),
       saved,
-      soundOf("a")
+      ownedSound("a")
     );
     expect(harness.context.audio.playSound).toHaveBeenCalledWith(
       soundOf("a"),
@@ -1572,7 +1588,7 @@ describe("Node Playback across tabs", () => {
       "node",
       channelOf("b"),
       expect.objectContaining({ id: "b" }),
-      soundOf("b")
+      ownedSound("b")
     );
     // Undo can't bring back the patch the other tab replaced.
     expect(harness.store.state.history.past).toEqual([]);
@@ -2070,7 +2086,7 @@ describe("Node Playback settling lanes", () => {
       "node",
       channelOf("a"),
       saved,
-      soundOf("a")
+      ownedSound("a")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
   });
@@ -2311,17 +2327,15 @@ describe("Node Playback lane outputs", () => {
       type: "linear",
       value: 0,
     });
-    expect(harness.effectsChange).not.toHaveBeenCalled();
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([]);
 
     laneOut.gain.value = 0;
     audio.currentTime = 2.1;
     await harness.playback.whenSettled();
 
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
-    expect(harness.effectsChange).toHaveBeenCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      { tree: [expect.objectContaining({ id: "verb" })], type: "replace" }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ id: "verb" }),
+    ]);
     expect(laneOut.gain.events.at(-1)).toEqual({
       time: 2.1 + LANE_DUCK_MS / 1000,
       type: "linear",
@@ -2351,18 +2365,15 @@ describe("Node Playback lane outputs", () => {
     harness.playback.flush();
 
     // The new layout must not be applied before the lane is silent.
-    expect(harness.effectsChange).not.toHaveBeenCalled();
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([]);
 
     await harness.playback.whenSettled();
 
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
-        type: "replace",
-      }
-    );
+    // Only the latest tree reaches the sound.
+    expect(reconciledTrees(harness, "a")).toEqual([
+      [],
+      [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
+    ]);
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
       expect.objectContaining({ dryWet: 0.25, id: "verb" }),
     ]);
@@ -2370,14 +2381,9 @@ describe("Node Playback lane outputs", () => {
     // Once the swap has replaced, param changes apply at once again.
     commitNodeGraph(withReverb(0.75), harness.store);
     await harness.playback.whenSettled();
-    expect(harness.effectsChange).toHaveBeenCalledTimes(2);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ dryWet: 0.75, id: "verb" })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ dryWet: 0.75, id: "verb" }),
+    ]);
   });
 
   test("an FX param change while the swap replaces keeps the duck until the latest tree is in", async () => {
@@ -2386,15 +2392,21 @@ describe("Node Playback lane outputs", () => {
       tree: readonly EffectConfig[];
       done: () => void;
     }> = [];
+    const ready: EffectsRuntimeOutcome = {
+      backend: "compatibility",
+      ready: true,
+      status: "ready",
+    };
     const harness = createHarness({
       effects: {
-        change: mock((_ref, change) => {
+        // The lane's dry tree, as its sound is made, reconciles at once.
+        reconcileEffects: mock((_soundId, { tree }) => {
+          if (tree.length === 0) {
+            return Promise.resolve(ready);
+          }
           const { promise, resolve } =
-            Promise.withResolvers<ChannelEffectsResult>();
-          replaces.push({
-            done: () => resolve({} as ChannelEffectsResult),
-            tree: change.type === "replace" ? change.tree : [],
-          });
+            Promise.withResolvers<EffectsRuntimeOutcome>();
+          replaces.push({ done: () => resolve(ready), tree });
           return promise;
         }),
       },
@@ -2467,7 +2479,7 @@ describe("Node Playback lane outputs", () => {
 
     await harness.playback.whenSettled();
 
-    expect(harness.effectsChange).not.toHaveBeenCalled();
+    expect(reconciledTrees(harness, "a")).toEqual([[]]);
   });
 
   test("a removed Station releases its lane output once its channel is gone", async () => {
@@ -2568,7 +2580,9 @@ describe("Node Playback FX lanes", () => {
     const [effect] = getPlaybackChannel("node", channelOf("a"))?.effects ?? [];
     expect(effect).toMatchObject({ id: "comp", type: "compressor" });
     expect(swaps).toEqual(["a"]);
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ id: "comp", type: "compressor" }),
+    ]);
 
     const before = harness.store.state.graph as NodeGraph;
     await commit(harness, threshold(-24));
@@ -2579,14 +2593,9 @@ describe("Node Playback FX lanes", () => {
       diff(compile(before, env), compile(after, env)).map((op) => op.type)
     ).toEqual(["setLaneEffects"]);
     expect(swaps).toEqual(["a"]);
-    expect(harness.effectsChange).toHaveBeenCalledTimes(2);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ id: "comp", threshold: -24 })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ id: "comp", threshold: -24 }),
+    ]);
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
     expect(harness.fadeOutSound).not.toHaveBeenCalled();
   });
@@ -2647,13 +2656,9 @@ describe("Node Playback FX lanes", () => {
         ? tree.chains.map((chain) => chain.effects.map((effect) => effect.id))
         : null
     ).toEqual([["comp"], [], []]);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ type: "frequencySplit" })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ type: "frequencySplit" }),
+    ]);
   });
 
   test("the backend badge shows compat when not cross-origin isolated, on the lane and its FX", async () => {
@@ -2675,20 +2680,29 @@ describe("Node Playback FX lanes", () => {
   test("the badge reads bypassed once the controller reports a dry fallback", async () => {
     insertNodeSession(insertCompressor(patch([station("a")])));
     const badges = new Store<NodeBackendBadges>({});
+    // A paused sound has no effects graph yet.
+    let outcome: EffectsRuntimeOutcome = {
+      backend: null,
+      ready: false,
+      status: "inactive",
+    };
     const harness = createHarness({
       backendBadges: badges,
       crossOriginIsolated: true,
-      effectsOutcome: () => ({
-        backend: "bypass",
-        error: new Error("worklet unavailable"),
-        ready: true,
-        status: "failed",
-      }),
+      effectsOutcome: () => outcome,
     });
     await harness.playback.activate();
+    await harness.playback.whenSettled();
 
     // Official is the plan, so nothing shows until the controller reports.
     expect(badges.state).toEqual({});
+
+    outcome = {
+      backend: "bypass",
+      error: new Error("worklet unavailable"),
+      ready: true,
+      status: "failed",
+    };
 
     await commit(harness, threshold(-30));
 
@@ -2819,44 +2833,11 @@ describe("Node Playback key cables", () => {
     });
   }
 
-  /**
-   * Real channel effects over a recording runtime, bound as the channel
-   * state manager binds them: when a lane's sound is created.
-   */
-  function withChannelEffects() {
-    const desired = new Map<string, DesiredEffectsState>();
-    const effects = createChannelEffects({
-      runtime: {
-        reconcile: (soundId, state) => {
-          desired.set(soundId, state);
-          return Promise.resolve({
-            backend: "compatibility",
-            ready: true,
-            status: "ready",
-          });
-        },
-      },
-    });
-    const binds: Promise<unknown>[] = [];
-    const context = createTestContext();
-    const { activate } = context.channels;
-    context.channels.activate = mock((...args: Parameters<typeof activate>) => {
-      const soundId = activate(...args);
-      const [sessionId, channelId] = args;
-      binds.push(effects.bind({ channelId, sessionId }, soundId));
-      return soundId;
-    });
-    const harness = createHarness({ context, effects });
-    const settled = async () => {
-      await harness.playback.whenSettled();
-      await Promise.all(binds);
-    };
-    return { desired, harness, settled };
-  }
-
   test("a key cable from Station b to a Compressor in a's lane binds b's sound as a's sidechain", async () => {
     insertNodeSession(duckPatch(false));
-    const { desired, harness, settled } = withChannelEffects();
+    const harness = createHarness();
+    const { desired } = harness;
+    const settled = () => harness.playback.whenSettled();
     await harness.playback.activate();
     await settled();
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
@@ -2881,12 +2862,93 @@ describe("Node Playback key cables", () => {
 
   test("a patch opened with its key binds once both lanes exist", async () => {
     insertNodeSession(duckPatch(true));
-    const { desired, harness, settled } = withChannelEffects();
+    const harness = createHarness();
+    const { desired } = harness;
+    const settled = () => harness.playback.whenSettled();
 
     await harness.playback.activate();
     await settled();
 
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+  });
+
+  test("replacing a key lane's sound rebinds the lanes keyed from it", async () => {
+    insertNodeSession(duckPatch(true));
+    const harness = createHarness();
+    const events: string[] = [];
+    const { activate } = harness.context.channels;
+    harness.context.channels.activate = mock(
+      (...args: Parameters<typeof activate>) => {
+        events.push(`create ${args[1]}`);
+        return activate(...args);
+      }
+    );
+    const record = harness.reconcileEffects.getMockImplementation();
+    harness.reconcileEffects.mockImplementation((soundId, state) => {
+      if (soundId === soundOf("a")) {
+        events.push(`key ${state.sidechainSoundId}`);
+      }
+      return record?.(soundId, state) as Promise<EffectsRuntimeOutcome>;
+    });
+    await harness.playback.activate();
+    await harness.playback.whenSettled();
+    events.length = 0;
+
+    await commit(harness, withStation("b", { radio: radio("b2") }));
+
+    // The old key's sound goes, then a's sidechain follows the new one.
+    expect(events).toEqual([
+      "key null",
+      `create ${channelOf("b")}`,
+      `key ${soundOf("b")}`,
+    ]);
+    expect(harness.desired.get(soundOf("a"))?.sidechainSoundId).toBe(
+      soundOf("b")
+    );
+  });
+
+  test("removing two FX lanes in one commit while a third binds never reads a removed channel", async () => {
+    const fxLane = (id: string) => [station(id), reverb(`${id}-verb`)];
+    const fxPatch = (ids: string[]) =>
+      nodeGraphSchema.parse({
+        edges: ids.flatMap((id) => [
+          cable(id, `${id}-verb`),
+          cable(`${id}-verb`, "speakers"),
+        ]),
+        nodes: [...ids.flatMap(fxLane), speakers],
+        version: 2,
+      });
+    insertNodeSession(fxPatch(["a", "b"]));
+    // Channel effects as the channel state manager binds them, reading the
+    // saved session: only a channel that doesn't own its effects is bound.
+    const channelEffects = createChannelEffects({
+      runtime: {
+        reconcile: () =>
+          Promise.resolve({ backend: null, ready: false, status: "inactive" }),
+      },
+    });
+    const failures: unknown[] = [];
+    const context = createTestContext();
+    const { activate } = context.channels;
+    context.channels.activate = mock((...args: Parameters<typeof activate>) => {
+      const soundId = activate(...args);
+      const [sessionId, channelId, , options] = args;
+      if (!(typeof options === "object" && options.ownsEffects)) {
+        channelEffects
+          .bind({ channelId, sessionId }, soundId)
+          .catch((error: unknown) => failures.push(error));
+      }
+      return soundId;
+    });
+    const harness = createHarness({ context });
+    await harness.playback.activate();
+
+    await commit(harness, () => fxPatch(["c"]));
+
+    expect(failures).toEqual([]);
+    expect(harness.desired.get(soundOf("c"))?.tree).toEqual([
+      expect.objectContaining({ id: "c-verb" }),
+    ]);
   });
 
   test("a Vocoder key overrides its runtime mode and removal restores its authored mode", async () => {
@@ -2910,7 +2972,9 @@ describe("Node Playback key cables", () => {
       ),
     });
     insertNodeSession(vocoderPatch);
-    const { desired, harness, settled } = withChannelEffects();
+    const harness = createHarness();
+    const { desired } = harness;
+    const settled = () => harness.playback.whenSettled();
     await harness.playback.activate();
     await settled();
     expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
@@ -4033,7 +4097,7 @@ describe("Node Playback: Track and File sources", () => {
       "node",
       channelOf("video"),
       expect.objectContaining({ id: "video" }),
-      soundOf("video")
+      ownedSound("video")
     );
     expect(harness.context.audio.playSound).toHaveBeenCalledWith(
       soundOf("video"),
@@ -5611,7 +5675,15 @@ describe("Node Playback: channel strips", () => {
       backendBadges: new Store<NodeBackendBadges>({}),
       ctx: context,
       cueOutput: () => ({ applySettings, registerCueDeck, releaseCue }),
-      effects: { change: mock(async () => ({}) as ChannelEffectsResult) },
+      effects: {
+        reconcileEffects: mock(
+          async (): Promise<EffectsRuntimeOutcome> => ({
+            backend: null,
+            ready: false,
+            status: "inactive",
+          })
+        ),
+      },
       fadeOutSound: mock(async () => undefined),
       getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
       sinkStatuses: new Store<NodeSinkStatuses>({}),

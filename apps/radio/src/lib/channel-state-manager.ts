@@ -54,6 +54,11 @@ export type ChannelActivationOptions = {
   /** Return true only when a recovery owns reporting this failure. */
   onAudioState?: (audioState: AudioState) => boolean | undefined;
   persistRadio?: boolean;
+  /**
+   * The caller reconciles the sound's effects itself, from its own state,
+   * so the channel is never bound to channel effects or the saved session.
+   */
+  ownsEffects?: boolean;
 };
 
 export type ChannelRuntimeSubscriptionOptions = Pick<
@@ -73,6 +78,8 @@ const CHANNEL_AUDIO_SYNC_ORDER = [
 const subscriptionCleanups = new Map<string, () => void>();
 const channelOutputModes = new Map<string, ChannelOutputMode>();
 const channelSessions = new Map<string, PlaybackSessionId>();
+/** Channels whose effects their caller owns: never bound, never unbound. */
+const effectsOwnedChannels = new Set<string>();
 
 function getAudioManager(): AudioManager {
   return AudioManager.getInstance();
@@ -365,9 +372,13 @@ export function activateChannel(
       });
     }
     setPlaybackChannelSoundId(channelId, soundId);
-    channelEffects
-      .bind({ channelId, sessionId }, soundId)
-      .catch(reportChannelEffectsError);
+    if (options.ownsEffects) {
+      effectsOwnedChannels.add(channelId);
+    } else {
+      channelEffects
+        .bind({ channelId, sessionId }, soundId)
+        .catch(reportChannelEffectsError);
+    }
     subscribeChannelRuntime(sessionId, channelId, soundId, {
       onAudioState: options.onAudioState,
     });
@@ -379,7 +390,9 @@ export function activateChannel(
       manager.cleanupSound(soundId);
     }
     resetPlaybackChannelRuntime(channelId);
-    channelEffects.unbind({ channelId, sessionId });
+    if (!effectsOwnedChannels.delete(channelId)) {
+      channelEffects.unbind({ channelId, sessionId });
+    }
     if (options.persistRadio) {
       updatePlaybackChannel(sessionId, channelId, (draft) => {
         draft.radio = previousRadio;
@@ -404,7 +417,7 @@ export function deactivateChannel(channelId: string): void {
     getAudioManager().cleanupSound(runtime.soundId);
   }
   resetPlaybackChannelRuntime(channelId);
-  if (sessionId) {
+  if (!effectsOwnedChannels.delete(channelId) && sessionId) {
     channelEffects.unbind({ channelId, sessionId });
   }
 }

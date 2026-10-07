@@ -81,7 +81,7 @@ and passing regression tests cover modeled behavior, not these acceptance gates.
 
 | Gate | Required observation |
 | --- | --- |
-| iPhone WebKit playback unlock | Four independent stream lanes start from one Play all gesture, obey the stream budget, then pause and switch Single/Node/DJ without surviving old sounds. Repeat after reload/backgrounding. |
+| iPhone WebKit playback unlock | Four independent stream lanes start from one Play all gesture, then pause and switch Single/Node/DJ without surviving old sounds. Repeat after reload/backgrounding. |
 | Physical touch gestures | Double-tap knob and slider resets; ordinary drag remains usable. Pinching during an insertion drag cancels insertion. Rewire works through port selection with a finger and preserves branch settings. |
 | Microphone permissions and lifetime | Grant, deny and browser-level permission reset update the UI. Go live uses saved level/channels from its first audible sample. Cancel/remove/mode-switch during permission pending leaves no live capture. Unplug and reconnect permit explicit recovery. |
 | Main output, second output and CUE | A real interface routes intended lanes to distinct sinks; mute/level/CUE behave independently. Unplug or rejected sink selection shows recovery and Retry works without resurrecting a deactivated lane. Test capability fallback in a browser without sink routing. |

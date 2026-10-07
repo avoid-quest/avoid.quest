@@ -7,7 +7,7 @@
  * routing graph (routing.ts), which owns the units and modules after the
  * faders. The engine owns what they share: the lane outputs and Output
  * device sinks their cables reach, the headphone cue output, the master
- * volume, the FX badges, the stream budget and Play all. `dispose` refuses
+ * volume, the FX badges and Play all. `dispose` refuses
  * new starts, retires every lane and waits for each to release, then for
  * the routing graph to let go, before it closes the rest; the next
  * activation builds a new engine.
@@ -178,8 +178,6 @@ export type NodeEngineOptions = {
   fadeOut: (soundId: string) => Promise<void>;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
   resolveStream: ResolvePlatformStream;
-  /** How many streams may play at once here. */
-  streamLimit: () => number;
   /** Commits `radio` into a lane's source, while it still holds `from`. */
   commitTrack: (laneId: string, from: Radio, radio: Radio) => boolean;
 };
@@ -415,19 +413,6 @@ export function createNodeEngine(options: NodeEngineOptions) {
       options.effects.reconcileEffects(soundId, desiredEffects(lane.effects)),
     resolveStream: options.resolveStream,
     setEffectFields: (...args) => options.effects.setEffectFields(...args),
-    streamLimit: (slot) => {
-      if (slot.plan?.source.kind === "device") {
-        return null;
-      }
-      const limit = options.streamLimit();
-      let busy = 0;
-      for (const other of slots.values()) {
-        if (other !== slot && other.busyStream()) {
-          busy += 1;
-        }
-      }
-      return busy >= limit ? limit : null;
-    },
     subscribeEffectsRuntimeOutcome: (...args) =>
       options.effects.subscribeEffectsRuntimeOutcome(...args),
   };

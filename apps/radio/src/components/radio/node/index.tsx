@@ -24,7 +24,6 @@ import {
 } from "@/lib/node-graph/node-store";
 import { templatePatch } from "@/lib/node-graph/palette";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
-import { detectNodePlaybackEnv } from "@/lib/node-playback";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
 import { NodeCanvasSkeleton } from "../radio-loading-skeleton";
@@ -81,7 +80,6 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     savedRadios: savedRadios.isReady ? savedRadios.data : undefined,
   });
 
-  const validateOptions = { profile: detectNodePlaybackEnv().profile };
   // Before the patch loads there is nothing to add to, and a request kept
   // until then would pop the palette open on its own.
   const openPalette = (request: PaletteRequest = {}) => {
@@ -161,7 +159,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
       if (!current) {
         return;
       }
-      const edit = removeNodesHealed(current, [nodeId], validateOptions);
+      const edit = removeNodesHealed(current, [nodeId]);
       if (!edit.ok) {
         toast(edit.message);
         return;
@@ -295,7 +293,6 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
           onLoadTemplate={loadTemplate}
           radios={[...(radios ?? []), ...management.sessionRadios]}
           request={palette}
-          validateOptions={validateOptions}
         />
 
         {isPhone ? (
@@ -310,7 +307,6 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
         <ConnectDialog
           nodeId={connectNodeId}
           onClose={() => setConnectNodeId(null)}
-          validateOptions={validateOptions}
         />
 
         {rewireEdgeId ? (
@@ -318,7 +314,6 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
             edgeId={rewireEdgeId}
             key={rewireEdgeId}
             onClose={() => setRewireEdgeId(null)}
-            validateOptions={validateOptions}
           />
         ) : null}
 

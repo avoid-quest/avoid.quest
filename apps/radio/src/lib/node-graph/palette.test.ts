@@ -6,6 +6,7 @@ import { commitNodeGraph, createNodeStore, undoNodeGraph } from "./node-store";
 import {
   addPaletteNode,
   autoConnection,
+  connectableHandles,
   connectPorts,
   createPaletteNode,
   dropOnNode,
@@ -14,10 +15,12 @@ import {
   type PaletteFrom,
   type PaletteNodeEntry,
   paletteEntries,
+  portKey,
   resetEffect,
   rewireTargets,
   templatePatch,
 } from "./palette";
+import { nodeGraphSchema } from "./schema";
 import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
@@ -520,24 +523,33 @@ describe("addPaletteNode", () => {
   });
 });
 
-describe("addPaletteNode: patch budgets", () => {
+describe("addPaletteNode: large patches", () => {
   const full = buildNodeGraphFromTemplate("start-from-multiple", {
     saved: Array.from({ length: 24 }, (_, index) => radio(String(index))),
   });
 
-  test("refuses a 25th source, with or without a dropped cable", () => {
-    expect(validate(full)).toEqual([]);
-
+  test("adds a 25th source, with or without a dropped cable", () => {
     for (const options of [{}, { from: fromSpeakers }]) {
-      expect(addPaletteNode(full, emptyStation, options)).toEqual({
-        graph: full,
-        message: "Up to 24 sources per patch",
-        nodeId: null,
-      });
+      const { graph, nodeId, message } = addPaletteNode(
+        full,
+        emptyStation,
+        options
+      );
+      expect(nodeId).not.toBeNull();
+      expect(message).toBeUndefined();
+      expect(
+        graph.nodes.filter((node) => node.type === "station")
+      ).toHaveLength(25);
+      expect(
+        graph.edges.some(
+          (edge) => edge.source === nodeId && edge.target === SPEAKERS_NODE_ID
+        )
+      ).toBe(true);
+      expect(validate(graph)).toEqual([]);
     }
   });
 
-  test("a Station that would take a 65th cable comes loose", () => {
+  test("a Station connects with a 65th cable", () => {
     const stations = buildNodeGraphFromTemplate("start-from-multiple", {
       saved: Array.from({ length: 16 }, (_, index) => radio(String(index))),
     });
@@ -578,7 +590,11 @@ describe("addPaletteNode: patch budgets", () => {
     const { graph: added, nodeId } = addPaletteNode(graph, emptyStation);
 
     expect(added.nodes.some((node) => node.id === nodeId)).toBe(true);
-    expect(added.edges).toEqual(graph.edges);
+    expect(added.edges).toHaveLength(65);
+    expect(added.edges.at(-1)).toMatchObject({
+      source: nodeId,
+      target: SPEAKERS_NODE_ID,
+    });
     expect(validate(added)).toEqual([]);
   });
 });
@@ -928,6 +944,136 @@ describe("connectPorts", () => {
       },
     ]);
     expect(connectPorts(patch, "src-a")).toEqual([]);
+  });
+
+  test("offers cabled Split ports and a spare beyond the old branch cap", () => {
+    const split = createPaletteNode("fxComposite", "split", { x: 0, y: 0 });
+    const merge = createPaletteNode("merge", "merge", { x: 0, y: 0 });
+    if (!(split && merge)) {
+      throw new Error("Expected Split and Merge nodes");
+    }
+    const graph = nodeGraphSchema.parse({
+      ...patch,
+      edges: [
+        {
+          id: "in",
+          source: "src-a",
+          sourceHandle: AUDIO_OUT_HANDLE,
+          target: "split",
+          targetHandle: AUDIO_IN_HANDLE,
+        },
+        ...[1, 12].map((index) => ({
+          id: `b${index}`,
+          source: "split",
+          sourceHandle: `out:audio:branch-${index}`,
+          target: "merge",
+          targetHandle: AUDIO_IN_HANDLE,
+        })),
+        {
+          id: "out",
+          source: "merge",
+          sourceHandle: AUDIO_OUT_HANDLE,
+          target: SPEAKERS_NODE_ID,
+          targetHandle: AUDIO_IN_HANDLE,
+        },
+      ],
+      nodes: [...patch.nodes, split, merge],
+    });
+    expect(validate(graph)).toEqual([]);
+    const outputs = connectPorts(graph, "split")
+      .map((port) => port.handle)
+      .filter((handle) => handle.startsWith("out:"));
+    expect(outputs).toEqual([
+      "out:audio:branch-1",
+      "out:audio:branch-2",
+      "out:audio:branch-12",
+    ]);
+    expect(
+      connectableHandles(graph, {
+        handle: AUDIO_IN_HANDLE,
+        node: "merge",
+        type: "target",
+      }).get(portKey("split", "out:audio:branch-2"))
+    ).toMatchObject({ ok: true });
+    expect(
+      rewireTargets(graph, "b1", "source").find(
+        (target) => target.key === "split out:audio:branch-2"
+      )
+    ).toMatchObject({ label: "Split branch 2", reason: null });
+  });
+
+  test("wide Splits keep their own spare ports across Connect queries", () => {
+    const sources = buildNodeGraphFromTemplate("start-from-multiple", {
+      saved: [radio("a"), radio("b")],
+    });
+    const branches = Array.from({ length: 24 }, (_, index) => index + 1);
+    const routes = ["a", "b"].map((id, index) => ({
+      edges: [
+        {
+          id: `in-${id}`,
+          source: `src-${id}`,
+          sourceHandle: AUDIO_OUT_HANDLE,
+          target: `split-${id}`,
+          targetHandle: AUDIO_IN_HANDLE,
+        },
+        ...branches
+          .filter((branch) => branch !== index + 2)
+          .map((branch) => ({
+            id: `${id}-${branch}`,
+            source: `split-${id}`,
+            sourceHandle: `out:audio:branch-${branch}`,
+            target: `merge-${id}`,
+            targetHandle: AUDIO_IN_HANDLE,
+          })),
+        {
+          id: `out-${id}`,
+          source: `merge-${id}`,
+          sourceHandle: AUDIO_OUT_HANDLE,
+          target: SPEAKERS_NODE_ID,
+          targetHandle: AUDIO_IN_HANDLE,
+        },
+      ],
+      nodes: [
+        createPaletteNode("fxComposite", `split-${id}`, { x: 0, y: 0 }),
+        createPaletteNode("merge", `merge-${id}`, { x: 0, y: 0 }),
+      ],
+    }));
+    const graph = nodeGraphSchema.parse({
+      ...sources,
+      edges: routes.flatMap((route) => route.edges),
+      nodes: [...sources.nodes, ...routes.flatMap((route) => route.nodes)],
+    });
+    expect(validate(graph)).toEqual([]);
+
+    for (const [index, id] of ["a", "b"].entries()) {
+      const input = connectPorts(graph, `merge-${id}`).find(
+        (port) => port.handle === AUDIO_IN_HANDLE
+      );
+      expect(
+        input?.targets
+          .filter((target) => target.connection.source === `split-${id}`)
+          .map((target) => target.key)
+      ).toEqual([`split-${id} out:audio:branch-${index + 2}`]);
+      expect(
+        connectPorts(graph, `split-${id}`)
+          .map((port) => port.handle)
+          .filter((handle) => handle.startsWith("out:"))
+      ).toEqual(branches.map((branch) => `out:audio:branch-${branch}`));
+    }
+
+    const changed = {
+      ...graph,
+      edges: graph.edges.filter((edge) => edge.id !== "a-1"),
+    };
+    expect(
+      connectPorts(changed, "split-a")
+        .map((port) => port.handle)
+        .filter((handle) => handle.startsWith("out:"))
+    ).toEqual(
+      branches
+        .filter((branch) => branch !== 2)
+        .map((branch) => `out:audio:branch-${branch}`)
+    );
   });
 
   test("offers only the bands a Band Split has", () => {

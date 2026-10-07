@@ -51,8 +51,8 @@ import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import type { GraphEdge, GraphNode } from "./schema";
 import { type IssueCode, liveAudioNodes, type WiredEdge } from "./validate";
 
-/** A Split, Band Split or implicit fan-out takes 2 to 4 branches. */
-export const MAX_SPLIT_BRANCHES = 4;
+/** openDAW FrequencySplitBox exposes three crossovers, hence at most four bands. */
+export const MAX_BANDS = 4;
 
 /** Why a key inside a closed Split is refused. */
 export const ENCLOSED_KEY_MESSAGE =
@@ -112,7 +112,7 @@ export function effectOf(node: GraphNode | undefined): EffectConfig | null {
 
 /**
  * A Split's branches mix at −3 dB each, as its first two chains come from
- * the registry, so a third or fourth branch matches them. Stereo and band
+ * the registry, so added branches match them. Stereo and band
  * splits divide the signal, so theirs stay at unity.
  */
 export function defaultChainGain(
@@ -337,11 +337,16 @@ function portName(handle: string): string {
 }
 
 /** The out handles of a container, one per chain, or null for a bad shape. */
-function splitPorts(effect: EffectConfig): string[] | null {
+function splitPorts(
+  effect: EffectConfig,
+  outs: readonly WiredEdge[]
+): string[] | null {
   switch (effect.type) {
     case "fxComposite":
-      return range(MAX_SPLIT_BRANCHES).map(
-        (index) => `out:audio:branch-${index}`
+      return [...new Set(outs.map(({ edge }) => edge.sourceHandle))].sort(
+        (left, right) =>
+          Number(portName(left).slice("branch-".length)) -
+          Number(portName(right).slice("branch-".length))
       );
     case "stereoSplit":
       return ["out:audio:left", "out:audio:right"];
@@ -355,7 +360,7 @@ function splitPorts(effect: EffectConfig): string[] | null {
       );
       if (
         bands < 2 ||
-        bands > MAX_SPLIT_BRANCHES ||
+        bands > MAX_BANDS ||
         !ascending ||
         effect.chains.length !== bands
       ) {
@@ -386,15 +391,20 @@ function splitPortsOf(
   outs: readonly WiredEdge[],
   ids?: FreshIds
 ): SplitPort[] {
-  const ports = splitPorts(base);
+  const ports = splitPorts(base, outs);
   if (!ports) {
     throw new LoweringError(
       id,
       "split-branches",
-      `Band Split takes 2 to ${MAX_SPLIT_BRANCHES} bands`
+      `Band Split takes 2 to ${MAX_BANDS} bands`
     );
   }
-  if (outs.some(({ edge }) => !ports.includes(edge.sourceHandle))) {
+  const portSet = new Set(ports);
+  const cablesByPort = new Map<string, WiredEdge[]>();
+  for (const wire of outs) {
+    push(cablesByPort, wire.edge.sourceHandle, wire);
+  }
+  if (outs.some(({ edge }) => !portSet.has(edge.sourceHandle))) {
     throw new LoweringError(
       id,
       "split-branches",
@@ -414,8 +424,12 @@ function splitPortsOf(
     (left, right) => left.order - right.order
   );
   return ports.map((port, index) => {
-    const cables = outs.filter(({ edge }) => edge.sourceHandle === port);
-    const own = configured[index];
+    const cables = cablesByPort.get(port) ?? [];
+    const branchNumber =
+      base.type === "fxComposite"
+        ? Number(portName(port).slice("branch-".length))
+        : index + 1;
+    const own = configured[branchNumber - 1];
     const fallback = `${id}:${portName(port)}`;
     const chain: EffectChainConfig = own
       ? { ...own, id: ids?.claim(own.id) ?? own.id }
@@ -424,7 +438,7 @@ function splitPortsOf(
           gain: defaultChainGain(base.type),
           id: ids?.fresh(fallback) ?? fallback,
           muted: false,
-          name: `Branch ${index + 1}`,
+          name: `Branch ${branchNumber}`,
           order: index,
           pan: 0,
           solo: false,
@@ -707,21 +721,24 @@ export class RegionLowerer {
       throw new LoweringError(
         id,
         "split-branches",
-        `Band Split takes 2 to ${MAX_SPLIT_BRANCHES} bands`
+        `Band Split takes 2 to ${MAX_BANDS} bands`
       );
     }
     const ports = new Map<
       number,
       { chain: EffectChainConfig; exits: SegmentExit[] }
     >();
-    for (const [index, { chain, port }] of splitPortsOf(
-      id,
-      base,
-      this.outsOf(id)
-    ).entries()) {
+    for (const [index, { chain, port }] of splitPortsOf(id, base, [
+      ...this.outsOf(id),
+      ...(this.keys.get(id) ?? []),
+    ]).entries()) {
       const exits = this.exitsOf(id, UNITY, port);
       if (exits.length > 0) {
-        ports.set(index, { chain, exits });
+        const position =
+          base.type === "fxComposite"
+            ? Number(portName(port).slice("branch-".length)) - 1
+            : index;
+        ports.set(position, { chain, exits });
       }
     }
     return { effect: base as SplitEffect, ports };
@@ -917,7 +934,7 @@ export class RegionLowerer {
    */
   lowerSegment(head: string): Segment {
     const segment = new SegmentLowerer(this, new FreshIds(this.patchIds), head);
-    const series = segment.lowerSeries(head, UNITY, null, 0);
+    const series = segment.lowerSeries(head, UNITY, null);
     return {
       effects: series.effects,
       exits: series.exits,
@@ -964,7 +981,7 @@ class SegmentLowerer {
     start: string,
     entry: Trim,
     stop: string | null,
-    level: number
+    level = 0
   ): SeriesResult {
     const walk: Walk = {
       current: start,
@@ -1024,7 +1041,7 @@ class SegmentLowerer {
         trim: walk.trim,
       };
     }
-    const [next] = outs;
+    const next = outs.at(0);
     if (!next) {
       return { effects, exits: [], trim: walk.trim };
     }
@@ -1126,13 +1143,6 @@ class SegmentLowerer {
     level: number,
     order: number
   ): EffectConfig {
-    if (level > MAX_EFFECT_TREE_DEPTH) {
-      throw new LoweringError(
-        split,
-        "split-depth",
-        `Up to ${MAX_EFFECT_TREE_DEPTH} splits inside each other`
-      );
-    }
     const base = effectOf(this.regions.node(split));
     const outs = this.regions.outsOf(split);
     if (!(base && isEffectContainer(base))) {
@@ -1141,6 +1151,7 @@ class SegmentLowerer {
         order,
       });
     }
+    this.checkDepth(split, level);
     const ports = splitPortsOf(split, base, outs, this.ids);
     // A Split drops an unused branch, so that one solos nothing.
     const solos = ports.map(
@@ -1166,7 +1177,10 @@ class SegmentLowerer {
                 cables,
                 meeting,
                 level + 1,
-                { branchParams: true, order: 0 }
+                {
+                  branchParams: true,
+                  order: 0,
+                }
               ),
             ],
             trim: UNITY,
@@ -1213,6 +1227,17 @@ class SegmentLowerer {
     } as EffectConfig;
   }
 
+  private checkDepth(nodeId: string, level: number): void {
+    // Derived channels must pass the saved session's effect-tree schema.
+    if (level > MAX_EFFECT_TREE_DEPTH) {
+      throw new LoweringError(
+        nodeId,
+        "split-depth",
+        `Effects nest at most ${MAX_EFFECT_TREE_DEPTH} deep so the patch can be saved`
+      );
+    }
+  }
+
   /**
    * Notes the branch cables a closed Split's solo leaves out, by the rule
    * its chains run with: once a branch is soloed only the soloed ones play,
@@ -1256,21 +1281,7 @@ class SegmentLowerer {
     level: number,
     { branchParams, order }: { branchParams: boolean; order: number }
   ): FxCompositeConfig {
-    const owner = cables[0]?.edge.source ?? base;
-    if (level > MAX_EFFECT_TREE_DEPTH) {
-      throw new LoweringError(
-        owner,
-        "split-depth",
-        `Up to ${MAX_EFFECT_TREE_DEPTH} splits inside each other`
-      );
-    }
-    if (cables.length > MAX_SPLIT_BRANCHES) {
-      throw new LoweringError(
-        owner,
-        "split-branches",
-        `Up to ${MAX_SPLIT_BRANCHES} branches`
-      );
-    }
+    this.checkDepth(cables[0]?.edge.source ?? base, level);
     const id = this.ids.fresh(base);
     return {
       chains: cables.map(({ edge }, index) => {

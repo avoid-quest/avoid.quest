@@ -121,7 +121,7 @@ describe("branch base pan", () => {
 });
 
 describe("split ports", () => {
-  test("a Split shows the branches in use plus one, from two to four", () => {
+  test("a Split shows the branches in use plus one, starting at two", () => {
     const empty = patch([split("s", "fxComposite")]);
     expect(splitPortIds(nodeOf(empty, "s"), empty.edges)).toEqual([
       "branch-1",
@@ -133,7 +133,23 @@ describe("split ports", () => {
     );
     expect(splitPortIds(nodeOf(two, "s"), two.edges)).toHaveLength(3);
     const four = patch([split("s", "fxComposite")], [out("s", "branch-4")]);
-    expect(splitPortIds(nodeOf(four, "s"), four.edges)).toHaveLength(4);
+    expect(splitPortIds(nodeOf(four, "s"), four.edges)).toEqual([
+      "branch-1",
+      "branch-4",
+    ]);
+    const twelve = patch(
+      [split("s", "fxComposite")],
+      Array.from({ length: 12 }, (_, index) => out("s", `branch-${index + 1}`))
+    );
+    expect(splitPortIds(nodeOf(twelve, "s"), twelve.edges)).toHaveLength(13);
+    const sparse = patch(
+      [split("s", "fxComposite")],
+      [out("s", "branch-1000000")]
+    );
+    expect(splitPortIds(nodeOf(sparse, "s"), sparse.edges)).toEqual([
+      "branch-1",
+      "branch-1000000",
+    ]);
   });
 
   test("a Stereo Split shows left and right, a Band Split one port per band", () => {

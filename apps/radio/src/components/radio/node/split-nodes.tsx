@@ -46,7 +46,7 @@ import { useNodeActions } from "./node-actions";
  * Split Nodes
  *
  * Split, Stereo Split and Band Split: one input, a port per branch. A Split
- * grows a port as each branch is cabled (two to four), a Stereo Split has
+ * grows a spare port as each branch is cabled, a Stereo Split has
  * left and right, and a Band Split one port per band, low to high. The
  * branch cables carry each branch's gain, pan, mute and solo; the compiler
  * lowers the split and the node where its branches meet again into one
@@ -171,6 +171,7 @@ export function SplitNode({
         badge={badge}
         controls={bands}
         effect={data.effect}
+        minHeight={(outputs.length + 1) * 24}
         onChange={(patch) => commit(patch, false)}
         onInspect={() => actions.inspectNode(id)}
         onRelease={() => snapshotNodeGraph()}

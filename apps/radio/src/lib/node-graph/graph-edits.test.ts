@@ -1824,45 +1824,53 @@ describe("duplicateNodes", () => {
     expect(edit.ok).toBe(true);
   });
 
-  test("refuses copies past a patch budget instead of leaving them silent", () => {
-    const full = patch(
+  test("copies a source past the former source cap and keeps it connected", () => {
+    const start = patch(
       ...Array.from({ length: 24 }, (_, index) => radio(String(index)))
     );
-    expect(validate(full)).toEqual([]);
+    const { graph, nodeIds, message } = duplicateNodes(start, ["src-0"]);
+    expect(message).toBeUndefined();
+    expect(nodeIds).toHaveLength(1);
+    expect(graph.nodes.filter((node) => node.type === "station")).toHaveLength(
+      25
+    );
+    expect(
+      graph.edges.some(
+        (edge) => edge.source === nodeIds[0] && edge.target === SPEAKERS_NODE_ID
+      )
+    ).toBe(true);
+    expect(validate(graph)).toEqual([]);
+  });
 
-    expect(duplicateNodes(full, ["src-0"])).toEqual({
-      graph: full,
-      message: "Up to 24 sources per patch",
-      nodeIds: [],
-    });
-
-    // 2 cables plus 62 fillers into Speakers; the copied A -> FX cable is 65th.
+  test("copies an internal cable past the former cable cap and keeps it playing", () => {
     const start = inserted(
-      patch(radio("a")),
+      patch(...Array.from({ length: 63 }, (_, index) => radio(String(index)))),
       "compressor",
-      "src-a->speakers"
+      "src-0->speakers"
     ).graph;
-    const cabled = {
-      ...start,
-      edges: [
-        ...start.edges,
-        ...Array.from({ length: 62 }, (_, index) => ({
-          gain: 1,
-          id: `filler-${index}`,
-          muted: false,
-          source: "src-a",
-          sourceHandle: "out:audio:main",
-          target: SPEAKERS_NODE_ID,
-          targetHandle: "in:audio:main",
-        })),
-      ],
-    };
-    const copied = duplicateNodes(cabled, ["src-a", "compressor"]);
-    expect(copied).toMatchObject({
-      graph: cabled,
-      message: "Up to 64 cables per patch",
-      nodeIds: [],
-    });
+    expect(start.edges).toHaveLength(64);
+    expect(validate(start)).toEqual([]);
+
+    const { graph, nodeIds, message } = duplicateNodes(start, [
+      "src-0",
+      "compressor",
+    ]);
+    const [sourceCopy = "", effectCopy = ""] = nodeIds;
+
+    expect(message).toBeUndefined();
+    expect(nodeIds).toHaveLength(2);
+    expect(graph.edges).toHaveLength(66);
+    expect(graph.edges.slice(64)).toMatchObject([
+      { source: sourceCopy, target: effectCopy },
+      { source: effectCopy, target: SPEAKERS_NODE_ID },
+    ]);
+    expect(validate(graph)).toEqual([]);
+    const plan = compile(graph, ENV);
+    expect(plan.issues).toEqual([]);
+    expect(plan.lanes.get(sourceCopy)?.effects[0]?.id).toBe(effectCopy);
+    expect(plan.cables.get(`${effectCopy}->speakers`)?.from.id).toBe(
+      sourceCopy
+    );
   });
 
   test("a copy never takes a deleted copy's id, so its MIDI stays dormant", () => {

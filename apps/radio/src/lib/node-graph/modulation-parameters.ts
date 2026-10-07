@@ -119,9 +119,20 @@ export function setModulatorParams(
       if (node.id !== id || !isModulationNode(node)) {
         return node;
       }
+      const data: Record<string, unknown> = { ...node.data, ...patch };
+      if (
+        node.type === "multiEnvelope" &&
+        Array.isArray(patch.points) &&
+        patch.sustainPoint === undefined
+      ) {
+        data.sustainPoint = Math.min(
+          node.data.sustainPoint,
+          patch.points.length - 2
+        );
+      }
       const parsed = graphNodeSchema.safeParse({
         ...node,
-        data: { ...node.data, ...patch },
+        data,
       });
       return parsed.success ? parsed.data : node;
     }),

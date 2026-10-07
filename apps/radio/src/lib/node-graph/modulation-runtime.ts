@@ -460,7 +460,7 @@ export function createModulationRuntime(options: Options) {
     }
     if (!node) {
       node = new AudioWorkletNode(audio, "node-modulation-processor", {
-        numberOfInputs: 8,
+        numberOfInputs: Math.max(1, program.followers.length),
         numberOfOutputs: 1,
         outputChannelCount: [1],
       });
@@ -643,6 +643,9 @@ export function createModulationRuntime(options: Options) {
         queuedMidi.clear();
         modulationReadouts.setState(idle);
         return;
+      }
+      if (node && node.numberOfInputs < program.followers.length) {
+        releaseWorklet();
       }
       if (node) {
         withNativeFallback(() => {

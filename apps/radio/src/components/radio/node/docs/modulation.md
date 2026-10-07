@@ -50,9 +50,11 @@ scalar, so fast native threshold crossings may be missed by downstream gates.
 Native assignments continue without main-thread delivery; bridged values can
 hold while a tab is frozen. Bridges are control-rate, not audio-rate automation.
 
-Validation refuses control cycles and unsupported targets. Current capacities
-are 32 modulators, eight followers and the existing eight-LFO budget. Follower
-inputs consume no openDAW monitoring channel. Editor ports, cable paths and
+Validation refuses control cycles and unsupported targets. Modulators, followers,
+curve points and envelope stages have no fixed count cap. The worklet's input
+ports grow with its followers; growing past its current port count replaces the
+worklet, restarting its source clocks. Follower inputs consume no openDAW
+monitoring channel. Native Steps keeps openDAW's 64-slot limit. Editor ports, cable paths and
 rewiring use React Flow; knobs, selects, step bars and switches use shared UI
 components. Editor state remains in the existing graph, schema and undo history.
 

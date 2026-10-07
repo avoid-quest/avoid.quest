@@ -935,9 +935,8 @@ describe("Node patch backups", () => {
     ).toMatchObject({ strip: { pan: 0, solo: false, trimDb: 0 } });
   });
 
-  test("a patch over the device budgets round-trips", async () => {
-    // Start from Multiple and the search bar add Stations past the budget;
-    // the compiler reports the extra ones, so an import must not refuse them.
+  test("a large Start from Multiple patch round-trips", async () => {
+    // Start from Multiple preserves every saved Station through export and import.
     const radios = Array.from({ length: 26 }, (_, index) =>
       stationRadio(`station-${index}`)
     );

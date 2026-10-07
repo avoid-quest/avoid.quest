@@ -18,7 +18,7 @@ import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { BROWSER_AUDIO_SOURCES } from "@/lib/audio/playback/display-audio";
 import type { Radio } from "@/lib/audio/playback/types";
 import { PLATFORM_SOURCE_DEFINITIONS } from "@/lib/dj-library-sources";
-import { bandCountOf, withBandCount } from "./branches";
+import { bandCountOf, nodePorts, withBandCount } from "./branches";
 import {
   createNodeEffectConfig,
   getNodeDefinition,
@@ -330,9 +330,13 @@ function withNode(graph: NodeGraph, node: GraphNode): NodeGraph {
 }
 
 /** The ports on `node` that could take the other end of `from`. */
-function facingPorts(node: GraphNode, from: PaletteFrom): NodePort[] {
+function facingPorts(
+  graph: NodeGraph,
+  node: GraphNode,
+  from: PaletteFrom
+): NodePort[] {
   const direction = from.type === "source" ? "in" : "out";
-  return getNodeDefinition(node.type).ports.filter(
+  return nodePorts(node, graph.edges).filter(
     (port) => port.direction === direction
   );
 }
@@ -366,12 +370,15 @@ function validCables(
   node: GraphNode,
   from: PaletteFrom,
   options?: ValidateOptions,
-  baseline?: ReadonlySet<string>
+  baseline?: ReadonlySet<string>,
+  ports: readonly NodePort[] = nodePorts(node, graph.edges)
 ): Connection[] {
   if (node.id === from.node) {
     return [];
   }
-  return facingPorts(node, from)
+  const direction = from.type === "source" ? "in" : "out";
+  return ports
+    .filter((port) => port.direction === direction)
     .map((port) => cableBetween(from, node.id, port))
     .filter((cable) => connectionVerdict(graph, cable, options, baseline).ok);
 }
@@ -398,7 +405,7 @@ export function connectableHandles(
   const baseline = connectionBaseline(graph, options);
   for (const node of graph.nodes) {
     const definition = getNodeDefinition(node.type);
-    for (const port of definition.ports) {
+    for (const port of nodePorts(node, graph.edges)) {
       if (isShipped(port.ship ?? definition.ship, options?.release ?? "v1")) {
         const cable = cableBetween(from, node.id, port);
         verdicts.set(
@@ -782,7 +789,7 @@ export type AddPaletteNodeOptions = ValidateOptions & {
  * speakers can howl, so that cable is the user's to make. A cable that
  * would not compile is left out, so the node comes loose. Returns the
  * same graph when the node can't be built, or with the reason when the
- * node itself would not compile, e.g. a 25th source.
+ * node itself would not compile, e.g. a second Speakers module.
  */
 export function addPaletteNode(
   start: NodeGraph,
@@ -807,8 +814,6 @@ export function addPaletteNode(
     return { graph: start, nodeId: null };
   }
   const added = withNode(graph, node);
-  // Checked before any cable: a cable's own check takes an over-budget
-  // node as already there.
   const issue = newIssue(graph, added, options);
   if (issue) {
     return { graph: start, message: issue.message, nodeId: null };
@@ -885,7 +890,7 @@ export function dropRefusal(
   if (!node || node.id === from.node || !kind) {
     return null;
   }
-  const verdicts = facingPorts(node, from)
+  const verdicts = facingPorts(graph, node, from)
     .filter((port) =>
       from.type === "source"
         ? kindsPatch(kind, port.kind)
@@ -1026,14 +1031,33 @@ export function connectPorts(
   }
   const ports: ConnectPort[] = [];
   const baseline = connectionBaseline(graph, options);
-  for (const port of getNodeDefinition(node.type).ports) {
+  const edgesBySource = new Map<string, GraphEdge[]>();
+  for (const edge of graph.edges) {
+    const edges = edgesBySource.get(edge.source) ?? [];
+    edges.push(edge);
+    edgesBySource.set(edge.source, edges);
+  }
+  const portsByNode = new Map(
+    graph.nodes.map((other) => [
+      other.id,
+      nodePorts(other, edgesBySource.get(other.id) ?? []),
+    ])
+  );
+  for (const port of portsByNode.get(node.id) ?? []) {
     const from: PaletteFrom = {
       handle: portHandleId(port),
       node: node.id,
       type: port.direction === "out" ? "source" : "target",
     };
     const targets = graph.nodes.flatMap((other) =>
-      validCables(graph, other, from, options, baseline).map((connection) => {
+      validCables(
+        graph,
+        other,
+        from,
+        options,
+        baseline,
+        portsByNode.get(other.id)
+      ).map((connection) => {
         const handle =
           from.type === "source"
             ? connection.targetHandle
@@ -1079,8 +1103,8 @@ export function rewireTargets(
       ? port.direction === "out" && kindsPatch(port.kind, fixed)
       : port.direction === "in" && kindsPatch(fixed, port.kind));
   return graph.nodes.flatMap((node) =>
-    getNodeDefinition(node.type)
-      .ports.filter(canTake)
+    nodePorts(node, graph.edges)
+      .filter(canTake)
       .map((port) => {
         const handle = portHandleId(port);
         const connection: Connection = {

@@ -368,7 +368,6 @@ async function harness(
       throw new Error("No renewal in this patch");
     },
     sinkStatuses: new Store({}),
-    streamLimit: () => 8,
   });
   engines.push(engine);
   engine.apply(plan, true);

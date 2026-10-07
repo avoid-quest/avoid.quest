@@ -130,6 +130,40 @@ describe("sample-clocked modulation sources", () => {
     ).toBeLessThan(0.01);
   });
 
+  test("multi-stage envelopes hold at a stage beyond the original eight", () => {
+    const points = Array.from({ length: 10 }, (_, index) => ({
+      bend: 0,
+      time: index / 9,
+      value: index === 9 ? 0 : index / 9,
+    }));
+    const engine = dsp(
+      source("multiEnvelope", { duration: 1, points, sustainPoint: 8 })
+    );
+    engine.gate("multiEnvelope", true);
+    expect(engine.process([], 1500).multiEnvelope).toBeCloseTo(8 / 9, 3);
+    engine.gate("multiEnvelope", false);
+    expect(engine.process([], 200).multiEnvelope).toBe(0);
+  });
+
+  test.each([2, 8, 10, 33])(
+    "a %i-point envelope only holds before its final point",
+    (count) => {
+      const points = Array.from({ length: count }, (_, index) => ({
+        bend: 0,
+        time: index / (count - 1),
+        value: 0,
+      }));
+      const schema = MODULATION_DATA_SCHEMAS.multiEnvelope;
+      expect(
+        schema.safeParse({ points, sustainPoint: count - 2 }).success
+      ).toBe(true);
+      expect(
+        schema.safeParse({ points, sustainPoint: count - 1 }).success
+      ).toBe(false);
+      expect(schema.safeParse({ points, sustainPoint: -1 }).success).toBe(true);
+    }
+  );
+
   test("slew follows upstream control smoothly in the same render block", () => {
     const engine = new ModulationDsp(1000);
     engine.configure({
@@ -269,3 +303,23 @@ test("only delay/fade LFOs publish amount overrides and ordinary rate edits take
   expect(values).toContain(0);
   expect(values).toContain(1);
 });
+
+test.each(["curve", "multiEnvelope"] as const)(
+  "%s keeps more than sixteen points",
+  (type) => {
+    const points = Array.from({ length: 33 }, (_, index) => ({
+      bend: 0,
+      time: index / 32,
+      value: index / 32,
+    }));
+    const spec = source(type, {
+      duration: 1,
+      loop: false,
+      points,
+      sustainPoint: -1,
+    });
+    const engine = dsp(spec);
+    engine.gate(type, true);
+    expect(engine.process([], 500)[type]).toBeCloseTo(0.5, 2);
+  }
+);

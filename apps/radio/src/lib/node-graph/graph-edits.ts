@@ -1448,7 +1448,7 @@ function fedCopies(
  * FX's only input. A lone FX copy comes loose, so it can be dropped into a
  * cable. Speakers is one per patch and stays. Returns the copies' ids, or
  * the same graph with the reason when the copies or the cables between
- * them would not compile, e.g. a 25th source or a 65th cable.
+ * them would not compile.
  */
 export function duplicateNodes(
   graph: NodeGraph,
@@ -1515,8 +1515,6 @@ export function duplicateNodes(
     edges: [...graph.edges, ...inside.map(copyCable)],
     nodes: [...graph.nodes, ...copies],
   };
-  // Checked whole before the cables out: theirs would take an over-budget
-  // copy as already there.
   const issue = newIssue(graph, next, options);
   if (issue) {
     return { graph, message: issue.message, nodeIds: [] };

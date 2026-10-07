@@ -16,7 +16,6 @@ import {
   findCycles,
   type Issue,
   type IssueCode,
-  NODE_BUDGETS,
   parseHandleId,
   SAME_SIDE_MESSAGE,
   type ValidateOptions,
@@ -173,7 +172,6 @@ describe("validate: the migrated Multiple layout", () => {
     const nodes = [station("a"), station("b"), station("c"), speakers];
     const edges = ["a", "b", "c"].map((id) => audio(id, "speakers"));
     expect(check(nodes, edges)).toEqual([]);
-    expect(check(nodes, edges, { profile: "mobile" })).toEqual([]);
   });
 });
 
@@ -1336,7 +1334,7 @@ describe("connectionVerdict", () => {
 
 describe("validate: messages", () => {
   // Every problem the validator raises, as the interface says it. The
-  // compiler's own codes (split-depth and on) are covered in
+  // compiler's own codes are covered in
   // compile.test.ts.
   type ValidatorCode = Exclude<
     IssueCode,
@@ -1344,10 +1342,6 @@ describe("validate: messages", () => {
   >;
   const v2 = { release: "v2" } as const;
   const scenarios: Issue[][] = [
-    validate(graph(range(33).map((index) => node(`macro${index}`, "macro")))),
-    validate(
-      graph(range(9).map((index) => node(`follow${index}`, "follower")))
-    ),
     validate(
       graph(
         [node("lfo", "lfo"), node("cut", "filter")],
@@ -1488,33 +1482,10 @@ describe("validate: messages", () => {
       ),
       v2
     ),
-    validate(graph([...range(7).map((index) => station(`s${index}`))], []), {
-      playing: range(7).map((index) => `s${index}`),
-    }),
-    validate(graph(range(25).map((index) => station(`s${index}`)))),
-    validate(
-      graph([
-        ...range(5).map((index) => node(`loop${index}`, "loop")),
-        ...range(3).map((index) => node(`warp${index}`, "tapeWarp")),
-        ...range(9).map((index) => node(`lfo${index}`, "lfo")),
-      ]),
-      v2
-    ),
     validate(
       graph(
         [station("a"), station("b"), node("mix", "merge"), speakers],
         [audio("a", "mix"), audio("b", "mix"), audio("mix", "speakers")]
-      )
-    ),
-    // The schema caps a Tape Warp at 30 s, so only a phone's cap can bite.
-    validate(graph([node("long", "tapeWarp", { time: 20 })]), {
-      ...v2,
-      profile: "mobile",
-    }),
-    validate(
-      graph(
-        [station("a"), ...range(65).map((index) => node(`g${index}`, "gain"))],
-        range(65).map((index) => audio("a", `g${index}`, { id: `e${index}` }))
       )
     ),
     validate(
@@ -1536,17 +1507,6 @@ describe("validate: messages", () => {
     expect(messages).toEqual({
       "audio-to-control": ["Audio can't turn a knob"],
       "bad-handle": ["Cable has a malformed port id"],
-      "budget-edges": ["Up to 64 cables per patch"],
-      "budget-lfos": ["Up to 8 LFOs per patch"],
-      "budget-loops": ["Up to 4 Loops per patch"],
-      "budget-modulators": [
-        "Up to 32 modulators per patch",
-        "Up to 8 audio followers per patch",
-      ],
-      "budget-playing": ["Up to 6 streams can play at once"],
-      "budget-sources": ["Up to 24 sources per patch"],
-      "budget-tape-warp": ["Up to 2 Tape Warp per patch"],
-      "budget-tape-warp-time": ["Tape Warp is limited to 10 s here"],
       "control-cycle": ["That would feed the control back into itself"],
       "duplicate-edge": ["These are already connected"],
       "feedback-needs-loop": ["That would feed the sound back into itself"],
@@ -1580,111 +1540,71 @@ describe("validate: messages", () => {
   });
 });
 
-describe("validate: budgets", () => {
-  test("the budget table matches the proposal", () => {
-    expect(NODE_BUDGETS).toEqual({
-      desktop: {
-        edges: 64,
-        lfos: 8,
-        loops: 4,
-        playingStreams: 6,
-        sources: 24,
-        tapeWarpSeconds: 30,
-        tapeWarps: 2,
-      },
-      mobile: {
-        edges: 64,
-        lfos: 8,
-        loops: 4,
-        playingStreams: 4,
-        sources: 24,
-        tapeWarpSeconds: 10,
-        tapeWarps: 1,
-      },
-    });
-  });
+describe("validate: large patches", () => {
+  test("an oversized chain stored downstream first keeps every cable", () => {
+    const ids = range(20_000).map((index) => `g${index}`);
+    const nodes = [
+      station("a"),
+      ...ids.map((id) => node(id, "gain")).reverse(),
+      speakers,
+    ];
+    const edges = [
+      audio("a", ids[0] ?? ""),
+      ...ids.slice(1).map((id, index) => audio(ids[index] ?? "", id)),
+      audio(ids.at(-1) ?? "", "speakers"),
+    ];
+    const analysis = analyseGraph(graph(nodes, edges));
+    expect(analysis.issues).toEqual([]);
+    expect(analysis.wired).toHaveLength(edges.length);
+  }, 3000);
 
   test.each([
-    ["desktop", 6],
-    ["mobile", 4],
-  ] as const)("%s plays %i streams at once", (profile, limit) => {
-    const ids = range(limit + 1).map((index) => `s${index}`);
-    const nodes = [...ids.map(station), node("hiss", "static"), speakers];
-    const edges = ids.map((id) => audio(id, "speakers"));
-    expect(
-      check(nodes, edges, {
-        playing: [...ids.slice(0, limit), "hiss", ids[limit] ?? ""],
-        profile,
-        release: "v2",
-      })
-    ).toEqual([`budget-playing@s${limit + 1}`]);
-    expect(
-      check(nodes, edges, { playing: ids.slice(0, limit), profile })
-    ).toEqual(["unshipped@hiss"]);
-  });
-
-  test.each(["desktop", "mobile"] as const)(
-    "%s allows 24 sources",
-    (profile) => {
-      const nodes = range(25).map((index) => station(`s${index}`));
-      expect(check(nodes, [], { profile })).toEqual(["budget-sources@s25"]);
-      expect(check(nodes.slice(0, 24), [], { profile })).toEqual([]);
-    }
-  );
-
-  test.each(["desktop", "mobile"] as const)("%s allows 4 Loops", (profile) => {
-    const nodes = range(5).map((index) => node(`loop${index}`, "loop"));
-    expect(check(nodes, [], { profile, release: "v2" })).toEqual([
-      "budget-loops@loop5",
-    ]);
-  });
-
-  test.each([
-    ["desktop", 2],
-    ["mobile", 1],
-  ] as const)("%s allows %i Tape Warp", (profile, limit) => {
-    const nodes = range(limit + 1).map((index) =>
-      node(`warp${index}`, "tapeWarp")
+    ["station", 25],
+    ["loop", 5],
+    ["tapeWarp", 3],
+    ["lfo", 9],
+    ["macro", 33],
+    ["follower", 9],
+  ] as const)("accepts %s nodes past the former cap (%i)", (type, count) => {
+    const nodes = range(count).map((index) =>
+      type === "station" ? station(`s${index}`) : node(`${type}${index}`, type)
     );
-    expect(check(nodes, [], { profile, release: "v2" })).toEqual([
-      `budget-tape-warp@warp${limit + 1}`,
-    ]);
+    expect(check(nodes, [], { release: "v2" })).toEqual([]);
   });
 
-  test("Tape Warp time is 30 s on desktop and 10 s on mobile", () => {
-    const nodes = [node("warp", "tapeWarp", { time: 20 })];
-    expect(check(nodes, [], { profile: "desktop", release: "v2" })).toEqual([]);
-    expect(check(nodes, [], { profile: "mobile", release: "v2" })).toEqual([
-      "budget-tape-warp-time@warp",
-    ]);
+  test("accepts seven buses with FX", () => {
+    const nodes: NodeInput[] = [speakers];
+    const edges: EdgeInput[] = [];
+    for (const index of range(7)) {
+      nodes.push(
+        station(`a${index}`),
+        station(`b${index}`),
+        node(`bus${index}`, "merge"),
+        fx(`verb${index}`, "cheapReverb")
+      );
+      edges.push(
+        audio(`a${index}`, `bus${index}`),
+        audio(`b${index}`, `bus${index}`),
+        audio(`bus${index}`, `verb${index}`),
+        audio(`verb${index}`, "speakers")
+      );
+    }
+    expect(check(nodes, edges, { release: "v2" })).toEqual([]);
+  });
+
+  test("accepts a Tape Warp longer than ten seconds", () => {
     expect(
-      check([node("warp", "tapeWarp", { time: 10 })], [], {
-        profile: "mobile",
+      check([node("warp", "tapeWarp", { time: 30 })], [], {
         release: "v2",
       })
     ).toEqual([]);
   });
 
-  test.each(["desktop", "mobile"] as const)("%s allows 8 LFOs", (profile) => {
-    const nodes = range(9).map((index) => node(`lfo${index}`, "lfo"));
-    expect(check(nodes, [], { profile, release: "v2" })).toEqual([
-      "budget-lfos@lfo9",
-    ]);
+  test("accepts more than 64 cables", () => {
+    const gains = range(65).map((index) => node(`g${index}`, "gain"));
+    const edges = range(65).map((index) =>
+      audio("a", `g${index}`, { id: `e${index}` })
+    );
+    expect(check([station("a"), ...gains], edges)).toEqual([]);
   });
-
-  test.each(["desktop", "mobile"] as const)(
-    "%s allows 64 cables",
-    (profile) => {
-      const gains = range(65).map((index) => node(`g${index}`, "gain"));
-      const edges = range(65).map((index) =>
-        audio("a", `g${index}`, { id: `e${index}` })
-      );
-      expect(check([station("a"), ...gains], edges, { profile })).toEqual([
-        "budget-edges@e65",
-      ]);
-      expect(
-        check([station("a"), ...gains], edges.slice(0, 64), { profile })
-      ).toEqual([]);
-    }
-  );
 });

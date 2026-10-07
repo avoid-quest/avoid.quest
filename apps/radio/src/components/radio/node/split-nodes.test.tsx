@@ -82,7 +82,9 @@ const { act, cleanup, fireEvent, render, within } = await import(
 );
 
 let MergeNodeBody: typeof import("./merge-node")["MergeNodeBody"];
+let SplitNode: typeof import("./split-nodes")["SplitNode"];
 let SplitInspectorParams: typeof import("./split-nodes")["SplitInspectorParams"];
+let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let branchSummary: typeof import("./branch-controls")["branchSummary"];
 let BranchControls: typeof import("./branch-controls")["BranchControls"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
@@ -93,7 +95,8 @@ let moduleFrame: typeof import("./module-frame");
 
 beforeAll(async () => {
   ({ MergeNodeBody } = await import("./merge-node"));
-  ({ SplitInspectorParams } = await import("./split-nodes"));
+  ({ SplitNode, SplitInspectorParams } = await import("./split-nodes"));
+  ({ NodeActionsProvider } = await import("./node-actions"));
   ({ BranchControls, branchSummary } = await import("./branch-controls"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
@@ -325,6 +328,71 @@ describe("branch tag", () => {
 });
 
 describe("split ports", () => {
+  test("13 outputs give the frame more height than two, and removing cables shrinks it", () => {
+    const effect = createNodeEffectConfig("fxComposite", "split");
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: { effect }, id: "split", position, type: "fxComposite" },
+        { data: {}, id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const previous = nodeStoreModule.nodeStore.state;
+    nodeStoreModule.loadNodeGraph(graph);
+    try {
+      const actions = {
+        inspectNode: noop,
+        removeNode: noop,
+      } as unknown as Parameters<typeof NodeActionsProvider>[0]["value"];
+      const view = render(
+        <NodeActionsProvider value={actions}>
+          <SplitNode
+            data={{ effect }}
+            deletable
+            draggable
+            dragging={false}
+            id="split"
+            isConnectable
+            positionAbsoluteX={0}
+            positionAbsoluteY={0}
+            selectable
+            selected={false}
+            type="fxComposite"
+            zIndex={0}
+          />
+        </NodeActionsProvider>
+      );
+      const frame = view.container.firstElementChild as HTMLElement;
+      const shortHeight = Number.parseFloat(frame.style.minHeight);
+      expect(shortHeight).toBeGreaterThan(0);
+
+      act(() => {
+        nodeStoreModule.loadNodeGraph(
+          nodeGraphSchema.parse({
+            ...graph,
+            edges: Array.from({ length: 12 }, (_, index) => ({
+              id: `split.branch-${index + 1}`,
+              source: "split",
+              sourceHandle: `out:audio:branch-${index + 1}`,
+              target: "speakers",
+              targetHandle: "in:audio:main",
+            })),
+          })
+        );
+      });
+      const tallHeight = Number.parseFloat(frame.style.minHeight);
+      expect(tallHeight).toBeGreaterThan(shortHeight);
+      expect(tallHeight / 14).toBeGreaterThanOrEqual(24);
+
+      act(() => nodeStoreModule.loadNodeGraph(graph));
+      expect(Number.parseFloat(frame.style.minHeight)).toBe(shortHeight);
+      view.unmount();
+    } finally {
+      nodeStoreModule.nodeStore.setState(() => previous);
+    }
+  });
+
   test("draw only on the canvas, and re-measure when a branch port comes or goes", () => {
     const { FlowPortsProvider, ModulePorts } = moduleFrame;
     const updateNodeInternals = mock((_id: string | string[]) => undefined);
@@ -378,16 +446,16 @@ describe("split ports", () => {
 
     view.rerender(
       <FlowPortsProvider value={ports}>
-        {split(["branch-1", "branch-2", "branch-3"])}
+        {split(["branch-1", "branch-2", "branch-5"])}
       </FlowPortsProvider>
     );
-    expect(handles()).toContain("out:audio:branch-3");
+    expect(handles()).toContain("out:audio:branch-5");
     expect(updateNodeInternals.mock.calls.slice(measured)).toEqual([["split"]]);
 
     // Nothing changed, so nothing to re-measure.
     view.rerender(
       <FlowPortsProvider value={ports}>
-        {split(["branch-1", "branch-2", "branch-3"])}
+        {split(["branch-1", "branch-2", "branch-5"])}
       </FlowPortsProvider>
     );
     expect(updateNodeInternals.mock.calls.length).toBe(measured + 1);

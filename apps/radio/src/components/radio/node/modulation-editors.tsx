@@ -111,11 +111,9 @@ export function StepsEditor({
 /** Drag points; time and bend remain reachable from keyboard controls. */
 export function CurveEditor({
   points,
-  fixed,
   onChange,
 }: {
   points: ModulationPoint[];
-  fixed: boolean;
   onChange: (points: ModulationPoint[]) => void;
 }) {
   const [selected, setSelected] = useState(0);
@@ -265,52 +263,45 @@ export function CurveEditor({
           />
         ) : null}
       </div>
-      {fixed ? (
-        <p className="text-[10px] text-muted-foreground">
-          Hold point is 0–6; −1 plays all eight stages once.
-        </p>
-      ) : (
-        <div className="flex gap-2">
-          <Button
-            disabled={points.length >= 16}
-            onClick={() => {
-              let gap = 1;
-              for (let position = 2; position < points.length; position += 1) {
-                if (
-                  (points[position]?.time ?? 0) -
-                    (points[position - 1]?.time ?? 0) >
-                  (points[gap]?.time ?? 0) - (points[gap - 1]?.time ?? 0)
-                ) {
-                  gap = position;
-                }
+      <div className="flex gap-2">
+        <Button
+          onClick={() => {
+            let gap = 1;
+            for (let position = 2; position < points.length; position += 1) {
+              if (
+                (points[position]?.time ?? 0) -
+                  (points[position - 1]?.time ?? 0) >
+                (points[gap]?.time ?? 0) - (points[gap - 1]?.time ?? 0)
+              ) {
+                gap = position;
               }
-              const time =
-                ((points[gap - 1]?.time ?? 0) + (points[gap]?.time ?? 1)) / 2;
-              onChange([
-                ...points.slice(0, gap),
-                { bend: 0, time, value: curveAt(points, time) },
-                ...points.slice(gap),
-              ]);
-              setSelected(gap);
-            }}
-            size="sm"
-            variant="outline"
-          >
-            Add point
-          </Button>
-          <Button
-            disabled={index === 0 || index === points.length - 1}
-            onClick={() => {
-              onChange(points.filter((_, position) => position !== index));
-              setSelected(Math.max(0, index - 1));
-            }}
-            size="sm"
-            variant="outline"
-          >
-            Remove point
-          </Button>
-        </div>
-      )}
+            }
+            const time =
+              ((points[gap - 1]?.time ?? 0) + (points[gap]?.time ?? 1)) / 2;
+            onChange([
+              ...points.slice(0, gap),
+              { bend: 0, time, value: curveAt(points, time) },
+              ...points.slice(gap),
+            ]);
+            setSelected(gap);
+          }}
+          size="sm"
+          variant="outline"
+        >
+          Add point
+        </Button>
+        <Button
+          disabled={index === 0 || index === points.length - 1}
+          onClick={() => {
+            onChange(points.filter((_, position) => position !== index));
+            setSelected(Math.max(0, index - 1));
+          }}
+          size="sm"
+          variant="outline"
+        >
+          Remove point
+        </Button>
+      </div>
     </div>
   );
 }

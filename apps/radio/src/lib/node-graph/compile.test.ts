@@ -635,7 +635,7 @@ describe("compile: channel strips", () => {
     );
     expect(plan.soloedOut.sources).toEqual(new Set(["b"]));
 
-    // s25 is over the source budget, so its solo silences nothing.
+    // A solo past the former source cap silences every unsoloed source.
     const ids = Array.from({ length: 25 }, (_, index) => `s${index + 1}`);
     const over = build(
       [
@@ -646,8 +646,8 @@ describe("compile: channel strips", () => {
       ],
       ids.map((id) => audio(id, "speakers"))
     );
-    expect(over.soloedOut.sources).toEqual(new Set());
-    expect(over.cables.get("s1->speakers")?.muted).toBe(false);
+    expect(over.soloedOut.sources).toEqual(new Set(ids.slice(0, -1)));
+    expect(over.cables.get("s1->speakers")?.muted).toBe(true);
   });
 
   test("a split's solo names the branch cables it leaves out, as its chains run", () => {
@@ -2221,18 +2221,24 @@ describe("compile: series-parallel regions", () => {
     ]);
   });
 
-  /** `levels` splits inside each other, each an implicit fan-out. */
-  function nested(levels: number) {
+  /** `levels` splits inside each other, explicit or implicit fan-outs. */
+  function nested(levels: number, explicit = false) {
     const nodes: NodeInput[] = [station("a"), speakers];
     const edges: EdgeInput[] = [audio("a", "f1")];
     for (let level = 1; level <= levels + 1; level += 1) {
-      nodes.push(fx(`f${level}`, "crusher"));
+      nodes.push(
+        fx(`f${level}`, explicit && level <= levels ? "fxComposite" : "crusher")
+      );
     }
     for (let level = 1; level <= levels; level += 1) {
       nodes.push(node(`m${level}`, "merge"));
       edges.push(
-        audio(`f${level}`, `f${level + 1}`),
-        audio(`f${level}`, `m${level}`)
+        audio(`f${level}`, `f${level + 1}`, {
+          from: explicit ? "branch-1" : "main",
+        }),
+        audio(`f${level}`, `m${level}`, {
+          from: explicit ? "branch-2" : "main",
+        })
       );
       edges.push(
         level === levels
@@ -2244,21 +2250,41 @@ describe("compile: series-parallel regions", () => {
     return build(nodes, edges);
   }
 
-  test("splits nest up to depth 8", () => {
-    const plan = nested(8);
-    expect(plan.issues).toEqual([]);
-    const { effects } = lane(plan, "a");
-    expect(() => normalizeEffectTree(effects)).not.toThrow();
-    expect(effectIds(effects)).toContain("f9");
-    expect(plan.cables.has("m1->speakers")).toBe(true);
-  });
+  test.each([false, true])(
+    "depth 8 splits remain storable (explicit: %s)",
+    (explicit) => {
+      const plan = nested(8, explicit);
+      expect(plan.issues).toEqual([]);
+      const { effects } = lane(plan, "a");
+      expect(() => normalizeEffectTree(effects)).not.toThrow();
+      expect(effectIds(effects)).toContain("f9");
+      expect(plan.cables.has("m1->speakers")).toBe(true);
+      const session = parsePlaybackSessionRecord({
+        channels: deriveNodeChannels(plan),
+        id: "node",
+      });
+      expect(effectIds(session.channels[0]?.effects ?? [])).toEqual(
+        effectIds(effects)
+      );
+    }
+  );
 
-  test("depth 9 is rejected on the split that goes too deep", () => {
-    const plan = nested(9);
-    expect(codes(plan)).toEqual(["split-depth@f9"]);
-    expect(lane(plan, "a").effects).toEqual([]);
-    expect(plan.cables.size).toBe(0);
-  });
+  test.each([false, true])(
+    "depth 9 is refused on the offending split (explicit: %s)",
+    (explicit) => {
+      const plan = nested(9, explicit);
+      expect(plan.issues).toEqual([
+        {
+          code: "split-depth",
+          id: "f9",
+          message: "Effects nest at most 8 deep so the patch can be saved",
+          target: "node",
+        },
+      ]);
+      expect(lane(plan, "a").effects).toEqual([]);
+      expect(plan.cables.size).toBe(0);
+    }
+  );
 
   test("5 bands are rejected", () => {
     const patch = graph(
@@ -2299,21 +2325,84 @@ describe("compile: series-parallel regions", () => {
     expect(plan.issues[0]?.message).toBe("Band Split takes 2 to 4 bands");
   });
 
-  test("an implicit fan-out takes up to 4 branches", () => {
-    const ids = ["v1", "v2", "v3", "v4", "v5"];
+  test.each([
+    ["implicit", 12],
+    ["explicit", 12],
+    ["explicit", 128],
+  ] as const)(
+    "%s fan-out and Merge keep all %i branches beyond the old caps",
+    (kind, count) => {
+      const ids = Array.from({ length: count }, (_, index) => `v${index + 1}`);
+      const plan = build(
+        [
+          station("a"),
+          ...(kind === "explicit"
+            ? [fx("split", "fxComposite", { enabled: true })]
+            : []),
+          ...ids.map((id) => fx(id, "crusher")),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          ...(kind === "explicit" ? [audio("a", "split")] : []),
+          ...ids.flatMap((id, index) => [
+            audio(kind === "explicit" ? "split" : "a", id, {
+              from: kind === "explicit" ? `branch-${index + 1}` : "main",
+            }),
+            audio(id, "merge"),
+          ]),
+          audio("merge", "speakers"),
+        ]
+      );
+      expect(plan.issues).toEqual([]);
+      const [fanOut] = lane(plan, "a").effects;
+      if (fanOut?.type !== "fxComposite") {
+        throw new Error("Expected a fan-out");
+      }
+      expect(fanOut.chains.map((chain) => chain.effects[0]?.id)).toEqual(ids);
+      expect(fanOut.chains.at(-1)?.name).toBe(`Branch ${count}`);
+      expect(plan.cables.has("merge->speakers")).toBe(true);
+    }
+  );
+
+  test("a Split sizes its chains from cabled ports beyond branch 4", () => {
+    const base = createNodeEffectConfig("fxComposite", "split");
+    const [chain] = base.chains;
+    if (!chain) {
+      throw new Error("Expected a default chain");
+    }
+    const chains = Array.from({ length: 12 }, (_, order) => ({
+      ...chain,
+      gain: (order + 1) / 12,
+      id: `chain-${order + 1}`,
+      order,
+    }));
     const plan = build(
       [
         station("a"),
-        ...ids.map((id) => fx(id, "crusher")),
+        fx("split", "fxComposite", { chains, enabled: true }),
         node("merge", "merge"),
         speakers,
       ],
       [
-        ...ids.flatMap((id) => [audio("a", id), audio(id, "merge")]),
+        audio("a", "split"),
+        ...[12, 1, 5].map((index) =>
+          audio("split", "merge", { from: `branch-${index}`, id: `b${index}` })
+        ),
         audio("merge", "speakers"),
       ]
     );
-    expect(codes(plan)).toEqual(["split-branches@a"]);
+    expect(plan.issues).toEqual([]);
+    const [split] = lane(plan, "a").effects;
+    if (split?.type !== "fxComposite") {
+      throw new Error("Expected a Split");
+    }
+    expect(split.chains.map(({ id, gain }) => ({ gain, id }))).toEqual([
+      { gain: 1 / 12, id: "chain-1" },
+      { gain: 5 / 12, id: "chain-5" },
+      { gain: 1, id: "chain-12" },
+    ]);
+    expect(plan.cables.has("merge->speakers")).toBe(true);
   });
 
   test("every lowered FX keeps its node id", () => {
@@ -3335,6 +3424,20 @@ describe("compile: backend estimate", () => {
     expect(plan.monitoringChannels).toBe(MAX_MONITORING_CHANNELS);
   });
 
+  test("large patches keep every lane and fall back past the monitoring cap", () => {
+    const plan = fxLanes(25);
+    expect(plan.issues).toEqual([]);
+    expect(plan.lanes.size).toBe(25);
+    expect(plan.cables.size).toBe(25);
+    expect(
+      [...plan.lanes.values()].filter((entry) => entry.backend === "official")
+    ).toHaveLength(4);
+    expect(
+      [...plan.lanes.values()].filter((entry) => entry.backend === "compat")
+    ).toHaveLength(21);
+    expect(plan.monitoringChannels).toBe(MAX_MONITORING_CHANNELS);
+  });
+
   test("a dry lane keying an official lane counts toward the cap", () => {
     // The runtime registers the keying lane as an openDAW input as well.
     const plan = build(
@@ -3496,30 +3599,22 @@ describe("compile: validation first", () => {
     ]);
   });
 
-  test("a dropped node's cables go with it, and the rest re-validates", () => {
+  test("sources past the former cap retain their lanes and sidechains", () => {
     const ids = Array.from({ length: 25 }, (_, index) => `s${index + 1}`);
     const plan = build(
       [...ids.map((id) => station(id)), fx("comp", "compressor"), speakers],
       [audio("s25", "comp"), audio("comp", "speakers"), key("s1", "comp")]
     );
-    // s25 is over the source budget; without it the Compressor and its key
-    // play nowhere.
-    expect(codes(plan)).toEqual(["budget-sources@s25"]);
-    expect(plan.lanes.has("s25")).toBe(false);
-    expect(plan.cables.size).toBe(0);
-    expect(plan.modules.size).toBe(0);
-  });
-
-  test("the playing budget keeps the lane in the plan", () => {
-    const ids = ["a", "b", "c", "d", "e"];
-    const plan = build(
-      [...ids.map((id) => station(id)), speakers],
-      ids.map((id) => audio(id, "speakers")),
-      { playing: ids, profile: "mobile" }
-    );
-    expect(codes(plan)).toEqual(["budget-playing@e"]);
-    expect(plan.lanes.has("e")).toBe(true);
-    expect(plan.cables.has("e->speakers")).toBe(true);
+    expect(plan.issues).toEqual([]);
+    expect(plan.lanes.size).toBe(25);
+    expect(lane(plan, "s25").effects[0]?.sidechain).toEqual({
+      channelId: "node-key:comp",
+    });
+    expect(plan.cables.has("comp->speakers")).toBe(true);
+    expect(plan.cables.get("s1~>comp")?.to).toEqual({
+      id: "node-key:comp",
+      kind: "key",
+    });
   });
 });
 

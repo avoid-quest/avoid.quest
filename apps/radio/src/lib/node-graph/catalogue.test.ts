@@ -3,6 +3,7 @@ import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import { EFFECT_DEFINITIONS } from "@/lib/audio/dsp/effects/schema";
 import {
   createNodeEffectConfig,
+  findPort,
   isShipped,
   NODE_DEFINITIONS,
   portHandleId,
@@ -114,6 +115,17 @@ describe("NODE_DEFINITIONS", () => {
     );
   });
 
+  test("resolves numbered Split outputs without accepting malformed branch numbers", () => {
+    expect(findPort("fxComposite", "out", "audio", "branch-12")).toMatchObject({
+      id: "branch-12",
+      label: "Branch 12",
+      max: Number.POSITIVE_INFINITY,
+    });
+    for (const id of ["branch-0", "branch-1.5", "branch-9007199254740993"]) {
+      expect(findPort("fxComposite", "out", "audio", id)).toBeUndefined();
+    }
+  });
+
   test("describes Station control ports as landing with Control", () => {
     const later = NODE_DEFINITIONS.station.ports
       .filter((port) => port.ship === "v2")
@@ -205,7 +217,6 @@ describe("catalogue invariants", () => {
         category: "source",
         ship: "v1",
         source: true,
-        stream: true,
       });
       expect(
         definition.ports

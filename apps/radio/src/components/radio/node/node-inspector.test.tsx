@@ -264,6 +264,83 @@ describe("modulation cable availability", () => {
 });
 
 describe("modulation pattern editors", () => {
+  test("the hold control follows added and removed envelope stages", async () => {
+    const { ModulationControls } = await import("./control-node");
+    const points = Array.from({ length: 10 }, (_, index) => ({
+      bend: 0,
+      time: index / 9,
+      value: index / 9,
+    }));
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: { points }, id: "env", position, type: "multiEnvelope" },
+        { data: {}, id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const store = nodeStoreModule.createNodeStore(graph);
+    const node = graph.nodes.find((entry) => entry.type === "multiEnvelope");
+    if (node?.type !== "multiEnvelope") {
+      throw new Error("Missing envelope");
+    }
+    const view = render(<ModulationControls node={node} store={store} />);
+    const hold = view.getByRole("slider", {
+      name: "Multi-stage envelope hold point",
+    });
+    expect(hold.getAttribute("aria-valuemax")).toBe("8");
+    fireEvent.keyDown(hold, { key: "End" });
+    const edited = store.state.graph?.nodes.find((entry) => entry.id === "env");
+    expect(edited?.data).toMatchObject({ sustainPoint: 8 });
+    if (edited?.type !== "multiEnvelope") {
+      throw new Error("Missing edited envelope");
+    }
+    view.rerender(<ModulationControls node={edited} store={store} />);
+    const curve = view.getByRole("img", {
+      name: "Envelope curve; edit point values below",
+    });
+    Object.defineProperty(curve, "setPointerCapture", { value: noop });
+    const heldPoint = curve.querySelector('[data-point="8"]');
+    if (!heldPoint) {
+      throw new Error("Missing held point");
+    }
+    fireEvent.pointerDown(heldPoint, { pointerId: 1 });
+    fireEvent.click(view.getByRole("button", { name: "Remove point" }));
+    const shortened = store.state.graph?.nodes.find(
+      (entry) => entry.id === "env"
+    );
+    expect(shortened?.data).toMatchObject({ sustainPoint: 7 });
+    if (shortened?.type !== "multiEnvelope") {
+      throw new Error("Missing shortened envelope");
+    }
+    expect(shortened.data.points).toHaveLength(9);
+    view.rerender(<ModulationControls node={shortened} store={store} />);
+    expect(hold.getAttribute("aria-valuemax")).toBe("7");
+  });
+
+  test("a curve can add points past sixteen", () => {
+    const points = Array.from({ length: 16 }, (_, index) => ({
+      bend: 0,
+      time: index / 15,
+      value: index / 15,
+    }));
+    const onChange = mock((_points: typeof points) => undefined);
+    const view = render(<CurveEditor onChange={onChange} points={points} />);
+    fireEvent.click(view.getByRole("button", { name: "Add point" }));
+    const added = onChange.mock.calls[0]?.[0];
+    expect(added).toHaveLength(17);
+    expect(
+      nodeGraphSchema.safeParse({
+        edges: [],
+        nodes: [
+          { data: { points: added }, id: "curve", position, type: "curve" },
+          { data: {}, id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      }).success
+    ).toBe(true);
+  });
+
   test("dragging between close curve neighbors preserves a valid editable point", () => {
     const points = [0, 0.5, 0.5005, 0.501, 1].map((time) => ({
       bend: 0,
@@ -271,9 +348,7 @@ describe("modulation pattern editors", () => {
       value: 0.5,
     }));
     const onChange = mock((_points: typeof points) => undefined);
-    const view = render(
-      <CurveEditor fixed={false} onChange={onChange} points={points} />
-    );
+    const view = render(<CurveEditor onChange={onChange} points={points} />);
     const curve = view.getByRole("img", {
       name: "Envelope curve; edit point values below",
     });
@@ -331,9 +406,7 @@ describe("modulation pattern editors", () => {
       { bend: 0.4, time: 0, value: 0 },
       { bend: 0, time: 1, value: 1 },
     ];
-    const view = render(
-      <CurveEditor fixed={false} onChange={onChange} points={points} />
-    );
+    const view = render(<CurveEditor onChange={onChange} points={points} />);
     expect(view.getByRole("slider", { name: "Point bend" })).toBeTruthy();
     const curve = view.getByRole("img", {
       name: "Envelope curve; edit point values below",
@@ -444,7 +517,7 @@ function Harness({
       {graph && !inspectorShown ? (
         <NodeRack
           controls={controls}
-          env={{ crossOriginIsolated: false, profile: "desktop" }}
+          env={{ crossOriginIsolated: false }}
           graph={graph}
         />
       ) : null}

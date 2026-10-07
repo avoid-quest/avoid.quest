@@ -76,14 +76,13 @@ import { isLocalFileGone } from "./sources";
 import {
   analyseGraph,
   type Issue,
-  type IssueCode,
   parseHandleId,
   type ValidateOptions,
   type WiredEdge,
 } from "./validate";
 
 export type { NativeFilterPlan } from "./regions";
-export { defaultChainGain, MAX_SPLIT_BRANCHES } from "./regions";
+export { defaultChainGain, MAX_BANDS } from "./regions";
 
 const LANE_CHANNELS = 2;
 
@@ -442,14 +441,6 @@ function isCompiled(type: NodeType): boolean {
   );
 }
 
-/**
- * Issues that leave the node in the plan: the playing budget is enforced
- * when a stream starts.
- */
-const ADVISORY_CODES: ReadonlySet<IssueCode> = new Set<IssueCode>([
-  "budget-playing",
-]);
-
 type CompileGraph = Pick<NodeGraph, "nodes" | "edges">;
 
 /** A polynomial string hash, kept below 2^53 so it stays exact. */
@@ -586,8 +577,7 @@ function refuseEnclosedKeys(regions: RegionLowerer): Issue[] {
  * yet (other sources, control),
  * re-validating after every round until the patch is stable, so an issue a
  * drop uncovers is reported too. Each round drops at least one node or
- * cable, so this always settles. Advisory issues come from the final
- * round, the patch the plan is built from.
+ * cable, so this always settles.
  */
 function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
   const excludedNodes = new Set<string>();
@@ -597,12 +587,7 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
     const kept = withoutExcluded(graph, excludedNodes, excludedEdges);
     const analysis = analyseGraph(kept, env);
     const byId = new Map(kept.nodes.map((node) => [node.id, node]));
-    const advisory = analysis.issues.filter((issue) =>
-      ADVISORY_CODES.has(issue.code)
-    );
-    let blocking = analysis.issues.filter(
-      (issue) => !ADVISORY_CODES.has(issue.code)
-    );
+    let blocking = analysis.issues;
     if (blocking.length === 0) {
       blocking = refuse(kept);
     }
@@ -627,7 +612,7 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
       return {
         byId,
         graph: kept,
-        issues: [...issues, ...advisory],
+        issues,
         regions,
         wired: analysis.wired,
       };

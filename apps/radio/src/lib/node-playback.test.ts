@@ -95,7 +95,6 @@ import {
 } from "@/lib/node-graph/sources";
 import { buildNodeSessionFromGraph } from "@/lib/node-graph/template-sessions";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
-import type { Profile } from "@/lib/node-graph/validate";
 import {
   getPlaybackChannelRuntime,
   resetAllPlaybackRuntime,
@@ -359,7 +358,6 @@ function createHarness(
     deviceSinks?: GetNodePlaybackOptions["deviceSinks"];
     sinkStatuses?: GetNodePlaybackOptions["sinkStatuses"];
     resolveStream?: GetNodePlaybackOptions["resolveStream"];
-    profile?: Profile;
   } = {}
 ): Harness {
   const context = options.context ?? createTestContext();
@@ -463,7 +461,6 @@ function createHarness(
     fadeOutSound,
     getEnv: () => ({
       crossOriginIsolated: options.crossOriginIsolated ?? false,
-      profile: options.profile ?? "desktop",
     }),
     laneOutputs: options.laneOutputs,
     otherTabWrites: (listener) => {
@@ -621,6 +618,55 @@ afterEach(async () => {
 });
 
 describe("Node Playback", () => {
+  test("nine nested Splits persist with an issue instead of throwing in storePatch", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    const nodes: NodeInput[] = [station("a"), speakers];
+    const edges = [cable("a", "split1"), cable("merge1", "speakers")];
+    for (let level = 1; level <= 9; level += 1) {
+      const id = `split${level}`;
+      const meeting = `merge${level}`;
+      nodes.push(
+        {
+          data: { effect: createNodeEffectConfig("fxComposite", id) },
+          id,
+          position: { x: 0, y: 0 },
+          type: "fxComposite",
+        },
+        { data: {}, id: meeting, position: { x: 0, y: 0 }, type: "merge" }
+      );
+      edges.push(
+        { ...cable(id, meeting), sourceHandle: "out:audio:branch-2" },
+        {
+          ...cable(id, level === 9 ? "verb" : `split${level + 1}`),
+          sourceHandle: "out:audio:branch-1",
+        },
+        level === 9
+          ? cable("verb", meeting)
+          : cable(`merge${level + 1}`, meeting)
+      );
+    }
+    nodes.push(reverb("verb"));
+    const graph = nodeGraphSchema.parse({ edges, nodes, version: 2 });
+    expect(() =>
+      commitNodeGraph(() => graph, harness.store, "snapshot")
+    ).not.toThrow();
+    await harness.playback.whenSettled();
+    expect(() => harness.playback.flush()).not.toThrow();
+    expect(getPlaybackSession("node")?.graph).toEqual(graph);
+    expect(compile(graph, { crossOriginIsolated: false }).issues).toEqual([
+      {
+        code: "split-depth",
+        id: "split9",
+        message: "Effects nest at most 8 deep so the patch can be saved",
+        target: "node",
+      },
+    ]);
+    expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([]);
+    await harness.playback.deactivate();
+  });
+
   test("activation builds each lane paused on the audio graph and caches its channel", async () => {
     insertNodeSession(
       patch([station("a"), station("b", { muted: true, volume: 0.35 })])
@@ -1569,68 +1615,27 @@ describe("Node Playback starts", () => {
   });
 });
 
-describe("Node Playback budget", () => {
-  test("refuses a fifth playing stream on mobile with a message", async () => {
-    const ids = ["1", "2", "3", "4", "5"];
-    insertNodeSession(patch(ids.map((id) => station(id))));
-    const harness = createHarness({ profile: "mobile" });
-    instantStarts(harness.context);
-    await harness.playback.activate();
-
-    await harness.playback.setPlaying("1", true);
-    await harness.playback.setPlaying("2", true);
-    await harness.playback.setPlaying("3", true);
-    await harness.playback.setPlaying("4", true);
-    await harness.playback.setPlaying("5", true);
-
-    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(4);
-    expect(harness.context.audio.playSound).not.toHaveBeenCalledWith(
-      soundOf("5"),
-      expect.anything()
-    );
-    expect(getPlaybackChannelRuntime(channelOf("5"))).toMatchObject({
-      error: {
-        code: "PLAY_ERROR",
-        message:
-          "Up to 4 streams can play at once here. Pause one to start this.",
-      },
-      isPlaying: false,
-    });
-    expect(harness.context.reportError).not.toHaveBeenCalled();
-
-    await harness.playback.setPlaying("1", false);
-    await harness.playback.setPlaying("5", true);
-
-    expect(getPlaybackChannelRuntime(channelOf("5"))).toMatchObject({
-      error: null,
-      isPlaying: true,
-    });
-  });
-
-  test("play-all on mobile starts four streams and refuses the rest", async () => {
-    const ids = ["1", "2", "3", "4", "5", "6"];
-    insertNodeSession(patch(ids.map((id) => station(id))));
-    const harness = createHarness({ profile: "mobile" });
-    instantStarts(harness.context);
-    await harness.playback.activate();
-
-    await harness.playback.playAll();
-
-    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(4);
-    expect(
-      ids.filter((id) => getPlaybackChannelRuntime(channelOf(id)).isPlaying)
-    ).toHaveLength(4);
-    expect(
-      ids.filter(
-        (id) =>
-          getPlaybackChannelRuntime(channelOf(id)).error?.message ===
-          "Up to 4 streams can play at once here. Pause one to start this."
-      )
-    ).toHaveLength(2);
-  });
-
-  test("desktop allows six playing streams", async () => {
+describe("Node Playback large patches", () => {
+  test("starts every stream individually past the former playing caps", async () => {
     const ids = ["1", "2", "3", "4", "5", "6", "7"];
+    insertNodeSession(patch(ids.map((id) => station(id))));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    await Promise.all(ids.map((id) => harness.playback.setPlaying(id, true)));
+
+    for (const id of ids) {
+      expect(getPlaybackChannelRuntime(channelOf(id))).toMatchObject({
+        error: null,
+        isPlaying: true,
+      });
+    }
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("Play all starts every stream past the former source and playing caps", async () => {
+    const ids = Array.from({ length: 25 }, (_, index) => String(index));
     insertNodeSession(patch(ids.map((id) => station(id))));
     const harness = createHarness();
     instantStarts(harness.context);
@@ -1638,7 +1643,13 @@ describe("Node Playback budget", () => {
 
     await harness.playback.playAll();
 
-    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(6);
+    for (const id of ids) {
+      expect(getPlaybackChannelRuntime(channelOf(id))).toMatchObject({
+        error: null,
+        isPlaying: true,
+      });
+    }
+    expect(harness.context.reportError).not.toHaveBeenCalled();
   });
 });
 
@@ -4037,7 +4048,7 @@ describe("Node Playback audio inputs and output devices", () => {
     );
   });
 
-  test("a live input is no stream, so the stream budget leaves it alone", async () => {
+  test("a live input starts alongside playing streams", async () => {
     const ids = ["1", "2", "3", "4"];
     insertNodeSession(
       wired(
@@ -4045,7 +4056,7 @@ describe("Node Playback audio inputs and output devices", () => {
         [...ids.map((id) => `${id}>speakers`), "mic>speakers"]
       )
     );
-    const harness = createHarness({ profile: "mobile" });
+    const harness = createHarness();
     instantStarts(harness.context);
     const { calls } = deviceEngine(harness.context);
     await harness.playback.activate();
@@ -5577,7 +5588,7 @@ describe("Node Playback: Track and File sources", () => {
     }
   );
 
-  test("an interrupted stream renewing its URL keeps its stream budget slot", async () => {
+  test("another stream can start while an interrupted stream renews its URL", async () => {
     insertNodeSession(
       patch([
         station("a"),
@@ -5592,7 +5603,6 @@ describe("Node Playback: Track and File sources", () => {
       streamUrl: string;
     }>();
     const harness = createHarness({
-      profile: "mobile",
       resolveStream: mock(() => renewal.promise),
     });
     instantStarts(harness.context);
@@ -5623,11 +5633,8 @@ describe("Node Playback: Track and File sources", () => {
     await harness.playback.setPlaying("t2", true);
 
     expect(getPlaybackChannelRuntime(channelOf("t2"))).toMatchObject({
-      error: {
-        message:
-          "Up to 4 streams can play at once here. Pause one to start this.",
-      },
-      isPlaying: false,
+      error: null,
+      isPlaying: true,
     });
     renewal.resolve({
       streamFormat: "progressive",
@@ -5855,7 +5862,7 @@ describe("Node Playback: Track and File sources", () => {
     stored.mockRestore();
   });
 
-  test("a third playing Track past the mobile budget is refused with its message", async () => {
+  test("another Track starts alongside playing Stations and Tracks", async () => {
     insertNodeSession(
       patch([
         station("a"),
@@ -5865,7 +5872,7 @@ describe("Node Playback: Track and File sources", () => {
         trackNode("t3"),
       ])
     );
-    const harness = createHarness({ profile: "mobile" });
+    const harness = createHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
@@ -5876,11 +5883,8 @@ describe("Node Playback: Track and File sources", () => {
     await harness.playback.setPlaying("t3", true);
 
     expect(getPlaybackChannelRuntime(channelOf("t3"))).toMatchObject({
-      error: {
-        message:
-          "Up to 4 streams can play at once here. Pause one to start this.",
-      },
-      isPlaying: false,
+      error: null,
+      isPlaying: true,
     });
   });
 
@@ -6252,7 +6256,7 @@ describe("Node Playback: channel strips", () => {
         subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
       fadeOutSound: mock(async () => undefined),
-      getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
+      getEnv: () => ({ crossOriginIsolated: false }),
       outputRouting: () => ({
         applySettings,
         connectMain: () => () => undefined,

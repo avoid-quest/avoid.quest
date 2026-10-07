@@ -2,12 +2,36 @@
 
 How a Split, Stereo Split or Band Split whose branches go to different places
 runs. Decided 2026-10-07 from a bench run (dev-only, at `105730ab`, since
-deleted) against the criteria in the routing design (§2.3), fixed before it ran.
+deleted) against the criteria below, fixed before it ran.
 
 | Option | What it is |
 |---|---|
 | **A** | A Web Audio split stage (`lib/audio/routing/split-stage.ts`) in front of one openDAW unit per branch with FX. |
 | **B** | One openDAW unit holding the container, each cabled cell ending in a Sink into its own bus, each bus returned to Web Audio. |
+
+## Criteria
+
+An option that fails a gate is out.
+
+- **G1, correctness**, on a stereo test signal at each destination, 5 repeats:
+  - branch gain within 0.1 dB, both into the branch's FX and after them;
+  - pan within 0.5 dB of openDAW's cell at −1, −0.5, 0, 0.5 and 1;
+  - a muted or unsoloed branch at −90 dBFS or below within 50 ms, and a
+    soloed one unchanged within 0.1 dB;
+  - a Stereo Split port holds the other channel at −90 dBFS or below; a Band
+    Split port is within 0.5 dB of openDAW's `FrequencySplit` at three tones
+    per band;
+  - the ports, summed, are within −60 dBFS of the rejoined container, with
+    the split on and off and mix at 0, 0.5 and 1;
+  - two ports meeting at one point arrive on the same sample.
+- **G2, clicks**: no more than adding or removing an unrelated lane with FX,
+  over 20 repeats of each edit, counted on unedited branches and other sounds
+  and, for parameter edits, on the edited branch too.
+
+If both pass, choose B only if, at N = 4 branches on two topologies or more,
+its audio-thread load is lower by at least 20 % relative and 3 points of the
+render budget (M1), and openDAW's DSP time (M2) is no more than 10 % worse.
+Otherwise choose A. If only one passes, choose it.
 
 ## Gate results
 

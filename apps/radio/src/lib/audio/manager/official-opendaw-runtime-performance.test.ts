@@ -33,7 +33,10 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
         play: mock(() => undefined),
       },
       startAudioWorklet: () =>
-        Object.assign(new EventTarget(), { disconnect: () => undefined }),
+        Object.assign(new EventTarget(), {
+          disconnect: () => undefined,
+          isReady: () => Promise.resolve(),
+        }),
       terminate: () => undefined,
     };
     const createProject = mock(() => project);
@@ -105,8 +108,14 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
 
   test("registers a mono input as one openDAW monitoring channel", async () => {
     const context = {} as AudioContext;
-    const source = { context } as unknown as AudioNode;
+    const source = {
+      connect: mock(() => undefined),
+      context,
+    } as unknown as AudioNode;
     const destination = { context } as unknown as AudioNode;
+    const monitoringInput = {
+      disconnect: () => undefined,
+    } as unknown as GainNode;
     const registerMonitoringSource = mock(() => undefined);
     const unit = {
       audioUnitBox: { address: { uuid: "unit" } },
@@ -115,6 +124,7 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
       groups: [],
       inputChannels: 2,
       monitoring: true,
+      monitoringInput,
       source: null,
     };
     const runtime = Object.create(
@@ -145,7 +155,7 @@ describe("OfficialOpenDawRuntime diagnostics", () => {
     );
     expect(registerMonitoringSource).toHaveBeenCalledWith(
       "unit",
-      source,
+      monitoringInput,
       1,
       destination
     );

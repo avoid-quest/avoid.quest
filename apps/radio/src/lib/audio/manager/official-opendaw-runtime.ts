@@ -1,6 +1,6 @@
 import { AppError, captureError } from "@avoid.quest/error";
 import { Editing, UUID } from "@opendaw/lib-std";
-import type { Project, ProjectEnv } from "@opendaw/studio-core";
+import type { EngineWorklet, Project, ProjectEnv } from "@opendaw/studio-core";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
@@ -58,6 +58,7 @@ type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
   effects: EffectConfig[];
   groups: OfficialEffectGroup[];
   inputChannels: 1 | 2;
+  monitoringInput: GainNode;
   monitoring: boolean;
   rack: ReturnType<typeof createMasterRack>;
   source: AudioNode | null;
@@ -133,6 +134,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private nextWerkstattGeneration = 0;
   private bpm = 120;
   private closed = false as boolean;
+  private reportedWorkletFailure = false as boolean;
 
   constructor(
     context: AudioContext,
@@ -241,13 +243,52 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       false
     );
     try {
-      const worklet = project.startAudioWorklet();
-
-      // Project.startAudioWorklet connects the normal master output. Live radio
-      // uses only the per-source monitor returns; leaving output 0 connected
-      // would duplicate the signal.
-      worklet.disconnect(this.context.destination, 0, 0);
-      await project.engine.isReady();
+      const ready = Promise.withResolvers<void>();
+      const load = (worklet: EngineWorklet): void => {
+        worklet.isReady().then(ready.resolve, ready.reject);
+        // Every worklet starts with master output 0 connected. Radio uses only
+        // monitoring returns, including after openDAW replaces a failed worklet.
+        worklet.disconnect(this.context.destination, 0, 0);
+        for (const unit of this.soundUnits.values()) {
+          if (unit.source && unit.destination) {
+            this.registerMonitoringSource(unit, project);
+          }
+          for (const group of flattenGroups(unit.groups)) {
+            if (group.config.type === "werkstatt") {
+              this.subscribeWerkstattMessages(group, group.config.id);
+            }
+          }
+        }
+      };
+      const initialWorklet = project.startAudioWorklet({
+        load,
+        unload: () => {
+          this.disconnectMonitoringInputs();
+          if (this.project !== project || this.closed) {
+            return Promise.resolve();
+          }
+          for (const subscription of this.werkstattSubscriptions.values()) {
+            subscription.terminate();
+          }
+          this.werkstattSubscriptions.clear();
+          // openDAW restarts indefinitely; report only once per runtime.
+          if (!this.reportedWorkletFailure) {
+            this.reportedWorkletFailure = true;
+            captureError(
+              new AppError({
+                category: "playback",
+                code: "AUDIO_PROCESSOR_FAILED",
+                context: { backend: "official" },
+                safeMessage: "Audio worklet processor stopped",
+              }),
+              { operation: "runAudioProcessor", surface: "ui" }
+            );
+          }
+          return Promise.resolve();
+        },
+      });
+      load(initialWorklet);
+      await ready.promise;
 
       if (this.closed) {
         throw new Error("openDAW runtime initialization was canceled");
@@ -260,23 +301,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       });
       this.modules = modules;
       this.project = project;
-      worklet.addEventListener(
-        "processorerror",
-        () => {
-          if (this.project === project && !this.closed) {
-            captureError(
-              new AppError({
-                category: "playback",
-                code: "AUDIO_PROCESSOR_FAILED",
-                context: { backend: "official" },
-                safeMessage: "Audio worklet processor stopped",
-              }),
-              { operation: "runAudioProcessor", surface: "ui" }
-            );
-          }
-        },
-        { once: true }
-      );
     } catch (error) {
       project.terminate();
       throw error;
@@ -404,6 +428,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         groups: [],
         inputChannels,
         monitoring,
+        monitoringInput: this.context.createGain(),
         source: null,
       };
       this.soundUnits.set(soundId, unit);
@@ -416,21 +441,49 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.rebindSidechains();
       return true;
     } else if (unit.source !== null) {
-      project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
+      this.unregisterMonitoringSource(unit);
     }
 
-    project.engine.registerMonitoringSource(
-      unit.audioUnitBox.address.uuid,
-      source,
-      inputChannels,
-      destination
-    );
     unit.source = source;
     unit.destination = destination;
     unit.inputChannels = inputChannels;
     unit.monitoring = monitoring;
+    this.registerMonitoringSource(unit);
     this.rebindSidechains();
     return true;
+  }
+
+  private disconnectMonitoringInputs(): void {
+    // Register/unregister rebuild every remaining source, leaving old splitter
+    // edges behind. Clear owned inputs before that rebuild or after teardown.
+    for (const unit of this.soundUnits.values()) {
+      unit.monitoringInput.disconnect();
+    }
+  }
+
+  private registerMonitoringSource(
+    unit: SoundUnit,
+    project = this.requireProject()
+  ): void {
+    if (!(unit.source && unit.destination)) {
+      return;
+    }
+    this.disconnectMonitoringInputs();
+    unit.source.connect(unit.monitoringInput);
+    project.engine.registerMonitoringSource(
+      unit.audioUnitBox.address.uuid,
+      unit.monitoringInput,
+      unit.inputChannels,
+      unit.destination
+    );
+  }
+
+  private unregisterMonitoringSource(unit: SoundUnit): void {
+    this.disconnectMonitoringInputs();
+    unit.source?.disconnect(unit.monitoringInput);
+    this.requireProject().engine.unregisterMonitoringSource(
+      unit.audioUnitBox.address.uuid
+    );
   }
 
   disconnectSound(
@@ -451,7 +504,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!(unit && project && unit.source)) {
       return;
     }
-    project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
+    this.unregisterMonitoringSource(unit);
     unit.source = null;
     unit.destination = null;
     this.rebindSidechains();
@@ -660,7 +713,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private restoreMonitoringSources(
     units: ReadonlyMap<string, SoundUnit>
   ): void {
-    const project = this.requireProject();
     for (const [id, unit] of this.soundUnits) {
       const previous = units.get(id);
       if (
@@ -669,16 +721,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         previous.destination !== unit.destination ||
         previous.inputChannels !== unit.inputChannels
       ) {
-        project.engine.unregisterMonitoringSource(
-          unit.audioUnitBox.address.uuid
-        );
+        this.unregisterMonitoringSource(unit);
         if (previous?.source && previous.destination) {
-          project.engine.registerMonitoringSource(
-            previous.audioUnitBox.address.uuid,
-            previous.source,
-            previous.inputChannels,
-            previous.destination
-          );
+          this.registerMonitoringSource(previous);
         }
       }
     }

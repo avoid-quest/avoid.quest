@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { UUID } from "@opendaw/lib-std";
 import type { WerkstattDeviceBox } from "@opendaw/studio-boxes";
-import type { Project } from "@opendaw/studio-core";
+import type { Project, RestartWorklet } from "@opendaw/studio-core";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporting boundary
 import * as Sentry from "@sentry/core";
 // @ts-expect-error jsdom types are not installed in this workspace.
@@ -52,14 +52,77 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     import("@opendaw/studio-core"),
   ]);
   const compiles: ReturnType<typeof deferred>[] = [];
-  const audioNode = () =>
-    Object.assign(new ProcessorEventTarget(), {
-      connect: mock(() => undefined),
-      disconnect: mock(() => undefined),
+  const nodes = new Map<
+    AudioNode,
+    {
+      kind: "gain" | "splitter" | "merger" | "worklet";
+      edges: Set<{ destination: AudioNode; output: number; input: number }>;
+    }
+  >();
+  const audioNode = (
+    kind: "gain" | "splitter" | "merger" | "worklet" = "gain"
+  ) => {
+    const edges = new Set<{
+      destination: AudioNode;
+      output: number;
+      input: number;
+    }>();
+    const node = Object.assign(new ProcessorEventTarget(), {
+      connect: mock((destination: AudioNode, output = 0, input = 0) => {
+        if (
+          ![...edges].some(
+            (edge) =>
+              edge.destination === destination &&
+              edge.output === output &&
+              edge.input === input
+          )
+        ) {
+          edges.add({ destination, input, output });
+        }
+        return destination;
+      }),
+      disconnect: mock(
+        (destination?: AudioNode, output?: number, input?: number) => {
+          if (!destination) {
+            edges.clear();
+            return;
+          }
+          const matches = [...edges].filter(
+            (edge) =>
+              edge.destination === destination &&
+              (output === undefined || edge.output === output) &&
+              (input === undefined || edge.input === input)
+          );
+          if (matches.length === 0) {
+            throw new DOMException(
+              "Audio nodes are not connected",
+              "InvalidAccessError"
+            );
+          }
+          for (const edge of matches) {
+            edges.delete(edge);
+          }
+        }
+      ),
       gain: { value: 1 },
       pan: { value: 0 },
     });
-  const worklet = audioNode();
+    Object.defineProperties(node, {
+      connections: {
+        get: () => new Set([...edges].map((edge) => edge.destination)),
+      },
+      context: { get: () => context },
+    });
+    nodes.set(node as unknown as AudioNode, { edges, kind });
+    return node;
+  };
+  const worklet = Object.assign(audioNode("worklet"), {
+    isReady: () => {
+      initializing.resolve();
+      return engineReady;
+    },
+  });
+  let restart: RestartWorklet | undefined;
   const context = {
     audioWorklet: {
       addModule: mock((url: string) => {
@@ -69,11 +132,23 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
         return pending.promise;
       }),
     },
+    createChannelMerger: () => audioNode("merger"),
+    createChannelSplitter: () => audioNode("splitter"),
     createGain: audioNode,
     createStereoPanner: audioNode,
     destination: audioNode(),
     sampleRate: 48_000,
   } as unknown as AudioContext;
+  // Exercise the installed router too: its teardown leaves input edges behind.
+  const { MonitoringRouter } = await import(
+    new URL(
+      "./MonitoringRouter.js",
+      import.meta.resolve("@opendaw/studio-core")
+    ).href
+  );
+  const commands = { updateMonitoringMap: () => undefined };
+  let router = new MonitoringRouter(worklet, commands);
+  let activeWorklet = worklet;
   const initializing = deferred();
   const subscriptions: Array<{
     deviceId: string;
@@ -87,11 +162,11 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     },
     registerMonitoringSource: mock(
       (
-        _uuid: Uint8Array,
-        _source: AudioNode,
-        _channels: number,
-        _destination: ReturnType<typeof audioNode>
-      ) => undefined
+        uuid: Uint8Array,
+        source: AudioNode,
+        channels: number,
+        destination: ReturnType<typeof audioNode>
+      ) => router.registerSource(uuid, source, channels, destination)
     ),
     subscribeDeviceMessage: (
       deviceId: string,
@@ -105,10 +180,15 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       subscriptions.push(subscription);
       return subscription;
     },
-    unregisterMonitoringSource: mock(() => undefined),
+    unregisterMonitoringSource: mock((uuid: Uint8Array) =>
+      router.unregisterSource(uuid)
+    ),
   };
   let project: Project | undefined;
-  const terminate = mock(() => project?.terminate());
+  const terminate = mock(() => {
+    router.terminate();
+    project?.terminate();
+  });
   const runtime = new OfficialOpenDawRuntime(
     context,
     undefined,
@@ -132,7 +212,18 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
                 boxGraph: project.boxGraph,
                 editing: project.editing,
                 engine,
-                startAudioWorklet: () => worklet,
+                startAudioWorklet: (hook: RestartWorklet) => {
+                  restart = hook;
+                  worklet.connect(context.destination, 0);
+                  const failed = () => {
+                    worklet.removeEventListener("processorerror", failed);
+                    router.terminate();
+                    activeWorklet.disconnect();
+                    hook.unload(undefined).then(() => undefined);
+                  };
+                  worklet.addEventListener("processorerror", failed);
+                  return worklet;
+                },
                 terminate,
               };
             },
@@ -151,7 +242,8 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
   return {
     boxes,
     compiles,
-    destination: { context } as unknown as AudioNode,
+    createSource: () => audioNode() as unknown as AudioNode,
+    destination: audioNode() as unknown as AudioNode,
     engine,
     initializing,
     get project() {
@@ -160,8 +252,60 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       }
       return project;
     },
+    // A pass-through monitoring processor isolates native routing from effect DSP.
+    // Read destination inputs, including the muted sidechain return, before gain.
+    renderReturn: (
+      source: AudioNode,
+      destination: AudioNode,
+      samples: number[]
+    ) => {
+      const result = [0, 0];
+      const visit = (node: AudioNode, channel: number, sample: number) => {
+        if (node === destination) {
+          result[channel] += sample;
+          return;
+        }
+        const state = nodes.get(node);
+        if (!state) {
+          throw new Error("Unknown audio node");
+        }
+        for (const edge of state.edges) {
+          if (
+            (state.kind === "splitter" && edge.output !== channel) ||
+            (state.kind === "worklet" && edge.output !== 1)
+          ) {
+            continue;
+          }
+          let nextChannel = state.kind === "splitter" ? 0 : channel;
+          if (nodes.get(edge.destination)?.kind === "merger") {
+            nextChannel = edge.input;
+          }
+          visit(edge.destination, nextChannel, sample);
+        }
+      };
+      samples.forEach((sample, channel) => {
+        visit(source, channel, sample);
+      });
+      return result;
+    },
+    restartWorklet: async (ready: Promise<void> = Promise.resolve()) => {
+      if (!restart) {
+        throw new Error("Worklet has not started");
+      }
+      router.terminate();
+      activeWorklet.disconnect();
+      await restart.unload(undefined);
+      const replacement = Object.assign(audioNode("worklet"), {
+        isReady: () => ready,
+      });
+      replacement.connect(context.destination, 0);
+      activeWorklet = replacement;
+      router = new MonitoringRouter(replacement, commands);
+      restart.load(replacement as never);
+      return replacement;
+    },
     runtime,
-    source: { context } as unknown as AudioNode,
+    source: audioNode() as unknown as AudioNode,
     subscriptions,
     terminate,
     worklet,
@@ -200,7 +344,28 @@ function parameter(
 }
 
 describe("OfficialOpenDawRuntime effect lifetime", () => {
-  test("reports a running processor's terminal failure once and ignores disposed runtimes", async () => {
+  test("startup follows replacement worklets when earlier processors never become ready", async () => {
+    const initial = deferred();
+    const replacement = deferred();
+    const h = await createHarness(initial.promise);
+    let connected = false;
+    const connecting = h.runtime
+      .connectSound("deck", h.source, h.destination)
+      .then((result) => {
+        connected = result;
+      });
+    await h.initializing.promise;
+    await h.restartWorklet(new Promise<void>(() => undefined));
+    await h.restartWorklet(replacement.promise);
+    expect(connected).toBe(false);
+    replacement.resolve();
+    await connecting;
+    expect(connected).toBe(true);
+    expect(h.runtime.soundCount).toBe(1);
+    expect(h.runtime.isReady).toBe(true);
+  });
+
+  test("reports only the first worklet failure per runtime and ignores disposed runtimes", async () => {
     const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);
     const capture = spyOn(Sentry, "captureException").mockReturnValue(
       "event-id"
@@ -209,7 +374,8 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       const running = await createHarness();
       await running.runtime.initialize();
       running.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
-      running.worklet.dispatchEvent(new ProcessorEvent("processorerror"));
+      await running.restartWorklet();
+      await running.restartWorklet();
       const disposed = await createHarness();
       await disposed.runtime.initialize();
       disposed.runtime.cleanup();
@@ -219,6 +385,10 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         code: "AUDIO_PROCESSOR_FAILED",
         context: { backend: "official" },
       });
+      const other = await createHarness();
+      await other.runtime.initialize();
+      await other.restartWorklet();
+      expect(capture).toHaveBeenCalledTimes(2);
     } finally {
       capture.mockRestore();
       enabled.mockRestore();
@@ -341,6 +511,155 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       if (device instanceof h.boxes.CompressorDeviceBox) {
         expect(device.threshold.getValue()).toBe(-24);
       }
+    }
+  );
+  test("restores live mono, stereo and sidechain returns on every worklet restart", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("stereo", h.source, h.destination);
+    const monoSource = h.createSource();
+    await h.runtime.connectSound("mono", monoSource, h.destination, 1, 1);
+    const keySource = h.createSource();
+    await h.runtime.connectSidechainSource("key", keySource);
+    await h.runtime.connectSound("retired", h.source, h.destination);
+    h.runtime.disconnectSound("retired");
+    h.runtime.syncEffects("stereo", [werkstatt()]);
+    await finishCompile(h.compiles[0]);
+    const boxes = h.project.boxGraph.boxes();
+    const liveReturns = h.engine.registerMonitoringSource.mock.calls.slice(
+      0,
+      3
+    );
+    const [originalSubscription] = h.subscriptions;
+
+    for (let index = 0; index < 2; index += 1) {
+      h.engine.registerMonitoringSource.mockClear();
+      // biome-ignore lint/performance/noAwaitInLoops: consecutive failures each replace the worklet
+      const replacement = await h.restartWorklet();
+      expect(replacement.disconnect).toHaveBeenCalledWith(
+        h.source.context.destination,
+        0,
+        0
+      );
+      expect(h.engine.registerMonitoringSource.mock.calls).toEqual(liveReturns);
+      expect(h.project.boxGraph.boxes()).toEqual(boxes);
+    }
+    expect(originalSubscription.terminate).toHaveBeenCalledTimes(1);
+    h.subscriptions.at(-1)?.listener("restarted device error");
+    expect(getWerkstattRuntimeStatus("script")).toEqual({
+      message: "restarted device error",
+      state: "error",
+    });
+  });
+
+  test("repeated worklet restarts do not retain old monitoring graphs or remove dry output", async () => {
+    const h = await createHarness();
+    const dry = h.createSource();
+    h.source.connect(dry);
+    await h.runtime.connectSound("live", h.source, h.destination);
+    const key = h.createSource();
+    await h.runtime.connectSidechainSource("key", key);
+    const connections = (node: AudioNode): Set<AudioNode> =>
+      (node as unknown as { connections: Set<AudioNode> }).connections;
+    const reachableCount = () => {
+      const reached = new Set<AudioNode>();
+      const visit = (node: AudioNode) => {
+        if (reached.has(node)) {
+          return;
+        }
+        reached.add(node);
+        for (const destination of connections(node)) {
+          visit(destination);
+        }
+      };
+      visit(h.source);
+      return reached.size;
+    };
+    const initialCount = reachableCount();
+
+    for (let index = 0; index < 3; index += 1) {
+      // biome-ignore lint/performance/noAwaitInLoops: consecutive failures exercise retained native audio edges
+      await h.restartWorklet();
+      expect(reachableCount()).toBe(initialCount);
+      expect(connections(h.source).has(dry)).toBe(true);
+    }
+
+    h.runtime.cleanup();
+    expect(connections(h.source)).toEqual(new Set([dry]));
+    expect(connections(key).size).toBe(0);
+  });
+
+  test.each(["disconnect", "delete", "replace"] as const)(
+    "each monitoring return survives another source's %s and repeated restarts",
+    async (action) => {
+      const h = await createHarness();
+      const stereoReturn = h.createSource();
+      const mono = h.createSource();
+      const monoReturn = h.createSource();
+      const key = h.createSource();
+      const dry = h.createSource();
+      h.source.connect(dry);
+      await h.runtime.connectSound("stereo", h.source, stereoReturn);
+      await h.runtime.connectSound("mono", mono, monoReturn, 1, 1);
+      await h.runtime.connectSidechainSource("key", key);
+      const [, , , keyReturn] = h.engine.registerMonitoringSource.mock.calls[2];
+      const liveReturns = () => {
+        expect(h.renderReturn(mono, monoReturn, [0.375])).toEqual([
+          0.375, 0.375,
+        ]);
+        expect(h.renderReturn(key, keyReturn, [0.5, 0.625])).toEqual([
+          0.5, 0.625,
+        ]);
+        expect(h.renderReturn(key, monoReturn, [0.5, 0.625])).toEqual([0, 0]);
+        expect(h.renderReturn(mono, keyReturn, [0.375])).toEqual([0, 0]);
+      };
+      liveReturns();
+      expect(h.renderReturn(h.source, stereoReturn, [0.125, 0.25])).toEqual([
+        0.125, 0.25,
+      ]);
+      const replacement = h.createSource();
+      const replacementReturn = h.createSource();
+      if (action === "replace") {
+        await h.runtime.connectSound("stereo", replacement, replacementReturn);
+      } else if (action === "delete") {
+        h.runtime.deleteSound("stereo");
+      } else {
+        h.runtime.disconnectSound("stereo");
+      }
+      liveReturns();
+      if (action === "replace") {
+        expect(
+          h.renderReturn(replacement, replacementReturn, [0.75, 0.875])
+        ).toEqual([0.75, 0.875]);
+      }
+      expect(h.renderReturn(h.source, stereoReturn, [0.125, 0.25])).toEqual([
+        0, 0,
+      ]);
+      expect(h.renderReturn(h.source, dry, [0.125, 0.25])).toEqual([
+        0.125, 0.25,
+      ]);
+      for (let index = 0; index < 3; index += 1) {
+        // biome-ignore lint/performance/noAwaitInLoops: every crash replaces the active router
+        await h.restartWorklet();
+        liveReturns();
+        if (action === "replace") {
+          expect(
+            h.renderReturn(replacement, replacementReturn, [0.75, 0.875])
+          ).toEqual([0.75, 0.875]);
+          expect(
+            h.renderReturn(h.source, replacementReturn, [0.125, 0.25])
+          ).toEqual([0, 0]);
+        }
+      }
+      h.runtime.cleanup();
+      h.runtime.cleanup();
+      expect(h.renderReturn(mono, monoReturn, [0.375])).toEqual([0, 0]);
+      expect(h.renderReturn(key, keyReturn, [0.5, 0.625])).toEqual([0, 0]);
+      expect(
+        h.renderReturn(replacement, replacementReturn, [0.75, 0.875])
+      ).toEqual([0, 0]);
+      expect(h.renderReturn(h.source, dry, [0.125, 0.25])).toEqual([
+        0.125, 0.25,
+      ]);
     }
   );
 

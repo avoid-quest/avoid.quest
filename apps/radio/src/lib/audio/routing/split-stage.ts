@@ -67,6 +67,16 @@ function shapeOf({ effect, cabled }: SplitStageConfig): string {
   ]);
 }
 
+/** How many ports `effect` has: a Split grows one for each cable. */
+export function portCapacity(effect: SplitEffect): number {
+  if (effect.type === "stereoSplit") {
+    return 2;
+  }
+  return effect.type === "frequencySplit"
+    ? effect.crossoverFrequencies.length + 1
+    : Number.POSITIVE_INFINITY;
+}
+
 /** The lowpass at `frequency` as an IIRFilterNode, lib-dsp's coefficients. */
 function lowpass(context: BaseAudioContext, frequency: number): IIRFilterNode {
   const coefficients = new BiquadCoeff().setLowpassParams(
@@ -126,8 +136,7 @@ export function createSplitStage(
     cabled: readonly number[]
   ) => {
     let remainder: AudioNode = entry;
-    const bandCount = effect.crossoverFrequencies.length + 1;
-    for (let band = 0; band < bandCount; band += 1) {
+    for (let band = 0; band < portCapacity(effect); band += 1) {
       const frequency = effect.crossoverFrequencies[band];
       let signal: AudioNode = remainder;
       if (frequency !== undefined) {

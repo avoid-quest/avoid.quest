@@ -365,6 +365,35 @@ describe("Splits whose branches go different places", () => {
       ).toBeLessThan(-90);
     }
   });
+  test("a four-port Split turned Stereo Split fades its last two ports out, then plays two", async () => {
+    const flat = (chain: EffectChainConfig) => ({ ...chain, gain: 1, pan: 0 });
+    const fourWays = [
+      cable("a", "split"),
+      cable("split", "speakers", { from: "branch-1" }),
+      cable("split", "desk", { from: "branch-2" }),
+      { ...cable("split", "speakers", { from: "branch-3" }), id: "third" },
+      { ...cable("split", "desk", { from: "branch-4" }), id: "fourth" },
+    ];
+    const sides = [
+      cable("a", "split"),
+      cable("split", "speakers", { from: "left" }),
+      cable("split", "desk", { from: "right" }),
+    ];
+    const stereo = split("stereoSplit", { dryWet: 1 }, flat);
+    const played = play(split("fxComposite", { dryWet: 1 }, flat), fourWays);
+
+    // Same node, now with two ports: branches 3 and 4 fade out first, in
+    // the layout they had.
+    expect(() => played.apply(sides, stereo)).not.toThrow();
+    await played.endFades();
+    const two = play(stereo, sides);
+    for (const sink of ["speakers", "desk"]) {
+      expect(
+        residualDb(played.output(sink), two.output(sink), TAIL)
+      ).toBeLessThan(-90);
+    }
+  });
+
   test("a muted branch, and one a solo leaves out, go silent with FX or not", () => {
     const muted = play(
       split("fxComposite", { dryWet: 1 }, (chain, index) => ({

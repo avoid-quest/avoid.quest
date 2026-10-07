@@ -48,6 +48,7 @@ import {
 } from "@/lib/audio/routing/sends";
 import {
   createSplitStage,
+  portCapacity,
   type SplitStage,
 } from "@/lib/audio/routing/split-stage";
 import { safeDisconnect, safeDisconnectFrom } from "@/lib/audio/utils";
@@ -626,14 +627,11 @@ export class RoutingGraph {
     const { plan } = point;
     if (live.stage && !isUnit(plan) && plan.kind === "split") {
       const cabled = [...ports].sort((left, right) => left - right);
-      const { effect } = plan.split;
-      const bands =
-        effect.type === "frequencySplit"
-          ? effect.crossoverFrequencies.length + 1
-          : Number.POSITIVE_INFINITY;
-      // A band that went keeps its fading cables fed, in the layout it
-      // had, until they are gone.
-      if (cabled.every((port) => port < bands)) {
+      const capacity = portCapacity(plan.split.effect);
+      // A port the split no longer has, fewer bands or a Stereo Split now,
+      // keeps its fading cables fed, in the layout it had, until they are
+      // gone.
+      if (cabled.every((port) => port < capacity)) {
         live.stage.update({ ...plan.split, cabled });
       }
     }

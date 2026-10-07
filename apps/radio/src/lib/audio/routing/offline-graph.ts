@@ -67,17 +67,26 @@ export class OfflineNode {
   readonly gain = new OfflineParam(1);
   readonly delayTime = new OfflineParam(0);
   readonly process: (inputs: Signal[], node: OfflineNode) => Signal[];
+  readonly numberOfInputs: number;
+  readonly numberOfOutputs: number;
 
   constructor(
     context: OfflineGraph,
-    process: (inputs: Signal[], node: OfflineNode) => Signal[]
+    process: (inputs: Signal[], node: OfflineNode) => Signal[],
+    { inputs = 1, outputs = 1 } = {}
   ) {
     this.context = context;
     this.process = process;
+    this.numberOfInputs = inputs;
+    this.numberOfOutputs = outputs;
     context.nodes.push(this);
   }
 
   connect(to: OfflineNode, output = 0, input = 0): OfflineNode {
+    // As Web Audio does, an index past the nodes' ones throws.
+    if (output >= this.numberOfOutputs || input >= to.numberOfInputs) {
+      throw new DOMException("Channel index out of range", "IndexSizeError");
+    }
     this.links.push({ input, output, to });
     return to;
   }
@@ -165,22 +174,30 @@ export class OfflineGraph {
   }
 
   createChannelSplitter(outputs = 6): OfflineNode {
-    return new OfflineNode(this, ([input = []]) => {
-      const signal = sum([input], this.frames);
-      return Array.from({ length: outputs }, (_, index) => [
-        signal.length === 1 && index > 0
-          ? zeros(this.frames)
-          : (signal[index] ?? zeros(this.frames)),
-      ]);
-    });
+    return new OfflineNode(
+      this,
+      ([input = []]) => {
+        const signal = sum([input], this.frames);
+        return Array.from({ length: outputs }, (_, index) => [
+          signal.length === 1 && index > 0
+            ? zeros(this.frames)
+            : (signal[index] ?? zeros(this.frames)),
+        ]);
+      },
+      { outputs }
+    );
   }
 
   createChannelMerger(inputs = 6): OfflineNode {
-    return new OfflineNode(this, (signals) => [
-      Array.from({ length: inputs }, (_, index) =>
-        mono(sum([signals[index] ?? []], this.frames), this.frames)
-      ),
-    ]);
+    return new OfflineNode(
+      this,
+      (signals) => [
+        Array.from({ length: inputs }, (_, index) =>
+          mono(sum([signals[index] ?? []], this.frames), this.frames)
+        ),
+      ],
+      { inputs }
+    );
   }
 
   createDelay(): OfflineNode {

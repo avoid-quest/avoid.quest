@@ -19,7 +19,7 @@ export function isEffectContainer(
 }
 
 export function isEffectChainActive(
-  chain: EffectChainConfig,
+  chain: Pick<EffectChainConfig, "muted" | "solo">,
   hasSolo: boolean
 ): boolean {
   return !chain.muted && (!hasSolo || chain.solo);

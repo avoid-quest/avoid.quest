@@ -531,8 +531,8 @@ function Canvas({
   const phoneAlignedRef = useRef(false);
   const [env] = useState(detectNodePlaybackEnv);
   const validateOptions = { profile: env.profile };
-  // The compiler's verdict on each Merge, for its in-lane badge, and on
-  // each key cable, for its idle tag.
+  // The compiler's verdict on each Merge, for its in-lane badge, on each
+  // key cable, for its idle tag, and on what a solo silences, for the glow.
   const plan = compiledPlan(graph, env);
   const roles = mergeRoles(graph, plan);
   const badges = useStore(nodeBackendBadges);
@@ -547,6 +547,7 @@ function Canvas({
     idleKeys: idleKeys(graph, plan, badges),
     insertTarget: insertTarget?.edge ?? null,
     liveLanes,
+    mix: plan,
     selection,
   });
 

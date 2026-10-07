@@ -50,6 +50,7 @@ import {
   clampPan,
   dbToGain,
   ENCLOSED_KEY_MESSAGE,
+  effectOf,
   FreshIds,
   LoweringError,
   type NativeFilterPlan,
@@ -272,6 +273,17 @@ export type EnginePlan = {
   monitoringChannels: number;
   /** Validation and compile issues; the plan leaves their nodes out. */
   issues: Issue[];
+  /**
+   * What a solo silences, for display: the sources another source's solo
+   * mutes, and the branch cables a split's solo leaves out.
+   */
+  soloedOut: { sources: Set<string>; branches: Set<string> };
+  /**
+   * Where a Split's dry signal plays, for display: beside the audio cables
+   * out of an open Split's ports, and past a closed Split's branches to the
+   * node they meet at (`meetings`, by Split).
+   */
+  dry: { cables: Set<string>; meetings: Map<string, string> };
 };
 
 /**
@@ -796,8 +808,16 @@ class PlanBuilder {
   readonly cables = new Map<string, CablePlan>();
   private readonly endpoints = new Map<string, Endpoint>();
   private readonly prepared: Prepared;
-  /** Lanes another source's solo silences. */
-  private readonly soloMuted = new Set<string>();
+  /**
+   * What a solo silences: the lanes another source's solo mutes, and the
+   * branch cables an open Split's solo leaves out.
+   */
+  readonly soloedOut = {
+    branches: new Set<string>(),
+    sources: new Set<string>(),
+  };
+  /** Audio cables out of an open Split's ports its dry signal rides beside. */
+  readonly dryCables = new Set<string>();
   private readonly cableIds: FreshIds;
 
   constructor(prepared: Prepared) {
@@ -875,7 +895,7 @@ class PlanBuilder {
     // Trim and solo act on the cables, downstream of the fader, so the
     // volume controller keeps the fader.
     if (soloMuted) {
-      this.soloMuted.add(node.id);
+      this.soloedOut.sources.add(node.id);
     }
     this.emit(
       segment?.exits ?? [],
@@ -976,7 +996,9 @@ class PlanBuilder {
         ? this.cableIds.claim(ids[0])
         : this.cableIds.fresh(ids.join("+") || `${from.id}:dry`);
     const soloed =
-      kind === "audio" && from.kind === "lane" && this.soloMuted.has(from.id);
+      kind === "audio" &&
+      from.kind === "lane" &&
+      this.soloedOut.sources.has(from.id);
     if (sources?.length) {
       this.gains.push({
         factor,
@@ -1044,28 +1066,9 @@ class PlanBuilder {
     });
     const on = effect.enabled;
     const mix = on ? effect.dryWet : 0;
-    const controlled = new Set(
-      parameterCables(this.prepared.graph, this.prepared)
-        .filter((cable) => {
-          const source = this.prepared.byId.get(cable.source);
-          return (
-            cable.target === id &&
-            !cable.muted &&
-            cable.depth !== 0 &&
-            isModulationNode(source) &&
-            source.data.enabled
-          );
-        })
-        .map((cable) => cable.parameter ?? "dryWet")
-    );
-    const scalar = (key: string, value: number): Trim => ({
-      factor:
-        value || (on && controlled.has(key === "dry" ? "dryWet" : key) ? 1 : 0),
-      gain: value,
-      muted: false,
-      sources: on ? [`${id}:${key}`] : [],
-    });
+    const scalar = this.splitScalar(id, effect);
     const output = scalar("outputGain", on ? effect.outputGain : 1);
+    const splitDry = dryOf(effect, scalar);
     // A Split's dry signal is shared out among the ports whose audio leaves
     // it; a port that only keys carries its branch, as openDAW's entry does.
     const carries = ({ exits }: SplitBranch) =>
@@ -1082,6 +1085,17 @@ class PlanBuilder {
       const from: Endpoint = { ...endpoint, port: position };
       const { chain } = port;
       const open = !chain.muted && (!anySolo || soloed(port));
+      const dry =
+        splitDry && carries(port)
+          ? {
+              from,
+              trim: multiply(splitDry, { gain: share, muted: false }),
+            }
+          : undefined;
+      this.leaveOutSoloed(port, anySolo && !soloed(port));
+      if (dry && plays(dry.trim)) {
+        this.rideDry(port);
+      }
       this.emitBranch(from, port, {
         cell: multiply(scalar("dryWet", mix), {
           ...output,
@@ -1089,22 +1103,90 @@ class PlanBuilder {
           gain: output.gain * chain.gain,
           muted: !open,
         }),
-        dry:
-          (mix < 1 || controlled.has("dryWet")) && carries(port)
-            ? {
-                from,
-                trim: multiply(scalar("dry", 1 - mix), {
-                  ...output,
-                  factor: (output.factor ?? output.gain) * share,
-                  gain: output.gain * share,
-                }),
-              }
-            : undefined,
+        dry,
         input: scalar("inputGain", on ? effect.inputGain : 1),
         pan: chain.pan,
       });
     }
     return endpoint;
+  }
+
+  /**
+   * Notes the audio cables out of an open Split's port its dry signal
+   * rides beside.
+   */
+  private rideDry({ exits }: SplitBranch): void {
+    for (const exit of exits) {
+      if (!exit.key) {
+        for (const id of exit.ids) {
+          this.dryCables.add(id);
+        }
+      }
+    }
+  }
+
+  /** The parameters of `id` an enabled modulator's cable moves. */
+  private controlled(id: string): Set<string> {
+    return new Set(
+      parameterCables(this.prepared.graph, this.prepared)
+        .filter((cable) => {
+          const source = this.prepared.byId.get(cable.source);
+          return (
+            cable.target === id &&
+            !cable.muted &&
+            cable.depth !== 0 &&
+            isModulationNode(source) &&
+            source.data.enabled
+          );
+        })
+        .map((cable) => cable.parameter ?? "dryWet")
+    );
+  }
+
+  /**
+   * A Split's control `key` at `value` as a trim, at unity in `factor`
+   * while a modulator moves it from zero; a switched-off Split's are fixed.
+   */
+  private splitScalar(
+    id: string,
+    effect: EffectConfig
+  ): (key: string, value: number) => Trim {
+    const on = effect.enabled;
+    const controlled = this.controlled(id);
+    return (key, value) => ({
+      factor:
+        value || (on && controlled.has(key === "dry" ? "dryWet" : key) ? 1 : 0),
+      gain: value,
+      muted: false,
+      sources: on ? [`${id}:${key}`] : [],
+    });
+  }
+
+  /** Each closed Split playing its dry signal, to the node it meets at. */
+  dryMeetings(): Map<string, string> {
+    return new Map(
+      [...this.regions.meetings].filter(([split]) => {
+        const effect = effectOf(this.regions.node(split));
+        const dry = effect && dryOf(effect, this.splitScalar(split, effect));
+        return dry !== null && plays(dry);
+      })
+    );
+  }
+
+  /**
+   * Notes the audio cables out of an open Split's port its solo leaves
+   * out: all of them when the port is (`portOut`), else, as `emitBranch`
+   * mutes them, those a soloed cable on the port leaves out.
+   */
+  private leaveOutSoloed({ exits }: SplitBranch, portOut: boolean): void {
+    const cableSolo = exits.some((exit) => exit.solo);
+    for (const exit of exits) {
+      if (!exit.key && (portOut || (cableSolo && !exit.solo))) {
+        for (const id of exit.ids) {
+          this.soloedOut.branches.add(id);
+        }
+      }
+    }
   }
 
   /**
@@ -1551,6 +1633,7 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   alignCables(builder);
   return {
     cables: builder.cables,
+    dry: { cables: builder.dryCables, meetings: builder.dryMeetings() },
     gains: finalizeGains(
       [...builder.gains, ...prepared.regions.trims],
       builder
@@ -1564,8 +1647,36 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     modules: builder.modules,
     monitoringChannels,
     sinks,
+    soloedOut: {
+      branches: new Set([
+        ...builder.soloedOut.branches,
+        ...prepared.regions.soloedOut,
+      ]),
+      sources: builder.soloedOut.sources,
+    },
     units: builder.units,
   };
+}
+
+/**
+ * A Split's dry signal through its mix and output trim, as openDAW's
+ * container runs it: null while the mix plays none, which it does with
+ * the Split off, below a full mix, or with its mix moving.
+ */
+function dryOf(
+  effect: EffectConfig,
+  scalar: (key: string, value: number) => Trim
+): Trim | null {
+  const on = effect.enabled;
+  const dry = scalar("dry", 1 - (on ? effect.dryWet : 0));
+  return plays(dry)
+    ? multiply(dry, scalar("outputGain", on ? effect.outputGain : 1))
+    : null;
+}
+
+/** Whether a trim lets signal through, now or once a modulator moves it. */
+function plays(trim: Trim): boolean {
+  return !trim.muted && (trim.factor ?? trim.gain) !== 0;
 }
 
 /** Resolve provenance against the completed tree; later folds may share a field. */

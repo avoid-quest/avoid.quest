@@ -40,6 +40,7 @@ import type {
   FxCompositeConfig,
 } from "@/lib/audio/dsp/effects/types";
 import {
+  isEffectChainActive,
   isEffectContainer,
   MAX_EFFECT_TREE_DEPTH,
   usesDirectEffectLayout,
@@ -447,6 +448,10 @@ export type RegionInput = {
  */
 export class RegionLowerer {
   readonly trims: TrimPlacement[] = [];
+  /** Branch cables a closed Split's solo leaves out. */
+  readonly soloedOut = new Set<string>();
+  /** Each closed Split, to the node its branches meet at. */
+  readonly meetings = new Map<string, string>();
   private readonly byId: ReadonlyMap<string, GraphNode>;
   private readonly sinks: ReadonlySet<string>;
   private readonly patchIds: Set<string>;
@@ -1137,6 +1142,13 @@ class SegmentLowerer {
       });
     }
     const ports = splitPortsOf(split, base, outs, this.ids);
+    // A Split drops an unused branch, so that one solos nothing.
+    const solos = ports.map(
+      ({ cables, chain }) =>
+        !(cables.length === 0 && base.type === "fxComposite") &&
+        (chain.solo || cables.some(({ edge }) => edge.solo === true))
+    );
+    this.leaveOutSoloed(base, ports, solos);
     const chains = ports.flatMap(({ cables, chain }, index) => {
       if (cables.length === 0) {
         // A Split drops an unused branch; a stereo or band split mutes it.
@@ -1184,10 +1196,11 @@ class SegmentLowerer {
           // several cables on the port each keeps its own in the nested
           // fan-out, and a soloed one also solos its branch over the rest.
           pan: clampPan(chain.pan + (cable?.pan ?? 0)),
-          solo: chain.solo || cables.some(({ edge }) => edge.solo === true),
+          solo: solos[index] === true,
         },
       ];
     });
+    this.regions.meetings.set(split, meeting);
     const { sidechain: _, ...container } = base;
     return {
       ...container,
@@ -1198,6 +1211,37 @@ class SegmentLowerer {
       id: split,
       order,
     } as EffectConfig;
+  }
+
+  /**
+   * Notes the branch cables a closed Split's solo leaves out, by the rule
+   * its chains run with: once a branch is soloed only the soloed ones play,
+   * and among several cables on one port only the soloed cables do. A
+   * switched-off Split runs no chains, so it leaves nothing out.
+   */
+  private leaveOutSoloed(
+    base: EffectConfig,
+    ports: readonly SplitPort[],
+    solos: readonly boolean[]
+  ): void {
+    if (!base.enabled) {
+      return;
+    }
+    const plays = (solo: boolean, soloed: readonly boolean[]) =>
+      isEffectChainActive({ muted: false, solo }, soloed.includes(true));
+    for (const [index, { cables }] of ports.entries()) {
+      const siblings = cables.map(({ edge }) => edge.solo === true);
+      for (const { edge } of cables) {
+        if (
+          !(
+            plays(solos[index] === true, solos) &&
+            (siblings.length < 2 || plays(edge.solo === true, siblings))
+          )
+        ) {
+          this.regions.soloedOut.add(edge.id);
+        }
+      }
+    }
   }
 
   /**

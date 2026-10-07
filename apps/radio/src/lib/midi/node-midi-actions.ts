@@ -9,6 +9,7 @@
  */
 
 import { ValueMapping } from "@opendaw/lib-std";
+import { scaleMapping, sliderScale } from "@/lib/audio/dsp/effects/param-scale";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/schema";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
@@ -27,7 +28,6 @@ import {
 } from "@/lib/node-graph/modulation-fields";
 import {
   NATIVE_PARAM_RANGES,
-  type NativeParamRange,
   setModulatorParams,
 } from "@/lib/node-graph/modulation-parameters";
 import { isModulationType } from "@/lib/node-graph/modulation-schema";
@@ -55,28 +55,6 @@ const CHAIN_PARAMS = [
 /** `node:<nodeId>`, the prefix every target on the node starts with. */
 export function nodeMidiTargetPrefix(nodeId: string): MidiTargetId {
   return `${NODE_TARGET_PREFIX}${nodeId}`;
-}
-
-/**
- * Keeps a scaled value inside its param's range. A mapping's transform can
- * reach past 0..1, and the patch refuses an FX param its control can't set.
- */
-function withinRange(
-  value: number,
-  { min, max }: { min: number; max: number }
-): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/** Maps a 0..1 controller value onto a param's range. */
-function scaled(value: number, range: { min: number; max: number }): number {
-  const mapping = ValueMapping.linear(range.min, range.max);
-  return mapping.clamp(mapping.y(value));
-}
-
-function logScaled(value: number, range: NativeParamRange): number {
-  const mapping = ValueMapping.exponential(range.min, range.max);
-  return mapping.clamp(mapping.y(value));
 }
 
 function isNativeNode(
@@ -110,11 +88,14 @@ function effectActions(
     },
   ];
   for (const param of getEffectMidiParamDefs(effect.type)) {
+    // A mapping's transform can reach past 0..1, and the patch refuses an FX
+    // param its control can't set: the mapping keeps it in range.
+    const mapping = scaleMapping(param.min, param.max, sliderScale(param));
     actions.push({
       dispatch: (value) =>
         commit((graph) =>
           setEffectParams(graph, nodeId, {
-            [param.key]: scaled(value, param),
+            [param.key]: mapping.y(value),
           } as Partial<EffectConfig>)
         ),
       group,
@@ -129,6 +110,7 @@ function effectActions(
   }
   for (const chain of effect.chains) {
     for (const [key, label, min, max, step] of CHAIN_PARAMS) {
+      const mapping = ValueMapping.linear(min, max);
       actions.push({
         dispatch: (value) =>
           commit((graph) => {
@@ -142,7 +124,7 @@ function effectActions(
             return setEffectParams(graph, nodeId, {
               chains: current.chains.map((entry) =>
                 entry.id === chain.id
-                  ? { ...entry, [key]: scaled(value, { max, min }) }
+                  ? { ...entry, [key]: mapping.y(value) }
                   : entry
               ),
             } as Partial<EffectConfig>);
@@ -164,22 +146,22 @@ function nativeActions(
   commit: NodeMidiCommit
 ): MidiAction[] {
   const prefix = nodeMidiTargetPrefix(node.id);
-  return NATIVE_PARAM_RANGES[node.type].map((range) => ({
-    dispatch: (value: number) =>
-      commit((graph) =>
-        setNativeParams(graph, node.id, {
-          [range.key]:
-            range.scale === "log"
-              ? logScaled(value, range)
-              : scaled(value, range),
-        } as NativeParams)
-      ),
-    group,
-    label: range.label,
-    range: { max: range.max, min: range.min, step: range.step },
-    targetId: `${prefix}:${range.key}`,
-    type: "continuous" as const,
-  }));
+  return NATIVE_PARAM_RANGES[node.type].map((range) => {
+    const mapping = scaleMapping(range.min, range.max, range.scale);
+    return {
+      dispatch: (value: number) =>
+        commit((graph) =>
+          setNativeParams(graph, node.id, {
+            [range.key]: mapping.y(value),
+          } as NativeParams)
+        ),
+      group,
+      label: range.label,
+      range: { max: range.max, min: range.min, step: range.step },
+      targetId: `${prefix}:${range.key}`,
+      type: "continuous" as const,
+    };
+  });
 }
 
 /**
@@ -264,11 +246,9 @@ export function createNodeMidiActions(
           {
             dispatch: (value) =>
               commit((current) => {
-                const bounded = withinRange(value, { max: 1, min: 0 });
-                const next =
-                  field.scale === "log"
-                    ? ValueMapping.exponential(field.min, field.max).y(bounded)
-                    : scaled(bounded, field);
+                const next = scaleMapping(field.min, field.max, field.scale).y(
+                  value
+                );
                 return setModulatorParams(current, node.id, {
                   [field.key]: Math.round(next / field.step) * field.step,
                 });

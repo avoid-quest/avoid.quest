@@ -16,7 +16,12 @@ import {
   isSplitNode,
 } from "@/lib/node-graph/branches";
 import { getNodeDefinition, isShipped } from "@/lib/node-graph/catalogue";
-import { laneChannelId, type MergeRole } from "@/lib/node-graph/compile";
+import {
+  type Endpoint,
+  type EnginePlan,
+  laneChannelId,
+  type MergeRole,
+} from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
 import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
@@ -325,11 +330,33 @@ export function toFlowNodes(
 }
 
 /**
- * A cable that plays nothing: muted, or turned all the way down, itself
- * or, out of a split, the chain under it, as the compiler multiplies them.
+ * What a solo silences, where a Split's dry signal plays, and the point
+ * each key cable taps.
  */
-function isSilent(edge: GraphEdge, source: GraphNode | undefined): boolean {
-  if (edge.muted || edge.gain === 0) {
+type Mix = Pick<EnginePlan, "cables" | "dry" | "soloedOut">;
+
+/** A patch with no plan yet: no solo, no dry signal, no keys. */
+const NO_MIX: Mix = {
+  cables: new Map(),
+  dry: { cables: new Set(), meetings: new Map() },
+  soloedOut: { branches: new Set(), sources: new Set() },
+};
+
+/**
+ * A cable that plays nothing: muted, or turned all the way down, itself
+ * or, out of a split, the chain under it, as the compiler multiplies them;
+ * or a branch the split's solo leaves out. An open Split's dry signal
+ * plays beside its cable all the same.
+ */
+function isSilent(
+  edge: GraphEdge,
+  source: GraphNode | undefined,
+  { dry, soloedOut }: Mix
+): boolean {
+  if (dry.cables.has(edge.id)) {
+    return false;
+  }
+  if (edge.muted || edge.gain === 0 || soloedOut.branches.has(edge.id)) {
     return true;
   }
   return (
@@ -340,13 +367,15 @@ function isSilent(edge: GraphEdge, source: GraphNode | undefined): boolean {
 }
 
 /**
- * Nodes carrying a playing source's audio: each live Station, Track, File
- * or Audio input, and every node its audible audio cables reach through FX,
- * up to the outputs.
+ * Nodes carrying a playing source's audio on air: each live Station, Track,
+ * File or Audio input no other source's solo mutes, and every node its
+ * audible audio cables reach through FX, up to the outputs, or a closed
+ * Split's dry signal reaches past its branches.
  */
 export function liveNodeIds(
   graph: Pick<NodeGraph, "nodes" | "edges">,
-  liveLanes: ReadonlySet<string>
+  liveLanes: ReadonlySet<string>,
+  mix: Mix = NO_MIX
 ): Set<string> {
   const live = new Set<string>();
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -354,7 +383,8 @@ export function liveNodeIds(
     .filter(
       (node) =>
         (isRadioSourceNode(node) || node.type === "deviceIn") &&
-        liveLanes.has(laneChannelId(node.id))
+        liveLanes.has(laneChannelId(node.id)) &&
+        !mix.soloedOut.sources.has(node.id)
     )
     .map((node) => node.id);
   for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
@@ -362,10 +392,14 @@ export function liveNodeIds(
       continue;
     }
     live.add(id);
+    const meeting = mix.dry.meetings.get(id);
+    if (meeting !== undefined) {
+      queue.push(meeting);
+    }
     for (const edge of graph.edges) {
       if (
         edge.source === id &&
-        !isSilent(edge, byId.get(id)) &&
+        !isSilent(edge, byId.get(id), mix) &&
         parseHandleId(edge.sourceHandle)?.kind === "audio" &&
         parseHandleId(edge.targetHandle)?.kind === "audio"
       ) {
@@ -405,13 +439,20 @@ function branchOf(
 
 /**
  * A key cable draws in the Key amber, long-dashed, and says when it keys
- * nothing and why. It carries its station's audio to a detector, not on
- * air, so it never glows Live; a playing station only thickens it.
+ * nothing and why. It carries its point's audio to a detector, not on
+ * air, so it never glows Live; audio reaching it only thickens it. One
+ * tapping a playing lane (`from`, the point the compiler taps), from its
+ * source or an FX folded into it, does, soloed out or not, as the engine
+ * taps the raw lane.
  */
 function keyOf(
   edge: GraphEdge,
   label: string,
-  live: ReadonlySet<string>,
+  from: Endpoint | undefined,
+  {
+    live,
+    liveLanes,
+  }: { live: ReadonlySet<string>; liveLanes: ReadonlySet<string> },
   idleKeys: ReadonlyMap<string, string>
 ): Pick<FlowEdge, "ariaLabel" | "className" | "data" | "type"> {
   const idle = idleKeys.get(edge.id) ?? null;
@@ -419,7 +460,11 @@ function keyOf(
   let className = "node-edge-key";
   if (idle) {
     className += " node-edge-key-idle";
-  } else if (live.has(edge.source)) {
+  } else if (
+    from?.kind === "lane"
+      ? liveLanes.has(laneChannelId(from.id))
+      : live.has(from?.id ?? edge.source)
+  ) {
     className += " node-edge-key-live";
   }
   return {
@@ -436,6 +481,7 @@ export function toFlowEdges(
     selection,
     liveLanes,
     idleKeys = new Map(),
+    mix = NO_MIX,
     insertTarget = null,
   }: {
     selection: NodeSelection;
@@ -443,6 +489,8 @@ export function toFlowEdges(
     liveLanes: ReadonlySet<string>;
     /** Key cables that key nothing, with why (`idleKeys` in compile). */
     idleKeys?: ReadonlyMap<string, string>;
+    /** What a solo silences and where dry signal plays (the compiled plan). */
+    mix?: Mix;
     /** The cable a dragged node would go into if let go now. */
     insertTarget?: string | null;
   }
@@ -450,7 +498,12 @@ export function toFlowEdges(
   const drawn = new Map(
     graph.nodes.filter(isDrawn).map((node) => [node.id, node])
   );
-  const live = liveNodeIds(graph, liveLanes);
+  const live = liveNodeIds(graph, liveLanes, mix);
+  const keyFrom = new Map(
+    [...mix.cables.values()]
+      .filter((cable) => cable.kind === "key")
+      .flatMap((cable) => cable.edges.map((id) => [id, cable.from] as const))
+  );
   return graph.edges
     .filter((edge) => drawn.has(edge.source) && drawn.has(edge.target))
     .map((edge) => {
@@ -462,11 +515,17 @@ export function toFlowEdges(
         className:
           live.has(edge.source) &&
           kind === "audio" &&
-          !isSilent(edge, drawn.get(edge.source))
+          !isSilent(edge, drawn.get(edge.source), mix)
             ? "node-edge-live"
             : undefined,
         ...(kind === "sidechain"
-          ? keyOf(edge, label, live, idleKeys)
+          ? keyOf(
+              edge,
+              label,
+              keyFrom.get(edge.id),
+              { live, liveLanes },
+              idleKeys
+            )
           : undefined),
         ...(kind === "control"
           ? { className: "node-edge-control", type: "control" }

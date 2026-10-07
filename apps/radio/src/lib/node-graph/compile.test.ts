@@ -628,6 +628,59 @@ describe("compile: channel strips", () => {
     expect(plan.cables.get("b->speakers")?.muted).toBe(false);
   });
 
+  test("a solo names the sources it mutes, from the patch the plan keeps", () => {
+    const plan = build(
+      [withStrip(station("a"), { solo: true }), station("b"), speakers],
+      [audio("a", "speakers"), audio("b", "speakers")]
+    );
+    expect(plan.soloedOut.sources).toEqual(new Set(["b"]));
+
+    // s25 is over the source budget, so its solo silences nothing.
+    const ids = Array.from({ length: 25 }, (_, index) => `s${index + 1}`);
+    const over = build(
+      [
+        ...ids.map((id) =>
+          id === "s25" ? withStrip(station(id), { solo: true }) : station(id)
+        ),
+        speakers,
+      ],
+      ids.map((id) => audio(id, "speakers"))
+    );
+    expect(over.soloedOut.sources).toEqual(new Set());
+    expect(over.cables.get("s1->speakers")?.muted).toBe(false);
+  });
+
+  test("a split's solo names the branch cables it leaves out, as its chains run", () => {
+    const split = (enabled: boolean, soloed: EdgeInput) =>
+      build(
+        [
+          station("a"),
+          fx("x", "fxComposite", { enabled }),
+          fx("delay", "delay"),
+          fx("fold", "cheapReverb"),
+          fx("dead", "crusher"),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          audio("a", "x"),
+          audio("x", "fold", { from: "branch-2" }),
+          audio("delay", "merge"),
+          audio("fold", "merge"),
+          audio("merge", "speakers"),
+          { ...soloed, solo: true },
+        ]
+      ).soloedOut.branches;
+    const toDelay = audio("x", "delay", { from: "branch-1" });
+    expect(split(true, toDelay)).toEqual(new Set(["x->fold"]));
+    // A switched-off split runs no chains, so its solo leaves nothing out.
+    expect(split(false, toDelay)).toEqual(new Set());
+    // A soloed cable that reaches no output is skipped, and solos nothing.
+    expect(split(true, audio("x", "dead", { from: "branch-1" }))).toEqual(
+      new Set()
+    );
+  });
+
   test("isSoloActive counts only soloed sources with a lane, as compile does", () => {
     const soloActive = (nodes: NodeInput[]) =>
       isSoloActive(graph(nodes, []).nodes);
@@ -1455,6 +1508,65 @@ describe("compile: Splits whose branches go different places", () => {
       "split:split>unit:verb",
       "unit:verb>sink:speakers",
     ]);
+  });
+
+  test("an open Split's solo names the cables it leaves out, and its dry signal the cables it rides beside", () => {
+    const mixOf = (split: Partial<EffectConfig>, edges: EdgeInput[]) => {
+      const { dry, soloedOut } = build(
+        [
+          station("a"),
+          fx("split", "fxComposite", { dryWet: 1, enabled: true, ...split }),
+          node("desk", "deviceOut", { deviceId: "usb" }),
+          node("cue", "deviceOut", { deviceId: "cue" }),
+          speakers,
+        ],
+        [audio("a", "split"), ...edges]
+      );
+      return { dry: dry.cables, left: soloedOut.branches };
+    };
+    const soloed = {
+      ...audio("split", "speakers", { from: "branch-1" }),
+      solo: true,
+    };
+    const ports = [soloed, audio("split", "desk", { from: "branch-2" })];
+    expect(mixOf({}, ports)).toEqual({
+      dry: new Set(),
+      left: new Set(["split->desk"]),
+    });
+    // Its dry signal still reaches every port, beside the wet it leaves out.
+    const everyPort = new Set(["split->speakers", "split->desk"]);
+    expect(mixOf({ dryWet: 0.5 }, ports)).toEqual({
+      dry: everyPort,
+      left: new Set(["split->desk"]),
+    });
+    expect(mixOf({ enabled: false }, ports).dry).toEqual(everyPort);
+    // A soloed cable leaves its port's other cables out.
+    expect(
+      mixOf({}, [soloed, audio("split", "cue", { from: "branch-1" })]).left
+    ).toEqual(new Set(["split->cue"]));
+  });
+
+  test("a closed Split's dry signal plays past its branches to where they meet", () => {
+    const meetings = (split: Partial<EffectConfig>) =>
+      build(
+        [
+          station("a"),
+          fx("split", "fxComposite", { dryWet: 1, enabled: true, ...split }),
+          fx("verb", "cheapReverb", { enabled: true }),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "verb", { from: "branch-1" }),
+          audio("split", "merge", { from: "branch-2" }),
+          audio("verb", "merge"),
+          audio("merge", "speakers"),
+        ]
+      ).dry.meetings;
+    expect(meetings({})).toEqual(new Map());
+    expect(meetings({ dryWet: 0.5 })).toEqual(new Map([["split", "merge"]]));
+    expect(meetings({ enabled: false })).toEqual(new Map([["split", "merge"]]));
   });
 
   test("keys from different ports of a Split stay apart", () => {

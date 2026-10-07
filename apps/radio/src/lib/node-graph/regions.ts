@@ -450,6 +450,8 @@ export class RegionLowerer {
   readonly trims: TrimPlacement[] = [];
   /** Branch cables a closed Split's solo leaves out. */
   readonly soloedOut = new Set<string>();
+  /** Each closed Split, to the node its branches meet at. */
+  readonly meetings = new Map<string, string>();
   private readonly byId: ReadonlyMap<string, GraphNode>;
   private readonly sinks: ReadonlySet<string>;
   private readonly patchIds: Set<string>;
@@ -1198,6 +1200,7 @@ class SegmentLowerer {
         },
       ];
     });
+    this.regions.meetings.set(split, meeting);
     const { sidechain: _, ...container } = base;
     return {
       ...container,

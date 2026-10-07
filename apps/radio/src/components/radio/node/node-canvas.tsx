@@ -547,8 +547,8 @@ function Canvas({
     idleKeys: idleKeys(graph, plan, badges),
     insertTarget: insertTarget?.edge ?? null,
     liveLanes,
+    mix: plan,
     selection,
-    soloedOut: plan.soloedOut,
   });
 
   const aimInsert = (target: InsertTarget | null) => {

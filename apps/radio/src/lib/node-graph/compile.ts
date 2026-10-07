@@ -50,6 +50,7 @@ import {
   clampPan,
   dbToGain,
   ENCLOSED_KEY_MESSAGE,
+  effectOf,
   FreshIds,
   LoweringError,
   type NativeFilterPlan,
@@ -277,6 +278,12 @@ export type EnginePlan = {
    * mutes, and the branch cables a split's solo leaves out.
    */
   soloedOut: { sources: Set<string>; branches: Set<string> };
+  /**
+   * Where a Split's dry signal plays, for display: beside the audio cables
+   * out of an open Split's ports, and past a closed Split's branches to the
+   * node they meet at (`meetings`, by Split).
+   */
+  dry: { cables: Set<string>; meetings: Map<string, string> };
 };
 
 /**
@@ -809,6 +816,8 @@ class PlanBuilder {
     branches: new Set<string>(),
     sources: new Set<string>(),
   };
+  /** Audio cables out of an open Split's ports its dry signal rides beside. */
+  readonly dryCables = new Set<string>();
   private readonly cableIds: FreshIds;
 
   constructor(prepared: Prepared) {
@@ -1057,20 +1066,8 @@ class PlanBuilder {
     });
     const on = effect.enabled;
     const mix = on ? effect.dryWet : 0;
-    const controlled = new Set(
-      parameterCables(this.prepared.graph, this.prepared)
-        .filter((cable) => {
-          const source = this.prepared.byId.get(cable.source);
-          return (
-            cable.target === id &&
-            !cable.muted &&
-            cable.depth !== 0 &&
-            isModulationNode(source) &&
-            source.data.enabled
-          );
-        })
-        .map((cable) => cable.parameter ?? "dryWet")
-    );
+    const controlled = this.controlled(id);
+    const dryPlays = playsDry(effect, controlled);
     const scalar = (key: string, value: number): Trim => ({
       factor:
         value || (on && controlled.has(key === "dry" ? "dryWet" : key) ? 1 : 0),
@@ -1096,7 +1093,7 @@ class PlanBuilder {
       const { chain } = port;
       const open = !chain.muted && (!anySolo || soloed(port));
       const dry =
-        (mix < 1 || controlled.has("dryWet")) && carries(port)
+        dryPlays && carries(port)
           ? {
               from,
               trim: multiply(scalar("dry", 1 - mix), {
@@ -1106,10 +1103,9 @@ class PlanBuilder {
               }),
             }
           : undefined;
-      // With no dry signal beside them, the cables its solo leaves out
-      // carry nothing.
-      if (!dry) {
-        this.leaveOutSoloed(port, anySolo && !soloed(port));
+      this.leaveOutSoloed(port, anySolo && !soloed(port));
+      if (dry) {
+        this.rideDry(port);
       }
       this.emitBranch(from, port, {
         cell: multiply(scalar("dryWet", mix), {
@@ -1124,6 +1120,48 @@ class PlanBuilder {
       });
     }
     return endpoint;
+  }
+
+  /**
+   * Notes the audio cables out of an open Split's port its dry signal
+   * rides beside.
+   */
+  private rideDry({ exits }: SplitBranch): void {
+    for (const exit of exits) {
+      if (!exit.key) {
+        for (const id of exit.ids) {
+          this.dryCables.add(id);
+        }
+      }
+    }
+  }
+
+  /** The parameters of `id` an enabled modulator's cable moves. */
+  private controlled(id: string): Set<string> {
+    return new Set(
+      parameterCables(this.prepared.graph, this.prepared)
+        .filter((cable) => {
+          const source = this.prepared.byId.get(cable.source);
+          return (
+            cable.target === id &&
+            !cable.muted &&
+            cable.depth !== 0 &&
+            isModulationNode(source) &&
+            source.data.enabled
+          );
+        })
+        .map((cable) => cable.parameter ?? "dryWet")
+    );
+  }
+
+  /** Each closed Split playing its dry signal, to the node it meets at. */
+  dryMeetings(): Map<string, string> {
+    return new Map(
+      [...this.regions.meetings].filter(([split]) => {
+        const effect = effectOf(this.regions.node(split));
+        return effect !== null && playsDry(effect, this.controlled(split));
+      })
+    );
   }
 
   /**
@@ -1586,6 +1624,7 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
   alignCables(builder);
   return {
     cables: builder.cables,
+    dry: { cables: builder.dryCables, meetings: builder.dryMeetings() },
     gains: finalizeGains(
       [...builder.gains, ...prepared.regions.trims],
       builder
@@ -1608,6 +1647,17 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     },
     units: builder.units,
   };
+}
+
+/**
+ * Whether a Split plays its dry signal: switched off, below a full mix, or
+ * with its mix moving (`controlled`).
+ */
+function playsDry(
+  effect: EffectConfig,
+  controlled: ReadonlySet<string>
+): boolean {
+  return !effect.enabled || effect.dryWet < 1 || controlled.has("dryWet");
 }
 
 /** Resolve provenance against the completed tree; later folds may share a field. */

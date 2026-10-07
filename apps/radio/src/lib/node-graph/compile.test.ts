@@ -1510,9 +1510,9 @@ describe("compile: Splits whose branches go different places", () => {
     ]);
   });
 
-  test("an open Split's solo names the cables it leaves out while no dry reaches them", () => {
-    const left = (split: Partial<EffectConfig>, edges: EdgeInput[]) =>
-      build(
+  test("an open Split's solo names the cables it leaves out, and its dry signal the cables it rides beside", () => {
+    const mixOf = (split: Partial<EffectConfig>, edges: EdgeInput[]) => {
+      const { dry, soloedOut } = build(
         [
           station("a"),
           fx("split", "fxComposite", { dryWet: 1, enabled: true, ...split }),
@@ -1521,20 +1521,52 @@ describe("compile: Splits whose branches go different places", () => {
           speakers,
         ],
         [audio("a", "split"), ...edges]
-      ).soloedOut.branches;
+      );
+      return { dry: dry.cables, left: soloedOut.branches };
+    };
     const soloed = {
       ...audio("split", "speakers", { from: "branch-1" }),
       solo: true,
     };
     const ports = [soloed, audio("split", "desk", { from: "branch-2" })];
-    expect(left({}, ports)).toEqual(new Set(["split->desk"]));
-    // Its dry signal still reaches every port, so nothing goes quiet.
-    expect(left({ dryWet: 0.5 }, ports)).toEqual(new Set());
-    expect(left({ enabled: false }, ports)).toEqual(new Set());
+    expect(mixOf({}, ports)).toEqual({
+      dry: new Set(),
+      left: new Set(["split->desk"]),
+    });
+    // Its dry signal still reaches every port, beside the wet it leaves out.
+    const everyPort = new Set(["split->speakers", "split->desk"]);
+    expect(mixOf({ dryWet: 0.5 }, ports)).toEqual({
+      dry: everyPort,
+      left: new Set(["split->desk"]),
+    });
+    expect(mixOf({ enabled: false }, ports).dry).toEqual(everyPort);
     // A soloed cable leaves its port's other cables out.
     expect(
-      left({}, [soloed, audio("split", "cue", { from: "branch-1" })])
+      mixOf({}, [soloed, audio("split", "cue", { from: "branch-1" })]).left
     ).toEqual(new Set(["split->cue"]));
+  });
+
+  test("a closed Split's dry signal plays past its branches to where they meet", () => {
+    const meetings = (split: Partial<EffectConfig>) =>
+      build(
+        [
+          station("a"),
+          fx("split", "fxComposite", { dryWet: 1, enabled: true, ...split }),
+          fx("verb", "cheapReverb", { enabled: true }),
+          node("merge", "merge"),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "verb", { from: "branch-1" }),
+          audio("split", "merge", { from: "branch-2" }),
+          audio("verb", "merge"),
+          audio("merge", "speakers"),
+        ]
+      ).dry.meetings;
+    expect(meetings({})).toEqual(new Map());
+    expect(meetings({ dryWet: 0.5 })).toEqual(new Map([["split", "merge"]]));
+    expect(meetings({ enabled: false })).toEqual(new Map([["split", "merge"]]));
   });
 
   test("keys from different ports of a Split stay apart", () => {

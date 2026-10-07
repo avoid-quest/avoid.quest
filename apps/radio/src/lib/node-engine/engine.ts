@@ -190,6 +190,7 @@ const PLAY_ALL_CONCURRENCY = 3;
 const NODE_CHANNEL_PREFIX = "n:";
 const EMPTY_PLAN: EnginePlan = {
   cables: new Map(),
+  dry: { cables: new Set(), meetings: new Map() },
   gains: [],
   issues: [],
   lanes: new Map(),

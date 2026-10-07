@@ -505,8 +505,8 @@ describe("flow elements", () => {
     const classes = Object.fromEntries(
       toFlowEdges(graph, {
         liveLanes: new Set(["n:src-kexp", "n:src-nts"]),
+        mix: plan,
         selection,
-        soloedOut: plan.soloedOut,
       }).map((edge) => [edge.id, edge.className])
     );
 
@@ -585,8 +585,8 @@ describe("flow elements", () => {
       toFlowEdges(graph, {
         idleKeys: idle,
         liveLanes: new Set(["n:src-kexp", "n:src-nts"]),
+        mix: plan,
         selection,
-        soloedOut: plan.soloedOut,
       }).map((edge) => [edge.id, edge.className])
     );
 
@@ -651,8 +651,8 @@ describe("flow elements", () => {
       return toFlowEdges(graph, {
         idleKeys: idleKeys(graph, plan),
         liveLanes: new Set(["n:src-kexp", "n:src-nts"]),
+        mix: plan,
         selection,
-        soloedOut: plan.soloedOut,
       }).find((edge) => edge.id === "verb->key")?.className;
     };
 
@@ -734,8 +734,8 @@ describe("flow elements", () => {
       const { "kexp->split": _, ...rest } = Object.fromEntries(
         toFlowEdges(patched, {
           liveLanes: new Set(["n:src-kexp"]),
+          mix: compile(patched, { crossOriginIsolated: false }),
           selection,
-          soloedOut: compile(patched, { crossOriginIsolated: false }).soloedOut,
         })
           .filter((edge) => edge.source !== "src-nts")
           .map((edge) => [edge.id, edge.className])
@@ -794,6 +794,104 @@ describe("flow elements", () => {
       "merge->speakers": "node-edge-live",
       "split->comp": "node-edge-live",
       "split->gate": "node-edge-live",
+    });
+  });
+
+  test("a Split's dry signal keeps glowing past a soloed branch that plays nothing", () => {
+    const wire = (
+      id: string,
+      source: string,
+      target: string,
+      extra: object = {}
+    ) => ({
+      id,
+      source,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: "in:audio:main",
+      ...extra,
+    });
+    const split = createNodeEffectConfig("fxComposite", "split");
+    const classes = (dryWet: number, into: "merge" | "desk") => {
+      const graph: NodeGraph = nodeGraphSchema.parse({
+        ...patch,
+        edges: [
+          wire("kexp->split", "src-kexp", "split"),
+          // The soloed branch is muted, so only the dry signal plays.
+          wire("split->comp", "split", "comp", {
+            muted: true,
+            solo: true,
+            sourceHandle: "out:audio:branch-1",
+          }),
+          wire("split->gate", "split", "gate", {
+            sourceHandle: "out:audio:branch-2",
+          }),
+          wire("comp->merge", "comp", "merge"),
+          wire(`gate->${into}`, "gate", into),
+          wire("merge->speakers", "merge", "speakers"),
+        ],
+        nodes: [
+          ...patch.nodes,
+          {
+            data: { effect: { ...split, dryWet, enabled: true } },
+            id: "split",
+            position: { x: 240, y: 0 },
+            type: "fxComposite",
+          },
+          {
+            data: { effect: createNodeEffectConfig("compressor", "comp") },
+            id: "comp",
+            position: { x: 480, y: 0 },
+            type: "compressor",
+          },
+          {
+            data: { effect: createNodeEffectConfig("gate", "gate") },
+            id: "gate",
+            position: { x: 480, y: 200 },
+            type: "gate",
+          },
+          { data: {}, id: "merge", position: { x: 720, y: 0 }, type: "merge" },
+          {
+            data: { deviceId: "usb" },
+            id: "desk",
+            position: { x: 720, y: 200 },
+            type: "deviceOut",
+          },
+        ],
+      });
+      return Object.fromEntries(
+        toFlowEdges(graph, {
+          liveLanes: new Set(["n:src-kexp"]),
+          mix: compile(graph, { crossOriginIsolated: false }),
+          selection,
+        })
+          .filter((edge) => edge.source !== "src-nts")
+          .map((edge) => [edge.id, edge.className])
+      );
+    };
+
+    // Closed: the dry signal skips the branches and joins at the Merge.
+    expect(classes(0.5, "merge")).toEqual({
+      "comp->merge": undefined,
+      "gate->merge": undefined,
+      "kexp->split": "node-edge-live",
+      "merge->speakers": "node-edge-live",
+      "split->comp": undefined,
+      "split->gate": undefined,
+    });
+    expect(classes(1, "merge")["merge->speakers"]).toBeUndefined();
+    // Open: the dry signal rides beside each port's cables to their ends.
+    expect(classes(0.5, "desk")).toEqual({
+      "comp->merge": "node-edge-live",
+      "gate->desk": "node-edge-live",
+      "kexp->split": "node-edge-live",
+      "merge->speakers": "node-edge-live",
+      "split->comp": "node-edge-live",
+      "split->gate": "node-edge-live",
+    });
+    expect(classes(1, "desk")).toMatchObject({
+      "gate->desk": undefined,
+      "merge->speakers": undefined,
     });
   });
 

@@ -328,21 +328,29 @@ export function toFlowNodes(
   );
 }
 
-/** Nothing a solo silences: a patch with no plan yet. */
-const NO_SOLO: SoloedOut = { branches: new Set(), sources: new Set() };
+/** What a solo silences and where a Split's dry signal plays. */
+type Mix = Pick<EnginePlan, "dry" | "soloedOut">;
 
-type SoloedOut = EnginePlan["soloedOut"];
+/** A patch with no plan yet: no solo, no dry signal. */
+const NO_MIX: Mix = {
+  dry: { cables: new Set(), meetings: new Map() },
+  soloedOut: { branches: new Set(), sources: new Set() },
+};
 
 /**
  * A cable that plays nothing: muted, or turned all the way down, itself
  * or, out of a split, the chain under it, as the compiler multiplies them;
- * or a branch the split's solo leaves out.
+ * or a branch the split's solo leaves out. An open Split's dry signal
+ * plays beside its cable all the same.
  */
 function isSilent(
   edge: GraphEdge,
   source: GraphNode | undefined,
-  soloedOut: SoloedOut
+  { dry, soloedOut }: Mix
 ): boolean {
+  if (dry.cables.has(edge.id)) {
+    return false;
+  }
   if (edge.muted || edge.gain === 0 || soloedOut.branches.has(edge.id)) {
     return true;
   }
@@ -356,12 +364,13 @@ function isSilent(
 /**
  * Nodes carrying a playing source's audio on air: each live Station, Track,
  * File or Audio input no other source's solo mutes, and every node its
- * audible audio cables reach through FX, up to the outputs.
+ * audible audio cables reach through FX, up to the outputs, or a closed
+ * Split's dry signal reaches past its branches.
  */
 export function liveNodeIds(
   graph: Pick<NodeGraph, "nodes" | "edges">,
   liveLanes: ReadonlySet<string>,
-  soloedOut: SoloedOut = NO_SOLO
+  mix: Mix = NO_MIX
 ): Set<string> {
   const live = new Set<string>();
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -370,7 +379,7 @@ export function liveNodeIds(
       (node) =>
         (isRadioSourceNode(node) || node.type === "deviceIn") &&
         liveLanes.has(laneChannelId(node.id)) &&
-        !soloedOut.sources.has(node.id)
+        !mix.soloedOut.sources.has(node.id)
     )
     .map((node) => node.id);
   for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
@@ -378,10 +387,14 @@ export function liveNodeIds(
       continue;
     }
     live.add(id);
+    const meeting = mix.dry.meetings.get(id);
+    if (meeting !== undefined) {
+      queue.push(meeting);
+    }
     for (const edge of graph.edges) {
       if (
         edge.source === id &&
-        !isSilent(edge, byId.get(id), soloedOut) &&
+        !isSilent(edge, byId.get(id), mix) &&
         parseHandleId(edge.sourceHandle)?.kind === "audio" &&
         parseHandleId(edge.targetHandle)?.kind === "audio"
       ) {
@@ -460,7 +473,7 @@ export function toFlowEdges(
     selection,
     liveLanes,
     idleKeys = new Map(),
-    soloedOut = NO_SOLO,
+    mix = NO_MIX,
     insertTarget = null,
   }: {
     selection: NodeSelection;
@@ -468,8 +481,8 @@ export function toFlowEdges(
     liveLanes: ReadonlySet<string>;
     /** Key cables that key nothing, with why (`idleKeys` in compile). */
     idleKeys?: ReadonlyMap<string, string>;
-    /** What a solo silences (`soloedOut` in the compiled plan). */
-    soloedOut?: SoloedOut;
+    /** What a solo silences and where dry signal plays (the compiled plan). */
+    mix?: Mix;
     /** The cable a dragged node would go into if let go now. */
     insertTarget?: string | null;
   }
@@ -477,7 +490,7 @@ export function toFlowEdges(
   const drawn = new Map(
     graph.nodes.filter(isDrawn).map((node) => [node.id, node])
   );
-  const live = liveNodeIds(graph, liveLanes, soloedOut);
+  const live = liveNodeIds(graph, liveLanes, mix);
   return graph.edges
     .filter((edge) => drawn.has(edge.source) && drawn.has(edge.target))
     .map((edge) => {
@@ -489,7 +502,7 @@ export function toFlowEdges(
         className:
           live.has(edge.source) &&
           kind === "audio" &&
-          !isSilent(edge, drawn.get(edge.source), soloedOut)
+          !isSilent(edge, drawn.get(edge.source), mix)
             ? "node-edge-live"
             : undefined,
         ...(kind === "sidechain"

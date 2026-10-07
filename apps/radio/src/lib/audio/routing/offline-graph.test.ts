@@ -15,4 +15,22 @@ describe("OfflineGraph", () => {
       expect(outRight?.every((x) => x === 0)).toBe(true);
     }
   });
+
+  test("a channel index the nodes lack throws, as Web Audio's unsigned longs do", () => {
+    const graph = new OfflineGraph();
+    const splitter = graph.createChannelSplitter(2);
+    const merger = graph.createChannelMerger(2);
+    for (const [output, input] of [
+      [-1, 0],
+      [0, -1],
+      [2, 0],
+      [0, 2],
+    ] as const) {
+      expect(() => splitter.connect(merger, output, input)).toThrow(
+        "Channel index out of range"
+      );
+    }
+    // A fraction truncates.
+    expect(() => splitter.connect(merger, 1.5, 1.5)).not.toThrow();
+  });
 });

@@ -193,6 +193,13 @@ function play(
       const node = outputs.get(sinkId);
       return node ? graph.render(node, FRAMES) : [silence, silence];
     },
+    /** What leaves `node`, `progress` of the way through the fades under way. */
+    sending: (node: OfflineNode, progress = 1) => {
+      graph.progress = progress;
+      const signal = graph.render(node, FRAMES);
+      graph.progress = 1;
+      return signal;
+    },
     sent: (sinkId: string) => sent.get(sinkId) ?? [],
     sum: () => {
       const all = graph.createGain();
@@ -382,10 +389,32 @@ describe("Splits whose branches go different places", () => {
     const stereo = split("stereoSplit", { dryWet: 1 }, flat);
     const played = play(split("fxComposite", { dryWet: 1 }, flat), fourWays);
 
+    const sends = [...played.sent("speakers"), ...played.sent("desk")];
+    const before = new Map(sends.map((send) => [send, played.sending(send)]));
+
     // Same node, now with two ports: branches 3 and 4 fade out first, in
-    // the layout they had.
+    // the layout they had. Half way (the offline graph takes the approach
+    // as linear), they still play, at half their level.
     expect(() => played.apply(sides, stereo)).not.toThrow();
+    const fading = sends.filter((send) => send.gain.value === 0);
+    expect(fading).toHaveLength(2);
+    for (const send of fading) {
+      const level = before.get(send) ?? SILENCE;
+      expect(
+        residualDb(
+          played.sending(send, 0.5),
+          level.map((channel) => channel.map((x) => x / 2)),
+          TAIL
+        )
+      ).toBeLessThan(-90);
+      expect(residualDb(level, SILENCE, TAIL)).toBeGreaterThan(-40);
+    }
+
+    // Once they faded out, they are silent, and the two sides play.
     await played.endFades();
+    for (const send of fading) {
+      expect(residualDb(played.sending(send), SILENCE, TAIL)).toBeLessThan(-90);
+    }
     const two = play(stereo, sides);
     for (const sink of ["speakers", "desk"]) {
       expect(

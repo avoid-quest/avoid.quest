@@ -5,16 +5,16 @@
  * AudioContext to build a graph of gains, IIR filters, channel splitters
  * and mergers and delays, then render a stereo buffer through it, sample
  * exact. Params hold their last scheduled value, so it renders the steady
- * state a graph ramps to, or, for gains, a point along their last linear
- * ramp (`progress`). Channel counts follow Web Audio's speaker rules
- * where these nodes meet: a mono input to a stereo node plays on both
- * sides, a merger input takes the mono down-mix.
+ * state a graph ramps to, or, for gains, a point along their last ramp or
+ * approach, taken as linear (`progress`). Channel counts follow Web
+ * Audio's speaker rules where these nodes meet: a mono input to a stereo
+ * node plays on both sides, a merger input takes the mono down-mix.
  */
 
 type Signal = Float32Array[];
 
 class OfflineParam {
-  /** Where its last linear ramp started; its value when it has none. */
+  /** Where its last ramp or approach started; its value when it has none. */
   from: number;
   private target: number;
 
@@ -32,13 +32,13 @@ class OfflineParam {
     this.from = value;
   }
 
-  /** Its value `progress` of the way along its last linear ramp. */
+  /** Its value `progress` of the way along its last ramp or approach. */
   at(progress: number): number {
     return this.from + (this.target - this.from) * progress;
   }
 
   setTargetAtTime(value: number): void {
-    this.value = value;
+    this.linearRampToValueAtTime(value);
   }
 
   setValueAtTime(value: number): void {
@@ -83,11 +83,18 @@ export class OfflineNode {
   }
 
   connect(to: OfflineNode, output = 0, input = 0): OfflineNode {
-    // As Web Audio does, an index past the nodes' ones throws.
-    if (output >= this.numberOfOutputs || input >= to.numberOfInputs) {
+    // As Web Audio reads them, indices truncate to unsigned longs: a
+    // negative one, or one past the nodes' ones, throws.
+    const link = { input: Math.trunc(input), output: Math.trunc(output), to };
+    if (
+      link.output < 0 ||
+      link.output >= this.numberOfOutputs ||
+      link.input < 0 ||
+      link.input >= to.numberOfInputs
+    ) {
       throw new DOMException("Channel index out of range", "IndexSizeError");
     }
-    this.links.push({ input, output, to });
+    this.links.push(link);
     return to;
   }
 

@@ -283,6 +283,7 @@ describe("compile: the migrated Multiple layout", () => {
     });
     expect(plan.cables.get("a->speakers")).toEqual({
       delay: 0,
+      edges: ["a->speakers"],
       from: { id: "a", kind: "lane" },
       gain: 1,
       id: "a->speakers",
@@ -1761,7 +1762,34 @@ describe("compile: series-parallel regions", () => {
     // One cable carries the closed region into Speakers.
     expect(plan.cables.get("a->verb+verb->speakers") ?? null).toBeNull();
     expect([...plan.cables.keys()]).toEqual(["a->speakers+verb->speakers"]);
+    expect(plan.cables.get("a->speakers+verb->speakers")?.edges).toEqual([
+      "a->speakers",
+      "verb->speakers",
+    ]);
     expect(routes(plan)).toEqual(["lane:a>sink:speakers"]);
+  });
+
+  test("a cable carrying a closed region never takes a patch cable's id", () => {
+    // The second station's cable has the id the region's cable would.
+    const plan = build(
+      [station("a"), station("b"), fx("verb", "cheapReverb"), speakers],
+      [
+        audio("a", "verb"),
+        audio("a", "speakers"),
+        audio("verb", "speakers"),
+        audio("b", "speakers", { id: "a->speakers+verb->speakers" }),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(routes(plan)).toEqual([
+      "lane:a>sink:speakers",
+      "lane:b>sink:speakers",
+    ]);
+    const edges = [...plan.cables.values()].map((cable) => cable.edges);
+    expect(edges).toContainEqual(["a->speakers", "verb->speakers"]);
+    expect(plan.cables.get("a->speakers+verb->speakers")?.edges).toEqual([
+      "a->speakers+verb->speakers",
+    ]);
   });
 
   test("branches that leave without a Merge reach outputs independently", () => {

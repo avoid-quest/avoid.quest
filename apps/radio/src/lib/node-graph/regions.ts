@@ -189,12 +189,14 @@ export class LoweringError extends Error {
 }
 
 /**
- * Ids for one tree. An effect is keyed by id in the engine, and a chain
- * within its tree, so the ids the compiler makes up for an implicit fan-out
- * and its branches never take one the patch uses (a node, or a Split's
- * chain), and a chain id two containers share is used once.
+ * Ids the compiler makes up, which never take one the patch uses, while
+ * each patch id is used once. A tree's: an effect is keyed by id in the
+ * engine, and a chain within its tree, so an implicit fan-out and its
+ * branches never take a node's or a Split chain's id, and a chain id two
+ * containers share is used once. A plan's cables': one carrying several
+ * patch cables never takes a patch cable's id.
  */
-class TreeIds {
+export class FreshIds {
   private readonly taken: Set<string>;
   private readonly used = new Set<string>();
 
@@ -645,7 +647,7 @@ export class RegionLowerer {
    * strip natives are taken only from a source's own segment.
    */
   lowerSegment(head: string): Segment {
-    const segment = new SegmentLowerer(this, new TreeIds(this.patchIds));
+    const segment = new SegmentLowerer(this, new FreshIds(this.patchIds));
     const series = segment.lowerSeries(head, UNITY, null, 0);
     return {
       effects: series.effects,
@@ -672,9 +674,9 @@ class SegmentLowerer {
   pan = 0;
   filter: NativeFilterPlan | null = null;
   private readonly regions: RegionLowerer;
-  private readonly ids: TreeIds;
+  private readonly ids: FreshIds;
 
-  constructor(regions: RegionLowerer, ids: TreeIds) {
+  constructor(regions: RegionLowerer, ids: FreshIds) {
     this.regions = regions;
     this.ids = ids;
   }

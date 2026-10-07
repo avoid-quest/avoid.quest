@@ -42,6 +42,7 @@ import { laneChannelId, laneSoundId } from "./identifiers";
 import {
   clampPan,
   dbToGain,
+  FreshIds,
   LoweringError,
   type NativeFilterPlan,
   OPEN_SPLIT_MESSAGE,
@@ -164,10 +165,15 @@ export function endpointKey({ kind, id }: Endpoint): string {
 /** One connection between two endpoints: one GainNode in the engine. */
 export type CablePlan = {
   /**
-   * The cable id: the patch cable it ends with, or several joined by `+`
-   * where a region's branches sum straight into a point.
+   * Unique among the plan's cables: the id of the patch cable it carries,
+   * or a fresh one no patch cable has when it carries several.
    */
   id: string;
+  /**
+   * The patch cables it carries: one, or several where a region's
+   * branches sum straight into a point.
+   */
+  edges: string[];
   from: Endpoint;
   to: Endpoint;
   /** Linear, with the strip trim, Gains and cable trims folded in. */
@@ -675,10 +681,14 @@ class PlanBuilder {
   private readonly endpoints = new Map<string, Endpoint>();
   private readonly prepared: Prepared;
   private readonly keys: ReadonlyMap<string, string>;
+  private readonly cableIds: FreshIds;
 
   constructor(prepared: Prepared) {
     this.prepared = prepared;
     this.keys = planKeys(prepared);
+    this.cableIds = new FreshIds(
+      new Set(prepared.graph.edges.map((edge) => edge.id))
+    );
   }
 
   private get regions(): RegionLowerer {
@@ -771,9 +781,13 @@ class PlanBuilder {
     to: Endpoint,
     { gain, muted }: Trim
   ): void {
-    const id = ids.join("+");
+    const id =
+      ids.length === 1 && ids[0] !== undefined
+        ? this.cableIds.claim(ids[0])
+        : this.cableIds.fresh(ids.join("+"));
     this.cables.set(id, {
       delay: 0,
+      edges: [...ids],
       from,
       gain,
       id,

@@ -54,6 +54,8 @@ type SoundEffectsState = {
   officialConnected: boolean;
   officialConnectingGeneration: number | null;
   outcome: EffectsRuntimeOutcome;
+  /** The backend its router last switched to: what plays. */
+  selected: EffectsBackend | null;
   sidechain: SidechainConnection | null;
   tempo: number;
 };
@@ -82,6 +84,7 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnected: false,
   officialConnectingGeneration: null,
   outcome: { backend: null, ready: false, status: "inactive" },
+  selected: null,
   sidechain: null,
   tempo: 120,
 });
@@ -467,11 +470,8 @@ class EffectsController {
     if (!this.shouldProcess(state)) {
       return { backend: "bypass", ready: true, status: "ready" };
     }
-    if (state.officialConnected) {
-      return { backend: "official", ready: true, status: "ready" };
-    }
-    if (state.compatibilitySourceCreated) {
-      return { backend: "compatibility", ready: true, status: "ready" };
+    if (state.selected === "official" || state.selected === "compatibility") {
+      return { backend: state.selected, ready: true, status: "ready" };
     }
     return {
       backend: null,
@@ -1172,6 +1172,7 @@ class EffectsController {
       return;
     }
 
+    state.selected = backend;
     graph.switchTo(backend, () => {
       if (state.graph !== graph || state.generation !== generation) {
         return;

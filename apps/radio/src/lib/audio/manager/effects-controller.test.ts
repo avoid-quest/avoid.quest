@@ -358,6 +358,56 @@ describe("EffectsController", () => {
     controller.releaseKey("node-key:comp");
   });
 
+  test("an insert a key sends to its fallback reports the fallback", async () => {
+    const context = new TestAudioContext();
+    // Backend switches settle later, as a real ramp's end does.
+    context.createConstantSource = () => {
+      const source = new TestConstantSourceNode(context);
+      source.stop = () => undefined;
+      return source as unknown as ConstantSourceNode;
+    };
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => createManager(context),
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const outcomes: EffectsRuntimeOutcome[] = [];
+    controller.subscribeRuntimeOutcome("unit", (outcome) => {
+      outcomes.push(outcome);
+    });
+    await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([
+        {
+          ...createDefaultEffectConfig("compressor", "comp", 0),
+          enabled: true,
+          sidechain: { channelId: "node-key:comp" },
+        },
+      ])
+    );
+    expect(controller.getRuntimeOutcome("unit").backend).toBe("official");
+
+    // The key can't get its channels, so the insert falls back.
+    runtime.connectSidechainSource.mockImplementation(() =>
+      Promise.reject(new Error("No channels left"))
+    );
+    controller.connectKey(
+      "node-key:comp",
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(outcomes.at(-1)).toMatchObject({
+      backend: "compatibility",
+      status: "ready",
+    });
+  });
+
   test("a keyed effect on a muted branch takes no key channels", async () => {
     const context = new TestAudioContext();
     const runtime = createRuntime();

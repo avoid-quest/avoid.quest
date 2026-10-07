@@ -3,7 +3,7 @@ import { Mixing, StereoMatrix } from "@opendaw/lib-dsp";
 import type { EffectChainConfig } from "@/lib/audio/dsp/effects/types";
 import {
   OfflineGraph,
-  type OfflineNode,
+  OfflineNode,
   residualDb,
   testProgram,
 } from "@/lib/audio/routing/offline-graph";
@@ -64,6 +64,14 @@ function nodes(splitNode: NodeInput): NodeInput[] {
       position,
       type: "compressor",
     } as NodeInput,
+    {
+      data: {
+        effect: { ...createNodeEffectConfig("gate", "gate"), enabled: true },
+      },
+      id: "gate",
+      position,
+      type: "gate",
+    } as NodeInput,
     { data: { deviceId: "usb" }, id: "desk", position, type: "deviceOut" },
     { data: {}, id: "speakers", position, type: "speakers" },
   ] as NodeInput[];
@@ -71,15 +79,20 @@ function nodes(splitNode: NodeInput): NodeInput[] {
 
 /**
  * Plays station a through `split` into the patch, a's lane sends included,
- * and renders what each output takes. Every unit's FX is a straight wire,
- * so what reaches an output is the split's port as the unit hears it.
+ * and renders what each output takes. Every unit's FX is `fx` sample by
+ * sample, a straight wire unless a test says, so what reaches an output is
+ * the split's port as the unit hears it.
  */
-function play(splitNode: NodeInput, edges: EdgeInput[]) {
-  const compiled = (cables: EdgeInput[]) =>
+function play(
+  splitNode: NodeInput,
+  edges: EdgeInput[],
+  fx: (sample: number) => number = (sample) => sample
+) {
+  const compiled = (cables: EdgeInput[], node = splitNode) =>
     compile(
       nodeGraphSchema.parse({
         edges: cables,
-        nodes: nodes(splitNode),
+        nodes: nodes(node),
         version: 2,
       }),
       { crossOriginIsolated: true }
@@ -92,14 +105,20 @@ function play(splitNode: NodeInput, edges: EdgeInput[]) {
   const [left, right] = testProgram(FRAMES);
   const source = graph.createSource(left, right);
   const outputs = new Map<string, OfflineNode>();
+  const keys = new Map<string, OfflineNode>();
+  const fades: (() => void)[] = [];
   const routing = new RoutingGraph({
     attachEffects: (_id, input, output) => {
-      (input as unknown as OfflineNode).connect(
-        output as unknown as OfflineNode
-      );
+      const effect = new OfflineNode(graph, ([signal = []]) => [
+        signal.map((channel) => channel.map(fx)),
+      ]);
+      (input as unknown as OfflineNode).connect(effect);
+      effect.connect(output as unknown as OfflineNode);
       return Promise.resolve(ready);
     },
-    connectKey: () => undefined,
+    connectKey: (id, input) => {
+      keys.set(id, input as unknown as OfflineNode);
+    },
     detachEffects: () => undefined,
     onFailure: (error) => {
       throw error;
@@ -131,7 +150,11 @@ function play(splitNode: NodeInput, edges: EdgeInput[]) {
     sendOverlay: () => undefined,
     setEffectFields: () => "applied",
     subscribeOutcome: () => () => undefined,
-    wait: () => new Promise<void>(() => undefined),
+    wait: () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      fades.push(() => resolve());
+      return promise;
+    },
   });
   routing.apply(plan);
   for (const lane of plan.cables.values()) {
@@ -144,9 +167,28 @@ function play(splitNode: NodeInput, edges: EdgeInput[]) {
   }
   const silence = new Float32Array(FRAMES);
   return {
-    /** Takes the patch with these cables; fades out never end. */
-    apply: (cables: EdgeInput[]) => routing.apply(compiled(cables)),
+    /** Takes the patch with these cables; fades end with `endFades`. */
+    apply: (cables: EdgeInput[], node?: NodeInput) =>
+      routing.apply(compiled(cables, node)),
+    /** Ends every fade under way, and what waits on it. */
+    endFades: async () => {
+      for (const end of fades.splice(0)) {
+        end();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
     input: [left, right],
+    key: (effectId: string) => {
+      const effect = [...plan.units.values()]
+        .flatMap((unit) => unit.effects)
+        .find((config) => config.id === effectId);
+      const key = effect?.sidechain?.channelId;
+      const input = key ? keys.get(key) : undefined;
+      if (!input) {
+        throw new Error(`No key for ${effectId}`);
+      }
+      return graph.render(input, FRAMES);
+    },
     output: (sinkId: string) => {
       const node = outputs.get(sinkId);
       return node ? graph.render(node, FRAMES) : [silence, silence];
@@ -251,34 +293,78 @@ describe("Splits whose branches go different places", () => {
     ).toBeLessThan(-90);
   });
 
-  test("an uncabled port keeps feeding its cable until that cable faded out", () => {
+  /** Station a into a Band Split at three bands; bands 2 and 3 to the desk. */
+  const threeBands = (crossoverFrequencies = [300, 3000], count = 3) => {
     const bands = split(
       "frequencySplit",
-      { crossoverFrequencies: [300, 3000] },
+      { crossoverFrequencies },
       (chain) => ({ ...chain, gain: 1, pan: 0 })
     );
     const { effect } = bands.data as { effect: { chains: unknown[] } };
-    effect.chains = effect.chains.slice(0, 3);
-    const cables = [
-      cable("a", "split"),
-      cable("split", "fx", { from: "band-1" }),
-      cable("fx", "speakers"),
-      cable("split", "desk", { from: "band-2" }),
-      { ...cable("split", "desk", { from: "band-3" }), id: "high" },
-    ];
-    const played = play(bands, cables);
+    effect.chains = effect.chains.slice(0, count);
+    return bands;
+  };
+  const bandCables = [
+    cable("a", "split"),
+    cable("split", "fx", { from: "band-1" }),
+    cable("fx", "speakers"),
+    cable("split", "desk", { from: "band-2" }),
+    { ...cable("split", "desk", { from: "band-3" }), id: "high" },
+  ];
+
+  test("an uncabled port keeps feeding its cable until that cable faded out, then goes", async () => {
+    const played = play(threeBands(), bandCables);
     const before = played.output("desk");
 
     // Band 2's cable goes; band 3 still goes its own way, so the Split
     // stays open. Held where it was, band 2's fading cable still plays.
-    played.apply(cables.filter((edge) => edge.id !== "split->desk"));
-    for (const send of played.sent("desk")) {
+    const kept = bandCables.filter((edge) => edge.id !== "split->desk");
+    played.apply(kept);
+    const fading = played.sent("desk");
+    for (const send of fading) {
       send.gain.value = 1;
     }
-
     expect(residualDb(played.output("desk"), before, TAIL)).toBeLessThan(-90);
+
+    // Once it faded out, band 2 is let go: the desk hears band 3 alone.
+    await played.endFades();
+    const alone = play(threeBands(), kept);
+    expect(
+      residualDb(played.output("desk"), alone.output("desk"), TAIL)
+    ).toBeLessThan(-90);
   });
 
+  test("a band a smaller Band Split drops keeps feeding its cable until it faded out", async () => {
+    const cables = [
+      ...bandCables.filter((edge) => edge.id !== "high"),
+      { ...cable("split", "speakers", { from: "band-3" }), id: "high" },
+    ];
+    const played = play(threeBands(), cables);
+    const before = played.output("speakers");
+
+    // Two bands now: band 3 and its cable go.
+    played.apply(
+      cables.filter((edge) => edge.id !== "high"),
+      threeBands([300], 2)
+    );
+    for (const send of played.sent("speakers")) {
+      send.gain.value = 1;
+    }
+    // The fading cable still hears band 3, in the layout it had.
+    expect(residualDb(played.output("speakers"), before, TAIL)).toBeLessThan(
+      -90
+    );
+    await played.endFades();
+    const smaller = play(
+      threeBands([300], 2),
+      cables.filter((edge) => edge.id !== "high")
+    );
+    for (const sink of ["speakers", "desk"]) {
+      expect(
+        residualDb(played.output(sink), smaller.output(sink), TAIL)
+      ).toBeLessThan(-90);
+    }
+  });
   test("a muted branch, and one a solo leaves out, go silent with FX or not", () => {
     const muted = play(
       split("fxComposite", { dryWet: 1 }, (chain, index) => ({
@@ -305,6 +391,184 @@ describe("Splits whose branches go different places", () => {
     expect(
       residualDb(soloed.output("desk"), branch(soloed.input, 1, 0.5), TAIL)
     ).toBeLessThan(-90);
+  });
+
+  test("a configured solo and a cable's solo both play; the rest go silent", () => {
+    const played = play(
+      split("fxComposite", { dryWet: 1 }, (chain, index) => ({
+        ...shaped(chain, index),
+        solo: index === 0,
+      })),
+      [
+        ...twoWays({ desk: { solo: true } }),
+        { ...cable("split", "speakers", { from: "branch-3" }), id: "third" },
+      ]
+    );
+    // Branch 1 through the FX, soloed in the Split; branch 2 by its cable.
+    expect(
+      residualDb(
+        played.output("speakers"),
+        branch(played.input, 0.5, -0.5),
+        TAIL
+      )
+    ).toBeLessThan(-90);
+    expect(
+      residualDb(played.output("desk"), branch(played.input, 1, 0.5), TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("a branch's gain and pan act after its FX, its cable's before them", () => {
+    // A level-dependent effect: it clips at 0.2.
+    const clip = (sample: number) => Math.max(-0.2, Math.min(0.2, sample));
+    const played = play(
+      split("fxComposite", { dryWet: 1 }, shaped),
+      twoWays({ fx: { gain: 2, pan: 0.5 } }),
+      clip
+    );
+    const [toLeft, toRight] = StereoMatrix.panningToGains(0.5, Mixing.Linear);
+    const into = played.input.map((channel, side) =>
+      channel.map((x) => clip(2 * x * (side === 0 ? toLeft : toRight)))
+    );
+    expect(
+      residualDb(played.output("speakers"), branch(into, 0.5, -0.5), TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("signal trim reaches both paths, wet input trim precedes FX, and dry bypasses them", () => {
+    const clip = (sample: number) => Math.max(-0.2, Math.min(0.2, sample));
+    const played = play(
+      split(
+        "fxComposite",
+        {
+          dryWet: 0.25,
+          inputGain: 2,
+          outputGain: 3,
+          signalGain: 0.5,
+        },
+        shaped
+      ),
+      twoWays({ fx: { gain: 0.5, pan: 0.5 } }),
+      clip
+    );
+    const into = branch(played.input, 0.5 * 2 * 0.5, 0.5);
+    const wet = branch(
+      into.map((channel) => channel.map(clip)),
+      0.25 * 3 * 0.5,
+      -0.5
+    );
+    const expected = played.input.map((channel, side) =>
+      channel.map(
+        (sample, frame) =>
+          sample * 0.5 * (1 - 0.25) * 0.5 * 3 + (wet[side]?.[frame] ?? 0)
+      )
+    );
+    expect(residualDb(played.output("speakers"), expected, TAIL)).toBeLessThan(
+      -90
+    );
+  });
+
+  test.each([0, 0.5, 1])(
+    "a zero signal trim silences dry and wet at mix %p",
+    (dryWet) => {
+      const played = play(
+        split("fxComposite", { dryWet, signalGain: 0 }, shaped),
+        twoWays()
+      );
+      expect(residualDb(played.sum(), SILENCE, TAIL)).toBeLessThan(-90);
+    }
+  );
+
+  test("muting a branch silences output generated by its FX", () => {
+    const played = play(
+      split("fxComposite", { dryWet: 1 }, (chain, index) => ({
+        ...shaped(chain, index),
+        muted: index === 0,
+      })),
+      twoWays(),
+      (sample) => sample + 0.1
+    );
+    expect(residualDb(played.output("speakers"), SILENCE, TAIL)).toBeLessThan(
+      -90
+    );
+  });
+
+  test("cables on one port keep their own pan and solo", () => {
+    const cables = (solo: boolean) => [
+      cable("a", "split"),
+      cable("split", "speakers", { from: "branch-1", pan: -1 }),
+      cable("split", "desk", { from: "branch-1", pan: 1, solo }),
+    ];
+    const both = play(
+      split("fxComposite", { dryWet: 1 }, shaped),
+      cables(false)
+    );
+    const panned = (pan: number) =>
+      branch(branch(both.input, 1, pan), 0.5, -0.5);
+    expect(residualDb(both.output("speakers"), panned(-1), TAIL)).toBeLessThan(
+      -90
+    );
+    expect(residualDb(both.output("desk"), panned(1), TAIL)).toBeLessThan(-90);
+
+    // The soloed cable leaves its sibling out.
+    const soloed = play(
+      split("fxComposite", { dryWet: 1 }, shaped),
+      cables(true)
+    );
+    expect(residualDb(soloed.output("speakers"), SILENCE, TAIL)).toBeLessThan(
+      -90
+    );
+    expect(residualDb(soloed.output("desk"), panned(1), TAIL)).toBeLessThan(
+      -90
+    );
+  });
+
+  test("a key from a Split port hears its mixed branch controls and its cable level", () => {
+    const played = play(
+      split(
+        "fxComposite",
+        { dryWet: 0.5, inputGain: 0.5, outputGain: 2 },
+        shaped
+      ),
+      [
+        ...twoWays({ desk: { solo: true } }),
+        {
+          ...cable("split", "fx", { from: "branch-2", gain: 0.25 }),
+          id: "key",
+          targetHandle: "in:sidechain:key",
+        },
+      ]
+    );
+    const wet = branch(played.input, 0.5 * 0.5 * 2 * 0.25, 0.5);
+    const expected = played.input.map((channel, side) =>
+      channel.map(
+        (sample, frame) =>
+          sample * 0.5 * 0.5 * 2 * 0.25 + (wet[side]?.[frame] ?? 0)
+      )
+    );
+    expect(residualDb(played.key("fx"), expected, TAIL)).toBeLessThan(-90);
+  });
+
+  test("a key after branch FX hears its exit controls and dry mix", () => {
+    const played = play(split("fxComposite", { dryWet: 0.5 }, shaped), [
+      ...twoWays(),
+      cable("a", "gate"),
+      cable("gate", "desk"),
+      {
+        ...cable("fx", "gate", { gain: 0.25 }),
+        id: "key",
+        targetHandle: "in:sidechain:key",
+      },
+    ]);
+    // A steady signal isolates level and balance from key alignment delay.
+    played.input[0]?.fill(0.4);
+    played.input[1]?.fill(-0.2);
+    const wet = branch(played.input, 0.5 * 0.5 * 0.25, -0.5);
+    const expected = played.input.map((channel, side) =>
+      channel.map(
+        (sample, frame) => sample * 0.5 * 0.5 * 0.25 + (wet[side]?.[frame] ?? 0)
+      )
+    );
+    expect(residualDb(played.key("gate"), expected, TAIL)).toBeLessThan(-90);
   });
 
   test.each([0, 0.5, 1])(

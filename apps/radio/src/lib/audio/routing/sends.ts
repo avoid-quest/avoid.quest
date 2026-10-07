@@ -2,12 +2,13 @@
  * Sends
  *
  * The cables out of one sender, a lane's `laneOut` or a routing point's
- * output: one GainNode per cable, then a DelayNode when the cable has to
- * wait for a slower path to the same place, or goes back into openDAW (a
- * loop through the worklet wants one, at no added delay), then wherever
- * `connect` puts it:
+ * output: one GainNode per cable, then its balance when it has one (a
+ * Split's branch: a gain per side, openDAW's linear balance), then a
+ * DelayNode when the cable has to wait for a slower path to the same
+ * place, or goes back into openDAW (a loop through the worklet wants one,
+ * at no added delay), then wherever `connect` puts it:
  *
- *   sender → gain(cable) → [delay] → connect(to)
+ *   sender → gain(cable) → [balance] → [delay] → connect(to)
  *
  * Every cable starts silent and ramps to its level. A cable that goes, or
  * moves to a new destination, delay or timing, fades out and is let go once
@@ -79,6 +80,8 @@ export type SendPlan = {
   reenters: boolean;
   /** Its sender hears only live inputs: an output skips the main delay. */
   realtime: boolean;
+  /** Each side's gain, for a cable with a balance. */
+  balance?: readonly [number, number];
 };
 
 /** A cable out of the sender, live or fading out. */
@@ -94,6 +97,12 @@ type Send = {
   readonly reenters: boolean;
   readonly realtime: boolean;
   readonly gain: GainNode;
+  /** Each side's gain, and the splitter and merger around them. */
+  readonly balance: {
+    left: GainNode;
+    right: GainNode;
+    nodes: AudioNode[];
+  } | null;
   readonly tail: DelayNode | null;
   release: () => void;
   /** Let go already: a fade that ends after `drop` finds it gone. */
@@ -131,7 +140,8 @@ export class Sends {
         plan?.to !== send.to ||
         plan.delay !== send.delay ||
         plan.reenters !== send.reenters ||
-        plan.realtime !== send.realtime
+        plan.realtime !== send.realtime ||
+        (plan.balance === undefined) !== (send.balance === null)
       ) {
         this.fade(id, send);
       }
@@ -144,6 +154,10 @@ export class Sends {
     for (const [id, plan] of plans) {
       const send = this.live.get(id) ?? this.add(id, plan);
       settleGain(send.gain, plan.level);
+      if (send.balance && plan.balance) {
+        settleGain(send.balance.left, plan.balance[0]);
+        settleGain(send.balance.right, plan.balance[1]);
+      }
     }
   }
 
@@ -169,14 +183,31 @@ export class Sends {
     const gain = context.createGain();
     gain.gain.value = 0;
     this.from.connect(gain);
+    let end: AudioNode = gain;
+    let balance: Send["balance"] = null;
+    if (plan.balance) {
+      const sides = context.createChannelSplitter(2);
+      const merger = context.createChannelMerger(2);
+      const left = context.createGain();
+      const right = context.createGain();
+      [left.gain.value, right.gain.value] = plan.balance;
+      gain.connect(sides);
+      sides.connect(left, 0);
+      sides.connect(right, 1);
+      left.connect(merger, 0, 0);
+      right.connect(merger, 0, 1);
+      balance = { left, nodes: [sides, left, right, merger], right };
+      end = merger;
+    }
     let tail: DelayNode | null = null;
     if (plan.delay > 0 || plan.reenters) {
       const quantum = RENDER_QUANTUM_FRAMES / context.sampleRate;
       tail = context.createDelay(Math.max(1, plan.delay) * quantum);
       tail.delayTime.value = plan.delay * quantum;
-      gain.connect(tail);
+      end.connect(tail);
     }
     const send: Send = {
+      balance,
       delay: plan.delay,
       gain,
       realtime: plan.realtime,
@@ -187,7 +218,7 @@ export class Sends {
       unwired: false,
     };
     this.live.set(id, send);
-    send.release = this.connect(plan.to, tail ?? gain, plan.realtime);
+    send.release = this.connect(plan.to, tail ?? end, plan.realtime);
     return send;
   }
 
@@ -210,6 +241,9 @@ export class Sends {
     send.release();
     safeDisconnectFrom(this.from, send.gain, "Sends.unwire");
     safeDisconnect(send.gain, "Sends.unwire");
+    for (const node of send.balance?.nodes ?? []) {
+      safeDisconnect(node, "Sends.unwire");
+    }
     safeDisconnect(send.tail, "Sends.unwire");
   }
 }

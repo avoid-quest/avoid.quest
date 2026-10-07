@@ -1057,7 +1057,7 @@ describe("Filter and Pan: connection and compile agree", () => {
       const patch = graph(
         [
           station("a"),
-          fx("split", "fxComposite"),
+          fx("split", "fxComposite", { enabled: true }),
           node("native", type),
           node("merge", "merge"),
           speakers,
@@ -1428,13 +1428,21 @@ describe("compile: Splits whose branches go different places", () => {
     if (split?.kind !== "split") {
       throw new Error("no split stage");
     }
-    // The branch cable's pan and solo join the configured chain's.
     expect(split.split.cabled).toEqual([0, 1]);
-    expect(split.split.effect.chains[0]).toMatchObject({
-      gain: 0.5,
-      pan: 0.25,
-      solo: true,
+    // The cable's pan is its own, before the reverb; the chain's gain and
+    // pan follow it, as openDAW's cell has them after its FX.
+    expect(plan.cables.get("split->verb")).toMatchObject({
+      balance: [0.5, 1],
+      gain: 1,
+      muted: false,
     });
+    expect(plan.cables.get("verb->speakers")).toMatchObject({
+      balance: [1, 0.75],
+      gain: 0.4,
+      muted: false,
+    });
+    // The cable's solo leaves the other branch out.
+    expect(plan.cables.get("split->desk")?.muted).toBe(true);
     expect(shape(plan.units.get("verb")?.effects ?? [])).toEqual([
       ["cheapReverb", "verb"],
     ]);
@@ -1444,7 +1452,42 @@ describe("compile: Splits whose branches go different places", () => {
       "split:split>unit:verb",
       "unit:verb>sink:speakers",
     ]);
-    expect(plan.cables.get("verb->speakers")?.gain).toBe(0.8);
+  });
+
+  test("keys from different ports of a Split stay apart", () => {
+    const plan = build(
+      [
+        station("a"),
+        station("music"),
+        fx("split", "stereoSplit", { enabled: true }),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        node("desk", "deviceOut", { deviceId: "usb" }),
+        speakers,
+      ],
+      [
+        audio("a", "split"),
+        audio("split", "speakers", { from: "left" }),
+        audio("split", "desk", { from: "right" }),
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        { ...key("split", "comp"), sourceHandle: "out:audio:left" },
+        { ...key("split", "gate"), sourceHandle: "out:audio:right" },
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    const [comp, gate] = lane(plan, "music").effects;
+    expect(comp?.sidechain).toEqual({ channelId: "node-key:comp" });
+    expect(gate?.sidechain).toEqual({ channelId: "node-key:gate" });
+    expect(
+      [...plan.cables.values()]
+        .filter((cable) => cable.kind === "key")
+        .map((cable) => [cable.from.port, cable.to.id])
+    ).toEqual([
+      [0, "node-key:comp"],
+      [1, "node-key:gate"],
+    ]);
   });
 
   test("a Band Split whose bands go different places keeps its crossovers", () => {

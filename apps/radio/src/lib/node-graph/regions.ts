@@ -238,15 +238,16 @@ export type SegmentExit = {
   trim: Trim;
   /** A key cable: it feeds its target's detector, not its audio. */
   key?: true;
+  /** A Split port's cable: its own pan and solo. */
+  pan?: number;
+  solo?: boolean;
 };
 
-/** An open Split as its stage runs it, and where each port's cables go. */
+/** An open Split: the container its stage parts, and each cabled port. */
 export type OpenSplit = {
-  /** A chain per port, the port's cable controls folded in; no FX. */
   effect: SplitEffect;
-  /** The cabled ports, by position. */
-  cabled: number[];
-  exits: Map<number, SegmentExit[]>;
+  /** Each cabled port, by position: its chain and its cables out. */
+  ports: Map<number, { chain: EffectChainConfig; exits: SegmentExit[] }>;
 };
 
 export type Segment = {
@@ -331,9 +332,7 @@ type SplitPort = {
 
 /**
  * A container's ports in order, each with the cables out of it and its
- * chain: the configured one or a default, the one cable on the port adding
- * its pan to the chain's (with several, each keeps its own in a nested
- * fan-out) and any of them soloing it. `ids` keeps a tree's chain ids
+ * chain: the configured one or a default. `ids` keeps a tree's chain ids
  * unique. Refuses a shape the engine can't run.
  */
 function splitPortsOf(
@@ -376,16 +375,7 @@ function splitPortsOf(
           pan: 0,
           solo: false,
         };
-    const only = cables.length === 1 ? cables[0]?.edge : undefined;
-    return {
-      cables,
-      chain: {
-        ...chain,
-        pan: clampPan(chain.pan + (only?.pan ?? 0)),
-        solo: chain.solo || cables.some(({ edge }) => edge.solo === true),
-      },
-      port,
-    };
+    return { cables, chain, port };
   });
 }
 
@@ -635,11 +625,7 @@ export class RegionLowerer {
     );
   }
 
-  /**
-   * An open Split for its stage: a chain per port, the one cable on a port
-   * adding its pan and any of its cables soloing it, as a closed Split's
-   * branch cables do; the cabled ports; and each port's cables out.
-   */
+  /** An open Split: its container, and each cabled port's chain and cables. */
   openSplit(id: string): OpenSplit {
     const base = effectOf(this.node(id));
     if (!(base && isEffectContainer(base))) {
@@ -649,21 +635,21 @@ export class RegionLowerer {
         `Band Split takes 2 to ${MAX_SPLIT_BRANCHES} bands`
       );
     }
-    const exits = new Map<number, SegmentExit[]>();
-    const ports = splitPortsOf(id, base, this.outsOf(id));
-    const chains = ports.map(({ chain, port }, index) => {
-      const out = this.exitsOf(id, UNITY, port);
-      if (out.length > 0) {
-        exits.set(index, out);
+    const ports = new Map<
+      number,
+      { chain: EffectChainConfig; exits: SegmentExit[] }
+    >();
+    for (const [index, { chain, port }] of splitPortsOf(
+      id,
+      base,
+      this.outsOf(id)
+    ).entries()) {
+      const exits = this.exitsOf(id, UNITY, port);
+      if (exits.length > 0) {
+        ports.set(index, { chain, exits });
       }
-      return { ...chain, effects: [], order: index };
-    });
-    const { sidechain: _, ...container } = base;
-    return {
-      cabled: [...exits.keys()].sort((left, right) => left - right),
-      effect: { ...container, chains } as SplitEffect,
-      exits,
-    };
+    }
+    return { effect: base as SplitEffect, ports };
   }
 
   /** A point after the node: its output is a real signal. */
@@ -685,11 +671,16 @@ export class RegionLowerer {
     return [
       ...this.outsOf(id)
         .filter(from)
-        .map(({ edge }) => ({
-          ids: [edge.id],
-          target: edge.target,
-          trim: addTrim(trim, edge),
-        })),
+        .map(
+          ({ edge }): SegmentExit => ({
+            ids: [edge.id],
+            target: edge.target,
+            trim: addTrim(trim, edge),
+            ...(port === undefined
+              ? {}
+              : { pan: edge.pan ?? 0, solo: edge.solo === true }),
+          })
+        ),
       ...(this.keys.get(id) ?? []).filter(from).map(
         ({ edge }): SegmentExit => ({
           ids: [edge.id],
@@ -1086,6 +1077,12 @@ class SegmentLowerer {
           gain: chain.gain * branch.trim.gain,
           muted: chain.muted || branch.trim.muted,
           order: index,
+          // The branch cable carries the chain's pan and solo, on top of
+          // what the container holds (a MIDI-learned chain pan). With
+          // several cables on the port each keeps its own in the nested
+          // fan-out, and a soloed one also solos its branch over the rest.
+          pan: clampPan(chain.pan + (cable?.pan ?? 0)),
+          solo: chain.solo || cables.some(({ edge }) => edge.solo === true),
         },
       ];
     });

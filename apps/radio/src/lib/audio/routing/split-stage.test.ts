@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Mixing, StereoMatrix } from "@opendaw/lib-dsp";
 import { createDefaultEffectConfig } from "../dsp/effects/registry";
 import {
   OfflineGraph,
@@ -30,8 +29,8 @@ function split(
 }
 
 /** Renders `effect` with `cabled` ports, each port and their sum. */
-function render(effect: SplitEffect, cabled: number[]) {
-  const graph = new OfflineGraph();
+function render(effect: SplitEffect, cabled: number[], sampleRate?: number) {
+  const graph = new OfflineGraph(sampleRate);
   const [left, right] = testProgram(FRAMES);
   const source = graph.createSource(left, right);
   const stage = createSplitStage(graph as unknown as BaseAudioContext, {
@@ -53,50 +52,6 @@ function render(effect: SplitEffect, cabled: number[]) {
   };
 }
 
-/** What the same container outputs rejoined at a unity Merge, no FX in it. */
-function rejoined(effect: SplitEffect, input: Float32Array[]) {
-  if (!effect.enabled) {
-    return input;
-  }
-  const w = effect.dryWet;
-  const chains = [...effect.chains].sort((a, b) => a.order - b.order);
-  const anySolo = chains.some((chain) => chain.solo);
-  // Each open branch: its share of the input, its gain and its balance.
-  const wet = input.map(() => new Float32Array(FRAMES));
-  for (const [index, chain] of chains.entries()) {
-    if (chain.muted || (anySolo && !chain.solo)) {
-      continue;
-    }
-    const [toLeft, toRight] = StereoMatrix.panningToGains(
-      chain.pan,
-      Mixing.Linear
-    );
-    for (const [side, balance] of [toLeft, toRight].entries()) {
-      // A Stereo Split's branch k is side k; a Split's every side. A Band
-      // Split's bands sum to the input, at the one gain all bands share.
-      if (
-        (effect.type === "stereoSplit" && side !== index) ||
-        (effect.type === "frequencySplit" && index > 0)
-      ) {
-        continue;
-      }
-      const from = input[side] ?? new Float32Array(FRAMES);
-      const into = wet[side] ?? new Float32Array(FRAMES);
-      for (let frame = 0; frame < FRAMES; frame += 1) {
-        into[frame] =
-          (into[frame] ?? 0) +
-          effect.inputGain * chain.gain * balance * (from[frame] ?? 0);
-      }
-    }
-  }
-  return input.map((channel, side) =>
-    channel.map(
-      (x, frame) =>
-        effect.outputGain * ((1 - w) * x + w * (wet[side]?.[frame] ?? 0))
-    )
-  );
-}
-
 describe("createSplitStage", () => {
   test("stereo split ports carry independent left and right signals", () => {
     const { input, port } = render(split("stereoSplit"), [0, 1]);
@@ -106,72 +61,38 @@ describe("createSplitStage", () => {
     expect(residualDb(port(1), [silence, input[1]], TAIL)).toBeLessThan(-90);
   });
 
-  test.each([
-    [true, 1],
-    [true, 0.5],
-    [true, 0],
-    [false, 0.5],
-  ])(
-    "split ports sum to the rejoined split, with one bypass, at enabled=%p, mix=%p",
-    (enabled, dryWet) => {
-      for (const type of [
-        "fxComposite",
-        "stereoSplit",
-        "frequencySplit",
-      ] as const) {
-        const effect = split(type, { dryWet, enabled });
-        const { input, sum } = render(effect, [0, 1]);
-        expect(residualDb(sum(), rejoined(effect, input), TAIL)).toBeLessThan(
-          -60
-        );
-      }
-    }
-  );
-
-  test("the input trim acts on the wet path only, the output trim only while on", () => {
-    for (const enabled of [true, false]) {
-      const effect = split("fxComposite", {
-        dryWet: 0.5,
-        enabled,
-        inputGain: 0.5,
-        outputGain: 2,
-      });
-      const { input, sum } = render(effect, [0, 1]);
-      expect(residualDb(sum(), rejoined(effect, input), TAIL)).toBeLessThan(
-        -60
-      );
-    }
-    // Off, the trims are out of the path: the ports sum to the input.
-    const off = render(
-      split("frequencySplit", {
-        enabled: false,
-        inputGain: 0.1,
-        outputGain: 4,
-      }),
-      [0, 1]
-    );
-    expect(residualDb(off.sum(), off.input, TAIL)).toBeLessThan(-60);
+  test("Split ports each carry the whole signal", () => {
+    const { input, port } = render(split("fxComposite"), [0, 2]);
+    expect(residualDb(port(0), input, TAIL)).toBeLessThan(-90);
+    expect(residualDb(port(2), input, TAIL)).toBeLessThan(-90);
   });
 
-  test.each([-1, -0.5, 0, 0.5, 1])(
-    "a branch's pan is openDAW's linear balance, with no crossfeed, at %p",
-    (pan) => {
-      const effect = split("fxComposite", { dryWet: 1 });
-      const chains = effect.chains.map((chain) => ({ ...chain, gain: 1, pan }));
-      const { input, port } = render({ ...effect, chains } as SplitEffect, [0]);
-      const [toLeft, toRight] = StereoMatrix.panningToGains(pan, Mixing.Linear);
-      expect(
-        residualDb(
-          port(0),
-          [input[0].map((x) => x * toLeft), input[1].map((x) => x * toRight)],
-          TAIL
-        )
-      ).toBeLessThan(-90);
-    }
-  );
+  test("a crossover at or past Nyquist passes everything into the band below", () => {
+    // 20 kHz is past a 32 kHz context's 16 kHz Nyquist.
+    const effect = split("frequencySplit", { crossoverFrequencies: [20_000] });
+    const { input, port } = render(effect, [0, 1], 32_000);
+    const silence = [new Float32Array(FRAMES), new Float32Array(FRAMES)];
+    expect(residualDb(port(0), input, TAIL)).toBeLessThan(-90);
+    expect(residualDb(port(1), silence, TAIL)).toBeLessThan(-90);
+  });
 
-  test("disabled and dry Band Split outputs keep their band signals, and sum to the input", () => {
-    for (const overrides of [{ enabled: false }, { dryWet: 0 }]) {
+  test("the signal trim precedes every port and follows the enabled state in place", () => {
+    const effect = split("fxComposite", { signalGain: 0.5 });
+    const { input, port, stage } = render(effect, [0, 1]);
+    const half = input.map((channel) => channel.map((sample) => sample * 0.5));
+    expect(residualDb(port(0), half, TAIL)).toBeLessThan(-90);
+    expect(residualDb(port(1), half, TAIL)).toBeLessThan(-90);
+
+    stage.update({ cabled: [0, 1], effect: { ...effect, signalGain: 0 } });
+    expect(
+      port(0).every((channel) => channel.every((sample) => sample === 0))
+    ).toBe(true);
+    stage.update({ cabled: [0, 1], effect: { ...effect, enabled: false } });
+    expect(residualDb(port(0), input, TAIL)).toBeLessThan(-90);
+  });
+
+  test("Band Split ports keep their bands, on or off, and sum to the input", () => {
+    for (const overrides of [{ enabled: false }, { enabled: true }]) {
       const bands = split("frequencySplit", overrides);
       const effect = {
         ...bands,
@@ -187,25 +108,6 @@ describe("createSplitStage", () => {
         residualDb(high, [new Float32Array(FRAMES)], TAIL)
       );
     }
-  });
-
-  test("configured and cable solos form one branch set; mutes gate the wet part", () => {
-    const effect = split("fxComposite", { dryWet: 1 });
-    const soloed = effect.chains.map((chain, index) => ({
-      ...chain,
-      solo: index === 1,
-    }));
-    const solo = render({ ...effect, chains: soloed } as SplitEffect, [0, 1]);
-    const silence = [new Float32Array(FRAMES), new Float32Array(FRAMES)];
-    expect(residualDb(solo.port(0), silence, TAIL)).toBeLessThan(-90);
-    expect(residualDb(solo.port(1), silence, TAIL)).toBeGreaterThan(-30);
-
-    const muted = effect.chains.map((chain, index) => ({
-      ...chain,
-      muted: index === 0,
-    }));
-    const mute = render({ ...effect, chains: muted } as SplitEffect, [0, 1]);
-    expect(residualDb(mute.port(0), silence, TAIL)).toBeLessThan(-90);
   });
 
   test("its input and cabled ports stay the same nodes across a crossover move", () => {

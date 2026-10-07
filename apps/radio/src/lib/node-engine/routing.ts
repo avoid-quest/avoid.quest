@@ -122,6 +122,7 @@ export function sendPlan(
     realtime,
     reenters: cable.reenters,
     to: endpointKey(cable.to),
+    ...(cable.balance ? { balance: cable.balance } : {}),
   };
 }
 
@@ -624,10 +625,17 @@ export class RoutingGraph {
     }
     const { plan } = point;
     if (live.stage && !isUnit(plan) && plan.kind === "split") {
-      live.stage.update({
-        ...plan.split,
-        cabled: [...ports].sort((left, right) => left - right),
-      });
+      const cabled = [...ports].sort((left, right) => left - right);
+      const { effect } = plan.split;
+      const bands =
+        effect.type === "frequencySplit"
+          ? effect.crossoverFrequencies.length + 1
+          : Number.POSITIVE_INFINITY;
+      // A band that went keeps its fading cables fed, in the layout it
+      // had, until they are gone.
+      if (cabled.every((port) => port < bands)) {
+        live.stage.update({ ...plan.split, cabled });
+      }
     }
     for (const port of ports) {
       const from = live.stage ? live.stage.port(port) : live.output;

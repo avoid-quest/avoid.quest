@@ -2845,6 +2845,36 @@ describe("compile: key cables", () => {
     expect(idleKeys(shared, sharedPlan).size).toBe(0);
   });
 
+  test("a chain the runtime plays dry keys nothing", () => {
+    const patch = graph(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor", { enabled: true }),
+        fx("gate", "gate", { enabled: true }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "gate"),
+        audio("gate", "speakers"),
+        key("talk", "comp"),
+        { ...key("talk", "gate"), gain: 0.5 },
+      ]
+    );
+    const bypassed = { comp: "bypassed", gate: "bypassed" };
+    for (const env of [ENV, { crossOriginIsolated: false }]) {
+      expect(
+        Object.fromEntries(idleKeys(patch, compile(patch, env), bypassed))
+      ).toEqual({
+        "talk~>comp":
+          "The effects engine couldn't start, so the key isn't used",
+        "talk~>gate":
+          "The effects engine couldn't start, so the key isn't used",
+      });
+    }
+  });
+
   test("idleKeys flags a key on an FX in a branch the runtime skips", () => {
     // The runtime binds no key under an off Split or a silent branch.
     const patchWith = (

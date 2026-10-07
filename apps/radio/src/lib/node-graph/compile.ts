@@ -1336,10 +1336,11 @@ function chainEffects(plan: EnginePlan) {
 /**
  * Why each key cable that keys nothing is idle, by cable id, as the canvas
  * says it: the issue that refused it, a mute, an empty or hidden source, an
- * effect switched off, or a second key the compatibility engine can't
- * bind. A key that reaches its effect's sidechain is left out. `badges` are
- * the live backend badges by FX node id, as node playback publishes them:
- * a chain the runtime moved to compatibility shows it too.
+ * effect switched off, a chain the runtime plays dry, or a second key the
+ * compatibility engine can't bind. A key that reaches its effect's
+ * sidechain is left out. `badges` are the live backend badges by FX node
+ * id, as node playback publishes them: a chain the runtime bypassed or
+ * moved to compatibility shows it too.
  */
 export function idleKeys(
   graph: Pick<NodeGraph, "nodes" | "edges">,
@@ -1347,19 +1348,25 @@ export function idleKeys(
   badges: Readonly<Record<string, string>> = {}
 ): Map<string, string> {
   const { active, byId: inChain } = chainEffects(plan);
-  // The compatibility engine keys a chain from one key: its first.
-  const compatOnly = new Set<EffectConfig>();
+  // What the runtime leaves unkeyed: every key of a chain it plays dry, and
+  // all but the first key of one on the compatibility engine.
+  const unbound = new Map<EffectConfig, string>();
   for (const chain of [...plan.lanes.values(), ...plan.units.values()]) {
     const audible = audibleEffects(chain.effects);
-    if (
-      chain.backend === "compat" ||
-      audible.some((effect) => badges[effect.id] === "compat")
-    ) {
-      const [key] = audibleSidechainIds(chain.effects);
-      for (const effect of audible) {
-        if (effect.sidechain && effect.sidechain.channelId !== key) {
-          compatOnly.add(effect);
-        }
+    const live = new Set(audible.map((effect) => badges[effect.id]));
+    const [key] = audibleSidechainIds(chain.effects);
+    for (const effect of audible) {
+      if (live.has("bypassed")) {
+        unbound.set(
+          effect,
+          "The effects engine couldn't start, so the key isn't used"
+        );
+      } else if (
+        (chain.backend === "compat" || live.has("compat")) &&
+        effect.sidechain &&
+        effect.sidechain.channelId !== key
+      ) {
+        unbound.set(effect, "This key needs the openDAW engine");
       }
     }
   }
@@ -1394,7 +1401,7 @@ export function idleKeys(
       // The runtime binds no key under an off Split or a silent branch.
       return "Its branch is off, so the key isn't used";
     }
-    return compatOnly.has(effect) ? "This key needs the openDAW engine" : null;
+    return unbound.get(effect) ?? null;
   };
   for (const edge of graph.edges) {
     if (parseHandleId(edge.targetHandle)?.kind !== "sidechain") {

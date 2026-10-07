@@ -521,30 +521,29 @@ function isSink(node: GraphNode): boolean {
 }
 
 /** Nodes this compiler cannot lower yet, each with the reason. */
-function refuse(graph: CompileGraph, regions: RegionLowerer): Issue[] {
-  const open = new Set(regions.openSplits());
-  return graph.nodes.flatMap((node): Issue[] => {
-    if (!isCompiled(node.type)) {
-      return [
-        {
-          code: "unshipped",
-          id: node.id,
-          message: `${getNodeDefinition(node.type).name} can't play in a patch yet`,
-          target: "node",
-        },
-      ];
-    }
-    return open.has(node.id)
-      ? [
+function refuse(graph: CompileGraph): Issue[] {
+  return graph.nodes.flatMap((node): Issue[] =>
+    isCompiled(node.type)
+      ? []
+      : [
           {
-            code: "split-open",
+            code: "unshipped",
             id: node.id,
-            message: OPEN_SPLIT_MESSAGE,
+            message: `${getNodeDefinition(node.type).name} can't play in a patch yet`,
             target: "node",
           },
         ]
-      : [];
-  });
+  );
+}
+
+/** Splits whose branches part ways, which this compiler cannot lower yet. */
+function refuseOpenSplits(regions: RegionLowerer): Issue[] {
+  return regions.openSplits().map((id): Issue => ({
+    code: "split-open",
+    id,
+    message: OPEN_SPLIT_MESSAGE,
+    target: "node",
+  }));
 }
 
 /**
@@ -563,11 +562,6 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
     const kept = withoutExcluded(graph, excludedNodes, excludedEdges);
     const analysis = analyseGraph(kept, env);
     const byId = new Map(kept.nodes.map((node) => [node.id, node]));
-    const regions = new RegionLowerer({
-      byId,
-      sinks: new Set(kept.nodes.filter(isSink).map((node) => node.id)),
-      wired: analysis.wired,
-    });
     const advisory = analysis.issues.filter((issue) =>
       ADVISORY_CODES.has(issue.code)
     );
@@ -575,9 +569,22 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
       (issue) => !ADVISORY_CODES.has(issue.code)
     );
     if (blocking.length === 0) {
-      blocking = refuse(kept, regions);
+      blocking = refuse(kept);
     }
-    if (blocking.length === 0) {
+    // Lowered only once nothing is refused: with every Loop gone, the
+    // patch it sees has no cycle.
+    const regions =
+      blocking.length === 0
+        ? new RegionLowerer({
+            byId,
+            sinks: new Set(kept.nodes.filter(isSink).map((node) => node.id)),
+            wired: analysis.wired,
+          })
+        : null;
+    if (regions) {
+      blocking = refuseOpenSplits(regions);
+    }
+    if (regions && blocking.length === 0) {
       return {
         byId,
         extraKeys: new Set(

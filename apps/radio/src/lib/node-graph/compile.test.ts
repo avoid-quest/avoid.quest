@@ -2425,6 +2425,19 @@ describe("compile: validation first", () => {
     expect(plan.cables.size).toBe(0);
   });
 
+  test("a Loop feeding itself is refused, not lowered", () => {
+    const plan = build(
+      [station("a"), node("loop", "loop"), speakers],
+      [
+        audio("a", "loop"),
+        audio("loop", "loop"),
+        audio("loop", "speakers"),
+      ]
+    );
+    expect(codes(plan)).toEqual(["unshipped@loop"]);
+    expect(plan.cables.size).toBe(0);
+  });
+
   test("a Merge sums two stations into one shared unit", () => {
     const plan = build(
       [

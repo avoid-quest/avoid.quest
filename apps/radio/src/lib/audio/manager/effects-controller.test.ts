@@ -132,7 +132,7 @@ function createRuntime() {
         _settings?: OfficialSoundSettings
       ) => Promise.resolve(true)
     ),
-    deleteSound: mock(() => undefined),
+    deleteSound: mock((_soundId: string) => undefined),
     disconnectSound: mock(() => undefined),
     getPerformanceSnapshot: mock(() => performanceSnapshot),
     setSidechainTarget: mock(() => undefined),
@@ -617,6 +617,78 @@ describe("EffectsController", () => {
     pending.resolve(true);
     await connecting;
     expect(appliedTempo).toBe(120);
+  });
+
+  test("bypass releases an updating official sound and its unused sidechain", async () => {
+    const context = new TestAudioContext();
+    const filter = new TestAudioNode(context);
+    const keyFilter = new TestAudioNode(context);
+    const runtime = createRuntime();
+    const registered = new Set<string>();
+    const pending = Promise.withResolvers<boolean>();
+    const started = Promise.withResolvers<void>();
+    runtime.connectSound.mockImplementation((id) => {
+      registered.add(id);
+      return Promise.resolve(true);
+    });
+    runtime.connectSidechainSource.mockImplementation((id) => {
+      registered.add(id);
+      return Promise.resolve(true);
+    });
+    runtime.deleteSound.mockImplementation((id: string) => {
+      registered.delete(id);
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      createWorkletManager: () => createManager(context),
+      notifyListeners: () => undefined,
+      sounds: new Map([
+        ["target", sound("target", filter)],
+        ["key", sound("key", keyFilter)],
+      ]),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const destination = new TestAudioNode(context) as unknown as AudioNode;
+    await controller.connectGraph(
+      "key",
+      keyFilter as unknown as AudioNode,
+      destination
+    );
+    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
+    reverb.enabled = true;
+    await controller.reconcile(
+      "target",
+      desiredEffects([reverb], { sidechainSoundId: "key" })
+    );
+    await controller.connectGraph(
+      "target",
+      filter as unknown as AudioNode,
+      destination
+    );
+    expect(registered).toEqual(new Set(["target", "key"]));
+
+    runtime.connectSound.mockImplementation(() => {
+      started.resolve();
+      return pending.promise;
+    });
+    const updating = controller.reconcile(
+      "target",
+      desiredEffects([reverb], { sidechainSoundId: "key", tempo: 150 })
+    );
+    await started.promise;
+    await controller.reconcile(
+      "target",
+      desiredEffects([], { sidechainSoundId: "key" })
+    );
+    expect(registered.size).toBe(0);
+    pending.resolve(false);
+    await updating;
+
+    const distortion = createDefaultEffectConfig("distortion", "distortion", 0);
+    distortion.enabled = true;
+    expect(
+      await controller.reconcile("target", desiredEffects([distortion]))
+    ).toEqual({ backend: "compatibility", ready: true, status: "ready" });
   });
 
   test("stop cancels an in-flight official connection", async () => {

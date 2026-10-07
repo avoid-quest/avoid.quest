@@ -602,7 +602,7 @@ class EffectsController {
   ): Promise<void> {
     if (!this.shouldProcess(state)) {
       if (state.officialConnectingGeneration !== null) {
-        this.deleteOfficialSound(soundId);
+        this.releaseOfficialSound(soundId, state);
       }
       this.switchBackend(soundId, state, "bypass", generation);
       await this.registerNonOfficialSource(soundId, state, generation);
@@ -640,11 +640,11 @@ class EffectsController {
     );
   }
 
-  private releaseOfficialAttemptIfOwned(
+  private releaseOfficialSound(
     soundId: string,
     state: SoundEffectsState,
-    runtime: EffectsGraphRuntime,
-    runtimeGeneration: number
+    runtime = this.officialRuntime,
+    runtimeGeneration?: number
   ): boolean {
     if (
       this.states.get(soundId) !== state ||
@@ -667,12 +667,7 @@ class EffectsController {
     error: unknown
   ): void {
     if (!wasOfficialConnected) {
-      this.releaseOfficialAttemptIfOwned(
-        soundId,
-        state,
-        runtime,
-        runtimeGeneration
-      );
+      this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
     }
     if (!isStale) {
       this.reportOfficialRuntimeFailure(error);
@@ -734,12 +729,7 @@ class EffectsController {
         )
       ) {
         if (connected && state.officialConnectingGeneration === generation) {
-          this.releaseOfficialAttemptIfOwned(
-            soundId,
-            state,
-            runtime,
-            runtimeGeneration
-          );
+          this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
         }
         return false;
       }
@@ -915,9 +905,7 @@ class EffectsController {
     graph.disconnect();
     state.graph = null;
     if (this.officialRegisteredSoundIds.has(soundId)) {
-      this.deleteOfficialSound(soundId);
-      state.officialConnected = false;
-      this.pruneOfficialSidechainSources();
+      this.releaseOfficialSound(soundId, state);
     }
   }
 
@@ -952,9 +940,7 @@ class EffectsController {
         backend !== "official" &&
         this.officialRegisteredSoundIds.has(soundId)
       ) {
-        this.deleteOfficialSound(soundId);
-        state.officialConnected = false;
-        this.pruneOfficialSidechainSources();
+        this.releaseOfficialSound(soundId, state);
         this.registerNonOfficialSource(soundId, state, generation).catch(
           (error: unknown) => {
             if (

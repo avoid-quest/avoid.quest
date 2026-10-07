@@ -272,6 +272,11 @@ export type EnginePlan = {
   monitoringChannels: number;
   /** Validation and compile issues; the plan leaves their nodes out. */
   issues: Issue[];
+  /**
+   * What a solo silences, for display: the sources another source's solo
+   * mutes, and the branch cables a split's solo leaves out.
+   */
+  soloedOut: { sources: Set<string>; branches: Set<string> };
 };
 
 /**
@@ -796,8 +801,14 @@ class PlanBuilder {
   readonly cables = new Map<string, CablePlan>();
   private readonly endpoints = new Map<string, Endpoint>();
   private readonly prepared: Prepared;
-  /** Lanes another source's solo silences. */
-  private readonly soloMuted = new Set<string>();
+  /**
+   * What a solo silences: the lanes another source's solo mutes, and the
+   * branch cables an open Split's solo leaves out.
+   */
+  readonly soloedOut = {
+    branches: new Set<string>(),
+    sources: new Set<string>(),
+  };
   private readonly cableIds: FreshIds;
 
   constructor(prepared: Prepared) {
@@ -875,7 +886,7 @@ class PlanBuilder {
     // Trim and solo act on the cables, downstream of the fader, so the
     // volume controller keeps the fader.
     if (soloMuted) {
-      this.soloMuted.add(node.id);
+      this.soloedOut.sources.add(node.id);
     }
     this.emit(
       segment?.exits ?? [],
@@ -976,7 +987,9 @@ class PlanBuilder {
         ? this.cableIds.claim(ids[0])
         : this.cableIds.fresh(ids.join("+") || `${from.id}:dry`);
     const soloed =
-      kind === "audio" && from.kind === "lane" && this.soloMuted.has(from.id);
+      kind === "audio" &&
+      from.kind === "lane" &&
+      this.soloedOut.sources.has(from.id);
     if (sources?.length) {
       this.gains.push({
         factor,
@@ -1082,6 +1095,22 @@ class PlanBuilder {
       const from: Endpoint = { ...endpoint, port: position };
       const { chain } = port;
       const open = !chain.muted && (!anySolo || soloed(port));
+      const dry =
+        (mix < 1 || controlled.has("dryWet")) && carries(port)
+          ? {
+              from,
+              trim: multiply(scalar("dry", 1 - mix), {
+                ...output,
+                factor: (output.factor ?? output.gain) * share,
+                gain: output.gain * share,
+              }),
+            }
+          : undefined;
+      // With no dry signal beside them, the cables its solo leaves out
+      // carry nothing.
+      if (!dry) {
+        this.leaveOutSoloed(port, anySolo && !soloed(port));
+      }
       this.emitBranch(from, port, {
         cell: multiply(scalar("dryWet", mix), {
           ...output,
@@ -1089,22 +1118,28 @@ class PlanBuilder {
           gain: output.gain * chain.gain,
           muted: !open,
         }),
-        dry:
-          (mix < 1 || controlled.has("dryWet")) && carries(port)
-            ? {
-                from,
-                trim: multiply(scalar("dry", 1 - mix), {
-                  ...output,
-                  factor: (output.factor ?? output.gain) * share,
-                  gain: output.gain * share,
-                }),
-              }
-            : undefined,
+        dry,
         input: scalar("inputGain", on ? effect.inputGain : 1),
         pan: chain.pan,
       });
     }
     return endpoint;
+  }
+
+  /**
+   * Notes the audio cables out of an open Split's port its solo leaves
+   * out: all of them when the port is (`portOut`), else, as `emitBranch`
+   * mutes them, those a soloed cable on the port leaves out.
+   */
+  private leaveOutSoloed({ exits }: SplitBranch, portOut: boolean): void {
+    const cableSolo = exits.some((exit) => exit.solo);
+    for (const exit of exits) {
+      if (!exit.key && (portOut || (cableSolo && !exit.solo))) {
+        for (const id of exit.ids) {
+          this.soloedOut.branches.add(id);
+        }
+      }
+    }
   }
 
   /**
@@ -1564,6 +1599,13 @@ export function compile(graph: CompileGraph, env: CompileEnv): EnginePlan {
     modules: builder.modules,
     monitoringChannels,
     sinks,
+    soloedOut: {
+      branches: new Set([
+        ...builder.soloedOut.branches,
+        ...prepared.regions.soloedOut,
+      ]),
+      sources: builder.soloedOut.sources,
+    },
     units: builder.units,
   };
 }

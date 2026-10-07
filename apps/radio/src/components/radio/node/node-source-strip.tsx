@@ -3,11 +3,13 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useStore } from "@tanstack/react-store";
 import { SlidersHorizontalIcon } from "lucide-react";
+import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { isSinkIdSupported } from "@/lib/audio/utils";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
-import { isSoloActive, laneChannelId } from "@/lib/node-graph/compile";
+import { laneChannelId } from "@/lib/node-graph/compile";
+import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 import {
   type StripParams,
   setDeviceParams,
@@ -23,7 +25,7 @@ import type {
   SourceStrip as SourceStripData,
   StripSourceNode,
 } from "@/lib/node-graph/schema";
-import { getNodePlayback } from "@/lib/node-playback";
+import { detectNodePlaybackEnv, getNodePlayback } from "@/lib/node-playback";
 import { isRadioBrowserMetadata } from "@/lib/platform-types";
 import { streamFormatOf } from "@/lib/source-strip";
 import { usePlaybackChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
@@ -45,13 +47,16 @@ import { isUnplugged, useNodeDevices } from "./use-node-devices";
  */
 
 /**
- * Whether another source's solo silences this one: its meter taps before
- * solo, so the strip says so instead.
+ * Whether another source's solo silences this one, by the compiled plan the
+ * canvas glows from: its meter taps before solo, so the strip says so
+ * instead.
  */
-function useSoloedOut(solo: boolean, store: NodeStore): boolean {
+function useSoloedOut(nodeId: string, store: NodeStore): boolean {
+  const [env] = useState(detectNodePlaybackEnv);
   return useStore(
     store,
-    (state) => !solo && state.graph !== null && isSoloActive(state.graph.nodes)
+    ({ graph }) =>
+      graph !== null && compiledPlan(graph, env).soloedOut.sources.has(nodeId)
   );
 }
 
@@ -98,7 +103,7 @@ export function NodeCompactStrip({
   store?: NodeStore;
 }) {
   const runtime = useLaneRuntime(nodeId);
-  const soloedOut = useSoloedOut(strip.solo, store);
+  const soloedOut = useSoloedOut(nodeId, store);
   // Knob turns fold into one undo step, taken once the gesture ends.
   const release = useReleaseStep(() => snapshotNodeGraph(store));
   return (
@@ -187,7 +192,7 @@ export function NodeSourceStripPanel({
 }) {
   const playback = getNodePlayback();
   const runtime = useLaneRuntime(node.id);
-  const soloedOut = useSoloedOut(node.data.strip.solo, store);
+  const soloedOut = useSoloedOut(node.id, store);
   const audioSettings = useAudioSettings();
   const devices = useNodeDevices({
     enabled: node.type === "deviceIn" && showInputControls,

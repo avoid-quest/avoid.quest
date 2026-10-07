@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Knob } from "@avoid.quest/ui/components/knob";
+import { sliderScale } from "@/lib/audio/dsp/effects/param-scale";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { formatParam, type ParamFormatter } from "./param-definitions";
 
@@ -43,9 +44,7 @@ export function ParamSlider({
     formatter ? formatter(next) : formatParam(formatKey, next, formatter);
   const fillFromDefault =
     bipolar ?? (defaultValue !== undefined && min < 0 && max > 0);
-  // Hearing is logarithmic: a linear 20 Hz..20 kHz sweep packs the bass
-  // into a few pixels.
-  const scale = formatKey === "frequency" && min > 0 ? "log" : "linear";
+  const scale = sliderScale({ formatKey, min });
 
   return (
     <Knob

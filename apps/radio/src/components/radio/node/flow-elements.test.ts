@@ -483,6 +483,320 @@ describe("flow elements", () => {
     }
   });
 
+  test("a source another's solo mutes stops the live glow, as the compiler mutes its exits", () => {
+    const graph: NodeGraph = nodeGraphSchema.parse({
+      ...patch,
+      nodes: patch.nodes.map((node) =>
+        node.id === "src-nts"
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                strip: {
+                  ...(node.data as { strip: object }).strip,
+                  solo: true,
+                },
+              },
+            }
+          : node
+      ),
+    });
+    const plan = compile(graph, { crossOriginIsolated: false });
+    const classes = Object.fromEntries(
+      toFlowEdges(graph, {
+        liveLanes: new Set(["n:src-kexp", "n:src-nts"]),
+        selection,
+        soloedOut: plan.soloedOut,
+      }).map((edge) => [edge.id, edge.className])
+    );
+
+    expect(classes).toEqual({
+      "src-kexp->speakers": undefined,
+      "src-nts->speakers": "node-edge-live",
+    });
+    expect(plan.cables.get("src-kexp->speakers")?.muted).toBe(true);
+    expect(plan.cables.get("src-nts->speakers")?.muted).toBe(false);
+  });
+
+  test("source solo plus an active key keeps the key cable live", () => {
+    const graph: NodeGraph = nodeGraphSchema.parse({
+      ...patch,
+      edges: [
+        {
+          id: "kexp->comp",
+          source: "src-kexp",
+          sourceHandle: "out:audio:main",
+          target: "comp",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "comp->speakers",
+          source: "comp",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "nts->speakers",
+          source: "src-nts",
+          sourceHandle: "out:audio:main",
+          target: "speakers",
+          targetHandle: "in:audio:main",
+        },
+        {
+          id: "nts->key",
+          source: "src-nts",
+          sourceHandle: "out:audio:main",
+          target: "comp",
+          targetHandle: "in:sidechain:key",
+        },
+      ],
+      nodes: [
+        ...patch.nodes.map((node) =>
+          node.id === "src-kexp"
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  strip: {
+                    ...(node.data as { strip: object }).strip,
+                    solo: true,
+                  },
+                },
+              }
+            : node
+        ),
+        {
+          data: {
+            effect: {
+              ...createNodeEffectConfig("compressor", "comp"),
+              enabled: true,
+            },
+          },
+          id: "comp",
+          position: { x: 240, y: 0 },
+          type: "compressor",
+        },
+      ],
+    });
+    const plan = compile(graph, { crossOriginIsolated: false });
+    const idle = idleKeys(graph, plan);
+    const classes = Object.fromEntries(
+      toFlowEdges(graph, {
+        idleKeys: idle,
+        liveLanes: new Set(["n:src-kexp", "n:src-nts"]),
+        selection,
+        soloedOut: plan.soloedOut,
+      }).map((edge) => [edge.id, edge.className])
+    );
+
+    // NTS is soloed off air, yet its playing lane still keys the Compressor.
+    expect(idle).toEqual(new Map());
+    expect(classes).toEqual({
+      "comp->speakers": "node-edge-live",
+      "kexp->comp": "node-edge-live",
+      "nts->key": "node-edge-key node-edge-key-live",
+      "nts->speakers": undefined,
+    });
+  });
+
+  test("a key from a later point lights only while audio reaches that point", () => {
+    const wire = (
+      id: string,
+      source: string,
+      target: string,
+      into = "main"
+    ) => ({
+      id,
+      source,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: into === "key" ? "in:sidechain:key" : "in:audio:main",
+    });
+    const effect = (id: string, type: "compressor" | "cheapReverb") => ({
+      data: {
+        effect: { ...createNodeEffectConfig(type, id), enabled: true },
+      },
+      id,
+      position: { x: 240, y: 0 },
+      type,
+    });
+    const keyClass = (solo: boolean) => {
+      const graph: NodeGraph = nodeGraphSchema.parse({
+        ...patch,
+        edges: [
+          wire("kexp->comp", "src-kexp", "comp"),
+          wire("comp->speakers", "comp", "speakers"),
+          wire("nts->verb", "src-nts", "verb"),
+          wire("verb->speakers", "verb", "speakers"),
+          wire("verb->key", "verb", "comp", "key"),
+        ],
+        nodes: [
+          ...patch.nodes.map((node) =>
+            node.id === "src-kexp"
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    strip: { ...(node.data as { strip: object }).strip, solo },
+                  },
+                }
+              : node
+          ),
+          effect("comp", "compressor"),
+          effect("verb", "cheapReverb"),
+        ],
+      });
+      const plan = compile(graph, { crossOriginIsolated: false });
+      return toFlowEdges(graph, {
+        idleKeys: idleKeys(graph, plan),
+        liveLanes: new Set(["n:src-kexp", "n:src-nts"]),
+        selection,
+        soloedOut: plan.soloedOut,
+      }).find((edge) => edge.id === "verb->key")?.className;
+    };
+
+    expect(keyClass(false)).toBe("node-edge-key node-edge-key-live");
+    // KEXP's solo mutes NTS into the Reverb, so the Reverb's key is quiet.
+    expect(keyClass(true)).toBe("node-edge-key");
+  });
+
+  test("a branch another branch's solo silences stops the live glow", () => {
+    const wire = (
+      id: string,
+      source: string,
+      target: string,
+      extra: object = {}
+    ) => ({
+      id,
+      source,
+      sourceHandle: "out:audio:main",
+      target,
+      targetHandle: "in:audio:main",
+      ...extra,
+    });
+    const split = createNodeEffectConfig("fxComposite", "split");
+    const graph = (
+      branches: { handle: string; target: string; solo?: boolean }[],
+      chainSolo = false
+    ): NodeGraph =>
+      nodeGraphSchema.parse({
+        ...patch,
+        edges: [
+          wire("kexp->split", "src-kexp", "split"),
+          ...branches.map(({ handle, target, solo }) =>
+            wire(`split->${target}`, "split", target, {
+              sourceHandle: `out:audio:${handle}`,
+              ...(solo ? { solo } : {}),
+            })
+          ),
+          wire("comp->merge", "comp", "merge"),
+          wire("gate->merge", "gate", "merge"),
+          wire("merge->speakers", "merge", "speakers"),
+        ],
+        nodes: [
+          ...patch.nodes,
+          {
+            data: {
+              effect: {
+                ...split,
+                chains: split.chains.map((chain, index) =>
+                  index === 1 ? { ...chain, solo: chainSolo } : chain
+                ),
+                enabled: true,
+              },
+            },
+            id: "split",
+            position: { x: 240, y: 0 },
+            type: "fxComposite",
+          },
+          {
+            data: { effect: createNodeEffectConfig("compressor", "comp") },
+            id: "comp",
+            position: { x: 480, y: 0 },
+            type: "compressor",
+          },
+          {
+            data: { effect: createNodeEffectConfig("gate", "gate") },
+            id: "gate",
+            position: { x: 480, y: 200 },
+            type: "gate",
+          },
+          {
+            data: {},
+            id: "merge",
+            position: { x: 720, y: 0 },
+            type: "merge",
+          },
+        ],
+      });
+    const classes = (patched: NodeGraph) => {
+      const { "kexp->split": _, ...rest } = Object.fromEntries(
+        toFlowEdges(patched, {
+          liveLanes: new Set(["n:src-kexp"]),
+          selection,
+          soloedOut: compile(patched, { crossOriginIsolated: false }).soloedOut,
+        })
+          .filter((edge) => edge.source !== "src-nts")
+          .map((edge) => [edge.id, edge.className])
+      );
+      return rest;
+    };
+    const compOnly = {
+      "comp->merge": "node-edge-live",
+      "gate->merge": undefined,
+      "merge->speakers": "node-edge-live",
+      "split->comp": "node-edge-live",
+      "split->gate": undefined,
+    };
+
+    // A soloed branch cable.
+    expect(
+      classes(
+        graph([
+          { handle: "branch-1", solo: true, target: "comp" },
+          { handle: "branch-2", target: "gate" },
+        ])
+      )
+    ).toEqual(compOnly);
+    // A soloed chain on the split itself.
+    expect(
+      classes(
+        graph(
+          [
+            { handle: "branch-1", target: "gate" },
+            { handle: "branch-2", target: "comp" },
+          ],
+          true
+        )
+      )
+    ).toEqual(compOnly);
+    // Two cables on one port: the soloed one plays.
+    expect(
+      classes(
+        graph([
+          { handle: "branch-1", solo: true, target: "comp" },
+          { handle: "branch-1", target: "gate" },
+        ])
+      )
+    ).toEqual(compOnly);
+    // No solo: every branch plays.
+    expect(
+      classes(
+        graph([
+          { handle: "branch-1", target: "comp" },
+          { handle: "branch-2", target: "gate" },
+        ])
+      )
+    ).toEqual({
+      "comp->merge": "node-edge-live",
+      "gate->merge": "node-edge-live",
+      "merge->speakers": "node-edge-live",
+      "split->comp": "node-edge-live",
+      "split->gate": "node-edge-live",
+    });
+  });
+
   test("the module description React Flow reads names the arrow keys, and B only for effects", () => {
     // React Flow reads `keyboardDisabled` while keyboard access is on.
     const read = NODE_ARIA_LABELS["node.a11yDescription.keyboardDisabled"];

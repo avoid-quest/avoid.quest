@@ -7,6 +7,7 @@ import {
 } from "@/components/audio/effect-params/effect-layouts";
 import { formatParam } from "@/components/audio/effect-params/param-definitions";
 import type { EffectConfig, EffectType } from "@/lib/audio";
+import { sliderScale } from "@/lib/audio/dsp/effects/param-scale";
 import { getEffectParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import {
   type EffectParamDef,
@@ -147,6 +148,7 @@ function BodyControlView({
         onChange={(next) =>
           onChange({ [param.key]: next } as Partial<EffectConfig>)
         }
+        scale={sliderScale(param)}
         step={param.step}
         value={value}
         wheelStep={param.wheelStep}

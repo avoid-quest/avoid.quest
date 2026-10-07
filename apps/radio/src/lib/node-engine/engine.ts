@@ -197,6 +197,7 @@ const EMPTY_PLAN: EnginePlan = {
   modules: new Map(),
   monitoringChannels: 0,
   sinks: new Map(),
+  soloedOut: { branches: new Set(), sources: new Set() },
   units: new Map(),
 };
 

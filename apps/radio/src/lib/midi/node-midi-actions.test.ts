@@ -220,6 +220,36 @@ describe("createNodeMidiActions", () => {
     expect(effectOf(store, "comp").enabled).toBe(!enabled);
   });
 
+  test("an FX frequency knob spreads by ratio, as its knob does", () => {
+    const graph = buildGraph();
+    const store = createNodeStore({
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        {
+          data: { effect: createNodeEffectConfig("revamp", "eq") },
+          id: "eq",
+          position,
+          type: "revamp",
+        },
+      ],
+    });
+    const actions = createNodeMidiActions(
+      store.state.graph as NodeGraph,
+      storeCommit(store)
+    );
+    const byTarget = new Map(actions.map((a) => [a.targetId, a]));
+
+    byTarget.get("node:eq:midBellFrequency")?.dispatch(0.5);
+    expect(effectOf(store, "eq").midBellFrequency).toBeCloseTo(
+      Math.sqrt(20 * 20_000),
+      6
+    );
+    // Gain stays linear: three quarters of -40..40 dB.
+    byTarget.get("node:eq:midBellGain")?.dispatch(0.75);
+    expect(effectOf(store, "eq").midBellGain).toBeCloseTo(20, 6);
+  });
+
   test("a value past 0..1 from a mapping's transform stays in the param's range", () => {
     const store = createNodeStore(buildGraph());
     const actions = createNodeMidiActions(

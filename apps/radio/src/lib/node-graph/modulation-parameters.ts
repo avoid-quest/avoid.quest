@@ -1,4 +1,8 @@
-import { ValueMapping } from "@opendaw/lib-std";
+import {
+  type ParamScale,
+  scaleMapping,
+  sliderScale,
+} from "@/lib/audio/dsp/effects/param-scale";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/schema";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { isEffectNodeType } from "./catalogue";
@@ -21,7 +25,7 @@ export type ModulationParameter = {
   min: number;
   max: number;
   step: number;
-  scale?: "log";
+  scale?: ParamScale;
 };
 
 export type NativeParamRange = ModulationParameter & {
@@ -80,12 +84,7 @@ export function modulationParameters(node: GraphNode): ModulationParameter[] {
   const values = effect as unknown as Record<string, unknown>;
   return getEffectMidiParamDefs(effect.type)
     .filter((parameter) => typeof values[parameter.key] === "number")
-    .map((parameter) => ({
-      ...parameter,
-      ...(parameter.formatKey === "frequency" && parameter.min > 0
-        ? { scale: "log" as const }
-        : {}),
-    }));
+    .map((parameter) => ({ ...parameter, scale: sliderScale(parameter) }));
 }
 
 export function modulatedValue(
@@ -96,10 +95,7 @@ export function modulatedValue(
   if (offset === 0) {
     return base;
   }
-  const mapping =
-    range.scale === "log"
-      ? ValueMapping.exponential(range.min, range.max)
-      : ValueMapping.linear(range.min, range.max);
+  const mapping = scaleMapping(range.min, range.max, range.scale);
   const value = Math.max(
     0,
     Math.min(1, mapping.x(mapping.clamp(base)) + offset)

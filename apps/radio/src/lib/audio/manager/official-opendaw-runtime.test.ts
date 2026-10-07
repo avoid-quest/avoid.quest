@@ -52,13 +52,24 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     import("@opendaw/studio-core"),
   ]);
   const compiles: ReturnType<typeof deferred>[] = [];
-  const audioNode = () =>
-    Object.assign(new ProcessorEventTarget(), {
-      connect: mock(() => undefined),
-      disconnect: mock(() => undefined),
+  const audioNode = () => {
+    const connections = new Set<AudioNode>();
+    const node = Object.assign(new ProcessorEventTarget(), {
+      connect: mock((destination: AudioNode) => connections.add(destination)),
+      connections,
+      disconnect: mock((destination?: AudioNode) => {
+        if (destination) {
+          connections.delete(destination);
+        } else {
+          connections.clear();
+        }
+      }),
       gain: { value: 1 },
       pan: { value: 0 },
     });
+    Object.defineProperty(node, "context", { get: () => context });
+    return node;
+  };
   const worklet = Object.assign(audioNode(), {
     isReady: () => {
       initializing.resolve();
@@ -75,11 +86,23 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
         return pending.promise;
       }),
     },
+    createChannelMerger: audioNode,
+    createChannelSplitter: audioNode,
     createGain: audioNode,
     createStereoPanner: audioNode,
     destination: audioNode(),
     sampleRate: 48_000,
   } as unknown as AudioContext;
+  // Exercise the installed router too: its teardown leaves input edges behind.
+  const { MonitoringRouter } = await import(
+    new URL(
+      "./MonitoringRouter.js",
+      import.meta.resolve("@opendaw/studio-core")
+    ).href
+  );
+  const commands = { updateMonitoringMap: () => undefined };
+  let router = new MonitoringRouter(worklet, commands);
+  let activeWorklet = worklet;
   const initializing = deferred();
   const subscriptions: Array<{
     deviceId: string;
@@ -93,11 +116,11 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
     },
     registerMonitoringSource: mock(
       (
-        _uuid: Uint8Array,
-        _source: AudioNode,
-        _channels: number,
-        _destination: ReturnType<typeof audioNode>
-      ) => undefined
+        uuid: Uint8Array,
+        source: AudioNode,
+        channels: number,
+        destination: ReturnType<typeof audioNode>
+      ) => router.registerSource(uuid, source, channels, destination)
     ),
     subscribeDeviceMessage: (
       deviceId: string,
@@ -111,10 +134,15 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       subscriptions.push(subscription);
       return subscription;
     },
-    unregisterMonitoringSource: mock(() => undefined),
+    unregisterMonitoringSource: mock((uuid: Uint8Array) =>
+      router.unregisterSource(uuid)
+    ),
   };
   let project: Project | undefined;
-  const terminate = mock(() => project?.terminate());
+  const terminate = mock(() => {
+    router.terminate();
+    project?.terminate();
+  });
   const runtime = new OfficialOpenDawRuntime(
     context,
     undefined,
@@ -142,6 +170,8 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
                   restart = hook;
                   const failed = () => {
                     worklet.removeEventListener("processorerror", failed);
+                    router.terminate();
+                    activeWorklet.disconnect();
                     hook.unload(undefined).then(() => undefined);
                   };
                   worklet.addEventListener("processorerror", failed);
@@ -165,7 +195,8 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
   return {
     boxes,
     compiles,
-    destination: { context } as unknown as AudioNode,
+    createSource: () => audioNode() as unknown as AudioNode,
+    destination: audioNode() as unknown as AudioNode,
     engine,
     initializing,
     get project() {
@@ -178,13 +209,17 @@ async function createHarness(engineReady: Promise<void> = Promise.resolve()) {
       if (!restart) {
         throw new Error("Worklet has not started");
       }
+      router.terminate();
+      activeWorklet.disconnect();
       await restart.unload(undefined);
       const replacement = Object.assign(audioNode(), { isReady: () => ready });
+      activeWorklet = replacement;
+      router = new MonitoringRouter(replacement, commands);
       restart.load(replacement as never);
       return replacement;
     },
     runtime,
-    source: { context } as unknown as AudioNode,
+    source: audioNode() as unknown as AudioNode,
     subscriptions,
     terminate,
     worklet,
@@ -395,9 +430,9 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
   test("restores live mono, stereo and sidechain returns on every worklet restart", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("stereo", h.source, h.destination);
-    const monoSource = { context: h.source.context } as AudioNode;
+    const monoSource = h.createSource();
     await h.runtime.connectSound("mono", monoSource, h.destination, 1, 1);
-    const keySource = { context: h.source.context } as AudioNode;
+    const keySource = h.createSource();
     await h.runtime.connectSidechainSource("key", keySource);
     await h.runtime.connectSound("retired", h.source, h.destination);
     h.runtime.disconnectSound("retired");
@@ -428,6 +463,43 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       message: "restarted device error",
       state: "error",
     });
+  });
+
+  test("repeated worklet restarts do not retain old monitoring graphs or remove dry output", async () => {
+    const h = await createHarness();
+    const dry = h.createSource();
+    h.source.connect(dry);
+    await h.runtime.connectSound("live", h.source, h.destination);
+    const key = h.createSource();
+    await h.runtime.connectSidechainSource("key", key);
+    const connections = (node: AudioNode): Set<AudioNode> =>
+      (node as unknown as { connections: Set<AudioNode> }).connections;
+    const reachableCount = () => {
+      const reached = new Set<AudioNode>();
+      const visit = (node: AudioNode) => {
+        if (reached.has(node)) {
+          return;
+        }
+        reached.add(node);
+        for (const destination of connections(node)) {
+          visit(destination);
+        }
+      };
+      visit(h.source);
+      return reached.size;
+    };
+    const initialCount = reachableCount();
+
+    for (let index = 0; index < 3; index += 1) {
+      // biome-ignore lint/performance/noAwaitInLoops: consecutive failures exercise retained native audio edges
+      await h.restartWorklet();
+      expect(reachableCount()).toBe(initialCount);
+      expect(connections(h.source).has(dry)).toBe(true);
+    }
+
+    h.runtime.cleanup();
+    expect(connections(h.source)).toEqual(new Set([dry]));
+    expect(connections(key).size).toBe(0);
   });
 
   test("a thousand sound syncs keep edits live without retaining undo history", async () => {

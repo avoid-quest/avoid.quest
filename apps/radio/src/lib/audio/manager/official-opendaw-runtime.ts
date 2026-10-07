@@ -58,6 +58,7 @@ type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
   effects: EffectConfig[];
   groups: OfficialEffectGroup[];
   inputChannels: 1 | 2;
+  monitoringInput: GainNode;
   monitoring: boolean;
   rack: ReturnType<typeof createMasterRack>;
   source: AudioNode | null;
@@ -250,12 +251,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         worklet.disconnect(this.context.destination, 0, 0);
         for (const unit of this.soundUnits.values()) {
           if (unit.source && unit.destination) {
-            project.engine.registerMonitoringSource(
-              unit.audioUnitBox.address.uuid,
-              unit.source,
-              unit.inputChannels,
-              unit.destination
-            );
+            this.registerMonitoringSource(unit, project);
           }
           for (const group of flattenGroups(unit.groups)) {
             if (group.config.type === "werkstatt") {
@@ -267,6 +263,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       const initialWorklet = project.startAudioWorklet({
         load,
         unload: () => {
+          this.disconnectMonitoringInputs();
           if (this.project !== project || this.closed) {
             return Promise.resolve();
           }
@@ -431,6 +428,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         groups: [],
         inputChannels,
         monitoring,
+        monitoringInput: this.context.createGain(),
         source: null,
       };
       this.soundUnits.set(soundId, unit);
@@ -443,21 +441,49 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.rebindSidechains();
       return true;
     } else if (unit.source !== null) {
-      project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
+      this.unregisterMonitoringSource(unit);
     }
 
-    project.engine.registerMonitoringSource(
-      unit.audioUnitBox.address.uuid,
-      source,
-      inputChannels,
-      destination
-    );
     unit.source = source;
     unit.destination = destination;
     unit.inputChannels = inputChannels;
     unit.monitoring = monitoring;
+    this.registerMonitoringSource(unit);
     this.rebindSidechains();
     return true;
+  }
+
+  private disconnectMonitoringInputs(): void {
+    // openDAW leaves source-to-splitter edges behind on rebuild and teardown.
+    // Owned inputs let us detach those edges without touching the dry graph.
+    for (const unit of this.soundUnits.values()) {
+      unit.monitoringInput.disconnect();
+    }
+  }
+
+  private registerMonitoringSource(
+    unit: SoundUnit,
+    project = this.requireProject()
+  ): void {
+    if (!(unit.source && unit.destination)) {
+      return;
+    }
+    this.disconnectMonitoringInputs();
+    unit.source.connect(unit.monitoringInput);
+    project.engine.registerMonitoringSource(
+      unit.audioUnitBox.address.uuid,
+      unit.monitoringInput,
+      unit.inputChannels,
+      unit.destination
+    );
+  }
+
+  private unregisterMonitoringSource(unit: SoundUnit): void {
+    this.disconnectMonitoringInputs();
+    unit.source?.disconnect(unit.monitoringInput);
+    this.requireProject().engine.unregisterMonitoringSource(
+      unit.audioUnitBox.address.uuid
+    );
   }
 
   disconnectSound(
@@ -478,7 +504,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!(unit && project && unit.source)) {
       return;
     }
-    project.engine.unregisterMonitoringSource(unit.audioUnitBox.address.uuid);
+    this.unregisterMonitoringSource(unit);
     unit.source = null;
     unit.destination = null;
     this.rebindSidechains();
@@ -687,7 +713,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private restoreMonitoringSources(
     units: ReadonlyMap<string, SoundUnit>
   ): void {
-    const project = this.requireProject();
     for (const [id, unit] of this.soundUnits) {
       const previous = units.get(id);
       if (
@@ -696,16 +721,9 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         previous.destination !== unit.destination ||
         previous.inputChannels !== unit.inputChannels
       ) {
-        project.engine.unregisterMonitoringSource(
-          unit.audioUnitBox.address.uuid
-        );
+        this.unregisterMonitoringSource(unit);
         if (previous?.source && previous.destination) {
-          project.engine.registerMonitoringSource(
-            previous.audioUnitBox.address.uuid,
-            previous.source,
-            previous.inputChannels,
-            previous.destination
-          );
+          this.registerMonitoringSource(previous);
         }
       }
     }

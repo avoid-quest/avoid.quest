@@ -6,6 +6,7 @@ import {
   residualDb,
   testProgram,
 } from "./offline-graph";
+import { delay, LANE_DUCK_MS } from "./sends";
 import { createSplitStage, type SplitEffect } from "./split-stage";
 
 const FRAMES = 9600;
@@ -130,5 +131,45 @@ describe("createSplitStage", () => {
     // An uncabled port has no output.
     stage.update({ cabled: [0], effect });
     expect(stage.port(1)).toBeNull();
+  });
+
+  test("a crossover move fades the new bands in over the old, then lets the old go", async () => {
+    const effect = split("frequencySplit") as Extract<
+      SplitEffect,
+      { type: "frequencySplit" }
+    >;
+    const moved = { ...effect, crossoverFrequencies: [300] };
+    const { graph, port, stage } = render(effect, [0, 1]);
+    const before = render(effect, [0, 1]);
+    const after = render(moved, [0, 1]);
+    const blend = (signals: Float32Array[][]) =>
+      signals[0]?.map((channel, side) =>
+        channel.map((_, frame) =>
+          signals.reduce(
+            (total, signal) => total + 0.5 * (signal[side]?.[frame] ?? 0),
+            0
+          )
+        )
+      ) ?? [];
+
+    stage.update({ cabled: [0, 1], effect: moved });
+    // Half way through the fade, each band is half the old, half the new.
+    graph.progress = 0.5;
+    for (const position of [0, 1]) {
+      expect(
+        residualDb(
+          port(position),
+          blend([before.port(position), after.port(position)]),
+          TAIL
+        )
+      ).toBeLessThan(-90);
+    }
+    graph.progress = 1;
+    expect(residualDb(port(0), after.port(0), TAIL)).toBeLessThan(-90);
+
+    // Once it faded out, the old wiring no longer reaches the ports.
+    await delay(LANE_DUCK_MS);
+    graph.progress = 0.5;
+    expect(residualDb(port(0), blend([after.port(0)]), TAIL)).toBeLessThan(-90);
   });
 });

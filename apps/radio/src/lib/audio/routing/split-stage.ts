@@ -21,7 +21,7 @@
  *
  * Its input and its ports' outputs stay the same nodes across updates, so
  * what connects to them stays connected; a new crossover or port set
- * rebuilds only what lies between them.
+ * rebuilds only what lies between them, crossfading from the old wiring.
  */
 
 import { BiquadCoeff } from "@opendaw/lib-dsp";
@@ -30,8 +30,8 @@ import type {
   FxCompositeConfig,
   StereoSplitConfig,
 } from "../dsp/effects/types.js";
-import { safeDisconnect } from "../utils.js";
-import { settleGain } from "./sends.js";
+import { safeDisconnect, safeDisconnectFrom } from "../utils.js";
+import { delay, LANE_DUCK_MS, rampGain, settleGain } from "./sends.js";
 
 export type SplitEffect =
   | FxCompositeConfig
@@ -51,6 +51,9 @@ export type SplitStage = {
   update: (config: SplitStageConfig) => void;
   dispose: () => void;
 };
+
+/** What lies between the input and the ports: its entry and the rest. */
+type Wiring = { entry: GainNode; between: AudioNode[] };
 
 /** A Linkwitz-Riley lowpass: two Butterworth biquads in series. */
 const BUTTERWORTH_Q = Math.SQRT1_2;
@@ -82,8 +85,8 @@ export function createSplitStage(
 ): SplitStage {
   const input = context.createGain();
   const ports = new Map<number, GainNode>();
-  /** Nodes between the input and the ports, rebuilt with the shape. */
-  let between: AudioNode[] = [];
+  /** Rebuilt with the shape. */
+  let wiring: Wiring | null = null;
   let shape = "";
 
   const portFor = (position: number): GainNode => {
@@ -92,18 +95,20 @@ export function createSplitStage(
     return known;
   };
 
-  /** The input's own outputs are all inside the stage. */
-  const unwire = () => {
-    safeDisconnect(input, "SplitStage.rebuild");
-    for (const node of between) {
+  const unwire = (old: Wiring) => {
+    safeDisconnectFrom(input, old.entry, "SplitStage.rebuild");
+    for (const node of [old.entry, ...old.between]) {
       safeDisconnect(node, "SplitStage.rebuild");
     }
-    between = [];
   };
 
-  const wireStereo = (cabled: readonly number[]) => {
+  const wireStereo = (
+    entry: AudioNode,
+    between: AudioNode[],
+    cabled: readonly number[]
+  ) => {
     const splitter = context.createChannelSplitter(2);
-    input.connect(splitter);
+    entry.connect(splitter);
     between.push(splitter);
     for (const position of cabled) {
       // Channel k stays on side k, so the ports sum back to the input.
@@ -115,10 +120,12 @@ export function createSplitStage(
   };
 
   const wireBands = (
+    entry: AudioNode,
+    between: AudioNode[],
     effect: FrequencySplitConfig,
     cabled: readonly number[]
   ) => {
-    let remainder: AudioNode = input;
+    let remainder: AudioNode = entry;
     const bandCount = effect.crossoverFrequencies.length + 1;
     for (let band = 0; band < bandCount; band += 1) {
       const frequency = effect.crossoverFrequencies[band];
@@ -152,21 +159,34 @@ export function createSplitStage(
       return;
     }
     shape = next;
-    unwire();
     for (const [position, port] of ports) {
       if (!cabled.includes(position)) {
         safeDisconnect(port, "SplitStage.rewire");
         ports.delete(position);
       }
     }
+    const entry = context.createGain();
+    const between: AudioNode[] = [];
+    input.connect(entry);
     if (effect.type === "stereoSplit") {
-      wireStereo(cabled);
+      wireStereo(entry, between, cabled);
     } else if (effect.type === "frequencySplit") {
-      wireBands(effect, cabled);
+      wireBands(entry, between, effect, cabled);
     } else {
       for (const position of cabled) {
-        input.connect(portFor(position));
+        entry.connect(portFor(position));
       }
+    }
+    const old = wiring;
+    wiring = { between, entry };
+    if (old) {
+      // New filters start from silence and the old stop mid-signal, under
+      // the ports' live cables: the new wiring fades in as the old fades
+      // out, and the old goes once it is silent.
+      entry.gain.value = 0;
+      rampGain(entry, 1);
+      rampGain(old.entry, 0);
+      delay(LANE_DUCK_MS).then(() => unwire(old));
     }
   };
 
@@ -174,7 +194,9 @@ export function createSplitStage(
 
   return {
     dispose() {
-      unwire();
+      if (wiring) {
+        unwire(wiring);
+      }
       for (const port of ports.values()) {
         safeDisconnect(port, "SplitStage.dispose");
       }

@@ -5,7 +5,8 @@
  * AudioContext to build a graph of gains, IIR filters, channel splitters
  * and mergers and delays, then render a stereo buffer through it, sample
  * exact. Params hold their last scheduled value, so it renders the steady
- * state a graph ramps to. Channel counts follow Web Audio's speaker rules
+ * state a graph ramps to, or, for gains, a point along their last linear
+ * ramp (`progress`). Channel counts follow Web Audio's speaker rules
  * where these nodes meet: a mono input to a stereo node plays on both
  * sides, a merger input takes the mono down-mix.
  */
@@ -13,10 +14,27 @@
 type Signal = Float32Array[];
 
 class OfflineParam {
-  value: number;
+  /** Where its last linear ramp started; its value when it has none. */
+  from: number;
+  private target: number;
 
   constructor(value: number) {
-    this.value = value;
+    this.target = value;
+    this.from = value;
+  }
+
+  get value(): number {
+    return this.target;
+  }
+
+  set value(value: number) {
+    this.target = value;
+    this.from = value;
+  }
+
+  /** Its value `progress` of the way along its last linear ramp. */
+  at(progress: number): number {
+    return this.from + (this.target - this.from) * progress;
   }
 
   setTargetAtTime(value: number): void {
@@ -28,7 +46,8 @@ class OfflineParam {
   }
 
   linearRampToValueAtTime(value: number): void {
-    this.value = value;
+    this.from = this.target;
+    this.target = value;
   }
 
   cancelScheduledValues(): void {
@@ -110,6 +129,8 @@ export class OfflineGraph {
   readonly sampleRate: number;
   readonly currentTime = 0;
   readonly nodes: OfflineNode[] = [];
+  /** How far along their linear ramps gains render: 1 where they end. */
+  progress = 1;
 
   constructor(sampleRate = 48_000) {
     this.sampleRate = sampleRate;
@@ -118,7 +139,9 @@ export class OfflineGraph {
   createGain(): OfflineNode {
     return new OfflineNode(this, ([input = []], node) =>
       [sum([input], this.frames)].map((signal) =>
-        signal.map((channel) => channel.map((x) => x * node.gain.value))
+        signal.map((channel) =>
+          channel.map((x) => x * node.gain.at(this.progress))
+        )
       )
     );
   }

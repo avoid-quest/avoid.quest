@@ -12,7 +12,7 @@ import {
   effectFieldsAreStructural,
   findEffectInTree,
   localEffectConfig,
-  updateEffectInTree,
+  updateEffectFieldsInTree,
 } from "../dsp/routing/effect-tree.js";
 import type {
   EffectsGraphRuntime,
@@ -622,7 +622,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         this.compileWerkstattGroup(group, authored);
       }
     });
-    unit.effects = updateEffectInTree(unit.effects, effectId, authored);
+    unit.effects = updateEffectFieldsInTree(unit.effects, effectId, authored);
     for (const current of unit.groupsById.values()) {
       current.config =
         findEffectInTree(unit.effects, current.config.id) ?? current.config;

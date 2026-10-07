@@ -14,7 +14,7 @@ import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   effectFieldsAreStructural,
   findEffectInTree,
-  updateEffectInTree,
+  updateEffectFieldsInTree,
 } from "../dsp/routing/effect-tree.js";
 import {
   type AudioState,
@@ -272,7 +272,7 @@ class EffectsController {
     if (effectFieldsAreStructural(before, config)) {
       return "structural";
     }
-    const next = updateEffectInTree(
+    const next = updateEffectFieldsInTree(
       state.effects,
       effectId,
       toPlainEffectConfig(config)

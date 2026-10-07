@@ -178,6 +178,30 @@ export function updateEffectInTree(
   });
 }
 
+/** Record a device's fields without advancing its descendants' state. */
+export function updateEffectFieldsInTree(
+  effects: readonly EffectConfig[],
+  effectId: string,
+  config: EffectConfig
+): EffectConfig[] {
+  const before = findEffectInTree(effects, effectId);
+  return updateEffectInTree(
+    effects,
+    effectId,
+    before && isEffectContainer(before) && isEffectContainer(config)
+      ? {
+          ...config,
+          chains: config.chains.map((chain) => ({
+            ...chain,
+            effects:
+              before.chains.find((previous) => previous.id === chain.id)
+                ?.effects ?? [],
+          })),
+        }
+      : config
+  );
+}
+
 export function removeEffectFromTree(
   effects: readonly EffectConfig[],
   effectId: string

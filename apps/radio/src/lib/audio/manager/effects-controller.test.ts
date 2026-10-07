@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DesiredEffectsState } from "../../channel-effects.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
+import type { EffectConfig } from "../dsp/effects/types.js";
 import type { WorkletManager } from "../playback/index.js";
 import type { AudioManager } from "./audio-manager.js";
 import type { SoundInstance } from "./audio-manager-types.js";
 import { EffectsController } from "./effects-controller.js";
 import type {
   EffectsGraphRuntime,
+  EffectWriteResult,
   OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 
@@ -264,6 +266,107 @@ describe("EffectsController", () => {
         );
       }
       controller.cleanup();
+    }
+  );
+
+  test.each(["throw", "unavailable"] as const)(
+    "a container edit keeps its failed descendant pending (%s)",
+    async (failure) => {
+      const context = new TestAudioContext();
+      const source = new TestAudioNode(context);
+      const destination = new TestAudioNode(context);
+      const child = {
+        ...createDefaultEffectConfig("compressor", "comp", 0),
+        enabled: true,
+      };
+      const container = {
+        ...createDefaultEffectConfig("fxComposite", "bus", 0),
+        enabled: true,
+      };
+      container.chains[0].effects = [child];
+      let liveGain = container.chains[0].gain;
+      let liveThreshold = child.threshold;
+      const runtime = {
+        ...createRuntime(),
+        writeEffect: mock(
+          (
+            _soundId: string,
+            _effectId: string,
+            config: EffectConfig
+          ): EffectWriteResult => {
+            if (config.type === "fxComposite") {
+              liveGain = config.chains[0].gain;
+              return "applied";
+            }
+            if (failure === "throw") {
+              throw new Error("Descendant write failed");
+            }
+            return "unavailable";
+          }
+        ),
+      };
+      const applyEffects = (effects: readonly EffectConfig[]): undefined => {
+        const [parent] = effects;
+        if (parent.type === "fxComposite") {
+          liveGain = parent.chains[0].gain;
+          const [compressor] = parent.chains[0].effects;
+          if (compressor.type === "compressor") {
+            liveThreshold = compressor.threshold;
+          }
+        }
+      };
+      runtime.syncEffects.mockImplementation((_soundId, effects) =>
+        applyEffects(effects)
+      );
+      runtime.connectSound.mockImplementation(
+        (_soundId, _source, _destination, _generation, _channels, settings) => {
+          if (settings) {
+            applyEffects(settings.effects);
+          }
+          return Promise.resolve(true);
+        }
+      );
+      const controller = new EffectsController({
+        createOfficialRuntime: () => runtime,
+        createWorkletManager: () => createManager(context),
+        notifyListeners: () => undefined,
+        sounds: new Map([["lane", sound("lane", source)]]),
+        workletProcessorUrl: () => "/worklet.js",
+      });
+      try {
+        await controller.reconcile("lane", desiredEffects([container]));
+        await controller.connectGraph(
+          "lane",
+          source as unknown as AudioNode,
+          destination as unknown as AudioNode
+        );
+        const editedChild = { ...child, threshold: -23 };
+        const edited = {
+          ...container,
+          chains: [
+            { ...container.chains[0], effects: [editedChild], gain: 0.5 },
+          ],
+        };
+        expect(controller.setEffectFields("lane", container.id, edited)).toBe(
+          "applied"
+        );
+        if (failure === "throw") {
+          expect(() =>
+            controller.setEffectFields("lane", child.id, editedChild)
+          ).toThrow("Descendant write failed");
+        } else {
+          expect(
+            controller.setEffectFields("lane", child.id, editedChild)
+          ).toBe("unavailable");
+        }
+        expect(liveGain).toBe(0.5);
+        expect(liveThreshold).toBe(child.threshold);
+        await controller.reconcile("lane", desiredEffects([edited]));
+        expect(liveGain).toBe(0.5);
+        expect(liveThreshold).toBe(-23);
+      } finally {
+        controller.cleanup();
+      }
     }
   );
 

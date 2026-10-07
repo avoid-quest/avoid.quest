@@ -905,6 +905,15 @@ export class AudioManager {
     this.effects.detachInsert(id);
   }
 
+  /** Makes `node` a key effects name in their `sidechain`, e.g. a Node key. */
+  connectEffectsKey(id: string, node: AudioNode): void {
+    this.effects.connectKey(id, node);
+  }
+
+  releaseEffectsKey(id: string): void {
+    this.effects.releaseKey(id);
+  }
+
   /** The backend a sound's effects last settled on, e.g. a dry fallback. */
   getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
     return this.effects.getRuntimeOutcome(soundId);

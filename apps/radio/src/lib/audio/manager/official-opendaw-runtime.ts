@@ -125,7 +125,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   private readonly context: AudioContext;
   private readonly urls: OpenDawRuntimeUrls;
   private readonly moduleLoader: RuntimeModuleLoader;
-  private readonly sidechainTargets = new Map<string, string>();
   private readonly soundUnits = new Map<string, SoundUnit>();
   private readonly connectionGenerations = new Map<string, number>();
   private readonly werkstattGenerations = new Map<
@@ -351,7 +350,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       );
       if (connected && settings) {
         this.setTempo(settings.tempo);
-        this.setSidechainTarget(soundId, settings.sidechainSoundId);
         this.syncEffects(soundId, settings.effects);
         this.setDryWet(soundId, settings.dryWet);
       }
@@ -545,7 +543,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.transaction(() => project.api.deleteAudioUnit(unit.audioUnitBox));
     }
     this.soundUnits.delete(soundId);
-    this.sidechainTargets.delete(soundId);
     this.rebindSidechains();
   }
 
@@ -691,17 +688,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       });
   }
 
-  setSidechainTarget(soundId: string, targetSoundId: string | null): void {
-    this.transaction(() => {
-      if (targetSoundId === null) {
-        this.sidechainTargets.delete(soundId);
-      } else {
-        this.sidechainTargets.set(soundId, targetSoundId);
-      }
-      this.bindSidechains();
-    });
-  }
-
   setDryWet(soundId: string, value: number): void {
     const unit = this.soundUnits.get(soundId);
     const { project } = this;
@@ -731,7 +717,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.disconnectSoundUnit(soundId);
     }
     this.soundUnits.clear();
-    this.sidechainTargets.clear();
     this.connectionGenerations.clear();
     for (const subscription of this.werkstattSubscriptions.values()) {
       subscription.terminate();
@@ -758,7 +743,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       return write();
     }
     const { bpm } = this;
-    const targets = new Map(this.sidechainTargets);
     const units = new Map(
       [...this.soundUnits].map(([id, unit]) => [id, { ...unit }])
     );
@@ -779,10 +763,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
         graph.abortTransaction();
       }
       this.bpm = bpm;
-      this.sidechainTargets.clear();
-      for (const [id, target] of targets) {
-        this.sidechainTargets.set(id, target);
-      }
       this.restoreMonitoringSources(units);
       for (const [group, previous] of groups) {
         Object.assign(group, restoreGroup(previous, graph));
@@ -1006,34 +986,31 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     );
   }
 
+  /**
+   * Binds each keyed effect to the unit its `sidechain` names, once that
+   * unit is registered with a source; otherwise it detects on its own input.
+   */
   private bindSidechains(updated?: {
     soundId: string;
     groups: OfficialEffectGroup[];
   }): void {
-    const bind = (
-      group: OfficialEffectGroup,
-      target: SoundUnit["audioUnitBox"] | null
-    ): void => {
+    const bind = (group: OfficialEffectGroup): void => {
+      const keyId = group.config.sidechain?.channelId;
+      const key = keyId === undefined ? undefined : this.soundUnits.get(keyId);
       bindOfficialSidechain(
         this.adapterContext(),
         group,
-        group.config.sidechain ? target : null
+        key && key.source !== null ? key.audioUnitBox : null
       );
       for (const child of group.children) {
-        bind(child, target);
+        bind(child);
       }
     };
     for (const [soundId, unit] of this.soundUnits) {
-      const targetId = this.sidechainTargets.get(soundId);
-      const targetUnit = targetId ? this.soundUnits.get(targetId) : undefined;
-      const target =
-        targetUnit?.source === null || targetUnit === undefined
-          ? null
-          : targetUnit.audioUnitBox;
       const groups =
         updated?.soundId === soundId ? updated.groups : unit.groups;
       for (const group of groups) {
-        bind(group, target);
+        bind(group);
       }
     }
   }

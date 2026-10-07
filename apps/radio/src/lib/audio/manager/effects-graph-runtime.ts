@@ -11,8 +11,11 @@ export type EffectsPerformanceSnapshot = {
 
 export type OfficialSoundSettings = {
   dryWet: number;
+  /**
+   * Its effects; a keyed one names, in `sidechain.channelId`, the sound or
+   * key it keys from, registered on its own (`connectSidechainSource`).
+   */
   effects: readonly EffectConfig[];
-  sidechainSoundId: string | null;
   tempo: number;
 };
 
@@ -43,5 +46,4 @@ export type EffectsGraphRuntime = {
   deleteSound: (soundId: string, generation?: number) => void;
   disconnectSound: (soundId: string, generation?: number) => void;
   getPerformanceSnapshot?: () => EffectsPerformanceSnapshot | null;
-  setSidechainTarget: (soundId: string, targetSoundId: string | null) => void;
 };

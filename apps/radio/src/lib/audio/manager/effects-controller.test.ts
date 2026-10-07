@@ -140,7 +140,6 @@ function createRuntime() {
     deleteSound: mock((_soundId: string) => undefined),
     disconnectSound: mock(() => undefined),
     getPerformanceSnapshot: mock(() => performanceSnapshot),
-    setSidechainTarget: mock(() => undefined),
     syncEffects: mock(
       (
         _soundId: string,
@@ -321,6 +320,181 @@ describe("EffectsController", () => {
     expect(runtime.deleteSound).toHaveBeenCalled();
     expect(controller.getRuntimeOutcome("removed").status).toBe("inactive");
   });
+
+  test("a key official effects name registers with openDAW while they need it", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const key = new TestAudioNode(context) as unknown as AudioNode;
+    const keyed = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+      sidechain: { channelId: "comp:key" },
+    };
+    controller.connectKey("comp:key", key);
+    await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([keyed], { sidechainSoundId: "comp:key" })
+    );
+
+    expect(runtime.connectSidechainSource).toHaveBeenCalledWith(
+      "comp:key",
+      key,
+      expect.any(Number),
+      2
+    );
+    // Unkeyed, it is no longer needed and goes.
+    const { sidechain: _, ...unkeyed } = keyed;
+    await controller.reconcile("unit", desiredEffects([unkeyed]));
+    const deleted = runtime.deleteSound.mock.calls as unknown as [string][];
+    expect(deleted.map(([id]) => id)).toContain("comp:key");
+    controller.releaseKey("comp:key");
+  });
+
+  test("a keyed effect on a muted branch takes no key channels", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const split = createDefaultEffectConfig("fxComposite", "split", 0);
+    if (split.type !== "fxComposite") {
+      throw new Error("Missing Split");
+    }
+    const [first, second] = split.chains;
+    if (!(first && second)) {
+      throw new Error("Missing Split branches");
+    }
+    const keyed = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+      sidechain: { channelId: "comp:key" },
+    };
+    controller.connectKey(
+      "comp:key",
+      new TestAudioNode(context) as unknown as AudioNode
+    );
+    await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([
+        {
+          ...split,
+          chains: [
+            { ...first, effects: [keyed], muted: true },
+            {
+              ...second,
+              effects: [
+                {
+                  ...createDefaultEffectConfig("cheapReverb", "verb", 0),
+                  enabled: true,
+                },
+              ],
+            },
+          ],
+          enabled: true,
+        },
+      ])
+    );
+
+    const connected = runtime.connectSidechainSource.mock.calls as unknown as [
+      string,
+    ][];
+    expect(connected.map(([id]) => id)).not.toContain("comp:key");
+    controller.releaseKey("comp:key");
+  });
+
+  test("a knob that starts a second key listening reconciles, so that key registers", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const keyed = (id: string, enabled: boolean) => ({
+      ...createDefaultEffectConfig("compressor", id, 0),
+      enabled,
+      sidechain: { channelId: `${id}:key` },
+    });
+    await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([keyed("one", true), keyed("two", false)])
+    );
+
+    // A field write can't register the second key's channels.
+    expect(controller.setEffectFields("unit", "two", keyed("two", true))).toBe(
+      "structural"
+    );
+    // With the same keys listening, a knob writes in place.
+    expect(
+      controller.setEffectFields("unit", "one", {
+        ...keyed("one", true),
+        threshold: -30,
+      })
+    ).toBe("applied");
+  });
+
+  test.each(["before", "after"] as const)(
+    "an insert whose key can't get input channels falls back, its key connected %s it",
+    async (order) => {
+      const context = new TestAudioContext();
+      const runtime = createRuntime();
+      const full = new Error(
+        "openDAW monitoring supports at most 8 input channels"
+      );
+      runtime.connectSidechainSource.mockRejectedValue(full);
+      const controller = new EffectsController({
+        createOfficialRuntime: () => runtime,
+        createWorkletManager: () => createManager(context),
+        notifyListeners: () => undefined,
+        sounds: new Map(),
+        workletProcessorUrl: () => "/worklet.js",
+      });
+      const key = new TestAudioNode(context) as unknown as AudioNode;
+      const keyed = {
+        ...createDefaultEffectConfig("compressor", "comp", 0),
+        enabled: true,
+        sidechain: { channelId: "comp:key" },
+      };
+      if (order === "before") {
+        controller.connectKey("comp:key", key);
+      }
+      const outcome = await controller.attachInsert(
+        "unit",
+        new TestAudioNode(context) as unknown as AudioNode,
+        new TestAudioNode(context) as unknown as AudioNode,
+        desiredEffects([keyed], { sidechainSoundId: "comp:key" })
+      );
+      if (order === "after") {
+        expect(outcome.backend).toBe("official");
+        controller.connectKey("comp:key", key);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      // Never official without its key: the compatibility engine keys it.
+      expect(controller.getRuntimeOutcome("unit")).toMatchObject({
+        backend: "compatibility",
+        ready: true,
+      });
+      const deleted = runtime.deleteSound.mock.calls as unknown as [string][];
+      expect(deleted.map(([id]) => id)).toContain("unit");
+    }
+  );
 
   test("exposes openDAW performance data without exposing its Project", () => {
     const runtime = createRuntime();
@@ -787,6 +961,7 @@ describe("EffectsController", () => {
     const config = {
       ...createDefaultEffectConfig("compressor", "comp", 0),
       enabled: true,
+      sidechain: { channelId: "key" },
     };
     await controller.reconcile(
       "lane",
@@ -1068,7 +1243,6 @@ describe("EffectsController", () => {
       expect(runtime.connectSound.mock.calls.at(-1)?.[5]).toEqual({
         dryWet: 1,
         effects: [updated, disabledOfficial, survivor],
-        sidechainSoundId: null,
         tempo: 120,
       });
       expect(runtime.deleteSound).not.toHaveBeenCalled();
@@ -1418,11 +1592,14 @@ describe("EffectsController", () => {
       keyFilter as unknown as AudioNode,
       destination
     );
-    const reverb = createDefaultEffectConfig("plateReverb", "reverb", 0);
-    reverb.enabled = true;
+    const keyed = {
+      ...createDefaultEffectConfig("compressor", "comp", 0),
+      enabled: true,
+      sidechain: { channelId: "key" },
+    };
     await controller.reconcile(
       "target",
-      desiredEffects([reverb], { sidechainSoundId: "key" })
+      desiredEffects([keyed], { sidechainSoundId: "key" })
     );
     await controller.connectGraph(
       "target",
@@ -1437,7 +1614,7 @@ describe("EffectsController", () => {
     });
     const updating = controller.reconcile(
       "target",
-      desiredEffects([reverb], { sidechainSoundId: "key", tempo: 150 })
+      desiredEffects([keyed], { sidechainSoundId: "key", tempo: 150 })
     );
     await started.promise;
     await controller.reconcile(
@@ -1546,7 +1723,7 @@ describe("EffectsController", () => {
       expect.anything(),
       expect.any(Number),
       2,
-      { dryWet: 1, effects: [reverb], sidechainSoundId: null, tempo: 120 }
+      { dryWet: 1, effects: [reverb], tempo: 120 }
     );
     expect(controller.getRuntimeOutcome("target")).toEqual({
       backend: "official",

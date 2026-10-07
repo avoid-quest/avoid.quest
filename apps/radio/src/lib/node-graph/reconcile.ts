@@ -21,13 +21,13 @@
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
+  audibleSidechainIds,
   effectFieldsAreStructural,
   localEffectConfig,
   visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
 import type { Radio } from "@/lib/audio/playback/types";
-import { findSidechainChannelId } from "@/lib/channel-effects";
 import type {
   ChannelSelectionPlan,
   EnginePlan,
@@ -146,10 +146,14 @@ export function effectsChange(
   if (previous.layoutSignature !== next.layoutSignature) {
     return { kind: "layout" };
   }
+  // Every key an effect starts or stops listening to registers or releases
+  // its channels, which only a reconcile does.
   if (
     previous.backend !== next.backend ||
-    findSidechainChannelId(previous.effects) !==
-      findSidechainChannelId(next.effects)
+    !same(
+      audibleSidechainIds(previous.effects),
+      audibleSidechainIds(next.effects)
+    )
   ) {
     return { kind: "structural" };
   }

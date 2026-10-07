@@ -9,9 +9,8 @@ the source of truth for availability.
 ## A later product v2
 
 - **Sends and returns:** crossfade and Dial routing, and pre-fader sends.
-  Shared FX already run as graph units after the faders (`node-engine/routing.ts`).
-  Validation still refuses a key cable into FX that several sources share,
-  until keys tap any point. A pre-fader send must tap the lane's
+  Shared FX already run as graph units after the faders, and keys tap any
+  point (`node-engine/routing.ts`). A pre-fader send must tap the lane's
   `preFaderSend`, because `nodes.gain` is already post-fader.
 - **Split branches to different places:** an explicit Split, Stereo Split or
   Band Split whose branches don't meet again is refused until its split stage
@@ -46,6 +45,10 @@ the source of truth for availability.
   loudness limiting and layout/performance optimizations need evidence and a
   bounded design. The existing v1 duck/swap path and browser output capabilities
   remain the current behavior.
+- **Accepted exception, a key into its source's own insert:** that insert
+  takes its audio first hand, before the fader, so a slower key can't be
+  waited for and arrives about 3–5 ms late (`alignCables` in
+  `node-graph/compile.ts`). Ducking can't hear the difference.
 - Curated patch membership is intentional. Automatic canvas insertion on library
   Save is a product decision, independent from source loading.
 - Recorder/export formats, rights handling and source eligibility belong to the

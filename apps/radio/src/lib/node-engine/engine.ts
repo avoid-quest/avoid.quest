@@ -43,12 +43,11 @@ import type {
 } from "@/lib/audio/routing/node-lane-outputs";
 import type { SendPlan } from "@/lib/audio/routing/sends";
 import { findSidechainChannelId } from "@/lib/channel-effects";
-import {
-  type CablePlan,
-  type Endpoint,
-  type EnginePlan,
-  type LaneBackend,
-  laneChannelId,
+import type {
+  CablePlan,
+  Endpoint,
+  EnginePlan,
+  LaneBackend,
 } from "@/lib/node-graph/compile";
 import { diff, type Op } from "@/lib/node-graph/reconcile";
 import { MAX_EDGE_GAIN } from "@/lib/node-graph/schema";
@@ -170,8 +169,10 @@ export type NodeEngineOptions = {
   effects: Pick<
     AudioManager,
     | "attachEffectsInsert"
+    | "connectEffectsKey"
     | "detachEffectsInsert"
     | "reconcileEffects"
+    | "releaseEffectsKey"
     | "setEffectFields"
     | "subscribeEffectsRuntimeOutcome"
   >;
@@ -291,20 +292,16 @@ export function createNodeEngine(options: NodeEngineOptions) {
     onStatus: () => options.sinkStatuses.setState(() => deviceSinks.statuses()),
   });
 
-  /** The tree and key an insert's effects are reconciled with. */
-  const desiredEffects = (effects: readonly EffectConfig[]) => {
-    const keyLane = findSidechainChannelId(effects)?.slice(
-      NODE_CHANNEL_PREFIX.length
-    );
-    return {
-      dryWet: 1,
-      sidechainSoundId: keyLane
-        ? (slots.get(keyLane)?.current?.soundId ?? null)
-        : null,
-      tempo: DEFAULT_EFFECT_TEMPO,
-      tree: normalizeEffectTree(effects),
-    };
-  };
+  /**
+   * The tree an insert's effects are reconciled with. Each keyed effect
+   * names its key; the compatibility engine binds the first one's.
+   */
+  const desiredEffects = (effects: readonly EffectConfig[]) => ({
+    dryWet: 1,
+    sidechainSoundId: findSidechainChannelId(effects),
+    tempo: DEFAULT_EFFECT_TEMPO,
+    tree: normalizeEffectTree(effects),
+  });
 
   const routing = new RoutingGraph({
     attachEffects: (id, input, output, unit) =>
@@ -314,6 +311,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
         output,
         desiredEffects(unit.effects)
       ),
+    connectKey: (id, input) => options.effects.connectEffectsKey(id, input),
     detachEffects: (id) => options.effects.detachEffectsInsert(id),
     onFailure: reportNodeFailure("Could not apply shared effects"),
     outcomeChanged: () => publishBadges(),
@@ -327,6 +325,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }),
     reconcileEffects: (id, unit) =>
       options.effects.reconcileEffects(id, desiredEffects(unit.effects)),
+    releaseKey: (id) => options.effects.releaseEffectsKey(id),
     routeSink: (sinkId, send, realtime) =>
       deviceSinks.connect(sinkId, send, realtime),
     sendOverlay,
@@ -339,8 +338,12 @@ export function createNodeEngine(options: NodeEngineOptions) {
   const laneOutputs = options.laneOutputs({
     getHost: () => ctx.audio,
     getSends: laneSends,
-    // A new sound's nodes exist from its connect, before its playback starts.
-    onConnect: (laneId) => slots.get(laneId)?.current?.applyStrip(),
+    // A new sound's nodes exist from its connect, before its playback and
+    // its effects start; the keys they may listen to are made first.
+    onConnect: (laneId, context) => {
+      routing.reserveKeys(context);
+      slots.get(laneId)?.current?.applyStrip();
+    },
     // A lane's send goes to an output, or into a unit or module it holds.
     route: (to, send, realtime) => routing.route(to, send, realtime),
   });
@@ -397,30 +400,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
       failures ? failures.push(error) : slot.fail(error),
     laneOutputs,
     outcomeChanged: publishBadges,
-    /**
-     * A lane's effects as its plan has them, keyed from its key lane's
-     * sound once that lane has one. Node has no dry/wet or tempo control.
-     */
+    /** A lane's effects as its plan has them. Node has no dry/wet or tempo control. */
     reconcileEffects: (soundId, lane) =>
       options.effects.reconcileEffects(soundId, desiredEffects(lane.effects)),
     resolveStream: options.resolveStream,
     setEffectFields: (...args) => options.effects.setEffectFields(...args),
-    /** A lane's sound came or went: every insert keyed from it rebinds. */
-    soundChanged: (laneId) => {
-      const channelId = laneChannelId(laneId);
-      for (const slot of slots.values()) {
-        if (
-          slot.laneId !== laneId &&
-          slot.plan &&
-          findSidechainChannelId(slot.plan.effects) === channelId
-        ) {
-          slot.effectsChanged();
-        }
-      }
-      routing.effectsChanged(
-        (unit) => findSidechainChannelId(unit.effects) === channelId
-      );
-    },
     streamLimit: (slot) => {
       if (slot.plan?.source.kind === "device") {
         return null;

@@ -124,6 +124,8 @@ function createHarness() {
   const listeners = new Map<string, (outcome: EffectsRuntimeOutcome) => void>();
   let attach = (_id: string): Promise<EffectsRuntimeOutcome> =>
     Promise.resolve(ready);
+  /** Keys connected for keyed effects, by key id. */
+  const keys = new Map<string, AudioNode>();
   const host = {
     attachEffects: mock(
       (id: string, input: AudioNode, output: AudioNode, unit: UnitPlan) => {
@@ -132,6 +134,9 @@ function createHarness() {
         return attach(id);
       }
     ),
+    connectKey: mock((id: string, input: AudioNode) => {
+      keys.set(id, input);
+    }),
     detachEffects: mock((id: string) => {
       attached.delete(id);
     }),
@@ -151,6 +156,9 @@ function createHarness() {
     reconcileEffects: mock((id: string, unit: UnitPlan) => {
       effects.set(id, unit.effects);
       return Promise.resolve(ready);
+    }),
+    releaseKey: mock((id: string) => {
+      keys.delete(id);
     }),
     routeSink: mock((sinkId: string, send: AudioNode, _realtime: boolean) => {
       const into = sinks.get(sinkId) ?? new Set<unknown>();
@@ -224,6 +232,7 @@ function createHarness() {
     effects,
     endFades,
     host,
+    keys,
     laneSends,
     listeners,
     /** Unit attaches answer through `next` from now on. */
@@ -576,5 +585,145 @@ describe("RoutingGraph", () => {
     expect(filter?.connections.size).toBe(0);
     expect(feeds(h.attached.get("node-unit:mix")?.output, panner)).toBe(true);
     expect(h.sinks.get("speakers")?.size).toBe(1);
+  });
+
+  test("keys tap the cabled point, sum inputs and honor cable gain", async () => {
+    const h = createHarness();
+    const keyed = plan(
+      [
+        station("music"),
+        station("talk"),
+        station("news"),
+        node("mix", "merge"),
+        fx("comp", "compressor"),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "speakers"),
+        audio("talk", "mix"),
+        audio("news", "mix"),
+        audio("mix", "speakers"),
+        {
+          gain: 0.5,
+          id: "mix~>comp",
+          source: "mix",
+          sourceHandle: "out:audio:main",
+          target: "comp",
+          targetHandle: "in:sidechain:key",
+        },
+      ]
+    );
+    h.apply(keyed);
+    h.laneSends("talk");
+    h.laneSends("news");
+    await h.settle();
+
+    // The key hears the Merge's sum, at its cable's level, on its own input.
+    const key = h.keys.get("comp:key") as FakeGainNode | undefined;
+    expect(key).toBeDefined();
+    const intoKey = h.context.gains.filter((gain) => gain.connections.has(key));
+    expect(intoKey).toHaveLength(1);
+    expect(lastValue(intoKey[0]?.gain)).toBe(0.5);
+
+    // A key no cable needs any more goes once its cable has faded.
+    h.apply(
+      plan(
+        [station("talk"), station("news"), node("mix", "merge"), speakers],
+        [audio("talk", "mix"), audio("news", "mix"), audio("mix", "speakers")]
+      )
+    );
+    await h.endFades();
+    expect(h.keys.has("comp:key")).toBe(false);
+  });
+
+  test("the tap() API returns the summed input and changes with cables", async () => {
+    const h = createHarness();
+    const changes = mock(() => undefined);
+    const stop = h.routing.onTapsChanged(changes);
+    // A follower's tap, as the control layer plans it: a sum, handed on.
+    const tapped: EnginePlan = {
+      ...plan([station("a"), speakers], [audio("a", "speakers")]),
+      modules: new Map([
+        ["follow", { id: "follow", kind: "tap", realtime: false }],
+      ]),
+    };
+    tapped.cables.set("a~>follow", {
+      delay: 0,
+      from: { id: "a", kind: "lane" },
+      gain: 1,
+      id: "a~>follow",
+      kind: "audio",
+      muted: false,
+      reenters: false,
+      to: { id: "follow", kind: "tap" },
+    });
+    h.apply(tapped);
+    expect(h.routing.tap("follow")).toBeNull();
+
+    const [send] = h.laneSends("a").values();
+    const input = h.routing.tap("follow") as FakeGainNode | null;
+    expect(input).not.toBeNull();
+    expect(send?.gain.connections.has(input)).toBe(true);
+    expect(changes).toHaveBeenCalledTimes(1);
+
+    h.apply(plan([station("a"), speakers], [audio("a", "speakers")]));
+    send?.release();
+    await h.endFades();
+    expect(h.routing.tap("follow")).toBeNull();
+    expect(changes).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  test("a key is in, silent, before the FX keyed from it attach", async () => {
+    const h = createHarness();
+    const order: string[] = [];
+    h.host.connectKey.mockImplementation((id: string) => {
+      order.push(`key ${id}`);
+    });
+    h.host.attachEffects.mockImplementation((id: string) => {
+      order.push(`attach ${id}`);
+      return Promise.resolve(ready);
+    });
+    const keyed = (talk: boolean) =>
+      plan(
+        [
+          station("music"),
+          station("news"),
+          station("talk"),
+          node("mix", "merge"),
+          fx("comp", "compressor"),
+          speakers,
+        ],
+        [
+          audio("music", "mix"),
+          audio("news", "mix"),
+          audio("mix", "comp"),
+          audio("comp", "speakers"),
+          audio("talk", "speakers"),
+          ...(talk
+            ? [
+                {
+                  id: "talk~>comp",
+                  source: "talk",
+                  sourceHandle: "out:audio:main",
+                  target: "comp",
+                  targetHandle: "in:sidechain:key",
+                },
+              ]
+            : []),
+        ]
+      );
+    h.apply(keyed(true));
+    // Music plays; Talk, the key's only source, has not started yet.
+    h.laneSends("music");
+    await h.settle();
+
+    expect(order).toEqual(["key comp:key", "attach node-unit:mix"]);
+    // A key added while the graph plays is made at once, too.
+    h.apply(keyed(false));
+    await h.endFades();
+    h.apply(keyed(true));
+    expect(order.at(-1)).toBe("key comp:key");
   });
 });

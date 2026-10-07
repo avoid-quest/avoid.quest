@@ -435,7 +435,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
           h.runtime.connectSound("failed", h.source, h.destination, 1, 2, {
             dryWet: 1,
             effects: [createDefaultEffectConfig("compressor", "comp", 0)],
-            sidechainSoundId: null,
             tempo: 120,
           })
         ).rejects.toThrow("connection failed");
@@ -470,7 +469,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       const settings = {
         dryWet: 0.5,
         effects: [compressor],
-        sidechainSoundId: "key",
         tempo: 120,
       };
       await h.runtime.connectSound(
@@ -495,7 +493,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
           h.runtime.connectSound("deck", h.source, h.destination, 2, 2, {
             ...settings,
             effects: [next],
-            sidechainSoundId: null,
             tempo: 150,
           })
         ).rejects.toThrow("commit failed");
@@ -503,7 +500,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         endTransaction.mockRestore();
       }
       expect(h.project.boxGraph.checksum()).toEqual(checksum);
-      // A later bind must use the last committed sidechain target and box handles.
+      // A later bind must use the last committed key and box handles.
       h.runtime.setDryWet("deck", 0.5);
       await h.runtime.connectSidechainSource("key", h.source);
       const restored = h.project.boxGraph
@@ -519,7 +516,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       await h.runtime.connectSound("deck", h.source, h.destination, 3, 2, {
         ...settings,
         effects: [next],
-        sidechainSoundId: null,
         tempo: 150,
       });
       const device = h.project.boxGraph
@@ -601,7 +597,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
               {
                 dryWet: 1,
                 effects: [updated],
-                sidechainSoundId: null,
                 tempo: 120,
               }
             )
@@ -761,7 +756,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       endTransaction.mockRestore();
     }
     expect(h.project.boxGraph.boxes()).toEqual(liveBoxes);
-    h.runtime.setSidechainTarget("deck", "key");
     h.runtime.syncEffects("deck", [config]);
     const device = asInstanceOf(
       h.project.boxGraph
@@ -773,6 +767,54 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(device.sideChain.targetVertex.unwrap().box.address.uuid).toEqual(
       h.engine.registerMonitoringSource.mock.calls[1][0]
     );
+  });
+
+  test("each keyed effect binds to the key its sidechain names, or to none", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    await h.runtime.connectSidechainSource("talk", h.createSource());
+    await h.runtime.connectSidechainSource("news", h.createSource());
+    const [, talk, news] = h.engine.registerMonitoringSource.mock.calls.map(
+      ([uuid]) => uuid
+    );
+    const keyed = (id: string, type: "compressor" | "gate", key?: string) => ({
+      ...createDefaultEffectConfig(type, id, 0),
+      ...(key ? { sidechain: { channelId: key } } : {}),
+    });
+    h.runtime.syncEffects("deck", [
+      keyed("comp", "compressor", "talk"),
+      { ...keyed("gate", "gate", "news"), order: 1 },
+      { ...keyed("self", "compressor"), order: 2 },
+    ]);
+    const devices = h.project.boxGraph
+      .boxes()
+      .filter(
+        (box) =>
+          box instanceof h.boxes.CompressorDeviceBox ||
+          box instanceof h.boxes.GateDeviceBox
+      );
+    type Keyed = {
+      sideChain: {
+        targetVertex: {
+          nonEmpty: () => boolean;
+          unwrap: () => { box: { address: { uuid: unknown } } };
+        };
+      };
+    };
+    const keyOf = (device: unknown) => {
+      const { targetVertex } = (device as Keyed).sideChain;
+      return targetVertex.nonEmpty()
+        ? targetVertex.unwrap().box.address.uuid
+        : null;
+    };
+    const gates = devices.filter((box) => box instanceof h.boxes.GateDeviceBox);
+    const compressors = devices.filter(
+      (box) => !(box instanceof h.boxes.GateDeviceBox)
+    );
+    expect(gates.map(keyOf)).toEqual([news]);
+    // One Compressor keys from talk, the other detects on its own input.
+    expect(compressors.map(keyOf)).toContainEqual(talk);
+    expect(compressors.map(keyOf)).toContainEqual(null);
   });
 
   test("restores live mono, stereo and sidechain returns on every worklet restart", async () => {
@@ -948,7 +990,6 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
           {
             dryWet: 0.5,
             effects: [{ ...compressor, threshold: -index / 100 }],
-            sidechainSoundId: null,
             tempo: 120,
           }
         );

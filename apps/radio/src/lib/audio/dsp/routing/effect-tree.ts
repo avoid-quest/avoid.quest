@@ -25,6 +25,47 @@ export function isEffectChainActive(
   return !chain.muted && (!hasSolo || chain.solo);
 }
 
+/**
+ * The effects that hear the chain, in tree order: enabled, and not inside a
+ * switched-off container or a muted, silent or unsoloed chain.
+ */
+export function audibleEffects(
+  effects: readonly EffectConfig[],
+  into: EffectConfig[] = []
+): EffectConfig[] {
+  for (const effect of effects) {
+    if (!effect.enabled) {
+      continue;
+    }
+    into.push(effect);
+    if (isEffectContainer(effect)) {
+      const hasSolo = effect.chains.some((chain) => chain.solo);
+      for (const chain of effect.chains) {
+        if (chain.gain !== 0 && isEffectChainActive(chain, hasSolo)) {
+          audibleEffects(chain.effects, into);
+        }
+      }
+    }
+  }
+  return into;
+}
+
+/**
+ * The channels and keys the tree's audible effects listen to, each once,
+ * in tree order: the first is the one the compatibility engine keys.
+ */
+export function audibleSidechainIds(
+  effects: readonly EffectConfig[]
+): string[] {
+  return [
+    ...new Set(
+      audibleEffects(effects).flatMap((effect) =>
+        effect.sidechain ? [effect.sidechain.channelId] : []
+      )
+    ),
+  ];
+}
+
 export function isValidFrequencySplitShape(
   chains: readonly EffectChainConfig[],
   crossoverFrequencies: readonly number[]

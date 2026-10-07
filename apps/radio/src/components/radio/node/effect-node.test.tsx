@@ -771,7 +771,7 @@ describe("NodePort", () => {
     expect(takes(eight.port("mix", "out:audio:main")).start).toBe(true);
   });
 
-  test("a Compressor key with one cable is locked for a second", () => {
+  test("a Compressor key sums multiple cables", () => {
     const { port } = renderPorts(
       [
         ...stations(1),
@@ -781,7 +781,7 @@ describe("NodePort", () => {
     );
     const key = port("comp", "in:sidechain:key");
     expect(key.dataset.kind).toBe("sidechain");
-    expect(takes(key)).toEqual({ end: false, start: false });
+    expect(takes(key)).toEqual({ end: true, start: true });
     expect(takes(port("comp", "in:audio:main")).end).toBe(true);
   });
 

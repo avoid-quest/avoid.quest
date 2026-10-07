@@ -85,10 +85,21 @@ on every cable into the node, those still fading out included, so shared FX
 sound the same at any master level.
 
 Audio cables carry signal and branch controls; dashed key cables feed supported
-FX sidechains. A connected Vocoder key selects its external modulator in the
-compiled plan; removing it uses the authored modulator setting, which connecting
-no longer overwrites. The shared connection verdict checks port kinds, limits and
-feedback before all connection paths commit an edit.
+FX sidechains. A key cable can start anywhere a cable can: the key hears
+exactly what that point carries, cable gain and mute included, and a key input
+sums every cable into it, in stereo. Each keyed effect has its own key, so
+several effects on one path can be keyed independently; one whose key cables
+are all muted or silent detects on its own input. A key and the audio of the
+effect it keys arrive in step: whichever comes back from openDAW later, the
+other waits for it, except in a source's own insert, which hears its source
+first hand. A key exists, silent, as soon as Node has audio, so an insert and
+its keys take their openDAW input channels together; an insert whose key
+can't get one falls back to the compatibility engine. The compatibility
+engine keys one effect per chain and labels the others. A connected Vocoder key
+selects its external modulator in the compiled plan; removing it uses the
+authored modulator setting, which connecting no longer overwrites. Key cables
+count in the feedback check. The shared connection verdict checks port kinds,
+limits and feedback before all connection paths commit an edit.
 Compilation validates again and excludes refused routes rather than sending an
 invalid topology to audio.
 

@@ -240,7 +240,7 @@ describe("duck", () => {
       autoMakeup: false,
       enabled: true,
       id: DUCK_NODE_ID,
-      sidechain: { channelId: "n:src-r4" },
+      sidechain: { channelId: `${DUCK_NODE_ID}:key` },
       type: "compressor",
     });
     // The talk plays dry, straight to Speakers.
@@ -281,7 +281,7 @@ describe("duck", () => {
         effects: [
           expect.objectContaining({
             id: DUCK_NODE_ID,
-            sidechain: { channelId: "n:src-b" },
+            sidechain: { channelId: `${DUCK_NODE_ID}:key` },
           }),
         ],
         id: "n:src-a",

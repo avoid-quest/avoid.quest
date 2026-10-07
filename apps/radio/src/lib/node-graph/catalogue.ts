@@ -86,12 +86,13 @@ function controlOut(id = "main", label = "Out", ship?: ShipLevel): NodePort {
   };
 }
 
+/** A key input sums every cable into it, as an audio input does. */
 const keyIn: NodePort = {
   direction: "in",
   id: "key",
   kind: "sidechain",
   label: "Key",
-  max: 1,
+  max: UNLIMITED,
 };
 
 function numberedOuts(prefix: string, label: string): NodePort[] {

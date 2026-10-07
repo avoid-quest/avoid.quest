@@ -53,7 +53,6 @@ type SoundEffectsState = {
   officialConnected: boolean;
   officialConnectingGeneration: number | null;
   outcome: EffectsRuntimeOutcome;
-  outcomeListeners: Set<(outcome: EffectsRuntimeOutcome) => void>;
   sidechain: SidechainConnection | null;
   tempo: number;
 };
@@ -82,7 +81,6 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnected: false,
   officialConnectingGeneration: null,
   outcome: { backend: null, ready: false, status: "inactive" },
-  outcomeListeners: new Set(),
   sidechain: null,
   tempo: 120,
 });
@@ -96,6 +94,10 @@ class EffectsController {
   private nextOfficialRuntimeGeneration = 0;
   private nextGeneration = 0;
   private readonly states = new Map<string, SoundEffectsState>();
+  private readonly outcomeListeners = new Map<
+    string,
+    Set<(outcome: EffectsRuntimeOutcome) => void>
+  >();
   private readonly workletProcessorUrl: () => string;
   private readonly sounds: Map<string, SoundInstance>;
   private readonly notifyListeners: (
@@ -135,17 +137,24 @@ class EffectsController {
     soundId: string,
     listener: (outcome: EffectsRuntimeOutcome) => void
   ): () => void {
-    const { outcomeListeners } = this.getState(soundId);
-    outcomeListeners.add(listener);
-    return () => outcomeListeners.delete(listener);
+    const listeners = this.outcomeListeners.get(soundId) ?? new Set();
+    this.outcomeListeners.set(soundId, listeners);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        this.outcomeListeners.delete(soundId);
+      }
+    };
   }
 
   private recordOutcome(
+    soundId: string,
     state: SoundEffectsState,
     outcome: EffectsRuntimeOutcome
   ): void {
     state.outcome = outcome;
-    for (const listener of state.outcomeListeners) {
+    for (const listener of this.outcomeListeners.get(soundId) ?? []) {
       listener(outcome);
     }
   }
@@ -247,7 +256,7 @@ class EffectsController {
     this.pruneOfficialSidechainSources();
 
     if (!state.graph) {
-      this.recordOutcome(state, {
+      this.recordOutcome(soundId, state, {
         backend: null,
         ready: false,
         status: "inactive",
@@ -264,12 +273,12 @@ class EffectsController {
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
-      this.recordOutcome(state, this.readyOutcome(state));
+      this.recordOutcome(soundId, state, this.readyOutcome(state));
     } catch (error) {
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
-      this.recordOutcome(state, {
+      this.recordOutcome(soundId, state, {
         backend: "bypass",
         error: error instanceof Error ? error : new Error(String(error)),
         ready: true,
@@ -295,14 +304,14 @@ class EffectsController {
     if (!(before && this.sounds.has(soundId))) {
       return "unavailable";
     }
-    if (effectFieldsAreStructural(before, config)) {
-      return "structural";
-    }
     if (transient) {
       return state.officialConnected
         ? (this.officialRuntime?.writeEffect(soundId, effectId, config, true) ??
             "unavailable")
         : "unavailable";
+    }
+    if (effectFieldsAreStructural(before, config)) {
+      return "structural";
     }
     const next = updateEffectFieldsInTree(
       state.effects,
@@ -521,7 +530,7 @@ class EffectsController {
           }
         }
       );
-      this.recordOutcome(state, {
+      this.recordOutcome(soundId, state, {
         backend: "bypass",
         ready: true,
         status: "ready",
@@ -535,7 +544,7 @@ class EffectsController {
       const ownsGraph = state.graph?.source === source;
       if (ownsGraph && state.generation === generation) {
         this.switchBackend(soundId, state, "bypass", generation);
-        this.recordOutcome(state, {
+        this.recordOutcome(soundId, state, {
           backend: "bypass",
           error: error instanceof Error ? error : new Error(String(error)),
           ready: true,
@@ -554,7 +563,7 @@ class EffectsController {
     // second dry edge alongside this graph.
     const ownsGraph = state.graph?.source === source;
     if (ownsGraph && state.generation === generation) {
-      this.recordOutcome(state, this.readyOutcome(state));
+      this.recordOutcome(soundId, state, this.readyOutcome(state));
     }
     return ownsGraph;
   }
@@ -1064,13 +1073,13 @@ class EffectsController {
     this.selectRuntime(soundId, state, generation)
       .then(() => {
         if (state.generation === generation) {
-          this.recordOutcome(state, this.readyOutcome(state));
+          this.recordOutcome(soundId, state, this.readyOutcome(state));
         }
       })
       .catch((error: unknown) => {
         if (state.generation === generation) {
           this.switchBackend(soundId, state, "bypass", generation);
-          this.recordOutcome(state, {
+          this.recordOutcome(soundId, state, {
             backend: "bypass",
             error: error instanceof Error ? error : new Error(String(error)),
             ready: true,

@@ -525,7 +525,7 @@ export class LaneInstance {
       this.soundId,
       plan.filter ? { ...plan.filter, enabled: true, gain: 0 } : BYPASS_FILTER
     );
-    this.parameters.reapply();
+    this.parameters.reapply("strip");
   }
 
   /**
@@ -600,7 +600,7 @@ export class LaneInstance {
         ? this.host.setEffectFields(this.soundId, id, config)
         : "applied";
       if (result === "applied") {
-        this.parameters.reapply(id);
+        this.parameters.reapply({ effectId: id });
       } else {
         this.effectsChanged();
       }
@@ -666,7 +666,6 @@ export class LaneInstance {
       (outcome.backend === "bypass" && outcome.status !== "failed")
         ? undefined
         : outcome.backend;
-    this.parameters.reapply();
     this.host.outcomeChanged();
   }
 

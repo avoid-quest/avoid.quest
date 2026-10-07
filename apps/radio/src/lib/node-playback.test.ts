@@ -387,6 +387,7 @@ function createHarness(
     effects: options.effects ?? {
       reconcileEffects,
       setEffectFields,
+      subscribeEffectsRuntimeOutcome: () => () => undefined,
     },
     fadeOutSound,
     getEnv: () => ({

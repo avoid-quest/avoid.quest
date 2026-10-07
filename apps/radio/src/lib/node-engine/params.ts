@@ -186,18 +186,22 @@ export class LaneParameters {
     if (effectFieldsAreStructural(authored, config)) {
       return "structural";
     }
-    return this.host.audio.getEffectsRuntimeOutcome(this.host.soundId)
-      .backend === "official"
-      ? this.host.effects.setEffectFields(
-          this.host.soundId,
-          effectId,
-          config,
-          true
-        )
-      : "applied";
+    if (
+      this.host.audio.getEffectsRuntimeOutcome(this.host.soundId).backend !==
+      "official"
+    ) {
+      return "applied";
+    }
+    const result = this.host.effects.setEffectFields(
+      this.host.soundId,
+      effectId,
+      config,
+      true
+    );
+    return result === "unavailable" ? "applied" : result;
   }
 
-  reapply(effectId?: string): void {
+  reapply(scope?: "strip" | { effectId: string }): void {
     if (this.transient.size === 0) {
       return;
     }
@@ -208,8 +212,10 @@ export class LaneParameters {
     const effects = new Set<string>();
     for (const [key, { target, value }] of this.transient) {
       if (
-        effectId &&
-        (!("effectId" in target) || target.effectId !== effectId)
+        scope === "strip"
+          ? target.kind !== "pan" && target.kind !== "filter"
+          : scope &&
+            (!("effectId" in target) || target.effectId !== scope.effectId)
       ) {
         continue;
       }

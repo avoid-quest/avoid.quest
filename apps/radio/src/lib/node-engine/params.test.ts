@@ -114,6 +114,7 @@ async function harness(
     status: connecting ? "inactive" : "ready",
   };
   let nodes: ReturnType<typeof strip> | null = connecting ? null : strip();
+  let effectReady = !connecting;
   let fades: Promise<void> = Promise.resolve();
   let onConnect: ((laneId: string) => void) | undefined;
   const levels = new Map<string, number>();
@@ -182,9 +183,15 @@ async function harness(
           authored.set(config.id, config);
           fields.set(config.id, config);
         }
+        for (const listener of listeners) {
+          listener(outcome);
+        }
         return Promise.resolve(outcome);
       },
       setEffectFields: (_id, id, config, transient) => {
+        if (transient && !effectReady) {
+          return "unavailable";
+        }
         const before = authored.get(id);
         if (before && effectFieldsAreStructural(before, config)) {
           return "structural";
@@ -205,7 +212,10 @@ async function harness(
     },
     fadeOut: () => fades,
     laneOutputs: (options) => {
-      ({ onConnect } = options);
+      onConnect = (id) => {
+        options.onConnect?.(id);
+        levels.set(id, options.getLevels(id).get("speakers") ?? 0);
+      };
       return {
         attach: () => undefined,
         dispose: () => undefined,
@@ -233,6 +243,9 @@ async function harness(
       allowedEffect = id;
     },
     authored,
+    disconnectEffects() {
+      effectReady = false;
+    },
     engine,
     fields,
     holdFade() {
@@ -246,6 +259,7 @@ async function harness(
     },
     plan,
     ready() {
+      effectReady = true;
       // A new official unit starts on the authored tree, after the native shell connected.
       for (const [id, config] of authored) {
         fields.set(id, config);
@@ -306,15 +320,19 @@ describe("Node engine parameters", () => {
 
   test("strip and sends use overlays and clear to the latest authored values", async () => {
     const h = await harness();
+    h.engine.setParam(threshold, -12);
     expect(h.engine.setParam(pan, -0.7)).toBe("applied");
     expect(h.engine.setParam(frequency, 2400)).toBe("applied");
     expect(h.engine.setParam(send, 0.3)).toBe("applied");
     expect(h.nodes?.pan.pan.value).toBe(-0.7);
     expect(h.nodes?.filter.frequency.value).toBe(2400);
     expect(h.levels.get("a")).toBe(0.3);
-    expect(h.engine.levels("a").get("speakers")).toBe(0.3);
+    h.allowOnlyEffect("none");
     editor.commitNodeGraph(
-      (patch) => setNativeParams(patch, "pan", { pan: 0.6 }),
+      (patch) =>
+        setNativeParams(setNativeParams(patch, "pan", { pan: 0.6 }), "filter", {
+          frequency: 1800,
+        }),
       h.store
     );
     const edited = h.store.state.graph;
@@ -327,9 +345,11 @@ describe("Node engine parameters", () => {
     );
     await h.engine.whenSettled();
     expect(h.nodes?.pan.pan.value).toBe(-0.7);
+    expect(h.fields.get("comp")).toMatchObject({ threshold: -12 });
+    h.allowOnlyEffect("comp");
     h.engine.clearTransient();
     expect(h.nodes?.pan.pan.value).toBe(0.6);
-    expect(h.nodes?.filter.frequency.value).toBe(900);
+    expect(h.nodes?.filter.frequency.value).toBe(1800);
     expect(h.levels.get("a")).toBe(1);
     expect(h.plan.lanes.get("a")?.pan).toBe(0.2);
   });
@@ -547,10 +567,11 @@ describe("Node engine parameters", () => {
     };
     h.engine.apply(replacement, true);
     expect(h.engine.setParam(threshold, -50)).toBe("unavailable");
-    expect(h.engine.levels("a").get("speakers")).toBe(1);
+    expect(h.levels.get("a")).toBe(0.2);
     release();
     await h.engine.whenSettled();
     h.reconnect();
+    expect(h.levels.get("a")).toBe(1);
     expect(h.nodes?.pan.pan.value).toBe(0.2);
     expect(h.fields.get("comp")).toMatchObject({
       threshold: (
@@ -559,12 +580,24 @@ describe("Node engine parameters", () => {
     });
   });
 
+  test("effect writes during reconnection are deferred and replay the latest overlay", async () => {
+    const h = await harness();
+    expect(h.engine.setParam(threshold, -12)).toBe("applied");
+    h.disconnectEffects();
+    expect(h.engine.setParam(threshold, -17)).toBe("applied");
+    expect(h.fields.get("comp")).toMatchObject({ threshold: -12 });
+    h.ready();
+    expect(h.fields.get("comp")).toMatchObject({ threshold: -17 });
+    h.engine.clearTransient(threshold);
+    expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+  });
+
   test("every target on an actual compatibility lane is unavailable", async () => {
     const h = await harness("compatibility");
     for (const target of [threshold, pan, frequency, send]) {
       expect(h.engine.setParam(target, 0.4)).toBe("unavailable");
     }
-    expect(h.engine.levels("a").get("speakers")).toBe(1);
+    expect(h.levels.get("a")).toBe(1);
     expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
   });
 });

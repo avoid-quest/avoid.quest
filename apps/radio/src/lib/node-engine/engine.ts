@@ -70,10 +70,7 @@ import {
   LaneSlot,
   type StartResult,
 } from "./lane.js";
-
-export type { EngineParamTarget } from "./param-target";
-
-import type { EngineParamTarget } from "./param-target";
+import type { EngineParamTarget } from "./param-target.js";
 
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
@@ -607,7 +604,6 @@ export function createNodeEngine(options: NodeEngineOptions) {
       publishBadges();
       cleanupOrphanedSounds([...soundIds], ctx, "node");
     },
-    levels: laneLevels,
     pause(laneId: string) {
       slots.get(laneId)?.pause(true);
     },

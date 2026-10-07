@@ -356,6 +356,15 @@ function splitPortsOf(
       `Band Split has ${ports.length} bands`
     );
   }
+  // A branch's FX are the nodes cabled from its port; the canvas never
+  // nests any in a chain, so an import that does is refused, not played dry.
+  if (base.chains.some((chain) => chain.effects.length > 0)) {
+    throw new LoweringError(
+      id,
+      "split-branches",
+      "FX inside a Split's branches don't play: cable them from its ports"
+    );
+  }
   const configured = [...base.chains].sort(
     (left, right) => left.order - right.order
   );

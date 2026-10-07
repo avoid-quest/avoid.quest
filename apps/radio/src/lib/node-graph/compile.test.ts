@@ -1531,6 +1531,48 @@ describe("compile: Splits whose branches go different places", () => {
       [undefined, "bands"],
     ]);
   });
+
+  test.each([
+    ["go different places", "desk"],
+    ["meet again", "speakers"],
+  ])(
+    "FX nested in a Split's chain are refused when its branches %s",
+    (_, second) => {
+      // An imported Split with a Compressor inside its first chain, which the
+      // canvas can't make: its branches are the nodes cabled from its ports.
+      const base = createNodeEffectConfig("fxComposite", "split");
+      const comp = createNodeEffectConfig("compressor", "nested-comp");
+      const chains = base.chains.map((chain, index) =>
+        index === 0 ? { ...chain, effects: [comp] } : chain
+      );
+      const plan = build(
+        [
+          station("a"),
+          {
+            data: { effect: { ...base, chains, enabled: true } },
+            id: "split",
+            position: { x: 0, y: 0 },
+            type: "fxComposite",
+          } as NodeInput,
+          node("desk", "deviceOut", { deviceId: "usb" }),
+          speakers,
+        ],
+        [
+          audio("a", "split"),
+          audio("split", "speakers", { from: "branch-1" }),
+          audio("split", second, { from: "branch-2", id: "two" }),
+        ]
+      );
+      expect(codes(plan)).toEqual(["split-branches@split"]);
+      expect(plan.issues[0]?.message).toBe(
+        "FX inside a Split's branches don't play: cable them from its ports"
+      );
+      // Nothing plays the branch dry.
+      expect(routes(plan).filter((route) => route.includes("sink:"))).toEqual(
+        []
+      );
+    }
+  );
 });
 
 describe("compile: series-parallel regions", () => {

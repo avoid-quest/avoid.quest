@@ -64,15 +64,21 @@ export function resetManagedAudioState(
   resetDefaultPlaybackActionContext();
 }
 
-function getSessionMasterVolume(sessionId: PlaybackSessionId): number {
+export function getSessionMasterVolume(sessionId: PlaybackSessionId): number {
   return getPlaybackSession(sessionId)?.masterVolume ?? 1;
 }
 
+/**
+ * Applies a session's master volume to every fader. Node applies its own
+ * at its outputs, after its effects (node-engine), so its faders take none.
+ */
 export function applySessionMasterVolume(
   sessionId: PlaybackSessionId,
   ctx = getDefaultPlaybackActionContext()
 ): void {
-  ctx.audio.setGlobalVolume(getSessionMasterVolume(sessionId));
+  ctx.audio.setGlobalVolume(
+    sessionId === "node" ? 1 : getSessionMasterVolume(sessionId)
+  );
 }
 
 function getDefaultSoundId(

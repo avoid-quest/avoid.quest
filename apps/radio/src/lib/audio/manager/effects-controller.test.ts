@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { DesiredEffectsState } from "../../channel-effects.js";
+import type {
+  DesiredEffectsState,
+  EffectsRuntimeOutcome,
+} from "../../channel-effects.js";
 import { createDefaultEffectConfig } from "../dsp/effects/registry.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import type { WorkletManager } from "../playback/index.js";
@@ -193,6 +196,132 @@ afterEach(() => {
 });
 
 describe("EffectsController", () => {
+  test("a shared graph unit's insert runs without creating a playback sound", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const sounds = new Map<string, SoundInstance>();
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds,
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const input = new TestAudioNode(context) as unknown as AudioNode;
+    const output = new TestAudioNode(context) as unknown as AudioNode;
+    const effect = {
+      ...createDefaultEffectConfig("compressor", "fx", 0),
+      enabled: true,
+    };
+
+    const outcome = await controller.attachInsert(
+      "unit",
+      input,
+      output,
+      desiredEffects([effect])
+    );
+
+    expect(sounds.size).toBe(0);
+    expect(outcome.backend).toBe("official");
+    expect(runtime.connectSound.mock.calls[0]?.[0]).toBe("unit");
+    expect(runtime.connectSound.mock.calls[0]?.[5]?.effects).toEqual([effect]);
+    // It reconciles like a sound's effects, until it is detached.
+    const edited = { ...effect, threshold: -30 };
+    expect(
+      (await controller.reconcile("unit", desiredEffects([edited]))).status
+    ).toBe("ready");
+    controller.detachInsert("unit");
+    expect(runtime.deleteSound).toHaveBeenCalled();
+    expect(
+      (await controller.reconcile("unit", desiredEffects([effect]))).status
+    ).toBe("failed");
+  });
+
+  test("a compatibility runtime error on an insert fails its outcome", async () => {
+    Object.defineProperty(globalThis, "crossOriginIsolated", {
+      configurable: true,
+      value: false,
+    });
+    const context = new TestAudioContext();
+    const manager = createManager(context);
+    const handlers = new Map<string, (payload: unknown) => void>();
+    Object.assign(manager, {
+      on: (event: string, handler: (payload: unknown) => void) => {
+        handlers.set(event, handler);
+      },
+    });
+    const controller = new EffectsController({
+      createOfficialRuntime: () => createRuntime(),
+      createWorkletManager: () => manager,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const outcomes: EffectsRuntimeOutcome[] = [];
+    controller.subscribeRuntimeOutcome("unit", (outcome) => {
+      outcomes.push(outcome);
+    });
+    const effect = {
+      ...createDefaultEffectConfig("compressor", "fx", 0),
+      enabled: true,
+    };
+    const attached = await controller.attachInsert(
+      "unit",
+      new TestAudioNode(context) as unknown as AudioNode,
+      new TestAudioNode(context) as unknown as AudioNode,
+      desiredEffects([effect])
+    );
+    expect(attached.backend).toBe("compatibility");
+
+    handlers.get("sourceError")?.({
+      code: "EFFECT_INIT_FAILED",
+      effectId: "fx",
+      error: "Could not start",
+      id: "err-1",
+      sourceId: "unit",
+      timestamp: 1,
+    });
+
+    expect(outcomes.at(-1)).toMatchObject({
+      backend: "compatibility",
+      error: new Error("[fx] Could not start"),
+      status: "failed",
+    });
+    expect(controller.getRuntimeOutcome("unit").status).toBe("failed");
+  });
+
+  test("an insert detached before its runtime settles leaves nothing connected", async () => {
+    const context = new TestAudioContext();
+    const runtime = createRuntime();
+    const connected = Promise.withResolvers<boolean>();
+    runtime.connectSound.mockImplementation(() => connected.promise);
+    const controller = new EffectsController({
+      createOfficialRuntime: () => runtime,
+      notifyListeners: () => undefined,
+      sounds: new Map(),
+      workletProcessorUrl: () => "/worklet.js",
+    });
+    const input = new TestAudioNode(context);
+    const output = new TestAudioNode(context);
+    const effect = {
+      ...createDefaultEffectConfig("compressor", "fx", 0),
+      enabled: true,
+    };
+
+    const pending = controller.attachInsert(
+      "removed",
+      input as unknown as AudioNode,
+      output as unknown as AudioNode,
+      desiredEffects([effect])
+    );
+    controller.detachInsert("removed");
+    connected.resolve(true);
+    await pending;
+
+    expect(input.connections.size).toBe(0);
+    expect(runtime.deleteSound).toHaveBeenCalled();
+    expect(controller.getRuntimeOutcome("removed").status).toBe("inactive");
+  });
+
   test("exposes openDAW performance data without exposing its Project", () => {
     const runtime = createRuntime();
     const controller = new EffectsController({

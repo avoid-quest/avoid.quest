@@ -86,6 +86,8 @@ const createSoundState = (): SoundEffectsState => ({
 });
 
 class EffectsController {
+  /** Inserts that are not playback sounds, e.g. Node graph units. */
+  private readonly inserts = new Set<string>();
   private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false as boolean;
   private officialRuntimeWarningReported = false as boolean;
@@ -125,6 +127,11 @@ class EffectsController {
     this.notifyListeners = notifyListeners;
     this.createOfficialRuntime = createOfficialRuntime;
     this.createWorkletManager = createWorkletManager;
+  }
+
+  /** A playback sound or an insert attached on its own. */
+  private hasInsert(id: string): boolean {
+    return this.sounds.has(id) || this.inserts.has(id);
   }
 
   private getState(soundId: string): SoundEffectsState {
@@ -222,7 +229,7 @@ class EffectsController {
     soundId: string,
     desired: DesiredEffectsState
   ): Promise<EffectsRuntimeOutcome> {
-    if (!this.sounds.has(soundId)) {
+    if (!this.hasInsert(soundId)) {
       return {
         backend: null,
         error: new Error(`Sound with id ${soundId} not found`),
@@ -232,29 +239,8 @@ class EffectsController {
     }
     const state = this.getState(soundId);
     const previousEffects = state.effects;
-    const nextEffects = desired.tree.map((effect) =>
-      toPlainEffectConfig(effect)
-    );
-    const nextDryWet = Math.max(0, Math.min(1, desired.dryWet));
-    const nextTempo = clampEffectTempo(desired.tempo);
-    const unchanged =
-      JSON.stringify({
-        dryWet: state.dryWet,
-        effects: previousEffects,
-        sidechainSoundId: state.desiredSidechainSoundId,
-        tempo: state.tempo,
-      }) ===
-      JSON.stringify({
-        dryWet: nextDryWet,
-        effects: nextEffects,
-        sidechainSoundId: desired.sidechainSoundId,
-        tempo: nextTempo,
-      });
-
-    state.effects = nextEffects;
-    state.dryWet = nextDryWet;
-    state.desiredSidechainSoundId = desired.sidechainSoundId;
-    state.tempo = nextTempo;
+    const unchanged = this.takeDesired(state, desired);
+    const nextEffects = state.effects;
 
     if (state.compatibilitySourceCreated && !unchanged) {
       this.reconcileCompatibility(soundId, state, previousEffects, nextEffects);
@@ -308,7 +294,7 @@ class EffectsController {
   ): EffectWriteResult {
     const state = this.states.get(soundId);
     const before = state && findEffectInTree(state.effects, effectId);
-    if (!(before && this.sounds.has(soundId))) {
+    if (!(before && this.hasInsert(soundId))) {
       return "unavailable";
     }
     if (transient) {
@@ -354,6 +340,60 @@ class EffectsController {
       state.effects = next;
     }
     return result;
+  }
+
+  /** Stores what is wanted; returns whether it is what was wanted already. */
+  private takeDesired(
+    state: SoundEffectsState,
+    desired: DesiredEffectsState
+  ): boolean {
+    const nextEffects = desired.tree.map((effect) =>
+      toPlainEffectConfig(effect)
+    );
+    const nextDryWet = Math.max(0, Math.min(1, desired.dryWet));
+    const nextTempo = clampEffectTempo(desired.tempo);
+    const unchanged =
+      JSON.stringify({
+        dryWet: state.dryWet,
+        effects: state.effects,
+        sidechainSoundId: state.desiredSidechainSoundId,
+        tempo: state.tempo,
+      }) ===
+      JSON.stringify({
+        dryWet: nextDryWet,
+        effects: nextEffects,
+        sidechainSoundId: desired.sidechainSoundId,
+        tempo: nextTempo,
+      });
+    state.effects = nextEffects;
+    state.dryWet = nextDryWet;
+    state.desiredSidechainSoundId = desired.sidechainSoundId;
+    state.tempo = nextTempo;
+    return unchanged;
+  }
+
+  /**
+   * Runs effects between `input` and `output` for an insert that is not a
+   * playback sound, e.g. a Node graph unit, through the same backends and
+   * fallback as a sound's. It plays silent until a backend is ready.
+   */
+  async attachInsert(
+    id: string,
+    input: AudioNode,
+    output: AudioNode,
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
+    this.inserts.add(id);
+    // Known before the graph connects, so it mutes the dry path meanwhile.
+    this.takeDesired(this.getState(id), desired);
+    await this.connectGraph(id, input, output);
+    return this.getRuntimeOutcome(id);
+  }
+
+  /** Disconnects an insert and drops its effects runtime. */
+  detachInsert(id: string): void {
+    this.inserts.delete(id);
+    this.cleanupSound(id);
   }
 
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
@@ -486,6 +526,17 @@ class EffectsController {
         sounds: this.sounds,
         wm: manager,
       });
+      // An insert has no sound to show a runtime error: its outcome does.
+      if (this.inserts.has(soundId)) {
+        manager.on("sourceError", ({ effectId, error }) => {
+          this.recordOutcome(soundId, state, {
+            backend: "compatibility",
+            error: new Error(effectId ? `[${effectId}] ${error}` : error),
+            ready: true,
+            status: "failed",
+          });
+        });
+      }
       this.refreshSidechains();
       return manager;
     });
@@ -697,6 +748,7 @@ class EffectsController {
       state.manager?.cleanup();
     }
     this.states.clear();
+    this.inserts.clear();
     this.officialRegisteredSoundIds.clear();
     this.officialSoundOwners.clear();
     this.officialRuntime?.cleanup();

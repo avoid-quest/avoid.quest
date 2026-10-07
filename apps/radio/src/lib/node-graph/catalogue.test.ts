@@ -103,7 +103,11 @@ describe("NODE_DEFINITIONS", () => {
         }
       }
     }
-    expect(NODE_DEFINITIONS.merge.ports[0]?.max).toBe(8);
+    // An audio input sums every cable into it.
+    expect(NODE_DEFINITIONS.merge.ports[0]?.max).toBe(Number.POSITIVE_INFINITY);
+    expect(NODE_DEFINITIONS.compressor.ports[0]?.max).toBe(
+      Number.POSITIVE_INFINITY
+    );
   });
 
   test("describes Station control ports as landing with Control", () => {

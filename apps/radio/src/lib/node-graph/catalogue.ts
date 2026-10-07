@@ -62,7 +62,8 @@ export const SIDECHAIN_EFFECT_TYPES = [
   "vocoder",
 ] as const satisfies readonly EffectType[];
 
-function audioIn(id = "main", label = "In", max = 1): NodePort {
+/** An audio input sums every cable into it. */
+function audioIn(id = "main", label = "In", max = UNLIMITED): NodePort {
   return { direction: "in", id, kind: "audio", label, max };
 }
 
@@ -150,8 +151,8 @@ const OTHER_DEFINITIONS: Record<
     category: "routing",
     name: "Crossfade",
     ports: [
-      audioIn("a", "A"),
-      audioIn("b", "B"),
+      audioIn("a", "A", 1),
+      audioIn("b", "B", 1),
       controlIn("position", "Position"),
       audioOut(),
     ],
@@ -169,7 +170,7 @@ const OTHER_DEFINITIONS: Record<
   deviceOut: {
     category: "output",
     name: "Output device",
-    ports: [audioIn("main", "In", UNLIMITED)],
+    ports: [audioIn()],
     ship: "v1",
   },
   dial: {
@@ -237,7 +238,7 @@ const OTHER_DEFINITIONS: Record<
   merge: {
     category: "routing",
     name: "Merge",
-    ports: [audioIn("main", "In", 8), audioOut()],
+    ports: [audioIn(), audioOut()],
     ship: "v1",
   },
   midiIn: {
@@ -310,7 +311,7 @@ const OTHER_DEFINITIONS: Record<
   speakers: {
     category: "output",
     name: "Speakers",
-    ports: [audioIn("main", "In", UNLIMITED)],
+    ports: [audioIn()],
     ship: "v1",
   },
   static: {

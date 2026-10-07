@@ -1,5 +1,8 @@
 import type { EffectConfig, OpenDawEffectType } from "./types.js";
 
+// Mirrors the private constant in @opendaw/studio-core/dist/MonitoringRouter.js; the package exports do not expose it.
+export const MAX_MONITORING_CHANNELS = 8;
+
 export const OPENDAW_FACTORY_KEYS = {
   autotune: "Autotune",
   cheapReverb: "Reverb",

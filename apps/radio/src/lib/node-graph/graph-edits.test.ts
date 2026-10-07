@@ -497,7 +497,7 @@ describe("reconnectEdge", () => {
     expect(moved?.solo).toBeUndefined();
   });
 
-  test("takes a one-cable input its own cable filled; refuses one another cable fills", () => {
+  test("reconnects into an occupied input without replacing its other cable", () => {
     const start = patch(radio("a"), radio("b"));
     const withGain = addPaletteNode(start, {
       id: "gain",
@@ -524,17 +524,24 @@ describe("reconnectEdge", () => {
     });
     expect(moved.ok).toBe(true);
 
-    // Station B's cable to Speakers onto the Gain's input Station A holds.
+    // Station B's cable to Speakers onto the Gain's input Station A holds:
+    // the input sums both.
     const toSpeakers = wired.edges.find((edge) => edge.source === "src-b");
-    const original = structuredClone(wired);
-    const refused = reconnectEdge(wired, toSpeakers?.id ?? "", {
+    const summed = reconnectEdge(wired, toSpeakers?.id ?? "", {
       source: "src-b",
       sourceHandle: "out:audio:main",
       target: gain,
       targetHandle: "in:audio:main",
     });
-    expect(refused.ok).toBe(false);
-    expect(wired).toEqual(original);
+    expect(summed.ok).toBe(true);
+    if (summed.ok) {
+      expect(
+        summed.graph.edges
+          .filter((edge) => edge.target === gain)
+          .map((edge) => edge.source)
+          .sort()
+      ).toEqual(["src-a", "src-b"]);
+    }
   });
 
   test("the same ends are a no-op", () => {
@@ -888,14 +895,14 @@ describe("insertNodeOnEdge", () => {
       insertNodeOnEdge(slot.graph, slot.nodeId, "src-b->speakers").ok
     ).toBe(false);
 
-    // A Filter belongs right after its station, not after an FX.
+    // A Filter after an FX runs as its own module.
     const filter = withLoose(start, "filter");
     const late = insertNodeOnEdge(
       filter.graph,
       filter.nodeId,
       "compressor->speakers"
     );
-    expect(late.ok).toBe(false);
+    expect(late.ok).toBe(true);
     // The station's cable into the Compressor keeps its old id.
     expect(
       insertNodeOnEdge(filter.graph, filter.nodeId, "src-a->speakers").ok
@@ -980,7 +987,7 @@ describe("removeNodesHealed", () => {
     expect(healed.edges).toEqual([]);
   });
 
-  test("refuses deleting a Merge when its branches cannot heal to Speakers", () => {
+  test("deleting a Merge heals its branches to Speakers, where they meet again", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", "compressor->speakers");
     const split = seriesToParallel(two.graph, {
@@ -994,17 +1001,15 @@ describe("removeNodesHealed", () => {
 
     const before = compile(split.graph, ENV);
     expect(before.lanes.size).toBe(1);
-    expect(before.edges.size).toBe(1);
+    expect(before.cables.size).toBe(1);
     expect(before.issues).toEqual([]);
 
-    // Branches straight into Speakers would never rejoin in the lane.
-    const edit = removeNodesHealed(split.graph, [merge?.id ?? ""]);
-
-    expect(edit.ok).toBe(false);
-    if (edit.ok) {
-      throw new Error("A failed heal must refuse the whole deletion");
-    }
-    expect(edit.message).toContain("disconnecting a source from its output");
+    // Branches straight into Speakers meet again there, still one region.
+    const healed = accepted(removeNodesHealed(split.graph, [merge?.id ?? ""]));
+    const after = compile(healed, ENV);
+    expect(after.issues).toEqual([]);
+    expect(after.units.size + after.modules.size).toBe(0);
+    expect(after.cables.size).toBe(1);
 
     const store = createNodeStore(split.graph);
     const { state } = store;
@@ -1016,9 +1021,9 @@ describe("removeNodesHealed", () => {
       store,
       "snapshot"
     );
-    expect(store.state).toBe(state);
-    expect(undoNodeGraph(store)).toBe(false);
-    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(1);
+    expect(store.state).not.toBe(state);
+    expect(undoNodeGraph(store)).toBe(true);
+    expect(store.state.graph).toEqual(split.graph);
 
     // Explicitly deleting the branch's source makes the disconnection deliberate.
     const deleted = accepted(
@@ -1042,10 +1047,10 @@ describe("removeNodesHealed", () => {
       "src-a",
       "speakers",
     ]);
-    expect(compile(wholeBranch, ENV).edges.size).toBe(1);
+    expect(compile(wholeBranch, ENV).cables.size).toBe(1);
   });
 
-  test("refuses deleting a Merge that would drop a hidden Station's route", () => {
+  test("deleting a Merge keeps a hidden Station's route for when it shows again", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", `${one.nodeId}->speakers`);
     const split = seriesToParallel(two.graph, {
@@ -1057,14 +1062,15 @@ describe("removeNodesHealed", () => {
     }
     const merge = split.graph.nodes.find((node) => node.type === "merge");
     const hidden = setStationsEnabled(split.graph, ["src-a"], false);
-    expect(compile(hidden, ENV).edges.size).toBe(0);
+    expect(compile(hidden, ENV).cables.size).toBe(0);
 
-    const edit = removeNodesHealed(hidden, [merge?.id ?? ""]);
+    const edit = accepted(removeNodesHealed(hidden, [merge?.id ?? ""]));
 
-    expect(edit.ok).toBe(false);
+    const shown = setStationsEnabled(edit, ["src-a"], true);
+    expect(compile(shown, ENV).cables.size).toBe(1);
   });
 
-  test("refuses deleting a Merge that would drop an empty Audio input's route", () => {
+  test("deleting a Merge keeps an empty Audio input's route for when it's set", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", `${one.nodeId}->speakers`);
     const split = seriesToParallel(two.graph, {
@@ -1082,13 +1088,13 @@ describe("removeNodesHealed", () => {
         node.id === "src-a" && input ? input : node
       ),
     };
-    expect(compile(empty, ENV).edges.size).toBe(0);
+    expect(compile(empty, ENV).cables.size).toBe(0);
     const merge = empty.nodes.find((node) => node.type === "merge");
 
-    expect(removeNodesHealed(empty, [merge?.id ?? ""]).ok).toBe(false);
-    // Once it has a device, the same patch plays through the region.
-    const live = setDeviceParams(empty, "src-a", { deviceId: "mic" });
-    expect(compile(live, ENV).edges.size).toBe(1);
+    const healed = accepted(removeNodesHealed(empty, [merge?.id ?? ""]));
+    // Once it has a device, the healed patch plays through the region.
+    const live = setDeviceParams(healed, "src-a", { deviceId: "mic" });
+    expect(compile(live, ENV).cables.size).toBe(1);
   });
 
   test("deleting a split turns a branch solo into mutes, never a hidden solo", () => {
@@ -1384,7 +1390,7 @@ describe("removeNodesHealed", () => {
     const loose = withLoose(patch(radio("a")), "compressor");
     const deleted = accepted(removeNodesHealed(loose.graph, [loose.nodeId]));
     expect(deleted.nodes.some((node) => node.id === loose.nodeId)).toBe(false);
-    expect(compile(deleted, ENV).edges.size).toBe(1);
+    expect(compile(deleted, ENV).cables.size).toBe(1);
 
     const insertedNode = inserted(
       patch(radio("a")),
@@ -1574,7 +1580,7 @@ describe("duplicateNodes", () => {
     expect([...compile(graph, ENV).lanes.keys()]).toEqual(["src-a", "src-a-2"]);
   });
 
-  test("a copied Station comes wired to Speakers; a copy can't take a full input", () => {
+  test("a copied Station keeps its cables out, an occupied input included", () => {
     const start = inserted(
       patch(radio("a")),
       "compressor",
@@ -1586,9 +1592,11 @@ describe("duplicateNodes", () => {
       "src-a-2->speakers: src-a-2 out:audio:main -> speakers in:audio:main"
     );
 
+    // The Compressor's input sums the copy with the original.
     const feeding = duplicateNodes(start, ["src-a"]);
-    expect(feeding.graph.edges).toHaveLength(start.edges.length);
+    expect(feeding.graph.edges).toHaveLength(start.edges.length + 1);
     expect(feeding.nodeIds).toEqual(["src-a-2"]);
+    expect(validate(feeding.graph)).toEqual([]);
 
     expect(duplicateNodes(start, [SPEAKERS_NODE_ID])).toEqual({
       graph: start,

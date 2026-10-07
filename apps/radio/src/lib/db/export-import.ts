@@ -195,7 +195,7 @@ function readImportedMasterVolume(
 
 /**
  * A patch import stores its Speakers level in the session; while Node is the
- * running mode, the audio takes it too, as a change of the control would.
+ * running mode, its outputs take it too, as a change of the control would.
  * Otherwise Node's activation applies it. The running mode is the
  * lifecycle's, read once loaded: the imported setting can name Node while
  * another mode still plays.
@@ -203,13 +203,13 @@ function readImportedMasterVolume(
 function applyImportedMasterVolume(): Promise<void> {
   return Promise.all([
     import("@/lib/mode-lifecycle-requests"),
-    import("@/lib/playback-actions-shared"),
+    import("@/lib/node-playback"),
   ])
-    .then(([{ modeLifecycleRequests }, { applySessionMasterVolume }]) => {
+    .then(([{ modeLifecycleRequests }, { getNodePlayback }]) => {
       const { currentMode, phase } =
         modeLifecycleRequests.getTransitionSnapshot();
       if (currentMode === "node" && phase === "active") {
-        applySessionMasterVolume("node");
+        getNodePlayback().masterVolumeChanged();
       }
     })
     .catch((error: unknown) => {

@@ -89,7 +89,6 @@ let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
 let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
 let setBandCount: typeof import("@/lib/node-graph/branches")["setBandCount"];
-let BUS_MERGE_MESSAGE: string;
 let moduleFrame: typeof import("./module-frame");
 
 beforeAll(async () => {
@@ -100,7 +99,6 @@ beforeAll(async () => {
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
   ({ setBandCount } = await import("@/lib/node-graph/branches"));
-  ({ BUS_MERGE_MESSAGE } = await import("@/lib/node-graph/validate"));
   moduleFrame = await import("./module-frame");
 });
 
@@ -176,21 +174,28 @@ function splitNode(store: ReturnType<typeof createStore>) {
 }
 
 describe("Merge node", () => {
-  test("shows the compiler's in-lane badge", () => {
+  test("shows the compiler's badge when it closes a split", () => {
     const view = render(
-      <MergeNodeBody data={{ inputs: 2, role: "in-lane" }} onRemove={noop} />
+      <MergeNodeBody data={{ inputs: 2, role: "closes" }} onRemove={noop} />
     );
-    const badge = view.getByText("in-lane");
-    expect(badge.getAttribute("title")).toContain("one station");
-    expect(view.getByText("2 of 8 inputs")).toBeTruthy();
+    const badge = view.getByText("closes");
+    expect(badge.getAttribute("title")).toContain("branches");
+    expect(view.getByText("2 inputs")).toBeTruthy();
   });
 
-  test("a Merge summing stations reads bus, with the reason", () => {
+  test("a Merge summing stations reads sum", () => {
     const view = render(
-      <MergeNodeBody data={{ inputs: 2, role: "bus" }} onRemove={noop} />
+      <MergeNodeBody data={{ inputs: 9, role: "sum" }} onRemove={noop} />
     );
-    expect(view.getByText("bus").getAttribute("title")).toBe(BUS_MERGE_MESSAGE);
-    expect(view.queryByText("in-lane")).toBeNull();
+    expect(view.getByText("sum").getAttribute("title")).toContain("Mixes");
+    expect(view.getByText("9 inputs")).toBeTruthy();
+  });
+
+  test("labels one incoming audio cable in the singular", () => {
+    const view = render(
+      <MergeNodeBody data={{ inputs: 1, role: null }} onRemove={noop} />
+    );
+    expect(view.getByText("1 input")).toBeTruthy();
   });
 });
 

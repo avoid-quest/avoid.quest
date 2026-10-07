@@ -54,19 +54,41 @@ can feed both; a lane without an output cable is silent. Output-device selection
 existing main-output fallback and expose a user retry. Browser capability checks
 and device status determine which controls are available.
 
-FX lower to the existing `EffectConfig` tree. Native Filter and Pan occupy the
-leading source strip. Gain nodes and cable trims retain the whole signal level,
-including the dry path at partial FX mix. Split, Stereo Split, Band Split and
-same-source fan-out regions use the existing series/parallel containers and
-reconverge at an in-lane Merge. Branch controls distinguish the configured base
-level from cable trim and display their combined gain. Cross-source Merge buses
-remain roadmap work.
+FX lower to the existing `EffectConfig` tree. A source's leading Filter and Pan
+occupy its native strip, and the FX only it feeds are its insert, before its
+fader. Past the first point (`node-graph/regions.ts`) the patch is a routing
+graph after the faders: a node whose input sums several cables, a Filter or
+Pan off the strip, and an output whose branches go different ways are points
+in Web Audio, except a node that closes a Split region, which stays inside
+that region's `EffectConfig` tree; the FX between points run as graph units,
+one openDAW chain each. A Filter in series between FX runs inside their chain as Revamp's
+pass filter, which does the same, so the signal stays in openDAW; a Pan
+stays Web Audio's panner, which no openDAW device matches. Where a path
+leaves openDAW and goes back in, Web Audio reads it a render quantum late on
+its own; that cable passes a DelayNode that adds nothing, as every loop
+through the worklet wants one, and the other cables into the same point wait
+the quantum on theirs. Chromium decides which of them it renders first, so
+same-source paths that rejoin across such a loop can still land one quantum
+(about 2.7 ms) apart; closed regions without native points never leave
+openDAW and stay exact. So stations mix into shared FX through a Merge or any FX
+input, Filters and Pans repeat anywhere, and one output can feed several
+places. Gain nodes
+and cable trims retain the whole signal level, including the dry path at
+partial FX mix. Split, Stereo Split, Band Split and implicit fan-out regions
+use the existing series/parallel containers and reconverge at the nearest
+node that joins them: a Merge, an output, or any node that sums. An explicit
+Split whose branches go different ways waits for the next update. Branch
+controls distinguish the configured base level from cable trim and display
+their combined gain. Each Output node has its own gain, which carries its
+mute and Node's master volume: they act at the outputs, after every effect,
+on every cable into the node, those still fading out included, so shared FX
+sound the same at any master level.
 
 Audio cables carry signal and branch controls; dashed key cables feed supported
 FX sidechains. A connected Vocoder key selects its external modulator in the
 compiled plan; removing it uses the authored modulator setting, which connecting
 no longer overwrites. The shared connection verdict checks port kinds, limits and
-native placement before all connection paths commit an edit.
+feedback before all connection paths commit an edit.
 Compilation validates again and excludes refused routes rather than sending an
 invalid topology to audio.
 

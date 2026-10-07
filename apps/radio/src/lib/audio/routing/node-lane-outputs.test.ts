@@ -1,19 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
-import type {
-  MainOutputConnect,
-  SoundOutputConnector,
-} from "../manager/audio-manager-types";
+import type { SoundOutputConnector } from "../manager/audio-manager-types";
 import {
   createFakeFader,
   FakeAudioContext,
   type FakeGainNode,
 } from "./fake-audio-nodes";
-import {
-  createNodeLaneOutputs,
-  LANE_DUCK_MS,
-  LANE_LEVEL_TIME_CONSTANT_S,
-  type LaneSinkRoute,
-} from "./node-lane-outputs";
+import { createNodeLaneOutputs, type LaneSinkRoute } from "./node-lane-outputs";
+import { LANE_DUCK_MS, LANE_LEVEL_TIME_CONSTANT_S } from "./sends";
 
 type Deferred = { promise: Promise<void>; resolve: () => void };
 
@@ -35,14 +28,24 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
       }
     ),
   };
-  /** Per lane, the level into each sink. */
+  /** Per lane, each cable's level, by cable id: a sink's id by default. */
   const levels = new Map<string, Map<string, number>>([
     ["kexp", new Map([["speakers", level]])],
   ]);
-  const setLevel = (laneId: string, sinkId: string, value: number) => {
+  /** A cable into a sink other than the one its id names. */
+  const destinations = new Map<string, string>();
+  /** Whether each lane hears a live input. */
+  const realtime = new Set<string>();
+  const setLevel = (
+    laneId: string,
+    sinkId: string,
+    value: number,
+    cableId = sinkId
+  ) => {
     const lane = levels.get(laneId) ?? new Map<string, number>();
-    lane.set(sinkId, value);
+    lane.set(cableId, value);
     levels.set(laneId, lane);
+    destinations.set(cableId, sinkId);
   };
   /** Where each sink's sends go; the main bus unless a test says. */
   const routes = new Map<string, Set<unknown>>();
@@ -69,13 +72,24 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
   });
   const outputs = createNodeLaneOutputs({
     getHost: () => host,
-    getLevels: (laneId) => levels.get(laneId) ?? new Map(),
+    getSends: (laneId) =>
+      new Map(
+        [...(levels.get(laneId) ?? [])].map(([cableId, value]) => [
+          `${laneId}>${cableId}`,
+          {
+            delay: 0,
+            level: value,
+            realtime: realtime.has(laneId),
+            reenters: false,
+            to: destinations.get(cableId) ?? cableId,
+          },
+        ])
+      ),
     onConnect,
     route,
     wait,
   });
   const context = new FakeAudioContext();
-  const connectMain = mock<MainOutputConnect>(() => () => undefined);
 
   /** What AudioManager does inside connectAudioGraph, synchronously. */
   const connectSound = (soundId: string, into = context) => {
@@ -84,18 +98,18 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     if (!connect) {
       throw new Error(`no connector for ${soundId}`);
     }
-    const disconnect = connect(node, false, connectMain);
+    const disconnect = connect(node, false, () => () => undefined);
     const laneOut = [...fader.connections][0] as FakeGainNode;
-    const sendTo = (sinkId: string) =>
-      sendsOf(laneOut).find((send) => sendSinks.get(send) === sinkId);
-    return { disconnect, fader, laneOut, sendTo };
+    const sendsTo = (sinkId: string) =>
+      sendsOf(laneOut).filter((send) => sendSinks.get(send) === sinkId);
+    const sendTo = (sinkId: string) => sendsTo(sinkId)[0];
+    return { disconnect, fader, laneOut, sendsTo, sendTo };
   };
 
   const sendsOf = (laneOut: FakeGainNode) =>
     [...laneOut.connections] as FakeGainNode[];
 
   return {
-    connectMain,
     connectors,
     connectSound,
     context,
@@ -103,6 +117,7 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     levels,
     mainSources,
     outputs,
+    realtime,
     releaseMain,
     route,
     routes,
@@ -165,7 +180,7 @@ describe("createNodeLaneOutputs", () => {
     expect(second.fader.connections.has(first.laneOut)).toBe(true);
   });
 
-  test("each sink gets its own send, whose gain is the sum of its own cables", () => {
+  test("each cable gets its own send at its own level", () => {
     const harness = createHarness(1.5);
     harness.routes.set("desk", new Set());
     harness.setLevel("kexp", "desk", 0.25);
@@ -180,6 +195,43 @@ describe("createNodeLaneOutputs", () => {
     expect(harness.mainSources.has(speakers)).toBe(true);
     expect(harness.mainSources.has(desk)).toBe(false);
     expect(harness.routes.get("desk")?.has(desk)).toBe(true);
+  });
+
+  test("two cables into one sink get their own sends, each at its own level", () => {
+    const harness = createHarness(1);
+    harness.setLevel("kexp", "speakers", 0.25, "speakers again");
+    harness.outputs.attach("kexp", "node:n:kexp");
+
+    const { sendsTo } = harness.connectSound("node:n:kexp");
+    const [first, second] = sendsTo("speakers");
+
+    expect(sendsTo("speakers")).toHaveLength(2);
+    expect(first?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(second?.gain.events.at(-1)).toMatchObject({ value: 0.25 });
+    expect(harness.mainSources.has(first)).toBe(true);
+    expect(harness.mainSources.has(second)).toBe(true);
+
+    // Muting one leaves the other.
+    harness.setLevel("kexp", "speakers", 0, "speakers again");
+    harness.outputs.refresh("kexp");
+    expect(first?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(second?.gain.events.at(-1)).toMatchObject({ value: 0 });
+  });
+
+  test("a lane that turns into a live input moves its sends off the main delay", () => {
+    const harness = createHarness();
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { sendTo } = harness.connectSound("node:n:kexp");
+    const delayed = sendTo("speakers");
+
+    harness.realtime.add("kexp");
+    harness.outputs.refresh("kexp");
+
+    expect(delayed?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(harness.route.mock.calls.map(([, , live]) => live)).toEqual([
+      false,
+      true,
+    ]);
   });
 
   test("refresh ramps each send to its current level with τ 5 ms", () => {
@@ -251,23 +303,7 @@ describe("createNodeLaneOutputs", () => {
     ]);
   });
 
-  test("a sink the lane stops reaching fades its send to 0", () => {
-    const harness = createHarness();
-    harness.routes.set("desk", new Set());
-    harness.setLevel("kexp", "desk", 1);
-    harness.outputs.attach("kexp", "node:n:kexp");
-    const { sendTo } = harness.connectSound("node:n:kexp");
-
-    harness.levels.get("kexp")?.delete("desk");
-    harness.outputs.refresh("kexp");
-
-    expect(sendTo("desk")?.gain.events.at(-1)).toMatchObject({
-      type: "target",
-      value: 0,
-    });
-  });
-
-  test("dropSink fades a removed sink's sends out, then takes them off it", async () => {
+  test("a cable that goes fades its send out, then takes it off", async () => {
     const harness = createHarness();
     const desk = new Set<unknown>();
     harness.routes.set("desk", desk);
@@ -277,7 +313,8 @@ describe("createNodeLaneOutputs", () => {
     const send = sendTo("desk");
     harness.context.currentTime = 4;
 
-    harness.outputs.dropSink("desk");
+    harness.levels.get("kexp")?.delete("desk");
+    harness.outputs.refresh("kexp");
 
     // Still wired while it fades, so it doesn't click.
     expect(send?.gain.events.at(-1)).toEqual({
@@ -300,6 +337,28 @@ describe("createNodeLaneOutputs", () => {
 
     expect(desk.size).toBe(0);
     expect(laneOut.connections.has(send)).toBe(false);
+  });
+
+  test("a cable replaced by one to another destination crossfades sends", async () => {
+    const harness = createHarness();
+    const desk = new Set<unknown>();
+    harness.routes.set("desk", desk);
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { laneOut, sendTo } = harness.connectSound("node:n:kexp");
+    const before = sendTo("speakers");
+
+    harness.levels.set("kexp", new Map([["desk", 1]]));
+    harness.outputs.refresh("kexp");
+
+    const after = sendTo("desk");
+    expect(after).not.toBe(before);
+    expect(desk.has(after)).toBe(true);
+    expect(before?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    harness.waits.at(-1)?.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(laneOut.connections.has(before)).toBe(false);
+    expect(harness.mainSources.has(before)).toBe(false);
   });
 
   test("duck ramps laneOut to 0 over 20 ms and resolves once silent; unduck ramps it back", async () => {

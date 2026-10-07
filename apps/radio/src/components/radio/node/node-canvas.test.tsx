@@ -861,7 +861,9 @@ describe("NodeCanvas: dragging a cable", () => {
       const [[message, options]] = toast.mock.calls as [
         [string, ExternalToast],
       ];
-      expect(message).toBe("This input takes one cable");
+      // The full key gives way to the audio input, which would make the
+      // Compressor shared, and a shared Compressor takes no station key.
+      expect(message).toBe("A key only works on a station lane");
       expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
 
       // Replace moves the key's cable to KEXP, in one undo step.
@@ -1070,94 +1072,33 @@ describe("NodeCanvas: dragging a cable", () => {
     }
   });
 
-  test("Replace leaves alone a rewired cable moved since the toast", async () => {
-    const { port, view } = await mountPatch();
-    const toast = spyOn(sonner, "toast");
-    try {
-      // NTS's Speakers cable is pulled onto the Compressor's full input.
-      grabCableEnd(view.container, "nts->speakers");
-      const compIn = port("comp", "in:audio:main");
-      move(-5000, compIn);
-      release(compIn);
-      const [[, options]] = toast.mock.calls as [[string, ExternalToast]];
-      const action = options.action as { label: string; onClick: () => void };
-      expect(action.label).toBe("Replace");
+  test("rewiring into an occupied input keeps the cable already there", async () => {
+    const unkeyed = patch();
+    const view = mountGraph({
+      ...unkeyed,
+      edges: unkeyed.edges.filter((edge) => edge.id !== "nts->comp"),
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const compIn = view.container.querySelector(
+      '.react-flow__handle[data-nodeid="comp"][data-handleid="in:audio:main"]'
+    );
+    grabCableEnd(view.container, "nts->speakers");
+    move(-5000, compIn);
+    release(compIn);
 
-      // That cable goes to the Reverb before Replace is clicked.
-      act(() => {
-        nodeStoreModule.commitNodeGraph(
-          (current) => ({
-            ...current,
-            edges: current.edges.map((edge) =>
-              edge.id === "nts->speakers"
-                ? { ...edge, target: "verb", targetHandle: "in:audio:main" }
-                : edge
-            ),
-          }),
-          nodeStoreModule.nodeStore,
-          "snapshot"
-        );
-      });
-      const moved = nodeStoreModule.nodeStore.state.graph;
-      action.onClick();
-      expect(nodeStoreModule.nodeStore.state.graph?.edges).toEqual(
-        moved?.edges ?? []
-      );
-    } finally {
-      toast.mockRestore();
-    }
-  });
-
-  test("a rewired cable removed during its drag offers no Replace", async () => {
-    const { port, view } = await mountPatch();
-    const toast = spyOn(sonner, "toast");
-    try {
-      grabCableEnd(view.container, "nts->speakers");
-      const compIn = port("comp", "in:audio:main");
-      move(-5000, compIn);
-      // Another tab removes the cable before it is let go.
-      act(() => {
-        nodeStoreModule.commitNodeGraph(
-          (current) => ({
-            ...current,
-            edges: current.edges.filter((edge) => edge.id !== "nts->speakers"),
-          }),
-          nodeStoreModule.nodeStore,
-          "snapshot"
-        );
-      });
-      release(compIn);
-      const [[message, options]] = toast.mock.calls as [
-        [string, ExternalToast | undefined],
-      ];
-      expect(message).toBe("These are already connected");
-      expect(options?.action).toBeUndefined();
-    } finally {
-      toast.mockRestore();
-    }
-  });
-
-  test("Replace puts a rewired cable in the port's place", async () => {
-    const { port, view } = await mountPatch();
-    const toast = spyOn(sonner, "toast");
-    try {
-      grabCableEnd(view.container, "nts->speakers");
-      const compIn = port("comp", "in:audio:main");
-      move(-5000, compIn);
-      release(compIn);
-      const [[, options]] = toast.mock.calls as [[string, ExternalToast]];
-      const action = options.action as { label: string; onClick: () => void };
-      action.onClick();
-      const edges = nodeStoreModule.nodeStore.state.graph?.edges ?? [];
-      expect(edges.some((edge) => edge.id === "fip->comp")).toBe(false);
-      expect(edges.find((edge) => edge.id === "nts->speakers")).toMatchObject({
-        source: "nts",
-        target: "comp",
-        targetHandle: "in:audio:main",
-      });
-    } finally {
-      toast.mockRestore();
-    }
+    const edges = nodeStoreModule.nodeStore.state.graph?.edges ?? [];
+    expect(edges.find((edge) => edge.id === "fip->comp")).toMatchObject({
+      source: "fip",
+      target: "comp",
+    });
+    expect(edges.find((edge) => edge.id === "nts->speakers")).toMatchObject({
+      source: "nts",
+      target: "comp",
+      targetHandle: "in:audio:main",
+    });
   });
 
   test("a cable end let go on empty space unplugs the cable", async () => {
@@ -1190,7 +1131,7 @@ describe("NodeCanvas: dragging a cable", () => {
 
       tap(key);
       expect(toast.mock.calls.map(([message]) => message)).toEqual([
-        "This input takes one cable",
+        "A key only works on a station lane",
       ]);
       expect(nodeStoreModule.nodeStore.state.graph?.edges).toHaveLength(4);
       expect(

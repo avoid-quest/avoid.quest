@@ -1,6 +1,7 @@
 import { AppError, captureError } from "@avoid.quest/error";
 import { asInstanceOf, Editing, UUID } from "@opendaw/lib-std";
 import type { EngineWorklet, Project, ProjectEnv } from "@opendaw/studio-core";
+import { MAX_MONITORING_CHANNELS } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
@@ -35,8 +36,6 @@ import {
   writeOfficialEffectFields,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
-
-const MAX_MONITORING_CHANNELS = 8;
 
 export const DEFAULT_OPENDAW_RUNTIME_URLS = {
   offlineWorkerUrl: "/opendaw/wasm-offline-worker.js",

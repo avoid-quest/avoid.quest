@@ -33,7 +33,7 @@ const LAZY_VENDORS = [
   { markers: ["WasmEngine.ensureReady must succeed"], name: "openDAW Studio" },
 ];
 const NODE_ENGINE_MARKERS = [
-  "This Merge joins branches from different splits",
+  "Sending a Split's branches to different places",
   '"replaceLaneEffects"',
 ];
 const STATIC_IMPORT =

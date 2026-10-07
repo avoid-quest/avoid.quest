@@ -294,11 +294,11 @@ describe("flow elements", () => {
     ]);
     const merge = toFlowNodes(graph, {
       measured: new Map(),
-      mergeRoles: new Map([["mix", "in-lane"]]),
+      mergeRoles: new Map([["mix", "closes"]]),
       positions: new Map(),
       selection,
     }).find((node) => node.id === "mix");
-    expect(merge?.data).toEqual({ inputs: 2, role: "in-lane" });
+    expect(merge?.data).toEqual({ inputs: 2, role: "closes" });
   });
 
   test("a playing Station's cables stay live through its FX, key cables don't", () => {

@@ -747,7 +747,7 @@ describe("NodePort", () => {
     start: element.classList.contains("connectablestart"),
   });
 
-  test("a Merge input holding eight cables takes no ninth", () => {
+  test("a Merge input accepts more than eight cables", () => {
     const merge = { data: {}, id: "mix", position: at, type: "merge" };
     const seven = renderPorts(
       [...stations(8), merge],
@@ -764,8 +764,8 @@ describe("NodePort", () => {
       cablesInto("mix", "in:audio:main", 8)
     );
     expect(takes(eight.port("mix", "in:audio:main"))).toEqual({
-      end: false,
-      start: false,
+      end: true,
+      start: true,
     });
     // An output takes any number.
     expect(takes(eight.port("mix", "out:audio:main")).start).toBe(true);

@@ -80,7 +80,6 @@ export type EffectsBackend = EffectsRuntimeOutcome["backend"];
 /** What a lane needs from the engine that holds it. */
 export type LaneHost = {
   readonly subscribeEffectsRuntimeOutcome: AudioManager["subscribeEffectsRuntimeOutcome"];
-  readonly sendGain: (edgeId: string) => number | undefined;
   readonly setEffectFields: AudioManager["setEffectFields"];
   readonly ctx: PlaybackActionContext;
   readonly laneOutputs: NodeLaneOutputs;
@@ -251,8 +250,6 @@ export class LaneInstance {
         subscribeEffectsRuntimeOutcome: host.subscribeEffectsRuntimeOutcome,
       },
       plan: () => slot.plan,
-      refreshSends: () => host.laneOutputs.refresh(slot.laneId),
-      sendGain: host.sendGain,
       soundId,
     });
     // A Track or File sound's state drives its renewal, repeat and advance.

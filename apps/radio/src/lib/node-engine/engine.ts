@@ -186,6 +186,8 @@ function warn(message: string) {
 export function createNodeEngine(options: NodeEngineOptions) {
   const { ctx } = options;
   const slots = new Map<string, LaneSlot>();
+  /** A send belongs to its edge until that edge leaves the plan. */
+  const transientSends = new Map<string, number>();
   let plan = EMPTY_PLAN;
   let disposing = false;
   /** The latest Play all; a pause or a newer Play all stops it. */
@@ -219,14 +221,10 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
       const sinkId = edge.to.id;
       const silenced = edge.muted || plan.sinks.get(sinkId)?.muted === true;
-      levels.set(
-        sinkId,
-        (levels.get(sinkId) ?? 0) +
-          (silenced
-            ? 0
-            : (parameters?.value({ edgeId: edge.id, kind: "send" }) ??
-              edge.gain))
-      );
+      const gain = parameters?.available({ edgeId: edge.id, kind: "send" })
+        ? (transientSends.get(edge.id) ?? edge.gain)
+        : edge.gain;
+      levels.set(sinkId, (levels.get(sinkId) ?? 0) + (silenced ? 0 : gain));
     }
     return levels;
   };
@@ -330,7 +328,6 @@ export function createNodeEngine(options: NodeEngineOptions) {
       });
     },
     resolveStream: options.resolveStream,
-    sendGain: (edgeId) => plan.edges.get(edgeId)?.gain,
     setEffectFields: (...args) => options.effects.setEffectFields(...args),
     /** A lane's sound came or went: every other lane keyed from it rebinds. */
     soundChanged: (laneId) => {
@@ -495,6 +492,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
       const previous = plan;
       const ops = diff(previous, next);
       plan = next;
+      transientSends.forEach((_value, edgeId) => {
+        if (!next.edges.has(edgeId)) {
+          transientSends.delete(edgeId);
+        }
+      });
       const removed = new Set(
         ops.flatMap((op) => (op.type === "removeLane" ? [op.laneId] : []))
       );
@@ -551,17 +553,21 @@ export function createNodeEngine(options: NodeEngineOptions) {
     busy: (): boolean => [...slots.values()].some((slot) => slot.busy()),
     clearTransient(target?: EngineParamTarget) {
       if (target) {
-        const laneId =
-          target.kind === "send"
-            ? plan.edges.get(target.edgeId)?.from.id
-            : target.laneId;
-        if (laneId) {
-          liveInstance(laneId)?.parameters.clear(target);
+        if (target.kind === "send") {
+          transientSends.delete(target.edgeId);
+          const laneId = plan.edges.get(target.edgeId)?.from.id;
+          if (laneId && liveInstance(laneId)) {
+            laneOutputs.refresh(laneId);
+          }
+        } else {
+          liveInstance(target.laneId)?.parameters.clear(target);
         }
       } else {
+        transientSends.clear();
         for (const slot of slots.values()) {
           if (!slot.current?.retiring) {
             slot.current?.parameters.clear();
+            laneOutputs.refresh(slot.laneId);
           }
         }
       }
@@ -601,6 +607,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
       deviceSinks.dispose();
       options.sinkStatuses.setState(() => deviceSinks.statuses());
       plan = EMPTY_PLAN;
+      transientSends.clear();
       publishBadges();
       cleanupOrphanedSounds([...soundIds], ctx, "node");
     },
@@ -657,12 +664,26 @@ export function createNodeEngine(options: NodeEngineOptions) {
       }
     },
     setParam(target: EngineParamTarget, value: number) {
-      const laneId =
-        target.kind === "send"
-          ? plan.edges.get(target.edgeId)?.from.id
-          : target.laneId;
-      const instance = laneId ? liveInstance(laneId) : undefined;
-      return instance?.parameters.set(target, value) ?? "unavailable";
+      if (target.kind === "send") {
+        const laneId = plan.edges.get(target.edgeId)?.from.id;
+        const instance = laneId ? liveInstance(laneId) : undefined;
+        if (
+          !(
+            laneId &&
+            instance?.parameters.available(target) &&
+            Number.isFinite(value)
+          )
+        ) {
+          return "unavailable";
+        }
+        transientSends.set(target.edgeId, value);
+        laneOutputs.refresh(laneId);
+        return "applied";
+      }
+      return (
+        liveInstance(target.laneId)?.parameters.set(target, value) ??
+        "unavailable"
+      );
     },
     /** The lane's sound, while it has one. */
     soundOf: (laneId: string) => liveInstance(laneId)?.soundId ?? null,

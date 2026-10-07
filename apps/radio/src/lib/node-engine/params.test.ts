@@ -247,6 +247,13 @@ async function harness(
       effectReady = false;
     },
     engine,
+    failEffects() {
+      effectReady = false;
+      Object.assign(outcome, { ready: false, status: "failed" });
+      for (const listener of listeners) {
+        listener(outcome);
+      }
+    },
     fields,
     holdFade() {
       const pending = Promise.withResolvers<void>();
@@ -418,6 +425,113 @@ describe("Node engine parameters", () => {
     expect(h.fields.get("comp")).toMatchObject({ threshold: -35 });
   });
 
+  test.each([
+    ["removed", false],
+    ["removed", true],
+    ["rewired", false],
+    ["rewired", true],
+  ] as const)(
+    "a send follows its edge when %s (clear=%s)",
+    async (change, clear) => {
+      const patch = graph();
+      const [station] = patch.nodes;
+      const h = await harness(
+        "official",
+        false,
+        nodeGraphSchema.parse({
+          ...patch,
+          edges: [
+            ...patch.edges,
+            { ...patch.edges[3], id: "keep-a", target: "monitor" },
+            { ...patch.edges[3], id: "b->speakers", source: "b" },
+          ],
+          nodes: [
+            ...patch.nodes,
+            {
+              data: { deviceId: "usb" },
+              id: "monitor",
+              position: { x: 0, y: 0 },
+              type: "deviceOut",
+            },
+            {
+              ...station,
+              data: {
+                radio: {
+                  id: "b",
+                  name: "b",
+                  streamUrl: "https://radio.example/b.mp3",
+                },
+              },
+              id: "b",
+            },
+          ],
+        })
+      );
+      expect(h.engine.setParam(pan, -0.7)).toBe("applied");
+      expect(h.engine.setParam(send, 0.3)).toBe("applied");
+      expect(h.levels.get("a")).toBe(0.3);
+      const edges = new Map(h.plan.edges);
+      const edge = edges.get("comp->speakers");
+      if (!edge) {
+        throw new Error("Missing send");
+      }
+      if (change === "removed") {
+        edges.delete(edge.id);
+      } else {
+        edges.set(edge.id, { ...edge, from: { id: "b", kind: "lane" } });
+      }
+      h.engine.apply({ ...h.plan, edges }, true);
+      await h.engine.whenSettled();
+      expect(h.levels.get("a")).toBe(0);
+      if (change === "rewired") {
+        expect(h.levels.get("b")).toBe(1.3);
+      }
+      if (clear) {
+        h.engine.clearTransient(send);
+      }
+      h.engine.apply(h.plan, true);
+      await h.engine.whenSettled();
+      expect(h.levels.get("a")).toBe(change === "rewired" && !clear ? 0.3 : 1);
+      expect(h.levels.get("b")).toBe(1);
+      h.reconnect();
+      expect(h.nodes?.pan.pan.value).toBe(-0.7);
+    }
+  );
+
+  test("an effects failure preserves native overlays and allows new strip and send writes", async () => {
+    const h = await harness();
+    expect(h.engine.setParam(threshold, -12)).toBe("applied");
+    expect(h.engine.setParam(pan, -0.7)).toBe("applied");
+    expect(h.engine.setParam(frequency, 2400)).toBe("applied");
+    expect(h.engine.setParam(send, 0.3)).toBe("applied");
+    h.failEffects();
+    expect(h.nodes?.pan.pan.value).toBe(-0.7);
+    expect(h.nodes?.filter.frequency.value).toBe(2400);
+    expect(h.levels.get("a")).toBe(0.3);
+    expect(h.engine.setParam(threshold, -17)).toBe("unavailable");
+    h.reconnect(false);
+    expect(h.nodes?.pan.pan.value).toBe(-0.7);
+    expect(h.nodes?.filter.frequency.value).toBe(2400);
+    expect(h.levels.get("a")).toBe(0.3);
+    expect(h.engine.setParam(pan, 0.5)).toBe("applied");
+    expect(h.engine.setParam(frequency, 1800)).toBe("applied");
+    expect(h.engine.setParam({ ...frequency, field: "Q" }, 1.4)).toBe(
+      "applied"
+    );
+    expect(h.engine.setParam(send, 0.8)).toBe("applied");
+    expect(h.nodes?.pan.pan.value).toBe(0.5);
+    expect(h.nodes?.filter.frequency.value).toBe(1800);
+    expect(h.nodes?.filter.Q.value).toBe(1.4);
+    expect(h.levels.get("a")).toBe(0.8);
+    h.engine.clearTransient();
+    expect(h.nodes?.pan.pan.value).toBe(0.2);
+    expect(h.nodes?.filter.frequency.value).toBe(900);
+    expect(h.nodes?.filter.Q.value).toBe(2);
+    expect(h.levels.get("a")).toBe(1);
+    h.ready();
+    expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+  });
+
   test("an authored knob replays only its own effect overlay", async () => {
     const patch = graph();
     const extra = nodeGraphSchema.parse({
@@ -541,7 +655,7 @@ describe("Node engine parameters", () => {
     expect(h.engine.setParam(frequency, 1800)).toBe("unavailable");
   });
 
-  test("connection and new strip nodes replay overlays; retirement drops them", async () => {
+  test("reconnection replays overlays; retirement drops lane overlays and keeps existing sends", async () => {
     const h = await harness("official", true);
     h.engine.setParam(pan, -0.4);
     h.engine.setParam(threshold, -17);
@@ -571,7 +685,7 @@ describe("Node engine parameters", () => {
     release();
     await h.engine.whenSettled();
     h.reconnect();
-    expect(h.levels.get("a")).toBe(1);
+    expect(h.levels.get("a")).toBe(0.2);
     expect(h.nodes?.pan.pan.value).toBe(0.2);
     expect(h.fields.get("comp")).toMatchObject({
       threshold: (

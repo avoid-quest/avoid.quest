@@ -11,6 +11,7 @@ import type { LanePlan } from "@/lib/node-graph/compile";
 import { type EngineParamTarget, paramKey } from "./param-target";
 
 type EffectTarget = Extract<EngineParamTarget, { kind: "effect" | "chain" }>;
+type LaneParamTarget = Exclude<EngineParamTarget, { kind: "send" }>;
 
 function withEffectParam(
   config: EffectConfig,
@@ -41,15 +42,13 @@ type ParamHost = {
     AudioManager,
     "setEffectFields" | "subscribeEffectsRuntimeOutcome"
   >;
-  sendGain: (edgeId: string) => number | undefined;
-  refreshSends: () => void;
 };
 
 /** Scalar overlays belong to one sound; baselines always come from its latest plan. */
 export class LaneParameters {
   private readonly transient = new Map<
     string,
-    { target: EngineParamTarget; value: number }
+    { target: LaneParamTarget; value: number }
   >();
   private readonly host: ParamHost;
   private readonly unsubscribe: () => void;
@@ -62,27 +61,19 @@ export class LaneParameters {
     );
   }
 
-  private available(): boolean {
+  available(target: EngineParamTarget): boolean {
     const plan = this.host.plan();
     const outcome = this.host.audio.getEffectsRuntimeOutcome(this.host.soundId);
     return (
       this.host.active() &&
       Boolean(plan) &&
       outcome.backend !== "compatibility" &&
-      outcome.status !== "failed" &&
+      (!("effectId" in target) || outcome.status !== "failed") &&
       (outcome.backend === "official" || plan?.backend !== "compat")
     );
   }
 
-  value(target: EngineParamTarget): number | undefined {
-    const overlay = this.transient.get(paramKey(target));
-    return overlay && this.available() ? overlay.value : undefined;
-  }
-
-  private authored(target: EngineParamTarget): number | undefined {
-    if (target.kind === "send") {
-      return this.host.sendGain(target.edgeId);
-    }
+  private authored(target: LaneParamTarget): number | undefined {
     const plan = this.host.plan();
     if (target.kind === "pan") {
       return plan?.pan;
@@ -111,9 +102,9 @@ export class LaneParameters {
     return typeof value === "number" ? value : undefined;
   }
 
-  set(target: EngineParamTarget, value: number): EffectWriteResult {
+  set(target: LaneParamTarget, value: number): EffectWriteResult {
     if (
-      !(this.available() && Number.isFinite(value)) ||
+      !(this.available(target) && Number.isFinite(value)) ||
       this.authored(target) === undefined
     ) {
       return "unavailable";
@@ -132,7 +123,7 @@ export class LaneParameters {
     return result;
   }
 
-  clear(target?: EngineParamTarget): void {
+  clear(target?: LaneParamTarget): void {
     const targets = target
       ? [target]
       : [...this.transient.values()].map((entry) => entry.target);
@@ -144,20 +135,16 @@ export class LaneParameters {
       if (
         value !== undefined &&
         this.host.active() &&
-        (this.available() || !("effectId" in current))
+        (this.available(current) || !("effectId" in current))
       ) {
         this.write(current, value);
       }
     }
   }
 
-  private write(target: EngineParamTarget, value: number): EffectWriteResult {
+  private write(target: LaneParamTarget, value: number): EffectWriteResult {
     if ("effectId" in target) {
       return this.writeEffect(target.effectId);
-    }
-    if (target.kind === "send") {
-      this.host.refreshSends();
-      return "applied";
     }
     const nodes = this.host.audio.getStripNodes(this.host.soundId);
     if (nodes) {
@@ -205,10 +192,6 @@ export class LaneParameters {
     if (this.transient.size === 0) {
       return;
     }
-    if (!this.available()) {
-      this.clear();
-      return;
-    }
     const effects = new Set<string>();
     for (const [key, { target, value }] of this.transient) {
       if (
@@ -219,7 +202,9 @@ export class LaneParameters {
       ) {
         continue;
       }
-      if (this.authored(target) === undefined) {
+      if (!this.available(target)) {
+        this.clear(target);
+      } else if (this.authored(target) === undefined) {
         this.transient.delete(key);
       } else if ("effectId" in target) {
         effects.add(target.effectId);

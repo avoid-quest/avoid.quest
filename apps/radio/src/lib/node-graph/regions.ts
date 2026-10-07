@@ -17,6 +17,8 @@
  * - after a node whose output goes to several places that don't meet
  *   again (an open fan-out), or that a key cable taps, so the key hears
  *   exactly what the node's cables carry;
+ * - before and after an explicit Split whose branches don't meet again (a
+ *   split module, its stage giving each port its own output);
  * - before every output (sink).
  *
  * A **segment** is the series between points, its split regions included:
@@ -42,6 +44,7 @@ import {
   MAX_EFFECT_TREE_DEPTH,
   usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
+import type { SplitEffect } from "@/lib/audio/routing/split-stage";
 import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import type { GraphEdge, GraphNode } from "./schema";
 import { type IssueCode, liveAudioNodes, type WiredEdge } from "./validate";
@@ -52,10 +55,6 @@ export const MAX_SPLIT_BRANCHES = 4;
 /** Why a key inside a closed Split is refused. */
 export const ENCLOSED_KEY_MESSAGE =
   "A key can't start inside a Split whose branches meet again";
-
-/** Why an explicit Split whose branches go different ways is refused. */
-export const OPEN_SPLIT_MESSAGE =
-  "Sending a Split's branches to different places comes with the next update";
 
 export type NativeFilterPlan = {
   type: "lowpass" | "highpass";
@@ -241,6 +240,15 @@ export type SegmentExit = {
   key?: true;
 };
 
+/** An open Split as its stage runs it, and where each port's cables go. */
+export type OpenSplit = {
+  /** A chain per port, the port's cable controls folded in; no FX. */
+  effect: SplitEffect;
+  /** The cabled ports, by position. */
+  cabled: number[];
+  exits: Map<number, SegmentExit[]>;
+};
+
 export type Segment = {
   /** Nodes lowered into it, its head first. */
   nodes: string[];
@@ -312,6 +320,73 @@ function splitPorts(effect: EffectConfig): string[] | null {
     default:
       return null;
   }
+}
+
+/** A container's port: its out handle, its chain and its cables. */
+type SplitPort = {
+  port: string;
+  chain: EffectChainConfig;
+  cables: WiredEdge[];
+};
+
+/**
+ * A container's ports in order, each with the cables out of it and its
+ * chain: the configured one or a default, the one cable on the port adding
+ * its pan to the chain's (with several, each keeps its own in a nested
+ * fan-out) and any of them soloing it. `ids` keeps a tree's chain ids
+ * unique. Refuses a shape the engine can't run.
+ */
+function splitPortsOf(
+  id: string,
+  base: Extract<EffectConfig, { chains: EffectChainConfig[] }>,
+  outs: readonly WiredEdge[],
+  ids?: FreshIds
+): SplitPort[] {
+  const ports = splitPorts(base);
+  if (!ports) {
+    throw new LoweringError(
+      id,
+      "split-branches",
+      `Band Split takes 2 to ${MAX_SPLIT_BRANCHES} bands`
+    );
+  }
+  if (outs.some(({ edge }) => !ports.includes(edge.sourceHandle))) {
+    throw new LoweringError(
+      id,
+      "split-branches",
+      `Band Split has ${ports.length} bands`
+    );
+  }
+  const configured = [...base.chains].sort(
+    (left, right) => left.order - right.order
+  );
+  return ports.map((port, index) => {
+    const cables = outs.filter(({ edge }) => edge.sourceHandle === port);
+    const own = configured[index];
+    const fallback = `${id}:${portName(port)}`;
+    const chain: EffectChainConfig = own
+      ? { ...own, id: ids?.claim(own.id) ?? own.id }
+      : {
+          effects: [],
+          gain: defaultChainGain(base.type),
+          id: ids?.fresh(fallback) ?? fallback,
+          muted: false,
+          name: `Branch ${index + 1}`,
+          order: index,
+          pan: 0,
+          solo: false,
+        };
+    const only = cables.length === 1 ? cables[0]?.edge : undefined;
+    return {
+      cables,
+      chain: {
+        ...chain,
+        pan: clampPan(chain.pan + (only?.pan ?? 0)),
+        solo: chain.solo || cables.some(({ edge }) => edge.solo === true),
+      },
+      port,
+    };
+  });
 }
 
 export type RegionInput = {
@@ -544,8 +619,51 @@ export class RegionLowerer {
     return (
       this.sinks.has(id) ||
       this.isModule(id) ||
+      this.isOpenSplit(id) ||
       (this.insOf(id).length > 1 && !this.closers.has(id))
     );
+  }
+
+  /** An explicit Split whose branches don't meet again: a split module. */
+  isOpenSplit(id: string): boolean {
+    const effect = effectOf(this.byId.get(id));
+    return (
+      effect !== null &&
+      isEffectContainer(effect) &&
+      this.outs.has(id) &&
+      !this.closed.has(id)
+    );
+  }
+
+  /**
+   * An open Split for its stage: a chain per port, the one cable on a port
+   * adding its pan and any of its cables soloing it, as a closed Split's
+   * branch cables do; the cabled ports; and each port's cables out.
+   */
+  openSplit(id: string): OpenSplit {
+    const base = effectOf(this.node(id));
+    if (!(base && isEffectContainer(base))) {
+      throw new LoweringError(
+        id,
+        "split-branches",
+        `Band Split takes 2 to ${MAX_SPLIT_BRANCHES} bands`
+      );
+    }
+    const exits = new Map<number, SegmentExit[]>();
+    const ports = splitPortsOf(id, base, this.outsOf(id));
+    const chains = ports.map(({ chain, port }, index) => {
+      const out = this.exitsOf(id, UNITY, port);
+      if (out.length > 0) {
+        exits.set(index, out);
+      }
+      return { ...chain, effects: [], order: index };
+    });
+    const { sidechain: _, ...container } = base;
+    return {
+      cabled: [...exits.keys()].sort((left, right) => left - right),
+      effect: { ...container, chains } as SplitEffect,
+      exits,
+    };
   }
 
   /** A point after the node: its output is a real signal. */
@@ -561,14 +679,18 @@ export class RegionLowerer {
    * Where the signal leaving `id` goes as a point: each cable out, and each
    * key cable tapping it, with `trim` still pending.
    */
-  exitsOf(id: string, trim: Trim = UNITY): SegmentExit[] {
+  exitsOf(id: string, trim: Trim = UNITY, port?: string): SegmentExit[] {
+    const from = ({ edge }: WiredEdge) =>
+      port === undefined || edge.sourceHandle === port;
     return [
-      ...this.outsOf(id).map(({ edge }) => ({
-        ids: [edge.id],
-        target: edge.target,
-        trim: addTrim(trim, edge),
-      })),
-      ...(this.keys.get(id) ?? []).map(
+      ...this.outsOf(id)
+        .filter(from)
+        .map(({ edge }) => ({
+          ids: [edge.id],
+          target: edge.target,
+          trim: addTrim(trim, edge),
+        })),
+      ...(this.keys.get(id) ?? []).filter(from).map(
         ({ edge }): SegmentExit => ({
           ids: [edge.id],
           key: true,
@@ -719,19 +841,6 @@ export class RegionLowerer {
       this.closed = next;
       this.absorbed = absorbed;
     }
-  }
-
-  /** Explicit Splits whose branches don't meet again: refused for now. */
-  openSplits(): string[] {
-    return [...this.byId.values()].flatMap((node) => {
-      const effect = effectOf(node);
-      return effect &&
-        isEffectContainer(effect) &&
-        this.outs.has(node.id) &&
-        !this.closed.has(node.id)
-        ? [node.id]
-        : [];
-    });
   }
 
   /**
@@ -947,41 +1056,8 @@ class SegmentLowerer {
         order,
       });
     }
-    const ports = splitPorts(base);
-    if (!ports) {
-      throw new LoweringError(
-        split,
-        "split-branches",
-        `Band Split takes 2 to ${MAX_SPLIT_BRANCHES} bands`
-      );
-    }
-    const configChains = [...base.chains].sort(
-      (left, right) => left.order - right.order
-    );
-    for (const { edge } of outs) {
-      if (!ports.includes(edge.sourceHandle)) {
-        throw new LoweringError(
-          split,
-          "split-branches",
-          `Band Split has ${ports.length} bands`
-        );
-      }
-    }
-    const chains = ports.flatMap((port, index): EffectChainConfig[] => {
-      const cables = outs.filter(({ edge }) => edge.sourceHandle === port);
-      const configured = configChains[index];
-      const chain: EffectChainConfig = configured
-        ? { ...configured, id: this.ids.claim(configured.id) }
-        : {
-            effects: [],
-            gain: defaultChainGain(base.type),
-            id: this.ids.fresh(`${split}:${portName(port)}`),
-            muted: false,
-            name: `Branch ${index + 1}`,
-            order: index,
-            pan: 0,
-            solo: false,
-          };
+    const ports = splitPortsOf(split, base, outs, this.ids);
+    const chains = ports.flatMap(({ cables, chain }, index) => {
       if (cables.length === 0) {
         // A Split drops an unused branch; a stereo or band split mutes it.
         return base.type === "fxComposite"
@@ -1010,12 +1086,6 @@ class SegmentLowerer {
           gain: chain.gain * branch.trim.gain,
           muted: chain.muted || branch.trim.muted,
           order: index,
-          // The branch cable carries the chain's pan and solo, on top of
-          // what the container holds (a MIDI-learned chain pan). With
-          // several cables on the port each keeps its own in the nested
-          // fan-out, and a soloed one also solos its branch over the rest.
-          pan: clampPan(chain.pan + (cable?.pan ?? 0)),
-          solo: chain.solo || cables.some(({ edge }) => edge.solo === true),
         },
       ];
     });

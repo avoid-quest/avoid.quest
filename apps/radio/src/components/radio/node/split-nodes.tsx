@@ -49,8 +49,10 @@ import { useNodeActions } from "./node-actions";
  * grows a port as each branch is cabled (two to four), a Stereo Split has
  * left and right, and a Band Split one port per band, low to high. The
  * branch cables carry each branch's gain, pan, mute and solo; the compiler
- * lowers the split and the Merge that closes it into one container in the
- * lane. A Band Split's body is its band count and crossovers.
+ * lowers the split and the node where its branches meet again into one
+ * container, or, when they go different places, runs it as a split stage
+ * whose ports route on their own. A Band Split's body is its band count and
+ * crossovers.
  */
 
 type BandSplitNode = SplitGraphNode & { type: "frequencySplit" };

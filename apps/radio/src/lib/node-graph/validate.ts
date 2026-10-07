@@ -46,7 +46,6 @@ export type IssueCode =
   // Raised by the compiler, where the patch's shape is known.
   | "split-depth"
   | "split-branches"
-  | "split-open"
   | "key-enclosed";
 
 export type Issue = {

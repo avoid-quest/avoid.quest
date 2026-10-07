@@ -1,38 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { Mixing, StereoMatrix } from "@opendaw/lib-dsp";
 import { createDefaultEffectConfig } from "../dsp/effects/registry";
-import { OfflineGraph, type OfflineNode, residualDb } from "./offline-graph";
+import {
+  OfflineGraph,
+  type OfflineNode,
+  residualDb,
+  testProgram,
+} from "./offline-graph";
 import { createSplitStage, type SplitEffect } from "./split-stage";
 
 const FRAMES = 9600;
 /** Checked over the last 100 ms, once the filters have settled. */
 const TAIL = 4800;
-
-function tone(frequency: number, amplitude = 0.25): Float32Array {
-  return Float32Array.from(
-    { length: FRAMES },
-    (_, frame) =>
-      amplitude * Math.sin((2 * Math.PI * frequency * frame) / 48_000)
-  );
-}
-
-/** A broadband test signal: tones across the bands, different per side. */
-function program(): [Float32Array, Float32Array] {
-  const left = tone(110);
-  const right = tone(330, 0.2);
-  for (const [frequency, amplitude] of [
-    [880, 0.1],
-    [2500, 0.08],
-    [7000, 0.05],
-  ] as const) {
-    const extra = tone(frequency, amplitude);
-    for (let frame = 0; frame < FRAMES; frame += 1) {
-      left[frame] = (left[frame] ?? 0) + (extra[frame] ?? 0);
-      right[frame] = (right[frame] ?? 0) - (extra[frame] ?? 0);
-    }
-  }
-  return [left, right];
-}
 
 /** A split as the registry makes it, a Band Split at two bands. */
 function split(
@@ -53,7 +32,7 @@ function split(
 /** Renders `effect` with `cabled` ports, each port and their sum. */
 function render(effect: SplitEffect, cabled: number[]) {
   const graph = new OfflineGraph();
-  const [left, right] = program();
+  const [left, right] = testProgram(FRAMES);
   const source = graph.createSource(left, right);
   const stage = createSplitStage(graph as unknown as BaseAudioContext, {
     cabled,

@@ -11,6 +11,7 @@
  *          filter: filter → output → cables
  *          pan:    panner → output → cables
  *          sum:    one gain, its input and output → cables
+ *          split:  input → output → split stage → each port → its cables
  *
  * A key is a point with only an input: the sum of its key cables, which
  * keyed effects bind their sidechain to through `connectKey`. It is made,
@@ -45,6 +46,10 @@ import {
   settleParam,
   delay as wait,
 } from "@/lib/audio/routing/sends";
+import {
+  createSplitStage,
+  type SplitStage,
+} from "@/lib/audio/routing/split-stage";
 import { safeDisconnect, safeDisconnectFrom } from "@/lib/audio/utils";
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
 import {
@@ -129,7 +134,10 @@ type Live = {
   readonly output: GainNode | null;
   /** A unit's layout duck, where its FX end. */
   readonly duck: GainNode | null;
-  readonly sends: Sends | null;
+  /** A split's stage, after its fade: its ports are where its cables start. */
+  readonly stage: SplitStage | null;
+  /** Its cables out, by the port they leave from (0 but for a split). */
+  readonly sends: Map<number, Sends>;
   readonly effects: EffectsSlot<UnitPlan> | null;
   /** A unit's transient parameter overlays. */
   readonly parameters: OwnerParameters | null;
@@ -228,7 +236,9 @@ export class RoutingGraph {
     }
     // Every cable that went starts fading before a new one looks for loops.
     for (const [point] of changed) {
-      point.live?.sends?.retire(this.sendPlans(point));
+      for (const [port, sends] of point.live?.sends ?? []) {
+        sends.retire(this.sendPlans(point, port));
+      }
     }
     for (const [point, previous] of changed) {
       const { live } = point;
@@ -408,7 +418,8 @@ export class RoutingGraph {
         continue;
       }
       seen.add(key);
-      for (const edge of this.points.get(key)?.live?.sends?.edges() ?? []) {
+      const sends = this.points.get(key)?.live?.sends.values() ?? [];
+      for (const edge of [...sends].flatMap((each) => each.edges())) {
         if (edge.gone) {
           fading.push(edge.gone);
         }
@@ -439,6 +450,7 @@ export class RoutingGraph {
         : null;
     let input: AudioNode = gain;
     let duck: GainNode | null = null;
+    let stage: SplitStage | null = null;
     const controller = new AbortController();
     let effects: EffectsSlot<UnitPlan> | null = null;
     let parameters: OwnerParameters | null = null;
@@ -499,6 +511,11 @@ export class RoutingGraph {
       panner.pan.value = plan.pan;
       panner.connect(gain);
       input = panner;
+    } else if (plan.kind === "split") {
+      stage = createSplitStage(context, plan.split);
+      input = audio.createGain();
+      input.connect(gain);
+      gain.connect(stage.input);
     }
     const live: Live = {
       context,
@@ -510,13 +527,8 @@ export class RoutingGraph {
       input,
       output,
       parameters,
-      sends:
-        output &&
-        new Sends(
-          output,
-          (to, send, realtime) => this.route(to, send, realtime, point.key),
-          this.wait
-        ),
+      sends: new Map(),
+      stage,
     };
     point.live = live;
     this.settleSends(point, live);
@@ -573,18 +585,66 @@ export class RoutingGraph {
     }
   }
 
-  private sendPlans(point: Point): Map<string, SendPlan> {
+  /** The point's cables out of `port`, as sends. */
+  private sendPlans(point: Point, port: number): Map<string, SendPlan> {
     return new Map(
-      point.cables.map((cable) => [
-        cable.id,
-        sendPlan(cable, point.plan.realtime, this.host.sendOverlay(cable)),
-      ])
+      point.cables
+        .filter((cable) => (cable.from.port ?? 0) === port)
+        .map((cable) => [
+          cable.id,
+          sendPlan(cable, point.plan.realtime, this.host.sendOverlay(cable)),
+        ])
     );
   }
 
-  /** One send per cable out of the point, each ramped to its level. */
+  /**
+   * One send per cable out of the point, each ramped to its level, out of
+   * the port it leaves from. A port whose cables went stays, in a split's
+   * stage too, until they faded out.
+   */
   private settleSends(point: Point, live: Live): void {
-    live.sends?.settle(this.sendPlans(point));
+    const ports = new Set(point.cables.map((cable) => cable.from.port ?? 0));
+    for (const [port, sends] of live.sends) {
+      if (ports.has(port)) {
+        continue;
+      }
+      sends.retire(new Map());
+      const fading = sends.edges().flatMap(({ gone }) => (gone ? [gone] : []));
+      if (fading.length === 0) {
+        live.sends.delete(port);
+        continue;
+      }
+      ports.add(port);
+      Promise.all(fading).then(() => {
+        // A released point let go of its stage and sends already.
+        if (point.live === live) {
+          this.settleSends(point, live);
+        }
+      });
+    }
+    const { plan } = point;
+    if (live.stage && !isUnit(plan) && plan.kind === "split") {
+      live.stage.update({
+        ...plan.split,
+        cabled: [...ports].sort((left, right) => left - right),
+      });
+    }
+    for (const port of ports) {
+      const from = live.stage ? live.stage.port(port) : live.output;
+      if (!from) {
+        continue;
+      }
+      let sends = live.sends.get(port);
+      if (!sends) {
+        sends = new Sends(
+          from,
+          (to, send, realtime) => this.route(to, send, realtime, point.key),
+          this.wait
+        );
+        live.sends.set(port, sends);
+      }
+      sends.settle(this.sendPlans(point, port));
+    }
   }
 
   private kick(point: Point): void {
@@ -635,7 +695,10 @@ export class RoutingGraph {
   private release(point: Point, live: Live): void {
     live.controller.abort();
     point.live = null;
-    live.sends?.drop();
+    for (const sends of live.sends.values()) {
+      sends.drop();
+    }
+    live.stage?.dispose();
     if (live.effects && isUnit(point.plan)) {
       this.host.detachEffects(unitEffectsId(point.plan.id));
       this.host.outcomeChanged();

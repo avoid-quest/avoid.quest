@@ -232,3 +232,29 @@ export function residualDb(
   }
   return 10 * Math.log10(energy / Math.max(1, count) + 1e-30);
 }
+
+function tone(frequency: number, amplitude: number, frames: number) {
+  return Float32Array.from(
+    { length: frames },
+    (_, frame) =>
+      amplitude * Math.sin((2 * Math.PI * frequency * frame) / 48_000)
+  );
+}
+
+/** A broadband stereo test signal: tones across the bands, unlike per side. */
+export function testProgram(frames: number): [Float32Array, Float32Array] {
+  const left = tone(110, 0.25, frames);
+  const right = tone(330, 0.2, frames);
+  for (const [frequency, amplitude] of [
+    [880, 0.1],
+    [2500, 0.08],
+    [7000, 0.05],
+  ] as const) {
+    const extra = tone(frequency, amplitude, frames);
+    for (let frame = 0; frame < frames; frame += 1) {
+      left[frame] = (left[frame] ?? 0) + (extra[frame] ?? 0);
+      right[frame] = (right[frame] ?? 0) - (extra[frame] ?? 0);
+    }
+  }
+  return [left, right];
+}

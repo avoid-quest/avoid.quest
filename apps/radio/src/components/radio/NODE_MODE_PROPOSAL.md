@@ -77,7 +77,11 @@ and cable trims retain the whole signal level, including the dry path at
 partial FX mix. Split, Stereo Split, Band Split and implicit fan-out regions
 use the existing series/parallel containers and reconverge at the nearest
 node that joins them: a Merge, an output, or any node that sums. An explicit
-Split whose branches go different ways waits for the next update. Branch
+Split whose branches go different ways runs as a split stage in Web Audio
+([split-routing-measurements.md](node/docs/split-routing-measurements.md)):
+each cabled port is its own output, its branch's gain, pan, mute and solo
+applied there, and the ports together sum to what the same Split gives when
+its branches rejoin. Branch
 controls distinguish the configured base level from cable trim and display
 their combined gain. Each Output node has its own gain, which carries its
 mute and Node's master volume: they act at the outputs, after every effect,

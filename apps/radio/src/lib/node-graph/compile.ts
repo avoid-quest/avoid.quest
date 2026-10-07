@@ -35,6 +35,7 @@ import {
   isEffectContainer,
   usesDirectEffectLayout,
 } from "@/lib/audio/dsp/routing/effect-tree";
+import type { SplitStageConfig } from "@/lib/audio/routing/split-stage";
 import { getNodeDefinition, isEffectNodeType } from "./catalogue";
 import { laneChannelId, laneSoundId } from "./identifiers";
 import {
@@ -44,7 +45,6 @@ import {
   FreshIds,
   LoweringError,
   type NativeFilterPlan,
-  OPEN_SPLIT_MESSAGE,
   RegionLowerer,
   type Segment,
   type SegmentExit,
@@ -154,9 +154,11 @@ export type LanePlan = {
 export type Endpoint = {
   kind: "lane" | "unit" | ModulePlan["kind"] | "sink";
   id: string;
+  /** A split's output: its port, by position. */
+  port?: number;
 };
 
-/** An endpoint as one string: a point changes with its kind. */
+/** A point as one string, its ports one point: it changes with its kind. */
 export function endpointKey({ kind, id }: Endpoint): string {
   return `${kind}:${id}`;
 }
@@ -220,6 +222,8 @@ export type ModulePlan = { id: string; realtime: boolean } & (
   | { kind: "pan"; pan: number }
   | { kind: "key" }
   | { kind: "tap" }
+  /** An explicit Split whose branches go different ways: its stage. */
+  | { kind: "split"; split: SplitStageConfig }
 );
 
 export type SinkPlan = {
@@ -521,34 +525,21 @@ function refuse(graph: CompileGraph): Issue[] {
   );
 }
 
-/**
- * Splits whose branches part ways, which this compiler cannot lower yet,
- * and keys inside a Split whose branches meet again.
- */
-function refuseRegions(regions: RegionLowerer): Issue[] {
-  return [
-    ...regions.openSplits().map(
-      (id): Issue => ({
-        code: "split-open",
-        id,
-        message: OPEN_SPLIT_MESSAGE,
-        target: "node",
-      })
-    ),
-    ...regions.keysInsideRegions().map(
-      (id): Issue => ({
-        code: "key-enclosed",
-        id,
-        message: ENCLOSED_KEY_MESSAGE,
-        target: "edge",
-      })
-    ),
-  ];
+/** Keys inside a Split whose branches meet again. */
+function refuseEnclosedKeys(regions: RegionLowerer): Issue[] {
+  return regions.keysInsideRegions().map(
+    (id): Issue => ({
+      code: "key-enclosed",
+      id,
+      message: ENCLOSED_KEY_MESSAGE,
+      target: "edge",
+    })
+  );
 }
 
 /**
  * Drops what failed validation, then refuses what this compiler cannot lower
- * yet (other sources, control, a Split whose branches part ways),
+ * yet (other sources, control),
  * re-validating after every round until the patch is stable, so an issue a
  * drop uncovers is reported too. Each round drops at least one node or
  * cable, so this always settles. Advisory issues come from the final
@@ -582,7 +573,7 @@ function prepare(graph: CompileGraph, env: CompileEnv): Prepared {
           })
         : null;
     if (regions) {
-      blocking = refuseRegions(regions);
+      blocking = refuseEnclosedKeys(regions);
     }
     if (regions && blocking.length === 0) {
       return {
@@ -749,8 +740,13 @@ class PlanBuilder {
 
   /** A segment, or null when it can't lower: it then plays into nothing. */
   lower(head: string): Segment | null {
+    return this.lowered(() => this.regions.lowerSegment(head));
+  }
+
+  /** What `lowering` makes, or null with its issue when it can't. */
+  private lowered<T>(lowering: () => T): T | null {
     try {
-      return this.regions.lowerSegment(head);
+      return lowering();
     } catch (error) {
       if (!(error instanceof LoweringError)) {
         throw error;
@@ -813,7 +809,10 @@ class PlanBuilder {
         continue;
       }
       if (this.regions.isCutBefore(exit.target)) {
-        this.connect(exit.ids, from, this.endpointOf(exit.target), trim);
+        const to = this.endpointOf(exit.target);
+        if (to) {
+          this.connect(exit.ids, from, to, trim);
+        }
         continue;
       }
       // Past a fan-out: a branch with FX is a unit of its own; one
@@ -862,6 +861,27 @@ class PlanBuilder {
     this.modules.set(endpointKey(module), module);
   }
 
+  /** An open Split: its stage, and each port's cables from there. */
+  private addSplit(id: string): Endpoint | null {
+    const split = this.lowered(() => this.regions.openSplit(id));
+    if (!split) {
+      return null;
+    }
+    const { cabled, effect, exits } = split;
+    const endpoint: Endpoint = { id, kind: "split" };
+    this.endpoints.set(id, endpoint);
+    this.addModule({
+      id,
+      kind: "split",
+      realtime: false,
+      split: { cabled, effect },
+    });
+    for (const [port, out] of exits) {
+      this.emit(out, { ...endpoint, port }, UNITY);
+    }
+    return endpoint;
+  }
+
   private addUnit(id: string, segment: Segment): Endpoint {
     const { effects } = segment;
     this.units.set(id, {
@@ -875,13 +895,19 @@ class PlanBuilder {
     return { id, kind: "unit" };
   }
 
-  /** The point a cable into `id` ends at, built the first time. */
-  private endpointOf(id: string): Endpoint {
+  /**
+   * The point a cable into `id` ends at, built the first time; null for a
+   * Split that can't lower, which plays into nothing.
+   */
+  private endpointOf(id: string): Endpoint | null {
     const known = this.endpoints.get(id);
     if (known) {
       return known;
     }
     const node = this.regions.node(id);
+    if (this.regions.isOpenSplit(id)) {
+      return this.addSplit(id);
+    }
     if (isSink(node)) {
       const sink: Endpoint = { id, kind: "sink" };
       this.endpoints.set(id, sink);

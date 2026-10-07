@@ -2,10 +2,6 @@ import {
   applyEffectConfig,
   createEffectProcessor,
 } from "./effect-processor-factory.js";
-import {
-  BiquadFilter,
-  type BiquadFilterType,
-} from "./effects/biquad-filter.js";
 import { ContainerEffect } from "./effects/container-effects.js";
 import { clampEffectTempo } from "./effects/tempo.js";
 import type {
@@ -44,8 +40,6 @@ export class EffectSource {
 
   private static readonly GAIN_SMOOTH_COEFF = 0.1;
 
-  private readonly filters = new Map<string, BiquadFilter>();
-  private filterOrder: string[] = [];
   private readonly effects = new Map<string, EffectProcessor>();
   private effectOrder: string[] = [];
   private readonly effectTypes = new Map<string, EffectType>();
@@ -138,55 +132,6 @@ export class EffectSource {
 
   private smoothGain(current: number, target: number): number {
     return current + (target - current) * EffectSource.GAIN_SMOOTH_COEFF;
-  }
-
-  addFilter(
-    filterId: string,
-    type: BiquadFilterType,
-    frequency: number,
-    Q: number,
-    gain: number
-  ): void {
-    const filter = new BiquadFilter(this.sampleRate);
-    filter.type = type;
-    filter.frequency = frequency;
-    filter.Q = Q;
-    filter.gain = gain;
-    this.filters.set(filterId, filter);
-    this.filterOrder.push(filterId);
-  }
-
-  removeFilter(filterId: string): void {
-    this.filters.delete(filterId);
-    this.filterOrder = this.filterOrder.filter((id) => id !== filterId);
-  }
-
-  setFilterParam(
-    filterId: string,
-    param: "frequency" | "Q" | "gain" | "type",
-    value: number | string
-  ): void {
-    const filter = this.filters.get(filterId);
-    if (!filter) {
-      return;
-    }
-
-    switch (param) {
-      case "frequency":
-        filter.frequency = value as number;
-        break;
-      case "Q":
-        filter.Q = value as number;
-        break;
-      case "gain":
-        filter.gain = value as number;
-        break;
-      case "type":
-        filter.type = value as BiquadFilterType;
-        break;
-      default:
-        break;
-    }
   }
 
   addEffect(
@@ -286,9 +231,6 @@ export class EffectSource {
   }
 
   private resetEffects(): void {
-    for (const filter of this.filters.values()) {
-      filter.reset();
-    }
     for (const effect of this.effects.values()) {
       effect.reset();
     }
@@ -323,16 +265,6 @@ export class EffectSource {
     outputChannels[0] = outputL;
     outputChannels[1] = outputR;
     let current = tempChannels;
-
-    for (const filterId of this.filterOrder) {
-      const filter = this.filters.get(filterId);
-      if (filter) {
-        const target =
-          current === outputChannels ? tempChannels : outputChannels;
-        filter.process(current, target, fromIndex, toIndex);
-        current = target;
-      }
-    }
 
     for (const effectId of this.effectOrder) {
       const effect = this.effects.get(effectId);

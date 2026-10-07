@@ -5,20 +5,11 @@
  *
  * Architecture:
  * - playback/: Thin playback infrastructure (context, transport, worklet)
- * - dsp/: DSP processing (effects, analysis, routing)
+ * - dsp/: DSP processing (effects, routing)
  * - manager/: High-level API (AudioManager, crossfade)
  * - hooks/: React integration (useAudio, useAudioDevices)
  */
 
-// DSP Analysis
-export {
-  FFTAnalyzer,
-  LevelMeter,
-  PeakMeter,
-  RMSMeter,
-  SpectrumAnalyzer,
-  type StereoLevels,
-} from "./dsp/analysis/index.js";
 export {
   canUseOfficialOpenDawRuntime,
   isOfficialOpenDawEffect,
@@ -40,11 +31,9 @@ export {
   convertEffectParamValue,
   convertPartialEffectConfigToEngine,
   EFFECT_DEFINITIONS,
-  EFFECT_PARAMETER_ROLE_MAP,
   EFFECT_SCHEMAS,
   type EffectDefinition,
   type EffectParamDef,
-  type EffectParameterRole,
   type EffectSchema,
   type EngineEffectConfig,
   type EngineEffectParamValue,
@@ -56,7 +45,6 @@ export {
   getEffectSliderParamDefs,
   type ParamDef,
   UNIVERSAL_EFFECT_PARAM_DEFS,
-  UNIVERSAL_EFFECT_PARAMETER_ROLES,
   type VisualizationType,
 } from "./dsp/effects/schema.js";
 // DSP types (effect configs)
@@ -105,7 +93,6 @@ export {
 } from "./dsp/effects/types.js";
 // DSP Processor types (for worklet communication)
 export {
-  type AnalysisData,
   MessageType,
   type MessageTypeValue,
 } from "./dsp/processor.js";

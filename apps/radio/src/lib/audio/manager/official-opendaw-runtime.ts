@@ -454,8 +454,8 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   }
 
   private disconnectMonitoringInputs(): void {
-    // openDAW leaves source-to-splitter edges behind on rebuild and teardown.
-    // Owned inputs let us detach those edges without touching the dry graph.
+    // Register/unregister rebuild every remaining source, leaving old splitter
+    // edges behind. Clear owned inputs before that rebuild or after teardown.
     for (const unit of this.soundUnits.values()) {
       unit.monitoringInput.disconnect();
     }

@@ -1636,6 +1636,23 @@ describe("compile: series-parallel regions", () => {
     ]);
   });
 
+  test("a Merge's role counts the inputs that actually compiled", () => {
+    const merged = graph(
+      [
+        station("a"),
+        { data: { radio: null }, id: "b", position, type: "station" },
+        node("merge", "merge"),
+        speakers,
+      ],
+      [audio("a", "merge"), audio("b", "merge"), audio("merge", "speakers")]
+    );
+    const plan = compile(merged, ENV);
+
+    expect(plan.modules.get("merge")).toMatchObject({ kind: "sum" });
+    expect(plan.cables.has("b->merge")).toBe(false);
+    expect(mergeRoles(merged, plan)).toEqual(new Map([["merge", "closes"]]));
+  });
+
   test("an implicit fan-out that rejoins is treated as a Split", () => {
     const plan = build(
       [
@@ -2456,11 +2473,7 @@ describe("compile: validation first", () => {
   test("a Loop feeding itself is refused, not lowered", () => {
     const plan = build(
       [station("a"), node("loop", "loop"), speakers],
-      [
-        audio("a", "loop"),
-        audio("loop", "loop"),
-        audio("loop", "speakers"),
-      ]
+      [audio("a", "loop"), audio("loop", "loop"), audio("loop", "speakers")]
     );
     expect(codes(plan)).toEqual(["unshipped@loop"]);
     expect(plan.cables.size).toBe(0);

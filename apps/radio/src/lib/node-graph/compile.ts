@@ -544,12 +544,14 @@ function refuse(graph: CompileGraph): Issue[] {
 
 /** Splits whose branches part ways, which this compiler cannot lower yet. */
 function refuseOpenSplits(regions: RegionLowerer): Issue[] {
-  return regions.openSplits().map((id): Issue => ({
-    code: "split-open",
-    id,
-    message: OPEN_SPLIT_MESSAGE,
-    target: "node",
-  }));
+  return regions.openSplits().map(
+    (id): Issue => ({
+      code: "split-open",
+      id,
+      message: OPEN_SPLIT_MESSAGE,
+      target: "node",
+    })
+  );
 }
 
 /**
@@ -1082,9 +1084,9 @@ export function mergeRoles(
     )
   );
   const inputs = new Map<string, number>();
-  for (const edge of graph.edges) {
-    if (parseHandleId(edge.targetHandle)?.kind === "audio") {
-      inputs.set(edge.target, (inputs.get(edge.target) ?? 0) + 1);
+  for (const cable of plan.cables.values()) {
+    if (cable.to.kind === "sum" || cable.to.kind === "unit") {
+      inputs.set(cable.to.id, (inputs.get(cable.to.id) ?? 0) + 1);
     }
   }
   const roles = new Map<string, MergeRole>();

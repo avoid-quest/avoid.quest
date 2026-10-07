@@ -39,10 +39,13 @@ import {
 import { createNodeDeviceSinks } from "@/lib/audio/routing/node-device-sinks";
 import {
   createNodeLaneOutputs,
+  type NodeLaneOutputsOptions,
+} from "@/lib/audio/routing/node-lane-outputs";
+import {
   LANE_DROP_MS,
   LANE_DUCK_MS,
   LANE_LEVEL_TIME_CONSTANT_S,
-} from "@/lib/audio/routing/node-lane-outputs";
+} from "@/lib/audio/routing/sends";
 import { subscribeChannelRuntime } from "@/lib/channel-state-manager";
 import { writeLegacyRecord } from "@/lib/collections/migrations/legacy-records";
 import {
@@ -315,13 +318,15 @@ function createTestContext(): PlaybackActionContext {
 
 type Harness = {
   context: PlaybackActionContext;
-  /** Each sound's effects, as last reconciled. */
+  /** Each sound's or unit's effects, as last reconciled or attached. */
   desired: Map<string, DesiredEffectsState>;
+  /** Units' effects inserts: attached, by id, with their input and output. */
+  inserts: Map<string, { input: AudioNode; output: AudioNode }>;
+  /** What units and modules put on the main bus. */
+  mainSources: Set<AudioNode>;
   reconcileEffects: ReturnType<typeof mock<AudioManager["reconcileEffects"]>>;
   setEffectFields: ReturnType<typeof mock<AudioManager["setEffectFields"]>>;
   fadeOutSound: ReturnType<typeof mock>;
-  /** What plays on the main bus: the Output nodes' gains. */
-  mainSources: Set<AudioNode>;
   /** What hears of another tab's session writes while Node is active. */
   otherTabListeners: Set<() => void>;
   playback: NodePlayback;
@@ -381,8 +386,30 @@ function createHarness(
       return "applied" as const;
     }
   );
-  const otherTabListeners = new Set<() => void>();
+  const inserts = new Map<string, { input: AudioNode; output: AudioNode }>();
   const mainSources = new Set<AudioNode>();
+  const attachEffectsInsert = mock(
+    (
+      id: string,
+      input: AudioNode,
+      output: AudioNode,
+      state: DesiredEffectsState
+    ) => {
+      inserts.set(id, { input, output });
+      desired.set(id, state);
+      return Promise.resolve<EffectsRuntimeOutcome>(
+        effectsOutcome?.() ?? {
+          backend: null,
+          ready: false,
+          status: "inactive",
+        }
+      );
+    }
+  );
+  const detachEffectsInsert = mock((id: string) => {
+    inserts.delete(id);
+  });
+  const otherTabListeners = new Set<() => void>();
   // Node Playback routes through its context's output routing by default;
   // a context without one of its own gets this one.
   const router = {
@@ -408,6 +435,8 @@ function createHarness(
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
     effects: options.effects ?? {
+      attachEffectsInsert,
+      detachEffectsInsert,
       reconcileEffects,
       setEffectFields,
       subscribeEffectsRuntimeOutcome: () => () => undefined,
@@ -432,6 +461,7 @@ function createHarness(
     context,
     desired,
     fadeOutSound,
+    inserts,
     mainSources,
     otherTabListeners,
     playback,
@@ -587,7 +617,9 @@ describe("Node Playback", () => {
       ownedSound("a")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
-    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.8);
+    // Node's master acts at its outputs, so its faders take none of it.
+    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(1);
+    expect(harness.context.audio.setGlobalVolume).not.toHaveBeenCalledWith(0.8);
     expect(getPlaybackSession("node")?.channels).toEqual([
       expect.objectContaining({
         id: channelOf("a"),
@@ -629,7 +661,10 @@ describe("Node Playback", () => {
     expect(getPlaybackChannelRuntime(channelOf("authored")).isPlaying).toBe(
       false
     );
-    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.23);
+    expect(getPlaybackSession("node")?.masterVolume).toBe(0.23);
+    expect(harness.context.audio.setGlobalVolume).not.toHaveBeenCalledWith(
+      0.23
+    );
   });
 
   test("a node session without a graph loads the Starter patch", async () => {
@@ -962,21 +997,6 @@ describe("Node Playback volume and mute", () => {
     expect(getPlaybackSession("node")?.masterVolume).toBe(0);
     harness.playback.toggleMasterMute();
     expect(getPlaybackSession("node")?.masterVolume).toBe(0.8);
-  });
-
-  test("master volume is heard while settings still hold the legacy Multiple mode", async () => {
-    insertNodeSession(patch([station("a")]));
-    const harness = createHarness();
-    await harness.playback.activate();
-    // A legacy record that failed its rewrite stays "multiple"; Node runs.
-    const settings = getSettings() as unknown as {
-      player: { mode: string };
-    };
-    settings.player.mode = "multiple";
-
-    harness.playback.setMasterVolume(0.3);
-
-    expect(harness.context.audio.setGlobalVolume).toHaveBeenLastCalledWith(0.3);
   });
 
   test("unmuting a zero volume restores the latest volume a commit set", async () => {
@@ -2287,7 +2307,7 @@ describe("Node Playback lane outputs", () => {
   });
 
   test("cable gain, mute and removal ramp the Speakers send with τ 5 ms and leave the fader alone", async () => {
-    insertNodeSession(patch([station("a")]));
+    insertNodeSession(patch([station("a")]), 1);
     const harness = createHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -2313,11 +2333,12 @@ describe("Node Playback lane outputs", () => {
     );
     expect(levelOf(send())).toBe(0.5);
 
+    // A removed cable's send fades out; the cable back gets a new one.
     await commit(harness, (graph) => ({ ...graph, edges: [] }));
     expect(levelOf(send())).toBe(0);
 
     await commit(harness, () => patch([station("a")]));
-    expect(levelOf(send())).toBe(1);
+    expect(levelOf([...laneOut.connections].at(-1) as FakeGainNode)).toBe(1);
 
     expect(fader.gain.events).toEqual([]);
     expect(fader.gain.value).toBe(0.8);
@@ -2326,7 +2347,7 @@ describe("Node Playback lane outputs", () => {
   });
 
   test("a Station whose stream changes fades the old one out at its old level", async () => {
-    insertNodeSession(patch([station("a")]));
+    insertNodeSession(patch([station("a")]), 1);
     const harness = createHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -2468,6 +2489,8 @@ describe("Node Playback lane outputs", () => {
     };
     const harness = createHarness({
       effects: {
+        attachEffectsInsert: mock(async () => ready),
+        detachEffectsInsert: mock(() => undefined),
         // The lane's dry tree, as its sound is made, reconciles at once.
         reconcileEffects: mock((_soundId, { tree }) => {
           if (tree.length === 0) {
@@ -2536,6 +2559,8 @@ describe("Node Playback lane outputs", () => {
     };
     const harness = createHarness({
       effects: {
+        attachEffectsInsert: mock(async () => ready),
+        detachEffectsInsert: mock(() => undefined),
         // The lane's dry tree, as its sound is made, reconciles at once.
         reconcileEffects: mock((_soundId, { tree }) => {
           if (tree.length === 0) {
@@ -2598,6 +2623,8 @@ describe("Node Playback lane outputs", () => {
     insertNodeSession(patch([station("a")]));
     const harness = createHarness({
       effects: {
+        attachEffectsInsert: mock(() => Promise.reject(new Error("no"))),
+        detachEffectsInsert: mock(() => undefined),
         reconcileEffects: mock((_soundId, { tree }) =>
           tree.length === 0
             ? Promise.resolve<EffectsRuntimeOutcome>({
@@ -4047,7 +4074,8 @@ describe("Node Playback audio inputs and output devices", () => {
         ],
         nodes: [station("a"), output("desk", "usb"), speakers],
         version: 2,
-      })
+      }),
+      1
     );
     const { createElement, elements } = fakeElements();
     const statuses = new Store<NodeSinkStatuses>({});
@@ -4213,6 +4241,63 @@ describe("Node Playback audio inputs and output devices", () => {
     expect(retried.srcObject).toBeNull();
   });
 
+  test("master volume acts at the outputs, after every effect, not on the faders", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [{ ...cable("a", "speakers"), gain: 0.5 }],
+        nodes: [station("a"), speakers],
+        version: 2,
+      })
+    );
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { gainOf, sends } = connectLane(harness, "a");
+    // A legacy record that failed its rewrite stays "multiple"; Node runs.
+    const settings = getSettings() as unknown as {
+      player: { mode: string };
+    };
+    settings.player.mode = "multiple";
+
+    harness.playback.setMasterVolume(0.3);
+
+    expect(harness.context.audio.setGlobalVolume).toHaveBeenLastCalledWith(1);
+    const [send] = sends();
+    expect(send?.gain.events.at(-1)).toMatchObject({ value: 0.5 });
+    expect(gainOf(send)?.gain.events.at(-1)).toMatchObject({ value: 0.3 });
+  });
+
+  test("master volume and an Output device's mute reach cables still fading out", async () => {
+    const outputs = (muted: boolean, cabled: boolean) =>
+      wired(
+        [station("a"), output("desk", "usb", muted), speakers],
+        cabled ? ["a>desk", "a>speakers"] : []
+      );
+    insertNodeSession(outputs(false, true), 1);
+    const { createElement } = fakeElements();
+    const harness = createHarness({
+      deviceSinks: sinksWith({ createElement }),
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { gainOf, sends } = connectLane(harness, "a");
+    await settle();
+    const [toDesk, toSpeakers] = sends();
+
+    // Both cables go: they fade out through their Output nodes' gains.
+    await commit(harness, () => outputs(false, false));
+    harness.playback.setMasterVolume(0.2);
+    await commit(harness, () => outputs(true, false));
+
+    expect(toSpeakers?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(gainOf(toSpeakers)?.gain.events.at(-1)).toMatchObject({
+      value: 0.2,
+    });
+    expect(gainOf(toDesk)?.gain.events.at(-1)).toMatchObject({ value: 0 });
+  });
+
   test("two Output device nodes on one device mute and go independently", async () => {
     const outputs = (muted: boolean) =>
       wired(
@@ -4224,7 +4309,7 @@ describe("Node Playback audio inputs and output devices", () => {
         ],
         ["a>desk", "a>booth"]
       );
-    insertNodeSession(outputs(false));
+    insertNodeSession(outputs(false), 1);
     const { createElement, elements } = fakeElements();
     const statuses = new Store<NodeSinkStatuses>({});
     const harness = createHarness({
@@ -5859,20 +5944,25 @@ describe("Node Playback: channel strips", () => {
 
   /** Lane outputs whose levels the test can read, per lane and output. */
   function levelHarness() {
-    let getLevels: (laneId: string) => ReadonlyMap<string, number> = () =>
-      new Map();
+    let getSends: NodeLaneOutputsOptions["getSends"] | null = null;
     const harness = createHarness({
       laneOutputs: (options) => {
-        ({ getLevels } = options);
+        ({ getSends } = options);
         return createNodeLaneOutputs(options);
       },
     });
-    const levels = (laneId: string) => Object.fromEntries(getLevels(laneId));
+    const levels = (laneId: string) =>
+      Object.fromEntries(
+        [...(getSends?.(laneId) ?? new Map())].map(([, { level, to }]) => [
+          to.replace("sink:", ""),
+          level,
+        ])
+      );
     return { harness, levels };
   }
 
   test("a Station's +6 dB trim doubles its cable level and never writes its fader", async () => {
-    insertNodeSession(patch([station("a", { volume: 0.7 })]));
+    insertNodeSession(patch([station("a", { volume: 0.7 })]), 1);
     const { harness, levels } = levelHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -5920,7 +6010,7 @@ describe("Node Playback: channel strips", () => {
   });
 
   test("soloing one of three Stations silences the other two lanes, not their faders", async () => {
-    insertNodeSession(patch([station("a"), station("b"), station("c")]));
+    insertNodeSession(patch([station("a"), station("b"), station("c")]), 1);
     const { harness, levels } = levelHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -6077,6 +6167,14 @@ describe("Node Playback: channel strips", () => {
       backendBadges: new Store<NodeBackendBadges>({}),
       ctx: context,
       effects: {
+        attachEffectsInsert: mock(
+          async (): Promise<EffectsRuntimeOutcome> => ({
+            backend: null,
+            ready: false,
+            status: "inactive",
+          })
+        ),
+        detachEffectsInsert: mock(() => undefined),
         reconcileEffects: mock(
           async (): Promise<EffectsRuntimeOutcome> => ({
             backend: null,
@@ -6156,5 +6254,183 @@ describe("Node Playback: channel strips", () => {
     );
     expect(node?.type === "deviceIn" && node.data.strip.monitor).toBe(false);
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+  });
+});
+
+describe("Node Playback: shared routing", () => {
+  function compressor(id: string, threshold = -24): NodeInput {
+    return {
+      data: {
+        effect: {
+          ...createNodeEffectConfig("compressor", id),
+          enabled: true,
+          threshold,
+        },
+      },
+      id,
+      position: { x: 240, y: 0 },
+      type: "compressor",
+    } as NodeInput;
+  }
+
+  /** Stations a and b summed into one Compressor, then to Speakers. */
+  function sharedPatch(stations = ["a", "b"], threshold = -24): NodeGraph {
+    return nodeGraphSchema.parse({
+      edges: [
+        ...stations.map((id) => cable(id, "comp")),
+        cable("comp", "speakers"),
+      ],
+      nodes: [
+        ...stations.map((id) => station(id)),
+        compressor("comp", threshold),
+        speakers,
+      ],
+      version: 2,
+    });
+  }
+
+  /** One AudioContext, as AudioManager has, for every lane's sound. */
+  let audio = new FakeAudioContext();
+  beforeEach(() => {
+    audio = new FakeAudioContext();
+  });
+
+  /** Connects a lane's sound as AudioManager would; returns its sends. */
+  function connect(harness: Harness, nodeId: string) {
+    const register = harness.context.audio
+      .setSoundOutputConnector as ReturnType<
+      typeof mock<
+        (soundId: string, connect: SoundOutputConnector | null) => void
+      >
+    >;
+    const connector = register.mock.calls
+      .filter(([soundId]) => soundId === soundOf(nodeId))
+      .at(-1)?.[1];
+    if (!connector) {
+      throw new Error(`no output connector for ${nodeId}`);
+    }
+    const { fader, node } = createFakeFader(audio);
+    connector(node, false, () => () => undefined);
+    const laneOut = [...fader.connections][0] as FakeGainNode;
+    return () => [...laneOut.connections] as FakeGainNode[];
+  }
+
+  function unitInput(harness: Harness): FakeGainNode | undefined {
+    return harness.inserts.get("node-unit:comp")?.input as
+      | FakeGainNode
+      | undefined;
+  }
+
+  const fadeOut = () => new Promise((resolve) => setTimeout(resolve, 60));
+
+  test("a removed source keeps its shared path through its whole fade", async () => {
+    insertNodeSession(sharedPatch(), 1);
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    const [fromA] = connect(harness, "a")();
+    const [fromB] = connect(harness, "b")();
+    const input = unitInput(harness);
+    expect(fromA?.connections.has(input)).toBe(true);
+    expect(fromB?.connections.has(input)).toBe(true);
+    expect(harness.mainSources.size).toBe(1);
+
+    commitNodeGraph(() => sharedPatch(["b"]), harness.store);
+    await Promise.resolve();
+
+    // Its fade is heard through the shared Compressor.
+    expect(harness.fadeOutSound).toHaveBeenCalledWith(soundOf("a"), 150, true);
+    expect(fromA?.connections.has(input)).toBe(true);
+    fade.resolve();
+    await harness.playback.whenSettled();
+    expect(fromA?.connections.has(input)).toBe(false);
+    expect(fromB?.connections.has(input)).toBe(true);
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+  });
+
+  test("a source and its shared chain removed together go after its fade, then the chain's", async () => {
+    insertNodeSession(sharedPatch(["a"]), 1);
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    // One station alone keeps its Compressor in its insert; a second one
+    // makes it shared, and the playing lane's cable reaches it at once.
+    const sends = connect(harness, "a");
+    expect(harness.inserts.has("node-unit:comp")).toBe(false);
+    await commit(harness, () => sharedPatch(["a", "b"]));
+    const fromA = sends().at(-1);
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+    await harness.playback.setPlaying("b", true);
+    connect(harness, "b");
+    expect(fromA?.connections.has(unitInput(harness))).toBe(true);
+
+    commitNodeGraph(() => patch([]), harness.store);
+    await fadeOut();
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+    fade.resolve();
+    await harness.playback.whenSettled();
+    expect(harness.inserts.has("node-unit:comp")).toBe(false);
+    expect(harness.mainSources.size).toBe(0);
+  });
+
+  test("undo during a shared source fade keeps the old sound connected and the replacement independent", async () => {
+    insertNodeSession(sharedPatch(), 1);
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    const [oldSend] = connect(harness, "a")();
+    connect(harness, "b");
+    const input = unitInput(harness);
+
+    commitNodeGraph(() => sharedPatch(["b"]), harness.store);
+    await Promise.resolve();
+    expect(undoNodeGraph(harness.store)).toBe(true);
+    await Promise.resolve();
+    // The old sound fades through the unit while the undo waits for it.
+    expect(oldSend?.connections.has(input)).toBe(true);
+
+    fade.resolve();
+    await harness.playback.whenSettled();
+    expect(oldSend?.connections.has(input)).toBe(false);
+    await harness.playback.setPlaying("a", true);
+    const [newSend] = connect(harness, "a")();
+    expect(newSend).not.toBe(oldSend);
+    expect(newSend?.connections.has(input)).toBe(true);
+    expect(oldSend?.connections.has(input)).toBe(false);
+  });
+
+  test("parameter edits keep output routes connected and refresh trim and solo", async () => {
+    insertNodeSession(sharedPatch(), 1);
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    const [fromA] = connect(harness, "a")();
+    const [fromB] = connect(harness, "b")();
+    const input = unitInput(harness);
+    const [toSpeakers] = harness.mainSources;
+
+    await commit(harness, () => sharedPatch(["a", "b"], -30));
+    await commit(harness, (graph) => setSourceStrip(graph, "a", { trimDb: 6 }));
+    await commit(harness, (graph) =>
+      setSourceStrip(graph, "b", { solo: true })
+    );
+
+    // The same sends, unit and output, at their new levels.
+    expect(fromA?.connections.has(input)).toBe(true);
+    expect(fromB?.connections.has(input)).toBe(true);
+    expect(unitInput(harness)).toBe(input);
+    expect([...harness.mainSources]).toEqual([toSpeakers]);
+    expect(fromA?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(fromB?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(
+      harness.desired.get("node-unit:comp")?.tree.map((effect) => effect.id)
+    ).toEqual(["comp"]);
   });
 });

@@ -224,6 +224,6 @@ export function setManagedSessionMasterVolume(
   });
   // A legacy "multiple" that failed its rewrite still runs Node.
   if (normalizePlayerMode(getSettings()?.player.mode) === sessionId) {
-    ctx.audio.setGlobalVolume(volume);
+    applySessionMasterVolume(sessionId, ctx);
   }
 }

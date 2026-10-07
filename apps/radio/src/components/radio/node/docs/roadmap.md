@@ -8,15 +8,14 @@ the source of truth for availability.
 
 ## A later product v2
 
-- **Cross-source buses:** shared Merge/FX buses, sends and returns, crossfade and
-  Dial routing. Sources already mix at physical outputs; a shared authored bus is
-  the missing capability. Revisit ownership, latency and loudness at that seam.
-  The current engine imposes three constraints on that design.
-  `EffectsController.reconcile` accepts only registered AudioManager sounds, so
-  bus FX need an owned bus registration rather than a synthetic sound id.
-  Validation refuses a key cable into FX outside a station lane; keep that
-  refusal until bus FX receive a resolved key source. A pre-fader send must tap
-  the lane's `preFaderSend`, because `nodes.gain` is already post-fader.
+- **Sends and returns:** crossfade and Dial routing, and pre-fader sends.
+  Shared FX already run as graph units after the faders (`node-engine/routing.ts`).
+  Validation still refuses a key cable into FX that several sources share,
+  until keys tap any point. A pre-fader send must tap the lane's
+  `preFaderSend`, because `nodes.gain` is already post-fader.
+- **Split branches to different places:** an explicit Split, Stereo Split or
+  Band Split whose branches don't meet again is refused until its split stage
+  lands, chosen by measurement (`node-engine/bench`).
 - **Control graph:** Macro, MIDI-in cables, LFO, Clock, Randomiser, Follower,
   song/title triggers and Sundial. Preserve graph validation and define how
   modulation reaches current engine parameters before exposing those ports.

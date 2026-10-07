@@ -5,6 +5,10 @@ import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import { effectFieldsAreStructural } from "@/lib/audio/dsp/routing/effect-tree";
 import type { AudioManager } from "@/lib/audio/manager/audio-manager";
+import {
+  FakeAudioContext,
+  type FakeGainNode,
+} from "@/lib/audio/routing/fake-audio-nodes";
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
 // biome-ignore lint/performance/noNamespaceImport: fail at the forbidden persistence boundary
 import * as sessions from "@/lib/collections/playback-sessions";
@@ -86,6 +90,39 @@ function graph() {
   });
 }
 
+/** The default patch with station b also into the Compressor: a unit. */
+function sharedGraph() {
+  const patch = graph();
+  return nodeGraphSchema.parse({
+    ...patch,
+    edges: [
+      ...patch.edges,
+      {
+        id: "b->comp",
+        source: "b",
+        sourceHandle: "out:audio:main",
+        target: "comp",
+        targetHandle: "in:audio:main",
+      },
+    ],
+    nodes: [
+      ...patch.nodes,
+      {
+        data: {
+          radio: {
+            id: "b",
+            name: "b",
+            streamUrl: "https://radio.example/b.mp3",
+          },
+        },
+        id: "b",
+        position: { x: 0, y: 0 },
+        type: "station",
+      },
+    ],
+  });
+}
+
 function strip() {
   const parameter = (value = 0) => ({
     setTargetAtTime(next: number) {
@@ -122,6 +159,13 @@ async function harness(
   let onConnect: ((laneId: string) => void) | undefined;
   const levels = new Map<string, number>();
   const listeners = new Set<(outcome: EffectsRuntimeOutcome) => void>();
+  const context = new FakeAudioContext();
+  /** The sends routing points connect into each output. */
+  const outputSends = new Map<string, FakeGainNode[]>();
+  let route: ((to: string, send: AudioNode) => () => void) | undefined;
+  let sendsOf:
+    | ((laneId: string) => ReadonlyMap<string, { to: string }>)
+    | undefined;
   const ctx = {
     audio: {
       getEffectsRuntimeOutcome: () => outcome,
@@ -170,7 +214,13 @@ async function harness(
     ctx,
     deviceSinks: () => ({
       checkDevices: async () => undefined,
-      connect: () => () => undefined,
+      connect: (sinkId, node) => {
+        outputSends.set(sinkId, [
+          ...(outputSends.get(sinkId) ?? []),
+          node as unknown as FakeGainNode,
+        ]);
+        return () => undefined;
+      },
       dispose: () => undefined,
       retry: () => undefined,
       status: () => undefined,
@@ -178,6 +228,8 @@ async function harness(
       sync: () => undefined,
     }),
     effects: {
+      attachEffectsInsert: () => Promise.resolve(outcome),
+      detachEffectsInsert: () => undefined,
       reconcileEffects: (_id, desired) => {
         for (const config of desired.tree) {
           authored.set(config.id, config);
@@ -215,22 +267,29 @@ async function harness(
     },
     fadeOut: () => fades,
     laneOutputs: (options) => {
+      route = (to, node) => options.route(to, node, false);
+      sendsOf = options.getSends;
+      // The lane's level on Speakers: every send into it, summed.
+      const speakers = (id: string) =>
+        [...options.getSends(id).values()]
+          .filter(({ to }) => to === "sink:speakers")
+          .reduce((sum, { level }) => sum + level, 0);
       onConnect = (id) => {
         options.onConnect?.(id);
-        levels.set(id, options.getLevels(id).get("speakers") ?? 0);
+        levels.set(id, speakers(id));
       };
       return {
         attach: () => undefined,
         dispose: () => undefined,
-        dropSink: () => undefined,
         duck: () => null,
         refresh: (id) => {
-          levels.set(id, options.getLevels(id).get("speakers") ?? 0);
+          levels.set(id, speakers(id));
         },
         release: () => undefined,
         unduck: () => undefined,
       };
     },
+    masterVolume: () => 1,
     outputRouting: () => {
       throw new Error("No cue in this patch");
     },
@@ -248,6 +307,14 @@ async function harness(
       allowedEffect = id;
     },
     authored,
+    /** Connects the lane's cables into the routing points they reach. */
+    connectPoints(laneId: string) {
+      for (const { to } of sendsOf?.(laneId).values() ?? []) {
+        if (!to.startsWith("sink:")) {
+          route?.(to, context.createGain() as unknown as AudioNode);
+        }
+      }
+    },
     disconnectEffects() {
       effectReady = false;
     },
@@ -270,6 +337,11 @@ async function harness(
       return nodes;
     },
     plan,
+    /** The level a point's latest send into `sinkId` ramps to. */
+    pointLevel(sinkId: string) {
+      const last = outputSends.get(sinkId)?.at(-1)?.gain.events.at(-1);
+      return last && "value" in last ? last.value : undefined;
+    },
     ready(nextBackend = backend) {
       effectReady = true;
       // A new official unit starts on the authored tree, after the native shell connected.
@@ -499,7 +571,7 @@ describe("Node engine parameters", () => {
       const h = await harness();
       expect(h.engine.setParam(send, value)).toBe("applied");
       expect(h.levels.get("a")).toBe(gain);
-      expect(h.engine.plan.edges.get("comp->speakers")?.gain).toBe(1);
+      expect(h.engine.plan.cables.get("comp->speakers")?.gain).toBe(1);
       h.engine.clearTransient(send);
       expect(h.levels.get("a")).toBe(1);
     }
@@ -673,17 +745,17 @@ describe("Node engine parameters", () => {
       expect(h.engine.setParam(pan, -0.7)).toBe("applied");
       expect(h.engine.setParam(send, 0.3)).toBe("applied");
       expect(h.levels.get("a")).toBe(0.3);
-      const edges = new Map(h.plan.edges);
-      const edge = edges.get("comp->speakers");
-      if (!edge) {
+      const cables = new Map(h.plan.cables);
+      const cable = cables.get("comp->speakers");
+      if (!cable) {
         throw new Error("Missing send");
       }
       if (change === "removed") {
-        edges.delete(edge.id);
+        cables.delete(cable.id);
       } else {
-        edges.set(edge.id, { ...edge, from: { id: "b", kind: "lane" } });
+        cables.set(cable.id, { ...cable, from: { id: "b", kind: "lane" } });
       }
-      h.engine.apply({ ...h.plan, edges }, true);
+      h.engine.apply({ ...h.plan, cables }, true);
       await h.engine.whenSettled();
       expect(h.levels.get("a")).toBe(0);
       if (change === "rewired") {
@@ -988,5 +1060,47 @@ describe("Node engine parameters", () => {
     }
     expect(h.levels.get("a")).toBe(1);
     expect(h.fields.get("comp")).toEqual(h.authored.get("comp"));
+  });
+  test("a shared unit's FX and its sends take transient values and clear to the plan", async () => {
+    const h = await harness("official", false, sharedGraph());
+    h.connectPoints("a");
+    await h.engine.whenSettled();
+    const unitThreshold: EngineParamTarget = { ...threshold, laneId: "comp" };
+    const [authored] = h.engine.plan.units.get("comp")?.effects ?? [];
+
+    expect(h.engine.setParam(unitThreshold, -12)).toBe("applied");
+    expect(h.engine.setParam(send, 0.3)).toBe("applied");
+    expect(h.fields.get("comp")).toMatchObject({ threshold: -12 });
+    expect(h.pointLevel("speakers")).toBe(0.3);
+    // A unit has no strip of its own.
+    expect(h.engine.setParam({ kind: "pan", laneId: "comp" }, 0.5)).toBe(
+      "unavailable"
+    );
+
+    h.engine.clearTransient();
+    expect(h.fields.get("comp")).toEqual(authored);
+    expect(h.pointLevel("speakers")).toBe(1);
+  });
+
+  test("a send's overlay stays when its cable moves from a lane to a unit", async () => {
+    const h = await harness();
+    expect(h.engine.setParam(send, 0.3)).toBe("applied");
+    expect(h.levels.get("a")).toBe(0.3);
+
+    // Station b joins the Compressor: it becomes a unit, the cable its send.
+    h.engine.apply(
+      compiler.compile(sharedGraph(), { crossOriginIsolated: true }),
+      true
+    );
+    h.connectPoints("a");
+    await h.engine.whenSettled();
+    expect(h.engine.plan.cables.get("comp->speakers")?.from).toEqual({
+      id: "comp",
+      kind: "unit",
+    });
+    expect(h.pointLevel("speakers")).toBe(0.3);
+
+    h.engine.clearTransient(send);
+    expect(h.pointLevel("speakers")).toBe(1);
   });
 });

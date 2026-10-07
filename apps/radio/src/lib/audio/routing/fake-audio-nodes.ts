@@ -1,6 +1,7 @@
 /**
- * Recording Web Audio fakes for tests: enough of AudioContext, GainNode and
- * AudioParam to follow connections and every scheduled gain change.
+ * Recording Web Audio fakes for tests: enough of AudioContext, GainNode,
+ * BiquadFilterNode, StereoPannerNode and AudioParam to follow connections
+ * and every scheduled change.
  */
 
 export type ParamEvent =
@@ -67,10 +68,49 @@ export class FakeMediaStreamDestination extends FakeGainNode {
   };
 }
 
+/** A BiquadFilterNode: its type, frequency and Q. */
+export class FakeFilterNode extends FakeGainNode {
+  type = "lowpass";
+  readonly frequency = new FakeAudioParam(350);
+  readonly Q = new FakeAudioParam(1);
+}
+
+/** A StereoPannerNode: its pan. */
+export class FakePannerNode extends FakeGainNode {
+  readonly pan = new FakeAudioParam(0);
+}
+
+/** A DelayNode: its delay time. */
+export class FakeDelayNode extends FakeGainNode {
+  readonly delayTime = new FakeAudioParam(0);
+}
+
 export class FakeAudioContext {
   currentTime = 0;
+  readonly sampleRate = 48_000;
   readonly gains: FakeGainNode[] = [];
   readonly destinations: FakeMediaStreamDestination[] = [];
+  readonly filters: FakeFilterNode[] = [];
+  readonly panners: FakePannerNode[] = [];
+  readonly delays: FakeDelayNode[] = [];
+
+  createDelay(): DelayNode {
+    const node = new FakeDelayNode(this);
+    this.delays.push(node);
+    return node as unknown as DelayNode;
+  }
+
+  createBiquadFilter(): BiquadFilterNode {
+    const filter = new FakeFilterNode(this);
+    this.filters.push(filter);
+    return filter as unknown as BiquadFilterNode;
+  }
+
+  createStereoPanner(): StereoPannerNode {
+    const panner = new FakePannerNode(this);
+    this.panners.push(panner);
+    return panner as unknown as StereoPannerNode;
+  }
 
   createGain(): GainNode {
     const gain = new FakeGainNode(this);

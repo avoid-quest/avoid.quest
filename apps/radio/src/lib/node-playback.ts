@@ -126,6 +126,8 @@ export type NodePlayback = {
   playAll: () => Promise<void>;
   retryOutputDevice: (nodeId: string) => void;
   setMasterVolume: (volume: number) => void;
+  /** The session's master volume changed elsewhere, e.g. an import. */
+  masterVolumeChanged: () => void;
   /** Starts or stops a source's lane: a Station plays, an Audio input goes live. */
   setPlaying: (nodeId: string, playing: boolean) => Promise<void>;
   setVolume: (nodeId: string, volume: number) => void;
@@ -155,7 +157,10 @@ type FadeOutSound = (
 ) => Promise<void>;
 
 export type GetNodePlaybackOptions = Partial<
-  Omit<NodeEngineOptions, "commitTrack" | "fadeOut" | "streamLimit">
+  Omit<
+    NodeEngineOptions,
+    "commitTrack" | "fadeOut" | "masterVolume" | "streamLimit"
+  >
 > & {
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
@@ -300,6 +305,7 @@ function createNodePlayback(
       ctx,
       fadeOut: (soundId) =>
         options.fadeOutSound(soundId, options.fadeOutDurationMs, true),
+      masterVolume: () => getPlaybackSession("node")?.masterVolume ?? 1,
       streamLimit: () => NODE_BUDGETS[getEnv().profile].playingStreams,
     });
 
@@ -535,6 +541,7 @@ function createNodePlayback(
       unmutedMasterVolume = volume;
     }
     setManagedSessionMasterVolume("node", volume, ctx);
+    engine?.masterVolumeChanged();
   };
 
   /**
@@ -663,6 +670,7 @@ function createNodePlayback(
         seekSound(ctx.audioEngine.playback, soundId, cue);
       }
     },
+    masterVolumeChanged: () => engine?.masterVolumeChanged(),
     pauseAll() {
       engine?.pauseAll();
     },
@@ -746,6 +754,9 @@ export function getNodePlayback(
     backendBadges: options.backendBadges ?? nodeBackendBadges,
     deviceSinks: options.deviceSinks ?? createNodeDeviceSinks,
     effects: options.effects ?? {
+      attachEffectsInsert: (id, input, output, desired) =>
+        ctx.audio.attachEffectsInsert(id, input, output, desired),
+      detachEffectsInsert: (id) => ctx.audio.detachEffectsInsert(id),
       reconcileEffects: (soundId, desired) =>
         ctx.audio.reconcileEffects(soundId, desired),
       setEffectFields: (...args) => ctx.audio.setEffectFields(...args),

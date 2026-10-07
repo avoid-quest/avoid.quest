@@ -26,7 +26,6 @@
 
 import { captureError } from "@avoid.quest/error";
 import type { AudioState, Radio } from "@/lib/audio";
-import { findEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
 import type { AudioManager } from "@/lib/audio/manager/audio-manager";
 import type { NodeLaneOutputs } from "@/lib/audio/routing/node-lane-outputs";
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
@@ -71,11 +70,12 @@ import {
   cleanupManagedChannel,
   createManagedSound,
 } from "../playback-actions-shared.js";
-import { createLaneParameters } from "./params";
+import { EffectsSlot } from "./effects-slot";
+import { createParameters, type OwnerParameters } from "./params";
 
 export type StartResult = "playing" | "failed" | "refused" | "cancelled";
 
-export type EffectsBackend = EffectsRuntimeOutcome["backend"];
+export type { EffectsBackend } from "./effects-slot";
 
 /** What a lane needs from the engine that holds it. */
 export type LaneHost = {
@@ -188,18 +188,9 @@ export class LaneInstance {
   private readonly controller = new AbortController();
   readonly signal = this.controller.signal;
   readonly soundId: string;
-  readonly parameters: ReturnType<typeof createLaneParameters>;
-  /** The backend its effects last settled on, as the controller reported. */
-  outcome: EffectsBackend | undefined;
-  /**
-   * The FX layout last in its tree, by the plan's layout signature, null
-   * if unknown: a new sound's is its plan's, as it is silent until it plays.
-   */
-  private layout: string | null;
-  /** Its effects changed since they were last reconciled. */
-  private effectsStale = true as boolean;
-  private readonly pendingFields = new Set<string>();
-  private ducked = false as boolean;
+  readonly parameters: OwnerParameters;
+  /** Its effects, reconciled toward the lane's plan, ducked on a swap. */
+  readonly effects: EffectsSlot<LanePlan>;
   private readonly host: LaneHost;
   private readonly slot: LaneSlot;
   private readonly releaseFile: () => void;
@@ -218,7 +209,6 @@ export class LaneInstance {
   ) {
     this.host = host;
     this.slot = slot;
-    this.layout = plan.layoutSignature;
     const radio = plan.radio as Radio;
     if (forStart && plan.source.kind !== "device") {
       validateRadioForMode(radio, "node");
@@ -242,7 +232,7 @@ export class LaneInstance {
       host.ctx.channels.setMuted("node", plan.channelId, plan.muted);
     }
     this.soundId = soundId;
-    this.parameters = createLaneParameters({
+    this.parameters = createParameters({
       active: () => !this.retiring,
       audio: host.ctx.audio,
       effects: host,
@@ -256,6 +246,18 @@ export class LaneInstance {
         host.laneOutputs.refresh(slot.laneId);
       })
     );
+    this.effects = new EffectsSlot<LanePlan>({
+      duck: () => host.laneOutputs.duck(plan.id),
+      fieldsWritten: (effectId) => this.parameters.reapply({ effectId }),
+      layout: plan.layoutSignature,
+      onFailure: reportNodeFailure("Could not apply lane effects"),
+      outcomeChanged: () => host.outcomeChanged(),
+      reconcile: (latest) => host.reconcileEffects(soundId, latest),
+      signal: this.signal,
+      unduck: () => host.laneOutputs.unduck(plan.id),
+      writeFields: (effectId, config) =>
+        host.setEffectFields(soundId, effectId, config),
+    });
     // A Track or File sound's state drives its renewal, repeat and advance.
     if (isTrackRadio(radio)) {
       host.ctx.channels.subscribeRuntime("node", plan.channelId, soundId, {
@@ -505,7 +507,7 @@ export class LaneInstance {
     this.applyStrip();
     this.applyTransport();
     this.syncCueTap();
-    this.recordOutcome(
+    this.effects.record(
       this.host.ctx.audio.getEffectsRuntimeOutcome(this.soundId)
     );
   }
@@ -578,96 +580,6 @@ export class LaneInstance {
     if (source?.kind === "device" && source.capture === "display") {
       this.host.ctx.audio.getDeviceSource(this.soundId)?.stop();
     }
-  }
-
-  /** Its effects or its key lane's sound changed; the driver reconciles. */
-  effectsChanged(): void {
-    this.effectsStale = true;
-  }
-
-  setEffectFields(effectId: string): void {
-    this.pendingFields.add(effectId);
-  }
-
-  private writePendingFields(plan: LanePlan): Promise<void> | null {
-    const id = this.pendingFields.values().next().value;
-    if (!id) {
-      return null;
-    }
-    this.pendingFields.delete(id);
-    const config = findEffectInTree(plan.effects, id);
-    try {
-      const result = config
-        ? this.host.setEffectFields(this.soundId, id, config)
-        : "applied";
-      if (result === "applied") {
-        this.parameters.reapply({ effectId: id });
-      } else {
-        this.effectsChanged();
-      }
-    } catch {
-      // A failed field transaction leaves the live graph behind the plan.
-      this.effectsChanged();
-    }
-    return this.effectsStep(plan);
-  }
-
-  /**
-   * The driver's next effects step toward `plan`, or null once they match:
-   * changed effects in a new FX layout duck first, unless nothing plays,
-   * and the duck lifts once nothing is left. The layout stays unknown
-   * until a reconcile succeeds, since a failed, superseded or rejected one
-   * may have half-switched the graph: the next change swaps, ducked.
-   */
-  effectsStep(plan: LanePlan): Promise<void> | null {
-    const { laneOutputs } = this.host;
-    if (
-      this.effectsStale ||
-      (this.layout === null && this.pendingFields.size > 0)
-    ) {
-      const swap = plan.layoutSignature !== this.layout;
-      const ducking = swap && !this.ducked && laneOutputs.duck(plan.id);
-      if (ducking) {
-        this.ducked = true;
-        return ducking;
-      }
-      this.effectsStale = false;
-      this.pendingFields.clear();
-      this.layout = null;
-      return this.host.reconcileEffects(this.soundId, plan).then((outcome) => {
-        if (!["failed", "superseded"].includes(outcome.status)) {
-          this.layout = plan.layoutSignature;
-        }
-        this.recordOutcome(outcome);
-      }, reportNodeFailure("Could not apply lane effects"));
-    }
-    if (this.pendingFields.size > 0) {
-      return this.writePendingFields(plan);
-    }
-    if (this.ducked) {
-      this.ducked = false;
-      laneOutputs.unduck(plan.id);
-    }
-    return null;
-  }
-
-  /**
-   * Keeps what the controller reported. An inactive outcome means no
-   * effects graph yet, so the estimate shows. A ready `bypass` only means
-   * nothing was on to process (every FX off), not a dry fallback, so it is
-   * not kept: switching an FX back on must not read `bypassed` while the
-   * new runtime connects.
-   */
-  private recordOutcome(outcome: EffectsRuntimeOutcome): void {
-    if (this.retiring || outcome.status === "superseded") {
-      return;
-    }
-    this.outcome =
-      outcome.status === "inactive" ||
-      (outcome.backend === "bypass" && outcome.status !== "failed")
-        ? undefined
-        : outcome.backend;
-    this.host.outcomeChanged();
   }
 
   /**
@@ -1005,13 +917,13 @@ export class LaneSlot {
 
   /** The lane's effects or its key lane's sound changed. */
   effectsChanged(): void {
-    this.current?.effectsChanged();
+    this.current?.effects.changed();
     this.kick();
   }
 
   setEffectFields(effectId: string): void {
     if (this.current && !this.current.retiring) {
-      this.current.setEffectFields(effectId);
+      this.current.effects.fieldsChanged(effectId);
       this.kick();
     }
   }
@@ -1026,7 +938,7 @@ export class LaneSlot {
       } else if (!plan) {
         break;
       } else if (current) {
-        const effects = current.effectsStep(plan);
+        const effects = current.effects.step(plan);
         this.startOwed();
         if (!effects) {
           break;

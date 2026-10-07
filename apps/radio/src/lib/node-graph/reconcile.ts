@@ -9,12 +9,14 @@
  *   field write; structural device edits keep `setLaneEffects`;
  * - FX added, removed or reordered: `replaceLaneEffects`, which the engine
  *   swaps under a short duck instead of a click;
- * - native pan, filter and cable levels, a source's volume and mute, a
- *   Track's or File's transport and cue listen, and an Audio input's
- *   channels: `setParam`, ramped by the engine;
- * - cables: `addEdge` fades in, `removeEdge` fades out, and `rewireEdge`
- *   (same cable id, new ends) crossfades equal-power;
+ * - native pan and filter, a source's volume and mute, a Track's or
+ *   File's transport and cue listen, and an Audio input's channels:
+ *   `setParam`, ramped by the engine;
  * - lanes: `addLane` builds the sound paused, `removeLane` fades it out.
+ *
+ * Cables, units and modules follow the plan level-triggered in the engine's
+ * routing graph, so they need no ops; a unit sorts its effects' changes
+ * with the same `effectsChange` a lane does.
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
@@ -28,7 +30,6 @@ import type { Radio } from "@/lib/audio/playback/types";
 import { findSidechainChannelId } from "@/lib/channel-effects";
 import type {
   ChannelSelectionPlan,
-  EdgePlan,
   EnginePlan,
   LanePlan,
   LaneTransport,
@@ -93,26 +94,9 @@ export type Op =
       id: string;
       param: "cueListen";
       value: boolean;
-    }
-  | {
-      type: "setParam";
-      target: "edge";
-      id: string;
-      param: "gain";
-      value: number;
-    }
-  | {
-      type: "setParam";
-      target: "edge";
-      id: string;
-      param: "muted";
-      value: boolean;
-    }
-  | { type: "addEdge"; edge: EdgePlan }
-  | { type: "removeEdge"; edgeId: string }
-  | { type: "rewireEdge"; edge: EdgePlan; previous: EdgePlan };
+    };
 
-export type ReconcilablePlan = Pick<EnginePlan, "lanes" | "edges">;
+export type ReconcilablePlan = Pick<EnginePlan, "lanes">;
 
 function same(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -140,47 +124,71 @@ function channelsOf({ source }: LanePlan): ChannelSelectionPlan | null {
   return source.kind === "device" ? source.channelSelection : null;
 }
 
-function sameEnds(left: EdgePlan, right: EdgePlan): boolean {
-  return same([left.from, left.to], [right.from, right.to]);
+/** What an insert's effects are reconciled from: a lane's or a unit's. */
+type EffectsOwnerPlan = Pick<
+  LanePlan,
+  "layoutSignature" | "backend" | "effects"
+>;
+
+/**
+ * How an insert's effects changed, by what applying it takes: `layout`
+ * swaps the FX layout under a duck, `structural` reconciles in place, and
+ * `fields` writes just those effects' fields. Null when nothing changed.
+ */
+export type EffectsChange =
+  | { kind: "layout" | "structural" }
+  | { kind: "fields"; effectIds: string[] };
+
+export function effectsChange(
+  previous: EffectsOwnerPlan,
+  next: EffectsOwnerPlan
+): EffectsChange | null {
+  if (previous.layoutSignature !== next.layoutSignature) {
+    return { kind: "layout" };
+  }
+  if (
+    previous.backend !== next.backend ||
+    findSidechainChannelId(previous.effects) !==
+      findSidechainChannelId(next.effects)
+  ) {
+    return { kind: "structural" };
+  }
+  if (same(previous.effects, next.effects)) {
+    return null;
+  }
+  const before = new Map<string, EffectConfig>();
+  visitEffectTree(previous.effects, (effect) => before.set(effect.id, effect));
+  const effectIds: string[] = [];
+  let structural = false;
+  visitEffectTree(next.effects, (config) => {
+    const existing = before.get(config.id);
+    if (!existing || effectFieldsAreStructural(existing, config)) {
+      structural = true;
+    } else if (!same(localEffectConfig(existing), localEffectConfig(config))) {
+      effectIds.push(config.id);
+    }
+  });
+  return structural ? { kind: "structural" } : { effectIds, kind: "fields" };
 }
 
 function laneOps(previous: LanePlan, next: LanePlan): Op[] {
   const ops: Op[] = [];
   const laneId = next.id;
-  if (previous.layoutSignature !== next.layoutSignature) {
-    ops.push({ effects: next.effects, laneId, type: "replaceLaneEffects" });
-  } else if (
-    previous.backend !== next.backend ||
-    findSidechainChannelId(previous.effects) !==
-      findSidechainChannelId(next.effects)
-  ) {
-    ops.push({ effects: next.effects, laneId, type: "setLaneEffects" });
-  } else if (!same(previous.effects, next.effects)) {
-    const before = new Map<string, EffectConfig>();
-    visitEffectTree(previous.effects, (effect) =>
-      before.set(effect.id, effect)
-    );
-    const fields: Op[] = [];
-    let structural = false;
-    visitEffectTree(next.effects, (config) => {
-      const existing = before.get(config.id);
-      if (!existing || effectFieldsAreStructural(existing, config)) {
-        structural = true;
-      } else if (
-        !same(localEffectConfig(existing), localEffectConfig(config))
-      ) {
-        fields.push({
-          effectId: config.id,
-          laneId,
-          type: "setEffectFields",
-        });
-      }
-    });
+  const change = effectsChange(previous, next);
+  if (change?.kind === "fields") {
     ops.push(
-      ...(structural
-        ? [{ effects: next.effects, laneId, type: "setLaneEffects" as const }]
-        : fields)
+      ...change.effectIds.map((effectId) => ({
+        effectId,
+        laneId,
+        type: "setEffectFields" as const,
+      }))
     );
+  } else if (change) {
+    ops.push({
+      effects: next.effects,
+      laneId,
+      type: change.kind === "layout" ? "replaceLaneEffects" : "setLaneEffects",
+    });
   }
   if (previous.pan !== next.pan) {
     ops.push({
@@ -250,50 +258,18 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
   return ops;
 }
 
-function edgeOps(previous: EdgePlan, next: EdgePlan): Op[] {
-  if (!sameEnds(previous, next)) {
-    return [{ edge: next, previous, type: "rewireEdge" }];
-  }
-  const ops: Op[] = [];
-  if (previous.gain !== next.gain) {
-    ops.push({
-      id: next.id,
-      param: "gain",
-      target: "edge",
-      type: "setParam",
-      value: next.gain,
-    });
-  }
-  if (previous.muted !== next.muted) {
-    ops.push({
-      id: next.id,
-      param: "muted",
-      target: "edge",
-      type: "setParam",
-      value: next.muted,
-    });
-  }
-  return ops;
-}
-
 /**
- * Diffs two plans by lane and cable id. Ops come in apply order: cables out,
- * lanes out, lanes in, lane changes, then cables in and cable changes, so a
- * cable never points at a lane that is not there. A cable leaving a lane
- * that goes away, or starts a new stream, goes with it and is added again.
+ * Diffs two plans by lane id. Ops come in apply order: lanes out, lanes in,
+ * then lane changes. A lane that starts a new stream goes and comes back.
  */
 export function diff(previous: ReconcilablePlan, next: ReconcilablePlan): Op[] {
-  const removedEdges: Op[] = [];
   const removedLanes: Op[] = [];
   const addedLanes: Op[] = [];
   const changedLanes: Op[] = [];
-  const edges: Op[] = [];
-  const replaced = new Set<string>();
 
   for (const [id, lane] of previous.lanes) {
     const kept = next.lanes.get(id);
     if (!kept || sourceKey(kept) !== sourceKey(lane)) {
-      replaced.add(id);
       removedLanes.push({
         laneId: id,
         soundId: lane.soundId,
@@ -310,26 +286,5 @@ export function diff(previous: ReconcilablePlan, next: ReconcilablePlan): Op[] {
     }
   }
 
-  const leaving = (edge: EdgePlan) => replaced.has(edge.from.id);
-  for (const [id, edge] of previous.edges) {
-    if (!next.edges.has(id) || leaving(edge)) {
-      removedEdges.push({ edgeId: id, type: "removeEdge" });
-    }
-  }
-  for (const [id, edge] of next.edges) {
-    const before = previous.edges.get(id);
-    edges.push(
-      ...(before && !leaving(before)
-        ? edgeOps(before, edge)
-        : [{ edge, type: "addEdge" as const }])
-    );
-  }
-
-  return [
-    ...removedEdges,
-    ...removedLanes,
-    ...addedLanes,
-    ...changedLanes,
-    ...edges,
-  ];
+  return [...removedLanes, ...addedLanes, ...changedLanes];
 }

@@ -319,6 +319,12 @@ function createWorld(directFields = false) {
     backendBadges: new Store<NodeBackendBadges>({}),
     ctx: context,
     effects: {
+      attachEffectsInsert: async () => ({
+        backend: null,
+        ready: false,
+        status: "inactive",
+      }),
+      detachEffectsInsert: () => undefined,
       reconcileEffects: async (soundId, desired) => {
         const tree = desired.tree.map((effect) =>
           "threshold" in effect ? `${effect.id}@${effect.threshold}` : effect.id
@@ -357,7 +363,6 @@ function createWorld(directFields = false) {
         connected.add(laneId);
       },
       dispose: () => undefined,
-      dropSink: () => undefined,
       duck: (laneId) => {
         log.push(`duck ${laneId}`);
         if (!connected.has(laneId)) {

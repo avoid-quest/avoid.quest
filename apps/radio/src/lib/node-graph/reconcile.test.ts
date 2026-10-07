@@ -147,11 +147,11 @@ describe("diff", () => {
       },
     ]);
     // A trim or solo is a cable level: its sound and fader stay.
-    expect(types(diff(track({}), track({ trimDb: -6 })))).toEqual(["setParam"]);
-    expect(diff(track({}), track({ trimDb: -6 }))[0]).toMatchObject({
-      param: "gain",
-      target: "edge",
-    });
+    expect(diff(track({}), track({ trimDb: -6 }))).toEqual([]);
+    expect(track({ trimDb: -6 }).cables.get("t->speakers")?.gain).toBeCloseTo(
+      0.501,
+      3
+    );
   });
 
   test("a param-only change writes only the changed effect", () => {
@@ -413,56 +413,19 @@ describe("diff", () => {
     ]);
   });
 
-  test("a cable level or mute change is a setParam", () => {
-    const cable = (gain: number, muted: boolean) =>
-      plan([station("a"), speakers], [audio("a", "speakers", { gain, muted })]);
-    expect(diff(cable(1, false), cable(0.5, true))).toEqual([
-      {
-        id: "a->speakers",
-        param: "gain",
-        target: "edge",
-        type: "setParam",
-        value: 0.5,
-      },
-      {
-        id: "a->speakers",
-        param: "muted",
-        target: "edge",
-        type: "setParam",
-        value: true,
-      },
-    ]);
-  });
-
-  test("a new cable is added and a deleted one removed", () => {
-    const loose = plan([station("a"), speakers], []);
-    const wired = plan([station("a"), speakers], [audio("a", "speakers")]);
-    expect(diff(loose, wired)).toEqual([
-      { edge: wired.edges.get("a->speakers"), type: "addEdge" } as Op,
-    ]);
-    expect(diff(wired, loose)).toEqual([
-      { edgeId: "a->speakers", type: "removeEdge" },
-    ]);
-  });
-
-  test("dragging a cable end to another lane rewires it", () => {
-    const from = (source: string) =>
+  test("cables need no ops: the engine's routing follows each plan", () => {
+    const cable = (source: string, gain: number, muted: boolean) =>
       plan(
         [station("a"), station("b"), speakers],
-        [audio(source, "speakers", { id: "cable" })]
+        [audio(source, "speakers", { gain, id: "cable", muted })]
       );
-    const previous = from("a");
-    const next = from("b");
-    expect(diff(previous, next)).toEqual([
-      {
-        edge: next.edges.get("cable"),
-        previous: previous.edges.get("cable"),
-        type: "rewireEdge",
-      } as Op,
-    ]);
+    const loose = plan([station("a"), station("b"), speakers], []);
+    expect(diff(cable("a", 1, false), cable("a", 0.5, true))).toEqual([]);
+    expect(diff(loose, cable("a", 1, false))).toEqual([]);
+    expect(diff(cable("a", 1, false), cable("b", 1, false))).toEqual([]);
   });
 
-  test("a new station adds its lane before its cable", () => {
+  test("a new station adds its lane", () => {
     const previous = base();
     const next = base(
       {},
@@ -470,17 +433,15 @@ describe("diff", () => {
     );
     expect(diff(previous, next)).toEqual([
       { lane: next.lanes.get("c"), type: "addLane" } as Op,
-      { edge: next.edges.get("c->speakers"), type: "addEdge" } as Op,
     ]);
   });
 
-  test("a deleted station removes its cable before its lane", () => {
+  test("a deleted station removes its lane", () => {
     const previous = base(
       {},
       { edges: [audio("c", "speakers")], nodes: [station("c")] }
     );
     expect(diff(previous, base())).toEqual([
-      { edgeId: "c->speakers", type: "removeEdge" },
       { laneId: "c", soundId: "node:n:c", type: "removeLane" },
     ]);
   });
@@ -490,10 +451,8 @@ describe("diff", () => {
       plan([station("a", streamUrl), speakers], [audio("a", "speakers")]);
     const next = tuned("https://example.com/other.mp3");
     expect(diff(tuned("https://example.com/a.mp3"), next)).toEqual([
-      { edgeId: "a->speakers", type: "removeEdge" },
       { laneId: "a", soundId: "node:n:a", type: "removeLane" },
       { lane: next.lanes.get("a"), type: "addLane" } as Op,
-      { edge: next.edges.get("a->speakers"), type: "addEdge" } as Op,
     ]);
   });
 
@@ -518,15 +477,13 @@ describe("diff", () => {
       );
     const next = formatted("hls");
     expect(diff(formatted(), next)).toEqual([
-      { edgeId: "a->speakers", type: "removeEdge" },
       { laneId: "a", soundId: "node:n:a", type: "removeLane" },
       { lane: next.lanes.get("a"), type: "addLane" } as Op,
-      { edge: next.edges.get("a->speakers"), type: "addEdge" } as Op,
     ]);
     expect(diff(next, formatted("hls"))).toEqual([]);
   });
 
-  test("a cable moved off a lane that goes away is removed, not rewired", () => {
+  test("a cable moved off a lane that goes away needs only the lane's removal", () => {
     const previous = plan(
       [station("a"), station("b"), speakers],
       [audio("a", "speakers", { id: "cable" })]
@@ -536,9 +493,7 @@ describe("diff", () => {
       [audio("b", "speakers", { id: "cable" })]
     );
     expect(diff(previous, next)).toEqual([
-      { edgeId: "cable", type: "removeEdge" },
       { laneId: "a", soundId: "node:n:a", type: "removeLane" },
-      { edge: next.edges.get("cable"), type: "addEdge" } as Op,
     ]);
   });
 
@@ -595,16 +550,12 @@ describe("diff: audio inputs", () => {
 
   test("a new device or echo cancellation starts a new capture", () => {
     expect(types(diff(mic(), mic({ deviceId: "line-in" })))).toEqual([
-      "removeEdge",
       "removeLane",
       "addLane",
-      "addEdge",
     ]);
     expect(types(diff(mic(), mic({ echoCancellation: true })))).toEqual([
-      "removeEdge",
       "removeLane",
       "addLane",
-      "addEdge",
     ]);
   });
 

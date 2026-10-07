@@ -888,6 +888,23 @@ export class AudioManager {
     return nodes ? { filter: nodes.filter, pan: nodes.pan } : null;
   }
 
+  /**
+   * Runs effects between two nodes that are not a sound's, e.g. a Node
+   * graph unit's input and output, with the same backends as a sound's.
+   */
+  attachEffectsInsert(
+    id: string,
+    input: AudioNode,
+    output: AudioNode,
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
+    return this.effects.attachInsert(id, input, output, desired);
+  }
+
+  detachEffectsInsert(id: string): void {
+    this.effects.detachInsert(id);
+  }
+
   /** The backend a sound's effects last settled on, e.g. a dry fallback. */
   getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
     return this.effects.getRuntimeOutcome(soundId);

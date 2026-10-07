@@ -1,6 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import { FakeAudioContext, type FakeGainNode } from "./fake-audio-nodes";
-import { createNodeDeviceSinks } from "./node-device-sinks";
+import {
+  createNodeDeviceSinks,
+  type NodeOutputPlan,
+} from "./node-device-sinks";
 
 /** An `<audio>` element that records its sink and whether it plays. */
 class FakeAudioElement {
@@ -104,7 +107,12 @@ function createHarness({
     onStatus,
     send,
     settle,
-    sinks,
+    // At unity master unless a test sets one.
+    sinks: {
+      ...sinks,
+      sync: (outputs: ReadonlyMap<string, NodeOutputPlan>, master = 1) =>
+        sinks.sync(outputs, master),
+    },
     whereIs,
   };
 }
@@ -387,6 +395,31 @@ describe("createNodeDeviceSinks", () => {
     expect(element?.pause).toHaveBeenCalled();
     expect(element?.srcObject).toBeNull();
     expect(destination?.stopped).toEqual([true]);
+  });
+
+  test("a removed Output node's gain follows the master with its own mute", () => {
+    const h = createHarness();
+    h.sinks.sync(
+      new Map([
+        ["desk", { deviceId: "usb", muted: false }],
+        ["booth", { deviceId: "usb", muted: true }],
+      ]),
+      0.8
+    );
+    const desk = h.connect("desk");
+    const booth = h.connect("booth");
+
+    // Both leave the plan while their cables still fade into them.
+    h.sinks.sync(new Map(), 0.3);
+
+    expect(h.gainOf(desk.send)?.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 0.3,
+    });
+    expect(h.gainOf(booth.send)?.gain.events.at(-1)).toMatchObject({
+      type: "target",
+      value: 0,
+    });
   });
 
   test("a muted Output device mutes the cables still fading into it", () => {

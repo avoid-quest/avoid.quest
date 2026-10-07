@@ -3,21 +3,24 @@
  *
  * Plays one activation of a Node patch. Each compiled plan is diffed
  * against the last and applied to one `LaneSlot` per lane (lane.ts), which
- * owns that lane's sound from its restore to its release. The engine owns
- * what lanes share: the lane outputs and Output device sinks their sends
- * reach, the headphone cue output, the FX badges, the stream budget and
- * Play all. `dispose` refuses new starts, retires every lane and waits for
- * each to release before it closes the rest; the next activation builds a
- * new engine.
+ * owns that lane's sound from its restore to its release, and to the
+ * routing graph (routing.ts), which owns the units and modules after the
+ * faders. The engine owns what they share: the lane outputs and Output
+ * device sinks their cables reach, the headphone cue output, the master
+ * volume, the FX badges, the stream budget and Play all. `dispose` refuses
+ * new starts, retires every lane and waits for each to release, then for
+ * the routing graph to let go, before it closes the rest; the next
+ * activation builds a new engine.
  *
- * Each lane reaches its outputs through its own `laneOut` gain
+ * Each lane reaches its cables through its own `laneOut` gain
  * (node-lane-outputs), registered as the sound's output connector before it
- * first plays, which fans out into one send per output. Cable gain and mute
- * ramp each send to the sum of the lane's unmuted cables into that output.
- * Every send goes through its Output node's own gain (node-device-sinks),
- * which carries the node's mute and plays on the main bus for Speakers, or
- * on an Output device's sink (the main bus while that sink can't play).
- * A lane ducks laneOut around its own FX layout swaps.
+ * first plays, which fans out into one send per cable. Every cable into an
+ * output goes through that Output node's own gain (node-device-sinks),
+ * which carries its mute and the master volume, so Node's master acts
+ * after every effect, at the outputs, for cables still fading out too; the
+ * faders don't take it. Speakers play on the main bus, an Output device on
+ * its device, or on the main bus while that device can't play. A lane
+ * ducks laneOut around its own FX layout swaps.
  */
 
 import { Store } from "@tanstack/react-store";
@@ -38,8 +41,11 @@ import type {
   NodeLaneOutputs,
   NodeLaneOutputsOptions,
 } from "@/lib/audio/routing/node-lane-outputs";
+import type { SendPlan } from "@/lib/audio/routing/sends";
 import { findSidechainChannelId } from "@/lib/channel-effects";
 import {
+  type CablePlan,
+  type Endpoint,
   type EnginePlan,
   type LaneBackend,
   laneChannelId,
@@ -69,9 +75,12 @@ import {
   type EffectsBackend,
   type LaneHost,
   LaneSlot,
+  reportNodeFailure,
   type StartResult,
 } from "./lane.js";
 import { clampParam, type EngineParamTarget } from "./param-target.js";
+import { createParameters } from "./params.js";
+import { RoutingGraph, sendPlan } from "./routing.js";
 
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
@@ -144,7 +153,7 @@ export type NodeEngineOptions = {
   /** Where Output device sink statuses are published for their bodies. */
   sinkStatuses: NodeSinkStatusStore;
   /**
-   * The main bus Output nodes play into, and the headphone cue bus a
+   * The main bus units and modules play into, and the headphone cue bus a
    * Track's or File's cue listen taps into. The cue settings are applied
    * as a tap goes on, as a DJ deck's CUE does, since Node mode alone never
    * builds the cue output.
@@ -153,12 +162,18 @@ export type NodeEngineOptions = {
     OutputRouting,
     "applySettings" | "connectMain" | "registerCueDeck" | "releaseCue"
   >;
+  /** Node's master volume, applied at every Output node. */
+  masterVolume: () => number;
   deviceSinks: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
   laneOutputs: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
-  /** Where each lane's sound reconciles its effects; AudioManager's. */
+  /** Where lanes and units reconcile their effects; AudioManager's. */
   effects: Pick<
     AudioManager,
-    "reconcileEffects" | "setEffectFields" | "subscribeEffectsRuntimeOutcome"
+    | "attachEffectsInsert"
+    | "detachEffectsInsert"
+    | "reconcileEffects"
+    | "setEffectFields"
+    | "subscribeEffectsRuntimeOutcome"
   >;
   fadeOut: (soundId: string) => Promise<void>;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
@@ -174,11 +189,13 @@ export type NodeEngine = ReturnType<typeof createNodeEngine>;
 const PLAY_ALL_CONCURRENCY = 3;
 const NODE_CHANNEL_PREFIX = "n:";
 const EMPTY_PLAN: EnginePlan = {
-  budget: { monitoringChannels: 0 },
-  edges: new Map(),
+  cables: new Map(),
   issues: [],
   lanes: new Map(),
+  modules: new Map(),
+  monitoringChannels: 0,
   sinks: new Map(),
+  units: new Map(),
 };
 
 function warn(message: string) {
@@ -188,8 +205,11 @@ function warn(message: string) {
 export function createNodeEngine(options: NodeEngineOptions) {
   const { ctx } = options;
   const slots = new Map<string, LaneSlot>();
-  /** A send belongs to its edge until that edge leaves the plan. */
-  const transientSends = new Map<string, number>();
+  /**
+   * A send's transient level, by cable id, wherever the cable leaves from:
+   * kept while the cable is in the plan, a move to a new sender included.
+   */
+  const sendOverlays = new Map<string, number>();
   let plan = EMPTY_PLAN;
   let disposing = false;
   /** The latest Play all; a pause or a newer Play all stops it. */
@@ -210,26 +230,58 @@ export function createNodeEngine(options: NodeEngineOptions) {
     return instance && !instance.retiring ? instance : undefined;
   };
 
-  /**
-   * A lane's level per output: the gains of its unmuted cables into it,
-   * summed. The output's own mute is its gain's.
-   */
-  const laneLevels = (laneId: string) => {
-    const levels = new Map<string, number>();
-    const parameters = liveInstance(laneId)?.parameters;
-    for (const edge of plan.edges.values()) {
-      if (edge.from.id !== laneId) {
-        continue;
+  /** The transient parameters of a lane's sound or a graph unit. */
+  const parametersOf = (ownerId: string) =>
+    liveInstance(ownerId)?.parameters ?? routing.parametersOf(ownerId);
+
+  /** Whether the cable's sender takes a transient level for it now. */
+  const sendAvailable = (cable: CablePlan): boolean =>
+    cable.from.kind === "lane"
+      ? Boolean(
+          liveInstance(cable.from.id)?.parameters.available({
+            edgeId: cable.id,
+            kind: "send",
+          })
+        )
+      : routing.sendsAvailable(cable.from, cable.id);
+
+  /** A cable's overlay, while its sender takes one. */
+  const sendOverlay = (cable: CablePlan): number | undefined =>
+    sendAvailable(cable) ? sendOverlays.get(cable.id) : undefined;
+
+  /** Only a cable still in the plan keeps its overlay. */
+  const keepSendOverlays = (next: EnginePlan) => {
+    for (const cableId of sendOverlays.keys()) {
+      if (!next.cables.has(cableId)) {
+        sendOverlays.delete(cableId);
       }
-      const sinkId = edge.to.id;
-      const gain = parameters?.available({ edgeId: edge.id, kind: "send" })
-        ? (transientSends.get(edge.id) ?? edge.gain)
-        : edge.gain;
-      levels.set(sinkId, (levels.get(sinkId) ?? 0) + (edge.muted ? 0 : gain));
     }
-    return levels;
   };
 
+  /** The cable's sender takes its sends' levels again. */
+  const refreshSender = (from: Endpoint) => {
+    if (from.kind !== "lane") {
+      routing.refreshSends(from);
+    } else if (liveInstance(from.id)) {
+      laneOutputs.refresh(from.id);
+    }
+  };
+
+  /** The lane's sends: one per cable leaving it. */
+  const laneSends = (laneId: string) => {
+    const sends = new Map<string, SendPlan>();
+    for (const cable of plan.cables.values()) {
+      if (cable.from.kind === "lane" && cable.from.id === laneId) {
+        sends.set(cable.id, sendPlan(cable, sendOverlay(cable)));
+      }
+    }
+    return sends;
+  };
+
+  /**
+   * Every Output node plays through its own gain: its mute and the master
+   * volume, after every effect, for the cables still fading in too.
+   */
   const deviceSinks = options.deviceSinks({
     connectMain: (node, realtime) =>
       options.outputRouting().connectMain(node, realtime),
@@ -237,13 +289,58 @@ export function createNodeEngine(options: NodeEngineOptions) {
     onStatus: () => options.sinkStatuses.setState(() => deviceSinks.statuses()),
   });
 
+  /** The tree and key an insert's effects are reconciled with. */
+  const desiredEffects = (effects: readonly EffectConfig[]) => {
+    const keyLane = findSidechainChannelId(effects)?.slice(
+      NODE_CHANNEL_PREFIX.length
+    );
+    return {
+      dryWet: 1,
+      sidechainSoundId: keyLane
+        ? (slots.get(keyLane)?.current?.soundId ?? null)
+        : null,
+      tempo: DEFAULT_EFFECT_TEMPO,
+      tree: normalizeEffectTree(effects),
+    };
+  };
+
+  const routing = new RoutingGraph({
+    attachEffects: (id, input, output, unit) =>
+      options.effects.attachEffectsInsert(
+        id,
+        input,
+        output,
+        desiredEffects(unit.effects)
+      ),
+    detachEffects: (id) => options.effects.detachEffectsInsert(id),
+    onFailure: reportNodeFailure("Could not apply shared effects"),
+    outcomeChanged: () => publishBadges(),
+    parameters: (id, unit, active) =>
+      createParameters({
+        active,
+        audio: ctx.audio,
+        effects: options.effects,
+        plan: unit,
+        soundId: id,
+      }),
+    reconcileEffects: (id, unit) =>
+      options.effects.reconcileEffects(id, desiredEffects(unit.effects)),
+    routeSink: (sinkId, send, realtime) =>
+      deviceSinks.connect(sinkId, send, realtime),
+    sendOverlay,
+    setEffectFields: (id, effectId, config) =>
+      options.effects.setEffectFields(id, effectId, config),
+    subscribeOutcome: (id, listener) =>
+      options.effects.subscribeEffectsRuntimeOutcome(id, listener),
+  });
+
   const laneOutputs = options.laneOutputs({
     getHost: () => ctx.audio,
-    getLevels: laneLevels,
+    getSends: laneSends,
     // A new sound's nodes exist from its connect, before its playback starts.
     onConnect: (laneId) => slots.get(laneId)?.current?.applyStrip(),
-    route: (sinkId, send, realtime) =>
-      deviceSinks.connect(sinkId, send, realtime),
+    // A lane's send goes to an output, or into a unit or module it holds.
+    route: (to, send, realtime) => routing.route(to, send, realtime),
   });
 
   /** Writes every lane's badge, and its FX nodes', when one changed. */
@@ -252,7 +349,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     for (const lane of plan.lanes.values()) {
       const badge = laneBackendBadge(
         lane.backend,
-        liveInstance(lane.id)?.outcome
+        liveInstance(lane.id)?.effects.outcome
       );
       if (!badge) {
         continue;
@@ -260,6 +357,14 @@ export function createNodeEngine(options: NodeEngineOptions) {
       badges[lane.id] = badge;
       for (const id of enabledEffectIds(lane.effects)) {
         badges[id] = badge;
+      }
+    }
+    for (const unit of plan.units.values()) {
+      const badge = laneBackendBadge(unit.backend, routing.outcomeOf(unit.id));
+      if (badge) {
+        for (const id of enabledEffectIds(unit.effects)) {
+          badges[id] = badge;
+        }
       }
     }
     if (!sameBadges(options.backendBadges.state, badges)) {
@@ -294,22 +399,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
      * A lane's effects as its plan has them, keyed from its key lane's
      * sound once that lane has one. Node has no dry/wet or tempo control.
      */
-    reconcileEffects: (soundId, lane) => {
-      const keyLane = findSidechainChannelId(lane.effects)?.slice(
-        NODE_CHANNEL_PREFIX.length
-      );
-      return options.effects.reconcileEffects(soundId, {
-        dryWet: 1,
-        sidechainSoundId: keyLane
-          ? (slots.get(keyLane)?.current?.soundId ?? null)
-          : null,
-        tempo: DEFAULT_EFFECT_TEMPO,
-        tree: normalizeEffectTree(lane.effects),
-      });
-    },
+    reconcileEffects: (soundId, lane) =>
+      options.effects.reconcileEffects(soundId, desiredEffects(lane.effects)),
     resolveStream: options.resolveStream,
     setEffectFields: (...args) => options.effects.setEffectFields(...args),
-    /** A lane's sound came or went: every other lane keyed from it rebinds. */
+    /** A lane's sound came or went: every insert keyed from it rebinds. */
     soundChanged: (laneId) => {
       const channelId = laneChannelId(laneId);
       for (const slot of slots.values()) {
@@ -321,6 +415,9 @@ export function createNodeEngine(options: NodeEngineOptions) {
           slot.effectsChanged();
         }
       }
+      routing.effectsChanged(
+        (unit) => findSidechainChannelId(unit.effects) === channelId
+      );
     },
     streamLimit: (slot) => {
       if (slot.plan?.source.kind === "device") {
@@ -340,10 +437,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
   };
 
   /**
-   * Matches the Output node gains to the plan's outputs. A removed output
-   * takes its sends with it; its gain stays until they faded out.
+   * Matches the Output node gains to the plan's outputs, at the master
+   * volume. A removed output keeps its gain, and its mute, until the cables
+   * into it faded out; that gain follows the master too.
    */
-  const syncSinks = (previous: EnginePlan, next: EnginePlan) => {
+  const syncSinks = (next: EnginePlan) => {
     deviceSinks.sync(
       new Map(
         [...next.sinks.values()].map((sink) => [
@@ -355,23 +453,25 @@ export function createNodeEngine(options: NodeEngineOptions) {
               : {}),
           },
         ])
-      )
+      ),
+      options.masterVolume()
     );
-    for (const id of previous.sinks.keys()) {
-      if (!next.sinks.has(id)) {
-        laneOutputs.dropSink(id);
+  };
+
+  /**
+   * Every lane's cables take their levels. A removed or replaced lane
+   * keeps its old cables through its fade-out; the new stream's laneOut
+   * reads its cables as it connects.
+   */
+  const refreshLanes = (removed: ReadonlySet<string>) => {
+    for (const laneId of plan.lanes.keys()) {
+      if (!(removed.has(laneId) || slots.get(laneId)?.current?.retiring)) {
+        laneOutputs.refresh(laneId);
       }
     }
   };
 
-  const applyParam = (
-    op: Extract<Op, { type: "setParam" }>,
-    refreshLane: (laneId: string | undefined) => void
-  ) => {
-    if (op.target === "edge") {
-      refreshLane(plan.edges.get(op.id)?.from.id);
-      return;
-    }
+  const applyParam = (op: Extract<Op, { type: "setParam" }>) => {
     const lane = plan.lanes.get(op.id);
     if (!lane) {
       return;
@@ -422,11 +522,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
     }
   };
 
-  const applyOp = (
-    op: Op,
-    previous: EnginePlan,
-    refreshLane: (laneId: string | undefined) => void
-  ) => {
+  const applyOp = (op: Op) => {
     switch (op.type) {
       // Lanes took their plans before their ops apply.
       case "addLane":
@@ -441,17 +537,7 @@ export function createNodeEngine(options: NodeEngineOptions) {
         slots.get(op.laneId)?.setEffectFields(op.effectId);
         break;
       case "setParam":
-        applyParam(op, refreshLane);
-        break;
-      case "addEdge":
-        refreshLane(op.edge.from.id);
-        break;
-      case "removeEdge":
-        refreshLane(previous.edges.get(op.edgeId)?.from.id);
-        break;
-      case "rewireEdge":
-        refreshLane(op.previous.from.id);
-        refreshLane(op.edge.from.id);
+        applyParam(op);
         break;
       default: {
         const exhaustive: never = op;
@@ -469,28 +555,10 @@ export function createNodeEngine(options: NodeEngineOptions) {
       const previous = plan;
       const ops = diff(previous, next);
       plan = next;
-      transientSends.forEach((_value, edgeId) => {
-        if (!next.edges.has(edgeId)) {
-          transientSends.delete(edgeId);
-        }
-      });
+      keepSendOverlays(next);
       const removed = new Set(
         ops.flatMap((op) => (op.type === "removeLane" ? [op.laneId] : []))
       );
-      /**
-       * A removed or replaced lane keeps its old stream's level through its
-       * fade-out; the new stream's laneOut reads its level as it connects.
-       */
-      const refreshLane = (laneId: string | undefined) => {
-        if (
-          laneId &&
-          next.lanes.has(laneId) &&
-          !removed.has(laneId) &&
-          !slots.get(laneId)?.current?.retiring
-        ) {
-          laneOutputs.refresh(laneId);
-        }
-      };
       const collected: unknown[] = [];
       failures = strict ? collected : null;
       try {
@@ -511,10 +579,13 @@ export function createNodeEngine(options: NodeEngineOptions) {
             added.kick();
           }
         }
-        syncSinks(previous, next);
+        syncSinks(next);
+        // Points exist before a lane's cable reaches for one.
+        routing.apply(next);
+        refreshLanes(removed);
         for (const op of ops) {
           try {
-            applyOp(op, previous, refreshLane);
+            applyOp(op);
           } catch (error) {
             warn(`Could not apply ${op.type}`)(error);
           }
@@ -527,26 +598,26 @@ export function createNodeEngine(options: NodeEngineOptions) {
         throw collected[0];
       }
     },
-    busy: (): boolean => [...slots.values()].some((slot) => slot.busy()),
+    busy: (): boolean =>
+      routing.busy() || [...slots.values()].some((slot) => slot.busy()),
     clearTransient(target?: EngineParamTarget) {
-      if (target) {
-        if (target.kind === "send") {
-          transientSends.delete(target.edgeId);
-          const laneId = plan.edges.get(target.edgeId)?.from.id;
-          if (laneId && liveInstance(laneId)) {
-            laneOutputs.refresh(laneId);
-          }
-        } else {
-          liveInstance(target.laneId)?.parameters.clear(target);
+      if (target?.kind === "send") {
+        sendOverlays.delete(target.edgeId);
+        const from = plan.cables.get(target.edgeId)?.from;
+        if (from) {
+          refreshSender(from);
         }
+      } else if (target) {
+        parametersOf(target.laneId)?.clear(target);
       } else {
-        transientSends.clear();
+        sendOverlays.clear();
         for (const slot of slots.values()) {
           if (!slot.current?.retiring) {
             slot.current?.parameters.clear();
             laneOutputs.refresh(slot.laneId);
           }
         }
+        routing.clearTransient();
       }
     },
     async dispose() {
@@ -560,6 +631,8 @@ export function createNodeEngine(options: NodeEngineOptions) {
         slot.remove();
       }
       await engine.whenSettled();
+      routing.dispose();
+      await routing.whenIdle();
       // Whatever else holds an `n:*` channel goes too, before the orphan check.
       const channelIds = getPlaybackRuntimeChannelIds().filter((id) =>
         id.startsWith(NODE_CHANNEL_PREFIX)
@@ -584,9 +657,13 @@ export function createNodeEngine(options: NodeEngineOptions) {
       deviceSinks.dispose();
       options.sinkStatuses.setState(() => deviceSinks.statuses());
       plan = EMPTY_PLAN;
-      transientSends.clear();
+      sendOverlays.clear();
       publishBadges();
       cleanupOrphanedSounds([...soundIds], ctx, "node");
+    },
+    /** Node's master volume changed: every Output node's gain follows. */
+    masterVolumeChanged() {
+      syncSinks(plan);
     },
     pause(laneId: string) {
       slots.get(laneId)?.pause(true);
@@ -645,29 +722,29 @@ export function createNodeEngine(options: NodeEngineOptions) {
         return "unavailable";
       }
       if (target.kind === "send") {
-        const laneId = plan.edges.get(target.edgeId)?.from.id;
-        const instance = laneId ? liveInstance(laneId) : undefined;
-        if (!(laneId && instance?.parameters.available(target))) {
+        const cable = plan.cables.get(target.edgeId);
+        if (!(cable && sendAvailable(cable))) {
           return "unavailable";
         }
-        transientSends.set(target.edgeId, clampParam(value, 0, MAX_EDGE_GAIN));
-        laneOutputs.refresh(laneId);
+        sendOverlays.set(target.edgeId, clampParam(value, 0, MAX_EDGE_GAIN));
+        refreshSender(cable.from);
         return "applied";
       }
-      return (
-        liveInstance(target.laneId)?.parameters.set(target, value) ??
-        "unavailable"
-      );
+      return parametersOf(target.laneId)?.set(target, value) ?? "unavailable";
     },
     /** The lane's sound, while it has one. */
     soundOf: (laneId: string) => liveInstance(laneId)?.soundId ?? null,
-    /** Lanes can start more work (a re-add after a fade), so settle to empty. */
+    /**
+     * Lanes and points can start more work (a re-add after a fade, a point
+     * released once a lane's cables go), so settle to empty.
+     */
     async whenSettled(): Promise<void> {
       while (engine.busy()) {
         // biome-ignore lint/performance/noAwaitInLoops: a lane's work can start more, e.g. a re-add once its fade ends.
-        await Promise.allSettled(
-          [...slots.values()].map((slot) => slot.whenIdle())
-        );
+        await Promise.allSettled([
+          ...[...slots.values()].map((slot) => slot.whenIdle()),
+          routing.whenIdle(),
+        ]);
       }
     },
   };

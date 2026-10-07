@@ -31,9 +31,17 @@ function effectParamOwner(config: EffectConfig, target: EffectTarget) {
     : undefined;
 }
 
+/**
+ * What an effects owner's parameters read their authored values from: a
+ * lane's plan, or a graph unit's, which has no strip.
+ */
+type ParamPlan = Pick<LanePlan, "effects" | "backend"> &
+  Partial<Pick<LanePlan, "pan" | "filter">>;
+
 type ParamHost = {
+  /** The owner's effects id: a lane's sound, or a unit's insert. */
   soundId: string;
-  plan: () => LanePlan | null;
+  plan: () => ParamPlan | null;
   active: () => boolean;
   audio: Pick<AudioManager, "getStripNodes" | "getEffectsRuntimeOutcome">;
   effects: Pick<AudioManager, "setEffectFields">;
@@ -71,8 +79,11 @@ function readAuthored(host: ParamHost, target: LaneParamTarget) {
     : undefined;
 }
 
-/** Scalar overlays belong to one sound; baselines always come from its latest plan. */
-export function createLaneParameters(host: ParamHost) {
+/**
+ * Scalar overlays belong to one effects owner, a lane's sound or a graph
+ * unit; baselines always come from its latest plan.
+ */
+export function createParameters(host: ParamHost) {
   let transient = new Map<string, Overlay>();
 
   function available(target: EngineParamTarget): boolean {
@@ -195,3 +206,5 @@ export function createLaneParameters(host: ParamHost) {
 
   return { available, clear, reapply, retire: () => transient.clear(), set };
 }
+
+export type OwnerParameters = ReturnType<typeof createParameters>;

@@ -13,6 +13,7 @@ import {
   type EnginePlan,
   idleKeys,
   type LanePlan,
+  laneRoutes,
 } from "@/lib/node-graph/compile";
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
 import { nodeLabel } from "@/lib/node-graph/describe";
@@ -60,14 +61,9 @@ function groupLanes(
   nodesById: ReadonlyMap<string, GraphNode>
 ): RackGroup[] {
   const groups = new Map<string, RackGroup>();
+  const routes = laneRoutes(plan);
   for (const lane of plan.lanes.values()) {
-    const sinkIds = [
-      ...new Set(
-        [...plan.edges.values()]
-          .filter((edge) => edge.from.id === lane.id)
-          .map((edge) => edge.to.id)
-      ),
-    ].sort();
+    const sinkIds = [...(routes.get(lane.id) ?? [])].sort();
     const key = sinkIds.length > 0 ? sinkIds.join(" ") : UNWIRED_GROUP;
     const names = sinkIds.map((id) => {
       const sink = plan.sinks.get(id);

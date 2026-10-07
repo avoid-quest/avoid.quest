@@ -32,7 +32,7 @@ import {
   safeDisconnect,
   safeDisconnectFrom,
 } from "../utils";
-import { settleGain } from "./node-lane-outputs";
+import { settleGain } from "./sends";
 
 export type DeviceSinkStatus =
   /** No device picked yet: its cables stay silent. */
@@ -72,8 +72,11 @@ export type NodeDeviceSinksOptions = {
 };
 
 export type NodeDeviceSinks = {
-  /** Matches the plan's Output nodes, by node id. */
-  sync: (outputs: ReadonlyMap<string, NodeOutputPlan>) => void;
+  /**
+   * Matches the plan's Output nodes, by node id, and sets the master
+   * volume every node's gain plays at, a removed node's included.
+   */
+  sync: (outputs: ReadonlyMap<string, NodeOutputPlan>, master: number) => void;
   /**
    * Connects one cable's send into Output node `sinkId` and holds the node
    * until the returned release.
@@ -164,10 +167,6 @@ function teardown(entry: DeviceEntry): void {
   }
 }
 
-function levelOf(plan: NodeOutputPlan): number {
-  return plan.muted ? 0 : 1;
-}
-
 function gainKey(sinkId: string, realtime: boolean): string {
   return `${realtime ? "realtime" : "main"}:${sinkId}`;
 }
@@ -183,11 +182,14 @@ export function createNodeDeviceSinks({
 }: NodeDeviceSinksOptions): NodeDeviceSinks {
   /** The plan's Output nodes. */
   let outputs: ReadonlyMap<string, NodeOutputPlan> = new Map();
+  let master = 1;
   const gains = new Map<string, NodeGain>();
   const devices = new Map<string, DeviceEntry>();
   /** The last device list with real ids; null until one is read. */
   let knownIds: Set<string> | null = null;
   let unwatch: (() => void) | null = null;
+
+  const levelOf = (plan: NodeOutputPlan) => (plan.muted ? 0 : master);
 
   const isPresent = (deviceId: string) =>
     deviceId === DEFAULT_DEVICE_ID || !knownIds || knownIds.has(deviceId);
@@ -435,7 +437,7 @@ export function createNodeDeviceSinks({
           return status ? [[sinkId, status]] : [];
         })
       ),
-    sync(next) {
+    sync(next, level) {
       const changed =
         outputs.size !== next.size ||
         [...next].some(
@@ -444,12 +446,11 @@ export function createNodeDeviceSinks({
             outputs.get(sinkId)?.deviceId !== plan.deviceId
         );
       outputs = new Map(next);
+      master = level;
       syncDevices();
       for (const node of gains.values()) {
-        const plan = outputs.get(node.sinkId);
-        if (!plan) {
-          continue;
-        }
+        // A removed node's gain keeps its last plan, its mute included.
+        const plan = outputs.get(node.sinkId) ?? node.plan;
         const moved = plan.deviceId !== node.plan.deviceId;
         node.plan = plan;
         settleGain(node.gain, levelOf(plan));

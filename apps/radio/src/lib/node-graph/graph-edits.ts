@@ -38,7 +38,7 @@ import {
   isEffectNodeType,
   portHandleId,
 } from "./catalogue";
-import { compile, isRadioSourceLive } from "./compile";
+import { compile, isRadioSourceLive, laneRoutes } from "./compile";
 import {
   type EffectNodeType,
   type GraphEdge,
@@ -1204,14 +1204,13 @@ export function removeNodesHealed(
   if (next !== graph) {
     const env = { crossOriginIsolated: false, ...options };
     const remaining = new Set(next.nodes.map((node) => node.id));
-    const before = compile(withEveryStationLive(graph), env);
-    const after = compile(withEveryStationLive(next), env);
-    for (const route of before.edges.values()) {
+    const before = laneRoutes(compile(withEveryStationLive(graph), env));
+    const after = laneRoutes(compile(withEveryStationLive(next), env));
+    for (const [laneId, sinks] of before) {
       if (
-        remaining.has(route.from.id) &&
-        remaining.has(route.to.id) &&
-        ![...after.edges.values()].some(
-          (edge) => edge.from.id === route.from.id && edge.to.id === route.to.id
+        remaining.has(laneId) &&
+        [...sinks].some(
+          (sinkId) => remaining.has(sinkId) && !after.get(laneId)?.has(sinkId)
         )
       ) {
         return {

@@ -99,12 +99,6 @@ describe("one rule for every way to connect", () => {
     ["Station into Speakers", plug("kexp", "speakers"), "source", null],
     ["Station into a loose FX", plug("kexp", "verb"), "source", null],
     [
-      "Station into a full key",
-      plug("kexp", "comp", { to: "in:sidechain:key" }),
-      "source",
-      "This input takes one cable",
-    ],
-    [
       "Compressor into itself",
       plug("comp", "comp"),
       "source",
@@ -181,7 +175,7 @@ describe("one rule for every way to connect", () => {
     expect(canConnect(graph, connection)).toBe(ok);
     clearConnectionHints();
 
-    // A drop on the port. A full one-cable port also offers to replace.
+    // A drop on the port.
     expect(dropOnNode(graph, from, node, handle)).toMatchObject(
       ok ? { connect: connection } : { refuse: message }
     );
@@ -196,6 +190,26 @@ describe("one rule for every way to connect", () => {
   });
 });
 
+describe("a full key", () => {
+  test("refuses a second key, and a drop on it offers to replace the first", () => {
+    const connection = plug("fip", "comp", { to: "in:sidechain:key" });
+    expect(connectionVerdict(graph, connection)).toEqual({
+      code: "port-max",
+      message: "This input takes one cable",
+      ok: false,
+    });
+    expect(canConnect(graph, connection)).toBe(false);
+    expect(
+      dropOnNode(
+        graph,
+        { handle: "out:audio:main", node: "fip", type: "source" },
+        "comp",
+        "in:sidechain:key"
+      )
+    ).toMatchObject({ replace: { connection, edge: "nts->comp" } });
+  });
+});
+
 describe("connectableHandles", () => {
   test("validates each port facing the drag once, and no other", () => {
     const spy = spyOn(validateModule, "validateConnection");
@@ -206,10 +220,15 @@ describe("connectableHandles", () => {
         type: "source",
       });
       // Inputs: Compressor in and key, Reverb in, Delay in, Speakers in.
+      // The Delay's input sums its Reverb with a new cable.
       expect(spy).toHaveBeenCalledTimes(5);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
-      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+      ).toEqual([
+        "verb in:audio:main",
+        "echo in:audio:main",
+        "speakers in:audio:main",
+      ]);
       expect(verdicts.get("fip out:audio:main")).toEqual({
         code: "bad-handle",
         message: SAME_SIDE_MESSAGE,
@@ -232,7 +251,11 @@ describe("connectableHandles", () => {
       expect(spy).toHaveBeenCalledTimes(5 + 1);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
-      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+      ).toEqual([
+        "verb in:audio:main",
+        "echo in:audio:main",
+        "speakers in:audio:main",
+      ]);
     } finally {
       spy.mockRestore();
     }

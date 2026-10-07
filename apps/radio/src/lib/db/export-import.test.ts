@@ -1079,8 +1079,9 @@ describe("Node patch backups", () => {
         draft.player.mode = "node";
       });
       const snapshot = playingMode("node");
-      const audio = AudioManager.getInstance();
-      audio.setGlobalVolume(0.9);
+      const { getNodePlayback } = await import("@/lib/node-playback");
+      // Node applies its master at its outputs, which re-read the session.
+      const outputs = spyOn(getNodePlayback(), "masterVolumeChanged");
 
       apply(
         rawBackup({
@@ -1096,9 +1097,9 @@ describe("Node patch backups", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(getPlaybackSession("node")?.masterVolume).toBe(0.1);
-      expect(audio.getGlobalVolume()).toBe(0.1);
+      expect(outputs).toHaveBeenCalled();
+      outputs.mockRestore();
       snapshot.mockRestore();
-      AudioManager.resetInstance();
     }
   );
 

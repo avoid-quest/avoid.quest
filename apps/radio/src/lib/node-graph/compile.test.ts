@@ -750,7 +750,7 @@ describe("compile: lanes in series", () => {
     expect(plan.issues).toEqual([]);
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
     expect(lane(plan, "a").filter).toBeNull();
-    expect(plan.modules.get("cut")).toEqual({
+    expect(plan.modules.get("filter:cut")).toEqual({
       filter: { frequency: 900, Q: 2, type: "lowpass" },
       id: "cut",
       kind: "filter",
@@ -1004,7 +1004,7 @@ describe("Filter and Pan: connection and compile agree", () => {
       }
       const plan = compile(patch, ENV);
       expect(plan.issues).toEqual([]);
-      expect(plan.modules.get("native")?.kind).toBe(type);
+      expect(plan.modules.get(`${type}:native`)?.kind).toBe(type);
       expect(routes(plan)).toEqual(
         [`lane:a>${type}:native`, `${type}:native>sink:speakers`].sort()
       );
@@ -1036,11 +1036,14 @@ describe("Filter and Pan: connection and compile agree", () => {
     // The leading Filter stays on the strip, before the insert.
     expect(lane(plan, "a").filter).toMatchObject({ frequency: 120 });
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
-    expect(plan.modules.get("high")).toMatchObject({
+    expect(plan.modules.get("filter:high")).toMatchObject({
       filter: { frequency: 6000, type: "lowpass" },
       kind: "filter",
     });
-    expect(plan.modules.get("wide")).toMatchObject({ kind: "pan", pan: -0.5 });
+    expect(plan.modules.get("pan:wide")).toMatchObject({
+      kind: "pan",
+      pan: -0.5,
+    });
     expect(routes(plan)).toEqual([
       "filter:high>pan:wide",
       "lane:a>filter:high",
@@ -1272,7 +1275,10 @@ describe("Filter and Pan between FX", () => {
     // Web Audio's panner moves the left side right at +1; no openDAW device
     // does the same, so the Pan runs as the panner itself.
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
-    expect(plan.modules.get("width")).toMatchObject({ kind: "pan", pan: 1 });
+    expect(plan.modules.get("pan:width")).toMatchObject({
+      kind: "pan",
+      pan: 1,
+    });
     expect(plan.cables.get("width->echo")).toMatchObject({
       delay: 0,
       from: { id: "width", kind: "pan" },
@@ -1295,7 +1301,7 @@ describe("Filter and Pan between FX", () => {
       ENV
     );
     expect(shape(lane(plan, "a").effects)).toEqual([["cheapReverb", "verb"]]);
-    expect(plan.modules.get("tone")?.kind).toBe("filter");
+    expect(plan.modules.get("filter:tone")?.kind).toBe("filter");
   });
 });
 
@@ -1661,7 +1667,7 @@ describe("compile: series-parallel regions", () => {
 
     expect(plan.issues).toEqual([]);
     expect(mergeRoles(merged, plan)).toEqual(new Map([["merge", "sum"]]));
-    expect(plan.modules.get("merge")).toMatchObject({ kind: "sum" });
+    expect(plan.modules.get("sum:merge")).toMatchObject({ kind: "sum" });
     expect(routes(plan)).toEqual([
       "lane:a>sum:merge",
       "lane:b>sum:merge",
@@ -1681,7 +1687,7 @@ describe("compile: series-parallel regions", () => {
     );
     const plan = compile(merged, ENV);
 
-    expect(plan.modules.get("merge")).toMatchObject({ kind: "sum" });
+    expect(plan.modules.get("sum:merge")).toMatchObject({ kind: "sum" });
     expect(plan.cables.has("b->merge")).toBe(false);
     expect(mergeRoles(merged, plan)).toEqual(new Map([["merge", "closes"]]));
   });
@@ -2162,7 +2168,7 @@ describe("compile: key cables", () => {
     expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
       channelId: "node-key:comp",
     });
-    expect(plan.modules.get("node-key:comp")).toEqual({
+    expect(plan.modules.get("key:node-key:comp")).toEqual({
       id: "node-key:comp",
       kind: "key",
       realtime: false,
@@ -2196,6 +2202,45 @@ describe("compile: key cables", () => {
       [audio("music", "comp"), audio("comp", "speakers"), key("talk", "comp")]
     );
     expect(soloed.cables.get("talk~>comp")?.muted).toBe(false);
+  });
+
+  test("a node named like a key id keeps its own point beside the key", () => {
+    const plan = build(
+      [
+        station("music"),
+        station("talk"),
+        fx("comp", "compressor"),
+        node("node-key:comp", "filter", {
+          frequency: 900,
+          Q: 1,
+          type: "lowpass",
+        }),
+        speakers,
+      ],
+      [
+        audio("music", "comp"),
+        audio("comp", "node-key:comp"),
+        audio("node-key:comp", "speakers"),
+        key("talk", "comp"),
+      ]
+    );
+    expect(plan.issues).toEqual([]);
+    expect(routes(plan)).toEqual(
+      [
+        "filter:node-key:comp>sink:speakers",
+        "lane:music>filter:node-key:comp",
+        "lane:talk>key:node-key:comp",
+      ].sort()
+    );
+    // Every point a cable reaches is one the routing graph makes.
+    const points = new Set(
+      [...plan.modules.values()].map((module) => endpointKey(module))
+    );
+    for (const cable of plan.cables.values()) {
+      if (cable.to.kind !== "sink") {
+        expect(points.has(endpointKey(cable.to))).toBe(true);
+      }
+    }
   });
 
   test("several processed or summed signals key several FX independently", () => {
@@ -2347,7 +2392,7 @@ describe("compile: key cables", () => {
     const [comp, gate] = lane(plan, "music").effects;
     expect(comp?.sidechain).toEqual({ channelId: "node-key:comp" });
     expect(gate?.sidechain).toEqual({ channelId: "node-key:comp" });
-    expect([...plan.modules.keys()]).toEqual(["node-key:comp"]);
+    expect([...plan.modules.keys()]).toEqual(["key:node-key:comp"]);
     // Both cables key their FX through the one key: neither is idle.
     const playing = graph(
       [
@@ -2410,7 +2455,7 @@ describe("compile: key cables", () => {
       ]
     );
     const plan = compile(playing, ENV);
-    expect([...plan.modules.keys()]).toEqual(["node-key:comp"]);
+    expect([...plan.modules.keys()]).toEqual(["key:node-key:comp"]);
     expect(idleKeys(playing, plan)).toEqual(new Map());
   });
 

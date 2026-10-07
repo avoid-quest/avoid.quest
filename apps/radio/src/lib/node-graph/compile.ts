@@ -234,6 +234,7 @@ export type SinkPlan = {
 export type EnginePlan = {
   lanes: Map<string, LanePlan>;
   units: Map<string, UnitPlan>;
+  /** By endpoint key: a generated key id never meets a node's own. */
   modules: Map<string, ModulePlan>;
   cables: Map<string, CablePlan>;
   sinks: Map<string, SinkPlan>;
@@ -857,6 +858,10 @@ class PlanBuilder {
     });
   }
 
+  private addModule(module: ModulePlan): void {
+    this.modules.set(endpointKey(module), module);
+  }
+
   private addUnit(id: string, segment: Segment): Endpoint {
     const { effects } = segment;
     this.units.set(id, {
@@ -885,8 +890,7 @@ class PlanBuilder {
     if (node.type === "filter" || node.type === "pan") {
       const module: Endpoint = { id, kind: node.type };
       this.endpoints.set(id, module);
-      this.modules.set(
-        id,
+      this.addModule(
         node.type === "filter"
           ? {
               filter: {
@@ -911,7 +915,7 @@ class PlanBuilder {
         : { id, kind: "sum" };
     this.endpoints.set(id, sum);
     if (sum.kind === "sum") {
-      this.modules.set(id, { id, kind: "sum", realtime: false });
+      this.addModule({ id, kind: "sum", realtime: false });
     }
     this.emit(segment?.exits ?? [], sum, UNITY);
     return sum;
@@ -947,7 +951,7 @@ class PlanBuilder {
       const owner = audible ? (kept?.[0]?.to.id ?? keyId) : null;
       if (owner === keyId) {
         shared.set(heard, [...groups, mine]);
-        this.modules.set(keyId, { id: keyId, kind: "key", realtime: false });
+        this.addModule({ id: keyId, kind: "key", realtime: false });
       } else {
         this.mergeKey(mine, owner ? (kept ?? []) : []);
       }
@@ -1267,7 +1271,9 @@ export function mergeRoles(
     if (node.type !== "merge") {
       continue;
     }
-    const point = plan.modules.has(node.id) || plan.units.has(node.id);
+    const point =
+      plan.modules.has(endpointKey({ id: node.id, kind: "sum" })) ||
+      plan.units.has(node.id);
     if (point && (inputs.get(node.id) ?? 0) > 1) {
       roles.set(node.id, "sum");
     } else if (point || inChains.has(node.id)) {

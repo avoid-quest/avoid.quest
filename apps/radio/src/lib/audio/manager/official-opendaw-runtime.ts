@@ -583,20 +583,24 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       for (const group of retiredGroups) {
         this.releaseWerkstattGroup(group);
       }
-      this.compileWerkstattChain(unit.groups);
+      this.compileWerkstattChain(soundId);
     });
   }
 
-  private compileWerkstattChain(groups: readonly OfficialEffectGroup[]): void {
+  private compileWerkstattChain(
+    soundId: string,
+    groups: readonly OfficialEffectGroup[] = this.soundUnits.get(soundId)
+      ?.groups ?? []
+  ): void {
     for (const group of groups) {
       const { config } = group;
       if (!config.enabled) {
         continue;
       }
       if (config.type === "werkstatt") {
-        this.compileWerkstattGroup(group, config);
+        this.compileWerkstattGroup(soundId, group, config);
       }
-      this.compileWerkstattChain(group.children);
+      this.compileWerkstattChain(soundId, group.children);
     }
   }
 
@@ -619,7 +623,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       group.config = authored;
       syncOfficialEffectCells(this.adapterContext(), group);
       if (authored.type === "werkstatt" && authored.enabled) {
-        this.compileWerkstattGroup(group, authored);
+        this.compileWerkstattGroup(soundId, group, authored);
       }
     });
     unit.effects = updateEffectFieldsInTree(unit.effects, effectId, authored);
@@ -873,6 +877,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   }
 
   private compileWerkstattGroup(
+    soundId: string,
     group: OfficialEffectGroup,
     config: Extract<EffectConfig, { type: "werkstatt" }>
   ): void {
@@ -898,50 +903,52 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       }
       return;
     }
-    this.afterCommit(() => {
-      this.subscribeWerkstattMessages(group, config.id);
-      this.nextWerkstattGeneration += 1;
-      const generation = this.nextWerkstattGeneration;
-      this.werkstattGenerations.set(group, generation);
-      this.werkstattGroups.set(config.id, group);
-      setWerkstattRuntimeStatus(config.id, {
-        message: "Compiling locally in the openDAW audio worklet…",
-        state: "compiling",
-      });
-      this.werkstattSources.set(group, source);
-      this.transaction(() =>
-        compiler.compile(this.context, Editing.Transient, device, source)
-      )
-        .then(() => {
-          if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
-            return;
-          }
-          const current = group.config;
-          if (current.type === "werkstatt") {
-            this.transaction(() =>
-              restoreWerkstattParameterValues(
-                this.adapterContext(),
-                group,
-                current.parameters
-              )
-            );
-          }
-          setWerkstattRuntimeStatus(config.id, {
-            message: "Compiled and running in the client-side audio worklet.",
-            state: "ready",
-          });
-        })
-        .catch((cause: unknown) => {
-          if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
-            return;
-          }
-          setWerkstattRuntimeStatus(config.id, {
-            message:
-              cause instanceof Error ? cause.message : "Compilation failed.",
-            state: "error",
-          });
-        });
+    if (project.boxGraph.inTransaction()) {
+      this.afterCommit(() => this.compileWerkstattChain(soundId));
+      return;
+    }
+    this.subscribeWerkstattMessages(group, config.id);
+    this.nextWerkstattGeneration += 1;
+    const generation = this.nextWerkstattGeneration;
+    this.werkstattGenerations.set(group, generation);
+    this.werkstattGroups.set(config.id, group);
+    setWerkstattRuntimeStatus(config.id, {
+      message: "Compiling locally in the openDAW audio worklet…",
+      state: "compiling",
     });
+    this.werkstattSources.set(group, source);
+    this.transaction(() =>
+      compiler.compile(this.context, Editing.Transient, device, source)
+    )
+      .then(() => {
+        if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
+          return;
+        }
+        const current = group.config;
+        if (current.type === "werkstatt") {
+          this.transaction(() =>
+            restoreWerkstattParameterValues(
+              this.adapterContext(),
+              group,
+              current.parameters
+            )
+          );
+        }
+        setWerkstattRuntimeStatus(config.id, {
+          message: "Compiled and running in the client-side audio worklet.",
+          state: "ready",
+        });
+      })
+      .catch((cause: unknown) => {
+        if (!this.isCurrentWerkstattCompile(group, config.id, generation)) {
+          return;
+        }
+        setWerkstattRuntimeStatus(config.id, {
+          message:
+            cause instanceof Error ? cause.message : "Compilation failed.",
+          state: "error",
+        });
+      });
   }
 
   private subscribeWerkstattMessages(

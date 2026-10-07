@@ -632,6 +632,76 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     }
   );
 
+  test.each([
+    ["write", "syncEffects"],
+    ["write", "deleteSound"],
+    ["sync", "syncEffects"],
+    ["sync", "deleteSound"],
+  ] as const)(
+    "a script enabled by %s and retired by %s in one transaction never reaches the worklet",
+    async (enable, retire) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = { ...werkstatt(), enabled: false };
+      h.runtime.syncEffects("deck", [config]);
+      const device = scriptDevice(h);
+      const enabled = { ...config, enabled: true };
+
+      h.project.boxGraph.beginTransaction();
+      if (enable === "write") {
+        expect(h.runtime.writeEffect("deck", config.id, enabled)).toBe(
+          "applied"
+        );
+      } else {
+        h.runtime.syncEffects("deck", [enabled]);
+      }
+      if (retire === "syncEffects") {
+        h.runtime.syncEffects("deck", []);
+      } else {
+        h.runtime.deleteSound("deck");
+      }
+      h.project.boxGraph.endTransaction();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(device.isAttached()).toBe(false);
+      expect(h.compiles).toHaveLength(0);
+      expect(h.subscriptions).toHaveLength(0);
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("idle");
+      expect(
+        h.project.boxGraph
+          .boxes()
+          .some((box) => box instanceof h.boxes.WerkstattParameterBox)
+      ).toBe(false);
+    }
+  );
+
+  test("a deferred compile uses the replacement script owned at commit", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = { ...werkstatt(), enabled: false };
+    h.runtime.syncEffects("deck", [config]);
+    const retired = scriptDevice(h);
+    const replacement = werkstatt("// replacement script");
+
+    h.project.boxGraph.beginTransaction();
+    h.runtime.writeEffect("deck", config.id, { ...config, enabled: true });
+    h.runtime.syncEffects("deck", []);
+    h.runtime.syncEffects("deck", [replacement]);
+    h.project.boxGraph.endTransaction();
+
+    const device = scriptDevice(h);
+    expect(retired.isAttached()).toBe(false);
+    expect(device).not.toBe(retired);
+    expect(h.compiles).toHaveLength(1);
+    await finishCompile(h.compiles[0]);
+    expect(device.code.getValue()).toContain("// replacement script");
+    expect(parameter(h, device).value.getValue()).toBe(0.25);
+    expect(
+      h.subscriptions.map((subscription) => subscription.deviceId)
+    ).toEqual([UUID.toString(device.address.uuid)]);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+  });
+
   test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
     "%s defers descendant scripts while an ancestor is disabled",
     async (type) => {

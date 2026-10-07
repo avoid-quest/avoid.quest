@@ -97,10 +97,15 @@ export type RoutingHost = {
  * A cable as its sender's send: where it goes, its level and its delay.
  * A transient overlay replaces its gain; its mute still silences it.
  */
-export function sendPlan(cable: CablePlan, overlay?: number): SendPlan {
+export function sendPlan(
+  cable: CablePlan,
+  realtime: boolean,
+  overlay?: number
+): SendPlan {
   return {
     delay: cable.delay,
     level: cable.muted ? 0 : (overlay ?? cable.gain),
+    realtime,
     reenters: cable.reenters,
     to: endpointKey(cable.to),
   };
@@ -470,7 +475,7 @@ export class RoutingGraph {
       parameters,
       sends: new Sends(
         output,
-        (to, send) => this.route(to, send, point.plan.realtime, point.key),
+        (to, send, realtime) => this.route(to, send, realtime, point.key),
         this.wait
       ),
     };
@@ -513,7 +518,7 @@ export class RoutingGraph {
     return new Map(
       point.cables.map((cable) => [
         cable.id,
-        sendPlan(cable, this.host.sendOverlay(cable)),
+        sendPlan(cable, point.plan.realtime, this.host.sendOverlay(cable)),
       ])
     );
   }

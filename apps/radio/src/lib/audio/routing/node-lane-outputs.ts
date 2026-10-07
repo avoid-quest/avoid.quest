@@ -86,8 +86,6 @@ type LaneOutput = {
   host: LaneOutputHost;
   out: GainNode | null;
   sends: Sends | null;
-  /** From the last connect: whether it skips the main delay. */
-  realtime: boolean;
   /** Under a layout duck: a rebuilt laneOut starts silent too. */
   ducked: boolean;
 };
@@ -116,19 +114,14 @@ export function createNodeLaneOutputs({
     const out = context.createGain();
     out.gain.value = lane.ducked ? 0 : 1;
     lane.out = out;
-    lane.sends = new Sends(
-      out,
-      (to, send) => route(to, send, lane.realtime),
-      wait
-    );
+    lane.sends = new Sends(out, route, wait);
     return out;
   };
 
   const connectorFor =
     (laneId: string, lane: LaneOutput): SoundOutputConnector =>
-    (source, realtime) => {
+    (source) => {
       onConnect?.(laneId);
-      lane.realtime = realtime;
       const out = ensureOut(lane, source.context);
       source.connect(out);
       lane.sends?.settle(getSends(laneId));
@@ -159,7 +152,6 @@ export function createNodeLaneOutputs({
         ducked: false,
         host,
         out: null,
-        realtime: false,
         sends: null,
         soundId,
       };

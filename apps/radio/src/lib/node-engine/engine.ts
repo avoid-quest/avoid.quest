@@ -270,9 +270,11 @@ export function createNodeEngine(options: NodeEngineOptions) {
   /** The lane's sends: one per cable leaving it. */
   const laneSends = (laneId: string) => {
     const sends = new Map<string, SendPlan>();
+    // A live input's lane skips the main delay.
+    const realtime = plan.lanes.get(laneId)?.source.kind === "device";
     for (const cable of plan.cables.values()) {
       if (cable.from.kind === "lane" && cable.from.id === laneId) {
-        sends.set(cable.id, sendPlan(cable, sendOverlay(cable)));
+        sends.set(cable.id, sendPlan(cable, realtime, sendOverlay(cable)));
       }
     }
     return sends;

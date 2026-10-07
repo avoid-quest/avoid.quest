@@ -152,7 +152,7 @@ function createHarness() {
       effects.set(id, unit.effects);
       return Promise.resolve(ready);
     }),
-    routeSink: mock((sinkId: string, send: AudioNode) => {
+    routeSink: mock((sinkId: string, send: AudioNode, _realtime: boolean) => {
       const into = sinks.get(sinkId) ?? new Set<unknown>();
       sinks.set(sinkId, into);
       into.add(send);
@@ -250,6 +250,39 @@ function feeds(from: unknown, to: unknown): boolean {
 }
 
 describe("RoutingGraph", () => {
+  test("a unit's sends move to the other timing when the sources it hears change", async () => {
+    const h = createHarness();
+    /** The shared plan, its unit heard as only live inputs or not. */
+    const timed = (realtime: boolean): EnginePlan => {
+      const next = shared();
+      for (const unit of next.units.values()) {
+        unit.realtime = realtime;
+      }
+      return next;
+    };
+    h.apply(timed(true));
+    h.laneSends("a");
+    await h.settle();
+    const [live] = h.sinks.get("speakers") ?? [];
+
+    h.apply(timed(false));
+
+    // The live send fades out while a new one takes the main delay.
+    expect(lastValue((live as FakeGainNode).gain)).toBe(0);
+    expect(
+      h.host.routeSink.mock.calls.map(([sinkId, , realtime]) => [
+        sinkId,
+        realtime,
+      ])
+    ).toEqual([
+      ["speakers", true],
+      ["speakers", false],
+    ]);
+    await h.endFades();
+    expect(h.sinks.get("speakers")?.has(live)).toBe(false);
+    expect(h.sinks.get("speakers")?.size).toBe(1);
+  });
+
   test("two sources sum before one shared effect; dry and wet outputs stay distinct", async () => {
     const h = createHarness();
     const next = plan(

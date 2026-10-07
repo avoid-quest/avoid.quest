@@ -28,14 +28,24 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
       }
     ),
   };
-  /** Per lane, the level of its one cable into each sink. */
+  /** Per lane, each cable's level, by cable id: a sink's id by default. */
   const levels = new Map<string, Map<string, number>>([
     ["kexp", new Map([["speakers", level]])],
   ]);
-  const setLevel = (laneId: string, sinkId: string, value: number) => {
+  /** A cable into a sink other than the one its id names. */
+  const destinations = new Map<string, string>();
+  /** Whether each lane hears a live input. */
+  const realtime = new Set<string>();
+  const setLevel = (
+    laneId: string,
+    sinkId: string,
+    value: number,
+    cableId = sinkId
+  ) => {
     const lane = levels.get(laneId) ?? new Map<string, number>();
-    lane.set(sinkId, value);
+    lane.set(cableId, value);
     levels.set(laneId, lane);
+    destinations.set(cableId, sinkId);
   };
   /** Where each sink's sends go; the main bus unless a test says. */
   const routes = new Map<string, Set<unknown>>();
@@ -64,9 +74,15 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     getHost: () => host,
     getSends: (laneId) =>
       new Map(
-        [...(levels.get(laneId) ?? [])].map(([sinkId, value]) => [
-          `${laneId}>${sinkId}`,
-          { delay: 0, level: value, reenters: false, to: sinkId },
+        [...(levels.get(laneId) ?? [])].map(([cableId, value]) => [
+          `${laneId}>${cableId}`,
+          {
+            delay: 0,
+            level: value,
+            realtime: realtime.has(laneId),
+            reenters: false,
+            to: destinations.get(cableId) ?? cableId,
+          },
         ])
       ),
     onConnect,
@@ -84,9 +100,10 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     }
     const disconnect = connect(node, false, () => () => undefined);
     const laneOut = [...fader.connections][0] as FakeGainNode;
-    const sendTo = (sinkId: string) =>
-      sendsOf(laneOut).find((send) => sendSinks.get(send) === sinkId);
-    return { disconnect, fader, laneOut, sendTo };
+    const sendsTo = (sinkId: string) =>
+      sendsOf(laneOut).filter((send) => sendSinks.get(send) === sinkId);
+    const sendTo = (sinkId: string) => sendsTo(sinkId)[0];
+    return { disconnect, fader, laneOut, sendsTo, sendTo };
   };
 
   const sendsOf = (laneOut: FakeGainNode) =>
@@ -100,6 +117,7 @@ function createHarness(level = 1, onConnect?: (laneId: string) => void) {
     levels,
     mainSources,
     outputs,
+    realtime,
     releaseMain,
     route,
     routes,
@@ -177,6 +195,43 @@ describe("createNodeLaneOutputs", () => {
     expect(harness.mainSources.has(speakers)).toBe(true);
     expect(harness.mainSources.has(desk)).toBe(false);
     expect(harness.routes.get("desk")?.has(desk)).toBe(true);
+  });
+
+  test("two cables into one sink get their own sends, each at its own level", () => {
+    const harness = createHarness(1);
+    harness.setLevel("kexp", "speakers", 0.25, "speakers again");
+    harness.outputs.attach("kexp", "node:n:kexp");
+
+    const { sendsTo } = harness.connectSound("node:n:kexp");
+    const [first, second] = sendsTo("speakers");
+
+    expect(sendsTo("speakers")).toHaveLength(2);
+    expect(first?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(second?.gain.events.at(-1)).toMatchObject({ value: 0.25 });
+    expect(harness.mainSources.has(first)).toBe(true);
+    expect(harness.mainSources.has(second)).toBe(true);
+
+    // Muting one leaves the other.
+    harness.setLevel("kexp", "speakers", 0, "speakers again");
+    harness.outputs.refresh("kexp");
+    expect(first?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(second?.gain.events.at(-1)).toMatchObject({ value: 0 });
+  });
+
+  test("a lane that turns into a live input moves its sends off the main delay", () => {
+    const harness = createHarness();
+    harness.outputs.attach("kexp", "node:n:kexp");
+    const { sendTo } = harness.connectSound("node:n:kexp");
+    const delayed = sendTo("speakers");
+
+    harness.realtime.add("kexp");
+    harness.outputs.refresh("kexp");
+
+    expect(delayed?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(harness.route.mock.calls.map(([, , live]) => live)).toEqual([
+      false,
+      true,
+    ]);
   });
 
   test("refresh ramps each send to its current level with τ 5 ms", () => {

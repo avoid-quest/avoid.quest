@@ -10,7 +10,7 @@
  *   sender → gain(cable) → [delay] → connect(to)
  *
  * Every cable starts silent and ramps to its level. A cable that goes, or
- * moves to a new destination or delay, fades out and is let go once
+ * moves to a new destination, delay or timing, fades out and is let go once
  * silent; until then it still counts as an edge (`edges`), so a new cable
  * can wait for it rather than close a loop with it.
  */
@@ -77,6 +77,8 @@ export type SendPlan = {
   delay: number;
   /** It loops back into openDAW: it passes a DelayNode, delay or not. */
   reenters: boolean;
+  /** Its sender hears only live inputs: an output skips the main delay. */
+  realtime: boolean;
 };
 
 /** A cable out of the sender, live or fading out. */
@@ -90,6 +92,7 @@ type Send = {
   readonly to: string;
   readonly delay: number;
   readonly reenters: boolean;
+  readonly realtime: boolean;
   readonly gain: GainNode;
   readonly tail: DelayNode | null;
   release: () => void;
@@ -97,7 +100,11 @@ type Send = {
   unwired: boolean;
 };
 
-export type SendConnect = (to: string, send: AudioNode) => () => void;
+export type SendConnect = (
+  to: string,
+  send: AudioNode,
+  realtime: boolean
+) => () => void;
 
 export class Sends {
   private readonly from: AudioNode;
@@ -123,7 +130,8 @@ export class Sends {
       if (
         plan?.to !== send.to ||
         plan.delay !== send.delay ||
-        plan.reenters !== send.reenters
+        plan.reenters !== send.reenters ||
+        plan.realtime !== send.realtime
       ) {
         this.fade(id, send);
       }
@@ -171,6 +179,7 @@ export class Sends {
     const send: Send = {
       delay: plan.delay,
       gain,
+      realtime: plan.realtime,
       reenters: plan.reenters,
       release: () => undefined,
       tail,
@@ -178,7 +187,7 @@ export class Sends {
       unwired: false,
     };
     this.live.set(id, send);
-    send.release = this.connect(plan.to, tail ?? gain);
+    send.release = this.connect(plan.to, tail ?? gain, plan.realtime);
     return send;
   }
 

@@ -8,10 +8,13 @@ function createHarness() {
   /** What each destination takes. */
   const into = new Map<string, Set<unknown>>();
   const released = mock((_to: string) => undefined);
+  /** Each connect's destination and timing, in order. */
+  const connects: [string, boolean][] = [];
   const waits: (() => void)[] = [];
   const sends = new Sends(
     from as unknown as AudioNode,
-    (to, node) => {
+    (to, node, realtime) => {
+      connects.push([to, realtime]);
       const set = into.get(to) ?? new Set<unknown>();
       into.set(to, set);
       set.add(node);
@@ -35,14 +38,29 @@ function createHarness() {
     await Promise.resolve();
     await Promise.resolve();
   };
-  return { context, endFades, from, into, released, sends, settle };
+  return {
+    connects,
+    context,
+    endFades,
+    from,
+    into,
+    released,
+    sends,
+    settle,
+  };
 }
 
 describe("Sends", () => {
   test("a cable that waits for a slower path plays through a DelayNode of whole render quanta", () => {
     const h = createHarness();
     h.settle({
-      late: { delay: 2, level: 0.5, reenters: false, to: "sum:mix" },
+      late: {
+        delay: 2,
+        level: 0.5,
+        realtime: false,
+        reenters: false,
+        to: "sum:mix",
+      },
     });
 
     const [delayNode] = h.context.delays;
@@ -57,7 +75,15 @@ describe("Sends", () => {
 
   test("a cable back into openDAW passes a DelayNode that adds no delay", () => {
     const h = createHarness();
-    h.settle({ back: { delay: 0, level: 1, reenters: true, to: "unit:comp" } });
+    h.settle({
+      back: {
+        delay: 0,
+        level: 1,
+        realtime: false,
+        reenters: true,
+        to: "unit:comp",
+      },
+    });
 
     const [delayNode] = h.context.delays;
     expect(delayNode?.delayTime.value).toBe(0);
@@ -66,7 +92,15 @@ describe("Sends", () => {
 
   test("a cable with no wait connects its gain straight in", () => {
     const h = createHarness();
-    h.settle({ now: { delay: 0, level: 1, reenters: false, to: "sink:out" } });
+    h.settle({
+      now: {
+        delay: 0,
+        level: 1,
+        realtime: false,
+        reenters: false,
+        to: "sink:out",
+      },
+    });
 
     expect(h.context.delays).toHaveLength(0);
     const [gain] = [...h.from.connections];
@@ -75,10 +109,26 @@ describe("Sends", () => {
 
   test("a new wait crossfades to a new cable, and the old one counts as an edge until it is gone", async () => {
     const h = createHarness();
-    h.settle({ cable: { delay: 0, level: 1, reenters: false, to: "sum:mix" } });
+    h.settle({
+      cable: {
+        delay: 0,
+        level: 1,
+        realtime: false,
+        reenters: false,
+        to: "sum:mix",
+      },
+    });
     const [before] = [...h.from.connections] as FakeGainNode[];
 
-    h.settle({ cable: { delay: 1, level: 1, reenters: false, to: "sum:mix" } });
+    h.settle({
+      cable: {
+        delay: 1,
+        level: 1,
+        realtime: false,
+        reenters: false,
+        to: "sum:mix",
+      },
+    });
 
     expect(before?.gain.events.at(-1)).toMatchObject({ value: 0 });
     expect(h.sends.edges()).toEqual([
@@ -91,13 +141,51 @@ describe("Sends", () => {
     expect(h.into.get("sum:mix")?.size).toBe(1);
   });
 
+  test("a cable whose sender changes timing crossfades to a cable on the new timing", async () => {
+    const h = createHarness();
+    const cable = { delay: 0, level: 1, reenters: false, to: "sink:out" };
+    h.settle({ cable: { ...cable, realtime: true } });
+    const [before] = [...h.from.connections] as FakeGainNode[];
+
+    h.settle({ cable: { ...cable, realtime: false } });
+
+    expect(before?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(h.connects).toEqual([
+      ["sink:out", true],
+      ["sink:out", false],
+    ]);
+    await h.endFades();
+    expect(h.from.connections.has(before)).toBe(false);
+    expect(h.into.get("sink:out")?.size).toBe(1);
+  });
+
   test("drop lets go of every cable once, a fading one included", async () => {
     const h = createHarness();
     h.settle({
-      a: { delay: 0, level: 1, reenters: false, to: "sink:out" },
-      b: { delay: 0, level: 1, reenters: false, to: "sum:mix" },
+      a: {
+        delay: 0,
+        level: 1,
+        realtime: false,
+        reenters: false,
+        to: "sink:out",
+      },
+      b: {
+        delay: 0,
+        level: 1,
+        realtime: false,
+        reenters: false,
+        to: "sum:mix",
+      },
     });
-    h.settle({ a: { delay: 0, level: 1, reenters: false, to: "sink:out" } });
+    h.settle({
+      a: {
+        delay: 0,
+        level: 1,
+        realtime: false,
+        reenters: false,
+        to: "sink:out",
+      },
+    });
 
     h.sends.drop();
     await h.endFades();

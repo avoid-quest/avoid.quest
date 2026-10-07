@@ -151,7 +151,13 @@ describe("device input first connection", () => {
           new Map([
             [
               "a>speakers",
-              { delay: 0, level: 1, reenters: false, to: "sink:speakers" },
+              {
+                delay: 0,
+                level: 1,
+                realtime: false,
+                reenters: false,
+                to: "sink:speakers",
+              },
             ],
           ]),
         // As the engine routes Speakers: onto the main bus.

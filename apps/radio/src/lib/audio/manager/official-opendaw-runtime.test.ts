@@ -571,24 +571,28 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(device.threshold.getValue()).toBe(-24);
   });
 
-  test.each(["sync", "connect"] as const)(
+  test.each(["sync", "connect", "write"] as const)(
     "a failed %s commits no script until the enclosing graph transaction succeeds",
     async (operation) => {
       const h = await createHarness();
       await h.runtime.connectSound("deck", h.source, h.destination);
-      const config = werkstatt();
+      const config = { ...werkstatt(), enabled: operation !== "write" };
       h.runtime.syncEffects("deck", [config]);
-      await finishCompile(h.compiles[0]);
+      if (config.enabled) {
+        await finishCompile(h.compiles[0]);
+      }
       const device = scriptDevice(h);
       const code = device.code.getValue();
       const checksum = h.project.boxGraph.checksum();
-      const updated = werkstatt("// retry after rollback");
+      const compiled = h.compiles.length;
+      const status = getWerkstattRuntimeStatus(config.id).state;
+      const updated =
+        operation === "write"
+          ? { ...config, enabled: true }
+          : werkstatt("// retry after rollback");
       const sync = () =>
-        operation === "sync"
-          ? Promise.resolve().then(() =>
-              h.runtime.syncEffects("deck", [updated])
-            )
-          : h.runtime.connectSound(
+        operation === "connect"
+          ? h.runtime.connectSound(
               "deck",
               h.source,
               h.destination,
@@ -600,6 +604,11 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
                 sidechainSoundId: null,
                 tempo: 120,
               }
+            )
+          : Promise.resolve().then(() =>
+              operation === "write"
+                ? h.runtime.writeEffect("deck", config.id, updated)
+                : h.runtime.syncEffects("deck", [updated])
             );
       const endTransaction = spyOn(h.project.boxGraph, "endTransaction");
       endTransaction.mockImplementationOnce(() => {
@@ -612,16 +621,86 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
       expect(h.project.boxGraph.checksum()).toEqual(checksum);
       expect(device.code.getValue()).toBe(code);
-      expect(h.compiles).toHaveLength(1);
-      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      expect(h.compiles).toHaveLength(compiled);
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe(status);
       await sync();
-      expect(h.compiles).toHaveLength(2);
-      await finishCompile(h.compiles[1]);
+      expect(h.compiles).toHaveLength(compiled + 1);
+      await finishCompile(h.compiles[compiled]);
       expect(scriptDevice(h)).toBe(device);
-      expect(device.code.getValue()).toContain("// retry after rollback");
+      expect(device.code.getValue()).toContain(updated.code);
       expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
     }
   );
+
+  test.each([
+    ["write", "syncEffects"],
+    ["write", "deleteSound"],
+    ["sync", "syncEffects"],
+    ["sync", "deleteSound"],
+  ] as const)(
+    "a script enabled by %s and retired by %s in one transaction never reaches the worklet",
+    async (enable, retire) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const config = { ...werkstatt(), enabled: false };
+      h.runtime.syncEffects("deck", [config]);
+      const device = scriptDevice(h);
+      const enabled = { ...config, enabled: true };
+
+      h.project.boxGraph.beginTransaction();
+      if (enable === "write") {
+        expect(h.runtime.writeEffect("deck", config.id, enabled)).toBe(
+          "applied"
+        );
+      } else {
+        h.runtime.syncEffects("deck", [enabled]);
+      }
+      if (retire === "syncEffects") {
+        h.runtime.syncEffects("deck", []);
+      } else {
+        h.runtime.deleteSound("deck");
+      }
+      h.project.boxGraph.endTransaction();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(device.isAttached()).toBe(false);
+      expect(h.compiles).toHaveLength(0);
+      expect(h.subscriptions).toHaveLength(0);
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("idle");
+      expect(
+        h.project.boxGraph
+          .boxes()
+          .some((box) => box instanceof h.boxes.WerkstattParameterBox)
+      ).toBe(false);
+    }
+  );
+
+  test("a deferred compile uses the replacement script owned at commit", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = { ...werkstatt(), enabled: false };
+    h.runtime.syncEffects("deck", [config]);
+    const retired = scriptDevice(h);
+    const replacement = werkstatt("// replacement script");
+
+    h.project.boxGraph.beginTransaction();
+    h.runtime.writeEffect("deck", config.id, { ...config, enabled: true });
+    h.runtime.syncEffects("deck", []);
+    h.runtime.syncEffects("deck", [replacement]);
+    h.project.boxGraph.endTransaction();
+
+    const device = scriptDevice(h);
+    expect(retired.isAttached()).toBe(false);
+    expect(device).not.toBe(retired);
+    expect(h.compiles).toHaveLength(1);
+    await finishCompile(h.compiles[0]);
+    expect(device.code.getValue()).toContain("// replacement script");
+    expect(parameter(h, device).value.getValue()).toBe(0.25);
+    expect(
+      h.subscriptions.map((subscription) => subscription.deviceId)
+    ).toEqual([UUID.toString(device.address.uuid)]);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+  });
 
   test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
     "%s defers descendant scripts while an ancestor is disabled",
@@ -1166,7 +1245,16 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
         },
       });
       try {
-        h.runtime.syncEffects("deck", effects({ ...config, threshold: -18 }));
+        expect(
+          h.runtime.writeEffect("deck", config.id, {
+            ...config,
+            threshold: -18,
+          })
+        ).toBe("applied");
+        expect(h.project.boxGraph.findBox(device.address.uuid).unwrap()).toBe(
+          device
+        );
+        expect(device.threshold.getValue()).toBe(-18);
         expect(updates).toEqual([{ field: device.threshold, value: -18 }]);
         expect(transactions).toEqual([false]);
         expect(h.project.editing.hasNoChanges()).toBe(true);
@@ -1176,6 +1264,78 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
       }
     }
   );
+
+  test("a ready Werkstatt edit commits its mix and parameters together", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = werkstatt();
+    h.runtime.syncEffects("deck", [config]);
+    await finishCompile(h.compiles[0]);
+    const device = scriptDevice(h);
+    const wrapper = wrapperForDevice(h, device);
+    const amount = parameter(h, device);
+    const committed: Array<{ amount: number; wet: number }> = [];
+    const subscription = h.project.boxGraph.subscribeTransaction({
+      onBeginTransaction: () => undefined,
+      onEndTransaction: (aborted) => {
+        if (!aborted) {
+          committed.push({
+            amount: amount.value.getValue(),
+            wet: wrapper.wet.getValue(),
+          });
+        }
+      },
+    });
+    try {
+      expect(
+        h.runtime.writeEffect("deck", config.id, {
+          ...config,
+          dryWet: 0.5,
+          parameters: { amount: 0.75 },
+        })
+      ).toBe("applied");
+      expect(committed).toEqual([
+        { amount: 0.75, wet: wrapper.wet.getValue() },
+      ]);
+      expect(wrapper.wet.getValue()).toBeCloseTo(20 * Math.log10(0.5));
+      expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+      expect(h.project.editing.canUndo()).toBe(false);
+    } finally {
+      subscription.terminate();
+    }
+  });
+
+  test("model and Autotune layout changes use the structural path", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const nam = createDefaultEffectConfig("neuralAmp", "amp", 0);
+    const tune = createDefaultEffectConfig("autotune", "tune", 1);
+    h.runtime.syncEffects("deck", [nam, tune]);
+    expect(
+      h.runtime.writeEffect("deck", nam.id, { ...nam, modelId: "new-model" })
+    ).toBe("structural");
+    expect(
+      h.runtime.writeEffect("deck", tune.id, { ...tune, dryWet: 0.5 })
+    ).toBe("structural");
+    const oldModel = h.project.boxGraph
+      .boxes()
+      .find((box) => box instanceof h.boxes.NeuralAmpDeviceBox);
+    h.runtime.syncEffects("deck", [
+      { ...nam, modelId: "new-model" },
+      { ...tune, dryWet: 0.5 },
+    ]);
+    expect(h.project.boxGraph.boxes()).not.toContain(oldModel);
+    const device = asInstanceOf(
+      h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.AutotuneDeviceBox),
+      h.boxes.AutotuneDeviceBox
+    );
+    expect(wrapperForDevice(h, device).wet.getValue()).toBeCloseTo(
+      20 * Math.log10(0.5)
+    );
+    expect(h.project.editing.hasNoChanges()).toBe(true);
+  });
 
   test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
     "%s edits nested chains and cell controls without resetting their devices",
@@ -1364,6 +1524,27 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(device.code.getValue()).toContain("// another edit while off");
   });
 
+  test("enabling a script through a field write compiles it and preserves its device", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const config = { ...werkstatt(), enabled: false };
+    h.runtime.syncEffects("deck", [config]);
+    const device = scriptDevice(h);
+    const enabled = { ...config, enabled: true };
+    expect(h.runtime.writeEffect("deck", config.id, enabled)).toBe("applied");
+    await finishCompile(h.compiles[0]);
+    expect(scriptDevice(h)).toBe(device);
+    expect(device.code.getValue()).toContain("// first version");
+    expect(parameter(h, device).value.getValue()).toBe(0.25);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+    h.runtime.writeEffect("deck", config.id, {
+      ...enabled,
+      parameters: { amount: 0.7 },
+    });
+    expect(parameter(h, device).value.getValue()).toBeCloseTo(0.7);
+    expect(getWerkstattRuntimeStatus(config.id).state).toBe("ready");
+  });
+
   test("a failed script keeps its error until its source changes", async () => {
     const h = await createHarness();
     await h.runtime.connectSound("deck", h.source, h.destination);
@@ -1417,6 +1598,7 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     h.runtime.syncEffects("deck", [second]);
 
     expect(scriptDevice(h)).toBe(device);
+    expect(amount.value.getValue()).toBeCloseTo(0.1);
     expect(h.compiles).toHaveLength(2);
     expect(h.subscriptions).toHaveLength(1);
     expect(getWerkstattRuntimeStatus(first.id).state).toBe("compiling");
@@ -1429,6 +1611,27 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(amount.value.getValue()).toBe(0.75);
     expect(device.code.getValue()).toBe(currentCode);
     expect(getWerkstattRuntimeStatus(first.id).state).toBe("ready");
+  });
+
+  test("parameter edits wait for a replacement script instead of changing the old declarations", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const first = werkstatt();
+    h.runtime.syncEffects("deck", [first]);
+    await finishCompile(h.compiles[0]);
+    const device = scriptDevice(h);
+    const amount = parameter(h, device);
+    const second = werkstatt("// replacement script");
+    h.runtime.syncEffects("deck", [second]);
+    expect(
+      h.runtime.writeEffect("deck", second.id, {
+        ...second,
+        parameters: { amount: 0.75 },
+      })
+    ).toBe("applied");
+    expect(amount.value.getValue()).toBe(0.25);
+    await finishCompile(h.compiles[1]);
+    expect(parameter(h, device).value.getValue()).toBe(0.75);
   });
 
   test.each(["replace", "remove"] as const)(

@@ -20,6 +20,7 @@ import {
   type Radio,
 } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { updateEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
 import { createPlaybackSourceCallbacks } from "@/lib/audio/manager/audio-manager-source-callbacks";
 import type {
   MainOutputConnect,
@@ -30,6 +31,7 @@ import {
   capturedStream,
   createDeviceCaptureHarness,
 } from "@/lib/audio/manager/device-capture-test-harness";
+import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtime";
 import {
   createFakeFader,
   FakeAudioContext,
@@ -317,6 +319,7 @@ type Harness = {
   /** Each sound's effects, as last reconciled. */
   desired: Map<string, DesiredEffectsState>;
   reconcileEffects: ReturnType<typeof mock<AudioManager["reconcileEffects"]>>;
+  setEffectFields: ReturnType<typeof mock<AudioManager["setEffectFields"]>>;
   fadeOutSound: ReturnType<typeof mock>;
   /** What hears of another tab's session writes while Node is active. */
   otherTabListeners: Set<() => void>;
@@ -360,11 +363,31 @@ function createHarness(
   const fadeOutSound = mock(
     options.fadeOutSound ?? (async (_soundId: string) => undefined)
   );
+  const setEffectFields = mock(
+    (
+      soundId: string,
+      effectId: string,
+      config: EffectConfig
+    ): EffectWriteResult => {
+      const state = desired.get(soundId);
+      if (!state) {
+        return "unavailable" as const;
+      }
+      desired.set(soundId, {
+        ...state,
+        tree: updateEffectInTree(state.tree, effectId, config),
+      });
+      return "applied" as const;
+    }
+  );
   const otherTabListeners = new Set<() => void>();
   const playback = getNodePlayback({
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
-    effects: options.effects ?? { reconcileEffects },
+    effects: options.effects ?? {
+      reconcileEffects,
+      setEffectFields,
+    },
     fadeOutSound,
     getEnv: () => ({
       crossOriginIsolated: options.crossOriginIsolated ?? false,
@@ -388,6 +411,7 @@ function createHarness(
     otherTabListeners,
     playback,
     reconcileEffects,
+    setEffectFields,
     store,
   };
 }
@@ -2412,6 +2436,7 @@ describe("Node Playback lane outputs", () => {
           replaces.push({ done: () => resolve(ready), tree });
           return promise;
         }),
+        setEffectFields: () => "structural",
       },
     });
     instantStarts(harness.context);
@@ -2478,6 +2503,7 @@ describe("Node Playback lane outputs", () => {
           replaces.push({ done: () => resolve(ready), tree });
           return promise;
         }),
+        setEffectFields: () => "structural",
       },
     });
     instantStarts(harness.context);
@@ -2537,6 +2563,7 @@ describe("Node Playback lane outputs", () => {
               })
             : Promise.reject(new Error("tree failed"))
         ),
+        setEffectFields: () => "structural",
       },
     });
     const warnings = spyOn(console, "warn").mockImplementation(() => undefined);
@@ -2667,7 +2694,7 @@ describe("Node Playback FX lanes", () => {
       } as Partial<EffectConfig>);
   }
 
-  test("a Compressor inserted between a Station and Speakers joins its lane under its node id, and a knob only sets lane effects", async () => {
+  test("a Compressor joins its lane under its node id, and a knob writes its fields in place", async () => {
     insertNodeSession(patch([station("a")]));
     const swaps: string[] = [];
     const harness = createHarness({
@@ -2696,14 +2723,21 @@ describe("Node Playback FX lanes", () => {
     ]);
 
     const before = harness.store.state.graph as NodeGraph;
+    harness.reconcileEffects.mockClear();
     await commit(harness, threshold(-24));
     const after = harness.store.state.graph as NodeGraph;
 
     const env = { crossOriginIsolated: false };
     expect(
       diff(compile(before, env), compile(after, env)).map((op) => op.type)
-    ).toEqual(["setLaneEffects"]);
+    ).toEqual(["setEffectFields"]);
     expect(swaps).toEqual(["a"]);
+    expect(harness.reconcileEffects).not.toHaveBeenCalled();
+    expect(harness.setEffectFields).toHaveBeenCalledWith(
+      soundOf("a"),
+      "comp",
+      expect.objectContaining({ threshold: -24 })
+    );
     expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
       expect.objectContaining({ id: "comp", threshold: -24 }),
     ]);
@@ -2815,6 +2849,7 @@ describe("Node Playback FX lanes", () => {
       status: "failed",
     };
 
+    harness.setEffectFields.mockReturnValueOnce("structural");
     await commit(harness, threshold(-30));
 
     expect(badges.state).toEqual({ a: "bypassed", comp: "bypassed" });
@@ -5725,16 +5760,15 @@ describe("Node Playback: channel strips", () => {
 
   /** Lane outputs whose levels the test can read, per lane and output. */
   function levelHarness() {
-    let getLevels: ((laneId: string) => ReadonlyMap<string, number>) | null =
-      null;
+    let getLevels: (laneId: string) => ReadonlyMap<string, number> = () =>
+      new Map();
     const harness = createHarness({
       laneOutputs: (options) => {
         ({ getLevels } = options);
         return createNodeLaneOutputs(options);
       },
     });
-    const levels = (laneId: string) =>
-      Object.fromEntries(getLevels?.(laneId) ?? new Map());
+    const levels = (laneId: string) => Object.fromEntries(getLevels(laneId));
     return { harness, levels };
   }
 
@@ -5952,6 +5986,7 @@ describe("Node Playback: channel strips", () => {
             status: "inactive",
           })
         ),
+        setEffectFields: () => "structural",
       },
       fadeOutSound: mock(async () => undefined),
       getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),

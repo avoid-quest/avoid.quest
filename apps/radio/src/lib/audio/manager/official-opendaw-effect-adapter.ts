@@ -24,6 +24,7 @@ import {
   TEMPO_DIVISIONS,
   type TempoDivision,
 } from "../dsp/effects/types.js";
+import { usesDirectEffectLayout } from "../dsp/routing/effect-tree.js";
 
 export type OfficialEffectHost = Parameters<Project["api"]["insertEffect"]>[0];
 export type OfficialEffectGroup = {
@@ -50,16 +51,6 @@ function outputGain(config: EffectConfig): number {
   return config.type === "crusher" && !config.autoGain
     ? config.outputGain * 10 ** (config.boost / 40)
     : config.outputGain;
-}
-
-export function usesDirectOfficialEffectLayout(config: EffectConfig): boolean {
-  // Keep other devices in one host chain when mix or gain changes.
-  return (
-    config.type === "autotune" &&
-    config.dryWet === 1 &&
-    config.inputGain === 1 &&
-    outputGain(config) === 1
-  );
 }
 
 function optionIndex(
@@ -436,7 +427,7 @@ function updateLayout(
       "Cable trim"
     );
   }
-  if (usesDirectOfficialEffectLayout(config)) {
+  if (usesDirectEffectLayout(config)) {
     if (group.wrapper) {
       context.project.api.moveEffects(
         host,
@@ -506,7 +497,7 @@ export function createOfficialEffectGroup(
   if (!isOfficialOpenDawEffect(config)) {
     throw new Error(`Radio-only effect cannot use openDAW: ${config.type}`);
   }
-  const layout = usesDirectOfficialEffectLayout(config)
+  const layout = usesDirectEffectLayout(config)
     ? null
     : createWrapper(context, config, host);
   const device = insert(

@@ -5,11 +5,19 @@ import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
 import {
   clearWerkstattRuntimeStatus,
+  getWerkstattRuntimeStatus,
   setWerkstattRuntimeStatus,
 } from "../dsp/effects/werkstatt-runtime-status.js";
+import {
+  effectFieldsAreStructural,
+  findEffectInTree,
+  localEffectConfig,
+  updateEffectFieldsInTree,
+} from "../dsp/routing/effect-tree.js";
 import type {
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
+  EffectWriteResult,
   OfficialSoundSettings,
 } from "./effects-graph-runtime.js";
 import {
@@ -24,6 +32,7 @@ import {
   setMasterRackDryWet,
   syncOfficialEffectCells,
   updateOfficialEffectGroup,
+  writeOfficialEffectFields,
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
@@ -57,6 +66,7 @@ type WerkstattCompiler = ReturnType<
 type Terminable = { terminate: () => void };
 
 type SoundUnit = ReturnType<Project["api"]["createAnyInstrument"]> & {
+  effects: EffectConfig[];
   groupsById: Map<string, OfficialEffectGroup>;
   groups: OfficialEffectGroup[];
   inputChannels: 1 | 2;
@@ -427,6 +437,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       unit = {
         ...product,
         destination: null,
+        effects: [],
         groups: [],
         groupsById: new Map(),
         inputChannels,
@@ -544,7 +555,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     if (!(unit && this.project)) {
       return;
     }
-    const nextEffects = structuredClone(effects);
+    const nextEffects = structuredClone([...effects]);
     const nextGroups = new Map<string, OfficialEffectGroup>();
     const { groups, retired: retiredGroups } = this.transaction(() => {
       const obsoleteCells: ReturnType<typeof syncOfficialEffectCells> = [];
@@ -565,27 +576,62 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
       this.bindSidechains({ groups: next, soundId });
       return { groups: next, retired };
     });
+    unit.effects = nextEffects;
     unit.groups = groups;
     unit.groupsById = nextGroups;
     this.afterCommit(() => {
       for (const group of retiredGroups) {
         this.releaseWerkstattGroup(group);
       }
-      this.compileWerkstattChain(unit.groups);
+      this.compileWerkstattChain(soundId);
     });
   }
 
-  private compileWerkstattChain(groups: readonly OfficialEffectGroup[]): void {
+  private compileWerkstattChain(
+    soundId: string,
+    groups: readonly OfficialEffectGroup[] = this.soundUnits.get(soundId)
+      ?.groups ?? []
+  ): void {
     for (const group of groups) {
       const { config } = group;
       if (!config.enabled) {
         continue;
       }
       if (config.type === "werkstatt") {
-        this.compileWerkstattGroup(group, config);
+        this.compileWerkstattGroup(soundId, group, config);
       }
-      this.compileWerkstattChain(group.children);
+      this.compileWerkstattChain(soundId, group.children);
     }
+  }
+
+  writeEffect(
+    soundId: string,
+    effectId: string,
+    config: EffectConfig
+  ): EffectWriteResult {
+    const unit = this.soundUnits.get(soundId);
+    const group = unit?.groupsById.get(effectId);
+    if (!(unit && group && this.project)) {
+      return "unavailable";
+    }
+    if (effectFieldsAreStructural(group.config, config)) {
+      return "structural";
+    }
+    const authored = structuredClone(config);
+    this.transaction(() => {
+      writeOfficialEffectFields(this.adapterContext(), group, authored);
+      group.config = authored;
+      syncOfficialEffectCells(this.adapterContext(), group);
+      if (authored.type === "werkstatt" && authored.enabled) {
+        this.compileWerkstattGroup(soundId, group, authored);
+      }
+    });
+    unit.effects = updateEffectFieldsInTree(unit.effects, effectId, authored);
+    for (const current of unit.groupsById.values()) {
+      current.config =
+        findEffectInTree(unit.effects, current.config.id) ?? current.config;
+    }
+    return "applied";
   }
 
   private syncEffectChain(
@@ -613,13 +659,6 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
             JSON.stringify(localEffectConfig(config));
         if (group === existing && changed) {
           updateOfficialEffectGroup(context, group, config, host);
-          if (
-            config.type === "werkstatt" &&
-            before?.type === "werkstatt" &&
-            werkstattSource(before) === werkstattSource(config)
-          ) {
-            restoreWerkstattParameterValues(context, group, config.parameters);
-          }
         } else {
           group.config = config;
         }
@@ -838,6 +877,7 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
   }
 
   private compileWerkstattGroup(
+    soundId: string,
     group: OfficialEffectGroup,
     config: Extract<EffectConfig, { type: "werkstatt" }>
   ): void {
@@ -852,6 +892,19 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
     );
     const source = compiler.stripHeader(werkstattSource(config));
     if (this.werkstattSources.get(group) === source) {
+      if (getWerkstattRuntimeStatus(config.id).state === "ready") {
+        this.transaction(() =>
+          restoreWerkstattParameterValues(
+            this.adapterContext(),
+            group,
+            config.parameters
+          )
+        );
+      }
+      return;
+    }
+    if (project.boxGraph.inTransaction()) {
+      this.afterCommit(() => this.compileWerkstattChain(soundId));
       return;
     }
     this.subscribeWerkstattMessages(group, config.id);
@@ -996,16 +1049,6 @@ function canKeepDevice(before: EffectConfig, after: EffectConfig): boolean {
       (before.modelId !== after.modelId || before.modelData !== after.modelData)
     )
   );
-}
-
-function localEffectConfig(effect: EffectConfig): unknown {
-  if (!("chains" in effect)) {
-    return effect;
-  }
-  return {
-    ...effect,
-    chains: effect.chains.map(({ effects: _, ...chain }) => chain),
-  };
 }
 
 function werkstattSource(

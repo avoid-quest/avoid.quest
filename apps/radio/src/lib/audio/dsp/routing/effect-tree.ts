@@ -178,6 +178,30 @@ export function updateEffectInTree(
   });
 }
 
+/** Record a device's fields without advancing its descendants' state. */
+export function updateEffectFieldsInTree(
+  effects: readonly EffectConfig[],
+  effectId: string,
+  config: EffectConfig
+): EffectConfig[] {
+  const before = findEffectInTree(effects, effectId);
+  return updateEffectInTree(
+    effects,
+    effectId,
+    before && isEffectContainer(before) && isEffectContainer(config)
+      ? {
+          ...config,
+          chains: config.chains.map((chain) => ({
+            ...chain,
+            effects:
+              before.chains.find((previous) => previous.id === chain.id)
+                ?.effects ?? [],
+          })),
+        }
+      : config
+  );
+}
+
 export function removeEffectFromTree(
   effects: readonly EffectConfig[],
   effectId: string
@@ -346,4 +370,46 @@ export function normalizeTempoBpm(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? clampEffectTempo(value)
     : DEFAULT_EFFECT_TEMPO;
+}
+
+/** The config owned by this device, excluding nested devices' fields. */
+export function localEffectConfig(effect: EffectConfig): EffectConfig {
+  return isEffectContainer(effect)
+    ? {
+        ...effect,
+        chains: effect.chains.map((chain) => ({ ...chain, effects: [] })),
+      }
+    : effect;
+}
+
+/** Changes that need the lane's structural effects step. */
+export function effectFieldsAreStructural(
+  before: EffectConfig,
+  after: EffectConfig
+): boolean {
+  return (
+    before.id !== after.id ||
+    before.type !== after.type ||
+    before.order !== after.order ||
+    (before.signalGain === undefined) !== (after.signalGain === undefined) ||
+    usesDirectEffectLayout(before) !== usesDirectEffectLayout(after) ||
+    JSON.stringify(before.sidechain) !== JSON.stringify(after.sidechain) ||
+    (before.type === "neuralAmp" &&
+      after.type === "neuralAmp" &&
+      (before.modelId !== after.modelId ||
+        before.modelData !== after.modelData)) ||
+    (before.type === "werkstatt" &&
+      after.type === "werkstatt" &&
+      (before.code ?? before.source) !== (after.code ?? after.source))
+  );
+}
+
+/** Autotune alone can omit the outer mix and gain boxes. */
+export function usesDirectEffectLayout(effect: EffectConfig): boolean {
+  return (
+    effect.type === "autotune" &&
+    effect.dryWet === 1 &&
+    effect.inputGain === 1 &&
+    effect.outputGain === 1
+  );
 }

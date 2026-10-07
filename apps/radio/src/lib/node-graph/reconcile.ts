@@ -5,8 +5,8 @@
  * edit, an undo or a template load never rebuilds what did not change. The
  * node engine applies the ops in order, in one batch per store commit:
  *
- * - param-only FX change (same layout signature): `setLaneEffects`, which the
- *   effects controller no-ops when identical and openDAW updates in place;
+ * - param-only FX change (same layout signature): `setEffectFields`, a direct
+ *   field write; structural device edits keep `setLaneEffects`;
  * - FX added, removed or reordered: `replaceLaneEffects`, which the engine
  *   swaps under a short duck instead of a click;
  * - native pan, filter and cable levels, a source's volume and mute, a
@@ -18,8 +18,14 @@
  */
 
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import {
+  effectFieldsAreStructural,
+  localEffectConfig,
+  visitEffectTree,
+} from "@/lib/audio/dsp/routing/effect-tree";
 import { toPlaybackInput } from "@/lib/audio/playback/playback-input";
 import type { Radio } from "@/lib/audio/playback/types";
+import { findSidechainChannelId } from "@/lib/channel-effects";
 import type {
   ChannelSelectionPlan,
   EdgePlan,
@@ -32,6 +38,11 @@ import type {
 export type Op =
   | { type: "addLane"; lane: LanePlan }
   | { type: "removeLane"; laneId: string; soundId: string }
+  | {
+      type: "setEffectFields";
+      laneId: string;
+      effectId: string;
+    }
   | { type: "setLaneEffects"; laneId: string; effects: EffectConfig[] }
   | { type: "replaceLaneEffects"; laneId: string; effects: EffectConfig[] }
   | {
@@ -138,8 +149,38 @@ function laneOps(previous: LanePlan, next: LanePlan): Op[] {
   const laneId = next.id;
   if (previous.layoutSignature !== next.layoutSignature) {
     ops.push({ effects: next.effects, laneId, type: "replaceLaneEffects" });
-  } else if (!same(previous.effects, next.effects)) {
+  } else if (
+    previous.backend !== next.backend ||
+    findSidechainChannelId(previous.effects) !==
+      findSidechainChannelId(next.effects)
+  ) {
     ops.push({ effects: next.effects, laneId, type: "setLaneEffects" });
+  } else if (!same(previous.effects, next.effects)) {
+    const before = new Map<string, EffectConfig>();
+    visitEffectTree(previous.effects, (effect) =>
+      before.set(effect.id, effect)
+    );
+    const fields: Op[] = [];
+    let structural = false;
+    visitEffectTree(next.effects, (config) => {
+      const existing = before.get(config.id);
+      if (!existing || effectFieldsAreStructural(existing, config)) {
+        structural = true;
+      } else if (
+        !same(localEffectConfig(existing), localEffectConfig(config))
+      ) {
+        fields.push({
+          effectId: config.id,
+          laneId,
+          type: "setEffectFields",
+        });
+      }
+    });
+    ops.push(
+      ...(structural
+        ? [{ effects: next.effects, laneId, type: "setLaneEffects" as const }]
+        : fields)
+    );
   }
   if (previous.pan !== next.pan) {
     ops.push({

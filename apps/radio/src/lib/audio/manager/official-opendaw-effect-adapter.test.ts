@@ -5,7 +5,6 @@ import {
   createMasterRack,
   createOfficialEffectGroup,
   updateOfficialEffectGroup,
-  usesDirectOfficialEffectLayout,
   writeOfficialEffectFields,
 } from "./official-opendaw-effect-adapter.js";
 
@@ -157,7 +156,6 @@ describe("official openDAW BoxGraph adapter", () => {
       throw new Error("Autotune group missing");
     }
     const updatedAutotune = { ...autotune.config, key: "D" as const };
-    expect(usesDirectOfficialEffectLayout(updatedAutotune)).toBe(true);
     project.editing.modify(() =>
       updateOfficialEffectGroup(
         { adapters, boxes, bpm: 120, core, project },
@@ -167,12 +165,6 @@ describe("official openDAW BoxGraph adapter", () => {
       )
     );
     expect(value("autotune", "device", "key")).toBe(2);
-    expect(
-      usesDirectOfficialEffectLayout({
-        ...updatedAutotune,
-        inputGain: 0.5,
-      })
-    ).toBe(false);
     const reverb = groups.find((group) => group.config.type === "cheapReverb");
     if (
       !(

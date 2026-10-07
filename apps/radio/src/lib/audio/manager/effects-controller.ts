@@ -6,10 +6,16 @@ import type {
 import {
   canUseOfficialOpenDawRuntime,
   hasEnabledEffects,
+  isOfficialOpenDawEffect,
   selectOfficialEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
+import {
+  effectFieldsAreStructural,
+  findEffectInTree,
+  updateEffectFieldsInTree,
+} from "../dsp/routing/effect-tree.js";
 import {
   type AudioState,
   getAudioContext,
@@ -28,6 +34,7 @@ import {
 import type {
   EffectsGraphRuntime,
   EffectsPerformanceSnapshot,
+  EffectWriteResult,
 } from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
@@ -250,6 +257,55 @@ class EffectsController {
       });
     }
     return state.outcome;
+  }
+
+  setEffectFields(
+    soundId: string,
+    effectId: string,
+    config: EffectConfig
+  ): EffectWriteResult {
+    const state = this.states.get(soundId);
+    const before = state && findEffectInTree(state.effects, effectId);
+    if (!(before && this.sounds.has(soundId))) {
+      return "unavailable";
+    }
+    if (effectFieldsAreStructural(before, config)) {
+      return "structural";
+    }
+    const next = updateEffectFieldsInTree(
+      state.effects,
+      effectId,
+      toPlainEffectConfig(config)
+    );
+    if (state.outcome.backend === "compatibility") {
+      return "structural";
+    }
+    if (
+      (state.officialConnectingGeneration !== null &&
+        !state.officialConnected) ||
+      !state.graph
+    ) {
+      state.effects = next;
+      return "applied";
+    }
+    if (!state.officialConnected) {
+      if (!this.shouldProcess(state)) {
+        state.effects = next;
+        return "applied";
+      }
+      return "structural";
+    }
+    if (!(config.enabled || isOfficialOpenDawEffect(config))) {
+      state.effects = next;
+      return "applied";
+    }
+    const result =
+      this.officialRuntime?.writeEffect(soundId, effectId, config) ??
+      "unavailable";
+    if (result === "applied") {
+      state.effects = next;
+    }
+    return result;
   }
 
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
@@ -702,6 +758,7 @@ class EffectsController {
     const wasOfficialConnected = state.officialConnected;
     const runtimeGeneration = this.claimOfficialSound(soundId);
     try {
+      const connectingEffects = state.effects;
       const connected = await runtime.connectSound(
         soundId,
         graph.source,
@@ -734,6 +791,10 @@ class EffectsController {
         return false;
       }
 
+      // Knobs may have changed while the worklet initialized; connect used a snapshot.
+      if (state.effects !== connectingEffects) {
+        runtime.syncEffects(soundId, selectOfficialEffects(state.effects));
+      }
       this.officialRegisteredSoundIds.add(soundId);
       state.officialConnected = true;
       await this.registerNonOfficialSources(runtime, soundId);

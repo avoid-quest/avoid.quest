@@ -172,7 +172,7 @@ type Held = { release: () => void; reject: (error: Error) => void };
  * effects reconciles are held while `holdPlays`, `holdFades`, `holdDucks`
  * or `holdReconciles` is on, and track resolutions always are.
  */
-function createWorld() {
+function createWorld(directFields = false) {
   const live = new Set<string>();
   const activations = new Map<string, number>();
   const instanceOf = (soundId: string) =>
@@ -194,6 +194,7 @@ function createWorld() {
   /** Lanes with an output to duck: their sound was attached to play. */
   const connected = new Set<string>();
   const options = {
+    failFields: false as boolean,
     holdDucks: false as boolean,
     holdFades: false as boolean,
     holdPlays: false as boolean,
@@ -334,6 +335,18 @@ function createWorld() {
         }
         return { backend: null, ready: false, status: options.reconcileStatus };
       },
+      setEffectFields: (soundId, id, config) => {
+        if (options.failFields) {
+          throw new Error("Field transaction failed");
+        }
+        if (!directFields) {
+          return "structural";
+        }
+        log.push(
+          `field ${instanceOf(soundId)} ${id}@${"threshold" in config ? config.threshold : ""}`
+        );
+        return "applied";
+      },
     },
     fadeOutSound: () =>
       options.holdFades ? hold(heldFades, () => undefined) : Promise.resolve(),
@@ -460,6 +473,7 @@ function interrupt(world: World) {
 }
 
 type Row = {
+  directFields?: boolean;
   /** The lane's transition. */
   when: string;
   initial: NodeGraph;
@@ -878,6 +892,7 @@ const transitions: Row[] = [
     ] as const
   ).map(
     ([status, edit, next, tree]): Row => ({
+      directFields: true,
       expected(world) {
         // The graph may hold neither layout, so the next change swaps too.
         expect(world.log).toEqual([
@@ -1084,6 +1099,56 @@ afterEach(async () => {
 });
 
 describe("Node lane transitions", () => {
+  test("a failed field transaction reconciles the latest knob value", async () => {
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: [],
+      crossfadePosition: 0.5,
+      graph: compressed(),
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+    const world = createWorld(true);
+    activeWorld = world;
+    await world.playback.activate();
+    await settled(world);
+    world.options.failFields = true;
+    commit(world, threshold(-24));
+    await world.playback.whenSettled();
+    expect(world.log).toEqual([`reconcile ${sound("a")} [comp@-24]`]);
+    await world.playback.deactivate();
+  });
+
+  test("knobs reach the live sound in place and never the retiring sound", async () => {
+    playbackSessionsCollection.insert({
+      activeChannelId: null,
+      channels: [],
+      crossfadePosition: 0.5,
+      graph: compressed(),
+      headphoneVolume: 1,
+      id: "node",
+      masterVolume: 1,
+    });
+    const world = createWorld(true);
+    activeWorld = world;
+    await world.playback.activate();
+    await settled(world);
+    commit(world, threshold(-24));
+    await world.playback.whenSettled();
+    expect(world.log).toEqual([`field ${sound("a")} comp@-24`]);
+    world.options.holdFades = true;
+    replaceSource(world, "a", "next");
+    world.log.length = 0;
+    commit(world, threshold(-30));
+    expect(world.log).toEqual([]);
+    releaseAll(world.heldFades);
+    await world.playback.whenSettled();
+    expect(world.log).toEqual([`reconcile ${sound("a", 2)} [comp@-30]`]);
+    world.options.holdFades = false;
+    await world.playback.deactivate();
+  });
+
   test.each(transitions.map((row) => [row.when, row] as const))(
     "%s",
     async (_when, row) => {
@@ -1096,7 +1161,7 @@ describe("Node lane transitions", () => {
         id: "node",
         masterVolume: 1,
       });
-      const world = createWorld();
+      const world = createWorld(row.directFields);
       activeWorld = world;
       await world.playback.activate();
 

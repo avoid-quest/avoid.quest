@@ -153,7 +153,7 @@ export type NodeEngineOptions = {
   deviceSinks: (options: NodeDeviceSinksOptions) => NodeDeviceSinks;
   laneOutputs: (options: NodeLaneOutputsOptions) => NodeLaneOutputs;
   /** Where each lane's sound reconciles its effects; AudioManager's. */
-  effects: Pick<AudioManager, "reconcileEffects">;
+  effects: Pick<AudioManager, "reconcileEffects" | "setEffectFields">;
   fadeOut: (soundId: string) => Promise<void>;
   /** Renews an expired platform stream, or resolves a `yt:` track. */
   resolveStream: ResolvePlatformStream;
@@ -321,6 +321,8 @@ export function createNodeEngine(options: NodeEngineOptions) {
       });
     },
     resolveStream: options.resolveStream,
+    setEffectFields: (soundId, effectId, config) =>
+      options.effects.setEffectFields(soundId, effectId, config),
     /** A lane's sound came or went: every other lane keyed from it rebinds. */
     soundChanged: (laneId) => {
       const channelId = laneChannelId(laneId);
@@ -449,6 +451,9 @@ export function createNodeEngine(options: NodeEngineOptions) {
       case "setLaneEffects":
       case "replaceLaneEffects":
         slots.get(op.laneId)?.effectsChanged();
+        break;
+      case "setEffectFields":
+        slots.get(op.laneId)?.setEffectFields(op.effectId);
         break;
       case "setParam":
         applyParam(op, refreshLane);

@@ -154,14 +154,14 @@ describe("diff", () => {
     });
   });
 
-  test("a param-only change yields only setLaneEffects", () => {
+  test("a param-only change writes only the changed effect", () => {
     const next = base({ verb: { decay: 0.9, dryWet: 0.4 } });
     const ops = diff(base(), next);
     expect(ops).toEqual([
       {
-        effects: next.lanes.get("a")?.effects ?? [],
+        effectId: "verb",
         laneId: "a",
-        type: "setLaneEffects",
+        type: "setEffectFields",
       },
     ]);
   });
@@ -178,7 +178,9 @@ describe("diff", () => {
         [station("a"), fx("verb", "cheapReverb", { enabled: true }), speakers],
         [audio("a", "verb", { gain }), audio("verb", "speakers")]
       );
-    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual(["setLaneEffects"]);
+    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual([
+      "setEffectFields",
+    ]);
   });
 
   test("toggling a unity Autotune updates effects without ducking the lane", () => {
@@ -193,10 +195,110 @@ describe("diff", () => {
         [audio("a", "verb"), audio("verb", "tune"), audio("tune", "speakers")]
       );
     expect(types(diff(autotuned(true), autotuned(false)))).toEqual([
-      "setLaneEffects",
+      "setEffectFields",
     ]);
     expect(types(diff(autotuned(false), autotuned(true)))).toEqual([
-      "setLaneEffects",
+      "setEffectFields",
+    ]);
+  });
+
+  test("toggling the only effect reselects the lane backend", () => {
+    const autotuned = (enabled: boolean) =>
+      plan(
+        [
+          station("a"),
+          fx("tune", "autotune", { enabled, signalGain: 1 }),
+          speakers,
+        ],
+        [audio("a", "tune"), audio("tune", "speakers")]
+      );
+    const on = autotuned(true);
+    const off = autotuned(false);
+    expect(on.lanes.get("a")?.backend).toBe("official");
+    expect(off.lanes.get("a")?.backend).toBeNull();
+    expect(on.lanes.get("a")?.layoutSignature).toBe(
+      off.lanes.get("a")?.layoutSignature
+    );
+    for (const [previous, next] of [
+      [on, off],
+      [off, on],
+    ] as const) {
+      expect(diff(previous, next)).toEqual([
+        {
+          effects: next.lanes.get("a")?.effects ?? [],
+          laneId: "a",
+          type: "setLaneEffects",
+        },
+      ]);
+    }
+  });
+
+  test("freeing monitoring channels reselects an unchanged downstream lane", () => {
+    const lanes = ["a", "b", "c", "d", "e"];
+    const budgeted = (enabled: boolean) =>
+      plan(
+        [
+          ...lanes.map((id) => station(id)),
+          ...lanes.map((id) =>
+            fx(`${id}-fx`, "autotune", { enabled: id !== "a" || enabled })
+          ),
+          speakers,
+        ],
+        lanes.flatMap((id) => [
+          audio(id, `${id}-fx`),
+          audio(`${id}-fx`, "speakers"),
+        ])
+      );
+    const before = budgeted(true);
+    const after = budgeted(false);
+    expect(before.lanes.get("e")?.backend).toBe("compat");
+    expect(after.lanes.get("e")?.backend).toBe("official");
+    expect(before.lanes.get("e")?.effects).toEqual(
+      after.lanes.get("e")?.effects
+    );
+    expect(diff(before, after)).toContainEqual({
+      effects: after.lanes.get("e")?.effects ?? [],
+      laneId: "e",
+      type: "setLaneEffects",
+    });
+  });
+
+  test("enabling a keyed effect rebinds the active sidechain on the same backend", () => {
+    const keyed = (enabled: boolean) =>
+      plan(
+        [
+          station("music"),
+          station("talk"),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("comp", "compressor", { enabled }),
+          speakers,
+        ],
+        [
+          audio("music", "verb"),
+          audio("verb", "comp"),
+          audio("comp", "speakers"),
+          audio("talk", "speakers"),
+          {
+            ...audio("talk", "comp"),
+            id: "key",
+            targetHandle: "in:sidechain:key",
+          },
+        ]
+      );
+    const before = keyed(false);
+    const after = keyed(true);
+    expect(before.lanes.get("music")?.backend).toBe(
+      after.lanes.get("music")?.backend
+    );
+    expect(before.lanes.get("music")?.layoutSignature).toBe(
+      after.lanes.get("music")?.layoutSignature
+    );
+    expect(diff(before, after)).toEqual([
+      {
+        effects: after.lanes.get("music")?.effects ?? [],
+        laneId: "music",
+        type: "setLaneEffects",
+      },
     ]);
   });
 
@@ -242,8 +344,8 @@ describe("diff", () => {
     const unity = autotuned();
     const nudged = autotuned({ gainDb: -0.1 });
 
-    expect(types(diff(unity, nudged))).toEqual(["setLaneEffects"]);
-    expect(types(diff(nudged, unity))).toEqual(["setLaneEffects"]);
+    expect(types(diff(unity, nudged))).toEqual(["setEffectFields"]);
+    expect(types(diff(nudged, unity))).toEqual(["setEffectFields"]);
     expect(types(diff(unity, autotuned({ muted: true })))).not.toContain(
       "replaceLaneEffects"
     );

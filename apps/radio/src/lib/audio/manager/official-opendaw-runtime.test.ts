@@ -464,6 +464,48 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     ).toBe(true);
   });
 
+  test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(
+    "%s keeps branch names out of live engine cell updates",
+    async (type) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("deck", h.source, h.destination);
+      const changedFields: string[] = [];
+      const subscription = h.project.boxGraph.subscribeToAllUpdatesImmediate({
+        onUpdate: (update) => {
+          if (update.type === "primitive") {
+            changedFields.push(update.address.toString());
+          }
+        },
+      });
+      try {
+        const config = createDefaultEffectConfig(type, "split", 0);
+        config.enabled = true;
+        h.runtime.syncEffects("deck", [config]);
+        const renamed = {
+          ...config,
+          chains: config.chains.map((chain) => ({
+            ...chain,
+            gain: 0.5,
+            name: `Renamed ${chain.order}`,
+          })),
+        };
+        h.runtime.syncEffects("deck", [renamed]);
+        const cells = h.project.boxGraph
+          .boxes()
+          .filter((box) => box instanceof h.boxes.AudioEffectCompositeCellBox);
+        expect(cells.length).toBeGreaterThan(0);
+        // The published WASM engine rejects incremental cell-label writes.
+        // Names belong to the authored config; live audio fields still update.
+        for (const cell of cells) {
+          expect(changedFields).not.toContain(cell.label.address.toString());
+        }
+        expect(cells.some((cell) => cell.gain.getValue() < 0)).toBe(true);
+      } finally {
+        subscription.terminate();
+      }
+    }
+  );
+
   test("startup follows replacement worklets when earlier processors never become ready", async () => {
     const initial = deferred();
     const replacement = deferred();
@@ -484,6 +526,30 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
     expect(h.runtime.soundCount).toBe(1);
     expect(h.runtime.isReady).toBe(true);
   });
+
+  test.each(["disconnectSound", "deleteSound"] as const)(
+    "%s releases monitoring after the source graph has already disconnected",
+    async (operation) => {
+      const h = await createHarness();
+      await h.runtime.connectSound("removed", h.source, h.destination);
+      const survivor = h.createSource();
+      await h.runtime.connectSound("survivor", survivor, h.destination);
+      h.source.disconnect();
+
+      expect(() => h.runtime[operation]("removed")).not.toThrow();
+      expect(h.engine.unregisterMonitoringSource).toHaveBeenCalledTimes(1);
+      expect(h.renderReturn(survivor, h.destination, [0.25, 0.5])).toEqual([
+        0.25, 0.5,
+      ]);
+      expect(() => h.runtime[operation]("removed")).not.toThrow();
+      await expect(
+        h.runtime.connectSound("removed", h.source, h.destination)
+      ).resolves.toBe(true);
+      expect(h.renderReturn(h.source, h.destination, [0.5, 0.25])).toEqual([
+        0.5, 0.25,
+      ]);
+    }
+  );
 
   test("reports only the first worklet failure per runtime and ignores disposed runtimes", async () => {
     const enabled = spyOn(Sentry, "isEnabled").mockReturnValue(true);

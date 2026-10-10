@@ -362,6 +362,7 @@ function createCell(
     UUID.generate(),
     (box) => {
       box.composite.refer(composite.entries);
+      box.label.setValue(chain.name);
       writeCell(box, chain);
     }
   );
@@ -372,7 +373,9 @@ function writeCell(
   chain: EffectChainConfig
 ): void {
   cell.index.setValue(chain.order);
-  cell.label.setValue(chain.name);
+  // Names stay in the authored config. The WASM engine rejects incremental
+  // cell-label writes, including names on factory-created fixed split cells.
+  // Set labels only in createCell's initializer, before the cell is published.
   cell.gain.setValue(gainToDb(chain.gain));
   cell.pan.setValue(chain.pan);
   cell.mute.setValue(chain.muted);

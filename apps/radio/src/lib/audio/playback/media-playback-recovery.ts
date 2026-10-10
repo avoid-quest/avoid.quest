@@ -74,8 +74,9 @@ export class MediaPlaybackRecovery {
     }
 
     // Finite platform media can have expiring URLs. The caller re-resolves
-    // those URLs; live streams are reloaded in place.
-    if (Number.isFinite(state.duration)) {
+    // those URLs; known live streams reload even if the browser reports a
+    // finite duration after their connection is interrupted.
+    if (!state.input.live && Number.isFinite(state.duration)) {
       this.actions.onStreamError(state.currentTime, error);
       this.terminal(error, true);
       return;

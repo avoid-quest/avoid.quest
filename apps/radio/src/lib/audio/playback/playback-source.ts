@@ -4,6 +4,8 @@ type PlaybackInput = {
   allowNativeHls?: boolean;
   credentials?: RequestCredentials;
   format: "hls" | "progressive";
+  /** Live provenance takes precedence over the browser's reported duration. */
+  live?: true;
   src: string;
 };
 

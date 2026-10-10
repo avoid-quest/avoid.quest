@@ -2,6 +2,44 @@ import { describe, expect, test } from "bun:test";
 import { toPlaybackInput } from "./playback-input";
 
 describe("toPlaybackInput", () => {
+  test("live metadata takes precedence over source-node provenance", () => {
+    const radio = {
+      name: "Source",
+      streamUrl: "https://radio.example/live.mp3",
+    };
+    expect(toPlaybackInput(radio).live).toBe(true);
+    expect(toPlaybackInput(radio, "station").live).toBe(true);
+    expect(toPlaybackInput(radio, "media").live).toBeUndefined();
+    expect(
+      toPlaybackInput(
+        {
+          ...radio,
+          platformMetadata: {
+            hls: false,
+            itemType: "station",
+            platform: "radio-browser",
+            stationUuid: "station",
+            url: radio.streamUrl,
+          },
+        },
+        "media"
+      ).live
+    ).toBe(true);
+    expect(
+      toPlaybackInput(
+        {
+          ...radio,
+          platformMetadata: {
+            itemType: "track",
+            platform: "soundcloud",
+            url: "https://soundcloud.com/artist/track",
+          },
+        },
+        "station"
+      ).live
+    ).toBeUndefined();
+  });
+
   test("upgrades the retired Sygma Ogg mount to its current MP3 stream", () => {
     expect(
       toPlaybackInput({
@@ -68,6 +106,7 @@ describe("toPlaybackInput", () => {
       })
     ).toEqual({
       format: "progressive",
+      live: true,
       src: "https://radio.example/live",
     });
   });

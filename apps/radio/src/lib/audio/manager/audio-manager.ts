@@ -352,7 +352,7 @@ export class AudioManager {
       // Connect the graph shell before requesting play in this same task,
       // preserving mobile transient user activation.
       const loadPromise = this.handleDeferredRejection(
-        source.load(toPlaybackInput(instance.radio))
+        source.load(toPlaybackInput(instance.radio, instance.sourceKind))
       );
       const graphPromise = context
         ? this.ensureAudioGraphConnected(soundId, instance)
@@ -1130,7 +1130,7 @@ export class AudioManager {
       });
       // A pause while the new URL loads keeps the sound paused.
       const playing = await source.refreshUrl(
-        toPlaybackInput(refreshedRadio),
+        toPlaybackInput(refreshedRadio, instance.sourceKind),
         seekPosition
       );
 

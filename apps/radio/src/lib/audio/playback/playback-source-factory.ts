@@ -6,10 +6,13 @@ import type {
   PlaybackSource,
   PlaybackSourceCallbacks,
 } from "./playback-source.js";
+import {
+  isLiveRadioSource,
+  type RadioSourceKind,
+} from "./radio-source-kind.js";
 import type { Radio } from "./types.js";
 
-/** Source-node provenance; media nodes can hold imported files without metadata. */
-export type RadioSourceKind = "station" | "media";
+export type { RadioSourceKind } from "./radio-source-kind.js";
 
 /** Safari's graph receives no samples from live radio or HLS. */
 function assertSupportedRadioGraph(
@@ -19,12 +22,10 @@ function assertSupportedRadioGraph(
   if (!isWebKitBrowser()) {
     return;
   }
-  const platform = radio.platformMetadata?.platform;
-  const station =
-    platform === "radio-browser" ||
-    platform === "radiogarden" ||
-    (!platform && sourceKind !== "media");
-  if (station || streamFormatOf(radio, radio.streamUrl) === "hls") {
+  if (
+    isLiveRadioSource(radio, sourceKind) ||
+    streamFormatOf(radio, radio.streamUrl) === "hls"
+  ) {
     throw new AppError({
       category: "validation",
       code: "UNSUPPORTED_RADIO_GRAPH",

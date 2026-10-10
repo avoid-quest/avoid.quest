@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, jest, mock, test } from "bun:test";
 import { installBrowser } from "../playback/fake-media-browser";
 import type { AudioState, PlaybackSource } from "../playback/index.js";
 import {
@@ -135,9 +135,236 @@ const providerTrack = {
 
 afterEach(() => {
   AudioManager.resetInstance();
+  jest.useRealTimers();
 });
 
 describe("AudioManager", () => {
+  test.each([
+    [Number.POSITIVE_INFINITY, 1],
+    [120, 1],
+    [120, 2],
+  ])(
+    "a live stream reloads after duration %s and transient media error %s",
+    async (duration, code) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          station,
+          "single:station",
+          "native"
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.emit("canplay");
+        await starting;
+        audio.emit("playing");
+        audio.duration = duration;
+        audio.error = { code } as MediaError;
+        audio.emit("error");
+
+        expect(states.at(-1)?.error).toBeNull();
+        expect(getRegistry(manager).get(soundId)?.playbackSource?.status).toBe(
+          "buffering"
+        );
+        jest.advanceTimersByTime(6000);
+        jest.advanceTimersByTime(0);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([
+          station.streamUrl,
+          station.streamUrl,
+        ]);
+        audio.error = null;
+        audio.emit("canplay");
+        await flushMicrotasks();
+        audio.emit("playing");
+        expect(states.at(-1)).toMatchObject({
+          error: null,
+          isBuffering: false,
+          isPlaying: true,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each([
+    ["provider track", providerTrack, undefined],
+    ["provider in a Station", providerTrack, "station"],
+    ["imported file without metadata", station, "media"],
+  ] as const)(
+    "%s still requests URL renewal at the interrupted position",
+    async (_name, radio, sourceKind) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          radio,
+          "track",
+          "native",
+          sourceKind
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.emit("canplay");
+        await starting;
+        audio.emit("playing");
+        audio.duration = 120;
+        audio.currentTime = 42;
+        audio.error = { code: MediaError.MEDIA_ERR_NETWORK } as MediaError;
+        audio.emit("error");
+
+        expect(
+          states.some(
+            (state) =>
+              state.error?.code === "STREAM_INTERRUPTED" &&
+              state.error.position === 42
+          )
+        ).toBe(true);
+        expect(states.at(-1)?.error).toMatchObject({ recoveryPending: true });
+        jest.advanceTimersByTime(6000);
+        jest.advanceTimersByTime(0);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([radio.streamUrl]);
+
+        const renewedUrl = "https://media.example/renewed.mp3";
+        const refreshing = manager.refreshStreamUrl(soundId, renewedUrl, 42);
+        await flushMicrotasks();
+        audio.error = null;
+        audio.emit("canplay");
+        await refreshing;
+        audio.emit("playing");
+        expect(audio.playPositions.at(-1)).toBe(42);
+        expect(states.at(-1)).toMatchObject({ error: null, isPlaying: true });
+
+        // Renewal must preserve the source's finite-media classification.
+        audio.error = { code: MediaError.MEDIA_ERR_NETWORK } as MediaError;
+        audio.emit("error");
+        expect(states.at(-1)?.error).toMatchObject({ recoveryPending: true });
+        jest.advanceTimersByTime(6000);
+        jest.advanceTimersByTime(0);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([radio.streamUrl, renewedUrl]);
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each(["before reconnect", "while reconnecting"])(
+    "pausing %s cancels live recovery and ignores late playback events",
+    async (phase) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          station,
+          "single:station",
+          "native"
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.emit("canplay");
+        await starting;
+        audio.emit("playing");
+        audio.duration = 120;
+        audio.error = { code: MediaError.MEDIA_ERR_ABORTED } as MediaError;
+        audio.emit("error");
+        if (phase === "while reconnecting") {
+          jest.advanceTimersByTime(6000);
+          jest.advanceTimersByTime(0);
+          await flushMicrotasks();
+          expect(audio.loadSources).toEqual([
+            station.streamUrl,
+            station.streamUrl,
+          ]);
+        }
+
+        manager.pauseSound(soundId);
+        const playCount = audio.playPositions.length;
+        audio.emit("abort");
+        audio.error = null;
+        audio.emit("canplay");
+        audio.emit("playing");
+        jest.advanceTimersByTime(60_000);
+        await flushMicrotasks();
+
+        expect(audio.loadSources).toHaveLength(
+          phase === "while reconnecting" ? 2 : 1
+        );
+        expect(audio.playPositions).toHaveLength(playCount);
+        expect(audio.paused).toBe(true);
+        expect(states.some((state) => state.error)).toBe(false);
+        expect(states.at(-1)).toMatchObject({
+          isBuffering: false,
+          isLoading: false,
+          isPlaying: false,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each([2, 3])(
+    "a live station's initial media error %s remains a reported start failure",
+    async (code) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          station,
+          "single:station",
+          "native"
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager
+          .playSound(soundId)
+          .catch((error: unknown) => error);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.duration = 120;
+        audio.error = { code } as MediaError;
+        audio.emit("error");
+
+        expect(await starting).toBeInstanceOf(Error);
+        expect(
+          states.some(
+            (state) =>
+              state.error?.duringStart &&
+              state.error.code === "STREAM_FETCH_FAILED"
+          )
+        ).toBe(true);
+        jest.advanceTimersByTime(60_000);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([station.streamUrl]);
+        expect(audio.paused).toBe(true);
+        expect(states.at(-1)).toMatchObject({
+          isBuffering: false,
+          isLoading: false,
+          isPlaying: false,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
   test("fresh playback awaits the effects graph even when media playback is ready", async () => {
     const harness = createMediaPlaybackHarness();
     const graph = Promise.withResolvers<boolean>();

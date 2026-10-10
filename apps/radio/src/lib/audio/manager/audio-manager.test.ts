@@ -464,7 +464,7 @@ describe("AudioManager", () => {
   });
 
   test.each(["audio-graph", "native"] as const)(
-    "Safari HLS refresh rejects a graph but permits native playback (%s)",
+    "Safari HLS refresh preserves a rejected graph's playback and permits native playback (%s)",
     async (mode) => {
       const harness = createMediaPlaybackHarness();
       try {
@@ -480,8 +480,12 @@ describe("AudioManager", () => {
         audio.nativeHlsSupport = "probably";
         audio.emit("canplay");
         await starting;
+        const previousRadio = manager.getSoundRadio(soundId);
+        const previousSource =
+          getRegistry(manager).get(soundId)?.playbackSource;
         const states: AudioState[] = [];
         manager.subscribe(soundId, (state) => states.push(state));
+        audio.emit("playing");
         const refreshing = manager.refreshStreamUrl(
           soundId,
           "https://cf-hls-media.sndcdn.com/extensionless",
@@ -496,18 +500,23 @@ describe("AudioManager", () => {
           expect(audio.loadSources).not.toContain(
             "https://cf-hls-media.sndcdn.com/extensionless"
           );
-          expect(audio.paused).toBe(true);
-          expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+          expect(manager.getSoundRadio(soundId)).toBe(previousRadio);
+          expect(audio.paused).toBe(false);
+          expect(getRegistry(manager).get(soundId)?.playbackSource).toBe(
+            previousSource
+          );
           expect(states.at(-1)).toMatchObject({
+            error: null,
             isBuffering: false,
             isLoading: false,
-            isPlaying: false,
+            isPlaying: true,
           });
           // The rejected stream never shows as loading.
           expect(states.map((state) => state.isLoading)).not.toContain(true);
-          await expect(manager.playSound(soundId)).rejects.toMatchObject({
-            code: "UNSUPPORTED_RADIO_GRAPH",
-          });
+          manager.pauseSound(soundId);
+          await manager.playSound(soundId);
+          expect(audio.paused).toBe(false);
+          expect(audio.loadSources).toEqual([providerTrack.streamUrl]);
         } else {
           await flushMicrotasks();
           audio.emit("canplay");
@@ -522,6 +531,47 @@ describe("AudioManager", () => {
       }
     }
   );
+
+  test("an incompatible Safari refresh preserves an unstarted sound's configuration", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, browser, effects } = harness;
+      Object.defineProperty(navigator, "userAgent", {
+        value: "AppleWebKit/605.1.15",
+      });
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(providerTrack, "track");
+      const previousRadio = manager.getSoundRadio(soundId);
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+
+      await expect(
+        manager.refreshStreamUrl(
+          soundId,
+          "https://cf-hls-media.sndcdn.com/extensionless",
+          undefined,
+          "hls"
+        )
+      ).rejects.toMatchObject({
+        code: "UNSUPPORTED_RADIO_GRAPH",
+        expected: true,
+      });
+
+      expect(manager.getSoundRadio(soundId)).toBe(previousRadio);
+      expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+      expect(effects.connectGraph).not.toHaveBeenCalled();
+      expect(states).toEqual([]);
+
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await starting;
+      expect(browser.audio().loadSources).toEqual([providerTrack.streamUrl]);
+      expect(browser.audio().paused).toBe(false);
+    } finally {
+      harness.restore();
+    }
+  });
 
   test("a fresh source's graph-start failure cleans up without advancing the playlist", async () => {
     const harness = createMediaPlaybackHarness();

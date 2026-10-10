@@ -127,6 +127,14 @@ addresses a reproduced recovery defect; those historical interruptions' causes
 and post-release resolution remain unverified. No Firefox/Mac or physical-device
 pass is inferred from the Chromium test.
 
+The subsequent 0.7.1 candidate also validates replacement-stream compatibility
+before changing the saved configuration or active source. A regression with a
+simulated Safari user agent reproduced a rejected HLS refresh discarding the
+previous playable stream. It now verifies that rejection preserves the original
+source, URL and playing state, and that pause/resume still works. The native
+playback control continues to accept HLS. This is automated coverage, not a
+Safari/iPhone device result.
+
 ## Pending device and listening gates
 
 Every row below is **unverified**. The preview has no physical iPhone, external

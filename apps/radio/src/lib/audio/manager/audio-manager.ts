@@ -1099,6 +1099,10 @@ export class AudioManager {
       streamFormat: streamFormat ?? inferStreamFormat(newUrl),
       streamUrl: newUrl,
     };
+    // Reject an incompatible candidate before changing playback or its config.
+    if (instance.outputMode !== "native") {
+      assertSupportedRadioGraph(refreshedRadio, instance.sourceKind);
+    }
     // Keep the configuration aligned with the source being loaded, including
     // when Pause cancels resumption while that load finishes.
     instance.radio = refreshedRadio;
@@ -1119,9 +1123,6 @@ export class AudioManager {
       !request.cancelled;
 
     try {
-      if (instance.outputMode !== "native") {
-        assertSupportedRadioGraph(refreshedRadio, instance.sourceKind);
-      }
       instance.loading = true;
       notifySoundState(this.notifyListeners, soundId, instance, {
         error: null,

@@ -473,8 +473,9 @@ Keep provider choice static and the playback path small:
    relay's single decode. Direct redirects remain manually validated, and relay
    requests allow zero HTTP redirects. Since seep follows its upstream redirects
    without exposing the final URL, album/track parsing requires a safe Bandcamp
-   `data-tralbum.url` with the requested hostname, allowing slug renames. Missing
-   or mismatched identity falls through as a parse error, then fails closed.
+   identity with the requested hostname: `og:url`, or `data-tralbum.url` only
+   when `og:url` is absent, allowing slug renames. Missing or mismatched
+   identity falls through as a parse error, then fails closed.
    Artist/collection pages need no identity check; their release URLs are
    validated before fetching and their release pages are checked when parsed;
 2. validate every resolved stream URL and artwork URL inside

@@ -396,11 +396,56 @@ describe("modulation pattern editors", () => {
       fireEvent.focusIn(count);
       fireEvent.change(count, { target: { value } });
       fireEvent.keyUp(count, { key: "Backspace" });
+      fireEvent.blur(count);
     }
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.change(count, { target: { value: "6" } });
     fireEvent.keyUp(count, { key: "6" });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(count);
     expect(onChange).toHaveBeenCalledWith([...values, 0, 0]);
+  });
+
+  test.each(["blur", "Enter"])(
+    "typing a larger step count preserves the pattern until %s",
+    (commit) => {
+      const values = [0, 1, 0.25, 0.75, 0, 1, 0.25, 0.75];
+      const onChange = mock((_values: number[]) => undefined);
+      const view = render(<StepsEditor onChange={onChange} values={values} />);
+      const count = view.getByRole("spinbutton", { name: "Step count" });
+      fireEvent.change(count, { target: { value: "1" } });
+      fireEvent.change(count, { target: { value: "16" } });
+      expect(onChange).not.toHaveBeenCalled();
+      if (commit === "blur") {
+        fireEvent.blur(count);
+      } else {
+        fireEvent.keyDown(count, { key: "Enter" });
+      }
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith([
+        ...values,
+        ...new Array(8).fill(0),
+      ]);
+      fireEvent.blur(count);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("Escape and external pattern edits discard a pending step count", () => {
+    const onChange = mock((_values: number[]) => undefined);
+    const values = [0.2, 0.8, 0.4, 0.9];
+    const view = render(<StepsEditor onChange={onChange} values={values} />);
+    const count = view.getByRole("spinbutton", { name: "Step count" });
+    fireEvent.change(count, { target: { value: "16" } });
+    fireEvent.keyDown(count, { key: "Escape" });
+    expect((count as HTMLInputElement).value).toBe("4");
+    fireEvent.blur(count);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(count, { target: { value: "16" } });
+    view.rerender(<StepsEditor onChange={onChange} values={[0.9, 0.1]} />);
+    expect((count as HTMLInputElement).value).toBe("2");
+    fireEvent.blur(count);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   test("only points with an outgoing segment expose a Bend control", () => {

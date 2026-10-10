@@ -490,6 +490,60 @@ describe("NodeRack", () => {
     ).toBeTruthy();
   });
 
+  test("shared upstream routes discover station names once per endpoint", () => {
+    const nodes: NodeInput[] = [
+      station("source", "Shared station"),
+      station("other", "Other station"),
+      {
+        data: {
+          effect: {
+            ...createNodeEffectConfig("compressor", "comp"),
+            enabled: true,
+          },
+        },
+        id: "comp",
+        position,
+        type: "compressor",
+      },
+      { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+    ];
+    const edges: NodeGraphInput["edges"] = [];
+    let previous = "source";
+    for (let layer = 0; layer < 18; layer += 1) {
+      const merged = `merge-${layer}`;
+      for (const suffix of ["a", "b"]) {
+        const id = `${layer}-${suffix}`;
+        nodes.push({ data: {}, id, position, type: "pan" });
+        edges.push(cable(previous, id), cable(id, merged));
+      }
+      nodes.push({ data: {}, id: merged, position, type: "merge" });
+      previous = merged;
+    }
+    edges.push(
+      cable(previous, SPEAKERS_NODE_ID),
+      keyCable(previous, "comp"),
+      cable("other", "comp"),
+      cable("comp", SPEAKERS_NODE_ID)
+    );
+    const graph = nodeGraphSchema.parse({ edges, nodes, version: 2 });
+    expect(compile(graph, ENV).issues).toEqual([]);
+    const source = graph.nodes.find((node) => node.id === "source");
+    if (source?.type !== "station" || !source.data.radio) {
+      throw new Error("Missing station fixture");
+    }
+    const name = mock(() => "Shared station");
+    Object.defineProperty(source.data.radio, "name", { get: name });
+    const { view } = renderRack(graph);
+    expect(
+      view.getByRole("button", {
+        name: "Compressor settings, keyed by Shared station",
+      })
+    ).toBeTruthy();
+    // Count reads instead of asserting wall-clock time: the old traversal reads
+    // the same leaf once for each of 2^18 paths through this valid graph.
+    expect(name.mock.calls.length).toBeLessThan(1000);
+  });
+
   test("a key on a switched-off FX names no station, as its cable reads idle", () => {
     const graph = buildNodeGraphFromTemplate("duck", {
       saved: [

@@ -39,6 +39,7 @@ import {
   toPlaybackInput,
   type Unsubscribe,
 } from "../playback/index.js";
+import type { RadioSourceKind } from "../playback/playback-source-factory.js";
 import { inferStreamFormat } from "../playback/stream-format.js";
 import {
   cleanupSoundNodes,
@@ -213,7 +214,8 @@ export class AudioManager {
   createSound(
     radio: Radio,
     soundId?: string,
-    outputMode: SoundOutputMode = "audio-graph"
+    outputMode: SoundOutputMode = "audio-graph",
+    sourceKind?: RadioSourceKind
   ): string {
     const id = this.soundRegistry.create(
       radio,
@@ -221,7 +223,8 @@ export class AudioManager {
       (existingSoundId) => {
         this.cleanupSound(existingSoundId);
       },
-      outputMode
+      outputMode,
+      sourceKind
     );
     const instance = this.soundRegistry.get(id);
     if (!instance) {
@@ -294,7 +297,7 @@ export class AudioManager {
     try {
       let context: AudioContext | null = null;
       if (instance.outputMode !== "native") {
-        assertSupportedRadioGraph(instance.radio);
+        assertSupportedRadioGraph(instance.radio, instance.sourceKind);
         context = getAudioContext();
         if (!context) {
           throw new Error("Audio context not available");
@@ -1117,7 +1120,7 @@ export class AudioManager {
 
     try {
       if (instance.outputMode !== "native") {
-        assertSupportedRadioGraph(refreshedRadio);
+        assertSupportedRadioGraph(refreshedRadio, instance.sourceKind);
       }
       instance.loading = true;
       notifySoundState(this.notifyListeners, soundId, instance, {

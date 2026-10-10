@@ -109,11 +109,12 @@ function same(left: unknown, right: unknown): boolean {
  * over on a new device or echo cancellation, which are capture
  * constraints; its channels switch live.
  */
-function sourceKey({ radio, source }: LanePlan): string {
+function sourceKey({ radio, source, transport }: LanePlan): string {
   if (source.kind === "device") {
     return JSON.stringify(["device", source.deviceId, source.echoCancellation]);
   }
   return JSON.stringify([
+    transport !== null,
     radio.id ?? null,
     radio.streamUrl,
     toPlaybackInput(radio as Radio),

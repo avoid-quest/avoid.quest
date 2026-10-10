@@ -190,6 +190,48 @@ describe("AudioManager", () => {
     }
   });
 
+  test("Safari plays an imported finite File without metadata and still rejects HLS refresh", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      Object.defineProperty(navigator, "userAgent", {
+        value: "AppleWebKit/605.1.15 Version/27.0 Safari/605.1.15",
+      });
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(
+        { name: "Imported MP3", streamUrl: "https://media.example/track.mp3" },
+        "node:n:file",
+        "audio-graph",
+        "media"
+      );
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await starting;
+      expect(browser.audio().paused).toBe(false);
+      const refreshing = manager.refreshStreamUrl(
+        soundId,
+        "https://media.example/track-renewed.mp3"
+      );
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await refreshing;
+      expect(browser.audio().src).toBe(
+        "https://media.example/track-renewed.mp3"
+      );
+      await expect(
+        manager.refreshStreamUrl(
+          soundId,
+          "https://media.example/live",
+          undefined,
+          "hls"
+        )
+      ).rejects.toMatchObject({ code: "UNSUPPORTED_RADIO_GRAPH" });
+    } finally {
+      harness.restore();
+    }
+  });
+
   test.each(["audio-graph", "native"] as const)(
     "Safari HLS refresh rejects a graph but permits native playback (%s)",
     async (mode) => {

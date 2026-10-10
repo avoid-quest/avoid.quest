@@ -196,8 +196,8 @@ function soundOf(nodeId: string): string {
 }
 
 /** A lane's sound as Node activates it: it reconciles its own effects. */
-function ownedSound(nodeId: string) {
-  return { ownsEffects: true, soundId: soundOf(nodeId) };
+function ownedSound(nodeId: string, sourceKind = "station") {
+  return { ownsEffects: true, soundId: soundOf(nodeId), sourceKind };
 }
 
 async function resetCollections(): Promise<void> {
@@ -4700,7 +4700,7 @@ describe("Node Playback: Track and File sources", () => {
       "node",
       channelOf("video"),
       expect.objectContaining({ id: "video" }),
-      ownedSound("video")
+      ownedSound("video", "media")
     );
     expect(harness.context.audio.playSound).toHaveBeenCalledWith(
       soundOf("video"),

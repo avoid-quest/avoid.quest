@@ -301,32 +301,42 @@ describe("Splits whose branches go different places", () => {
     ).toBeLessThan(-90);
   });
 
-  /** Station a into a Band Split at three bands; bands 2 and 3 to the desk. */
-  const threeBands = (crossoverFrequencies = [300, 3000], count = 3) => {
-    const bands = split(
-      "frequencySplit",
-      { crossoverFrequencies },
-      (chain) => ({ ...chain, gain: 1, pan: 0 })
-    );
-    const { effect } = bands.data as { effect: { chains: unknown[] } };
-    effect.chains = effect.chains.slice(0, count);
-    return bands;
+  /** Station a into three Split branches; branches 2 and 3 go to the desk. */
+  const threeBranches = (count = 3) => {
+    const branches = split("fxComposite", { dryWet: 1 }, (chain) => ({
+      ...chain,
+      gain: 1,
+      pan: 0,
+    }));
+    const { effect } = branches.data as {
+      effect: { chains: EffectChainConfig[] };
+    };
+    const [template] = effect.chains;
+    if (!template) {
+      throw new Error("Split fixture needs a branch");
+    }
+    effect.chains = Array.from({ length: count }, (_, index) => ({
+      ...template,
+      id: `branch-${index + 1}`,
+      order: index,
+    }));
+    return branches;
   };
-  const bandCables = [
+  const branchCables = [
     cable("a", "split"),
-    cable("split", "fx", { from: "band-1" }),
+    cable("split", "fx", { from: "branch-1" }),
     cable("fx", "speakers"),
-    cable("split", "desk", { from: "band-2" }),
-    { ...cable("split", "desk", { from: "band-3" }), id: "high" },
+    cable("split", "desk", { from: "branch-2" }),
+    { ...cable("split", "desk", { from: "branch-3" }), id: "high" },
   ];
 
   test("an uncabled port keeps feeding its cable until that cable faded out, then goes", async () => {
-    const played = play(threeBands(), bandCables);
+    const played = play(threeBranches(), branchCables);
     const before = played.output("desk");
 
-    // Band 2's cable goes; band 3 still goes its own way, so the Split
-    // stays open. Held where it was, band 2's fading cable still plays.
-    const kept = bandCables.filter((edge) => edge.id !== "split->desk");
+    // Branch 2's cable goes; branch 3 still goes its own way, so the Split
+    // stays open. Held where it was, branch 2's fading cable still plays.
+    const kept = branchCables.filter((edge) => edge.id !== "split->desk");
     played.apply(kept);
     const fading = played.sent("desk");
     for (const send of fading) {
@@ -334,37 +344,37 @@ describe("Splits whose branches go different places", () => {
     }
     expect(residualDb(played.output("desk"), before, TAIL)).toBeLessThan(-90);
 
-    // Once it faded out, band 2 is let go: the desk hears band 3 alone.
+    // Once it faded out, branch 2 is let go: the desk hears branch 3 alone.
     await played.endFades();
-    const alone = play(threeBands(), kept);
+    const alone = play(threeBranches(), kept);
     expect(
       residualDb(played.output("desk"), alone.output("desk"), TAIL)
     ).toBeLessThan(-90);
   });
 
-  test("a band a smaller Band Split drops keeps feeding its cable until it faded out", async () => {
+  test("a branch a smaller Split drops keeps feeding its cable until it faded out", async () => {
     const cables = [
-      ...bandCables.filter((edge) => edge.id !== "high"),
-      { ...cable("split", "speakers", { from: "band-3" }), id: "high" },
+      ...branchCables.filter((edge) => edge.id !== "high"),
+      { ...cable("split", "speakers", { from: "branch-3" }), id: "high" },
     ];
-    const played = play(threeBands(), cables);
+    const played = play(threeBranches(), cables);
     const before = played.output("speakers");
 
-    // Two bands now: band 3 and its cable go.
+    // Two branches now: branch 3 and its cable go.
     played.apply(
       cables.filter((edge) => edge.id !== "high"),
-      threeBands([300], 2)
+      threeBranches(2)
     );
     for (const send of played.sent("speakers")) {
       send.gain.value = 1;
     }
-    // The fading cable still hears band 3, in the layout it had.
+    // The fading cable still hears branch 3, in the layout it had.
     expect(residualDb(played.output("speakers"), before, TAIL)).toBeLessThan(
       -90
     );
     await played.endFades();
     const smaller = play(
-      threeBands([300], 2),
+      threeBranches(2),
       cables.filter((edge) => edge.id !== "high")
     );
     for (const sink of ["speakers", "desk"]) {
@@ -420,47 +430,6 @@ describe("Splits whose branches go different places", () => {
     for (const sink of ["speakers", "desk"]) {
       expect(
         residualDb(played.output(sink), two.output(sink), TAIL)
-      ).toBeLessThan(-90);
-    }
-  });
-
-  test("a Band Split turned Split fades its dropped band out as that band, then plays whole", async () => {
-    const flat = (chain: EffectChainConfig) => ({ ...chain, gain: 1, pan: 0 });
-    const branches = [
-      cable("a", "split"),
-      cable("split", "fx", { from: "branch-1" }),
-      cable("fx", "speakers"),
-      cable("split", "desk", { from: "branch-2" }),
-    ];
-    const whole = split("fxComposite", { dryWet: 1 }, flat);
-    const played = play(threeBands(), bandCables);
-
-    const sends = played.sent("desk");
-    const before = new Map(sends.map((send) => [send, played.sending(send)]));
-
-    // Same node, now a Split: band 3's cable fades out first, still
-    // carrying band 3. Half way, it plays band 3 at half its level.
-    played.apply(branches, whole);
-    const fading = sends.filter((send) => send.gain.value === 0);
-    expect(fading).toHaveLength(1);
-    for (const send of fading) {
-      const level = before.get(send) ?? SILENCE;
-      expect(
-        residualDb(
-          played.sending(send, 0.5),
-          level.map((channel) => channel.map((x) => x / 2)),
-          TAIL
-        )
-      ).toBeLessThan(-90);
-      expect(residualDb(level, played.input, TAIL)).toBeGreaterThan(-20);
-    }
-
-    // Once it faded out, every branch carries the whole signal.
-    await played.endFades();
-    const plain = play(whole, branches);
-    for (const sink of ["speakers", "desk"]) {
-      expect(
-        residualDb(played.output(sink), plain.output(sink), TAIL)
       ).toBeLessThan(-90);
     }
   });
@@ -752,25 +721,4 @@ describe("Splits whose branches go different places", () => {
     );
     expect(residualDb(played.sum(), played.input, TAIL)).toBeLessThan(-60);
   });
-
-  test.each([true, false])(
-    "Band Split ports sent different ways sum back to the input, enabled=%p",
-    (enabled) => {
-      const bands = split(
-        "frequencySplit",
-        { crossoverFrequencies: [300, 3000], enabled },
-        (chain) => ({ ...chain, gain: 1, pan: 0 })
-      );
-      const { effect } = bands.data as { effect: { chains: unknown[] } };
-      effect.chains = effect.chains.slice(0, 3);
-      const played = play(bands, [
-        cable("a", "split"),
-        cable("split", "fx", { from: "band-1" }),
-        cable("fx", "speakers"),
-        cable("split", "desk", { from: "band-2" }),
-        { ...cable("split", "speakers", { from: "band-3" }), id: "high" },
-      ]);
-      expect(residualDb(played.sum(), played.input, TAIL)).toBeLessThan(-60);
-    }
-  );
 });

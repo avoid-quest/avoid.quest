@@ -218,7 +218,10 @@ export class LaneInstance {
           "node",
           plan.channelId,
           radio,
-          { ownsEffects: true },
+          {
+            ownsEffects: true,
+            sourceKind: plan.transport ? "media" : "station",
+          },
           host.ctx
         );
       } catch (error) {

@@ -141,9 +141,6 @@ async function probeBandcampRelay(
               break;
             }
             length += value.byteLength;
-            if (contentLength !== null) {
-              return length > 0;
-            }
           }
           return length === 1;
         } finally {

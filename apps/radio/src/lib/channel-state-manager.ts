@@ -1,6 +1,7 @@
 import { captureError } from "@avoid.quest/error";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { AudioManager, type AudioState, type FilterConfig } from "@/lib/audio";
+import type { RadioSourceKind } from "@/lib/audio/playback/playback-source-factory";
 import {
   getPlaybackChannel,
   PLAYBACK_SESSION_IDS,
@@ -51,6 +52,8 @@ type ChannelUpdate =
 
 export type ChannelActivationOptions = {
   soundId?: string;
+  /** Source-node provenance, including media nodes without platform metadata. */
+  sourceKind?: RadioSourceKind;
   /** Return true only when a recovery owns reporting this failure. */
   onAudioState?: (audioState: AudioState) => boolean | undefined;
   persistRadio?: boolean;
@@ -362,7 +365,7 @@ export function activateChannel(
 
   deactivateChannel(channelId);
   try {
-    manager.createSound(radio, soundId, outputMode);
+    manager.createSound(radio, soundId, outputMode, options.sourceKind);
     soundCreated = true;
     channelOutputModes.set(channelId, outputMode);
     channelSessions.set(channelId, sessionId);

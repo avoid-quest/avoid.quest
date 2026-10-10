@@ -1746,12 +1746,14 @@ describe("EffectsController", () => {
         fallback: "capacity",
       });
 
+      let pending: Promise<unknown> = Promise.resolve();
       if (release === "removed") {
         h.controller.cleanupSound("one");
       } else {
-        h.reconcile("one", []);
+        pending = h.reconcile("one", []);
       }
       await h.settle();
+      await pending;
 
       // No edit or restart: the freed channels bring it back.
       expect(h.controller.getRuntimeOutcome("five")).toEqual({
@@ -1857,8 +1859,11 @@ describe("EffectsController", () => {
     expect(h.used()).toBe(8);
 
     // …leave no room for its own key, and it keys "keyed" still.
-    h.reconcile("key", [keyedCompressor("key", "node-key:key")]);
+    const reconcile = h.reconcile("key", [
+      keyedCompressor("key", "node-key:key"),
+    ]);
     await h.settle();
+    await reconcile;
     expect(h.controller.getRuntimeOutcome("key")).toMatchObject({
       backend: "compatibility",
       fallback: "capacity",

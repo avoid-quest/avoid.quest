@@ -724,6 +724,16 @@ export class RegionLowerer {
         `Band Split takes 2 to ${MAX_BANDS} bands`
       );
     }
+    // The Web Audio stage and openDAW's rejoined container differ for
+    // two- and three-band layouts. Keep Band Splits on the container path
+    // until the parity gate in split-routing-measurements.md passes.
+    if (base.type === "frequencySplit") {
+      throw new LoweringError(
+        id,
+        "split-branches",
+        "Band Split branches must meet again"
+      );
+    }
     const ports = new Map<
       number,
       { chain: EffectChainConfig; exits: SegmentExit[] }

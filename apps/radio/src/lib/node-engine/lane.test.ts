@@ -61,7 +61,7 @@ const speakers: NodeInput = {
   type: "speakers",
 };
 
-function station(id: string, stream = id): NodeInput {
+function station(id: string, stream = id) {
   return {
     data: {
       radio: {
@@ -73,7 +73,7 @@ function station(id: string, stream = id): NodeInput {
     id,
     position: { x: 0, y: 0 },
     type: "station",
-  };
+  } satisfies NodeInput;
 }
 
 function video(id: string): Radio {
@@ -1084,6 +1084,12 @@ beforeEach(async () => {
     settingsCollection.stateWhenReady(),
   ]);
   resetAllPlaybackRuntime();
+  for (const id of [...playbackSessionsCollection.state.keys()]) {
+    playbackSessionsCollection.delete(id);
+  }
+  for (const id of [...settingsCollection.state.keys()]) {
+    settingsCollection.delete(id);
+  }
   settingsCollection.insert({
     audio: {
       cueOutputId: null,
@@ -1110,6 +1116,37 @@ afterEach(async () => {
 });
 
 describe("Node lane transitions", () => {
+  test.each(["station", "file", "platform"] as const)(
+    "%s activation carries its source category without platform metadata",
+    async (type) => {
+      const source = { ...station("a"), type } satisfies NodeInput;
+      playbackSessionsCollection.insert({
+        activeChannelId: null,
+        channels: [],
+        crossfadePosition: 0.5,
+        graph: patch([source]),
+        headphoneVolume: 1,
+        id: "node",
+        masterVolume: 1,
+      });
+      const world = createWorld();
+      activeWorld = world;
+      await world.playback.activate();
+      await settled(world);
+      expect(world.context.channels.activate).toHaveBeenCalledWith(
+        "node",
+        "n:a",
+        source.data.radio,
+        {
+          ownsEffects: true,
+          soundId: "node:n:a",
+          sourceKind: type === "station" ? "station" : "media",
+        }
+      );
+      await world.playback.deactivate();
+    }
+  );
+
   test("a failed field transaction reconciles the latest knob value", async () => {
     playbackSessionsCollection.insert({
       activeChannelId: null,

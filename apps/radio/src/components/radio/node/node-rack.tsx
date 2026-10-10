@@ -141,11 +141,37 @@ function keyingStations(
       into.set(key, [...(into.get(key) ?? []), cable.from]);
     }
   }
-  const stationsOf = (from: Endpoint): string[] => {
-    const lane = from.kind === "lane" ? plan.lanes.get(from.id) : undefined;
-    return lane
-      ? [lane.radio.name]
-      : (into.get(endpointKey(from)) ?? []).flatMap(stationsOf);
+  const stationCache = new Map<string, Set<string>>();
+  const stationsOf = (from: Endpoint): Set<string> => {
+    const fromKey = endpointKey(from);
+    const cached = stationCache.get(fromKey);
+    if (cached) {
+      return cached;
+    }
+    const stations = new Set<string>();
+    const visited = new Set<string>();
+    const pending = [from];
+    while (pending.length) {
+      const endpoint = pending.pop();
+      if (!endpoint) {
+        continue;
+      }
+      const key = endpointKey(endpoint);
+      if (visited.has(key)) {
+        continue;
+      }
+      visited.add(key);
+      const lane =
+        endpoint.kind === "lane" ? plan.lanes.get(endpoint.id) : undefined;
+      if (lane) {
+        stations.add(lane.radio.name);
+      } else {
+        // Keep the existing depth-first source-name order.
+        pending.push(...(into.get(key) ?? []).slice().reverse());
+      }
+    }
+    stationCache.set(fromKey, stations);
+    return stations;
   };
   const targetOf = new Map(graph.edges.map((edge) => [edge.id, edge.target]));
   const keyed = new Map<string, Set<string>>();

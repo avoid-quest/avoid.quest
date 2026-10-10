@@ -271,6 +271,90 @@ function nativeHost() {
 }
 
 describe("modulation runtime startup", () => {
+  test("replacing the worklet retains held gates, per-channel notes and the latest CC", async () => {
+    const h = harness();
+    const patch = (followers: number) =>
+      graph(
+        {
+          ...palette("midiIn", "gate", { x: 0, y: 0 }),
+          data: { mode: "gate" },
+        },
+        { ...palette("midiIn", "key", { x: 0, y: 0 }), data: { mode: "key" } },
+        {
+          ...palette("midiIn", "other", { x: 0, y: 0 }),
+          data: { channel: 1, mode: "velocity" },
+        },
+        palette("midiIn", "cc", { x: 0, y: 0 }),
+        {
+          ...palette("envelope", "env", { x: 0, y: 0 }),
+          data: { attack: 0.001, decay: 0.001, sustain: 0.5 },
+        },
+        {
+          ...palette("curve", "released", { x: 0, y: 0 }),
+          data: { loop: false },
+        },
+        ...Array.from({ length: followers }, (_, index) =>
+          palette("follower", `f${index}`, { x: 0, y: 0 })
+        )
+      );
+    h.runtime.sync(patch(1));
+    const first = await start(h.context);
+    publishModulationMidi(new Uint8Array([0x90, 60, 100]));
+    publishModulationMidi(new Uint8Array([0x90, 62, 90]));
+    publishModulationMidi(new Uint8Array([0x90, 60, 80]));
+    publishModulationMidi(new Uint8Array([0x91, 60, 70]));
+    publishModulationMidi(new Uint8Array([0x90, 65, 110]));
+    publishModulationMidi(new Uint8Array([0x90, 65, 0]));
+    publishModulationMidi(new Uint8Array([0xb0, 1, 99]));
+    gateModulator("env", true);
+    gateModulator("released", true);
+    gateModulator("released", false);
+    expect(first.dsp.process([], 100)).toMatchObject({
+      cc: 99 / 127,
+      env: 0.5,
+      gate: 1,
+      key: 60 / 127,
+      other: 70 / 127,
+    });
+
+    h.runtime.sync(patch(2));
+    await h.runtime.whenSettled();
+    const second = ModulationWorklet.current;
+    expect(second).not.toBe(first);
+    expect(second?.dsp.process([], 100)).toMatchObject({
+      cc: 99 / 127,
+      env: 0.5,
+      gate: 1,
+      key: 60 / 127,
+      other: 70 / 127,
+      released: 0,
+    });
+    expect(first.port.onmessage).toBeNull();
+    // Releasing channel 0's note leaves channel 1's same-pitch note held.
+    publishModulationMidi(new Uint8Array([0x80, 60, 0]));
+    publishModulationMidi(new Uint8Array([0xb0, 123, 0]));
+    gateModulator("env", false);
+    h.runtime.sync(patch(3));
+    await h.runtime.whenSettled();
+    expect(ModulationWorklet.current?.dsp.process([], 100)).toMatchObject({
+      cc: 99 / 127,
+      env: 0,
+      gate: 0,
+      key: 0,
+      other: 70 / 127,
+      released: 0,
+    });
+    publishModulationMidi(new Uint8Array([255]));
+    h.runtime.sync(patch(4));
+    await h.runtime.whenSettled();
+    expect(ModulationWorklet.current?.dsp.process([], 100)).toMatchObject({
+      cc: 0,
+      gate: 0,
+      key: 0,
+      other: 0,
+    });
+  });
+
   test("followers past eight keep their audio inputs when the patch grows", async () => {
     const h = harness();
     const followers = (count: number) =>

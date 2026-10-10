@@ -153,6 +153,29 @@ describe("preparePlatformItem", () => {
     ).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[0]);
   });
 
+  test.each([{ chunks: [[0, 1]] }, { chunks: [[0], [1]] }])(
+    "rejects extra received bytes despite Content-Length: 1: %j",
+    async ({ chunks }) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(new Uint8Array(chunk));
+          }
+          controller.close();
+        },
+      });
+      await expect(
+        selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
+          fetchImpl: async () =>
+            new Response(body, {
+              headers: { "Content-Length": "1", "Content-Type": "audio/mpeg" },
+              status: 206,
+            }),
+        })
+      ).rejects.toThrow("No public Bandcamp relay is currently available");
+    }
+  );
+
   test("fails when seep returns ranged headers without a byte", async () => {
     await expect(
       selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {

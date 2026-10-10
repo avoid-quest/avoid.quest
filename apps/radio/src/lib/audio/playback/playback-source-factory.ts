@@ -8,14 +8,22 @@ import type {
 } from "./playback-source.js";
 import type { Radio } from "./types.js";
 
+/** Source-node provenance; media nodes can hold imported files without metadata. */
+export type RadioSourceKind = "station" | "media";
+
 /** Safari's graph receives no samples from live radio or HLS. */
-function assertSupportedRadioGraph(radio: Radio): void {
+function assertSupportedRadioGraph(
+  radio: Radio,
+  sourceKind?: RadioSourceKind
+): void {
   if (!isWebKitBrowser()) {
     return;
   }
   const platform = radio.platformMetadata?.platform;
   const station =
-    !platform || platform === "radio-browser" || platform === "radiogarden";
+    platform === "radio-browser" ||
+    platform === "radiogarden" ||
+    (!platform && sourceKind !== "media");
   if (station || streamFormatOf(radio, radio.streamUrl) === "hls") {
     throw new AppError({
       category: "validation",

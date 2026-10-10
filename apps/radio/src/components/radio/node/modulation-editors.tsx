@@ -18,6 +18,28 @@ export function StepsEditor({
   onChange: (values: number[]) => void;
 }) {
   const [pulses, setPulses] = useState(4);
+  const [draftCount, setDraftCount] = useState<{
+    values: number[];
+    text: string;
+  } | null>(null);
+  // Undo, reset or another editor's change replaces the pattern being edited.
+  if (draftCount && draftCount.values !== values) {
+    setDraftCount(null);
+  }
+  const commitCount = () => {
+    setDraftCount(null);
+    if (!draftCount || draftCount.values !== values) {
+      return;
+    }
+    const enteredCount = Number(draftCount.text);
+    if (draftCount.text.trim() === "" || !Number.isFinite(enteredCount)) {
+      return;
+    }
+    const count = Math.max(1, Math.min(64, Math.trunc(enteredCount)));
+    if (count !== values.length) {
+      onChange(Array.from({ length: count }, (_, index) => values[index] ?? 0));
+    }
+  };
   const fieldId = useId();
   return (
     <div className="w-full space-y-2 px-2 pb-2">
@@ -30,19 +52,22 @@ export function StepsEditor({
             id={`${fieldId}-count`}
             max={64}
             min={1}
-            onChange={(event) => {
-              const rawCount = event.target.value;
-              const enteredCount = Number(rawCount);
-              if (rawCount.trim() === "" || !Number.isFinite(enteredCount)) {
-                return;
+            onBlur={commitCount}
+            onChange={(event) =>
+              setDraftCount({ text: event.target.value, values })
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitCount();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setDraftCount(null);
               }
-              const count = Math.max(1, Math.min(64, Math.trunc(enteredCount)));
-              onChange(
-                Array.from({ length: count }, (_, index) => values[index] ?? 0)
-              );
             }}
             type="number"
-            value={values.length}
+            value={draftCount?.text ?? values.length}
           />
         </label>
         <label htmlFor={`${fieldId}-pulses`}>

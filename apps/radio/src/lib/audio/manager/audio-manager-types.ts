@@ -4,6 +4,7 @@ import type {
   PlaybackSource,
   Radio,
 } from "../playback/index.js";
+import type { RadioSourceKind } from "../playback/playback-source-factory.js";
 
 type FilterConfig = {
   enabled: boolean;
@@ -38,6 +39,7 @@ type SoundOutputConnector = (
 
 type SoundInstance = {
   radio: Radio;
+  sourceKind?: RadioSourceKind;
   sourceId: string;
   mainOutputCleanup: (() => void) | null;
   playbackSource: PlaybackSource | null;
@@ -71,7 +73,8 @@ function createAudioNodes(context: AudioContext, initialGain = 1): AudioNodes {
 function createSoundInstance(
   radio: Radio,
   sourceId: string,
-  outputMode: SoundOutputMode = "audio-graph"
+  outputMode: SoundOutputMode = "audio-graph",
+  sourceKind?: RadioSourceKind
 ): SoundInstance {
   return {
     buffering: false,
@@ -87,6 +90,7 @@ function createSoundInstance(
     playing: false,
     radio,
     sourceId,
+    sourceKind,
     volume: 1,
   };
 }

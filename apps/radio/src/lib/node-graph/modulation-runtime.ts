@@ -432,12 +432,21 @@ export function createModulationRuntime(options: Options) {
         post({ id, on: true, type: "gate" });
       }
       post({ id, on: gate.on, type: "gate" });
+      if (gate.on) {
+        queuedGates.set(id, { on: true, triggered: false });
+      } else {
+        queuedGates.delete(id);
+      }
     }
-    queuedGates.clear();
-    for (const message of queuedMidi.values()) {
+    for (const [id, message] of queuedMidi) {
       post(message);
+      const [status = 0, key = 0, velocity = 0] = message.bytes;
+      const kind = Math.floor(status / 16);
+      if (kind === 8 || (kind === 9 && velocity === 0)) {
+        queuedMidi.delete(`note:${status % 16}:${key}:on`);
+        queuedMidi.delete(id);
+      }
     }
-    queuedMidi.clear();
   };
   const needsHost = () =>
     specs.length > 0 ||
@@ -487,6 +496,7 @@ export function createModulationRuntime(options: Options) {
       releaseNative();
       return;
     }
+    const created = !node;
     if (!node) {
       node = new AudioWorkletNode(audio, "node-modulation-processor", {
         numberOfInputs: Math.max(1, program.followers.length),
@@ -507,7 +517,9 @@ export function createModulationRuntime(options: Options) {
       audio.addEventListener("statechange", stateChanged);
     }
     withNativeFallback(configure);
-    replay();
+    if (created) {
+      replay();
+    }
     refreshTaps();
     stateChanged();
   };
@@ -541,9 +553,9 @@ export function createModulationRuntime(options: Options) {
       }
     }
   };
-  // MIDI state has a fixed number of channels, notes and controllers. Keeping
-  // the latest press/release for each note and the last CC preserves triggers
-  // and held notes without a growing backlog.
+  // Retain held notes and the last CC even after delivery, so a replacement
+  // worklet can recover them. While loading, also retain short press/release
+  // pairs until replay; already-delivered releases must never retrigger.
   const queueMidi = (message: Extract<ModulationMessage, { type: "midi" }>) => {
     const [status = 0, key = 0, velocity = 0] = message.bytes;
     if (status === 255) {
@@ -553,7 +565,7 @@ export function createModulationRuntime(options: Options) {
     }
     const channel = status % 16;
     const kind = Math.floor(status / 16);
-    if ((kind !== 8 && kind !== 9 && kind !== 11) || key < 0 || key > 127) {
+    if (![8, 9, 11].includes(kind) || key < 0 || key > 127) {
       return;
     }
     if (kind === 11 && (key === 120 || key === 123)) {
@@ -564,6 +576,11 @@ export function createModulationRuntime(options: Options) {
       kind === 11
         ? `cc:${channel}:${key}`
         : `note:${channel}:${key}:${pressed ? "on" : "off"}`;
+    if (!pressed && kind !== 11 && node) {
+      queuedMidi.delete(`note:${channel}:${key}:on`);
+      queuedMidi.delete(id);
+      return;
+    }
     if (pressed) {
       queuedMidi.delete(`note:${channel}:${key}:off`);
     }
@@ -588,20 +605,18 @@ export function createModulationRuntime(options: Options) {
     ) {
       return;
     }
-    if (node) {
-      node.port.postMessage(message);
-    } else {
-      if (message.type === "gate") {
-        queuedGates.set(message.id, {
-          on: message.on,
-          triggered:
-            message.on || (queuedGates.get(message.id)?.triggered ?? false),
-        });
-      }
-      if (message.type === "midi" && program.nodes.length > 0) {
-        queueMidi(message);
-      }
+    if (message.type === "gate") {
+      queuedGates.set(message.id, {
+        on: message.on,
+        triggered:
+          !node &&
+          (message.on || (queuedGates.get(message.id)?.triggered ?? false)),
+      });
     }
+    if (message.type === "midi" && program.nodes.length > 0) {
+      queueMidi(message);
+    }
+    post(message);
     initialize();
   };
   commands.add(send);

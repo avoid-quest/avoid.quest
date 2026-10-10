@@ -61,7 +61,7 @@ effects and gain, balance, mute, solo, mix and output trim at its exit:
   back to the input itself: an offline render checks that below −60 dBFS. The
   rest is openDAW's own crossover, which was not re-measured.
 
-## Beta verification
+## Original beta verification
 
 - **Band Split against openDAW's container, ≤ −60 dBFS:** run in a real
   browser, with the same config in openDAW's `FrequencySplit`. The bench
@@ -70,13 +70,54 @@ effects and gain, balance, mute, solo, mix and output trim at its exit:
 - **G2, clicks:** count clicks per edit against the baseline, in a real
   browser. The bench run recorded no click counts.
 
+## Browser recheck, 2026-10-10
+
+Tested `cb783dd11596d73fc6d6af97abd2eafa9bddd35d` in T3's Chromium
+154 browser, cross-origin isolated, at 48 kHz. The input summed five sine
+oscillators at 73, 277, 997, 3311 and 8111 Hz, through a gain of 0.15. It was
+mono duplicated onto the two monitored channels; this measures summed output,
+not stereo isolation.
+
+The source fed both the production `createSplitStage` and the production
+`OfficialOpenDawRuntime` with its actual FrequencySplit container. All stage
+ports were summed and passed through a second, effect-free sound in the same
+openDAW runtime. Both paths therefore used the same monitoring engine, with
+four monitoring channels occupied in total. An AudioWorklet captured the two
+outputs simultaneously. No speaker output was needed. Each configuration
+settled for 150 ms, then five captures of 9600 samples measured the RMS
+sample difference at zero lag. The four-band comparison also checked offsets
+of ±512 samples; its best match was at zero.
+
+Configured crossovers were `[200]`, `[200, 1000]` and `[200, 1000, 5000]`,
+with two, three and four unity-gain, centered, unmuted chains respectively.
+The effect mix was 1. Results across five captures:
+
+- Two bands enabled: −25.905 to −25.904 dBFS — **fails** the −60 dBFS gate.
+- Three bands enabled: −25.854 to −25.854 dBFS — **fails**.
+- Four bands enabled: −157.546 to −157.254 dBFS — passes this comparison.
+- Disabled controls: below −157 dBFS for all three band counts.
+
+The adapter supplies 20 kHz for unused native crossovers and mutes unused
+native cells. The Web Audio stage instead gives its last cabled band the
+entire remainder. The enabled two-/three-band discrepancy is reproducible;
+a sum-to-input test does not establish parity with that native container.
+This recheck establishes failure at full mix, which is sufficient to reject
+A for divergent Band Splits. It does not claim the rest of G1, partial mixes,
+per-port frequency response, or G2 click counts passed.
+
 ## Decision
 
-**A (provisional).** B is out on G1. A passes every G1 check except the Band
-Split comparison against openDAW's container, which, with G2, is left to beta
-verification. If A fails the Band Split check, neither option passes:
-diverging Band Splits are refused with "Band Split branches must meet again"
-until the cause is fixed.
+**Use the documented fallback.** B failed G1, and A now demonstrably fails
+Band Split parity. The compiler refuses any Band Split requiring the external
+stage with **"Band Split branches must meet again"**. This includes branches
+sent to different outputs or tapped where a closed container cannot implement
+them. The refusal never substitutes unfiltered audio. Rejoined Band Splits
+continue through the existing container path.
 
-A needs no null bus, no output 0 and no bus registrations, and it runs on the
-compatibility engine too. B is not built.
+Split and Stereo Split retain A as the original fallback specifies. G2 click
+counts and physical listening remain unverified; this restriction does not
+waive those release checks. Re-enable divergent Band Splits only after fixing
+the mismatch and recording the complete required measurements, including all
+supported band counts and dry/wet settings.
+
+A needs no null bus, no output 0 and no bus registrations. B is not built.

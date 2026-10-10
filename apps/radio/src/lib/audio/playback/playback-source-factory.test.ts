@@ -80,3 +80,54 @@ test.each([
     browser.restore();
   }
 });
+
+test.each([
+  [station, "media", false],
+  [file, "station", false],
+  [
+    {
+      ...station,
+      platformMetadata: {
+        itemType: "track",
+        platform: "bandcamp",
+        url: "https://artist.bandcamp.com/track/song",
+      },
+    },
+    "station",
+    false,
+  ],
+  [
+    {
+      ...station,
+      platformMetadata: {
+        hls: false,
+        itemType: "station",
+        platform: "radio-browser",
+        stationUuid: "station",
+        url: station.streamUrl,
+      },
+    },
+    "media",
+    true,
+  ],
+  [{ ...station, streamFormat: "hls" }, "media", true],
+  [playlist, "media", true],
+] as const)(
+  "Safari honors known source provenance %j / %s blocked=%s",
+  (radio, sourceKind, blocked) => {
+    const browser = installBrowser();
+    Object.defineProperty(navigator, "userAgent", { value: safari });
+    try {
+      const assert = () => assertSupportedRadioGraph(radio, sourceKind);
+      if (blocked) {
+        expect(assert).toThrow(
+          "Safari plays live radio and HLS only in Single"
+        );
+      } else {
+        expect(assert).not.toThrow();
+      }
+    } finally {
+      browser.restore();
+    }
+  }
+);

@@ -250,4 +250,26 @@ describe("channel state manager", () => {
       tree: [effect],
     });
   });
+
+  test("channel activation forwards a File's known finite source category", () => {
+    const manager = AudioManager.getInstance();
+    manager.createSound = mock((_radio, soundId = "sound-a") => soundId);
+    manager.subscribe = mock(() => () => undefined);
+    manager.subscribeMeter = mock(() => () => undefined);
+    manager.cleanupSound = mock(() => undefined);
+    const radio = {
+      name: "Imported file",
+      streamUrl: "https://media.example/track.mp3",
+    };
+    activateChannel("node", "n:file", radio, {
+      ownsEffects: true,
+      sourceKind: "media",
+    });
+    expect(manager.createSound).toHaveBeenCalledWith(
+      radio,
+      "node:n:file",
+      "audio-graph",
+      "media"
+    );
+  });
 });

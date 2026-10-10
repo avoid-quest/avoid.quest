@@ -243,7 +243,7 @@ describe("mode lifecycle manager", () => {
       "node",
       "n:station-1",
       expect.objectContaining({ id: "station-1" }),
-      { ownsEffects: true, soundId: "node:n:station-1" }
+      { ownsEffects: true, soundId: "node:n:station-1", sourceKind: "station" }
     );
     expect(context.audio.playSound).not.toHaveBeenCalled();
     expect(commitMode).toHaveBeenCalledWith("node");

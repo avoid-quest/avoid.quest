@@ -15,16 +15,26 @@ import type { DatabaseExport } from "@/lib/types";
 import { mergeImportedData, replaceImportedData } from "./export-import";
 
 const STORAGE_KEY = "radio-session-radios";
+let previousStorage: PropertyDescriptor | undefined;
 
-if (typeof sessionStorage === "undefined") {
+function installSessionStorage() {
+  previousStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "sessionStorage"
+  );
   const values = new Map<string, string>();
   Object.defineProperty(globalThis, "sessionStorage", {
     configurable: true,
     value: {
+      clear: () => values.clear(),
       getItem: (key: string) => values.get(key) ?? null,
+      key: (index: number) => [...values.keys()][index] ?? null,
+      get length() {
+        return values.size;
+      },
       removeItem: (key: string) => values.delete(key),
       setItem: (key: string, value: string) => values.set(key, value),
-    },
+    } satisfies Storage,
   });
 }
 
@@ -80,8 +90,21 @@ async function resetCollections() {
   await settle();
 }
 
-beforeEach(resetCollections);
-afterEach(resetCollections);
+beforeEach(async () => {
+  installSessionStorage();
+  await resetCollections();
+});
+afterEach(async () => {
+  try {
+    await resetCollections();
+  } finally {
+    if (previousStorage) {
+      Object.defineProperty(globalThis, "sessionStorage", previousStorage);
+    } else {
+      Reflect.deleteProperty(globalThis, "sessionStorage");
+    }
+  }
+});
 
 function backup(): DatabaseExport {
   return {

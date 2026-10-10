@@ -107,6 +107,15 @@ describe("diff", () => {
     expect(diff(base(), base())).toEqual([]);
   });
 
+  test("switching between an imported File and a Station replaces the source even at the same URL", () => {
+    const source = station("a");
+    const file = { ...source, type: "file" } satisfies NodeInput;
+    const live = plan([source, speakers], [audio("a", "speakers")]);
+    const finite = plan([file, speakers], [audio("a", "speakers")]);
+    expect(types(diff(live, finite))).toEqual(["removeLane", "addLane"]);
+    expect(types(diff(finite, live))).toEqual(["removeLane", "addLane"]);
+  });
+
   test("a Track's speed, loop and cue listen are params, never a new sound", () => {
     const track = (strip: Record<string, unknown>) =>
       plan(

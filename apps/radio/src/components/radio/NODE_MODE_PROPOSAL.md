@@ -77,12 +77,14 @@ and cable trims retain the whole signal level, including the dry path at
 partial FX mix. Split, Stereo Split, Band Split and implicit fan-out regions
 use the existing series/parallel containers and reconverge at the nearest
 node that joins them: a Merge, an output, or any node that sums. An explicit
-Split whose branches go different ways runs as a split stage in Web Audio
+Split or Stereo Split whose branches go different ways runs as a split stage
+in Web Audio
 ([split-routing-measurements.md](node/docs/split-routing-measurements.md)):
 each cabled port is its own output, its branch's gain, pan, mute and solo
 applied there, and the ports together sum to what the same Split gives when
-its branches rejoin. Branch
-controls distinguish the configured base level from cable trim and display
+its branches rejoin. Band Split branches must rejoin in the openDAW container
+until the comparison gate passes. Branch controls distinguish the configured
+base level from cable trim and display
 their combined gain. Each Output node has its own gain, which carries its
 mute and Node's master volume: they act at the outputs, after every effect,
 on every cable into the node, those still fading out included, so shared FX
@@ -167,7 +169,7 @@ throttled graph or engine writes.
 | Lane lowering, branch shape and sidechains | [`compile.ts`](../../lib/node-graph/compile.ts) |
 | Parameter versus structural engine changes | [`reconcile.ts`](../../lib/node-graph/reconcile.ts) |
 | Pure graph edits, templates, undo/history | [`graph-edits.ts`](../../lib/node-graph/graph-edits.ts), [`templates.ts`](../../lib/node-graph/templates.ts), [`node-store.ts`](../../lib/node-graph/node-store.ts) |
-| Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts), [`pending-channel-starts.ts`](../../lib/pending-channel-starts.ts) |
+| Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts), [`engine.ts`](../../lib/node-engine/engine.ts), [`lane.ts`](../../lib/node-engine/lane.ts) |
 | Output sends and physical device sinks | [`node-lane-outputs.ts`](../../lib/audio/routing/node-lane-outputs.ts), [`node-device-sinks.ts`](../../lib/audio/routing/node-device-sinks.ts) |
 | External source loading and local file lifetime | [`node-source-loaders.ts`](../../lib/node-source-loaders.ts), [`sources.ts`](../../lib/node-graph/sources.ts) |
 | Persistence, migration and local NAM retention | [`playback-sessions.ts`](../../lib/collections/playback-sessions.ts), [`migrations/`](../../lib/collections/migrations/) |

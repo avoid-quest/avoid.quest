@@ -1605,47 +1605,54 @@ describe("compile: Splits whose branches go different places", () => {
     ]);
   });
 
-  test("a Band Split whose bands go different places keeps its crossovers", () => {
-    const base = createNodeEffectConfig("frequencySplit", "bands");
-    const plan = build(
-      [
-        station("a"),
-        {
-          data: {
-            effect: {
-              ...base,
-              chains: base.chains.slice(0, 2),
-              crossoverFrequencies: [500],
-              enabled: true,
+  test.each([2, 3, 4])(
+    "a divergent %p-band Split is refused until parity is verified",
+    (count) => {
+      const base = createNodeEffectConfig("frequencySplit", "bands");
+      const plan = build(
+        [
+          station("a"),
+          {
+            data: {
+              effect: {
+                ...base,
+                chains: base.chains.slice(0, count),
+                crossoverFrequencies: base.crossoverFrequencies.slice(
+                  0,
+                  count - 1
+                ),
+                enabled: true,
+                frequencyBandCount: count,
+              },
             },
-          },
-          id: "bands",
-          position: { x: 0, y: 0 },
-          type: "frequencySplit",
-        } as NodeInput,
-        node("desk", "deviceOut", { deviceId: "usb" }),
-        speakers,
-      ],
-      [
-        audio("a", "bands"),
-        audio("bands", "speakers", { from: "band-1" }),
-        audio("bands", "desk", { from: "band-2" }),
-      ]
-    );
-    expect(plan.issues).toEqual([]);
-    const bands = plan.modules.get("split:bands");
-    expect(bands).toMatchObject({
-      kind: "split",
-      split: { cabled: [0, 1], effect: { crossoverFrequencies: [500] } },
-    });
-    expect(
-      [...plan.cables.values()].map((cable) => [cable.from.port, cable.to.id])
-    ).toEqual([
-      [0, "speakers"],
-      [1, "desk"],
-      [undefined, "bands"],
-    ]);
-  });
+            id: "bands",
+            position: { x: 0, y: 0 },
+            type: "frequencySplit",
+          } as NodeInput,
+          node("desk", "deviceOut", { deviceId: "usb" }),
+          speakers,
+        ],
+        [
+          audio("a", "bands"),
+          ...Array.from({ length: count }, (_, index) =>
+            audio("bands", index === 0 ? "speakers" : "desk", {
+              from: `band-${index + 1}`,
+              id: `band-${index + 1}`,
+            })
+          ),
+        ]
+      );
+      expect(codes(plan)).toEqual(["split-branches@bands"]);
+      expect(plan.issues[0]?.message).toBe(
+        "Band Split branches must meet again"
+      );
+      expect(plan.modules.has("split:bands")).toBe(false);
+      // Refusal cannot silently bypass the split and play unfiltered audio.
+      expect(routes(plan).filter((route) => route.includes("sink:"))).toEqual(
+        []
+      );
+    }
+  );
 
   test.each([
     ["go different places", "desk"],

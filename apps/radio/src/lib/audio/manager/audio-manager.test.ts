@@ -166,6 +166,8 @@ describe("AudioManager", () => {
         audio.duration = duration;
         audio.error = { code } as MediaError;
         audio.emit("error");
+        audio.pause();
+        const playCount = audio.playPositions.length;
 
         expect(states.at(-1)?.error).toBeNull();
         expect(getRegistry(manager).get(soundId)?.playbackSource?.status).toBe(
@@ -181,6 +183,8 @@ describe("AudioManager", () => {
         audio.error = null;
         audio.emit("canplay");
         await flushMicrotasks();
+        expect(audio.playPositions).toHaveLength(playCount + 1);
+        expect(audio.paused).toBe(false);
         audio.emit("playing");
         expect(states.at(-1)).toMatchObject({
           error: null,

@@ -96,6 +96,10 @@ routing and G2 click counts remain unverified, with no tested device/version or
 pass/fail observation to record. These browser and regression results do not
 complete those gates.
 
+The release owner subsequently authorized the `0.7.1` patch bump and squash
+merge on 2026-10-10 with these gaps disclosed. That release decision does not
+change any unverified result below into a pass.
+
 ## Live-radio recovery recheck, 2026-10-10
 
 Tested the code committed as `1550d72d118f1f60fe4c8c2893e3f942d4bbd0eb`

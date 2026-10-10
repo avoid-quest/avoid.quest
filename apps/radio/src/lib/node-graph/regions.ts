@@ -54,9 +54,9 @@ import { type IssueCode, liveAudioNodes, type WiredEdge } from "./validate";
 /** openDAW FrequencySplitBox exposes three crossovers, hence at most four bands. */
 export const MAX_BANDS = 4;
 
-/** Why a key inside a closed Split is refused. */
+/** Band taps need the external crossover stage, which remains gated. */
 export const ENCLOSED_KEY_MESSAGE =
-  "A key can't start inside a Split whose branches meet again";
+  "Connect after the Band Split merges; taps inside its bands are not available yet";
 
 export type NativeFilterPlan = {
   type: "lowpass" | "highpass";
@@ -548,16 +548,15 @@ export class RegionLowerer {
   }
 
   /**
-   * Makes each key's tap a point. A closed Split's signals stay inside its
-   * openDAW container, its ports included, so a key there can't hear one
-   * without opening the Split: it is refused. An implicit fan-out has no
-   * container: a tap on its head or inside it is a point that opens it.
+   * Makes each key or follower tap a point, opening Split and Stereo Split
+   * regions as needed. Band Split cannot use the external stage yet, so
+   * its internal taps remain refused while its native container plays on.
    */
   private placeKeys(keys: readonly WiredEdge[]): void {
     const enclosed = new Set(
       [...this.closed].flatMap(([head, meeting]) => {
         const effect = effectOf(this.byId.get(head));
-        return effect && isEffectContainer(effect)
+        return effect?.type === "frequencySplit"
           ? [head, ...this.regionOf(head, meeting)]
           : [];
       })
@@ -569,7 +568,7 @@ export class RegionLowerer {
         push(this.keys, wire.edge.source, wire);
       }
     }
-    // Each tap left is a point, outside every closed Split.
+    // Each accepted tap is a point, opening every region that encloses it.
     if (this.keys.size > 0) {
       this.findLeading();
       this.settleCuts();

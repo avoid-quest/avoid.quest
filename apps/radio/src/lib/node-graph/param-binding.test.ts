@@ -251,7 +251,7 @@ test("equal key levels retain distinct Gain provenance", () => {
   }
 });
 
-test("a Follower on an unused Split port preserves the speaker routing", () => {
+test("a Follower on an unused Split port opens a tap without taking an audible dry share", () => {
   const split = createDefaultEffectConfig("fxComposite", "split", 0);
   split.enabled = true;
   split.dryWet = 0.5;
@@ -268,7 +268,6 @@ test("a Follower on an unused Split port preserves the speaker routing", () => {
     ]
   );
   edge(graph, 1).sourceHandle = "out:audio:branch-1";
-  const before = compile(graph, env);
   graph.edges.push({
     ...edge(graph, 1),
     id: "tap",
@@ -278,7 +277,20 @@ test("a Follower on an unused Split port preserves the speaker routing", () => {
   const after = compile(graph, env);
   const speakers = (plan: ReturnType<typeof compile>) =>
     [...plan.cables.values()].filter((cable) => cable.to.id === "o");
-  expect(speakers(after)).toEqual(speakers(before));
+  expect(after.issues).toEqual([]);
+  expect(after.modules.has("tap:tap")).toBe(true);
+  expect(
+    speakers(after).reduce((sum, cable) => sum + cable.gain, 0)
+  ).toBeCloseTo(0.5 + 0.5 * (split.chains[0]?.gain ?? 1));
+  // Mix modulation still reaches the dry and wet sends after opening.
+  const bindings = bindParam(graph, "split", "dryWet", after);
+  for (const cable of speakers(after)) {
+    expect(
+      bindings.some(
+        ({ target }) => target.kind === "send" && target.edgeId === cable.id
+      )
+    ).toBe(true);
+  }
 });
 
 test("successive Pan and Filter nodes bind their distinct compiled scalars", () => {

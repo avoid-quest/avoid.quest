@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { asInstanceOf, UUID } from "@opendaw/lib-std";
-import type { WerkstattDeviceBox } from "@opendaw/studio-boxes";
+import type {
+  CompressorDeviceBox,
+  WerkstattDeviceBox,
+} from "@opendaw/studio-boxes";
 import type { EffectBox, Project, RestartWorklet } from "@opendaw/studio-core";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporting boundary
 import * as Sentry from "@sentry/core";
@@ -462,6 +465,49 @@ describe("OfficialOpenDawRuntime effect lifetime", () => {
           box.audioEffects.pointerHub.incoming().length > 0
       )
     ).toBe(true);
+  });
+
+  test("Band Split changes the engine band count and preserves surviving band effects", async () => {
+    const h = await createHarness();
+    await h.runtime.connectSound("deck", h.source, h.destination);
+    const base = createDefaultEffectConfig("frequencySplit", "bands", 0);
+    const compressor = {
+      ...createDefaultEffectConfig("compressor", "low-compressor", 0),
+      enabled: true,
+    };
+    const config = (count: 2 | 3 | 4) => ({
+      ...base,
+      chains: base.chains.slice(0, count).map((chain, index) => ({
+        ...chain,
+        effects: index === 0 ? [compressor] : [],
+      })),
+      crossoverFrequencies: [200, 1000, 5000].slice(0, count - 1),
+      enabled: true,
+      frequencyBandCount: count,
+    });
+    let survivor: CompressorDeviceBox | undefined;
+    for (const count of [2, 3, 4, 2, 4, 3] as const) {
+      h.runtime.syncEffects("deck", [config(count)]);
+      const split = asInstanceOf(
+        h.project.boxGraph
+          .boxes()
+          .find((box) => box instanceof h.boxes.FrequencySplitBox),
+        h.boxes.FrequencySplitBox
+      );
+      const cells = h.project.boxGraph
+        .boxes()
+        .filter((box) => box instanceof h.boxes.AudioEffectCompositeCellBox)
+        .filter((box) => box.composite.targetVertex.unwrap().box === split)
+        .sort((a, b) => a.index.getValue() - b.index.getValue());
+      expect(cells.map((cell) => cell.index.getValue())).toEqual(
+        Array.from({ length: count }, (_, index) => index)
+      );
+      const device = h.project.boxGraph
+        .boxes()
+        .find((box) => box instanceof h.boxes.CompressorDeviceBox);
+      survivor ??= device;
+      expect(device).toBe(survivor);
+    }
   });
 
   test.each(["fxComposite", "stereoSplit", "frequencySplit"] as const)(

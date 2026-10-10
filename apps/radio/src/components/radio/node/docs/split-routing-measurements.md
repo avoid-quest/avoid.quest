@@ -121,3 +121,48 @@ the mismatch and recording the complete required measurements, including all
 supported band counts and dry/wet settings.
 
 A needs no null bus, no output 0 and no bus registrations. B is not built.
+
+## Band-count correction and routing audit, 2026-10-10
+
+The native adapter was keeping all four factory cells and muting the unused
+ones. `FrequencySplitBoxAdapter.crossoverCount` derives from the actual cell
+count: an unused muted cell still removes its spectrum from the audible sum.
+The adapter now deletes surplus cells and creates cells when growing the band
+count. Child effects are retired before their cells; surviving effects retain
+their device identity. A regression cycles 2 → 3 → 4 → 2 → 4 → 3 bands.
+
+In T3 Chromium at 48 kHz, an oscillator through the real monitoring runtime
+measured RMS 0.2546–0.2548 at 19 kHz with two/three bands before the correction,
+versus 0.3536 with four. After the correction all three counts measured
+0.3535–0.3536 (approximately 2.85 dB recovered); 997 and 8111 Hz also retained
+the expected level throughout the shrink/grow sequence.
+
+A subsequent native-versus-stage check sent the same oscillator to both paths,
+summed all stage ports, passed that sum through another effect-free sound in
+the same native runtime, and subtracted the outputs. At 73, 277, 997, 3311,
+8111 and 19000 Hz, settled residuals were below −152 dBFS across 2/3/4 bands
+at full wet. Newly re-created stage ports were explicitly reconnected after
+changing the port count. These are single settled measurements per tone,
+not five repeats of the complete G1 matrix.
+
+This fixes the previously measured summed-output mismatch. It does **not**
+waive the remaining release criteria: the full enabled/bypassed and partial-mix
+matrix, per-port gain/pan/frequency response, alignment, and G2 click counts
+remain outstanding. Divergent Band Split and internal band taps therefore
+remain gated. The error for an internal band tap now directs the listener to
+connect after the bands merge.
+
+Split and Stereo Split can now expose follower and sidechain taps even when
+their audible branches merge again. The compiler opens those regions using
+the existing external split stage, retaining the Merge sum. Regression renders
+cover branch FX, stereo isolation, and a single audible branch. This change
+can require more engine monitoring channels; the existing capacity planning
+and compatibility fallback still apply.
+
+Follower cables directly on a Split port previously applied cable gain/mute
+only to the wet contribution. They now trim both contributions like sidechain
+taps. Production RoutingGraph plus the production modulation worklet, driven
+by a 0.4 constant signal and a 0.25 tap cable, measured 0.100000 at mixes
+0/0.5/1 for one audible branch. With two audible branches (dry split equally),
+it measured 0.050000/0.075000/0.100000. Muting settled to silence; disconnecting
+released the envelope, and reconnecting restored the expected value.

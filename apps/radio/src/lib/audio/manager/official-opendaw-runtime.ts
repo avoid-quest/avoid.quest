@@ -15,6 +15,7 @@ import {
   localEffectConfig,
   updateEffectFieldsInTree,
 } from "../dsp/routing/effect-tree.js";
+import { safeDisconnectFrom } from "../utils.js";
 import {
   type EffectsGraphRuntime,
   type EffectsPerformanceSnapshot,
@@ -599,7 +600,13 @@ export class OfficialOpenDawRuntime implements EffectsGraphRuntime {
 
   private unregisterMonitoringSource(unit: SoundUnit): void {
     this.disconnectMonitoringInputs();
-    unit.source?.disconnect(unit.monitoringInput);
+    // Source teardown can remove this edge before the backend's release ramp
+    // settles. Still unregister the unit so remaining monitoring routes rebuild.
+    safeDisconnectFrom(
+      unit.source,
+      unit.monitoringInput,
+      "OfficialOpenDawRuntime.unregisterMonitoringSource"
+    );
     this.requireProject().engine.unregisterMonitoringSource(
       unit.audioUnitBox.address.uuid
     );

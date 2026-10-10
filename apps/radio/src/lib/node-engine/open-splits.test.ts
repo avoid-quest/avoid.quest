@@ -53,6 +53,8 @@ function nodes(splitNode: NodeInput): NodeInput[] {
       type: "station",
     },
     splitNode,
+    { data: {}, id: "follower", position, type: "follower" },
+    { data: {}, id: "merge", position, type: "merge" },
     {
       data: {
         effect: {
@@ -177,6 +179,10 @@ function play(
         end();
       }
       await new Promise((resolve) => setTimeout(resolve, 0));
+    },
+    follower: () => {
+      const tap = routing.tap("follower");
+      return tap ? graph.render(tap as unknown as OfflineNode, FRAMES) : null;
     },
     input: [left, right],
     key: (effectId: string) => {
@@ -591,6 +597,170 @@ describe("Splits whose branches go different places", () => {
     expect(residualDb(soloed.output("desk"), panned(1), TAIL)).toBeLessThan(
       -90
     );
+  });
+
+  test.each([0, 0.5, 1])(
+    "a follower on a Split port hears the same branch mix as its sidechain at mix %p",
+    (dryWet) => {
+      const played = play(
+        split("fxComposite", { dryWet, inputGain: 0.5, outputGain: 2 }, shaped),
+        [
+          ...twoWays(),
+          cable("split", "follower", { from: "branch-2", gain: 0.25 }),
+          {
+            ...cable("split", "fx", { from: "branch-2", gain: 0.25 }),
+            id: "key",
+            targetHandle: "in:sidechain:key",
+          },
+        ]
+      );
+      const expected = played.input.map((channel, side) => {
+        const wet = branch(played.input, 0.5 * 0.25 * 2 * dryWet, 0.5);
+        return channel.map(
+          (sample, frame) =>
+            sample * 0.5 * (1 - dryWet) * 2 * 0.25 + (wet[side]?.[frame] ?? 0)
+        );
+      });
+      expect(residualDb(played.follower() ?? [], expected, TAIL)).toBeLessThan(
+        -90
+      );
+      expect(residualDb(played.key("fx"), expected, TAIL)).toBeLessThan(-90);
+    }
+  );
+
+  test("a follower can tap a Split with one audible branch", () => {
+    const played = play(
+      split("fxComposite", { dryWet: 0.5 }, (chain) => ({ ...chain, gain: 1 })),
+      [
+        cable("a", "split"),
+        cable("split", "speakers", { from: "branch-1" }),
+        cable("split", "follower", { from: "branch-1", gain: 0.25 }),
+      ]
+    );
+    const expected = played.input.map((channel) =>
+      channel.map((sample) => sample * 0.25)
+    );
+    expect(residualDb(played.follower() ?? [], expected, TAIL)).toBeLessThan(
+      -90
+    );
+    expect(
+      residualDb(played.output("speakers"), played.input, TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("a follower inside rejoined Split branches keeps the Merge sum intact", () => {
+    const played = play(
+      split("fxComposite", { dryWet: 0.5 }, shaped),
+      [
+        cable("a", "split"),
+        cable("split", "fx", { from: "branch-1" }),
+        cable("fx", "merge"),
+        cable("fx", "follower"),
+        cable("split", "merge", { from: "branch-2" }),
+        cable("merge", "speakers"),
+      ],
+      (sample) => sample * 0.25
+    );
+    const wetFirst = branch(played.input, 0.5 * 0.5 * 0.25, -0.5);
+    const wetSecond = branch(played.input, 0.5, 0.5);
+    const expectedTap = played.input.map((channel, side) =>
+      channel.map((sample, frame) => sample * 0.25 + wetFirst[side][frame])
+    );
+    const expectedSum = played.input.map((channel, side) =>
+      channel.map(
+        (sample, frame) =>
+          sample * 0.5 + wetFirst[side][frame] + wetSecond[side][frame]
+      )
+    );
+    expect(residualDb(played.follower() ?? [], expectedTap, TAIL)).toBeLessThan(
+      -90
+    );
+    expect(
+      residualDb(played.output("speakers"), expectedSum, TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("a follower on rejoined Stereo Split hears only its selected side", () => {
+    const played = play(
+      split("stereoSplit", { dryWet: 1 }, (chain) => ({ ...chain, gain: 1 })),
+      [
+        cable("a", "split"),
+        cable("split", "merge", { from: "left", id: "left" }),
+        cable("split", "merge", { from: "right", id: "right" }),
+        cable("merge", "speakers"),
+        cable("split", "follower", { from: "left" }),
+      ]
+    );
+    expect(
+      residualDb(played.follower() ?? [], [played.input[0], SILENCE[1]], TAIL)
+    ).toBeLessThan(-90);
+    expect(
+      residualDb(played.output("speakers"), played.input, TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("muting a follower cable silences both halves of a mixed branch", () => {
+    const played = play(split("fxComposite", { dryWet: 0.5 }, shaped), [
+      ...twoWays(),
+      cable("split", "follower", { from: "branch-2", muted: true }),
+    ]);
+    expect(
+      residualDb(played.follower() ?? SILENCE, SILENCE, TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("a port used only by a follower does not steal an audible branch's dry share", () => {
+    const played = play(split("fxComposite", { dryWet: 0.5 }), [
+      ...twoWays(),
+      cable("split", "follower", { from: "branch-3" }),
+    ]);
+    const gain =
+      createNodeEffectConfig("fxComposite", "split").chains[0]?.gain ?? 1;
+    const expected = played.input.map((channel) =>
+      channel.map((sample) => sample * (0.25 + 0.5 * gain))
+    );
+    expect(residualDb(played.output("desk"), expected, TAIL)).toBeLessThan(-90);
+    expect(
+      residualDb(
+        played.follower() ?? [],
+        branch(played.input, 0.5 * gain, 0),
+        TAIL
+      )
+    ).toBeLessThan(-90);
+  });
+
+  test("a follower after branch FX hears the branch exit, and reconnects after removal", async () => {
+    const edges = [...twoWays(), cable("fx", "follower")];
+    const played = play(
+      split("fxComposite", { dryWet: 0.5 }, shaped),
+      edges,
+      (sample) => sample * 0.25
+    );
+    expect(
+      residualDb(played.follower() ?? [], played.output("speakers"), TAIL)
+    ).toBeLessThan(-90);
+    played.apply(twoWays());
+    await played.endFades();
+    expect(played.follower()).toBeNull();
+    played.apply(edges);
+    await played.endFades();
+    expect(
+      residualDb(played.follower() ?? [], played.output("speakers"), TAIL)
+    ).toBeLessThan(-90);
+  });
+
+  test("a follower after Merge hears the summed branches without changing the audible mix", () => {
+    const played = play(split("fxComposite", { dryWet: 0.5 }, shaped), [
+      cable("a", "split"),
+      cable("split", "fx", { from: "branch-1" }),
+      cable("fx", "merge"),
+      cable("split", "merge", { from: "branch-2" }),
+      cable("merge", "speakers"),
+      cable("merge", "follower"),
+    ]);
+    expect(
+      residualDb(played.follower() ?? [], played.output("speakers"), TAIL)
+    ).toBeLessThan(-90);
   });
 
   test("a key from a Split port hears its mixed branch controls and its cable level", () => {

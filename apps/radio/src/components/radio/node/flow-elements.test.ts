@@ -1083,6 +1083,61 @@ describe("flow elements", () => {
     }
   });
 
+  test("a muted or zero-gain follower tap does not glow from a Split's dry signal", () => {
+    for (const trim of [{ muted: true }, { gain: 0 }, { gain: 0.5 }]) {
+      const graph = nodeGraphSchema.parse({
+        edges: [
+          {
+            id: "in",
+            source: "src-kexp",
+            sourceHandle: "out:audio:main",
+            target: "split",
+            targetHandle: "in:audio:main",
+          },
+          {
+            id: "out",
+            source: "split",
+            sourceHandle: "out:audio:branch-1",
+            target: "speakers",
+            targetHandle: "in:audio:main",
+          },
+          {
+            id: "tap",
+            source: "split",
+            sourceHandle: "out:audio:branch-1",
+            target: "tap",
+            targetHandle: "in:audio:main",
+            ...trim,
+          },
+        ],
+        nodes: [
+          ...patch.nodes,
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("fxComposite", "split"),
+                dryWet: 0.5,
+                enabled: true,
+              },
+            },
+            id: "split",
+            position: { x: 240, y: 0 },
+            type: "fxComposite",
+          },
+          { data: {}, id: "tap", position: { x: 480, y: 0 }, type: "follower" },
+        ],
+        version: 2,
+      });
+      const plan = compile(graph, { crossOriginIsolated: true });
+      const glow = toFlowEdges(graph, {
+        liveLanes: new Set(["n:src-kexp"]),
+        mix: plan,
+        selection,
+      }).find((edge) => edge.id === "tap")?.className;
+      expect(glow).toBe(trim.gain === 0.5 ? "node-edge-live" : undefined);
+    }
+  });
+
   test("the module description React Flow reads names the arrow keys, and B only for effects", () => {
     // React Flow reads `keyboardDisabled` while keyboard access is on.
     const read = NODE_ARIA_LABELS["node.a11yDescription.keyboardDisabled"];

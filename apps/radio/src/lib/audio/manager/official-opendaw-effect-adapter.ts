@@ -4,6 +4,7 @@ import type {
   AudioEffectCompositeBox,
   AudioEffectCompositeCellBox,
   AudioUnitBox,
+  FrequencySplitBox,
   NeuralAmpModelBox,
   RevampDeviceBox,
   StereoToolDeviceBox,
@@ -354,7 +355,7 @@ function createTrim(
 
 function createCell(
   context: CreateContext,
-  composite: AudioEffectCompositeBox,
+  composite: AudioEffectCompositeBox | FrequencySplitBox,
   chain: EffectChainConfig
 ): AudioEffectCompositeCellBox {
   return context.boxes.AudioEffectCompositeCellBox.create(
@@ -590,7 +591,10 @@ export function syncOfficialEffectCells(
     group.device,
     context.adapters.AudioCompositeAdapter
   );
-  const fixed = composite.entries.adapters().map((entry) => entry.box);
+  const fixed = composite.entries
+    .adapters()
+    .map((entry) => entry.box)
+    .filter((cell) => cell.isAttached());
   const nextCells = new Map<string, AudioEffectCompositeCellBox>();
   for (const [index, chain] of config.chains
     .slice()
@@ -604,27 +608,28 @@ export function syncOfficialEffectCells(
             asInstanceOf(group.device, context.boxes.AudioEffectCompositeBox),
             chain
           ))
-        : fixed[index];
+        : (fixed[index] ??
+          (config.type === "frequencySplit"
+            ? createCell(
+                context,
+                asInstanceOf(group.device, context.boxes.FrequencySplitBox),
+                chain
+              )
+            : undefined));
     if (!cell) {
       continue;
     }
     writeCell(cell, chain);
     nextCells.set(chain.id, cell);
   }
-  if (config.type === "frequencySplit") {
-    const used = new Set(nextCells.values());
-    for (const cell of fixed) {
-      if (!used.has(cell)) {
-        cell.mute.setValue(true);
-      }
-    }
-  }
+  // FrequencySplit derives its band count from the cells. Muting extra
+  // factory cells discards their spectrum instead of making fewer bands.
+  const previous =
+    config.type === "frequencySplit" ? fixed : [...group.cells.values()];
   const obsolete =
-    config.type === "fxComposite"
-      ? [...group.cells.values()].filter(
-          (cell) => ![...nextCells.values()].includes(cell)
-        )
-      : [];
+    config.type === "stereoSplit"
+      ? []
+      : previous.filter((cell) => ![...nextCells.values()].includes(cell));
   group.cells = nextCells;
   return obsolete;
 }

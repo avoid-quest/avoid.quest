@@ -698,6 +698,16 @@ function balanceOf(pan: number): [number, number] | undefined {
   return [left, right];
 }
 
+function trimBranchEnd(end: BranchEnd, trim: Trim): BranchEnd {
+  return {
+    ...end,
+    dry: end.dry && {
+      from: end.dry.from,
+      trim: multiply(end.dry.trim, trim),
+    },
+  };
+}
+
 function multiply(left: Trim, right: Trim): Trim {
   return {
     factor: (left.factor ?? left.gain) * (right.factor ?? right.gain),
@@ -916,13 +926,7 @@ class PlanBuilder {
   ): void {
     for (const exit of exits) {
       const trim = multiply(carry, exit.trim);
-      const next = end && {
-        ...end,
-        dry: end.dry && {
-          from: end.dry.from,
-          trim: multiply(end.dry.trim, exit.trim),
-        },
-      };
+      const next = end && trimBranchEnd(end, exit.trim);
       if (exit.key) {
         // A key for each keyed FX; keys that hear the same cables merge.
         const key: Endpoint = { id: keyIdOf(exit.target), kind: "key" };
@@ -1111,8 +1115,12 @@ class PlanBuilder {
    * rides beside.
    */
   private rideDry({ exits }: SplitBranch): void {
+    const cableSolo = exits.some((exit) => exit.solo);
     for (const exit of exits) {
-      if (!exit.key) {
+      const silentTap =
+        this.regions.node(exit.target).type === "follower" &&
+        (!plays(exit.trim) || (cableSolo && !exit.solo));
+      if (!(exit.key || silentTap)) {
         for (const id of exit.ids) {
           this.dryCables.add(id);
         }
@@ -1223,7 +1231,14 @@ class PlanBuilder {
         this.connect(exit.ids, from, to, before);
         this.emit(segment.exits, to, cell, tail);
       } else if (to) {
-        this.land(exit.ids, from, to, wet, tail);
+        // A follower taps the mixed branch, like a sidechain key. Its own
+        // cable trim applies to the dry contribution as well as the wet.
+        // Audio branch controls still leave the container's dry bypass alone.
+        const end =
+          to.kind === "tap"
+            ? trimBranchEnd(tail, { ...exit.trim, muted: before.muted })
+            : tail;
+        this.land(exit.ids, from, to, wet, end);
       } else if (segment) {
         this.emit(segment.exits, from, wet, tail);
       }

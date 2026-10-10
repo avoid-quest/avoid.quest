@@ -2923,7 +2923,7 @@ describe("compile: key cables", () => {
     ["an effect on a branch", "verb", "main"],
     ["a branch's port", "split", "branch-2"],
   ])(
-    "a key from %s of a Split whose branches meet is refused; the Split plays on",
+    "a key from %s opens a rejoined Split and binds the cabled signal",
     (_label, source, port) => {
       const patch = graph(
         [
@@ -2947,15 +2947,49 @@ describe("compile: key cables", () => {
         ]
       );
       const plan = compile(patch, ENV);
-      expect(codes(plan)).toEqual([`key-enclosed@${source}~>comp`]);
-      expect(shape(lane(plan, "a").effects)).toEqual([
-        ["fxComposite", "split", [[["cheapReverb", "verb"]], []]],
-      ]);
-      expect(lane(plan, "music").effects[0]?.sidechain).toBeUndefined();
-      expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({
-        [`${source}~>comp`]:
-          "A key can't start inside a Split whose branches meet again",
+      expect(plan.issues).toEqual([]);
+      expect(plan.modules.has("split:split")).toBe(true);
+      expect(lane(plan, "a").effects).toEqual([]);
+      expect(lane(plan, "music").effects[0]?.sidechain).toEqual({
+        channelId: "node-key:comp",
       });
+      expect(Object.fromEntries(idleKeys(patch, plan))).toEqual({});
+    }
+  );
+
+  test.each(["comp", "follower"])(
+    "an internal Band Split tap to %s remains refused with a useful reason",
+    (target) => {
+      const plan = build(
+        [
+          station("a"),
+          station("music"),
+          fx("bands", "frequencySplit", { enabled: true }),
+          node("merge", "merge"),
+          fx("comp", "compressor", { enabled: true }),
+          node("follower", "follower"),
+          speakers,
+        ],
+        [
+          audio("a", "bands"),
+          audio("bands", "merge", { from: "band-1", id: "low" }),
+          audio("bands", "merge", { from: "band-2", id: "mid" }),
+          audio("bands", "merge", { from: "band-3", id: "high" }),
+          audio("merge", "speakers"),
+          audio("music", "comp"),
+          audio("comp", "speakers"),
+          target === "comp"
+            ? { ...key("bands", "comp"), sourceHandle: "out:audio:band-1" }
+            : audio("bands", "follower", { from: "band-1" }),
+        ]
+      );
+      expect(plan.issues).toHaveLength(1);
+      expect(plan.issues[0]).toMatchObject({
+        code: "key-enclosed",
+        message:
+          "Connect after the Band Split merges; taps inside its bands are not available yet",
+      });
+      expect(lane(plan, "a").effects[0]?.type).toBe("frequencySplit");
     }
   );
 

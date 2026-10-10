@@ -1,4 +1,13 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { AudioManager } from "./audio-manager.js";
 
 const manager = {
   getSoundVolume: mock((_soundId: string) => 1),
@@ -10,11 +19,13 @@ const manager = {
   stopSound: mock((_soundId: string) => undefined),
 };
 
-mock.module("./audio-manager.js", () => ({
-  AudioManager: {
-    getInstance: () => manager,
-  },
-}));
+const managerAccess = spyOn(AudioManager, "getInstance").mockReturnValue(
+  manager as unknown as AudioManager
+);
+
+afterAll(() => {
+  managerAccess.mockRestore();
+});
 
 const { crossfade, fadeOut } = await import("./crossfade");
 

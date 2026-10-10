@@ -66,7 +66,14 @@ beforeAll(async () => {
     navigator: dom.window.navigator,
     window: dom.window,
   })) {
-    originalGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    // Keep the DOM shim installed, as the other browser suites do: React
+    // caches DOM capabilities on its first import later in this process.
+    if (key.startsWith("Audio")) {
+      originalGlobals.set(
+        key,
+        Object.getOwnPropertyDescriptor(globalThis, key)
+      );
+    }
     Object.defineProperty(globalThis, key, {
       configurable: true,
       value,

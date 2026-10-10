@@ -1,9 +1,11 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { compiledPlan } from "@/lib/node-graph/compiled-plan";
+import { unappliedModulation } from "@/lib/node-graph/modulation-runtime";
+import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import "@/styles/node-mode.css";
 import { useStore } from "@tanstack/react-store";
 import { type RefObject, useEffect, useRef, useState } from "react";
-import { type ExternalToast, toast } from "sonner";
+import { toast } from "sonner";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import { idleKeys, mergeRoles } from "@/lib/node-graph/compile";
@@ -12,6 +14,7 @@ import {
   insertNodeOnEdge,
   isLoose,
   moveNodes,
+  reconnectCandidate,
   reconnectEdge,
   removeEdges,
   removeNodesHealed,
@@ -28,16 +31,15 @@ import {
   dropOnNode,
   type PaletteFrom,
   paletteEntries,
-  type Replacement,
 } from "@/lib/node-graph/palette";
-import type { GraphEdge, NodeGraph } from "@/lib/node-graph/schema";
+import type { NodeGraph } from "@/lib/node-graph/schema";
 import {
   parallelToSeries,
   seriesToParallel,
 } from "@/lib/node-graph/series-parallel";
 import { STATION_ROW_HEIGHT } from "@/lib/node-graph/templates";
-import type { Connection, ValidateOptions } from "@/lib/node-graph/validate";
-import { detectNodePlaybackEnv } from "@/lib/node-playback";
+import type { Connection } from "@/lib/node-graph/validate";
+import { detectNodePlaybackEnv, nodeBackendBadges } from "@/lib/node-playback";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { AudioInputNode } from "./audio-input-node";
 import { BranchEdge } from "./branch-edge";
@@ -47,6 +49,8 @@ import {
   clearConnectionHints,
   startConnectionHints,
 } from "./connection-hints";
+import { ControlEdge } from "./control-edge";
+import { ControlNode } from "./control-node";
 import { EffectNode } from "./effect-node";
 import { FileNode } from "./file-node";
 import {
@@ -96,6 +100,9 @@ type Point = { x: number; y: number };
 type Size = { width: number; height: number };
 
 const nodeTypes = {
+  ...Object.fromEntries(
+    MODULATION_NODE_TYPES.map((type) => [type, ControlNode])
+  ),
   // Every drawn effect shares one node, and every split another; sources
   // and outputs come last.
   ...Object.fromEntries(
@@ -122,6 +129,7 @@ const nodeTypes = {
  */
 const edgeTypes = {
   branch: BranchEdge,
+  control: ControlEdge,
   key: KeyEdge,
 } satisfies FlowEdgeTypes;
 
@@ -305,10 +313,7 @@ type NodeChangeBatch = {
 };
 
 /** A refused React Flow removal keeps the controlled graph and selection. */
-function removeCanvasNodes(
-  nodeIds: string[],
-  options: ValidateOptions
-): boolean {
+function removeCanvasNodes(nodeIds: string[]): boolean {
   if (nodeIds.length === 0) {
     return true;
   }
@@ -316,7 +321,7 @@ function removeCanvasNodes(
   if (!graph) {
     return false;
   }
-  const edit = removeNodesHealed(graph, nodeIds, options);
+  const edit = removeNodesHealed(graph, nodeIds);
   if (!edit.ok) {
     toast(edit.message);
     return false;
@@ -412,36 +417,6 @@ function foldNodeChange(batch: NodeChangeBatch, change: FlowNodeChange) {
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id) => right.includes(id));
-}
-
-/** Cable `cable.id` still runs between the ends it had. */
-function unmoved(graph: NodeGraph, cable: GraphEdge): boolean {
-  const now = graph.edges.find((entry) => entry.id === cable.id);
-  return (
-    now !== undefined &&
-    now.source === cable.source &&
-    now.sourceHandle === cable.sourceHandle &&
-    now.target === cable.target &&
-    now.targetHandle === cable.targetHandle
-  );
-}
-
-/** Cable `edgeId` is still on the port a Replace was offered for. */
-function holdsPort(
-  graph: NodeGraph,
-  edgeId: string,
-  fromType: PaletteFrom["type"],
-  connection: Connection
-): boolean {
-  const held = graph.edges.find((entry) => entry.id === edgeId);
-  if (!held) {
-    return false;
-  }
-  return fromType === "source"
-    ? held.target === connection.target &&
-        held.targetHandle === connection.targetHandle
-    : held.source === connection.source &&
-        held.sourceHandle === connection.sourceHandle;
 }
 
 /** A node picked for a cable let go in space, to move level with the drop. */
@@ -553,11 +528,13 @@ function Canvas({
   const nodesInitialized = useNodesInitialized();
   const phoneAlignedRef = useRef(false);
   const [env] = useState(detectNodePlaybackEnv);
-  const validateOptions = { profile: env.profile };
-  // The compiler's verdict on each Merge, for its in-lane badge, and on
-  // each key cable, for its idle tag.
+  // The compiler's verdict on each Merge, for its in-lane badge, on each
+  // key cable, for its idle tag, and on what a solo silences, for the glow.
   const plan = compiledPlan(graph, env);
   const roles = mergeRoles(graph, plan);
+  const badges = useStore(nodeBackendBadges);
+  // The runtime's, on each modulation cable, for its "not applied" tag.
+  const unapplied = useStore(unappliedModulation);
 
   const nodes = toFlowNodes(graph, {
     measured,
@@ -566,10 +543,12 @@ function Canvas({
     selection,
   });
   const edges = toFlowEdges(graph, {
-    idleKeys: idleKeys(graph, plan),
+    idleKeys: idleKeys(graph, plan, badges),
     insertTarget: insertTarget?.edge ?? null,
     liveLanes,
+    mix: plan,
     selection,
+    unappliedModulation: unapplied,
   });
 
   const aimInsert = (target: InsertTarget | null) => {
@@ -664,8 +643,7 @@ function Canvas({
         (latest) => {
           const moved = moveNodes(latest, dropped);
           const edit =
-            insert &&
-            insertNodeOnEdge(moved, insert.node, insert.edge, validateOptions);
+            insert && insertNodeOnEdge(moved, insert.node, insert.edge);
           return edit?.ok ? edit.graph : moved;
         },
         nodeStore,
@@ -673,7 +651,7 @@ function Canvas({
       );
     }
     nudgeNodes(nudged, nudgeRunRef);
-    const removalAccepted = removeCanvasNodes(removed, validateOptions);
+    const removalAccepted = removeCanvasNodes(removed);
     const selectedNodes = (
       removalAccepted ? [...selected] : [...current.nodes]
     ).filter((id) =>
@@ -720,17 +698,20 @@ function Canvas({
 
   // The drag's verdicts, taken when it started; React Flow asks on every
   // pointer move near a port.
-  const isValidConnection = (connection: FlowConnection | FlowEdge) =>
-    canConnect(
+  const isValidConnection = (connection: FlowConnection | FlowEdge) => {
+    const currentDrag = rewiring();
+    const old = graph.edges.find((edge) => edge.id === currentDrag?.edge);
+    const candidate = {
+      source: connection.source,
+      sourceHandle: connection.sourceHandle,
+      target: connection.target,
+      targetHandle: connection.targetHandle,
+    };
+    return canConnect(
       dragGraph(),
-      {
-        source: connection.source,
-        sourceHandle: connection.sourceHandle,
-        target: connection.target,
-        targetHandle: connection.targetHandle,
-      },
-      validateOptions
+      old ? reconnectCandidate(dragGraph(), old, candidate) : candidate
     );
+  };
 
   // Every port's verdict on the cable, once per drag: ports light up or
   // lock by it until the drag ends.
@@ -742,7 +723,9 @@ function Canvas({
       startConnectionHints(
         dragGraph(),
         { handle: handleId, node: nodeId, type: handleType },
-        validateOptions
+        undefined,
+        undefined,
+        graph.edges.find((edge) => edge.id === rewiring()?.edge)
       );
     }
   };
@@ -775,28 +758,23 @@ function Canvas({
 
   // A refusal says why. On a phone it shows at the top, clear of the
   // node being wired and the canvas hint.
-  const refuse = (message: string, action?: ExternalToast["action"]) => {
-    if (!(action || isPhone)) {
+  const refuse = (message: string) => {
+    if (isPhone) {
+      toast(message, { position: "top-center" });
+    } else {
       toast(message);
-      return;
     }
-    toast(message, { action, position: isPhone ? "top-center" : undefined });
   };
 
   const rewire = (edgeId: string, connection: Connection) => {
-    const edit = reconnectEdge(graph, edgeId, connection, validateOptions);
+    const edit = reconnectEdge(graph, edgeId, connection);
     if (!edit.ok) {
       refuse(edit.message);
       return;
     }
     commitNodeGraph(
       (current) => {
-        const latest = reconnectEdge(
-          current,
-          edgeId,
-          connection,
-          validateOptions
-        );
+        const latest = reconnectEdge(current, edgeId, connection);
         return latest.ok ? latest.graph : current;
       },
       nodeStore,
@@ -825,21 +803,15 @@ function Canvas({
   };
 
   // Let go on a port, that port decides; on the body, the one port that
-  // fits. A refusal says why in one toast, e.g. a Merge that would sum two
-  // stations, a lane's second key, or a locked port's own reason.
+  // fits. A refusal says why in one toast, e.g. feedback or a locked
+  // port's own reason.
   const dropOnto = (
     from: PaletteFrom,
     onNode: string,
     onPort: string | null
   ) => {
     const rewired = rewiring();
-    const outcome = dropOnNode(
-      dragGraph(),
-      from,
-      onNode,
-      onPort,
-      validateOptions
-    );
+    const outcome = dropOnNode(dragGraph(), from, onNode, onPort);
     if ("connect" in outcome) {
       if (rewired) {
         rewire(rewired.edge, outcome.connect);
@@ -847,57 +819,8 @@ function Canvas({
         handleConnect(outcome.connect);
       }
     } else if (outcome.refuse) {
-      const { replace } = outcome;
-      // A rewired cable gone from the patch since its drag began, e.g. in
-      // another tab, has nothing to put in the port's place: no Replace.
-      const rewiredEdge = rewired
-        ? graph.edges.find((edge) => edge.id === rewired.edge)
-        : null;
-      refuse(
-        outcome.refuse,
-        replace && rewiredEdge !== undefined
-          ? {
-              label: "Replace",
-              onClick: () => replaceCable(replace, from.type, rewiredEdge),
-            }
-          : undefined
-      );
+      refuse(outcome.refuse);
     }
-  };
-
-  // Replace on a one-cable refusal: the port's cable moves to the new far
-  // end, keeping its level. A cable being rewired onto the port takes its
-  // place instead, and the port's old cable goes. One undo step. The toast
-  // outlives the drop, so a port's cable, or the rewired cable, moved or
-  // gone since is left alone.
-  const replaceCable = (
-    { connection, edge }: Replacement,
-    fromType: PaletteFrom["type"],
-    rewired: GraphEdge | null
-  ) => {
-    commitNodeGraph(
-      (current) => {
-        if (
-          !(
-            (rewired === null || unmoved(current, rewired)) &&
-            holdsPort(current, edge, fromType, connection)
-          )
-        ) {
-          return current;
-        }
-        const edit = rewired
-          ? reconnectEdge(
-              removeEdges(current, [edge]),
-              rewired.id,
-              connection,
-              validateOptions
-            )
-          : reconnectEdge(current, edge, connection, validateOptions);
-        return edit.ok ? edit.graph : current;
-      },
-      nodeStore,
-      "snapshot"
-    );
   };
 
   // A cable dropped on a node connects when exactly one of its ports fits,
@@ -945,7 +868,7 @@ function Canvas({
     }
     if (
       !dropTarget?.closest(".react-flow__pane") ||
-      paletteEntries(graph, { ...validateOptions, from }).length === 0
+      paletteEntries(graph, { from }).length === 0
     ) {
       return;
     }
@@ -994,7 +917,7 @@ function Canvas({
             target: from.node,
             targetHandle: from.handle,
           };
-    if (port.handle && canConnect(graph, cable, validateOptions)) {
+    if (port.handle && canConnect(graph, cable)) {
       // React Flow has connected it already.
       return;
     }
@@ -1026,7 +949,7 @@ function Canvas({
     }
     probedRef.current = { edge, node: node.id };
     aimInsert(
-      edge && insertNodeOnEdge(latest, node.id, edge, validateOptions).ok
+      edge && insertNodeOnEdge(latest, node.id, edge).ok
         ? { edge, node: node.id }
         : null
     );
@@ -1103,9 +1026,7 @@ function Canvas({
         return;
       }
       event.preventDefault();
-      const edit = SERIES_PARALLEL_EDITS[key](current, selected, {
-        profile: env.profile,
-      });
+      const edit = SERIES_PARALLEL_EDITS[key](current, selected);
       if (!edit.ok) {
         toast(edit.message);
         return;
@@ -1115,7 +1036,7 @@ function Canvas({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [env.profile]);
+  }, []);
 
   // A canvas that goes mid-drag leaves no ports lit behind it.
   useEffect(
@@ -1201,7 +1122,6 @@ function Canvas({
   useCableSurgeryShortcuts({
     canvasRef: wrapperRef,
     onInsertInto: onOpenPalette,
-    validateOptions,
   });
 
   // A node picked for a cable let go in space moves, once measured, so the

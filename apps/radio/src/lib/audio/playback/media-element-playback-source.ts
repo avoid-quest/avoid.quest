@@ -139,7 +139,9 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   }
 
   get volume(): number {
-    return this.outputNode?.gain.value ?? this.audio.volume;
+    return (
+      this.outputNode?.gain.value ?? (this.audio.muted ? 0 : this.audio.volume)
+    );
   }
 
   set volume(value: number) {
@@ -147,6 +149,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     if (this.outputNode) {
       this.outputNode.gain.value = volume;
     } else {
+      this.audio.muted = volume === 0;
       this.audio.volume = volume;
     }
   }

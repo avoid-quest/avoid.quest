@@ -40,6 +40,7 @@ import {
 } from "react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
+import { portsWithOutputs } from "@/lib/node-graph/branches";
 import {
   getNodeDefinition,
   isShipped,
@@ -165,11 +166,13 @@ export function moduleWidth(columns: number, minColumns: number): number {
 
 export function ModuleFrame({
   width,
+  minHeight,
   on,
   selected = false,
   children,
 }: {
   width: number;
+  minHeight?: number;
   /** An enabled effect: the canon `border-primary/20 bg-primary/5`. */
   on: boolean;
   selected?: boolean;
@@ -182,7 +185,7 @@ export function ModuleFrame({
         on ? "border-primary/20" : "border-border/50",
         selected && "border-ring"
       )}
-      style={{ width }}
+      style={{ minHeight, width }}
     >
       {/* The tint sits on an opaque card so cables never show through. */}
       <div className={cn("rounded-[inherit]", on && "bg-primary/5")}>
@@ -614,11 +617,9 @@ export function ModulePorts({
   }
   const { Position: Side } = flow;
   const definition = getNodeDefinition(type);
-  const ports = definition.ports.filter(
-    (port) =>
-      isShipped(port.ship ?? definition.ship, "v1") &&
-      (port.direction === "in" || !outputIds || outputIds.includes(port.id))
-  );
+  const ports = (
+    outputIds ? portsWithOutputs(type, outputIds) : definition.ports
+  ).filter((port) => isShipped(port.ship ?? definition.ship, "v1"));
   const inputs = ports.filter((port) => port.direction === "in");
   const outputs = ports.filter((port) => port.direction === "out");
   const handles = (side: typeof inputs, position: Position) =>

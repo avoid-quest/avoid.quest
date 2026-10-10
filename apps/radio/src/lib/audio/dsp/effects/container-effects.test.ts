@@ -120,6 +120,35 @@ describe("compatibility effect containers", () => {
     }
   });
 
+  test("mixes every parallel chain beyond the old four-branch cap", () => {
+    const config = createDefaultEffectConfig("fxComposite", "split", 0);
+    const [chain] = config.chains;
+    if (!chain) {
+      throw new Error("Expected a default chain");
+    }
+    config.chains = Array.from({ length: 12 }, (_, order) => ({
+      ...chain,
+      gain: Math.SQRT2 / 12,
+      id: `chain-${order}`,
+      order,
+    }));
+    const effect = new ContainerEffect(
+      "fxComposite",
+      SAMPLE_RATE,
+      config,
+      () => null
+    );
+    const input = buffers();
+    const output = buffers();
+    input[0].fill(0.25);
+    input[1].fill(-0.5);
+    effect.process(input, output, 0, BLOCK_SIZE);
+    for (let index = 0; index < BLOCK_SIZE; index += 1) {
+      expect(output[0][index]).toBeCloseTo(input[0][index] ?? 0, 6);
+      expect(output[1][index]).toBeCloseTo(input[1][index] ?? 0, 6);
+    }
+  });
+
   test("forwards sidechain input only to nested effects that request it", () => {
     const config = createDefaultEffectConfig("fxComposite", "fx", 0);
     const gate = createDefaultEffectConfig("gate", "gate", 0);

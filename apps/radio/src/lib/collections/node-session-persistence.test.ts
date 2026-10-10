@@ -64,6 +64,24 @@ if (process.env.AVOID_QUEST_PERSISTENCE_SCENARIO === "1") {
     }
   });
 
+  test("settling waits for a write made while it waits", async () => {
+    await playbackSessionsCollection.insert(
+      buildNodeSessionFromTemplate("starter")
+    ).isPersisted.promise;
+    const persistence = createNodeSessionPersistence();
+    persistence.update((draft) => {
+      draft.masterVolume = 0.3;
+    });
+    const settling = persistence.whenSettled();
+    persistence.update((draft) => {
+      draft.masterVolume = 0.6;
+    });
+    await settling;
+    expect(localStorage.getItem(PLAYBACK_SESSIONS_STORAGE_KEY)).toContain(
+      '"masterVolume":0.6'
+    );
+  });
+
   test("a failed trailing write rolls back to the last persisted session", async () => {
     await playbackSessionsCollection.insert(
       buildNodeSessionFromTemplate("starter")

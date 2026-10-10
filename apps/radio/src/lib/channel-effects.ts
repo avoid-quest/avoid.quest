@@ -1,9 +1,10 @@
 import { captureError } from "@avoid.quest/error";
+import type { EffectsFallbackCause } from "@/lib/audio/dsp/effects/official-opendaw-mapping";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
 import {
   appendEffectToTree,
+  audibleSidechainIds,
   findEffectInTree,
-  isEffectChainActive,
   isEffectContainer,
   normalizeEffectTree,
   removeEffectFromTree,
@@ -50,6 +51,8 @@ export type EffectsRuntimeOutcome = {
   ready: boolean;
   status: "failed" | "inactive" | "ready" | "superseded";
   error?: Error;
+  /** Why it runs on the compatibility engine, while it does. */
+  fallback?: EffectsFallbackCause;
 };
 
 export type ChannelEffectsResult = {
@@ -93,29 +96,38 @@ const inactiveOutcome = (): EffectsRuntimeOutcome => ({
 const refKey = ({ sessionId, channelId }: ChannelEffectsRef): string =>
   `${sessionId}:${channelId}`;
 
-function findSidechainChannelId(tree: readonly EffectConfig[]): string | null {
-  for (const effect of tree) {
-    if (!effect.enabled) {
-      continue;
-    }
-    if (effect.sidechain?.channelId) {
-      return effect.sidechain.channelId;
-    }
-    if (isEffectContainer(effect)) {
-      const hasSolo = effect.chains.some((chain) => chain.solo);
-      const nested = findSidechainChannelId(
-        effect.chains.flatMap((chain) =>
-          chain.gain !== 0 && isEffectChainActive(chain, hasSolo)
-            ? chain.effects
-            : []
-        )
-      );
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-  return null;
+/** The channel an enabled, audible effect keys from, if any. */
+export function findSidechainChannelId(
+  tree: readonly EffectConfig[]
+): string | null {
+  return audibleSidechainIds(tree)[0] ?? null;
+}
+
+/**
+ * The tree with each key's channel replaced by the sound it plays on, so the
+ * runtime binds each keyed effect by sound id; a key whose channel has no
+ * sound keys nothing.
+ */
+function keyedFromSounds(
+  tree: readonly EffectConfig[],
+  soundOf: (channelId: string) => string | undefined
+): EffectConfig[] {
+  return tree.map((effect) => {
+    const { sidechain, ...rest } = effect;
+    const soundId = sidechain && soundOf(sidechain.channelId);
+    const keyed = (
+      soundId ? { ...rest, sidechain: { channelId: soundId } } : rest
+    ) as EffectConfig;
+    return isEffectContainer(keyed)
+      ? ({
+          ...keyed,
+          chains: keyed.chains.map((chain) => ({
+            ...chain,
+            effects: keyedFromSounds(chain.effects, soundOf),
+          })),
+        } as EffectConfig)
+      : keyed;
+  });
 }
 
 export function createChannelEffects({
@@ -136,15 +148,15 @@ export function createChannelEffects({
         `Playback channel not found: ${ref.sessionId}/${ref.channelId}`
       );
     }
-    const sidechainChannelId = findSidechainChannelId(channel.effects);
+    // Each keyed effect names the sound its channel is bound to now.
+    const tree = keyedFromSounds(normalizeEffectTree(channel.effects), (id) =>
+      bindings.get(refKey({ ...ref, channelId: id }))
+    );
     return {
       dryWet: Math.max(0, Math.min(1, channel.effectsDryWet)),
-      sidechainSoundId: sidechainChannelId
-        ? (bindings.get(refKey({ ...ref, channelId: sidechainChannelId })) ??
-          null)
-        : null,
+      sidechainSoundId: findSidechainChannelId(tree),
       tempo: getPlaybackSession(ref.sessionId)?.tempo ?? 120,
-      tree: normalizeEffectTree(channel.effects),
+      tree,
     };
   };
 

@@ -1,3 +1,5 @@
+import { ValueMapping } from "@opendaw/lib-std";
+import { scaleMapping, sliderScale } from "@/lib/audio/dsp/effects/param-scale";
 import {
   getEffectMidiParamDefs,
   getEffectSchema,
@@ -62,14 +64,13 @@ function collectActions(
 
   for (const param of getEffectMidiParamDefs(effect.type)) {
     const targetId = `${targetPrefix}:${param.key}`;
+    const mapping = scaleMapping(param.min, param.max, sliderScale(param));
     actions.push({
       dispatch: (value) =>
         change(
           () => ({
             effectId: effect.id,
-            patch: {
-              [param.key]: param.min + value * (param.max - param.min),
-            },
+            patch: { [param.key]: mapping.y(value) },
             type: "update",
           }),
           targetId
@@ -92,13 +93,14 @@ function collectActions(
       ["pan", "Pan", -1, 1, 0.01],
     ] as const) {
       const targetId = `${chainPrefix}:${key}`;
+      const mapping = ValueMapping.linear(min, max);
       actions.push({
         dispatch: (value) =>
           change(
             () => ({
               chainId: chain.id,
               effectId: effect.id,
-              patch: { [key]: min + value * (max - min) },
+              patch: { [key]: mapping.y(value) },
               type: "update-chain",
             }),
             targetId

@@ -6,7 +6,7 @@
  * the canvas, the dialog and their tests share one wording.
  */
 
-import { getNodeDefinition, type NodePort } from "./catalogue";
+import { findPort, getNodeDefinition, type NodePort } from "./catalogue";
 import {
   type GraphEdge,
   type GraphNode,
@@ -47,12 +47,7 @@ export function portOf(
   if (!(node && parsed)) {
     return;
   }
-  return getNodeDefinition(node.type).ports.find(
-    (port) =>
-      port.direction === parsed.direction &&
-      port.kind === parsed.kind &&
-      port.id === parsed.name
-  );
+  return findPort(node.type, parsed.direction, parsed.kind, parsed.name);
 }
 
 /** Sentence case, keeping one-letter names such as Crossfade's "A". */

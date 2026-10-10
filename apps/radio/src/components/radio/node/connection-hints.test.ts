@@ -99,12 +99,6 @@ describe("one rule for every way to connect", () => {
     ["Station into Speakers", plug("kexp", "speakers"), "source", null],
     ["Station into a loose FX", plug("kexp", "verb"), "source", null],
     [
-      "Station into a full key",
-      plug("kexp", "comp", { to: "in:sidechain:key" }),
-      "source",
-      "This input takes one cable",
-    ],
-    [
       "Compressor into itself",
       plug("comp", "comp"),
       "source",
@@ -181,7 +175,7 @@ describe("one rule for every way to connect", () => {
     expect(canConnect(graph, connection)).toBe(ok);
     clearConnectionHints();
 
-    // A drop on the port. A full one-cable port also offers to replace.
+    // A drop on the port.
     expect(dropOnNode(graph, from, node, handle)).toMatchObject(
       ok ? { connect: connection } : { refuse: message }
     );
@@ -196,6 +190,28 @@ describe("one rule for every way to connect", () => {
   });
 });
 
+describe("an occupied key", () => {
+  test("sums another key, and a drop on it connects", () => {
+    const connection = plug("kexp", "comp", { to: "in:sidechain:key" });
+    expect(connectionVerdict(graph, connection)).toEqual({ ok: true });
+    expect(canConnect(graph, connection)).toBe(true);
+    // The keyboard Connect… dialog offers it too.
+    expect(
+      connectPorts(graph, "kexp")
+        .flatMap((port) => port.targets)
+        .some((target) => target.key === "comp in:sidechain:key")
+    ).toBe(true);
+    expect(
+      dropOnNode(
+        graph,
+        { handle: "out:audio:main", node: "kexp", type: "source" },
+        "comp",
+        "in:sidechain:key"
+      )
+    ).toEqual({ connect: connection });
+  });
+});
+
 describe("connectableHandles", () => {
   test("validates each port facing the drag once, and no other", () => {
     const spy = spyOn(validateModule, "validateConnection");
@@ -206,10 +222,17 @@ describe("connectableHandles", () => {
         type: "source",
       });
       // Inputs: Compressor in and key, Reverb in, Delay in, Speakers in.
-      expect(spy).toHaveBeenCalledTimes(5);
+      // Every input sums a new cable with what it has.
+      expect(spy).toHaveBeenCalledTimes(11);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
-      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+      ).toEqual([
+        "comp in:audio:main",
+        "comp in:sidechain:key",
+        "verb in:audio:main",
+        "echo in:audio:main",
+        "speakers in:audio:main",
+      ]);
       expect(verdicts.get("fip out:audio:main")).toEqual({
         code: "bad-handle",
         message: SAME_SIDE_MESSAGE,
@@ -228,11 +251,17 @@ describe("connectableHandles", () => {
         node: "kexp",
         type: "source",
       });
-      // Once with each of the 5 facing ports' cables, once without any.
-      expect(spy).toHaveBeenCalledTimes(5 + 1);
+      // Once with each of the 11 facing ports' cables, once without any.
+      expect(spy).toHaveBeenCalledTimes(11 + 1);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
-      ).toEqual(["verb in:audio:main", "speakers in:audio:main"]);
+      ).toEqual([
+        "comp in:audio:main",
+        "comp in:sidechain:key",
+        "verb in:audio:main",
+        "echo in:audio:main",
+        "speakers in:audio:main",
+      ]);
     } finally {
       spy.mockRestore();
     }

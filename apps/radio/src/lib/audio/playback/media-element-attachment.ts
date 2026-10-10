@@ -1,3 +1,4 @@
+import { isWebKitBrowser } from "./browser-support.js";
 import { createValidatedHlsFetchSetup } from "./hls-request.js";
 import type { PlaybackInput } from "./playback-source.js";
 
@@ -126,8 +127,11 @@ export class MediaElementAttachment {
       return;
     }
 
+    // #283 introduced native-first HLS. Chrome now advertises native HLS but
+    // rejects SoundCloud MP3 segments, so keep its playback on hls.js.
     if (
       input.allowNativeHls &&
+      isWebKitBrowser() &&
       this.audio.canPlayType("application/vnd.apple.mpegurl")
     ) {
       this.attachUrl(input.src);

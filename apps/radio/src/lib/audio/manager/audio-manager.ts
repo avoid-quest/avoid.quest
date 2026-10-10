@@ -24,6 +24,7 @@ import { getOutputRouting, type OutputRouting } from "../../output-routing.js";
 import {
   type AudioState,
   type AudioStateCallback,
+  assertSupportedRadioGraph,
   type ChannelSelection,
   createDeviceSource,
   createPlaybackSource,
@@ -38,6 +39,7 @@ import {
   toPlaybackInput,
   type Unsubscribe,
 } from "../playback/index.js";
+import type { RadioSourceKind } from "../playback/playback-source-factory.js";
 import { inferStreamFormat } from "../playback/stream-format.js";
 import {
   cleanupSoundNodes,
@@ -212,7 +214,8 @@ export class AudioManager {
   createSound(
     radio: Radio,
     soundId?: string,
-    outputMode: SoundOutputMode = "audio-graph"
+    outputMode: SoundOutputMode = "audio-graph",
+    sourceKind?: RadioSourceKind
   ): string {
     const id = this.soundRegistry.create(
       radio,
@@ -220,7 +223,8 @@ export class AudioManager {
       (existingSoundId) => {
         this.cleanupSound(existingSoundId);
       },
-      outputMode
+      outputMode,
+      sourceKind
     );
     const instance = this.soundRegistry.get(id);
     if (!instance) {
@@ -291,10 +295,13 @@ export class AudioManager {
       this.playbackRequests.get(soundId) === request &&
       !request.cancelled;
     try {
-      const useGraph = instance.outputMode !== "native";
-      const context = useGraph ? getAudioContext() : null;
-      if (useGraph && !context) {
-        throw new Error("Audio context not available");
+      let context: AudioContext | null = null;
+      if (instance.outputMode !== "native") {
+        assertSupportedRadioGraph(instance.radio, instance.sourceKind);
+        context = getAudioContext();
+        if (!context) {
+          throw new Error("Audio context not available");
+        }
       }
       const setupPromise = context
         ? this.handleDeferredRejection(this.ensurePlaybackSetup(context))
@@ -345,7 +352,7 @@ export class AudioManager {
       // Connect the graph shell before requesting play in this same task,
       // preserving mobile transient user activation.
       const loadPromise = this.handleDeferredRejection(
-        source.load(toPlaybackInput(instance.radio))
+        source.load(toPlaybackInput(instance.radio, instance.sourceKind))
       );
       const graphPromise = context
         ? this.ensureAudioGraphConnected(soundId, instance)
@@ -873,6 +880,70 @@ export class AudioManager {
     return this.effects.reconcile(soundId, desired);
   }
 
+  getWorkletProcessorUrl(): string {
+    return workletProcessorUrl;
+  }
+
+  getModulationHost() {
+    return this.effects.getModulationHost();
+  }
+
+  hasEffectModulationField(
+    ...args: Parameters<EffectsController["hasEffectModulationField"]>
+  ) {
+    return this.effects.hasEffectModulationField(...args);
+  }
+
+  setEffectFields(...args: Parameters<EffectsController["setEffectFields"]>) {
+    return this.effects.setEffectFields(...args);
+  }
+
+  subscribeEffectsRuntimeOutcome(
+    ...args: Parameters<EffectsController["subscribeRuntimeOutcome"]>
+  ) {
+    return this.effects.subscribeRuntimeOutcome(...args);
+  }
+
+  subscribeEffectsCapacityFreed(listener: () => void) {
+    return this.effects.subscribeCapacityFreed(listener);
+  }
+
+  /** Lets go of an openDAW runtime that failed to start, so it can retry. */
+  discardFailedEffectsRuntime(): void {
+    this.effects.discardFailedRuntime();
+  }
+
+  getStripNodes(soundId: string) {
+    const nodes = this.sounds.get(soundId)?.nodes;
+    return nodes ? { filter: nodes.filter, pan: nodes.pan } : null;
+  }
+
+  /**
+   * Runs effects between two nodes that are not a sound's, e.g. a Node
+   * graph unit's input and output, with the same backends as a sound's.
+   */
+  attachEffectsInsert(
+    id: string,
+    input: AudioNode,
+    output: AudioNode,
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
+    return this.effects.attachInsert(id, input, output, desired);
+  }
+
+  detachEffectsInsert(id: string): void {
+    this.effects.detachInsert(id);
+  }
+
+  /** Makes `node` a key effects name in their `sidechain`, e.g. a Node key. */
+  connectEffectsKey(id: string, node: AudioNode): void {
+    this.effects.connectKey(id, node);
+  }
+
+  releaseEffectsKey(id: string): void {
+    this.effects.releaseKey(id);
+  }
+
   /** The backend a sound's effects last settled on, e.g. a dry fallback. */
   getEffectsRuntimeOutcome(soundId: string): EffectsRuntimeOutcome {
     return this.effects.getRuntimeOutcome(soundId);
@@ -1028,6 +1099,10 @@ export class AudioManager {
       streamFormat: streamFormat ?? inferStreamFormat(newUrl),
       streamUrl: newUrl,
     };
+    // Reject an incompatible candidate before changing playback or its config.
+    if (instance.outputMode !== "native") {
+      assertSupportedRadioGraph(refreshedRadio, instance.sourceKind);
+    }
     // Keep the configuration aligned with the source being loaded, including
     // when Pause cancels resumption while that load finishes.
     instance.radio = refreshedRadio;
@@ -1047,18 +1122,16 @@ export class AudioManager {
       this.playbackRequests.get(soundId) === request &&
       !request.cancelled;
 
-    // Update loading state
-    instance.loading = true;
-    notifySoundState(this.notifyListeners, soundId, instance, {
-      error: null,
-      isLoading: true,
-      isPlaying: false,
-    });
-
     try {
+      instance.loading = true;
+      notifySoundState(this.notifyListeners, soundId, instance, {
+        error: null,
+        isLoading: true,
+        isPlaying: false,
+      });
       // A pause while the new URL loads keeps the sound paused.
       const playing = await source.refreshUrl(
-        toPlaybackInput(refreshedRadio),
+        toPlaybackInput(refreshedRadio, instance.sourceKind),
         seekPosition
       );
 
@@ -1078,8 +1151,7 @@ export class AudioManager {
       if (!isCurrent()) {
         throw error;
       }
-      instance.loading = false;
-      instance.playing = false;
+      this.rollbackEarlyPlayback(soundId, instance, null);
 
       notifySoundError(
         this.notifyListeners,

@@ -8,6 +8,10 @@ import {
   isRadioBlackoutStreamUrl,
   RADIO_BLACKOUT_STREAM_URL,
 } from "./radio-blackout.js";
+import {
+  isLiveRadioSource,
+  type RadioSourceKind,
+} from "./radio-source-kind.js";
 import { inferStreamFormat } from "./stream-format.js";
 import type { Radio } from "./types.js";
 import { isSameOriginPlaybackPath } from "./url-validation.js";
@@ -20,7 +24,10 @@ const STREAM_URL_OVERRIDES: Readonly<Record<string, string>> = {
     "https://streams.radiomast.io/nts2",
 };
 
-export function toPlaybackInput(radio: Radio): PlaybackInput {
+export function toPlaybackInput(
+  radio: Radio,
+  sourceKind?: RadioSourceKind
+): PlaybackInput {
   const src = isRadioBlackoutStreamUrl(radio.streamUrl)
     ? RADIO_BLACKOUT_STREAM_URL
     : (STREAM_URL_OVERRIDES[radio.streamUrl] ?? radio.streamUrl);
@@ -52,6 +59,7 @@ export function toPlaybackInput(radio: Radio): PlaybackInput {
   return {
     ...(allowNativeHls ? { allowNativeHls: true } : {}),
     ...(isYouTubeStream ? { credentials: "omit" as const } : {}),
+    ...(isLiveRadioSource(radio, sourceKind) ? { live: true as const } : {}),
     format,
     src,
   };

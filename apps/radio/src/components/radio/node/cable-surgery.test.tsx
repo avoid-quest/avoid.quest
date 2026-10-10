@@ -64,7 +64,6 @@ const { useUndoShortcuts } = await import("./node-toolbar");
 const { compile } = await import("@/lib/node-graph/compile");
 const { insertNodeOnEdge } = await import("@/lib/node-graph/graph-edits");
 const { seriesToParallel } = await import("@/lib/node-graph/series-parallel");
-const { toast } = await import("sonner");
 const { createNodeStore } = await import("@/lib/node-graph/node-store");
 const { createPaletteNode } = await import("@/lib/node-graph/palette");
 const { diff } = await import("@/lib/node-graph/reconcile");
@@ -185,11 +184,7 @@ describe("cable surgery shortcuts", () => {
       compile(start, ENV),
       compile(store.state.graph as NodeGraph, ENV)
     );
-    expect(ops.map((op) => op.type)).toEqual([
-      "duckLane",
-      "replaceLaneEffects",
-      "unduckLane",
-    ]);
+    expect(ops.map((op) => op.type)).toEqual(["replaceLaneEffects"]);
 
     undo();
     expect(store.state.graph).toBe(start);
@@ -208,7 +203,7 @@ describe("cable surgery shortcuts", () => {
     expect(store.state.graph).toBe(start);
   });
 
-  test("Delete refuses an unhealable Merge with a reason and keeps the whole selection", () => {
+  test("Delete heals a Merge to Speakers, where its branches meet again; undo restores it", () => {
     const serial = insertNodeOnEdge(patch(), "delay", "compressor->speakers");
     if (!serial.ok) {
       throw new Error(serial.message);
@@ -227,19 +222,18 @@ describe("cable surgery shortcuts", () => {
       selection: { edges: ["src-nts->speakers"], nodes: [merge?.id ?? ""] },
     }));
     const before = store.state;
-    const notifications = toast.getHistory().length;
     render(<Harness onInsertInto={mock()} store={store} />);
 
     press("Delete");
 
-    expect(store.state).toBe(before);
-    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(2);
-    const last = toast.getHistory().slice(notifications).at(-1);
-    expect(last && "title" in last ? last.title : null).toContain(
-      "disconnecting a source from its output"
+    const healed = store.state.graph as NodeGraph;
+    expect(healed.nodes.some((node) => node.type === "merge")).toBe(false);
+    expect(healed.edges.some((edge) => edge.id === "src-nts->speakers")).toBe(
+      false
     );
+    expect(compile(healed, ENV).issues).toEqual([]);
     undo();
-    expect(store.state).toBe(before);
+    expect(store.state.graph).toEqual(before.graph);
   });
 
   test("Cmd+D duplicates and selects the copies; one Cmd+Z undoes it", () => {

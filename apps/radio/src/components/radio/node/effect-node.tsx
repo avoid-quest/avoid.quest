@@ -7,6 +7,7 @@ import {
 } from "@/components/audio/effect-params/effect-layouts";
 import { formatParam } from "@/components/audio/effect-params/param-definitions";
 import type { EffectConfig, EffectType } from "@/lib/audio";
+import { sliderScale } from "@/lib/audio/dsp/effects/param-scale";
 import { getEffectParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import {
   type EffectParamDef,
@@ -147,6 +148,7 @@ function BodyControlView({
         onChange={(next) =>
           onChange({ [param.key]: next } as Partial<EffectConfig>)
         }
+        scale={sliderScale(param)}
         step={param.step}
         value={value}
         wheelStep={param.wheelStep}
@@ -190,6 +192,7 @@ function BodyControlView({
 
 export type EffectNodeBodyProps = {
   effect: EffectConfig;
+  minHeight?: number;
   selected?: boolean;
   badge?: BackendBadge | null;
   /** A knob turn: folds into the next undo step. */
@@ -217,6 +220,7 @@ export type EffectNodeBodyProps = {
  */
 export function EffectNodeBody({
   effect,
+  minHeight,
   selected = false,
   badge = null,
   onChange,
@@ -231,6 +235,7 @@ export function EffectNodeBody({
   const controls = custom ? [] : firstLayoutRow(effect.type);
   return (
     <ModuleFrame
+      minHeight={minHeight}
       on={effect.enabled}
       selected={selected}
       width={moduleWidth(

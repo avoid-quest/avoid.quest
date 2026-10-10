@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EffectConfig, EffectType } from "@/lib/audio/dsp/effects/types";
 import { createNodeEffectConfig } from "./catalogue";
 import { compile, type EnginePlan } from "./compile";
-import { diff, type Op } from "./reconcile";
+import { diff, effectsChange, type Op } from "./reconcile";
 import { type NodeGraphInput, type NodeType, nodeGraphSchema } from "./schema";
 
 type NodeInput = NodeGraphInput["nodes"][number];
@@ -107,6 +107,15 @@ describe("diff", () => {
     expect(diff(base(), base())).toEqual([]);
   });
 
+  test("switching between an imported File and a Station replaces the source even at the same URL", () => {
+    const source = station("a");
+    const file = { ...source, type: "file" } satisfies NodeInput;
+    const live = plan([source, speakers], [audio("a", "speakers")]);
+    const finite = plan([file, speakers], [audio("a", "speakers")]);
+    expect(types(diff(live, finite))).toEqual(["removeLane", "addLane"]);
+    expect(types(diff(finite, live))).toEqual(["removeLane", "addLane"]);
+  });
+
   test("a Track's speed, loop and cue listen are params, never a new sound", () => {
     const track = (strip: Record<string, unknown>) =>
       plan(
@@ -147,30 +156,28 @@ describe("diff", () => {
       },
     ]);
     // A trim or solo is a cable level: its sound and fader stay.
-    expect(types(diff(track({}), track({ trimDb: -6 })))).toEqual(["setParam"]);
-    expect(diff(track({}), track({ trimDb: -6 }))[0]).toMatchObject({
-      param: "gain",
-      target: "edge",
-    });
+    expect(diff(track({}), track({ trimDb: -6 }))).toEqual([]);
+    expect(track({ trimDb: -6 }).cables.get("t->speakers")?.gain).toBeCloseTo(
+      0.501,
+      3
+    );
   });
 
-  test("a param-only change yields only setLaneEffects", () => {
+  test("a param-only change writes only the changed effect", () => {
     const next = base({ verb: { decay: 0.9, dryWet: 0.4 } });
     const ops = diff(base(), next);
     expect(ops).toEqual([
       {
-        effects: next.lanes.get("a")?.effects ?? [],
+        effectId: "verb",
         laneId: "a",
-        type: "setLaneEffects",
+        type: "setEffectFields",
       },
     ]);
   });
 
   test("bypassing the first FX moves the signal trim to the next FX", () => {
     expect(types(diff(base(), base({ verb: { enabled: false } })))).toEqual([
-      "duckLane",
       "replaceLaneEffects",
-      "unduckLane",
     ]);
   });
 
@@ -180,24 +187,143 @@ describe("diff", () => {
         [station("a"), fx("verb", "cheapReverb", { enabled: true }), speakers],
         [audio("a", "verb", { gain }), audio("verb", "speakers")]
       );
-    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual(["setLaneEffects"]);
+    expect(types(diff(withTrim(1), withTrim(0.5)))).toEqual([
+      "setEffectFields",
+    ]);
+  });
+
+  test("toggling a unity Autotune updates effects without ducking the lane", () => {
+    const autotuned = (enabled: boolean) =>
+      plan(
+        [
+          station("a"),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("tune", "autotune", { enabled }),
+          speakers,
+        ],
+        [audio("a", "verb"), audio("verb", "tune"), audio("tune", "speakers")]
+      );
+    expect(types(diff(autotuned(true), autotuned(false)))).toEqual([
+      "setEffectFields",
+    ]);
+    expect(types(diff(autotuned(false), autotuned(true)))).toEqual([
+      "setEffectFields",
+    ]);
+  });
+
+  test("toggling the only effect reselects the lane backend", () => {
+    const autotuned = (enabled: boolean) =>
+      plan(
+        [
+          station("a"),
+          fx("tune", "autotune", { enabled, signalGain: 1 }),
+          speakers,
+        ],
+        [audio("a", "tune"), audio("tune", "speakers")]
+      );
+    const on = autotuned(true);
+    const off = autotuned(false);
+    expect(on.lanes.get("a")?.backend).toBe("official");
+    expect(off.lanes.get("a")?.backend).toBeNull();
+    expect(on.lanes.get("a")?.layoutSignature).toBe(
+      off.lanes.get("a")?.layoutSignature
+    );
+    for (const [previous, next] of [
+      [on, off],
+      [off, on],
+    ] as const) {
+      expect(diff(previous, next)).toEqual([
+        {
+          effects: next.lanes.get("a")?.effects ?? [],
+          laneId: "a",
+          type: "setLaneEffects",
+        },
+      ]);
+    }
+  });
+
+  test("freeing monitoring channels reselects an unchanged downstream lane", () => {
+    const lanes = ["a", "b", "c", "d", "e"];
+    const budgeted = (enabled: boolean) =>
+      plan(
+        [
+          ...lanes.map((id) => station(id)),
+          ...lanes.map((id) =>
+            fx(`${id}-fx`, "autotune", { enabled: id !== "a" || enabled })
+          ),
+          speakers,
+        ],
+        lanes.flatMap((id) => [
+          audio(id, `${id}-fx`),
+          audio(`${id}-fx`, "speakers"),
+        ])
+      );
+    const before = budgeted(true);
+    const after = budgeted(false);
+    expect(before.lanes.get("e")?.backend).toBe("compat");
+    expect(after.lanes.get("e")?.backend).toBe("official");
+    expect(before.lanes.get("e")?.effects).toEqual(
+      after.lanes.get("e")?.effects
+    );
+    expect(diff(before, after)).toContainEqual({
+      effects: after.lanes.get("e")?.effects ?? [],
+      laneId: "e",
+      type: "setLaneEffects",
+    });
+  });
+
+  test("enabling a keyed effect rebinds the active sidechain on the same backend", () => {
+    const keyed = (enabled: boolean) =>
+      plan(
+        [
+          station("music"),
+          station("talk"),
+          fx("verb", "cheapReverb", { enabled: true }),
+          fx("comp", "compressor", { enabled }),
+          speakers,
+        ],
+        [
+          audio("music", "verb"),
+          audio("verb", "comp"),
+          audio("comp", "speakers"),
+          audio("talk", "speakers"),
+          {
+            ...audio("talk", "comp"),
+            id: "key",
+            targetHandle: "in:sidechain:key",
+          },
+        ]
+      );
+    const before = keyed(false);
+    const after = keyed(true);
+    expect(before.lanes.get("music")?.backend).toBe(
+      after.lanes.get("music")?.backend
+    );
+    expect(before.lanes.get("music")?.layoutSignature).toBe(
+      after.lanes.get("music")?.layoutSignature
+    );
+    expect(diff(before, after)).toEqual([
+      {
+        effects: after.lanes.get("music")?.effects ?? [],
+        laneId: "music",
+        type: "setLaneEffects",
+      },
+    ]);
   });
 
   test.each([
     ["add", ["verb"], ["verb", "crush"]],
     ["remove", ["verb", "crush"], ["crush"]],
     ["reorder", ["verb", "crush"], ["crush", "verb"]],
-  ])("an FX %s ducks, replaces and unducks the lane", (_label, from, to) => {
+  ])("an FX %s replaces the lane's layout", (_label, from, to) => {
     const next = base({ order: to });
     const ops = diff(base({ order: from }), next);
     expect(ops).toEqual([
-      { laneId: "a", type: "duckLane" },
       {
         effects: next.lanes.get("a")?.effects ?? [],
         laneId: "a",
         type: "replaceLaneEffects",
       },
-      { laneId: "a", type: "unduckLane" },
     ]);
   });
 
@@ -227,8 +353,8 @@ describe("diff", () => {
     const unity = autotuned();
     const nudged = autotuned({ gainDb: -0.1 });
 
-    expect(types(diff(unity, nudged))).toEqual(["setLaneEffects"]);
-    expect(types(diff(nudged, unity))).toEqual(["setLaneEffects"]);
+    expect(types(diff(unity, nudged))).toEqual(["setEffectFields"]);
+    expect(types(diff(nudged, unity))).toEqual(["setEffectFields"]);
     expect(types(diff(unity, autotuned({ muted: true })))).not.toContain(
       "replaceLaneEffects"
     );
@@ -296,56 +422,19 @@ describe("diff", () => {
     ]);
   });
 
-  test("a cable level or mute change is a setParam", () => {
-    const cable = (gain: number, muted: boolean) =>
-      plan([station("a"), speakers], [audio("a", "speakers", { gain, muted })]);
-    expect(diff(cable(1, false), cable(0.5, true))).toEqual([
-      {
-        id: "a->speakers",
-        param: "gain",
-        target: "edge",
-        type: "setParam",
-        value: 0.5,
-      },
-      {
-        id: "a->speakers",
-        param: "muted",
-        target: "edge",
-        type: "setParam",
-        value: true,
-      },
-    ]);
-  });
-
-  test("a new cable is added and a deleted one removed", () => {
-    const loose = plan([station("a"), speakers], []);
-    const wired = plan([station("a"), speakers], [audio("a", "speakers")]);
-    expect(diff(loose, wired)).toEqual([
-      { edge: wired.edges.get("a->speakers"), type: "addEdge" } as Op,
-    ]);
-    expect(diff(wired, loose)).toEqual([
-      { edgeId: "a->speakers", type: "removeEdge" },
-    ]);
-  });
-
-  test("dragging a cable end to another lane rewires it", () => {
-    const from = (source: string) =>
+  test("cables need no ops: the engine's routing follows each plan", () => {
+    const cable = (source: string, gain: number, muted: boolean) =>
       plan(
         [station("a"), station("b"), speakers],
-        [audio(source, "speakers", { id: "cable" })]
+        [audio(source, "speakers", { gain, id: "cable", muted })]
       );
-    const previous = from("a");
-    const next = from("b");
-    expect(diff(previous, next)).toEqual([
-      {
-        edge: next.edges.get("cable"),
-        previous: previous.edges.get("cable"),
-        type: "rewireEdge",
-      } as Op,
-    ]);
+    const loose = plan([station("a"), station("b"), speakers], []);
+    expect(diff(cable("a", 1, false), cable("a", 0.5, true))).toEqual([]);
+    expect(diff(loose, cable("a", 1, false))).toEqual([]);
+    expect(diff(cable("a", 1, false), cable("b", 1, false))).toEqual([]);
   });
 
-  test("a new station adds its lane before its cable", () => {
+  test("a new station adds its lane", () => {
     const previous = base();
     const next = base(
       {},
@@ -353,17 +442,15 @@ describe("diff", () => {
     );
     expect(diff(previous, next)).toEqual([
       { lane: next.lanes.get("c"), type: "addLane" } as Op,
-      { edge: next.edges.get("c->speakers"), type: "addEdge" } as Op,
     ]);
   });
 
-  test("a deleted station removes its cable before its lane", () => {
+  test("a deleted station removes its lane", () => {
     const previous = base(
       {},
       { edges: [audio("c", "speakers")], nodes: [station("c")] }
     );
     expect(diff(previous, base())).toEqual([
-      { edgeId: "c->speakers", type: "removeEdge" },
       { laneId: "c", soundId: "node:n:c", type: "removeLane" },
     ]);
   });
@@ -373,10 +460,8 @@ describe("diff", () => {
       plan([station("a", streamUrl), speakers], [audio("a", "speakers")]);
     const next = tuned("https://example.com/other.mp3");
     expect(diff(tuned("https://example.com/a.mp3"), next)).toEqual([
-      { edgeId: "a->speakers", type: "removeEdge" },
       { laneId: "a", soundId: "node:n:a", type: "removeLane" },
       { lane: next.lanes.get("a"), type: "addLane" } as Op,
-      { edge: next.edges.get("a->speakers"), type: "addEdge" } as Op,
     ]);
   });
 
@@ -401,15 +486,13 @@ describe("diff", () => {
       );
     const next = formatted("hls");
     expect(diff(formatted(), next)).toEqual([
-      { edgeId: "a->speakers", type: "removeEdge" },
       { laneId: "a", soundId: "node:n:a", type: "removeLane" },
       { lane: next.lanes.get("a"), type: "addLane" } as Op,
-      { edge: next.edges.get("a->speakers"), type: "addEdge" } as Op,
     ]);
     expect(diff(next, formatted("hls"))).toEqual([]);
   });
 
-  test("a cable moved off a lane that goes away is removed, not rewired", () => {
+  test("a cable moved off a lane that goes away needs only the lane's removal", () => {
     const previous = plan(
       [station("a"), station("b"), speakers],
       [audio("a", "speakers", { id: "cable" })]
@@ -419,9 +502,7 @@ describe("diff", () => {
       [audio("b", "speakers", { id: "cable" })]
     );
     expect(diff(previous, next)).toEqual([
-      { edgeId: "cable", type: "removeEdge" },
       { laneId: "a", soundId: "node:n:a", type: "removeLane" },
-      { edge: next.edges.get("cable"), type: "addEdge" } as Op,
     ]);
   });
 
@@ -478,20 +559,49 @@ describe("diff: audio inputs", () => {
 
   test("a new device or echo cancellation starts a new capture", () => {
     expect(types(diff(mic(), mic({ deviceId: "line-in" })))).toEqual([
-      "removeEdge",
       "removeLane",
       "addLane",
-      "addEdge",
     ]);
     expect(types(diff(mic(), mic({ echoCancellation: true })))).toEqual([
-      "removeEdge",
       "removeLane",
       "addLane",
-      "addEdge",
     ]);
   });
 
   test("a relabelled device keeps its capture", () => {
     expect(diff(mic(), mic({ deviceLabel: "Desk mic" }))).toEqual([]);
+  });
+});
+
+describe("effectsChange", () => {
+  const keyed = (id: string, enabled: boolean, channelId = `node-key:${id}`) =>
+    ({
+      ...createNodeEffectConfig("compressor", id),
+      enabled,
+      sidechain: { channelId },
+    }) as EffectConfig;
+  const owner = (effects: EffectConfig[]) => ({
+    backend: "official" as const,
+    effects,
+    layoutSignature: "same",
+  });
+
+  test("a second keyed effect switching on is structural, so its key registers", () => {
+    expect(
+      effectsChange(
+        owner([keyed("one", true), keyed("two", false)]),
+        owner([keyed("one", true), keyed("two", true)])
+      )
+    ).toEqual({ kind: "structural" });
+  });
+
+  test("a keyed effect's knob with the same keys listening writes its fields", () => {
+    const turned = { ...keyed("two", true), threshold: -30 } as EffectConfig;
+    expect(
+      effectsChange(
+        owner([keyed("one", true), keyed("two", true)]),
+        owner([keyed("one", true), turned])
+      )
+    ).toEqual({ effectIds: ["two"], kind: "fields" });
   });
 });

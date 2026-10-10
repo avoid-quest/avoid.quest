@@ -25,6 +25,7 @@ import { getEffectMetadata, type Radio } from "@/lib/audio";
 import { isMediaElementSinkIdSupported } from "@/lib/audio/utils";
 import { isEffectNodeType } from "@/lib/node-graph/catalogue";
 import { swapEffect } from "@/lib/node-graph/graph-edits";
+import { isModulationType } from "@/lib/node-graph/modulation-schema";
 import {
   commitNodeGraph,
   type NodeStore,
@@ -43,6 +44,7 @@ import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import type { ValidateOptions } from "@/lib/node-graph/validate";
 import { platformSourceIcon } from "../platform-source-icon";
 import { formatLocation } from "../station-row";
+import { CONTROL_NODE_WIDTH } from "./control-node";
 import { effectNodeWidth } from "./effect-node";
 import { MERGE_WIDTH_PX } from "./merge-node";
 import { type NativeNodeType, nativeNodeWidth } from "./native-strip-nodes";
@@ -77,6 +79,9 @@ export type PaletteRequest = {
 const STATION_WIDTH = 240;
 
 function drawnWidth(type: NodeType): number {
+  if (isModulationType(type)) {
+    return CONTROL_NODE_WIDTH;
+  }
   if (isEffectNodeType(type)) {
     return effectNodeWidth(type);
   }
@@ -170,6 +175,7 @@ const NODE_DESCRIPTIONS: Partial<Record<NodeType, string>> = {
 
 const SECTION_TITLES = {
   fx: "FX",
+  modulators: "Modulators",
   outputs: "Outputs",
   routing: "Routing",
   sources: "Sources",
@@ -233,7 +239,9 @@ function toItem(entry: PaletteEntry): PaletteItem {
 function toSections(
   entries: readonly PaletteEntry[]
 ): PickerSection<PaletteItem>[] {
-  return (["sources", "fx", "routing", "outputs", "templates"] as const)
+  return (
+    ["sources", "fx", "modulators", "routing", "outputs", "templates"] as const
+  )
     .map((section) => ({
       items: entries.filter((entry) => entry.section === section).map(toItem),
       title: SECTION_TITLES[section],

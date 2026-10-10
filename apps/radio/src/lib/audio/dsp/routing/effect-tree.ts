@@ -6,6 +6,7 @@ import type {
 } from "../effects/types.js";
 
 export { DEFAULT_EFFECT_TEMPO } from "../effects/tempo.js";
+/** Saved FX and compiled Node channels share this recursive parsing limit. */
 export const MAX_EFFECT_TREE_DEPTH = 8;
 
 export function isEffectContainerType(type: EffectType): boolean {
@@ -19,10 +20,79 @@ export function isEffectContainer(
 }
 
 export function isEffectChainActive(
-  chain: EffectChainConfig,
+  chain: Pick<EffectChainConfig, "muted" | "solo">,
   hasSolo: boolean
 ): boolean {
   return !chain.muted && (!hasSolo || chain.solo);
+}
+
+/**
+ * The effects that hear the chain, in tree order: enabled, and not inside a
+ * switched-off container or a muted, silent or unsoloed chain.
+ */
+export function audibleEffects(
+  effects: readonly EffectConfig[],
+  into: EffectConfig[] = []
+): EffectConfig[] {
+  for (const effect of effects) {
+    if (!effect.enabled) {
+      continue;
+    }
+    into.push(effect);
+    if (isEffectContainer(effect)) {
+      const hasSolo = effect.chains.some((chain) => chain.solo);
+      for (const chain of effect.chains) {
+        if (chain.gain !== 0 && isEffectChainActive(chain, hasSolo)) {
+          audibleEffects(chain.effects, into);
+        }
+      }
+    }
+  }
+  return into;
+}
+
+/**
+ * The channels and keys the tree's audible effects listen to, each once,
+ * in tree order: the first is the one the compatibility engine keys.
+ */
+export function audibleSidechainIds(
+  effects: readonly EffectConfig[]
+): string[] {
+  return [
+    ...new Set(
+      audibleEffects(effects).flatMap((effect) =>
+        effect.sidechain ? [effect.sidechain.channelId] : []
+      )
+    ),
+  ];
+}
+
+/**
+ * The tree as the compatibility engine can key it, from one key: an effect
+ * keyed from any other detects on its own input. Every effect says whether
+ * it listens, so a processor that listened stops.
+ */
+export function withCompatibilityKey(
+  effects: readonly EffectConfig[]
+): EffectConfig[] {
+  const [key] = audibleSidechainIds(effects);
+  const visit = (current: readonly EffectConfig[]): EffectConfig[] =>
+    current.map((effect) => {
+      const next =
+        key !== undefined && effect.sidechain?.channelId === key
+          ? effect
+          : ({ ...effect, sidechain: undefined } as EffectConfig);
+      return isEffectContainer(next)
+        ? ({
+            ...next,
+            chains: next.chains.map((chain) => ({
+              ...chain,
+              effects: visit(chain.effects),
+            })),
+          } as EffectConfig)
+        : next;
+    });
+  return visit(effects);
 }
 
 export function isValidFrequencySplitShape(
@@ -47,31 +117,23 @@ function orderEffects(effects: readonly EffectConfig[]): EffectConfig[] {
 }
 
 function normalizeChains(
-  chains: readonly EffectChainConfig[],
-  depth: number
+  chains: readonly EffectChainConfig[]
 ): EffectChainConfig[] {
   return [...chains]
     .sort((left, right) => left.order - right.order)
     .map((chain, order) => ({
       ...chain,
-      effects: normalizeEffectTree(chain.effects, depth + 1),
+      effects: normalizeEffectTree(chain.effects),
       order,
     }));
 }
 
 export function normalizeEffectTree(
-  effects: readonly EffectConfig[],
-  depth = 0
+  effects: readonly EffectConfig[]
 ): EffectConfig[] {
-  if (depth > MAX_EFFECT_TREE_DEPTH) {
-    throw new Error(
-      `Effect tree exceeds the maximum depth of ${MAX_EFFECT_TREE_DEPTH}`
-    );
-  }
-
   return orderEffects(effects).map((effect) =>
     isEffectContainer(effect)
-      ? ({ ...effect, chains: normalizeChains(effect.chains, depth) } as
+      ? ({ ...effect, chains: normalizeChains(effect.chains) } as
           | Extract<EffectConfig, { type: "fxComposite" }>
           | Extract<EffectConfig, { type: "stereoSplit" }>
           | Extract<EffectConfig, { type: "frequencySplit" }>)
@@ -176,6 +238,30 @@ export function updateEffectInTree(
       })),
     } as EffectConfig;
   });
+}
+
+/** Record a device's fields without advancing its descendants' state. */
+export function updateEffectFieldsInTree(
+  effects: readonly EffectConfig[],
+  effectId: string,
+  config: EffectConfig
+): EffectConfig[] {
+  const before = findEffectInTree(effects, effectId);
+  return updateEffectInTree(
+    effects,
+    effectId,
+    before && isEffectContainer(before) && isEffectContainer(config)
+      ? {
+          ...config,
+          chains: config.chains.map((chain) => ({
+            ...chain,
+            effects:
+              before.chains.find((previous) => previous.id === chain.id)
+                ?.effects ?? [],
+          })),
+        }
+      : config
+  );
 }
 
 export function removeEffectFromTree(
@@ -301,11 +387,7 @@ export function validateEffectTree(
   const effectIds = new Set<string>();
   const chainIds = new Set<string>();
 
-  const visit = (current: readonly EffectConfig[], depth: number): void => {
-    if (depth > MAX_EFFECT_TREE_DEPTH) {
-      errors.push(`Effect tree exceeds depth ${MAX_EFFECT_TREE_DEPTH}`);
-      return;
-    }
+  const visit = (current: readonly EffectConfig[]): void => {
     for (const effect of current) {
       if (effectIds.has(effect.id)) {
         errors.push(`Duplicate effect id: ${effect.id}`);
@@ -333,12 +415,12 @@ export function validateEffectTree(
           errors.push(`Duplicate effect chain id: ${chain.id}`);
         }
         chainIds.add(chain.id);
-        visit(chain.effects, depth + 1);
+        visit(chain.effects);
       }
     }
   };
 
-  visit(effects, 0);
+  visit(effects);
   return errors;
 }
 
@@ -346,4 +428,47 @@ export function normalizeTempoBpm(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? clampEffectTempo(value)
     : DEFAULT_EFFECT_TEMPO;
+}
+
+/** The config owned by this device, excluding nested devices' fields. */
+export function localEffectConfig(effect: EffectConfig): EffectConfig {
+  return isEffectContainer(effect)
+    ? {
+        ...effect,
+        chains: effect.chains.map((chain) => ({ ...chain, effects: [] })),
+      }
+    : effect;
+}
+
+/** Changes that need the lane's structural effects step. */
+export function effectFieldsAreStructural(
+  before: EffectConfig,
+  after: EffectConfig
+): boolean {
+  return (
+    before.id !== after.id ||
+    before.type !== after.type ||
+    before.order !== after.order ||
+    (before.signalGain === undefined) !== (after.signalGain === undefined) ||
+    usesDirectEffectLayout(before) !== usesDirectEffectLayout(after) ||
+    JSON.stringify(before.sidechain) !== JSON.stringify(after.sidechain) ||
+    (before.type === "neuralAmp" &&
+      after.type === "neuralAmp" &&
+      (before.modelId !== after.modelId ||
+        before.modelData !== after.modelData)) ||
+    (before.type === "werkstatt" &&
+      after.type === "werkstatt" &&
+      (before.code ?? before.source) !== (after.code ?? after.source))
+  );
+}
+
+/** Autotune alone can omit the outer mix and gain boxes. */
+export function usesDirectEffectLayout(effect: EffectConfig): boolean {
+  return (
+    effect.type === "autotune" &&
+    !effect.keepWrapper &&
+    effect.dryWet === 1 &&
+    effect.inputGain === 1 &&
+    effect.outputGain === 1
+  );
 }

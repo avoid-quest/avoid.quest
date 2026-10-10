@@ -1,14 +1,15 @@
 /**
  * Node Graph Validation
  *
- * Checks a patch against the port-kind rules, per-port limits, lane rules,
- * the feedback rule and the device budgets. Every problem is an Issue keyed
+ * Checks a patch against the port-kind rules, per-port limits, the feedback
+ * rule (key cables included). Every problem is an Issue keyed
  * by the node or cable it belongs to; invalid cables never reach the compiler.
  * The same check runs on drag, on load and on import, and every "can this
  * cable connect?" question goes through `connectionVerdict`.
  */
 
 import {
+  findPort,
   getNodeDefinition,
   isShipped,
   type NodeDefinition,
@@ -17,11 +18,15 @@ import {
   type PortKind,
   type ShipLevel,
 } from "./catalogue";
-import type { GraphEdge, GraphNode, NodeGraph, NodeType } from "./schema";
-
-export type Profile = "desktop" | "mobile";
+import {
+  connectionKey,
+  connectionParameter,
+  modulationParameters,
+} from "./modulation-parameters";
+import type { GraphEdge, GraphNode, NodeGraph } from "./schema";
 
 export type IssueCode =
+  | "modulation-target"
   | "unshipped"
   | "missing-node"
   | "bad-handle"
@@ -34,29 +39,12 @@ export type IssueCode =
   | "duplicate-edge"
   | "port-max"
   | "one-speakers"
-  | "one-device-out"
-  | "sidechain-source"
-  | "sidechain-target"
-  | "lane-filter"
-  | "lane-pan"
-  | "lane-key"
   | "feedback-needs-loop"
   | "control-cycle"
-  | "budget-playing"
-  | "budget-sources"
-  | "budget-buses"
-  | "budget-bus-fx"
-  | "budget-loops"
-  | "budget-tape-warp"
-  | "budget-tape-warp-time"
-  | "budget-lfos"
-  | "budget-edges"
-  | "native-position"
   // Raised by the compiler, where the patch's shape is known.
-  | "lane-branches"
   | "split-depth"
   | "split-branches"
-  | "not-series-parallel";
+  | "key-enclosed";
 
 export type Issue = {
   code: IssueCode;
@@ -65,55 +53,14 @@ export type Issue = {
   id: string;
 };
 
-export type NodeBudget = {
-  /** Stream sources playing at once: each costs a decoder, hls.js and a worklet. */
-  playingStreams: number;
-  sources: number;
-  buses: number;
-  busesWithFx: number;
-  loops: number;
-  tapeWarps: number;
-  tapeWarpSeconds: number;
-  lfos: number;
-  edges: number;
-};
-
-/** Mobile is a coarse pointer or iOS, where every FX lane is one worklet. */
-export const NODE_BUDGETS: Readonly<Record<Profile, NodeBudget>> = {
-  desktop: {
-    buses: 6,
-    busesWithFx: 3,
-    edges: 64,
-    lfos: 8,
-    loops: 4,
-    playingStreams: 6,
-    sources: 24,
-    tapeWarpSeconds: 30,
-    tapeWarps: 2,
-  },
-  mobile: {
-    buses: 3,
-    busesWithFx: 2,
-    edges: 64,
-    lfos: 8,
-    loops: 4,
-    playingStreams: 4,
-    sources: 24,
-    tapeWarpSeconds: 10,
-    tapeWarps: 1,
-  },
-};
-
 export type ValidateOptions = {
-  profile?: Profile;
   /** Node types and ports beyond this ship level are refused. */
   release?: ShipLevel;
-  /** Source node ids that are playing or starting, oldest first. */
-  playing?: readonly string[];
 };
 
 export type Connection = {
   id?: string;
+  parameter?: string;
   source: string;
   sourceHandle: string | null | undefined;
   target: string;
@@ -146,15 +93,6 @@ export function parseHandleId(
   return { direction, kind: kind as PortKind, name };
 }
 
-/** Nodes that always start a bus: they sum or delay across lanes. */
-const BUS_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
-  "crossfade",
-  "dial",
-  "loop",
-  "return",
-  "tapeWarp",
-]);
-
 /** A cable that passed the port checks, with both ends resolved. */
 export type WiredEdge = {
   edge: GraphEdge;
@@ -166,7 +104,6 @@ type Context = {
   graph: ValidatableGraph;
   nodes: Map<string, GraphNode>;
   release: ShipLevel;
-  budget: NodeBudget;
   issues: Issue[];
 };
 
@@ -192,12 +129,8 @@ function definitionOf(node: GraphNode): NodeDefinition {
   return getNodeDefinition(node.type);
 }
 
-/** Why a second Output device can't play to a device one already does. */
-export const ONE_DEVICE_OUT_MESSAGE = "This output already has a module";
-
 function checkNodes(context: Context): void {
   let speakers = 0;
-  const devices = new Set<string>();
   for (const node of context.graph.nodes) {
     const definition = definitionOf(node);
     if (!isShipped(definition.ship, context.release)) {
@@ -214,12 +147,6 @@ function checkNodes(context: Context): void {
         nodeIssue(context, node, "one-speakers", "A patch has one Speakers");
       }
     }
-    if (node.type === "deviceOut" && node.data.deviceId !== null) {
-      if (devices.has(node.data.deviceId)) {
-        nodeIssue(context, node, "one-device-out", ONE_DEVICE_OUT_MESSAGE);
-      }
-      devices.add(node.data.deviceId);
-    }
   }
 }
 
@@ -232,12 +159,7 @@ function resolvePort(
   if (!parsed || parsed.direction !== direction) {
     return "bad-handle";
   }
-  const port = definitionOf(node).ports.find(
-    (entry) =>
-      entry.direction === direction &&
-      entry.kind === parsed.kind &&
-      entry.id === parsed.name
-  );
+  const port = findPort(node.type, direction, parsed.kind, parsed.name);
   return port && !isInactiveBand(node, port) ? port : "unknown-port";
 }
 
@@ -376,6 +298,22 @@ function wireEdge(context: Context, edge: GraphEdge): WiredEdge | null {
     edgeIssue(context, edge, kind.code, kind.message);
     return null;
   }
+  if (to.kind === "control" && to.id === "parameter") {
+    const parameters = modulationParameters(target);
+    if (
+      parameters.length === 0 ||
+      (edge.parameter !== undefined &&
+        !parameters.some((parameter) => parameter.key === edge.parameter))
+    ) {
+      edgeIssue(
+        context,
+        edge,
+        "modulation-target",
+        "Choose a numeric parameter this module can modulate"
+      );
+      return null;
+    }
+  }
   return { edge, from, to };
 }
 
@@ -402,7 +340,7 @@ function checkEdges(context: Context): CheckedEdges {
     if (!result) {
       continue;
     }
-    const cable = `${edge.source}\u0000${edge.sourceHandle}\u0000${edge.target}\u0000${edge.targetHandle}`;
+    const cable = connectionKey(context.graph, edge);
     if (cables.has(cable)) {
       edgeIssue(context, edge, "duplicate-edge", "These are already connected");
       continue;
@@ -585,11 +523,13 @@ function checkCycles(
   const rejected = new Set<WiredEdge>();
   const nodeIds = context.graph.nodes.map((node) => node.id);
   const isLoop = (id: string) => context.nodes.get(id)?.type === "loop";
-  // A key cable taps its lane before the FX, so it closes no cycle; taking
-  // the Loop nodes out leaves exactly the delay-free cycles.
+  // A key cable feeds its effect's detector, so it closes a cycle as an
+  // audio cable does; taking the Loop nodes out leaves exactly the
+  // delay-free cycles.
   const inCycles = (kind: "audio" | "control") => (wire: WiredEdge) =>
     wire.from.kind === kind &&
-    wire.to.kind === kind &&
+    (wire.to.kind === kind ||
+      (kind === "audio" && wire.to.kind === "sidechain")) &&
     !(
       kind === "audio" &&
       (isLoop(wire.edge.source) || isLoop(wire.edge.target))
@@ -640,36 +580,6 @@ function checkCycles(
   return kept;
 }
 
-/** undefined: not fed by any source; string: that source's lane; null: a bus. */
-export type Lane = string | null | undefined;
-
-function joinLane(current: Lane, next: Lane): Lane {
-  if (current === undefined) {
-    return next;
-  }
-  if (next === undefined || next === current) {
-    return current;
-  }
-  return null;
-}
-
-export type Topology = {
-  lanes: Map<string, Lane>;
-  /** Bus id per bus node: the node that starts the bus. */
-  buses: Map<string, string>;
-};
-
-function laneFromInputs(node: GraphNode, inputs: readonly Lane[]): Lane {
-  if (definitionOf(node).category === "output") {
-    return;
-  }
-  const lane = inputs.reduce<Lane>(joinLane, undefined);
-  if (lane !== undefined && BUS_NODE_TYPES.has(node.type)) {
-    return null;
-  }
-  return lane;
-}
-
 function audioInputs(wired: readonly WiredEdge[]): Map<string, string[]> {
   const inputs = new Map<string, string[]>();
   for (const { edge, to } of wired) {
@@ -700,442 +610,18 @@ export function liveAudioNodes(
   return live;
 }
 
-/** Filter and Pan must be on the leading series, before any FX or branch. */
-export function nativePlacementIssues(
-  graph: ValidatableGraph,
-  wired: readonly WiredEdge[],
-  lanes: ReadonlyMap<string, Lane>
-): Issue[] {
-  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
-  const sinks = new Set(
-    graph.nodes
-      .filter((node) => definitionOf(node).category === "output")
-      .map((node) => node.id)
-  );
-  const audio = wired.filter(({ edge, from, to }) => {
-    const lane = lanes.get(edge.source);
-    return (
-      from.kind === "audio" &&
-      to.kind === "audio" &&
-      typeof lane === "string" &&
-      (sinks.has(edge.target) || lanes.get(edge.target) === lane)
-    );
-  });
-  const live = liveAudioNodes(
-    audio.filter(({ edge }) => sinks.has(edge.target)),
-    audio.filter(({ edge }) => !sinks.has(edge.target))
-  );
-  const outs = new Map<string, string[]>();
-  for (const { edge } of audio) {
-    if (live.has(edge.target) || sinks.has(edge.target)) {
-      outs.set(edge.source, [...(outs.get(edge.source) ?? []), edge.target]);
-    }
-  }
-  const leading = new Set<string>();
-  for (const source of graph.nodes.filter(
-    (node) => definitionOf(node).source
-  )) {
-    let node: GraphNode | undefined = source;
-    while (node && live.has(node.id) && !leading.has(node.id)) {
-      leading.add(node.id);
-      const next: readonly string[] = outs.get(node.id) ?? [];
-      if (definitionOf(node).effectType || next.length !== 1) {
-        break;
-      }
-      node = next[0] ? nodes.get(next[0]) : undefined;
-    }
-  }
-  return graph.nodes.flatMap((node): Issue[] =>
-    (node.type === "filter" || node.type === "pan") &&
-    live.has(node.id) &&
-    !leading.has(node.id)
-      ? [
-          {
-            code: "native-position",
-            id: node.id,
-            message: `${definitionOf(node).name} must come right after the station`,
-            target: "node",
-          },
-        ]
-      : []
-  );
-}
-
-function audioOutputs(
-  inputs: ReadonlyMap<string, readonly string[]>
-): Map<string, string[]> {
-  const outputs = new Map<string, string[]>();
-  for (const [target, sources] of inputs) {
-    for (const source of sources) {
-      const targets = outputs.get(source) ?? [];
-      targets.push(target);
-      outputs.set(source, targets);
-    }
-  }
-  return outputs;
-}
-
-/**
- * Labels each node with the lane it belongs to, or as a bus when it sums
- * more than one lane. A monotone fixpoint, so audio cycles settle too. A
- * worklist revisits only what a change feeds, and a label only moves from
- * none to a lane to a bus, so a long imported chain stays linear whatever
- * order its nodes are stored in.
- */
-function labelLanes(
-  context: Context,
-  inputs: ReadonlyMap<string, readonly string[]>
-): Map<string, Lane> {
-  const lanes = new Map<string, Lane>();
-  for (const node of context.graph.nodes) {
-    lanes.set(node.id, definitionOf(node).source ? node.id : undefined);
-  }
-  const outputs = audioOutputs(inputs);
-  const pending = context.graph.nodes
-    .filter((node) => !definitionOf(node).source)
-    .reverse();
-  const queued = new Set(pending.map((node) => node.id));
-  for (let node = pending.pop(); node; node = pending.pop()) {
-    queued.delete(node.id);
-    const upstream = (inputs.get(node.id) ?? []).map((id) => lanes.get(id));
-    const next = joinLane(lanes.get(node.id), laneFromInputs(node, upstream));
-    if (next === lanes.get(node.id)) {
-      continue;
-    }
-    lanes.set(node.id, next);
-    for (const id of outputs.get(node.id) ?? []) {
-      const target = context.nodes.get(id);
-      if (target && !definitionOf(target).source && !queued.has(id)) {
-        queued.add(id);
-        pending.push(target);
-      }
-    }
-  }
-  return lanes;
-}
-
-/**
- * `nodes` upstream first along the cables that carry a bus id (into a node
- * that is not bus-making), so one pass settles a chain; what a legal cycle
- * leaves unordered follows in patch order.
- */
-function busOrder(
-  nodes: readonly GraphNode[],
-  inputs: ReadonlyMap<string, readonly string[]>
-): GraphNode[] {
-  const members = new Map(nodes.map((node) => [node.id, node]));
-  const waiting = new Map<string, number>();
-  const outputs = new Map<string, string[]>();
-  for (const node of nodes) {
-    const sources = BUS_NODE_TYPES.has(node.type)
-      ? []
-      : (inputs.get(node.id) ?? []).filter((id) => members.has(id));
-    waiting.set(node.id, sources.length);
-    for (const source of sources) {
-      const targets = outputs.get(source) ?? [];
-      targets.push(node.id);
-      outputs.set(source, targets);
-    }
-  }
-  const ready = nodes.filter((node) => waiting.get(node.id) === 0).reverse();
-  const order: GraphNode[] = [];
-  for (let node = ready.pop(); node; node = ready.pop()) {
-    order.push(node);
-    for (const id of outputs.get(node.id) ?? []) {
-      const left = (waiting.get(id) ?? 0) - 1;
-      waiting.set(id, left);
-      const next = members.get(id);
-      if (left === 0 && next) {
-        ready.push(next);
-      }
-    }
-  }
-  const ordered = new Set(order);
-  return [...order, ...nodes.filter((node) => !ordered.has(node))];
-}
-
-/**
- * Groups bus nodes. A node joins the bus its audio comes from when every
- * input is on that one bus, so a Split and Merge inside a bus stay one bus.
- * Bus-making nodes, and nodes where a lane joins, start a bus of their own.
- * A fixpoint: every legal cycle passes a Loop, which always starts a bus.
- */
-function labelBuses(
-  context: Context,
-  inputs: ReadonlyMap<string, readonly string[]>,
-  lanes: ReadonlyMap<string, Lane>
-): Map<string, string> {
-  const buses = new Map<string, string>();
-  const busNodes = busOrder(
-    context.graph.nodes.filter((node) => lanes.get(node.id) === null),
-    inputs
-  );
-  for (const node of busNodes) {
-    buses.set(node.id, node.id);
-  }
-  const upstreamBus = (node: GraphNode): string | undefined => {
-    if (BUS_NODE_TYPES.has(node.type)) {
-      return;
-    }
-    let bus: string | undefined;
-    for (const id of inputs.get(node.id) ?? []) {
-      const lane = lanes.get(id);
-      if (lane === undefined) {
-        // Not fed by any source, so it carries no signal.
-        continue;
-      }
-      const upstream = lane === null ? buses.get(id) : undefined;
-      if (upstream === undefined || (bus !== undefined && bus !== upstream)) {
-        return;
-      }
-      bus = upstream;
-    }
-    return bus;
-  };
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const node of busNodes) {
-      const next = upstreamBus(node) ?? node.id;
-      if (next !== buses.get(node.id)) {
-        buses.set(node.id, next);
-        changed = true;
-      }
-    }
-  }
-  return buses;
-}
-
-function findTopology(context: Context, wired: WiredEdge[]): Topology {
-  const inputs = audioInputs(wired);
-  const lanes = labelLanes(context, inputs);
-  return { buses: labelBuses(context, inputs, lanes), lanes };
-}
-
-function checkSidechains(
-  context: Context,
-  wired: WiredEdge[],
-  { lanes }: Topology
-): Set<string> {
-  const keyed = new Set<string>();
-  for (const { edge, to } of wired) {
-    if (to.kind !== "sidechain") {
-      continue;
-    }
-    const lane = lanes.get(edge.source);
-    if (typeof lane !== "string") {
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-source",
-        "A key must come from a station lane"
-      );
-    } else if (lane !== edge.source) {
-      // The engine keys from the station's raw signal, so a cable drawn after
-      // its Gain or FX would claim a tap it doesn't get.
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-source",
-        "A key must come from the station itself"
-      );
-    } else if (typeof lanes.get(edge.target) === "string") {
-      keyed.add(edge.target);
-    } else {
-      edgeIssue(
-        context,
-        edge,
-        "sidechain-target",
-        "A key only works on a station lane"
-      );
-    }
-  }
-  return keyed;
-}
-
-function checkLanes(context: Context, topology: Topology, keyed: Set<string>) {
-  const seen = new Map<string, Set<IssueCode>>();
-  const rules: {
-    code: IssueCode;
-    message: string;
-    test: (node: GraphNode) => boolean;
-  }[] = [
-    {
-      code: "lane-filter",
-      message: "One Filter per lane",
-      test: (node) => node.type === "filter",
-    },
-    {
-      code: "lane-pan",
-      message: "One Pan per lane",
-      test: (node) => node.type === "pan",
-    },
-    {
-      code: "lane-key",
-      message: "One key per lane",
-      test: (node) => keyed.has(node.id),
-    },
-  ];
-  for (const node of context.graph.nodes) {
-    const lane = topology.lanes.get(node.id);
-    if (typeof lane !== "string") {
-      continue;
-    }
-    const laneSeen = seen.get(lane) ?? new Set<IssueCode>();
-    seen.set(lane, laneSeen);
-    for (const rule of rules) {
-      if (!rule.test(node)) {
-        continue;
-      }
-      if (laneSeen.has(rule.code)) {
-        nodeIssue(context, node, rule.code, rule.message);
-      }
-      laneSeen.add(rule.code);
-    }
-  }
-}
-
-function busHeads(context: Context, { buses }: Topology): GraphNode[] {
-  return context.graph.nodes.filter((node) => buses.get(node.id) === node.id);
-}
-
-/**
- * Why a Merge can't take a second station: that makes it a bus, and buses
- * ship after in-lane Merge.
- */
-export const BUS_MERGE_MESSAGE =
-  "Merging different stations needs a bus, which comes in a later update";
-
-function checkBusRelease(context: Context, topology: Topology): void {
-  if (isShipped("v2", context.release)) {
-    return;
-  }
-  for (const node of busHeads(context, topology)) {
-    if (node.type === "merge") {
-      nodeIssue(context, node, "unshipped", BUS_MERGE_MESSAGE);
-    }
-  }
-}
-
-function overBudget<T>(
-  items: readonly T[],
-  limit: number,
-  flag: (item: T) => void
-): void {
-  for (const item of items.slice(limit)) {
-    flag(item);
-  }
-}
-
-function checkBudgets(
-  context: Context,
-  topology: Topology,
-  playing: readonly string[]
-): void {
-  const { budget, graph } = context;
-  const ofType = (type: NodeType) =>
-    graph.nodes.filter((node) => node.type === type);
-  const flagNodes = (
-    nodes: readonly GraphNode[],
-    limit: number,
-    code: IssueCode,
-    message: string
-  ) =>
-    overBudget(nodes, limit, (node) => nodeIssue(context, node, code, message));
-
-  const streams = [...new Set(playing)]
-    .map((id) => context.nodes.get(id))
-    .filter((node): node is GraphNode =>
-      Boolean(node && definitionOf(node).stream)
-    );
-  flagNodes(
-    streams,
-    budget.playingStreams,
-    "budget-playing",
-    `Up to ${budget.playingStreams} streams can play at once`
-  );
-  flagNodes(
-    graph.nodes.filter((node) => definitionOf(node).source),
-    budget.sources,
-    "budget-sources",
-    `Up to ${budget.sources} sources per patch`
-  );
-
-  const heads = busHeads(context, topology);
-  flagNodes(
-    heads,
-    budget.buses,
-    "budget-buses",
-    `Up to ${budget.buses} buses per patch`
-  );
-  const fxBuses = new Set(
-    graph.nodes
-      .filter(
-        (node) => topology.buses.has(node.id) && definitionOf(node).effectType
-      )
-      .map((node) => topology.buses.get(node.id))
-  );
-  flagNodes(
-    heads.filter((node) => fxBuses.has(node.id)),
-    budget.busesWithFx,
-    "budget-bus-fx",
-    `Up to ${budget.busesWithFx} buses with FX per patch`
-  );
-
-  flagNodes(
-    ofType("loop"),
-    budget.loops,
-    "budget-loops",
-    `Up to ${budget.loops} Loops per patch`
-  );
-  const tapeWarps = ofType("tapeWarp");
-  flagNodes(
-    tapeWarps,
-    budget.tapeWarps,
-    "budget-tape-warp",
-    `Up to ${budget.tapeWarps} Tape Warp per patch`
-  );
-  for (const node of tapeWarps) {
-    if (node.type === "tapeWarp" && node.data.time > budget.tapeWarpSeconds) {
-      nodeIssue(
-        context,
-        node,
-        "budget-tape-warp-time",
-        `Tape Warp is limited to ${budget.tapeWarpSeconds} s here`
-      );
-    }
-  }
-  flagNodes(
-    ofType("lfo"),
-    budget.lfos,
-    "budget-lfos",
-    `Up to ${budget.lfos} LFOs per patch`
-  );
-
-  overBudget(graph.edges, budget.edges, (edge) =>
-    edgeIssue(
-      context,
-      edge,
-      "budget-edges",
-      `Up to ${budget.edges} cables per patch`
-    )
-  );
-}
-
 export type GraphAnalysis = {
   issues: Issue[];
   /** Cables that passed the port and cycle checks. */
   wired: WiredEdge[];
-  topology: Topology;
 };
 
 /** Validates a patch and keeps what the compiler builds on. */
 export function analyseGraph(
   graph: ValidatableGraph,
-  { playing = [], profile = "desktop", release = "v1" }: ValidateOptions = {}
+  { release = "v1" }: ValidateOptions = {}
 ): GraphAnalysis {
   const context: Context = {
-    budget: NODE_BUDGETS[profile],
     graph,
     issues: [],
     nodes: new Map(graph.nodes.map((node) => [node.id, node])),
@@ -1143,12 +629,7 @@ export function analyseGraph(
   };
   checkNodes(context);
   const wired = checkCycles(context, checkEdges(context));
-  const topology = findTopology(context, wired);
-  const keyed = checkSidechains(context, wired, topology);
-  checkLanes(context, topology, keyed);
-  checkBusRelease(context, topology);
-  checkBudgets(context, topology, playing);
-  return { issues: context.issues, topology, wired };
+  return { issues: context.issues, wired };
 }
 
 /** Validates a whole patch. An empty list means the compiler may take it. */
@@ -1156,8 +637,7 @@ export function validate(
   graph: ValidatableGraph,
   options?: ValidateOptions
 ): Issue[] {
-  const { issues, topology, wired } = analyseGraph(graph, options);
-  return [...issues, ...nativePlacementIssues(graph, wired, topology.lanes)];
+  return analyseGraph(graph, options).issues;
 }
 
 function issueKey(issue: Issue): string {
@@ -1216,6 +696,7 @@ export function validateConnection(
     gain: 1,
     id: connection.id ?? candidateEdgeId(graph),
     muted: false,
+    parameter: connectionParameter(graph, connection),
     source: connection.source,
     sourceHandle: connection.sourceHandle ?? "",
     target: connection.target,
@@ -1236,27 +717,6 @@ export function validateConnection(
 export type Verdict =
   | { ok: true }
   | { ok: false; code: IssueCode; message: string };
-
-/**
- * Whether Output device `nodeId` (or a new one) may play to `deviceId`:
- * refused when another Output device already does. The palette and the
- * node's device select ask here, as the validator would.
- */
-export function deviceOutVerdict(
-  graph: Pick<NodeGraph, "nodes">,
-  deviceId: string,
-  nodeId: string | null = null
-): Verdict {
-  const taken = graph.nodes.some(
-    (node) =>
-      node.type === "deviceOut" &&
-      node.id !== nodeId &&
-      node.data.deviceId === deviceId
-  );
-  return taken
-    ? { code: "one-device-out", message: ONE_DEVICE_OUT_MESSAGE, ok: false }
-    : { ok: true };
-}
 
 /** Why a cable dragged from an output can't end on another output. */
 export const SAME_SIDE_MESSAGE = "A cable runs from an output to an input";

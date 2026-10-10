@@ -1,6 +1,27 @@
 import { afterEach, describe, expect, jest, mock, test } from "bun:test";
 import { type FakeAudioElement, installBrowser } from "./fake-media-browser";
 import { MediaElementPlaybackSource } from "./media-element-playback-source.js";
+import { toPlaybackInput } from "./playback-input.js";
+
+test("native mute works when iOS ignores media volume writes", () => {
+  const browser = installBrowser();
+  const source = new MediaElementPlaybackSource(null, "single");
+  const audio = browser.audio();
+  Object.defineProperty(audio, "volume", {
+    get: () => 1,
+    set: () => undefined,
+  });
+  try {
+    source.volume = 0;
+    expect(audio.muted).toBe(true);
+    expect(source.volume).toBe(0);
+    source.volume = 0.5;
+    expect(audio.muted).toBe(false);
+  } finally {
+    source.cleanup();
+    browser.restore();
+  }
+});
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
@@ -293,6 +314,9 @@ describe("MediaElementPlaybackSource native playback", () => {
 
   test("uses explicitly allowed native HLS without changing its lifecycle", async () => {
     const browser = installBrowser();
+    Object.defineProperty(navigator, "userAgent", {
+      value: "AppleWebKit/605.1.15 Version/27.0 Safari/605.1.15",
+    });
 
     try {
       const source = new MediaElementPlaybackSource(null, "native");
@@ -311,6 +335,49 @@ describe("MediaElementPlaybackSource native playback", () => {
       expect(audio.loadSources).toEqual([url]);
       source.cleanup();
     } finally {
+      browser.restore();
+    }
+  });
+
+  test("plays SoundCloud MP3 HLS when Chromium advertises native HLS", async () => {
+    const browser = installBrowser();
+    Object.defineProperty(navigator, "userAgent", {
+      value: "AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36",
+    });
+    installHlsMock();
+    const source = new MediaElementPlaybackSource(null, "soundcloud");
+    const audio = browser.audio();
+    const url =
+      "https://cf-hls-media.sndcdn.com/playlist/track.128.mp3/playlist.m3u8";
+    audio.nativeHlsSupport = "maybe";
+    audio.load = () => {
+      if (audio.src === url) {
+        queueMicrotask(() => {
+          audio.error = { code: 3 } as MediaError;
+          audio.emit("error");
+        });
+      }
+    };
+    try {
+      await source.load(
+        toPlaybackInput({
+          name: "Track",
+          platformMetadata: {
+            itemType: "track",
+            platform: "soundcloud",
+            url: "https://soundcloud.com/artist/track",
+          },
+          streamFormat: "hls",
+          streamUrl: url,
+        })
+      );
+      await source.play();
+      audio.emit("playing");
+      expect(source.status).toBe("streaming");
+      expect(audio.paused).toBe(false);
+      expect(audio.error).toBeNull();
+    } finally {
+      source.cleanup();
       browser.restore();
     }
   });

@@ -20,9 +20,9 @@ import {
   type Radio,
 } from "@/lib/audio";
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { updateEffectInTree } from "@/lib/audio/dsp/routing/effect-tree";
 import { createPlaybackSourceCallbacks } from "@/lib/audio/manager/audio-manager-source-callbacks";
 import type {
-  MainOutputConnect,
   SoundInstance,
   SoundOutputConnector,
 } from "@/lib/audio/manager/audio-manager-types";
@@ -30,18 +30,23 @@ import {
   capturedStream,
   createDeviceCaptureHarness,
 } from "@/lib/audio/manager/device-capture-test-harness";
+import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtime";
 import {
   createFakeFader,
   FakeAudioContext,
   type FakeGainNode,
+  FakePannerNode,
 } from "@/lib/audio/routing/fake-audio-nodes";
 import { createNodeDeviceSinks } from "@/lib/audio/routing/node-device-sinks";
 import {
   createNodeLaneOutputs,
+  type NodeLaneOutputsOptions,
+} from "@/lib/audio/routing/node-lane-outputs";
+import {
   LANE_DROP_MS,
   LANE_DUCK_MS,
   LANE_LEVEL_TIME_CONSTANT_S,
-} from "@/lib/audio/routing/node-lane-outputs";
+} from "@/lib/audio/routing/sends";
 import { subscribeChannelRuntime } from "@/lib/channel-state-manager";
 import { writeLegacyRecord } from "@/lib/collections/migrations/legacy-records";
 import {
@@ -57,6 +62,8 @@ import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
+// biome-ignore lint/performance/noNamespaceImport: forbid compiler access during frame delivery
+import * as graphCompiler from "@/lib/node-graph/compile";
 import { compile } from "@/lib/node-graph/compile";
 import {
   removeEdges,
@@ -64,6 +71,8 @@ import {
   setSourceRadio,
   setSourceStrip,
 } from "@/lib/node-graph/graph-edits";
+// biome-ignore lint/performance/noNamespaceImport: exercise the playback-owned modulation consumer
+import * as modulationRuntime from "@/lib/node-graph/modulation-runtime";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -86,7 +95,6 @@ import {
 } from "@/lib/node-graph/sources";
 import { buildNodeSessionFromGraph } from "@/lib/node-graph/template-sessions";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
-import type { Profile } from "@/lib/node-graph/validate";
 import {
   getPlaybackChannelRuntime,
   resetAllPlaybackRuntime,
@@ -94,11 +102,15 @@ import {
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 import {
-  type ChannelEffectsResult,
   createChannelEffects,
   type DesiredEffectsState,
   type EffectsRuntimeOutcome,
 } from "./channel-effects";
+import {
+  installModulationAudio,
+  ownModulation,
+  TestModulationWorklet,
+} from "./node-graph/modulation.test-helpers";
 import {
   type GetNodePlaybackOptions,
   getNodePlayback,
@@ -181,6 +193,11 @@ function channelOf(nodeId: string): string {
 
 function soundOf(nodeId: string): string {
   return `node:n:${nodeId}`;
+}
+
+/** A lane's sound as Node activates it: it reconciles its own effects. */
+function ownedSound(nodeId: string, sourceKind = "station") {
+  return { ownsEffects: true, soundId: soundOf(nodeId), sourceKind };
 }
 
 async function resetCollections(): Promise<void> {
@@ -309,8 +326,21 @@ function createTestContext(): PlaybackActionContext {
 }
 
 type Harness = {
+  /** openDAW's channels came free, as the effects controller says. */
+  capacityFreed: () => void;
   context: PlaybackActionContext;
-  effectsChange: ReturnType<typeof mock>;
+  /** Each sound's or unit's effects, as last reconciled or attached. */
+  desired: Map<string, DesiredEffectsState>;
+  /** Lets go of an openDAW that failed to start, as the controller does. */
+  discardFailedEffectsRuntime: ReturnType<typeof mock>;
+  /** Units' effects inserts: attached, by id, with their input and output. */
+  inserts: Map<string, { input: AudioNode; output: AudioNode }>;
+  /** What units and modules put on the main bus. */
+  mainSources: Set<AudioNode>;
+  /** Keys effects can name, as connected, by key id. */
+  keys: Map<string, AudioNode>;
+  reconcileEffects: ReturnType<typeof mock<AudioManager["reconcileEffects"]>>;
+  setEffectFields: ReturnType<typeof mock<AudioManager["setEffectFields"]>>;
   fadeOutSound: ReturnType<typeof mock>;
   /** What hears of another tab's session writes while Node is active. */
   otherTabListeners: Set<() => void>;
@@ -326,36 +356,122 @@ function createHarness(
     context?: PlaybackActionContext;
     crossOriginIsolated?: boolean;
     effects?: GetNodePlaybackOptions["effects"];
-    effectsOutcome?: () => EffectsRuntimeOutcome;
+    effectsOutcome?: (state: DesiredEffectsState) => EffectsRuntimeOutcome;
     fadeOutSound?: (soundId: string, durationMs: number) => Promise<void>;
     laneOutputs?: GetNodePlaybackOptions["laneOutputs"];
     deviceSinks?: GetNodePlaybackOptions["deviceSinks"];
     sinkStatuses?: GetNodePlaybackOptions["sinkStatuses"];
     resolveStream?: GetNodePlaybackOptions["resolveStream"];
-    profile?: Profile;
   } = {}
 ): Harness {
   const context = options.context ?? createTestContext();
   const store = createNodeStore();
   const { effectsOutcome } = options;
-  const effectsChange = mock(
-    async () =>
-      (effectsOutcome
-        ? { runtime: effectsOutcome() }
-        : {}) as ChannelEffectsResult
+  const desired = new Map<string, DesiredEffectsState>();
+  const reconcileEffects = mock(
+    (soundId: string, state: DesiredEffectsState) => {
+      desired.set(soundId, state);
+      return Promise.resolve<EffectsRuntimeOutcome>(
+        effectsOutcome?.(state) ?? {
+          backend: null,
+          ready: false,
+          status: "inactive",
+        }
+      );
+    }
   );
   const fadeOutSound = mock(
     options.fadeOutSound ?? (async (_soundId: string) => undefined)
   );
+  const setEffectFields = mock(
+    (
+      soundId: string,
+      effectId: string,
+      config: EffectConfig
+    ): EffectWriteResult => {
+      const state = desired.get(soundId);
+      if (!state) {
+        return "unavailable" as const;
+      }
+      desired.set(soundId, {
+        ...state,
+        tree: updateEffectInTree(state.tree, effectId, config),
+      });
+      return "applied" as const;
+    }
+  );
+  const inserts = new Map<string, { input: AudioNode; output: AudioNode }>();
+  const mainSources = new Set<AudioNode>();
+  const attachEffectsInsert = mock(
+    (
+      id: string,
+      input: AudioNode,
+      output: AudioNode,
+      state: DesiredEffectsState
+    ) => {
+      inserts.set(id, { input, output });
+      desired.set(id, state);
+      return Promise.resolve<EffectsRuntimeOutcome>(
+        effectsOutcome?.(state) ?? {
+          backend: null,
+          ready: false,
+          status: "inactive",
+        }
+      );
+    }
+  );
+  const detachEffectsInsert = mock((id: string) => {
+    inserts.delete(id);
+  });
+  const discardFailedEffectsRuntime = mock(() => undefined);
+  const keys = new Map<string, AudioNode>();
+  const capacityListeners = new Set<() => void>();
   const otherTabListeners = new Set<() => void>();
+  // Node Playback routes through its context's output routing by default;
+  // a context without one of its own gets this one.
+  const router = {
+    applySettings: async () => ({}) as OutputRoutingSnapshot,
+    connectMain: (source: AudioNode) => {
+      mainSources.add(source);
+      return () => {
+        mainSources.delete(source);
+      };
+    },
+    registerCueDeck: () => ({
+      cleanup: () => undefined,
+      enabled: false,
+      replaceTap: () => undefined,
+      setEnabled: () => undefined,
+    }),
+    releaseCue: () => undefined,
+  };
+  if (!context.getMainOutputRouter()) {
+    context.getMainOutputRouter = () => router as unknown as OutputRouting;
+  }
   const playback = getNodePlayback({
     backendBadges: options.backendBadges ?? new Store<NodeBackendBadges>({}),
     ctx: context,
-    effects: options.effects ?? { change: effectsChange },
+    effects: options.effects ?? {
+      attachEffectsInsert,
+      connectEffectsKey: (id: string, node: AudioNode) => {
+        keys.set(id, node);
+      },
+      detachEffectsInsert,
+      discardFailedEffectsRuntime,
+      reconcileEffects,
+      releaseEffectsKey: (id: string) => {
+        keys.delete(id);
+      },
+      setEffectFields,
+      subscribeEffectsCapacityFreed: (listener: () => void) => {
+        capacityListeners.add(listener);
+        return () => capacityListeners.delete(listener);
+      },
+      subscribeEffectsRuntimeOutcome: () => () => undefined,
+    },
     fadeOutSound,
     getEnv: () => ({
       crossOriginIsolated: options.crossOriginIsolated ?? false,
-      profile: options.profile ?? "desktop",
     }),
     laneOutputs: options.laneOutputs,
     otherTabWrites: (listener) => {
@@ -369,13 +485,31 @@ function createHarness(
   });
   harnessPlaybacks.add(playback);
   return {
+    capacityFreed: () => {
+      for (const listener of capacityListeners) {
+        listener();
+      }
+    },
     context,
-    effectsChange,
+    desired,
+    discardFailedEffectsRuntime,
     fadeOutSound,
+    inserts,
+    keys,
+    mainSources,
     otherTabListeners,
     playback,
+    reconcileEffects,
+    setEffectFields,
     store,
   };
+}
+
+/** The effect trees reconciled for a lane's sound, oldest first. */
+function reconciledTrees(harness: Harness, nodeId: string) {
+  return harness.reconcileEffects.mock.calls
+    .filter(([soundId]) => soundId === soundOf(nodeId))
+    .map(([, state]) => state.tree);
 }
 
 /**
@@ -445,6 +579,17 @@ function stationData(store: NodeStore, nodeId: string) {
   return node?.type === "station" ? node.data : undefined;
 }
 
+/**
+ * Reports `soundId` playing on its channel, as AudioManager does only while
+ * the channel holds it: a released sound's subscription and request are gone.
+ */
+function reportPlaying(soundId: string): void {
+  const channelId = soundId.slice("node:".length);
+  if (getPlaybackChannelRuntime(channelId).soundId === soundId) {
+    setPlaybackChannelRuntime(channelId, () => ({ isPlaying: true }));
+  }
+}
+
 /** playSound mock whose starts wait for a release each. */
 function heldStarts(context: PlaybackActionContext) {
   const releases: Array<() => void> = [];
@@ -454,9 +599,7 @@ function heldStarts(context: PlaybackActionContext) {
       new Promise<void>((resolve) => {
         started.push(soundId);
         releases.push(() => {
-          setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
-            isPlaying: true,
-          }));
+          reportPlaying(soundId);
           resolve();
         });
       })
@@ -492,6 +635,55 @@ afterEach(async () => {
 });
 
 describe("Node Playback", () => {
+  test("nine nested Splits persist with an issue instead of throwing in storePatch", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness();
+    await harness.playback.activate();
+    const nodes: NodeInput[] = [station("a"), speakers];
+    const edges = [cable("a", "split1"), cable("merge1", "speakers")];
+    for (let level = 1; level <= 9; level += 1) {
+      const id = `split${level}`;
+      const meeting = `merge${level}`;
+      nodes.push(
+        {
+          data: { effect: createNodeEffectConfig("fxComposite", id) },
+          id,
+          position: { x: 0, y: 0 },
+          type: "fxComposite",
+        },
+        { data: {}, id: meeting, position: { x: 0, y: 0 }, type: "merge" }
+      );
+      edges.push(
+        { ...cable(id, meeting), sourceHandle: "out:audio:branch-2" },
+        {
+          ...cable(id, level === 9 ? "verb" : `split${level + 1}`),
+          sourceHandle: "out:audio:branch-1",
+        },
+        level === 9
+          ? cable("verb", meeting)
+          : cable(`merge${level + 1}`, meeting)
+      );
+    }
+    nodes.push(reverb("verb"));
+    const graph = nodeGraphSchema.parse({ edges, nodes, version: 2 });
+    expect(() =>
+      commitNodeGraph(() => graph, harness.store, "snapshot")
+    ).not.toThrow();
+    await harness.playback.whenSettled();
+    expect(() => harness.playback.flush()).not.toThrow();
+    expect(getPlaybackSession("node")?.graph).toEqual(graph);
+    expect(compile(graph, { crossOriginIsolated: false }).issues).toEqual([
+      {
+        code: "split-depth",
+        id: "split9",
+        message: "Effects nest at most 8 deep so the patch can be saved",
+        target: "node",
+      },
+    ]);
+    expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([]);
+    await harness.playback.deactivate();
+  });
+
   test("activation builds each lane paused on the audio graph and caches its channel", async () => {
     insertNodeSession(
       patch([station("a"), station("b", { muted: true, volume: 0.35 })])
@@ -505,10 +697,12 @@ describe("Node Playback", () => {
       "node",
       channelOf("a"),
       expect.objectContaining({ id: "a" }),
-      soundOf("a")
+      ownedSound("a")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
-    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.8);
+    // Node's master acts at its outputs, so its faders take none of it.
+    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(1);
+    expect(harness.context.audio.setGlobalVolume).not.toHaveBeenCalledWith(0.8);
     expect(getPlaybackSession("node")?.channels).toEqual([
       expect.objectContaining({
         id: channelOf("a"),
@@ -543,14 +737,17 @@ describe("Node Playback", () => {
       "node",
       channelOf("authored"),
       expect.objectContaining({ id: "authored" }),
-      soundOf("authored")
+      ownedSound("authored")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     expect(harness.context.audioEngine.playback.play).not.toHaveBeenCalled();
     expect(getPlaybackChannelRuntime(channelOf("authored")).isPlaying).toBe(
       false
     );
-    expect(harness.context.audio.setGlobalVolume).toHaveBeenCalledWith(0.23);
+    expect(getPlaybackSession("node")?.masterVolume).toBe(0.23);
+    expect(harness.context.audio.setGlobalVolume).not.toHaveBeenCalledWith(
+      0.23
+    );
   });
 
   test("a node session without a graph loads the Starter patch", async () => {
@@ -671,14 +868,9 @@ describe("Node Playback", () => {
       ),
     }));
 
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
-    expect(harness.effectsChange).toHaveBeenCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ dryWet: 0.25, id: "verb" }),
+    ]);
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
     expect(harness.context.channels.deactivate).not.toHaveBeenCalled();
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
@@ -734,7 +926,7 @@ describe("Node Playback", () => {
       "node",
       channelOf("b"),
       expect.objectContaining({ id: "b" }),
-      soundOf("b")
+      ownedSound("b")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
     expect(
@@ -787,7 +979,7 @@ describe("Node Playback", () => {
       "node",
       channelOf("a"),
       saved,
-      soundOf("a")
+      ownedSound("a")
     );
     expect(harness.context.audio.playSound).toHaveBeenCalledWith(
       soundOf("a"),
@@ -888,21 +1080,6 @@ describe("Node Playback volume and mute", () => {
     expect(getPlaybackSession("node")?.masterVolume).toBe(0);
     harness.playback.toggleMasterMute();
     expect(getPlaybackSession("node")?.masterVolume).toBe(0.8);
-  });
-
-  test("master volume is heard while settings still hold the legacy Multiple mode", async () => {
-    insertNodeSession(patch([station("a")]));
-    const harness = createHarness();
-    await harness.playback.activate();
-    // A legacy record that failed its rewrite stays "multiple"; Node runs.
-    const settings = getSettings() as unknown as {
-      player: { mode: string };
-    };
-    settings.player.mode = "multiple";
-
-    harness.playback.setMasterVolume(0.3);
-
-    expect(harness.context.audio.setGlobalVolume).toHaveBeenLastCalledWith(0.3);
   });
 
   test("unmuting a zero volume restores the latest volume a commit set", async () => {
@@ -1301,10 +1478,7 @@ describe("Node Playback starts", () => {
       (soundId: string) =>
         new Promise<void>((resolve) => {
           resolveStart = () => {
-            setPlaybackChannelRuntime(channelId, () => ({
-              isPlaying: true,
-              soundId,
-            }));
+            reportPlaying(soundId);
             resolve();
           };
         })
@@ -1337,10 +1511,7 @@ describe("Node Playback starts", () => {
         new Promise<void>((resolve) => {
           attempt += 1;
           const start = () => {
-            setPlaybackChannelRuntime(channelId, () => ({
-              isPlaying: true,
-              soundId,
-            }));
+            reportPlaying(soundId);
             resolve();
           };
           if (attempt === 1) {
@@ -1461,68 +1632,27 @@ describe("Node Playback starts", () => {
   });
 });
 
-describe("Node Playback budget", () => {
-  test("refuses a fifth playing stream on mobile with a message", async () => {
-    const ids = ["1", "2", "3", "4", "5"];
-    insertNodeSession(patch(ids.map((id) => station(id))));
-    const harness = createHarness({ profile: "mobile" });
-    instantStarts(harness.context);
-    await harness.playback.activate();
-
-    await harness.playback.setPlaying("1", true);
-    await harness.playback.setPlaying("2", true);
-    await harness.playback.setPlaying("3", true);
-    await harness.playback.setPlaying("4", true);
-    await harness.playback.setPlaying("5", true);
-
-    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(4);
-    expect(harness.context.audio.playSound).not.toHaveBeenCalledWith(
-      soundOf("5"),
-      expect.anything()
-    );
-    expect(getPlaybackChannelRuntime(channelOf("5"))).toMatchObject({
-      error: {
-        code: "PLAY_ERROR",
-        message:
-          "Up to 4 streams can play at once here. Pause one to start this.",
-      },
-      isPlaying: false,
-    });
-    expect(harness.context.reportError).not.toHaveBeenCalled();
-
-    await harness.playback.setPlaying("1", false);
-    await harness.playback.setPlaying("5", true);
-
-    expect(getPlaybackChannelRuntime(channelOf("5"))).toMatchObject({
-      error: null,
-      isPlaying: true,
-    });
-  });
-
-  test("play-all on mobile starts four streams and refuses the rest", async () => {
-    const ids = ["1", "2", "3", "4", "5", "6"];
-    insertNodeSession(patch(ids.map((id) => station(id))));
-    const harness = createHarness({ profile: "mobile" });
-    instantStarts(harness.context);
-    await harness.playback.activate();
-
-    await harness.playback.playAll();
-
-    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(4);
-    expect(
-      ids.filter((id) => getPlaybackChannelRuntime(channelOf(id)).isPlaying)
-    ).toHaveLength(4);
-    expect(
-      ids.filter(
-        (id) =>
-          getPlaybackChannelRuntime(channelOf(id)).error?.message ===
-          "Up to 4 streams can play at once here. Pause one to start this."
-      )
-    ).toHaveLength(2);
-  });
-
-  test("desktop allows six playing streams", async () => {
+describe("Node Playback large patches", () => {
+  test("starts every stream individually past the former playing caps", async () => {
     const ids = ["1", "2", "3", "4", "5", "6", "7"];
+    insertNodeSession(patch(ids.map((id) => station(id))));
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+
+    await Promise.all(ids.map((id) => harness.playback.setPlaying(id, true)));
+
+    for (const id of ids) {
+      expect(getPlaybackChannelRuntime(channelOf(id))).toMatchObject({
+        error: null,
+        isPlaying: true,
+      });
+    }
+    expect(harness.context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("Play all starts every stream past the former source and playing caps", async () => {
+    const ids = Array.from({ length: 25 }, (_, index) => String(index));
     insertNodeSession(patch(ids.map((id) => station(id))));
     const harness = createHarness();
     instantStarts(harness.context);
@@ -1530,7 +1660,13 @@ describe("Node Playback budget", () => {
 
     await harness.playback.playAll();
 
-    expect(harness.context.audio.playSound).toHaveBeenCalledTimes(6);
+    for (const id of ids) {
+      expect(getPlaybackChannelRuntime(channelOf(id))).toMatchObject({
+        error: null,
+        isPlaying: true,
+      });
+    }
+    expect(harness.context.reportError).not.toHaveBeenCalled();
   });
 });
 
@@ -1572,7 +1708,7 @@ describe("Node Playback across tabs", () => {
       "node",
       channelOf("b"),
       expect.objectContaining({ id: "b" }),
-      soundOf("b")
+      ownedSound("b")
     );
     // Undo can't bring back the patch the other tab replaced.
     expect(harness.store.state.history.past).toEqual([]);
@@ -2070,7 +2206,7 @@ describe("Node Playback settling lanes", () => {
       "node",
       channelOf("a"),
       saved,
-      soundOf("a")
+      ownedSound("a")
     );
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
   });
@@ -2134,20 +2270,28 @@ describe("Node Playback lane outputs", () => {
   }
 
   /** What AudioManager does when the lane's sound connects its graph. */
-  function connectLane(context: PlaybackActionContext, nodeId: string) {
+  function connectLane(
+    context: PlaybackActionContext,
+    nodeId: string,
+    audio = new FakeAudioContext()
+  ) {
     const connect = registeredConnector(context, nodeId);
     if (!connect) {
       throw new Error(`no output connector for ${nodeId}`);
     }
-    const audio = new FakeAudioContext();
     const { fader, node } = createFakeFader(audio);
-    const releaseMain = mock(() => undefined);
-    const connectMain = mock<MainOutputConnect>(() => releaseMain);
-    connect(node, false, connectMain);
+    connect(node, false, () => () => undefined);
     const laneOut = [...fader.connections][0] as FakeGainNode;
     /** The lane's send into its only sink, Speakers, once it has one. */
     const send = () => [...laneOut.connections][0] as FakeGainNode | undefined;
-    return { audio, connectMain, fader, laneOut, releaseMain, send };
+    return { audio, fader, laneOut, send };
+  }
+
+  /** Whether a send plays on the main bus, through its Output node's gain. */
+  function onMain(harness: Harness, send: FakeGainNode | undefined) {
+    return [...(send?.connections ?? [])].some((gain) =>
+      harness.mainSources.has(gain as AudioNode)
+    );
   }
 
   function levelOf(send: FakeGainNode | undefined) {
@@ -2198,18 +2342,27 @@ describe("Node Playback lane outputs", () => {
     );
   });
 
-  test("cable gain, mute and removal ramp the Speakers send with τ 5 ms and leave the fader alone", async () => {
+  test("Speakers play through the playback context's output routing", async () => {
     insertNodeSession(patch([station("a")]));
     const harness = createHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
-    const { connectMain, fader, laneOut, send } = connectLane(
-      harness.context,
-      "a"
-    );
+    const { send } = connectLane(harness.context, "a");
 
-    expect(connectMain).toHaveBeenCalledWith(send(), false);
+    // The harness's router is the context's: nothing reaches the global one.
+    expect(onMain(harness, send())).toBe(true);
+  });
+
+  test("cable gain, mute and removal ramp the Speakers send with τ 5 ms and leave the fader alone", async () => {
+    insertNodeSession(patch([station("a")]), 1);
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { fader, laneOut, send } = connectLane(harness.context, "a");
+
+    expect(onMain(harness, send())).toBe(true);
     expect(fader.connections.has(laneOut)).toBe(true);
     expect(send()?.gain.value).toBe(0);
     expect(levelOf(send())).toBe(1);
@@ -2228,11 +2381,12 @@ describe("Node Playback lane outputs", () => {
     );
     expect(levelOf(send())).toBe(0.5);
 
+    // A removed cable's send fades out; the cable back gets a new one.
     await commit(harness, (graph) => ({ ...graph, edges: [] }));
     expect(levelOf(send())).toBe(0);
 
     await commit(harness, () => patch([station("a")]));
-    expect(levelOf(send())).toBe(1);
+    expect(levelOf([...laneOut.connections].at(-1) as FakeGainNode)).toBe(1);
 
     expect(fader.gain.events).toEqual([]);
     expect(fader.gain.value).toBe(0.8);
@@ -2241,7 +2395,7 @@ describe("Node Playback lane outputs", () => {
   });
 
   test("a Station whose stream changes fades the old one out at its old level", async () => {
-    insertNodeSession(patch([station("a")]));
+    insertNodeSession(patch([station("a")]), 1);
     const harness = createHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -2311,17 +2465,15 @@ describe("Node Playback lane outputs", () => {
       type: "linear",
       value: 0,
     });
-    expect(harness.effectsChange).not.toHaveBeenCalled();
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([]);
 
     laneOut.gain.value = 0;
     audio.currentTime = 2.1;
     await harness.playback.whenSettled();
 
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
-    expect(harness.effectsChange).toHaveBeenCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      { tree: [expect.objectContaining({ id: "verb" })], type: "replace" }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ id: "verb" }),
+    ]);
     expect(laneOut.gain.events.at(-1)).toEqual({
       time: 2.1 + LANE_DUCK_MS / 1000,
       type: "linear",
@@ -2351,18 +2503,15 @@ describe("Node Playback lane outputs", () => {
     harness.playback.flush();
 
     // The new layout must not be applied before the lane is silent.
-    expect(harness.effectsChange).not.toHaveBeenCalled();
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([]);
 
     await harness.playback.whenSettled();
 
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
-        type: "replace",
-      }
-    );
+    // Only the latest tree reaches the sound.
+    expect(reconciledTrees(harness, "a")).toEqual([
+      [],
+      [expect.objectContaining({ dryWet: 0.25, id: "verb" })],
+    ]);
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
       expect.objectContaining({ dryWet: 0.25, id: "verb" }),
     ]);
@@ -2370,14 +2519,9 @@ describe("Node Playback lane outputs", () => {
     // Once the swap has replaced, param changes apply at once again.
     commitNodeGraph(withReverb(0.75), harness.store);
     await harness.playback.whenSettled();
-    expect(harness.effectsChange).toHaveBeenCalledTimes(2);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ dryWet: 0.75, id: "verb" })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ dryWet: 0.75, id: "verb" }),
+    ]);
   });
 
   test("an FX param change while the swap replaces keeps the duck until the latest tree is in", async () => {
@@ -2386,17 +2530,31 @@ describe("Node Playback lane outputs", () => {
       tree: readonly EffectConfig[];
       done: () => void;
     }> = [];
+    const ready: EffectsRuntimeOutcome = {
+      backend: "compatibility",
+      ready: true,
+      status: "ready",
+    };
     const harness = createHarness({
       effects: {
-        change: mock((_ref, change) => {
+        attachEffectsInsert: mock(async () => ready),
+        connectEffectsKey: mock(() => undefined),
+        detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
+        // The lane's dry tree, as its sound is made, reconciles at once.
+        reconcileEffects: mock((_soundId, { tree }) => {
+          if (tree.length === 0) {
+            return Promise.resolve(ready);
+          }
           const { promise, resolve } =
-            Promise.withResolvers<ChannelEffectsResult>();
-          replaces.push({
-            done: () => resolve({} as ChannelEffectsResult),
-            tree: change.type === "replace" ? change.tree : [],
-          });
+            Promise.withResolvers<EffectsRuntimeOutcome>();
+          replaces.push({ done: () => resolve(ready), tree });
           return promise;
         }),
+        releaseEffectsKey: mock(() => undefined),
+        setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
       },
     });
     instantStarts(harness.context);
@@ -2440,6 +2598,130 @@ describe("Node Playback lane outputs", () => {
     });
   });
 
+  test("a layout change during a swap is applied before the duck lifts", async () => {
+    insertNodeSession(patch([station("a")]));
+    const replaces: Array<{
+      tree: readonly EffectConfig[];
+      done: () => void;
+    }> = [];
+    const ready: EffectsRuntimeOutcome = {
+      backend: "compatibility",
+      ready: true,
+      status: "ready",
+    };
+    const harness = createHarness({
+      effects: {
+        attachEffectsInsert: mock(async () => ready),
+        connectEffectsKey: mock(() => undefined),
+        detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
+        // The lane's dry tree, as its sound is made, reconciles at once.
+        reconcileEffects: mock((_soundId, { tree }) => {
+          if (tree.length === 0) {
+            return Promise.resolve(ready);
+          }
+          const { promise, resolve } =
+            Promise.withResolvers<EffectsRuntimeOutcome>();
+          replaces.push({ done: () => resolve(ready), tree });
+          return promise;
+        }),
+        releaseEffectsKey: mock(() => undefined),
+        setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
+      },
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { laneOut } = connectLane(harness.context, "a");
+
+    const chain =
+      (...ids: string[]) =>
+      () =>
+        nodeGraphSchema.parse({
+          edges: [
+            cable("a", ids[0] ?? "speakers"),
+            ...ids.map((id, index) => cable(id, ids[index + 1] ?? "speakers")),
+          ],
+          nodes: [station("a"), ...ids.map((id) => reverb(id)), speakers],
+          version: 2,
+        });
+    commitNodeGraph(chain("verb"), harness.store);
+    harness.playback.flush();
+    await new Promise((resolve) => setTimeout(resolve, LANE_DUCK_MS + 10));
+    expect(replaces).toHaveLength(1);
+
+    // Another FX goes in while the first layout connects.
+    commitNodeGraph(chain("verb", "hall"), harness.store);
+    harness.playback.flush();
+    replaces[0]?.done();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(replaces.map(({ tree }) => tree.map(({ id }) => id))).toEqual([
+      ["verb"],
+      ["verb", "hall"],
+    ]);
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 0,
+    });
+
+    replaces[1]?.done();
+    await harness.playback.whenSettled();
+    expect(laneOut.gain.events.at(-1)).toMatchObject({
+      type: "linear",
+      value: 1,
+    });
+  });
+
+  test("a layout swap whose effects fail still lifts the duck", async () => {
+    insertNodeSession(patch([station("a")]));
+    const harness = createHarness({
+      effects: {
+        attachEffectsInsert: mock(() => Promise.reject(new Error("no"))),
+        connectEffectsKey: mock(() => undefined),
+        detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
+        reconcileEffects: mock((_soundId, { tree }) =>
+          tree.length === 0
+            ? Promise.resolve<EffectsRuntimeOutcome>({
+                backend: null,
+                ready: false,
+                status: "inactive",
+              })
+            : Promise.reject(new Error("tree failed"))
+        ),
+        releaseEffectsKey: mock(() => undefined),
+        setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
+      },
+    });
+    const warnings = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      instantStarts(harness.context);
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      const { laneOut } = connectLane(harness.context, "a");
+
+      await commit(harness, () =>
+        nodeGraphSchema.parse({
+          edges: [cable("a", "verb"), cable("verb", "speakers")],
+          nodes: [station("a"), reverb("verb"), speakers],
+          version: 2,
+        })
+      );
+
+      expect(laneOut.gain.events.at(-1)).toMatchObject({
+        type: "linear",
+        value: 1,
+      });
+    } finally {
+      warnings.mockRestore();
+    }
+  });
+
   test("a Station removed during the duck is not given its old tree", async () => {
     insertNodeSession(patch([station("a"), station("b")]));
     const harness = createHarness();
@@ -2467,7 +2749,7 @@ describe("Node Playback lane outputs", () => {
 
     await harness.playback.whenSettled();
 
-    expect(harness.effectsChange).not.toHaveBeenCalled();
+    expect(reconciledTrees(harness, "a")).toEqual([[]]);
   });
 
   test("a removed Station releases its lane output once its channel is gone", async () => {
@@ -2476,7 +2758,8 @@ describe("Node Playback lane outputs", () => {
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
-    const { releaseMain } = connectLane(harness.context, "a");
+    const { send } = connectLane(harness.context, "a");
+    expect(onMain(harness, send())).toBe(true);
     const order: string[] = [];
     harness.context.channels.deactivate = mock((channelId: string) => {
       order.push(`deactivate ${channelId}`);
@@ -2494,7 +2777,7 @@ describe("Node Playback lane outputs", () => {
       `deactivate ${channelOf("a")}`,
       `connector ${soundOf("a")} cleared`,
     ]);
-    expect(releaseMain).toHaveBeenCalledTimes(1);
+    expect(harness.mainSources.size).toBe(0);
   });
 
   test("deactivate releases every lane output", async () => {
@@ -2505,14 +2788,14 @@ describe("Node Playback lane outputs", () => {
     await harness.playback.setPlaying("a", true);
     await harness.playback.setPlaying("b", true);
     const a = connectLane(harness.context, "a");
-    const b = connectLane(harness.context, "b");
+    const b = connectLane(harness.context, "b", a.audio);
+    expect(onMain(harness, a.send()) && onMain(harness, b.send())).toBe(true);
 
     await harness.playback.deactivate();
 
     expect(registeredConnector(harness.context, "a")).toBeNull();
     expect(registeredConnector(harness.context, "b")).toBeNull();
-    expect(a.releaseMain).toHaveBeenCalledTimes(1);
-    expect(b.releaseMain).toHaveBeenCalledTimes(1);
+    expect(harness.mainSources.size).toBe(0);
   });
 });
 
@@ -2544,7 +2827,68 @@ describe("Node Playback FX lanes", () => {
       } as Partial<EffectConfig>);
   }
 
-  test("a Compressor inserted between a Station and Speakers joins its lane under its node id, and a knob only sets lane effects", async () => {
+  test("an openDAW that failed to start gets one more try once Node starts again", async () => {
+    insertNodeSession(insertCompressor(patch([station("a")])));
+    // As the controller does: an attempt makes openDAW's runtime, the first
+    // fails to start, and only a failed one is let go of.
+    const startups = [false, true];
+    let started: boolean | undefined;
+    const outcome = (): EffectsRuntimeOutcome =>
+      started === false
+        ? {
+            backend: "compatibility",
+            fallback: "startup-failed",
+            ready: true,
+            status: "ready",
+          }
+        : { backend: "official", ready: true, status: "ready" };
+    const badges = new Store<NodeBackendBadges>({});
+    const context = createTestContext();
+    context.audio.getEffectsRuntimeOutcome = outcome;
+    const harness = createHarness({
+      backendBadges: badges,
+      context,
+      crossOriginIsolated: true,
+      effectsOutcome: () => {
+        started ??= startups.shift();
+        return outcome();
+      },
+    });
+    harness.discardFailedEffectsRuntime.mockImplementation(() => {
+      if (started === false) {
+        started = undefined;
+      }
+    });
+    instantStarts(harness.context);
+    const attempts = () =>
+      harness.reconcileEffects.mock.calls.filter(
+        ([soundId]) => soundId === soundOf("a")
+      ).length;
+    const play = async () => {
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      await harness.playback.whenSettled();
+    };
+
+    await play();
+    const compat = { cause: "startup-failed", kind: "compat" } as const;
+    expect(badges.state).toEqual({ a: compat, comp: compat });
+    // Within one activation, a failed startup stays failed.
+    await harness.playback.setPlaying("a", false);
+    await harness.playback.setPlaying("a", true);
+    await harness.playback.whenSettled();
+    expect(startups).toEqual([true]);
+    expect(badges.state).toEqual({ a: compat, comp: compat });
+
+    await harness.playback.deactivate();
+    const before = attempts();
+    await play();
+    expect(attempts()).toBe(before + 1);
+    expect(startups).toEqual([]);
+    expect(badges.state).toEqual({});
+  });
+
+  test("a Compressor joins its lane under its node id, and a knob writes its fields in place", async () => {
     insertNodeSession(patch([station("a")]));
     const swaps: string[] = [];
     const harness = createHarness({
@@ -2552,9 +2896,9 @@ describe("Node Playback FX lanes", () => {
         const outputs = createNodeLaneOutputs(options);
         return {
           ...outputs,
-          swap: (laneId, replace) => {
+          duck: (laneId) => {
             swaps.push(laneId);
-            return outputs.swap(laneId, replace);
+            return outputs.duck(laneId);
           },
         };
       },
@@ -2568,25 +2912,29 @@ describe("Node Playback FX lanes", () => {
     const [effect] = getPlaybackChannel("node", channelOf("a"))?.effects ?? [];
     expect(effect).toMatchObject({ id: "comp", type: "compressor" });
     expect(swaps).toEqual(["a"]);
-    expect(harness.effectsChange).toHaveBeenCalledTimes(1);
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ id: "comp", type: "compressor" }),
+    ]);
 
     const before = harness.store.state.graph as NodeGraph;
+    harness.reconcileEffects.mockClear();
     await commit(harness, threshold(-24));
     const after = harness.store.state.graph as NodeGraph;
 
     const env = { crossOriginIsolated: false };
     expect(
       diff(compile(before, env), compile(after, env)).map((op) => op.type)
-    ).toEqual(["setLaneEffects"]);
+    ).toEqual(["setEffectFields"]);
     expect(swaps).toEqual(["a"]);
-    expect(harness.effectsChange).toHaveBeenCalledTimes(2);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ id: "comp", threshold: -24 })],
-        type: "replace",
-      }
+    expect(harness.reconcileEffects).not.toHaveBeenCalled();
+    expect(harness.setEffectFields).toHaveBeenCalledWith(
+      soundOf("a"),
+      "comp",
+      expect.objectContaining({ threshold: -24 })
     );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ id: "comp", threshold: -24 }),
+    ]);
     expect(harness.context.channels.activate).toHaveBeenCalledTimes(1);
     expect(harness.fadeOutSound).not.toHaveBeenCalled();
   });
@@ -2647,13 +2995,9 @@ describe("Node Playback FX lanes", () => {
         ? tree.chains.map((chain) => chain.effects.map((effect) => effect.id))
         : null
     ).toEqual([["comp"], [], []]);
-    expect(harness.effectsChange).toHaveBeenLastCalledWith(
-      { channelId: channelOf("a"), sessionId: "node" },
-      {
-        tree: [expect.objectContaining({ type: "frequencySplit" })],
-        type: "replace",
-      }
-    );
+    expect(harness.desired.get(soundOf("a"))?.tree).toEqual([
+      expect.objectContaining({ type: "frequencySplit" }),
+    ]);
   });
 
   test("the backend badge shows compat when not cross-origin isolated, on the lane and its FX", async () => {
@@ -2663,7 +3007,8 @@ describe("Node Playback FX lanes", () => {
 
     await harness.playback.activate();
 
-    expect(badges.state).toEqual({ a: "compat", comp: "compat" });
+    const compat = { cause: "not-isolated", kind: "compat" } as const;
+    expect(badges.state).toEqual({ a: compat, comp: compat });
 
     // With the FX off there is no effects runtime, so no badge.
     await commit(harness, (graph) =>
@@ -2675,24 +3020,37 @@ describe("Node Playback FX lanes", () => {
   test("the badge reads bypassed once the controller reports a dry fallback", async () => {
     insertNodeSession(insertCompressor(patch([station("a")])));
     const badges = new Store<NodeBackendBadges>({});
+    // A paused sound has no effects graph yet.
+    let outcome: EffectsRuntimeOutcome = {
+      backend: null,
+      ready: false,
+      status: "inactive",
+    };
     const harness = createHarness({
       backendBadges: badges,
       crossOriginIsolated: true,
-      effectsOutcome: () => ({
-        backend: "bypass",
-        error: new Error("worklet unavailable"),
-        ready: true,
-        status: "failed",
-      }),
+      effectsOutcome: () => outcome,
     });
     await harness.playback.activate();
+    await harness.playback.whenSettled();
 
     // Official is the plan, so nothing shows until the controller reports.
     expect(badges.state).toEqual({});
 
+    outcome = {
+      backend: "bypass",
+      error: new Error("worklet unavailable"),
+      ready: true,
+      status: "failed",
+    };
+
+    harness.setEffectFields.mockReturnValueOnce("structural");
     await commit(harness, threshold(-30));
 
-    expect(badges.state).toEqual({ a: "bypassed", comp: "bypassed" });
+    expect(badges.state).toEqual({
+      a: { kind: "bypassed" },
+      comp: { kind: "bypassed" },
+    });
   });
 
   test("switching an FX back on never flashes bypassed while its runtime connects", async () => {
@@ -2729,7 +3087,9 @@ describe("Node Playback FX lanes", () => {
     subscription.unsubscribe();
 
     expect(
-      seen.some((state) => Object.values(state).includes("bypassed"))
+      seen.some((state) =>
+        Object.values(state).some((badge) => badge.kind === "bypassed")
+      )
     ).toBe(false);
     expect(badges.state).toEqual({});
   });
@@ -2741,6 +3101,7 @@ describe("Node Playback FX lanes", () => {
     context.audio.getEffectsRuntimeOutcome = mock(
       (_soundId: string): EffectsRuntimeOutcome => ({
         backend: "compatibility",
+        fallback: "capacity",
         ready: true,
         status: "ready",
       })
@@ -2760,20 +3121,45 @@ describe("Node Playback FX lanes", () => {
     expect(context.audio.getEffectsRuntimeOutcome).toHaveBeenCalledWith(
       soundOf("a")
     );
-    expect(badges.state).toEqual({ a: "compat", comp: "compat" });
+    const compat = { cause: "capacity", kind: "compat" } as const;
+    expect(badges.state).toEqual({ a: compat, comp: compat });
 
     await harness.playback.deactivate();
     expect(badges.state).toEqual({});
   });
 
   test("laneBackendBadge trusts the controller over the estimate", () => {
-    expect(laneBackendBadge(null, "bypass")).toBeNull();
-    expect(laneBackendBadge("compat", undefined)).toBe("compat");
-    expect(laneBackendBadge("official", undefined)).toBeNull();
-    expect(laneBackendBadge("compat", "official")).toBeNull();
-    expect(laneBackendBadge("official", "compatibility")).toBe("compat");
-    expect(laneBackendBadge("official", "bypass")).toBe("bypassed");
-    expect(laneBackendBadge("compat", null)).toBe("compat");
+    const ready = (
+      backend: EffectsRuntimeOutcome["backend"],
+      fallback?: EffectsRuntimeOutcome["fallback"]
+    ): EffectsRuntimeOutcome => ({
+      backend,
+      fallback,
+      ready: true,
+      status: "ready",
+    });
+    const planned = { backend: "compat", fallback: "capacity" } as const;
+    expect(laneBackendBadge({ backend: null }, ready("bypass"))).toBeNull();
+    expect(laneBackendBadge(planned, undefined)).toEqual({
+      cause: "capacity",
+      kind: "compat",
+    });
+    expect(laneBackendBadge({ backend: "official" }, undefined)).toBeNull();
+    expect(laneBackendBadge(planned, ready("official"))).toBeNull();
+    // The controller's cause, not the estimate's.
+    expect(
+      laneBackendBadge(
+        { backend: "official" },
+        ready("compatibility", "startup-failed")
+      )
+    ).toEqual({ cause: "startup-failed", kind: "compat" });
+    expect(laneBackendBadge({ backend: "official" }, ready("bypass"))).toEqual({
+      kind: "bypassed",
+    });
+    expect(laneBackendBadge(planned, ready(null))).toEqual({
+      cause: "capacity",
+      kind: "compat",
+    });
   });
 });
 
@@ -2819,44 +3205,12 @@ describe("Node Playback key cables", () => {
     });
   }
 
-  /**
-   * Real channel effects over a recording runtime, bound as the channel
-   * state manager binds them: when a lane's sound is created.
-   */
-  function withChannelEffects() {
-    const desired = new Map<string, DesiredEffectsState>();
-    const effects = createChannelEffects({
-      runtime: {
-        reconcile: (soundId, state) => {
-          desired.set(soundId, state);
-          return Promise.resolve({
-            backend: "compatibility",
-            ready: true,
-            status: "ready",
-          });
-        },
-      },
-    });
-    const binds: Promise<unknown>[] = [];
-    const context = createTestContext();
-    const { activate } = context.channels;
-    context.channels.activate = mock((...args: Parameters<typeof activate>) => {
-      const soundId = activate(...args);
-      const [sessionId, channelId] = args;
-      binds.push(effects.bind({ channelId, sessionId }, soundId));
-      return soundId;
-    });
-    const harness = createHarness({ context, effects });
-    const settled = async () => {
-      await harness.playback.whenSettled();
-      await Promise.all(binds);
-    };
-    return { desired, harness, settled };
-  }
-
-  test("a key cable from Station b to a Compressor in a's lane binds b's sound as a's sidechain", async () => {
+  test("a key cable from Station b keys a's Compressor through its own key", async () => {
     insertNodeSession(duckPatch(false));
-    const { desired, harness, settled } = withChannelEffects();
+    const harness = createHarness();
+    const { desired } = harness;
+    const settled = () => harness.playback.whenSettled();
+    instantStarts(harness.context);
     await harness.playback.activate();
     await settled();
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
@@ -2867,26 +3221,118 @@ describe("Node Playback key cables", () => {
     expect(getPlaybackChannel("node", channelOf("a"))?.effects).toEqual([
       expect.objectContaining({
         id: "comp",
-        sidechain: { channelId: channelOf("b") },
+        sidechain: { channelId: "node-key:comp" },
       }),
     ]);
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
     // The key listens; it never puts FX or a key on b's own lane.
     expect(desired.get(soundOf("b"))?.sidechainSoundId).toBeNull();
+
+    // b's sound reaches the key through its key cable as it plays.
+    await harness.playback.setPlaying("b", true);
+    const register = harness.context.audio
+      .setSoundOutputConnector as ReturnType<
+      typeof mock<
+        (soundId: string, connect: SoundOutputConnector | null) => void
+      >
+    >;
+    const connector = register.mock.calls
+      .filter(([soundId]) => soundId === soundOf("b"))
+      .at(-1)?.[1];
+    const { fader, node } = createFakeFader(new FakeAudioContext());
+    connector?.(node, false, () => () => undefined);
+    const laneOut = [...fader.connections][0] as FakeGainNode;
+    const key = harness.keys.get("node-key:comp");
+    expect(
+      [...laneOut.connections].some((send) =>
+        (send as FakeGainNode).connections.has(key)
+      )
+    ).toBe(true);
 
     await commit(harness, () => duckPatch(false));
     await settled();
     expect(desired.get(soundOf("a"))?.sidechainSoundId).toBeNull();
+    // The key goes once its cable has faded out.
+    expect(harness.keys.has("node-key:comp")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, LANE_DROP_MS + 5));
+    await settled();
+    expect(harness.keys.has("node-key:comp")).toBe(false);
   });
 
-  test("a patch opened with its key binds once both lanes exist", async () => {
+  test("a patch opened with its key binds it at once", async () => {
     insertNodeSession(duckPatch(true));
-    const { desired, harness, settled } = withChannelEffects();
+    const harness = createHarness();
+    const { desired } = harness;
+    const settled = () => harness.playback.whenSettled();
 
     await harness.playback.activate();
     await settled();
 
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
+  });
+
+  test("replacing a key source's sound leaves the keyed lane's effects alone", async () => {
+    insertNodeSession(duckPatch(true));
+    const harness = createHarness();
+    await harness.playback.activate();
+    await harness.playback.whenSettled();
+    harness.reconcileEffects.mockClear();
+
+    await commit(harness, withStation("b", { radio: radio("b2") }));
+
+    // The key is its own point: a new sound feeds it, nothing rebinds.
+    expect(
+      harness.reconcileEffects.mock.calls.filter(
+        ([soundId]) => soundId === soundOf("a")
+      )
+    ).toEqual([]);
+    expect(harness.desired.get(soundOf("a"))?.sidechainSoundId).toBe(
+      "node-key:comp"
+    );
+  });
+
+  test("removing two FX lanes in one commit while a third binds never reads a removed channel", async () => {
+    const fxLane = (id: string) => [station(id), reverb(`${id}-verb`)];
+    const fxPatch = (ids: string[]) =>
+      nodeGraphSchema.parse({
+        edges: ids.flatMap((id) => [
+          cable(id, `${id}-verb`),
+          cable(`${id}-verb`, "speakers"),
+        ]),
+        nodes: [...ids.flatMap(fxLane), speakers],
+        version: 2,
+      });
+    insertNodeSession(fxPatch(["a", "b"]));
+    // Channel effects as the channel state manager binds them, reading the
+    // saved session: only a channel that doesn't own its effects is bound.
+    const channelEffects = createChannelEffects({
+      runtime: {
+        reconcile: () =>
+          Promise.resolve({ backend: null, ready: false, status: "inactive" }),
+      },
+    });
+    const failures: unknown[] = [];
+    const context = createTestContext();
+    const { activate } = context.channels;
+    context.channels.activate = mock((...args: Parameters<typeof activate>) => {
+      const soundId = activate(...args);
+      const [sessionId, channelId, , options] = args;
+      if (!(typeof options === "object" && options.ownsEffects)) {
+        channelEffects
+          .bind({ channelId, sessionId }, soundId)
+          .catch((error: unknown) => failures.push(error));
+      }
+      return soundId;
+    });
+    const harness = createHarness({ context });
+    await harness.playback.activate();
+
+    await commit(harness, () => fxPatch(["c"]));
+
+    expect(failures).toEqual([]);
+    expect(harness.desired.get(soundOf("c"))?.tree).toEqual([
+      expect.objectContaining({ id: "c-verb" }),
+    ]);
   });
 
   test("a Vocoder key overrides its runtime mode and removal restores its authored mode", async () => {
@@ -2910,15 +3356,17 @@ describe("Node Playback key cables", () => {
       ),
     });
     insertNodeSession(vocoderPatch);
-    const { desired, harness, settled } = withChannelEffects();
+    const harness = createHarness();
+    const { desired } = harness;
+    const settled = () => harness.playback.whenSettled();
     await harness.playback.activate();
     await settled();
     expect(desired.get(soundOf("a"))?.tree[0]).toMatchObject({
       modulatorSource: "external",
-      sidechain: { channelId: channelOf("b") },
+      sidechain: { channelId: "node-key:comp" },
       type: "vocoder",
     });
-    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe(soundOf("b"));
+    expect(desired.get(soundOf("a"))?.sidechainSoundId).toBe("node-key:comp");
 
     await commit(harness, (graph) => removeEdges(graph, [KEY_EDGE_ID]));
     await settled();
@@ -2950,9 +3398,9 @@ describe("Node Playback audio inputs and output devices", () => {
     } as NodeInput;
   }
 
-  function output(id: string, deviceId: string | null): NodeInput {
+  function output(id: string, deviceId: string | null, muted = false) {
     return {
-      data: { deviceId },
+      data: { deviceId, muted },
       id,
       position: { x: 480, y: 200 },
       type: "deviceOut",
@@ -2977,6 +3425,8 @@ describe("Node Playback audio inputs and output devices", () => {
     const active = new Set<string>();
     /** Captures whose track ended, as an unplugged device's does. */
     const ended = new Set<string>();
+    /** Each capture's channels: an unchanged selection is a no-op. */
+    const selections = new Map<string, string>();
     Object.assign(context.audio, {
       getDeviceSource: mock((soundId: string) =>
         active.has(soundId)
@@ -3009,6 +3459,10 @@ describe("Node Playback audio inputs and output devices", () => {
             `playDeviceSound ${soundId} ${deviceId} ${JSON.stringify(constraints)} ${JSON.stringify(channelSelection)}`
           );
           active.add(soundId);
+          selections.set(
+            soundId,
+            `${channelSelection?.left}:${channelSelection?.right}`
+          );
           setPlaybackChannelRuntime(soundId.slice("node:".length), () => ({
             isPlaying: true,
           }));
@@ -3017,9 +3471,11 @@ describe("Node Playback audio inputs and output devices", () => {
       ),
       setDeviceChannelSelection: mock(
         (soundId: string, selection: { left: number; right: number }) => {
-          calls.push(
-            `setDeviceChannelSelection ${soundId} ${selection.left}:${selection.right}`
-          );
+          const channels = `${selection.left}:${selection.right}`;
+          if (selections.get(soundId) !== channels) {
+            selections.set(soundId, channels);
+            calls.push(`setDeviceChannelSelection ${soundId} ${channels}`);
+          }
         }
       ),
     });
@@ -3080,8 +3536,9 @@ describe("Node Playback audio inputs and output devices", () => {
   }
 
   /** Connects a lane's sound as AudioManager would, returning its sends. */
-  function connectLane(context: PlaybackActionContext, nodeId: string) {
-    const register = context.audio.setSoundOutputConnector as ReturnType<
+  function connectLane(harness: Harness, nodeId: string) {
+    const register = harness.context.audio
+      .setSoundOutputConnector as ReturnType<
       typeof mock<
         (soundId: string, connect: SoundOutputConnector | null) => void
       >
@@ -3094,17 +3551,16 @@ describe("Node Playback audio inputs and output devices", () => {
     }
     const audio = new FakeAudioContext();
     const { fader, node } = createFakeFader(audio);
-    const mainSources = new Set<unknown>();
-    const connectMain = mock<MainOutputConnect>((source) => {
-      mainSources.add(source);
-      return () => {
-        mainSources.delete(source);
-      };
-    });
-    connect(node, false, connectMain);
+    connect(node, false, () => () => undefined);
     const laneOut = [...fader.connections][0] as FakeGainNode;
     const sends = () => [...laneOut.connections] as FakeGainNode[];
-    return { audio, connectMain, mainSources, sends };
+    /** The Output node gain a send plays through. */
+    const gainOf = (send: FakeGainNode | undefined) =>
+      [...(send?.connections ?? [])][0] as FakeGainNode | undefined;
+    /** Whether a send plays on the main bus. */
+    const onMain = (send: FakeGainNode | undefined) =>
+      harness.mainSources.has(gainOf(send) as unknown as AudioNode);
+    return { audio, gainOf, onMain, sends };
   }
 
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -3161,6 +3617,41 @@ describe("Node Playback audio inputs and output devices", () => {
       }
     }
   );
+
+  test("Off while Go live requests permission mutes the late real capture", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const capture = createDeviceCaptureHarness();
+    try {
+      const context = createTestContext();
+      context.audio = capture.manager;
+      const { activate } = context.channels;
+      context.channels.activate = (...args) => {
+        const soundId = activate(...args);
+        capture.manager.createSound(args[2], soundId);
+        return soundId;
+      };
+      const harness = createHarness({ context });
+      await harness.playback.activate();
+      const start = harness.playback.setPlaying("mic", true);
+      const request = await capture.request();
+
+      await harness.playback.setPlaying("mic", false);
+      request.resolve(capturedStream().stream);
+      await start;
+      await settle();
+
+      const gain = capture.manager.getPostFaderNode(
+        soundOf("mic")
+      ) as unknown as FakeGainNode;
+      expect(gain.gain.events.at(-1)).toMatchObject({
+        type: "target",
+        value: 0.0001,
+      });
+      expect(getPlaybackChannelRuntime(channelOf("mic")).isPlaying).toBe(false);
+    } finally {
+      capture.restore();
+    }
+  });
 
   test("Go live opens the device with its echo cancellation and selected channels", async () => {
     insertNodeSession(
@@ -3595,6 +4086,45 @@ describe("Node Playback audio inputs and output devices", () => {
     ).toHaveLength(1);
   });
 
+  test("channels changed while the device prompt is open apply once the capture opens", async () => {
+    insertNodeSession(wired([mic("mic"), speakers], ["mic>speakers"]));
+    const harness = createHarness();
+    const { calls } = deviceEngine(harness.context);
+    const startCapture = harness.context.audio.playDeviceSound;
+    const prompt = Promise.withResolvers<void>();
+    harness.context.audio.playDeviceSound = mock(
+      async (...args: Parameters<typeof startCapture>) => {
+        await prompt.promise;
+        return startCapture(...args);
+      }
+    );
+    await harness.playback.activate();
+    const live = harness.playback.setPlaying("mic", true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    commitNodeGraph(
+      (graph) => ({
+        ...graph,
+        nodes: graph.nodes.map((node) =>
+          node.type === "deviceIn"
+            ? {
+                ...node,
+                data: { ...node.data, channelSelection: { left: 1, right: 1 } },
+              }
+            : node
+        ),
+      }),
+      harness.store
+    );
+    harness.playback.flush();
+    prompt.resolve();
+    await live;
+
+    expect(calls.at(-1)).toBe(
+      `setDeviceChannelSelection ${soundOf("mic")} 1:1`
+    );
+  });
+
   test("a reload never goes live on its own: restore skips a device input", async () => {
     const graph = wired(
       [mic("mic"), station("a"), speakers],
@@ -3634,7 +4164,7 @@ describe("Node Playback audio inputs and output devices", () => {
     );
   });
 
-  test("a live input is no stream, so the stream budget leaves it alone", async () => {
+  test("a live input starts alongside playing streams", async () => {
     const ids = ["1", "2", "3", "4"];
     insertNodeSession(
       wired(
@@ -3642,7 +4172,7 @@ describe("Node Playback audio inputs and output devices", () => {
         [...ids.map((id) => `${id}>speakers`), "mic>speakers"]
       )
     );
-    const harness = createHarness({ profile: "mobile" });
+    const harness = createHarness();
     instantStarts(harness.context);
     const { calls } = deviceEngine(harness.context);
     await harness.playback.activate();
@@ -3709,7 +4239,8 @@ describe("Node Playback audio inputs and output devices", () => {
         ],
         nodes: [station("a"), output("desk", "usb"), speakers],
         version: 2,
-      })
+      }),
+      1
     );
     const { createElement, elements } = fakeElements();
     const statuses = new Store<NodeSinkStatuses>({});
@@ -3721,17 +4252,17 @@ describe("Node Playback audio inputs and output devices", () => {
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
 
-    const { audio, mainSources, sends } = connectLane(harness.context, "a");
+    const { audio, gainOf, onMain, sends } = connectLane(harness, "a");
     await settle();
 
     const [toSpeakers, toDesk] = sends();
-    expect(mainSources.has(toSpeakers)).toBe(true);
-    expect(mainSources.has(toDesk)).toBe(false);
+    expect(onMain(toSpeakers)).toBe(true);
+    expect(onMain(toDesk)).toBe(false);
     expect(toSpeakers?.gain.events.at(-1)).toMatchObject({ value: 0.5 });
     expect(toDesk?.gain.events.at(-1)).toMatchObject({ value: 1.5 });
     // The Output device's send feeds its sink, an <audio> set to the device.
     const [destination] = audio.destinations;
-    const input = [...(toDesk?.connections ?? [])][0] as FakeGainNode;
+    const input = [...(gainOf(toDesk)?.connections ?? [])][0] as FakeGainNode;
     expect(input.connections.has(destination)).toBe(true);
     expect(elements[0]?.sinkId).toBe("usb");
     expect(statuses.state).toEqual({ desk: { state: "ok" } });
@@ -3751,9 +4282,9 @@ describe("Node Playback audio inputs and output devices", () => {
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
 
-    const { mainSources, sends } = connectLane(harness.context, "a");
+    const { onMain, sends } = connectLane(harness, "a");
 
-    expect(mainSources.has(sends()[0])).toBe(true);
+    expect(onMain(sends()[0])).toBe(true);
     expect(elements).toHaveLength(0);
     expect(statuses.state).toEqual({ desk: { state: "unsupported" } });
   });
@@ -3778,14 +4309,14 @@ describe("Node Playback audio inputs and output devices", () => {
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
 
-    const { mainSources, sends } = connectLane(harness.context, "a");
-    expect(mainSources.has(sends()[0])).toBe(false);
+    const { onMain, sends } = connectLane(harness, "a");
+    expect(onMain(sends()[0])).toBe(false);
     await settle();
 
     expect(statuses.state).toEqual({
       desk: { message: "Output not allowed", state: "failed" },
     });
-    expect(mainSources.has(sends()[0])).toBe(true);
+    expect(onMain(sends()[0])).toBe(true);
   });
 
   test("Retry keeps failed output sends on Speakers until an explicit retry succeeds", async () => {
@@ -3813,10 +4344,10 @@ describe("Node Playback audio inputs and output devices", () => {
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
-    const { mainSources, sends } = connectLane(harness.context, "a");
+    const { onMain, sends } = connectLane(harness, "a");
     await settle();
 
-    expect(mainSources.has(sends()[0])).toBe(true);
+    expect(onMain(sends()[0])).toBe(true);
     rejection = "Permission still blocked";
     harness.playback.retryOutputDevice("desk");
     await settle();
@@ -3824,14 +4355,14 @@ describe("Node Playback audio inputs and output devices", () => {
       message: rejection,
       state: "failed",
     });
-    expect(mainSources.has(sends()[0])).toBe(true);
+    expect(onMain(sends()[0])).toBe(true);
     await settle();
     expect(elements).toHaveLength(2);
 
     rejection = null;
     harness.playback.retryOutputDevice("desk");
     await settle();
-    expect(mainSources.has(sends()[0])).toBe(false);
+    expect(onMain(sends()[0])).toBe(false);
     expect(elements[2]?.sinkId).toBe("usb");
     expect(statuses.state.desk).toEqual({ state: "ok" });
     await harness.playback.deactivate();
@@ -3862,7 +4393,7 @@ describe("Node Playback audio inputs and output devices", () => {
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
-    connectLane(harness.context, "a");
+    connectLane(harness, "a");
     await settle();
     harness.playback.retryOutputDevice("desk");
     const retried = elements[1] as unknown as HTMLAudioElement;
@@ -3873,6 +4404,140 @@ describe("Node Playback audio inputs and output devices", () => {
     fade.resolve();
     await deactivation;
     expect(retried.srcObject).toBeNull();
+  });
+
+  test("master volume acts at the outputs, after every effect, not on the faders", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("a", "verb"),
+          { ...cable("verb", "speakers"), gain: 0.5 },
+        ],
+        nodes: [station("a"), reverb("verb"), speakers],
+        version: 2,
+      })
+    );
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { gainOf, sends } = connectLane(harness, "a");
+    // A legacy record that failed its rewrite stays "multiple"; Node runs.
+    const settings = getSettings() as unknown as {
+      player: { mode: string };
+    };
+    settings.player.mode = "multiple";
+
+    harness.playback.setMasterVolume(0.3);
+
+    expect(harness.context.audio.setGlobalVolume).toHaveBeenLastCalledWith(1);
+    // The reverb runs on the lane, before the send leaves it.
+    expect(reconciledTrees(harness, "a").at(-1)).toMatchObject([
+      { id: "verb", type: "cheapReverb" },
+    ]);
+    const [send] = sends();
+    expect(send?.gain.events.at(-1)).toMatchObject({ value: 0.5 });
+    expect(gainOf(send)?.gain.events.at(-1)).toMatchObject({ value: 0.3 });
+  });
+
+  test("a master level stored in the session reaches the outputs once Node hears of it", async () => {
+    insertNodeSession(patch([station("a")]), 1);
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { gainOf, sends } = connectLane(harness, "a");
+
+    // As an import stores it.
+    playbackSessionsCollection.update("node", (draft) => {
+      draft.masterVolume = 0.1;
+    });
+    harness.playback.masterVolumeChanged();
+
+    expect(gainOf(sends()[0])?.gain.events.at(-1)).toMatchObject({
+      value: 0.1,
+    });
+  });
+
+  test("master volume and an Output device's mute reach cables still fading out", async () => {
+    const outputs = (muted: boolean, cabled: boolean) =>
+      wired(
+        [station("a"), output("desk", "usb", muted), speakers],
+        cabled ? ["a>desk", "a>speakers"] : []
+      );
+    insertNodeSession(outputs(false, true), 1);
+    const { createElement } = fakeElements();
+    const harness = createHarness({
+      deviceSinks: sinksWith({ createElement }),
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { gainOf, sends } = connectLane(harness, "a");
+    await settle();
+    const [toDesk, toSpeakers] = sends();
+
+    // Both cables go: they fade out through their Output nodes' gains.
+    await commit(harness, () => outputs(false, false));
+    harness.playback.setMasterVolume(0.2);
+    await commit(harness, () => outputs(true, false));
+
+    expect(toSpeakers?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(gainOf(toSpeakers)?.gain.events.at(-1)).toMatchObject({
+      value: 0.2,
+    });
+    expect(gainOf(toDesk)?.gain.events.at(-1)).toMatchObject({ value: 0 });
+  });
+
+  test("two Output device nodes on one device mute and go independently", async () => {
+    const outputs = (muted: boolean) =>
+      wired(
+        [
+          station("a"),
+          output("desk", "usb"),
+          output("booth", "usb", muted),
+          speakers,
+        ],
+        ["a>desk", "a>booth"]
+      );
+    insertNodeSession(outputs(false), 1);
+    const { createElement, elements } = fakeElements();
+    const statuses = new Store<NodeSinkStatuses>({});
+    const harness = createHarness({
+      deviceSinks: sinksWith({ createElement }),
+      sinkStatuses: statuses,
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    const { audio, gainOf, sends } = connectLane(harness, "a");
+    await settle();
+
+    // Both reach the one device element, each through its own node gain.
+    const [toDesk, toBooth] = sends();
+    const [input] = [...(gainOf(toDesk)?.connections ?? [])] as FakeGainNode[];
+    expect(gainOf(toBooth)).not.toBe(gainOf(toDesk));
+    expect(gainOf(toBooth)?.connections.has(input)).toBe(true);
+    expect(elements.map((element) => element.sinkId)).toEqual(["usb"]);
+    expect(statuses.state).toEqual({
+      booth: { state: "ok" },
+      desk: { state: "ok" },
+    });
+
+    // Muting one leaves the other's level unchanged.
+    await commit(harness, () => outputs(true));
+    expect(gainOf(toBooth)?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(gainOf(toDesk)?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(toBooth?.gain.events.at(-1)).toMatchObject({ value: 1 });
+
+    // Removing one leaves the other playing on the device, with no gap.
+    await commit(harness, () =>
+      wired([station("a"), output("desk", "usb"), speakers], ["a>desk"])
+    );
+    expect(elements[0]?.pause).not.toHaveBeenCalled();
+    expect(audio.destinations[0]?.stopped).toEqual([]);
+    expect(gainOf(toDesk)?.connections.has(input)).toBe(true);
+    expect(statuses.state).toEqual({ desk: { state: "ok" } });
   });
 
   test("removing an Output device disposes its <audio> and takes its sends away", async () => {
@@ -3891,19 +4556,21 @@ describe("Node Playback audio inputs and output devices", () => {
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
-    const { audio, sends } = connectLane(harness.context, "a");
+    const { audio, sends } = connectLane(harness, "a");
     await settle();
     expect(sends()).toHaveLength(2);
 
     await commit(harness, () => patch([station("a")]));
 
+    // Its send fades out through the device, which waits for it.
+    expect(statuses.state).toEqual({});
+    expect(elements[0]?.pause).not.toHaveBeenCalled();
+    expect(audio.destinations[0]?.stopped).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, LANE_DROP_MS + 5));
+    expect(sends()).toHaveLength(1);
     expect(elements[0]?.pause).toHaveBeenCalled();
     expect(elements[0]?.srcObject).toBeNull();
     expect(audio.destinations[0]?.stopped).toEqual([true]);
-    expect(statuses.state).toEqual({});
-    // Its send fades out before it comes off the lane.
-    await new Promise((resolve) => setTimeout(resolve, LANE_DROP_MS + 5));
-    expect(sends()).toHaveLength(1);
   });
 });
 
@@ -4033,7 +4700,7 @@ describe("Node Playback: Track and File sources", () => {
       "node",
       channelOf("video"),
       expect.objectContaining({ id: "video" }),
-      soundOf("video")
+      ownedSound("video", "media")
     );
     expect(harness.context.audio.playSound).toHaveBeenCalledWith(
       soundOf("video"),
@@ -5037,7 +5704,7 @@ describe("Node Playback: Track and File sources", () => {
     }
   );
 
-  test("an interrupted stream renewing its URL keeps its stream budget slot", async () => {
+  test("another stream can start while an interrupted stream renews its URL", async () => {
     insertNodeSession(
       patch([
         station("a"),
@@ -5052,7 +5719,6 @@ describe("Node Playback: Track and File sources", () => {
       streamUrl: string;
     }>();
     const harness = createHarness({
-      profile: "mobile",
       resolveStream: mock(() => renewal.promise),
     });
     instantStarts(harness.context);
@@ -5083,11 +5749,8 @@ describe("Node Playback: Track and File sources", () => {
     await harness.playback.setPlaying("t2", true);
 
     expect(getPlaybackChannelRuntime(channelOf("t2"))).toMatchObject({
-      error: {
-        message:
-          "Up to 4 streams can play at once here. Pause one to start this.",
-      },
-      isPlaying: false,
+      error: null,
+      isPlaying: true,
     });
     renewal.resolve({
       streamFormat: "progressive",
@@ -5239,7 +5902,83 @@ describe("Node Playback: Track and File sources", () => {
     }
   );
 
-  test("a third playing Track past the mobile budget is refused with its message", async () => {
+  test("settling waits for a playlist's next track while its stream resolves", async () => {
+    insertNodeSession(patch([trackNode("playlist", youtubePlaylist)]));
+    const resolution = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("playlist", true);
+    setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+
+    let settled = false;
+    const settling = harness.playback.whenSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/two.m4a",
+    });
+    await settling;
+    expect(
+      getPlaybackChannel("node", channelOf("playlist"))?.radio
+    ).toMatchObject({ streamUrl: "https://media.example/two.m4a" });
+    expect(getPlaybackChannelRuntime(channelOf("playlist")).isPlaying).toBe(
+      true
+    );
+  });
+
+  test("settling waits for a playlist's next track to be stored after a live edit", async () => {
+    insertNodeSession(
+      patch([trackNode("playlist", youtubePlaylist), station("a")])
+    );
+    const resolution = Promise.withResolvers<{
+      streamFormat: "progressive";
+      streamUrl: string;
+    }>();
+    const harness = createHarness({ resolveStream: () => resolution.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("playlist", true);
+    const stored = spyOn(playbackSessionsCollection.utils, "acceptMutations");
+    setPlaybackChannelRuntime(channelOf("playlist"), () => ({
+      isPlaying: false,
+    }));
+    laneWatcher(harness.context, "playlist")(audioState({ hasEnded: true }));
+
+    const settling = harness.playback.whenSettled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // A live edit's write holds the next one back for the pacing window.
+    commitNodeGraph(withStation("a", { volume: 0.4 }), harness.store);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    resolution.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://media.example/two.m4a",
+    });
+    await settling;
+
+    expect(
+      stored.mock.calls.at(-1)?.[0].mutations[0]?.modified.channels
+    ).toContainEqual(
+      expect.objectContaining({
+        radio: expect.objectContaining({
+          streamUrl: "https://media.example/two.m4a",
+        }),
+      })
+    );
+    stored.mockRestore();
+  });
+
+  test("another Track starts alongside playing Stations and Tracks", async () => {
     insertNodeSession(
       patch([
         station("a"),
@@ -5249,7 +5988,7 @@ describe("Node Playback: Track and File sources", () => {
         trackNode("t3"),
       ])
     );
-    const harness = createHarness({ profile: "mobile" });
+    const harness = createHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
     await harness.playback.setPlaying("a", true);
@@ -5260,11 +5999,8 @@ describe("Node Playback: Track and File sources", () => {
     await harness.playback.setPlaying("t3", true);
 
     expect(getPlaybackChannelRuntime(channelOf("t3"))).toMatchObject({
-      error: {
-        message:
-          "Up to 4 streams can play at once here. Pause one to start this.",
-      },
-      isPlaying: false,
+      error: null,
+      isPlaying: true,
     });
   });
 
@@ -5392,21 +6128,25 @@ describe("Node Playback: channel strips", () => {
 
   /** Lane outputs whose levels the test can read, per lane and output. */
   function levelHarness() {
-    let getLevels: ((laneId: string) => ReadonlyMap<string, number>) | null =
-      null;
+    let getSends: NodeLaneOutputsOptions["getSends"] | null = null;
     const harness = createHarness({
       laneOutputs: (options) => {
-        ({ getLevels } = options);
+        ({ getSends } = options);
         return createNodeLaneOutputs(options);
       },
     });
     const levels = (laneId: string) =>
-      Object.fromEntries(getLevels?.(laneId) ?? new Map());
+      Object.fromEntries(
+        [...(getSends?.(laneId) ?? new Map())].map(([, { level, to }]) => [
+          to.replace("sink:", ""),
+          level,
+        ])
+      );
     return { harness, levels };
   }
 
   test("a Station's +6 dB trim doubles its cable level and never writes its fader", async () => {
-    insertNodeSession(patch([station("a", { volume: 0.7 })]));
+    insertNodeSession(patch([station("a", { volume: 0.7 })]), 1);
     const { harness, levels } = levelHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -5454,7 +6194,7 @@ describe("Node Playback: channel strips", () => {
   });
 
   test("soloing one of three Stations silences the other two lanes, not their faders", async () => {
-    insertNodeSession(patch([station("a"), station("b"), station("c")]));
+    insertNodeSession(patch([station("a"), station("b"), station("c")]), 1);
     const { harness, levels } = levelHarness();
     instantStarts(harness.context);
     await harness.playback.activate();
@@ -5610,10 +6350,37 @@ describe("Node Playback: channel strips", () => {
     const playback = getNodePlayback({
       backendBadges: new Store<NodeBackendBadges>({}),
       ctx: context,
-      cueOutput: () => ({ applySettings, registerCueDeck, releaseCue }),
-      effects: { change: mock(async () => ({}) as ChannelEffectsResult) },
+      effects: {
+        attachEffectsInsert: mock(
+          async (): Promise<EffectsRuntimeOutcome> => ({
+            backend: null,
+            ready: false,
+            status: "inactive",
+          })
+        ),
+        connectEffectsKey: mock(() => undefined),
+        detachEffectsInsert: mock(() => undefined),
+        discardFailedEffectsRuntime: () => undefined,
+        reconcileEffects: mock(
+          async (): Promise<EffectsRuntimeOutcome> => ({
+            backend: null,
+            ready: false,
+            status: "inactive",
+          })
+        ),
+        releaseEffectsKey: mock(() => undefined),
+        setEffectFields: () => "structural",
+        subscribeEffectsCapacityFreed: () => () => undefined,
+        subscribeEffectsRuntimeOutcome: () => () => undefined,
+      },
       fadeOutSound: mock(async () => undefined),
-      getEnv: () => ({ crossOriginIsolated: false, profile: "desktop" }),
+      getEnv: () => ({ crossOriginIsolated: false }),
+      outputRouting: () => ({
+        applySettings,
+        connectMain: () => () => undefined,
+        registerCueDeck,
+        releaseCue,
+      }),
       sinkStatuses: new Store<NodeSinkStatuses>({}),
       store,
     });
@@ -5675,5 +6442,379 @@ describe("Node Playback: channel strips", () => {
     );
     expect(node?.type === "deviceIn" && node.data.strip.monitor).toBe(false);
     expect(harness.context.audio.playSound).not.toHaveBeenCalled();
+  });
+});
+
+describe("Node Playback: shared routing", () => {
+  function compressor(id: string, threshold = -24): NodeInput {
+    return {
+      data: {
+        effect: {
+          ...createNodeEffectConfig("compressor", id),
+          enabled: true,
+          threshold,
+        },
+      },
+      id,
+      position: { x: 240, y: 0 },
+      type: "compressor",
+    } as NodeInput;
+  }
+
+  /** Stations a and b summed into one Compressor, then to Speakers. */
+  function sharedPatch(stations = ["a", "b"], threshold = -24): NodeGraph {
+    return nodeGraphSchema.parse({
+      edges: [
+        ...stations.map((id) => cable(id, "comp")),
+        cable("comp", "speakers"),
+      ],
+      nodes: [
+        ...stations.map((id) => station(id)),
+        compressor("comp", threshold),
+        speakers,
+      ],
+      version: 2,
+    });
+  }
+
+  /** One AudioContext, as AudioManager has, for every lane's sound. */
+  let audio = new FakeAudioContext();
+  beforeEach(() => {
+    audio = new FakeAudioContext();
+  });
+
+  /** Connects a lane's sound as AudioManager would; returns its sends. */
+  function connect(harness: Harness, nodeId: string) {
+    const register = harness.context.audio
+      .setSoundOutputConnector as ReturnType<
+      typeof mock<
+        (soundId: string, connect: SoundOutputConnector | null) => void
+      >
+    >;
+    const connector = register.mock.calls
+      .filter(([soundId]) => soundId === soundOf(nodeId))
+      .at(-1)?.[1];
+    if (!connector) {
+      throw new Error(`no output connector for ${nodeId}`);
+    }
+    const { fader, node } = createFakeFader(audio);
+    connector(node, false, () => () => undefined);
+    const laneOut = [...fader.connections][0] as FakeGainNode;
+    return () => [...laneOut.connections] as FakeGainNode[];
+  }
+
+  function unitInput(harness: Harness): FakeGainNode | undefined {
+    return harness.inserts.get("node-unit:comp")?.input as
+      | FakeGainNode
+      | undefined;
+  }
+
+  const fadeOut = () => new Promise((resolve) => setTimeout(resolve, 60));
+
+  test("a removed source keeps its shared path through its whole fade", async () => {
+    insertNodeSession(sharedPatch(), 1);
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    const [fromA] = connect(harness, "a")();
+    const [fromB] = connect(harness, "b")();
+    const input = unitInput(harness);
+    expect(fromA?.connections.has(input)).toBe(true);
+    expect(fromB?.connections.has(input)).toBe(true);
+    expect(harness.mainSources.size).toBe(1);
+
+    commitNodeGraph(() => sharedPatch(["b"]), harness.store);
+    await Promise.resolve();
+
+    // Its fade is heard through the shared Compressor.
+    expect(harness.fadeOutSound).toHaveBeenCalledWith(soundOf("a"), 150, true);
+    expect(fromA?.connections.has(input)).toBe(true);
+    fade.resolve();
+    await harness.playback.whenSettled();
+    expect(fromA?.connections.has(input)).toBe(false);
+    expect(fromB?.connections.has(input)).toBe(true);
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+  });
+
+  test("a source and its shared chain removed together go after its fade, then the chain's", async () => {
+    insertNodeSession(sharedPatch(["a"]), 1);
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.setPlaying("a", true);
+    // One station alone keeps its Compressor in its insert; a second one
+    // makes it shared, and the playing lane's cable reaches it at once.
+    const sends = connect(harness, "a");
+    expect(harness.inserts.has("node-unit:comp")).toBe(false);
+    await commit(harness, () => sharedPatch(["a", "b"]));
+    const fromA = sends().at(-1);
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+    await harness.playback.setPlaying("b", true);
+    connect(harness, "b");
+    expect(fromA?.connections.has(unitInput(harness))).toBe(true);
+
+    commitNodeGraph(() => patch([]), harness.store);
+    await fadeOut();
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+    fade.resolve();
+    await harness.playback.whenSettled();
+    expect(harness.inserts.has("node-unit:comp")).toBe(false);
+    expect(harness.mainSources.size).toBe(0);
+  });
+
+  test("undo during a shared source fade keeps the old sound connected and the replacement independent", async () => {
+    insertNodeSession(sharedPatch(), 1);
+    const fade = Promise.withResolvers<void>();
+    const harness = createHarness({ fadeOutSound: () => fade.promise });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    const [oldSend] = connect(harness, "a")();
+    connect(harness, "b");
+    const input = unitInput(harness);
+
+    commitNodeGraph(() => sharedPatch(["b"]), harness.store);
+    await Promise.resolve();
+    expect(undoNodeGraph(harness.store)).toBe(true);
+    await Promise.resolve();
+    // The old sound fades through the unit while the undo waits for it.
+    expect(oldSend?.connections.has(input)).toBe(true);
+
+    fade.resolve();
+    await harness.playback.whenSettled();
+    expect(oldSend?.connections.has(input)).toBe(false);
+    await harness.playback.setPlaying("a", true);
+    const [newSend] = connect(harness, "a")();
+    expect(newSend).not.toBe(oldSend);
+    expect(newSend?.connections.has(input)).toBe(true);
+    expect(oldSend?.connections.has(input)).toBe(false);
+  });
+
+  test("once openDAW's channels come free, each lane and unit it was too full for reconciles again", async () => {
+    insertNodeSession(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("a", "verb"),
+          cable("verb", "comp"),
+          cable("b", "comp"),
+          cable("comp", "speakers"),
+        ],
+        nodes: [
+          station("a"),
+          station("b"),
+          reverb("verb"),
+          compressor("comp"),
+          speakers,
+        ],
+        version: 2,
+      }),
+      1
+    );
+    let full = true as boolean;
+    const outcome = (): EffectsRuntimeOutcome =>
+      full
+        ? {
+            backend: "compatibility",
+            fallback: "capacity",
+            ready: true,
+            status: "ready",
+          }
+        : { backend: "official", ready: true, status: "ready" };
+    const harness = createHarness({
+      effectsOutcome: ({ tree }) =>
+        tree.length === 0
+          ? { backend: "bypass", ready: true, status: "ready" }
+          : outcome(),
+    });
+    // What lane a's play call settled on.
+    Object.assign(harness.context.audio, {
+      getEffectsRuntimeOutcome: (soundId: string) =>
+        soundId === soundOf("a")
+          ? outcome()
+          : { backend: "bypass", ready: true, status: "ready" },
+    });
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    connect(harness, "a");
+    connect(harness, "b");
+    await harness.playback.whenSettled();
+    expect(harness.inserts.has("node-unit:comp")).toBe(true);
+    const asked = () => harness.reconcileEffects.mock.calls.map(([id]) => id);
+    const before = asked().length;
+
+    full = false;
+    harness.capacityFreed();
+    await harness.playback.whenSettled();
+    expect(asked().slice(before).sort()).toEqual(
+      ["node-unit:comp", soundOf("a")].sort()
+    );
+
+    // On openDAW now, neither asks again.
+    harness.capacityFreed();
+    await harness.playback.whenSettled();
+    expect(asked()).toHaveLength(before + 2);
+  });
+
+  test("parameter edits keep output routes connected and refresh trim and solo", async () => {
+    insertNodeSession(sharedPatch(), 1);
+    const harness = createHarness();
+    instantStarts(harness.context);
+    await harness.playback.activate();
+    await harness.playback.playAll();
+    const [fromA] = connect(harness, "a")();
+    const [fromB] = connect(harness, "b")();
+    const input = unitInput(harness);
+    const [toSpeakers] = harness.mainSources;
+
+    await commit(harness, () => sharedPatch(["a", "b"], -30));
+    await commit(harness, (graph) => setSourceStrip(graph, "a", { trimDb: 6 }));
+    await commit(harness, (graph) =>
+      setSourceStrip(graph, "b", { solo: true })
+    );
+
+    // The same sends, unit and output, at their new levels.
+    expect(fromA?.connections.has(input)).toBe(true);
+    expect(fromB?.connections.has(input)).toBe(true);
+    expect(unitInput(harness)).toBe(input);
+    expect([...harness.mainSources]).toEqual([toSpeakers]);
+    expect(fromA?.gain.events.at(-1)).toMatchObject({ value: 0 });
+    expect(fromB?.gain.events.at(-1)).toMatchObject({ value: 1 });
+    expect(
+      harness.desired.get("node-unit:comp")?.tree.map((effect) => effect.id)
+    ).toEqual(["comp"]);
+  });
+});
+
+describe("Node Playback: resolved modulation", () => {
+  function controlledPatch(target = "a", parameter = "trimDb") {
+    const base = patch([station("a"), station("b")]);
+    return nodeGraphSchema.parse({
+      ...base,
+      edges: [
+        ...base.edges,
+        {
+          depth: 0.25,
+          id: "control",
+          parameter,
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target,
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        ...base.nodes,
+        { data: {}, id: "macro", position: { x: 0, y: 0 }, type: "macro" },
+      ],
+    });
+  }
+  function controls() {
+    const create = modulationRuntime.createModulationRuntime;
+    let modulation: ReturnType<typeof create> | undefined;
+    const runtime = spyOn(
+      modulationRuntime,
+      "createModulationRuntime"
+    ).mockImplementation((options) => {
+      installModulationAudio();
+      modulation = create({
+        ...options,
+        getNativeHost: async () => null,
+        getWorkletProcessorUrl: () => "/dsp.js",
+      });
+      ownModulation(modulation);
+      return modulation;
+    });
+    let outputs: NodeLaneOutputsOptions | null = null;
+    const harness = createHarness({
+      crossOriginIsolated: true,
+      laneOutputs: (options) => {
+        outputs = options;
+        return createNodeLaneOutputs(options);
+      },
+    });
+    return {
+      ...harness,
+      emit: async (values: Record<string, number>) => {
+        await modulation?.whenSettled();
+        TestModulationWorklet.current.emit(values);
+      },
+      levels: () =>
+        [...(outputs?.getSends("a").values() ?? [])].map((send) => send.level),
+      runtime,
+    };
+  }
+  test.each(["muted", "removed", "disabled", "last source removed"])(
+    "restores the latest authored trim when %s while suspended",
+    async (action) => {
+      insertNodeSession(controlledPatch());
+      const harness = controls();
+      try {
+        await harness.playback.activate();
+        const saved = getPlaybackSession("node")?.graph;
+        await harness.emit({ macro: 1 });
+        expect(harness.levels()[0]).toBeCloseTo(10 ** (9 / 20), 12);
+        expect(getPlaybackSession("node")?.graph).toBe(saved);
+        await commit(harness, (graph) => {
+          let { nodes, edges } = setSourceStrip(graph, "a", { trimDb: -6 });
+          if (action === "muted") {
+            edges = edges.map((edge) =>
+              edge.id === "control" ? { ...edge, muted: true } : edge
+            );
+          } else if (action === "removed" || action === "last source removed") {
+            edges = edges.filter((edge) => edge.id !== "control");
+          }
+          if (action === "disabled") {
+            nodes = nodes.map((node) =>
+              node.type === "macro"
+                ? { ...node, data: { ...node.data, enabled: false } }
+                : node
+            );
+          } else if (action === "last source removed") {
+            nodes = nodes.filter((node) => node.id !== "macro");
+          }
+          return { ...graph, edges, nodes };
+        });
+        expect(harness.levels()[0]).toBeCloseTo(10 ** (-6 / 20), 12);
+      } finally {
+        await harness.playback.deactivate();
+        harness.runtime.mockRestore();
+      }
+    }
+  );
+  test("frames have no compiler or session access, and clearing restores the strip", async () => {
+    insertNodeSession(controlledPatch("a", "pan"));
+    const harness = controls();
+    const audio = new FakeAudioContext();
+    const pan = new FakePannerNode(audio);
+    harness.context.audio.getStripNodes = () =>
+      ({ filter: audio.createBiquadFilter(), pan }) as unknown as ReturnType<
+        AudioManager["getStripNodes"]
+      >;
+    const compiler = spyOn(graphCompiler, "compile");
+    try {
+      await harness.playback.activate();
+      await harness.playback.setPlaying("a", true);
+      const saved = getPlaybackSession("node");
+      const authored = JSON.stringify(saved);
+      compiler.mockImplementation(() => {
+        throw new Error("A frame cannot compile");
+      });
+      await harness.emit({ macro: 1 });
+      expect(pan.pan.events.at(-1)).toMatchObject({ value: 0.5 });
+      await harness.emit({ macro: -1 });
+      expect(pan.pan.events.at(-1)).toMatchObject({ value: -0.5 });
+      await harness.emit({});
+      expect(pan.pan.events.at(-1)).toMatchObject({ value: 0 });
+      expect(JSON.stringify(getPlaybackSession("node"))).toBe(authored);
+      expect(harness.store.state.history.past).toHaveLength(0);
+    } finally {
+      compiler.mockRestore();
+      await harness.playback.deactivate();
+      harness.runtime.mockRestore();
+    }
   });
 });

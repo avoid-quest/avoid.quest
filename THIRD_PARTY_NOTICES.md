@@ -41,7 +41,7 @@ URLs from copied JS and ships processors, engine WASM and device WASM plugins.
 The upstream engine/device binaries themselves are not modified.
 
 These files under `apps/radio/src/lib/audio/dsp/` contain openDAW adaptations and
-retain AGPL-3.0-or-later terms: `audio-buffer.ts`, `effects/ctag-compressor.ts`,
+retain AGPL-3.0-or-later terms: `effects/ctag-compressor.ts`,
 `effects/fold.ts`, `effects/limiter.ts`, `effects/revamp.ts`,
 `effects/stereo-tool.ts`, `effects/tidal.ts`, and `effects/werkstatt-presets.ts`.
 The DSP adaptations connect upstream algorithms to radio's effect interface.

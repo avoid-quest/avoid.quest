@@ -7,12 +7,9 @@
  * NOTE: This file is designed to be bundled separately and loaded as a worklet.
  */
 
-import { LevelMeter, SpectrumAnalyzer } from "./analysis/index.js";
-import type { BiquadFilterType } from "./effects/biquad-filter.js";
 import { Limiter } from "./effects/limiter.js";
 import type { EffectType } from "./effects/types.js";
 import {
-  type AnalysisData,
   generateWorkletErrorId,
   MessageType,
   type WorkletErrorCode,
@@ -20,7 +17,6 @@ import {
 import { ChannelStrip, EffectSource } from "./processor-source.js";
 
 export {
-  type AnalysisData,
   MessageType,
   type MessageTypeValue,
   type WorkletErrorCode,
@@ -41,31 +37,12 @@ export class DSPProcessor {
   private readonly mixTempL = new Float32Array(128);
   private readonly mixTempR = new Float32Array(128);
 
-  // Analysis components (lazily initialized)
-  private levelMeter: LevelMeter | null = null;
-  private spectrumAnalyzer: SpectrumAnalyzer | null = null;
-  private analysisEnabled = false as boolean;
-  private analysisFrameCounter = 0;
-  private readonly analysisInterval = 3; // Send every N render quanta (~60fps)
-
   // Callback for emitting events to main thread
   private onMessage?: (message: { type: string; payload?: unknown }) => void;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
     this.masterLimiter = new Limiter(sampleRate);
-  }
-
-  /**
-   * Enable or disable analysis (spectrum + levels)
-   */
-  setAnalysisEnabled(enabled: boolean): void {
-    this.analysisEnabled = enabled;
-    if (enabled && !this.levelMeter) {
-      // Lazy init to avoid overhead when not needed
-      this.levelMeter = new LevelMeter(2048, 0.95);
-      this.spectrumAnalyzer = new SpectrumAnalyzer(512);
-    }
   }
 
   /**
@@ -147,39 +124,6 @@ export class DSPProcessor {
         break;
       }
 
-      case MessageType.ADD_FILTER: {
-        const { sourceId, filterId, type, frequency, Q, gain } = payload as {
-          sourceId: string;
-          filterId: string;
-          type: BiquadFilterType;
-          frequency: number;
-          Q: number;
-          gain: number;
-        };
-        this.addFilter(sourceId, filterId, type, frequency, Q, gain);
-        break;
-      }
-
-      case MessageType.REMOVE_FILTER: {
-        const { sourceId, filterId } = payload as {
-          sourceId: string;
-          filterId: string;
-        };
-        this.removeFilter(sourceId, filterId);
-        break;
-      }
-
-      case MessageType.SET_FILTER_PARAM: {
-        const { sourceId, filterId, param, value } = payload as {
-          sourceId: string;
-          filterId: string;
-          param: "frequency" | "Q" | "gain" | "type";
-          value: number | string;
-        };
-        this.setFilterParam(sourceId, filterId, param, value);
-        break;
-      }
-
       case MessageType.ADD_EFFECT: {
         const { sourceId, effectId, type, config, order } = payload as {
           sourceId: string;
@@ -220,11 +164,6 @@ export class DSPProcessor {
         break;
       }
 
-      case MessageType.ENABLE_ANALYSIS: {
-        const { enabled } = payload as { enabled: boolean };
-        this.setAnalysisEnabled(enabled);
-        break;
-      }
       default:
         // Log unknown message types for debugging version mismatches
         // Note: console.warn in AudioWorklet goes to browser console
@@ -311,32 +250,6 @@ export class DSPProcessor {
       fromIndex,
       toIndex
     );
-
-    // Run analysis if enabled (throttled)
-    if (this.analysisEnabled && this.levelMeter && this.spectrumAnalyzer) {
-      this.analysisFrameCounter += 1;
-      if (this.analysisFrameCounter >= this.analysisInterval) {
-        this.analysisFrameCounter = 0;
-
-        // Process level meter
-        const levels = this.levelMeter.process(
-          outputL,
-          outputR,
-          fromIndex,
-          toIndex
-        );
-
-        // Process spectrum analyzer
-        this.spectrumAnalyzer.process(outputL, outputR, fromIndex, toIndex);
-
-        // Emit analysis data
-        this.emitMessage(MessageType.ANALYSIS_DATA, {
-          levels,
-          spectrum: this.spectrumAnalyzer.getBins(),
-          waveform: this.spectrumAnalyzer.getWaveform(),
-        } satisfies AnalysisData);
-      }
-    }
   }
 
   // Source management
@@ -465,58 +378,6 @@ export class DSPProcessor {
     } else if (target === "channelStrip.pan") {
       this.channelStrip.setPan(value);
     }
-  }
-
-  // Filter management
-  private addFilter(
-    sourceId: string,
-    filterId: string,
-    type: BiquadFilterType,
-    frequency: number,
-    Q: number,
-    gain: number
-  ): void {
-    const source = this.sources.get(sourceId);
-    if (!source) {
-      this.emitSourceError(
-        sourceId,
-        "SOURCE_NOT_FOUND",
-        `Cannot add filter: source ${sourceId} not found`
-      );
-      return;
-    }
-    source.addFilter(filterId, type, frequency, Q, gain);
-  }
-
-  private removeFilter(sourceId: string, filterId: string): void {
-    const source = this.sources.get(sourceId);
-    if (!source) {
-      this.emitSourceError(
-        sourceId,
-        "SOURCE_NOT_FOUND",
-        `Cannot remove filter: source ${sourceId} not found`
-      );
-      return;
-    }
-    source.removeFilter(filterId);
-  }
-
-  private setFilterParam(
-    sourceId: string,
-    filterId: string,
-    param: "frequency" | "Q" | "gain" | "type",
-    value: number | string
-  ): void {
-    const source = this.sources.get(sourceId);
-    if (!source) {
-      this.emitSourceError(
-        sourceId,
-        "SOURCE_NOT_FOUND",
-        `Cannot set filter param: source ${sourceId} not found`
-      );
-      return;
-    }
-    source.setFilterParam(filterId, param, value);
   }
 
   // Effect management

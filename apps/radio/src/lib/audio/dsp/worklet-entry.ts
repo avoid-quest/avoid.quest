@@ -1,3 +1,4 @@
+import "./modulation-worklet";
 /**
  * AudioWorklet Entry Point
  *

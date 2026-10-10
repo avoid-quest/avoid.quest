@@ -94,11 +94,21 @@ const { QueryClient, QueryClientProvider } = await import(
   "@tanstack/react-query"
 );
 
+// Radix Select measures and scrolls, which JSDOM does not do.
+Object.defineProperty(dom.window.HTMLElement.prototype, "scrollIntoView", {
+  configurable: true,
+  value: () => undefined,
+});
+
 type InspectorModule = typeof import("./node-inspector");
 let NodeInspector: InspectorModule["NodeInspector"];
 let isInspectable: InspectorModule["isInspectable"];
 let useNodeInspector: InspectorModule["useNodeInspector"];
 let NodeRack: typeof import("./node-rack")["NodeRack"];
+let StepsEditor: typeof import("./modulation-editors")["StepsEditor"];
+let ModulationCableControls: typeof import("./modulation-cables")["ModulationCableControls"];
+let unappliedModulation: typeof import("@/lib/node-graph/modulation-runtime")["unappliedModulation"];
+let CurveEditor: typeof import("./modulation-editors")["CurveEditor"];
 let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let useIsMobile: typeof import("@avoid.quest/ui/hooks/use-mobile")["useIsMobile"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
@@ -113,6 +123,11 @@ beforeAll(async () => {
     "./node-inspector"
   ));
   ({ NodeRack } = await import("./node-rack"));
+  ({ StepsEditor, CurveEditor } = await import("./modulation-editors"));
+  ({ ModulationCableControls } = await import("./modulation-cables"));
+  ({ unappliedModulation } = await import(
+    "@/lib/node-graph/modulation-runtime"
+  ));
   ({ NodeActionsProvider } = await import("./node-actions"));
   ({ useIsMobile } = await import("@avoid.quest/ui/hooks/use-mobile"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
@@ -136,6 +151,325 @@ const noop = () => undefined;
 const asyncNoop = async () => undefined;
 const position = { x: 0, y: 0 };
 const REPICK_FILE = /Lost\.wav.*Pick the file again/;
+
+describe("modulation cable availability", () => {
+  test("the parameter selector prevents duplicate assignments and releases removed choices", async () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          id: "cutoff",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "filter",
+          targetHandle: "in:control:parameter",
+        },
+        {
+          id: "resonance",
+          parameter: "Q",
+          source: "macro",
+          sourceHandle: "out:control:main",
+          target: "filter",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        { id: "macro", position, type: "macro" },
+        { data: {}, id: "filter", position, type: "filter" },
+        { id: "out", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const store = nodeStoreModule.createNodeStore(graph);
+    const view = render(
+      <ModulationCableControls edgeId="resonance" store={store} />
+    );
+    const trigger = view.getByRole("combobox", {
+      name: "Modulation target parameter",
+    });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const cutoff = await view.findByRole("option", { name: "Cutoff" });
+    expect(cutoff.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      view
+        .getByRole("option", { name: "Resonance" })
+        .getAttribute("aria-disabled")
+    ).not.toBe("true");
+    fireEvent.click(cutoff);
+    expect(store.state.graph).toEqual(graph);
+    fireEvent.keyDown(cutoff, { key: "Escape" });
+    act(() =>
+      nodeStoreModule.commitNodeGraph(
+        (current) => ({
+          ...current,
+          edges: current.edges.filter((edge) => edge.id !== "cutoff"),
+        }),
+        store,
+        "snapshot"
+      )
+    );
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const freed = await view.findByRole("option", { name: "Cutoff" });
+    expect(freed.getAttribute("aria-disabled")).not.toBe("true");
+    fireEvent.click(freed);
+    expect(store.state.graph?.edges[0]?.parameter).toBe("frequency");
+    expect(
+      (await import("@/lib/node-graph/validate")).validate(
+        store.state.graph ?? graph
+      )
+    ).toEqual([]);
+    act(() => nodeStoreModule.undoNodeGraph(store));
+    expect(store.state.graph?.edges[0]?.parameter).toBe("Q");
+  });
+
+  test.each([
+    ["Not applied.", "Nothing plays through it yet", false],
+    ["Not applied.", "openDAW has no control for this here", false],
+    ["Partly applied.", "Nothing plays through it yet", true],
+    [null, null, false],
+  ] as const)("a cable's controls say %s why: %s", (state, why, partly) => {
+    const graph = nodeGraphSchema.parse({
+      edges: [
+        {
+          depth: 0.25,
+          id: "control",
+          parameter: "pan",
+          source: "macro",
+          sourceHandle: "out:control:control",
+          target: "pan",
+          targetHandle: "in:control:parameter",
+        },
+      ],
+      nodes: [
+        { data: {}, id: "macro", position, type: "macro" },
+        { data: {}, id: "pan", position, type: "pan" },
+        { data: {}, id: "out", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    unappliedModulation.setState(() => ({
+      ...(why && { control: { partly, why } }),
+    }));
+    try {
+      const view = render(
+        <ModulationCableControls
+          edgeId="control"
+          store={nodeStoreModule.createNodeStore(graph)}
+        />
+      );
+      expect(
+        view.queryByText(state ?? "Not applied.")?.parentElement?.textContent ??
+          null
+      ).toBe(why && `${state} ${why}.`);
+    } finally {
+      act(() => unappliedModulation.setState(() => ({})));
+    }
+  });
+});
+
+describe("modulation pattern editors", () => {
+  test("the hold control follows added and removed envelope stages", async () => {
+    const { ModulationControls } = await import("./control-node");
+    const points = Array.from({ length: 10 }, (_, index) => ({
+      bend: 0,
+      time: index / 9,
+      value: index / 9,
+    }));
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: { points }, id: "env", position, type: "multiEnvelope" },
+        { data: {}, id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const store = nodeStoreModule.createNodeStore(graph);
+    const node = graph.nodes.find((entry) => entry.type === "multiEnvelope");
+    if (node?.type !== "multiEnvelope") {
+      throw new Error("Missing envelope");
+    }
+    const view = render(<ModulationControls node={node} store={store} />);
+    const hold = view.getByRole("slider", {
+      name: "Multi-stage envelope hold point",
+    });
+    expect(hold.getAttribute("aria-valuemax")).toBe("8");
+    fireEvent.keyDown(hold, { key: "End" });
+    const edited = store.state.graph?.nodes.find((entry) => entry.id === "env");
+    expect(edited?.data).toMatchObject({ sustainPoint: 8 });
+    if (edited?.type !== "multiEnvelope") {
+      throw new Error("Missing edited envelope");
+    }
+    view.rerender(<ModulationControls node={edited} store={store} />);
+    const curve = view.getByRole("img", {
+      name: "Envelope curve; edit point values below",
+    });
+    Object.defineProperty(curve, "setPointerCapture", { value: noop });
+    const heldPoint = curve.querySelector('[data-point="8"]');
+    if (!heldPoint) {
+      throw new Error("Missing held point");
+    }
+    fireEvent.pointerDown(heldPoint, { pointerId: 1 });
+    fireEvent.click(view.getByRole("button", { name: "Remove point" }));
+    const shortened = store.state.graph?.nodes.find(
+      (entry) => entry.id === "env"
+    );
+    expect(shortened?.data).toMatchObject({ sustainPoint: 7 });
+    if (shortened?.type !== "multiEnvelope") {
+      throw new Error("Missing shortened envelope");
+    }
+    expect(shortened.data.points).toHaveLength(9);
+    view.rerender(<ModulationControls node={shortened} store={store} />);
+    expect(hold.getAttribute("aria-valuemax")).toBe("7");
+  });
+
+  test("a curve can add points past sixteen", () => {
+    const points = Array.from({ length: 16 }, (_, index) => ({
+      bend: 0,
+      time: index / 15,
+      value: index / 15,
+    }));
+    const onChange = mock((_points: typeof points) => undefined);
+    const view = render(<CurveEditor onChange={onChange} points={points} />);
+    fireEvent.click(view.getByRole("button", { name: "Add point" }));
+    const added = onChange.mock.calls[0]?.[0];
+    expect(added).toHaveLength(17);
+    expect(
+      nodeGraphSchema.safeParse({
+        edges: [],
+        nodes: [
+          { data: { points: added }, id: "curve", position, type: "curve" },
+          { data: {}, id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      }).success
+    ).toBe(true);
+  });
+
+  test("dragging between close curve neighbors preserves a valid editable point", () => {
+    const points = [0, 0.5, 0.5005, 0.501, 1].map((time) => ({
+      bend: 0,
+      time,
+      value: 0.5,
+    }));
+    const onChange = mock((_points: typeof points) => undefined);
+    const view = render(<CurveEditor onChange={onChange} points={points} />);
+    const curve = view.getByRole("img", {
+      name: "Envelope curve; edit point values below",
+    });
+    Object.defineProperty(curve, "setPointerCapture", { value: noop });
+    Object.defineProperty(curve, "getBoundingClientRect", {
+      value: () => ({ height: 100, left: 0, top: 0, width: 288 }),
+    });
+    const selected = curve.querySelector('[data-point="2"]');
+    if (!selected) {
+      throw new Error("Missing curve point");
+    }
+    fireEvent.pointerDown(selected, { pointerId: 1 });
+    fireEvent(
+      curve,
+      new dom.window.MouseEvent("pointermove", {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+      })
+    );
+    const edited = onChange.mock.calls[0]?.[0];
+    expect(edited?.[2]?.time).toBeGreaterThan(0.5);
+    expect(edited?.[2]?.time).toBeLessThan(0.501);
+    expect(edited?.[2]?.value).toBe(1);
+    expect(
+      nodeGraphSchema.safeParse({
+        edges: [],
+        nodes: [
+          { data: { points: edited }, id: "curve", position, type: "curve" },
+          { data: {}, id: "speakers", position, type: "speakers" },
+        ],
+        version: 2,
+      }).success
+    ).toBe(true);
+  });
+  test("clearing or entering an invalid count preserves every authored step", () => {
+    const onChange = mock((_values: number[]) => undefined);
+    const values = [0.2, 0.8, 0.4, 0.9];
+    const view = render(<StepsEditor onChange={onChange} values={values} />);
+    const count = view.getByRole("spinbutton", { name: "Step count" });
+    for (const value of ["", "not-a-number", "Infinity"]) {
+      fireEvent.focusIn(count);
+      fireEvent.change(count, { target: { value } });
+      fireEvent.keyUp(count, { key: "Backspace" });
+      fireEvent.blur(count);
+    }
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(count, { target: { value: "6" } });
+    fireEvent.keyUp(count, { key: "6" });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(count);
+    expect(onChange).toHaveBeenCalledWith([...values, 0, 0]);
+  });
+
+  test.each(["blur", "Enter"])(
+    "typing a larger step count preserves the pattern until %s",
+    (commit) => {
+      const values = [0, 1, 0.25, 0.75, 0, 1, 0.25, 0.75];
+      const onChange = mock((_values: number[]) => undefined);
+      const view = render(<StepsEditor onChange={onChange} values={values} />);
+      const count = view.getByRole("spinbutton", { name: "Step count" });
+      fireEvent.change(count, { target: { value: "1" } });
+      fireEvent.change(count, { target: { value: "16" } });
+      expect(onChange).not.toHaveBeenCalled();
+      if (commit === "blur") {
+        fireEvent.blur(count);
+      } else {
+        fireEvent.keyDown(count, { key: "Enter" });
+      }
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith([
+        ...values,
+        ...new Array(8).fill(0),
+      ]);
+      fireEvent.blur(count);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("Escape and external pattern edits discard a pending step count", () => {
+    const onChange = mock((_values: number[]) => undefined);
+    const values = [0.2, 0.8, 0.4, 0.9];
+    const view = render(<StepsEditor onChange={onChange} values={values} />);
+    const count = view.getByRole("spinbutton", { name: "Step count" });
+    fireEvent.change(count, { target: { value: "16" } });
+    fireEvent.keyDown(count, { key: "Escape" });
+    expect((count as HTMLInputElement).value).toBe("4");
+    fireEvent.blur(count);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(count, { target: { value: "16" } });
+    view.rerender(<StepsEditor onChange={onChange} values={[0.9, 0.1]} />);
+    expect((count as HTMLInputElement).value).toBe("2");
+    fireEvent.blur(count);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("only points with an outgoing segment expose a Bend control", () => {
+    const onChange = mock(() => undefined);
+    const points = [
+      { bend: 0.4, time: 0, value: 0 },
+      { bend: 0, time: 1, value: 1 },
+    ];
+    const view = render(<CurveEditor onChange={onChange} points={points} />);
+    expect(view.getByRole("slider", { name: "Point bend" })).toBeTruthy();
+    const curve = view.getByRole("img", {
+      name: "Envelope curve; edit point values below",
+    });
+    Object.defineProperty(curve, "setPointerCapture", { value: noop });
+    const finalPoint = curve.querySelector('[data-point="1"]');
+    if (!finalPoint) {
+      throw new Error("Missing final curve point");
+    }
+    fireEvent.pointerDown(finalPoint, { pointerId: 1 });
+    expect(view.queryByRole("slider", { name: "Point bend" })).toBeNull();
+    expect(view.getByRole("slider", { name: "Point value" })).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
 
 /** KEXP through a Compressor and a Filter to Speakers. */
 function createStore(): NodeStore {
@@ -231,7 +565,7 @@ function Harness({
       {graph && !inspectorShown ? (
         <NodeRack
           controls={controls}
-          env={{ crossOriginIsolated: false, profile: "desktop" }}
+          env={{ crossOriginIsolated: false }}
           graph={graph}
         />
       ) : null}

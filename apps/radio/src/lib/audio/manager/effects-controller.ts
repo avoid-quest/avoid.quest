@@ -5,11 +5,21 @@ import type {
 } from "../../channel-effects.js";
 import {
   canUseOfficialOpenDawRuntime,
+  type EffectsFallbackCause,
   hasEnabledEffects,
-  selectEnabledEffects,
+  isOfficialOpenDawEffect,
+  radioOnlyFallback,
+  selectOfficialEffects,
 } from "../dsp/effects/official-opendaw-mapping.js";
 import { clampEffectTempo } from "../dsp/effects/tempo.js";
 import type { EffectConfig } from "../dsp/effects/types.js";
+import {
+  audibleSidechainIds,
+  effectFieldsAreStructural,
+  findEffectInTree,
+  updateEffectFieldsInTree,
+  withCompatibilityKey,
+} from "../dsp/routing/effect-tree.js";
 import {
   type AudioState,
   getAudioContext,
@@ -25,9 +35,11 @@ import {
   type EffectsBackend,
   EffectsBackendRouter,
 } from "./effects-backend-router.js";
-import type {
-  EffectsGraphRuntime,
-  EffectsPerformanceSnapshot,
+import {
+  type EffectsGraphRuntime,
+  type EffectsPerformanceSnapshot,
+  type EffectWriteResult,
+  MonitoringChannelsFullError,
 } from "./effects-graph-runtime.js";
 import { OfficialOpenDawRuntime } from "./official-opendaw-runtime.js";
 
@@ -38,6 +50,8 @@ type SoundEffectsState = {
   desiredSidechainSoundId: string | null;
   dryWet: number;
   effects: EffectConfig[];
+  /** Why it last went to the compatibility engine. */
+  fallback: EffectsFallbackCause | null;
   generation: number;
   graph: EffectsBackendRouter | null;
   inputChannels: 1 | 2;
@@ -46,6 +60,8 @@ type SoundEffectsState = {
   officialConnected: boolean;
   officialConnectingGeneration: number | null;
   outcome: EffectsRuntimeOutcome;
+  /** The backend its router last switched to: what plays. */
+  selected: EffectsBackend | null;
   sidechain: SidechainConnection | null;
   tempo: number;
 };
@@ -66,6 +82,7 @@ const createSoundState = (): SoundEffectsState => ({
   desiredSidechainSoundId: null,
   dryWet: 1,
   effects: [],
+  fallback: null,
   generation: 0,
   graph: null,
   inputChannels: 2,
@@ -74,11 +91,16 @@ const createSoundState = (): SoundEffectsState => ({
   officialConnected: false,
   officialConnectingGeneration: null,
   outcome: { backend: null, ready: false, status: "inactive" },
+  selected: null,
   sidechain: null,
   tempo: 120,
 });
 
 class EffectsController {
+  /** Inserts that are not playback sounds, e.g. Node graph units. */
+  private readonly inserts = new Set<string>();
+  /** Keys effects can name besides sounds, e.g. a Node key's summed input. */
+  private readonly keys = new Map<string, AudioNode>();
   private officialRuntime: EffectsGraphRuntime | null = null;
   private officialRuntimeUnavailable = false as boolean;
   private officialRuntimeWarningReported = false as boolean;
@@ -87,6 +109,15 @@ class EffectsController {
   private nextOfficialRuntimeGeneration = 0;
   private nextGeneration = 0;
   private readonly states = new Map<string, SoundEffectsState>();
+  private readonly capacityListeners = new Set<() => void>();
+  /** A capacity signal is queued: later releases in this task join it. */
+  private capacitySignalQueued = false as boolean;
+  /** The last selection for an insert openDAW was too full for. */
+  private capacityRetry: Promise<unknown> = Promise.resolve();
+  private readonly outcomeListeners = new Map<
+    string,
+    Set<(outcome: EffectsRuntimeOutcome) => void>
+  >();
   private readonly workletProcessorUrl: () => string;
   private readonly sounds: Map<string, SoundInstance>;
   private readonly notifyListeners: (
@@ -116,10 +147,48 @@ class EffectsController {
     this.createWorkletManager = createWorkletManager;
   }
 
+  /** A playback sound or an insert attached on its own. */
+  private hasInsert(id: string): boolean {
+    return this.sounds.has(id) || this.inserts.has(id);
+  }
+
   private getState(soundId: string): SoundEffectsState {
     const state = this.states.get(soundId) ?? createSoundState();
     this.states.set(soundId, state);
     return state;
+  }
+
+  subscribeRuntimeOutcome(
+    soundId: string,
+    listener: (outcome: EffectsRuntimeOutcome) => void
+  ): () => void {
+    const listeners = this.outcomeListeners.get(soundId) ?? new Set();
+    this.outcomeListeners.set(soundId, listeners);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        this.outcomeListeners.delete(soundId);
+      }
+    };
+  }
+
+  private recordOutcome(
+    soundId: string,
+    state: SoundEffectsState,
+    outcome: EffectsRuntimeOutcome
+  ): void {
+    state.outcome = outcome;
+    for (const listener of this.outcomeListeners.get(soundId) ?? []) {
+      try {
+        listener(outcome);
+      } catch (error) {
+        captureError(error, {
+          operation: "notifyEffectsRuntimeOutcome",
+          surface: "ui",
+        });
+      }
+    }
   }
 
   private advance(state: SoundEffectsState): number {
@@ -139,10 +208,15 @@ class EffectsController {
     return generation;
   }
 
+  /**
+   * Lets go of a registration; a held one frees its channels unless
+   * `frees` is false, for one its owner's failed attempt made.
+   */
   private deleteOfficialSound(
     soundId: string,
     runtime = this.officialRuntime,
-    expectedOwner?: number
+    expectedOwner?: number,
+    frees = true
   ): boolean {
     if (
       !runtime ||
@@ -152,8 +226,39 @@ class EffectsController {
       return false;
     }
     runtime.deleteSound(soundId, this.claimOfficialSound(soundId));
-    this.officialRegisteredSoundIds.delete(soundId);
+    if (this.officialRegisteredSoundIds.delete(soundId) && frees) {
+      this.capacityFreed();
+    }
     return true;
+  }
+
+  /** Calls `listener` once openDAW channels come free. */
+  subscribeCapacityFreed(listener: () => void): () => void {
+    this.capacityListeners.add(listener);
+    return () => {
+      this.capacityListeners.delete(listener);
+    };
+  }
+
+  /** Channels came free: once whatever let them go is done, say so once. */
+  private capacityFreed(): void {
+    if (this.capacitySignalQueued) {
+      return;
+    }
+    this.capacitySignalQueued = true;
+    queueMicrotask(() => {
+      this.capacitySignalQueued = false;
+      for (const listener of this.capacityListeners) {
+        try {
+          listener();
+        } catch (error) {
+          captureError(error, {
+            operation: "notifyEffectsCapacityFreed",
+            surface: "ui",
+          });
+        }
+      }
+    });
   }
 
   private shouldProcess(state: SoundEffectsState): boolean {
@@ -178,7 +283,7 @@ class EffectsController {
     soundId: string,
     desired: DesiredEffectsState
   ): Promise<EffectsRuntimeOutcome> {
-    if (!this.sounds.has(soundId)) {
+    if (!this.hasInsert(soundId)) {
       return {
         backend: null,
         error: new Error(`Sound with id ${soundId} not found`),
@@ -188,29 +293,8 @@ class EffectsController {
     }
     const state = this.getState(soundId);
     const previousEffects = state.effects;
-    const nextEffects = desired.tree.map((effect) =>
-      toPlainEffectConfig(effect)
-    );
-    const nextDryWet = Math.max(0, Math.min(1, desired.dryWet));
-    const nextTempo = clampEffectTempo(desired.tempo);
-    const unchanged =
-      JSON.stringify({
-        dryWet: state.dryWet,
-        effects: previousEffects,
-        sidechainSoundId: state.desiredSidechainSoundId,
-        tempo: state.tempo,
-      }) ===
-      JSON.stringify({
-        dryWet: nextDryWet,
-        effects: nextEffects,
-        sidechainSoundId: desired.sidechainSoundId,
-        tempo: nextTempo,
-      });
-
-    state.effects = nextEffects;
-    state.dryWet = nextDryWet;
-    state.desiredSidechainSoundId = desired.sidechainSoundId;
-    state.tempo = nextTempo;
+    const unchanged = this.takeDesired(state, desired);
+    const nextEffects = state.effects;
 
     if (state.compatibilitySourceCreated && !unchanged) {
       this.reconcileCompatibility(soundId, state, previousEffects, nextEffects);
@@ -219,30 +303,39 @@ class EffectsController {
     this.pruneOfficialSidechainSources();
 
     if (!state.graph) {
-      state.outcome = { backend: null, ready: false, status: "inactive" };
+      this.recordOutcome(soundId, state, {
+        backend: null,
+        ready: false,
+        status: "inactive",
+      });
       return state.outcome;
     }
-    if (unchanged && state.outcome.status === "ready") {
+    // Unchanged, one openDAW was too full for asks again: channels came free.
+    if (
+      unchanged &&
+      state.outcome.status === "ready" &&
+      state.outcome.fallback !== "capacity"
+    ) {
       return state.outcome;
     }
 
     const generation = this.advance(state);
     try {
-      await this.selectRuntime(soundId, state, generation);
+      await this.select(soundId, state, generation);
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
-      state.outcome = this.readyOutcome(state);
+      this.recordOutcome(soundId, state, this.readyOutcome(state));
     } catch (error) {
       if (state.generation !== generation) {
         return { backend: null, ready: false, status: "superseded" };
       }
-      state.outcome = {
+      this.recordOutcome(soundId, state, {
         backend: "bypass",
         error: error instanceof Error ? error : new Error(String(error)),
         ready: true,
         status: "failed",
-      };
+      });
       this.switchBackend(soundId, state, "bypass", generation);
       captureError(error, {
         operation: "reconcileEffectsRuntime",
@@ -252,15 +345,215 @@ class EffectsController {
     return state.outcome;
   }
 
+  async getModulationHost() {
+    if (
+      this.officialRuntimeUnavailable ||
+      globalThis.crossOriginIsolated !== true
+    ) {
+      return null;
+    }
+    this.officialRuntime ??= this.createOfficialRuntime(getAudioContext());
+    return (await this.officialRuntime.getModulationHost?.()) ?? null;
+  }
+
+  hasEffectModulationField(
+    soundId: string,
+    target: import("./official-modulation-target").EffectParamTarget
+  ): boolean {
+    return Boolean(this.officialRuntime?.modulationField?.(soundId, target));
+  }
+
+  setEffectFields(
+    soundId: string,
+    effectId: string,
+    config: EffectConfig,
+    transient = false
+  ): EffectWriteResult {
+    const state = this.states.get(soundId);
+    const before = state && findEffectInTree(state.effects, effectId);
+    if (!(before && this.hasInsert(soundId))) {
+      return "unavailable";
+    }
+    if (transient) {
+      return state.officialConnected
+        ? (this.officialRuntime?.writeEffect(soundId, effectId, config, true) ??
+            "unavailable")
+        : "unavailable";
+    }
+    if (effectFieldsAreStructural(before, config)) {
+      return "structural";
+    }
+    const next = updateEffectFieldsInTree(
+      state.effects,
+      effectId,
+      toPlainEffectConfig(config)
+    );
+    // A key that starts or stops listening registers or releases its
+    // channels, which only a reconcile does.
+    if (
+      state.outcome.backend === "compatibility" ||
+      JSON.stringify(audibleSidechainIds(state.effects)) !==
+        JSON.stringify(audibleSidechainIds(next))
+    ) {
+      return "structural";
+    }
+    if (
+      (state.officialConnectingGeneration !== null &&
+        !state.officialConnected) ||
+      !state.graph
+    ) {
+      state.effects = next;
+      return "applied";
+    }
+    if (!state.officialConnected) {
+      if (!this.shouldProcess(state)) {
+        state.effects = next;
+        return "applied";
+      }
+      return "structural";
+    }
+    if (!(config.enabled || isOfficialOpenDawEffect(config))) {
+      state.effects = next;
+      return "applied";
+    }
+    const result =
+      this.officialRuntime?.writeEffect(soundId, effectId, config) ??
+      "unavailable";
+    if (result === "applied") {
+      state.effects = next;
+    }
+    return result;
+  }
+
+  /** Stores what is wanted; returns whether it is what was wanted already. */
+  private takeDesired(
+    state: SoundEffectsState,
+    desired: DesiredEffectsState
+  ): boolean {
+    const nextEffects = desired.tree.map((effect) =>
+      toPlainEffectConfig(effect)
+    );
+    const nextDryWet = Math.max(0, Math.min(1, desired.dryWet));
+    const nextTempo = clampEffectTempo(desired.tempo);
+    const unchanged =
+      JSON.stringify({
+        dryWet: state.dryWet,
+        effects: state.effects,
+        sidechainSoundId: state.desiredSidechainSoundId,
+        tempo: state.tempo,
+      }) ===
+      JSON.stringify({
+        dryWet: nextDryWet,
+        effects: nextEffects,
+        sidechainSoundId: desired.sidechainSoundId,
+        tempo: nextTempo,
+      });
+    state.effects = nextEffects;
+    state.dryWet = nextDryWet;
+    state.desiredSidechainSoundId = desired.sidechainSoundId;
+    state.tempo = nextTempo;
+    return unchanged;
+  }
+
+  /**
+   * Runs effects between `input` and `output` for an insert that is not a
+   * playback sound, e.g. a Node graph unit, through the same backends and
+   * fallback as a sound's. It plays silent until a backend is ready.
+   */
+  async attachInsert(
+    id: string,
+    input: AudioNode,
+    output: AudioNode,
+    desired: DesiredEffectsState
+  ): Promise<EffectsRuntimeOutcome> {
+    this.inserts.add(id);
+    // Known before the graph connects, so it mutes the dry path meanwhile.
+    this.takeDesired(this.getState(id), desired);
+    await this.connectGraph(id, input, output);
+    return this.getRuntimeOutcome(id);
+  }
+
+  /** Disconnects an insert and drops its effects runtime. */
+  detachInsert(id: string): void {
+    this.inserts.delete(id);
+    this.cleanupSound(id);
+  }
+
+  /**
+   * Makes `node` a key effects can name in their `sidechain`: openDAW
+   * registers it, silent, while an official effect keys from it, and the
+   * compatibility engine binds it as a sound's key.
+   */
+  connectKey(id: string, node: AudioNode): void {
+    this.keys.set(id, node);
+    this.refreshSidechains();
+    const runtime = this.officialRuntime;
+    if (runtime && this.officialSidechainTargets().has(id)) {
+      // A key that can't get its channels takes its inserts to their
+      // fallback, which selects again without it.
+      this.registerKey(runtime, id).catch(() => {
+        for (const [soundId, state] of this.states) {
+          if (
+            state.officialConnected &&
+            audibleSidechainIds(state.effects).includes(id)
+          ) {
+            this.refreshRuntimeSelection(soundId);
+          }
+        }
+      });
+    }
+  }
+
+  releaseKey(id: string): void {
+    this.keys.delete(id);
+    if (this.officialRegisteredSoundIds.has(id)) {
+      this.deleteOfficialSound(id);
+    }
+    this.refreshSidechains();
+  }
+
+  /** Registers a key with openDAW while an official effect still names it. */
+  private async registerKey(
+    runtime: EffectsGraphRuntime,
+    id: string
+  ): Promise<void> {
+    const node = this.keys.get(id);
+    if (!node || this.officialRegisteredSoundIds.has(id)) {
+      return;
+    }
+    const owner = this.claimOfficialSound(id);
+    let connected = false;
+    try {
+      connected = await runtime.connectSidechainSource(id, node, owner, 2);
+    } finally {
+      if (
+        connected &&
+        this.keys.get(id) === node &&
+        this.officialSoundOwners.get(id) === owner &&
+        this.officialSidechainTargets().has(id)
+      ) {
+        this.officialRegisteredSoundIds.add(id);
+      } else {
+        // What the runtime made before it failed or went stale goes too.
+        this.deleteOfficialSound(id, runtime, owner);
+      }
+    }
+  }
+
   private readyOutcome(state: SoundEffectsState): EffectsRuntimeOutcome {
     if (!this.shouldProcess(state)) {
       return { backend: "bypass", ready: true, status: "ready" };
     }
-    if (state.officialConnected) {
+    if (state.selected === "official") {
       return { backend: "official", ready: true, status: "ready" };
     }
-    if (state.compatibilitySourceCreated) {
-      return { backend: "compatibility", ready: true, status: "ready" };
+    if (state.selected === "compatibility" && state.fallback) {
+      return {
+        backend: "compatibility",
+        fallback: state.fallback,
+        ready: true,
+        status: "ready",
+      };
     }
     return {
       backend: null,
@@ -273,13 +566,15 @@ class EffectsController {
   private reconcileCompatibility(
     soundId: string,
     state: SoundEffectsState,
-    previous: readonly EffectConfig[],
-    next: readonly EffectConfig[]
+    previousTree: readonly EffectConfig[],
+    nextTree: readonly EffectConfig[]
   ): void {
     const { manager } = state;
     if (!manager) {
       return;
     }
+    const previous = withCompatibilityKey(previousTree);
+    const next = withCompatibilityKey(nextTree);
     const previousById = new Map(previous.map((effect) => [effect.id, effect]));
     const nextById = new Map(next.map((effect) => [effect.id, effect]));
 
@@ -329,8 +624,9 @@ class EffectsController {
     if (!(state.desiredSidechainSoundId && state.compatibilitySourceCreated)) {
       return true;
     }
-    const source = this.sounds.get(state.desiredSidechainSoundId)?.nodes
-      ?.filter;
+    const source =
+      this.keys.get(state.desiredSidechainSoundId) ??
+      this.sounds.get(state.desiredSidechainSoundId)?.nodes?.filter;
     const target = state.manager?.node;
     if (!(source && target)) {
       return false;
@@ -382,6 +678,18 @@ class EffectsController {
         sounds: this.sounds,
         wm: manager,
       });
+      // An insert has no sound to show a runtime error: its outcome does.
+      if (this.inserts.has(soundId)) {
+        manager.on("sourceError", ({ effectId, error }) => {
+          this.recordOutcome(soundId, state, {
+            backend: "compatibility",
+            error: new Error(effectId ? `[${effectId}] ${error}` : error),
+            fallback: state.fallback ?? undefined,
+            ready: true,
+            status: "failed",
+          });
+        });
+      }
       this.refreshSidechains();
       return manager;
     });
@@ -433,22 +741,26 @@ class EffectsController {
           }
         }
       );
-      state.outcome = { backend: "bypass", ready: true, status: "ready" };
+      this.recordOutcome(soundId, state, {
+        backend: "bypass",
+        ready: true,
+        status: "ready",
+      });
       return true;
     }
 
     try {
-      await this.selectRuntime(soundId, state, generation);
+      await this.select(soundId, state, generation);
     } catch (error) {
       const ownsGraph = state.graph?.source === source;
       if (ownsGraph && state.generation === generation) {
         this.switchBackend(soundId, state, "bypass", generation);
-        state.outcome = {
+        this.recordOutcome(soundId, state, {
           backend: "bypass",
           error: error instanceof Error ? error : new Error(String(error)),
           ready: true,
           status: "failed",
-        };
+        });
         captureError(error, {
           operation: "connectEffectsRuntime",
           surface: "ui",
@@ -462,7 +774,7 @@ class EffectsController {
     // second dry edge alongside this graph.
     const ownsGraph = state.graph?.source === source;
     if (ownsGraph && state.generation === generation) {
-      state.outcome = this.readyOutcome(state);
+      this.recordOutcome(soundId, state, this.readyOutcome(state));
     }
     return ownsGraph;
   }
@@ -507,9 +819,9 @@ class EffectsController {
     if (!manager) {
       return;
     }
-    for (const effect of state.effects
-      .slice()
-      .sort((left, right) => left.order - right.order)) {
+    for (const effect of withCompatibilityKey(state.effects).sort(
+      (left, right) => left.order - right.order
+    )) {
       manager.addEffect(
         soundId,
         effect.id,
@@ -576,6 +888,17 @@ class EffectsController {
     this.pruneOfficialSidechainSources();
   }
 
+  /**
+   * Lets go of an openDAW runtime that failed to start, so the next insert
+   * starts a new one; a running one stays.
+   */
+  discardFailedRuntime(): void {
+    if (this.officialRuntime?.startupFailed) {
+      this.officialRuntime.cleanup();
+      this.officialRuntime = null;
+    }
+  }
+
   cleanup(): void {
     for (const [soundId, state] of this.states) {
       this.advance(state);
@@ -589,10 +912,34 @@ class EffectsController {
       state.manager?.cleanup();
     }
     this.states.clear();
+    this.inserts.clear();
+    this.keys.clear();
     this.officialRegisteredSoundIds.clear();
     this.officialSoundOwners.clear();
     this.officialRuntime?.cleanup();
     this.officialRuntime = null;
+  }
+
+  /**
+   * Every runtime selection starts here. One for an insert openDAW was too
+   * full for waits for the last such, so one's partial registration never
+   * refuses another's.
+   */
+  private select(
+    soundId: string,
+    state: SoundEffectsState,
+    generation: number
+  ): Promise<void> {
+    if (state.outcome.fallback !== "capacity") {
+      return this.selectRuntime(soundId, state, generation);
+    }
+    const selecting = this.capacityRetry.then(() =>
+      state.generation === generation
+        ? this.selectRuntime(soundId, state, generation)
+        : undefined
+    );
+    this.capacityRetry = selecting.catch(() => undefined);
+    return selecting;
   }
 
   private async selectRuntime(
@@ -601,20 +948,24 @@ class EffectsController {
     generation: number
   ): Promise<void> {
     if (!this.shouldProcess(state)) {
+      if (state.officialConnectingGeneration !== null) {
+        this.releaseOfficialSound(soundId, state);
+      }
       this.switchBackend(soundId, state, "bypass", generation);
       await this.registerNonOfficialSource(soundId, state, generation);
       return;
     }
 
-    if (
-      canUseOfficialOpenDawRuntime(state.effects) &&
-      (await this.connectOfficial(soundId, state, generation))
-    ) {
+    const fallback =
+      radioOnlyFallback(state.effects) ??
+      (await this.connectOfficial(soundId, state, generation));
+    if (!fallback) {
       this.switchBackend(soundId, state, "official", generation);
       return;
     }
 
     if (await this.ensureCompatibilitySource(soundId, state, generation)) {
+      state.fallback = fallback;
       this.switchBackend(soundId, state, "compatibility", generation);
       await this.registerNonOfficialSource(soundId, state, generation);
     }
@@ -637,63 +988,78 @@ class EffectsController {
     );
   }
 
-  private releaseOfficialAttemptIfOwned(
+  private releaseOfficialSound(
     soundId: string,
     state: SoundEffectsState,
-    runtime: EffectsGraphRuntime,
-    runtimeGeneration: number
+    runtime = this.officialRuntime,
+    runtimeGeneration?: number,
+    frees = true
   ): boolean {
     if (
       this.states.get(soundId) !== state ||
-      !this.deleteOfficialSound(soundId, runtime, runtimeGeneration)
+      !this.deleteOfficialSound(soundId, runtime, runtimeGeneration, frees)
     ) {
       return false;
     }
     state.officialConnected = false;
-    this.pruneOfficialSidechainSources();
+    this.pruneOfficialSidechainSources(this.officialSidechainTargets(), frees);
     return true;
   }
 
+  /**
+   * What the failed attempt made frees nothing; only channels it held as a
+   * key no official effect keys from any more come free.
+   */
   private handleOfficialConnectionFailure(
     soundId: string,
     state: SoundEffectsState,
     runtime: EffectsGraphRuntime,
     runtimeGeneration: number,
     wasOfficialConnected: boolean,
+    heldAsKey: boolean,
     isStale: boolean,
     error: unknown
   ): void {
-    if (!wasOfficialConnected) {
-      this.releaseOfficialAttemptIfOwned(
+    if (
+      !wasOfficialConnected &&
+      this.releaseOfficialSound(
         soundId,
         state,
         runtime,
-        runtimeGeneration
-      );
+        runtimeGeneration,
+        false
+      ) &&
+      heldAsKey &&
+      !this.officialSidechainTargets().has(soundId)
+    ) {
+      this.capacityFreed();
     }
     if (!isStale) {
       this.reportOfficialRuntimeFailure(error);
     }
   }
 
+  /** Connects the insert to openDAW; why it can't, or null once it is. */
   private async connectOfficial(
     soundId: string,
     state: SoundEffectsState,
     generation: number
-  ): Promise<boolean> {
+  ): Promise<EffectsFallbackCause | null> {
     if (this.officialRuntimeUnavailable) {
-      return false;
+      return "not-isolated";
     }
     if (globalThis.crossOriginIsolated !== true) {
       this.officialRuntimeUnavailable = true;
       this.reportOfficialRuntimeFailure(
         new Error("Cross-origin isolation is unavailable")
       );
-      return false;
+      return "not-isolated";
     }
     const { graph } = state;
+    // A stale attempt's cause is never shown: its newer one's is.
+    const refused = () => radioOnlyFallback(state.effects) ?? "startup-failed";
     if (!(graph && canUseOfficialOpenDawRuntime(state.effects))) {
-      return false;
+      return refused();
     }
 
     const runtime =
@@ -702,14 +1068,22 @@ class EffectsController {
     this.officialRuntime = runtime;
     state.officialConnectingGeneration = generation;
     const wasOfficialConnected = state.officialConnected;
+    // Its channels as a key, which a failed attempt lets go of too.
+    const heldAsKey = this.officialRegisteredSoundIds.has(soundId);
     const runtimeGeneration = this.claimOfficialSound(soundId);
     try {
+      const connectingEffects = state.effects;
       const connected = await runtime.connectSound(
         soundId,
         graph.source,
         graph.officialGain,
         runtimeGeneration,
-        state.inputChannels
+        state.inputChannels,
+        {
+          dryWet: state.dryWet,
+          effects: selectOfficialEffects(state.effects),
+          tempo: state.tempo,
+        }
       );
       if (
         !(
@@ -725,28 +1099,25 @@ class EffectsController {
         )
       ) {
         if (connected && state.officialConnectingGeneration === generation) {
-          this.releaseOfficialAttemptIfOwned(
-            soundId,
-            state,
-            runtime,
-            runtimeGeneration
-          );
+          this.releaseOfficialSound(soundId, state, runtime, runtimeGeneration);
         }
-        return false;
+        return refused();
       }
 
+      // Knobs may have changed while the worklet initialized; connect used a snapshot.
+      if (state.effects !== connectingEffects) {
+        runtime.syncEffects(soundId, selectOfficialEffects(state.effects));
+      }
       this.officialRegisteredSoundIds.add(soundId);
-      runtime.setTempo(state.tempo);
-      runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
-      runtime.syncEffects(soundId, selectEnabledEffects(state.effects));
-      runtime.setDryWet(soundId, state.dryWet);
       state.officialConnected = true;
+      // Its keys take their input channels with it; if one can't, it
+      // falls back, as an insert that can't fit does.
       await this.registerNonOfficialSources(runtime, soundId);
-      return (
-        state.generation === generation &&
+      return state.generation === generation &&
         state.graph === graph &&
         state.officialConnected
-      );
+        ? null
+        : refused();
     } catch (error) {
       const isStale =
         state.generation !== generation ||
@@ -761,10 +1132,13 @@ class EffectsController {
         runtime,
         runtimeGeneration,
         wasOfficialConnected,
+        heldAsKey,
         isStale,
         error
       );
-      return false;
+      return error instanceof MonitoringChannelsFullError
+        ? "capacity"
+        : "startup-failed";
     } finally {
       if (state.officialConnectingGeneration === generation) {
         state.officialConnectingGeneration = null;
@@ -791,8 +1165,11 @@ class EffectsController {
       // biome-ignore lint/performance/noAwaitInLoops: registrations mutate shared runtime ownership in order
       await this.registerNonOfficialSource(soundId, state, state.generation);
     }
-    for (const [soundId, state] of this.states) {
-      runtime.setSidechainTarget(soundId, state.desiredSidechainSoundId);
+    for (const id of this.keys.keys()) {
+      if (targets.has(id)) {
+        // biome-ignore lint/performance/noAwaitInLoops: registrations mutate shared runtime ownership in order
+        await this.registerKey(runtime, id);
+      }
     }
   }
 
@@ -803,11 +1180,7 @@ class EffectsController {
   ): Promise<void> {
     const runtime = this.officialRuntime;
     const { graph } = state;
-    const isOfficialSidechain = [...this.states.values()].some(
-      (candidate) =>
-        candidate.officialConnected &&
-        candidate.desiredSidechainSoundId === soundId
-    );
+    const isOfficialSidechain = this.officialSidechainTargets().has(soundId);
     if (
       !(runtime && graph && isOfficialSidechain) ||
       state.officialConnected ||
@@ -841,17 +1214,22 @@ class EffectsController {
     this.officialRegisteredSoundIds.add(soundId);
   }
 
+  /** The sounds and keys official effects key from. */
   private officialSidechainTargets(): Set<string> {
-    return new Set(
-      [...this.states.values()]
-        .filter((state) => state.officialConnected)
-        .map((state) => state.desiredSidechainSoundId)
-        .filter((soundId): soundId is string => soundId !== null)
-    );
+    const targets = new Set<string>();
+    for (const state of this.states.values()) {
+      if (state.officialConnected) {
+        for (const id of audibleSidechainIds(state.effects)) {
+          targets.add(id);
+        }
+      }
+    }
+    return targets;
   }
 
   private pruneOfficialSidechainSources(
-    targets = this.officialSidechainTargets()
+    targets = this.officialSidechainTargets(),
+    frees = true
   ): void {
     const runtime = this.officialRuntime;
     if (!runtime) {
@@ -864,7 +1242,12 @@ class EffectsController {
         state.officialConnectingGeneration === null &&
         !targets.has(soundId)
       ) {
-        this.deleteOfficialSound(soundId, runtime);
+        this.deleteOfficialSound(soundId, runtime, undefined, frees);
+      }
+    }
+    for (const id of this.keys.keys()) {
+      if (this.officialRegisteredSoundIds.has(id) && !targets.has(id)) {
+        this.deleteOfficialSound(id, runtime, undefined, frees);
       }
     }
   }
@@ -910,9 +1293,7 @@ class EffectsController {
     graph.disconnect();
     state.graph = null;
     if (this.officialRegisteredSoundIds.has(soundId)) {
-      this.deleteOfficialSound(soundId);
-      state.officialConnected = false;
-      this.pruneOfficialSidechainSources();
+      this.releaseOfficialSound(soundId, state);
     }
   }
 
@@ -936,6 +1317,7 @@ class EffectsController {
       return;
     }
 
+    state.selected = backend;
     graph.switchTo(backend, () => {
       if (state.graph !== graph || state.generation !== generation) {
         return;
@@ -943,13 +1325,10 @@ class EffectsController {
       if (backend !== "compatibility" && backend !== "muted" && state.manager) {
         this.releaseCompatibilityRuntime(state);
       }
-      if (
-        backend !== "official" &&
-        this.officialRegisteredSoundIds.has(soundId)
-      ) {
-        this.deleteOfficialSound(soundId);
-        state.officialConnected = false;
-        this.pruneOfficialSidechainSources();
+      // Once off openDAW, its official registration becomes a key's; one
+      // that is a key's already stays as it is.
+      if (backend !== "official" && state.officialConnected) {
+        this.releaseOfficialSound(soundId, state);
         this.registerNonOfficialSource(soundId, state, generation).catch(
           (error: unknown) => {
             if (
@@ -973,21 +1352,21 @@ class EffectsController {
       return;
     }
     const generation = this.advance(state);
-    this.selectRuntime(soundId, state, generation)
+    this.select(soundId, state, generation)
       .then(() => {
         if (state.generation === generation) {
-          state.outcome = this.readyOutcome(state);
+          this.recordOutcome(soundId, state, this.readyOutcome(state));
         }
       })
       .catch((error: unknown) => {
         if (state.generation === generation) {
           this.switchBackend(soundId, state, "bypass", generation);
-          state.outcome = {
+          this.recordOutcome(soundId, state, {
             backend: "bypass",
             error: error instanceof Error ? error : new Error(String(error)),
             ready: true,
             status: "failed",
-          };
+          });
           captureError(error, {
             operation: "selectEffectsRuntime",
             surface: "ui",

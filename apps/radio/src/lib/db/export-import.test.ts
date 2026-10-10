@@ -935,9 +935,8 @@ describe("Node patch backups", () => {
     ).toMatchObject({ strip: { pan: 0, solo: false, trimDb: 0 } });
   });
 
-  test("a patch over the device budgets round-trips", async () => {
-    // Start from Multiple and the search bar add Stations past the budget;
-    // the compiler reports the extra ones, so an import must not refuse them.
+  test("a large Start from Multiple patch round-trips", async () => {
+    // Start from Multiple preserves every saved Station through export and import.
     const radios = Array.from({ length: 26 }, (_, index) =>
       stationRadio(`station-${index}`)
     );
@@ -1079,8 +1078,9 @@ describe("Node patch backups", () => {
         draft.player.mode = "node";
       });
       const snapshot = playingMode("node");
-      const audio = AudioManager.getInstance();
-      audio.setGlobalVolume(0.9);
+      const { getNodePlayback } = await import("@/lib/node-playback");
+      // Node applies its master at its outputs, which re-read the session.
+      const outputs = spyOn(getNodePlayback(), "masterVolumeChanged");
 
       apply(
         rawBackup({
@@ -1096,9 +1096,9 @@ describe("Node patch backups", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(getPlaybackSession("node")?.masterVolume).toBe(0.1);
-      expect(audio.getGlobalVolume()).toBe(0.1);
+      expect(outputs).toHaveBeenCalled();
+      outputs.mockRestore();
       snapshot.mockRestore();
-      AudioManager.resetInstance();
     }
   );
 

@@ -82,25 +82,26 @@ const { act, cleanup, fireEvent, render, within } = await import(
 );
 
 let MergeNodeBody: typeof import("./merge-node")["MergeNodeBody"];
+let SplitNode: typeof import("./split-nodes")["SplitNode"];
 let SplitInspectorParams: typeof import("./split-nodes")["SplitInspectorParams"];
+let NodeActionsProvider: typeof import("./node-actions")["NodeActionsProvider"];
 let branchSummary: typeof import("./branch-controls")["branchSummary"];
 let BranchControls: typeof import("./branch-controls")["BranchControls"];
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let nodeGraphSchema: typeof import("@/lib/node-graph/schema")["nodeGraphSchema"];
 let createNodeEffectConfig: typeof import("@/lib/node-graph/catalogue")["createNodeEffectConfig"];
 let setBandCount: typeof import("@/lib/node-graph/branches")["setBandCount"];
-let BUS_MERGE_MESSAGE: string;
 let moduleFrame: typeof import("./module-frame");
 
 beforeAll(async () => {
   ({ MergeNodeBody } = await import("./merge-node"));
-  ({ SplitInspectorParams } = await import("./split-nodes"));
+  ({ SplitNode, SplitInspectorParams } = await import("./split-nodes"));
+  ({ NodeActionsProvider } = await import("./node-actions"));
   ({ BranchControls, branchSummary } = await import("./branch-controls"));
   nodeStoreModule = await import("@/lib/node-graph/node-store");
   ({ nodeGraphSchema } = await import("@/lib/node-graph/schema"));
   ({ createNodeEffectConfig } = await import("@/lib/node-graph/catalogue"));
   ({ setBandCount } = await import("@/lib/node-graph/branches"));
-  ({ BUS_MERGE_MESSAGE } = await import("@/lib/node-graph/validate"));
   moduleFrame = await import("./module-frame");
 });
 
@@ -176,21 +177,28 @@ function splitNode(store: ReturnType<typeof createStore>) {
 }
 
 describe("Merge node", () => {
-  test("shows the compiler's in-lane badge", () => {
+  test("shows the compiler's badge when it closes a split", () => {
     const view = render(
-      <MergeNodeBody data={{ inputs: 2, role: "in-lane" }} onRemove={noop} />
+      <MergeNodeBody data={{ inputs: 2, role: "closes" }} onRemove={noop} />
     );
-    const badge = view.getByText("in-lane");
-    expect(badge.getAttribute("title")).toContain("one station");
-    expect(view.getByText("2 of 8 inputs")).toBeTruthy();
+    const badge = view.getByText("closes");
+    expect(badge.getAttribute("title")).toContain("branches");
+    expect(view.getByText("2 inputs")).toBeTruthy();
   });
 
-  test("a Merge summing stations reads bus, with the reason", () => {
+  test("a Merge summing stations reads sum", () => {
     const view = render(
-      <MergeNodeBody data={{ inputs: 2, role: "bus" }} onRemove={noop} />
+      <MergeNodeBody data={{ inputs: 9, role: "sum" }} onRemove={noop} />
     );
-    expect(view.getByText("bus").getAttribute("title")).toBe(BUS_MERGE_MESSAGE);
-    expect(view.queryByText("in-lane")).toBeNull();
+    expect(view.getByText("sum").getAttribute("title")).toContain("Mixes");
+    expect(view.getByText("9 inputs")).toBeTruthy();
+  });
+
+  test("labels one incoming audio cable in the singular", () => {
+    const view = render(
+      <MergeNodeBody data={{ inputs: 1, role: null }} onRemove={noop} />
+    );
+    expect(view.getByText("1 input")).toBeTruthy();
   });
 });
 
@@ -320,6 +328,71 @@ describe("branch tag", () => {
 });
 
 describe("split ports", () => {
+  test("13 outputs give the frame more height than two, and removing cables shrinks it", () => {
+    const effect = createNodeEffectConfig("fxComposite", "split");
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: { effect }, id: "split", position, type: "fxComposite" },
+        { data: {}, id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const previous = nodeStoreModule.nodeStore.state;
+    nodeStoreModule.loadNodeGraph(graph);
+    try {
+      const actions = {
+        inspectNode: noop,
+        removeNode: noop,
+      } as unknown as Parameters<typeof NodeActionsProvider>[0]["value"];
+      const view = render(
+        <NodeActionsProvider value={actions}>
+          <SplitNode
+            data={{ effect }}
+            deletable
+            draggable
+            dragging={false}
+            id="split"
+            isConnectable
+            positionAbsoluteX={0}
+            positionAbsoluteY={0}
+            selectable
+            selected={false}
+            type="fxComposite"
+            zIndex={0}
+          />
+        </NodeActionsProvider>
+      );
+      const frame = view.container.firstElementChild as HTMLElement;
+      const shortHeight = Number.parseFloat(frame.style.minHeight);
+      expect(shortHeight).toBeGreaterThan(0);
+
+      act(() => {
+        nodeStoreModule.loadNodeGraph(
+          nodeGraphSchema.parse({
+            ...graph,
+            edges: Array.from({ length: 12 }, (_, index) => ({
+              id: `split.branch-${index + 1}`,
+              source: "split",
+              sourceHandle: `out:audio:branch-${index + 1}`,
+              target: "speakers",
+              targetHandle: "in:audio:main",
+            })),
+          })
+        );
+      });
+      const tallHeight = Number.parseFloat(frame.style.minHeight);
+      expect(tallHeight).toBeGreaterThan(shortHeight);
+      expect(tallHeight / 14).toBeGreaterThanOrEqual(24);
+
+      act(() => nodeStoreModule.loadNodeGraph(graph));
+      expect(Number.parseFloat(frame.style.minHeight)).toBe(shortHeight);
+      view.unmount();
+    } finally {
+      nodeStoreModule.nodeStore.setState(() => previous);
+    }
+  });
+
   test("draw only on the canvas, and re-measure when a branch port comes or goes", () => {
     const { FlowPortsProvider, ModulePorts } = moduleFrame;
     const updateNodeInternals = mock((_id: string | string[]) => undefined);
@@ -359,6 +432,7 @@ describe("split ports", () => {
       );
     expect(handles()).toEqual([
       "in:audio:main",
+      "in:control:parameter",
       "out:audio:branch-1",
       "out:audio:branch-2",
     ]);
@@ -367,21 +441,21 @@ describe("split ports", () => {
       [...view.container.querySelectorAll("[data-handle]")].map((handle) =>
         handle.getAttribute("title")
       )
-    ).toEqual(["Input", "Branch 1", "Branch 2"]);
+    ).toEqual(["Input", "Parameter input", "Branch 1", "Branch 2"]);
     const measured = updateNodeInternals.mock.calls.length;
 
     view.rerender(
       <FlowPortsProvider value={ports}>
-        {split(["branch-1", "branch-2", "branch-3"])}
+        {split(["branch-1", "branch-2", "branch-5"])}
       </FlowPortsProvider>
     );
-    expect(handles()).toContain("out:audio:branch-3");
+    expect(handles()).toContain("out:audio:branch-5");
     expect(updateNodeInternals.mock.calls.slice(measured)).toEqual([["split"]]);
 
     // Nothing changed, so nothing to re-measure.
     view.rerender(
       <FlowPortsProvider value={ports}>
-        {split(["branch-1", "branch-2", "branch-3"])}
+        {split(["branch-1", "branch-2", "branch-5"])}
       </FlowPortsProvider>
     );
     expect(updateNodeInternals.mock.calls.length).toBe(measured + 1);

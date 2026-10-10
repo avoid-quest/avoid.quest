@@ -97,7 +97,9 @@ describe("createExternalPlatformSearchWorkflow", () => {
       adapters: {
         bandcamp: {
           search: mock(async () => {
-            await wait(10);
+            // A timer turn runs after every pending promise callback, so the
+            // immediate YouTube results always land first.
+            await wait(0);
             return [
               {
                 artist: "Bandcamp Artist",
@@ -112,16 +114,13 @@ describe("createExternalPlatformSearchWorkflow", () => {
         radiogarden: { search: mock(async () => []) },
         soundcloud: { search: mock(async () => []) },
         youtube: {
-          search: mock(async () => {
-            await wait(1);
-            return [
-              {
-                author: "YouTube Artist",
-                title: "YouTube Track",
-                videoId: "yt1",
-              },
-            ];
-          }),
+          search: mock(async () => [
+            {
+              author: "YouTube Artist",
+              title: "YouTube Track",
+              videoId: "yt1",
+            },
+          ]),
         },
       },
       allProviderResultsMode: "append-by-completion",

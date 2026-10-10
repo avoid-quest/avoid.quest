@@ -1,21 +1,12 @@
-export function supportsMediaElementVolumeControl(): boolean {
-  if (typeof globalThis.Audio === "undefined") {
-    return false;
-  }
-  const audio = new Audio();
-  const originalVolume = audio.volume;
-  const probeVolume = originalVolume === 0.5 ? 0.25 : 0.5;
-
-  try {
-    audio.volume = probeVolume;
-    return audio.volume === probeVolume;
-  } catch {
-    return false;
-  } finally {
-    try {
-      audio.volume = originalVolume;
-    } catch {
-      // Some browsers expose a read-only media volume property.
-    }
-  }
+/**
+ * iOS locks media volume to the device buttons. WebKit accepts volume writes
+ * and restores them later, so only `:volume-locked` reports the lock.
+ */
+export function isMediaVolumeLocked(): boolean {
+  return (
+    typeof document !== "undefined" &&
+    typeof CSS !== "undefined" &&
+    CSS.supports("selector(:volume-locked)") &&
+    document.createElement("audio").matches(":volume-locked")
+  );
 }

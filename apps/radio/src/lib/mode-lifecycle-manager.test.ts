@@ -21,6 +21,7 @@ import {
   resetPlaybackLifecycleState,
 } from "./mode-lifecycle-manager";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
+import { getNodePlayback } from "./node-playback";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 async function resetPlaybackSessions() {
@@ -116,6 +117,9 @@ function getActivatedSoundId(
   return optionsOrSoundId?.soundId ?? `sound:${channelId}`;
 }
 
+/** Contexts whose Node playback may be live on the shared node store. */
+const testContexts: PlaybackActionContext[] = [];
+
 function createModeLifecycleTestContext() {
   const audioEngine = {
     playback: {
@@ -133,15 +137,23 @@ function createModeLifecycleTestContext() {
     },
   } satisfies AudioEngineFacade;
 
-  return {
+  const context = {
     audio: {
       cleanupSound: mock((_soundId: string) => undefined),
+      discardFailedEffectsRuntime: () => undefined,
       hasSound: mock((_soundId: string) => false),
       pauseSound: mock((_soundId: string) => undefined),
       playSound: mock(async (_soundId: string, _volume: number) => undefined),
+      reconcileEffects: mock(async () => ({
+        backend: null,
+        ready: false,
+        status: "inactive" as const,
+      })),
       setGlobalVolume: mock((_volume: number) => undefined),
       setMainDelay: mock((_delayMs: number) => undefined),
       setVolume: mock((_soundId: string, _volume: number) => undefined),
+      subscribeEffectsCapacityFreed: () => () => undefined,
+      subscribeEffectsRuntimeOutcome: () => () => undefined,
     } as unknown as AudioManager,
     audioEngine,
     channels: {
@@ -171,6 +183,8 @@ function createModeLifecycleTestContext() {
     resetAudioManager: mock(() => undefined),
     resumeAudioContext: mock(async () => undefined),
   } satisfies PlaybackActionContext;
+  testContexts.push(context);
+  return context;
 }
 
 beforeEach(async () => {
@@ -180,6 +194,10 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // A Node mode left active would play the next file's patches.
+  await Promise.all(
+    testContexts.splice(0).map((ctx) => getNodePlayback({ ctx }).deactivate())
+  );
   await resetPlaybackSessions();
   await resetSettings();
   resetAllPlaybackRuntime();
@@ -225,7 +243,7 @@ describe("mode lifecycle manager", () => {
       "node",
       "n:station-1",
       expect.objectContaining({ id: "station-1" }),
-      "node:n:station-1"
+      { ownsEffects: true, soundId: "node:n:station-1", sourceKind: "station" }
     );
     expect(context.audio.playSound).not.toHaveBeenCalled();
     expect(commitMode).toHaveBeenCalledWith("node");
@@ -295,8 +313,8 @@ describe("mode lifecycle manager", () => {
     const context = createModeLifecycleTestContext();
     const liveSoundIds = new Set<string>();
     context.channels.activate = mock(
-      (_sessionId, channelId, _radio, soundId) => {
-        const id = String(soundId);
+      (_sessionId, channelId, _radio, optionsOrSoundId) => {
+        const id = getActivatedSoundId(channelId, optionsOrSoundId);
         liveSoundIds.add(id);
         setPlaybackChannelRuntime(channelId, () => ({ soundId: id }));
         return id;

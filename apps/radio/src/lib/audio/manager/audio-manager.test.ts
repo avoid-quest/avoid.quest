@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, jest, mock, test } from "bun:test";
 import { installBrowser } from "../playback/fake-media-browser";
 import type { AudioState, PlaybackSource } from "../playback/index.js";
 import {
@@ -124,12 +124,455 @@ const station = {
   name: "Station",
   streamUrl: "https://radio.example/station.mp3",
 };
+const providerTrack = {
+  ...station,
+  platformMetadata: {
+    itemType: "track" as const,
+    platform: "soundcloud" as const,
+    url: "https://soundcloud.com/artist/track",
+  },
+};
 
 afterEach(() => {
   AudioManager.resetInstance();
+  jest.useRealTimers();
 });
 
 describe("AudioManager", () => {
+  test.each([
+    [Number.POSITIVE_INFINITY, 1],
+    [120, 1],
+    [120, 2],
+  ])(
+    "a live stream reloads after duration %s and transient media error %s",
+    async (duration, code) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          station,
+          "single:station",
+          "native"
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.emit("canplay");
+        await starting;
+        audio.emit("playing");
+        audio.duration = duration;
+        audio.error = { code } as MediaError;
+        audio.emit("error");
+        audio.pause();
+        const playCount = audio.playPositions.length;
+
+        expect(states.at(-1)?.error).toBeNull();
+        expect(getRegistry(manager).get(soundId)?.playbackSource?.status).toBe(
+          "buffering"
+        );
+        jest.advanceTimersByTime(6000);
+        jest.advanceTimersByTime(0);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([
+          station.streamUrl,
+          station.streamUrl,
+        ]);
+        audio.error = null;
+        audio.emit("canplay");
+        await flushMicrotasks();
+        expect(audio.playPositions).toHaveLength(playCount + 1);
+        expect(audio.paused).toBe(false);
+        audio.emit("playing");
+        expect(states.at(-1)).toMatchObject({
+          error: null,
+          isBuffering: false,
+          isPlaying: true,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each([
+    ["provider track", providerTrack, undefined],
+    ["provider in a Station", providerTrack, "station"],
+    ["imported file without metadata", station, "media"],
+  ] as const)(
+    "%s still requests URL renewal at the interrupted position",
+    async (_name, radio, sourceKind) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          radio,
+          "track",
+          "native",
+          sourceKind
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.emit("canplay");
+        await starting;
+        audio.emit("playing");
+        audio.duration = 120;
+        audio.currentTime = 42;
+        audio.error = { code: MediaError.MEDIA_ERR_NETWORK } as MediaError;
+        audio.emit("error");
+
+        expect(
+          states.some(
+            (state) =>
+              state.error?.code === "STREAM_INTERRUPTED" &&
+              state.error.position === 42
+          )
+        ).toBe(true);
+        expect(states.at(-1)?.error).toMatchObject({ recoveryPending: true });
+        jest.advanceTimersByTime(6000);
+        jest.advanceTimersByTime(0);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([radio.streamUrl]);
+
+        const renewedUrl = "https://media.example/renewed.mp3";
+        const refreshing = manager.refreshStreamUrl(soundId, renewedUrl, 42);
+        await flushMicrotasks();
+        audio.error = null;
+        audio.emit("canplay");
+        await refreshing;
+        audio.emit("playing");
+        expect(audio.playPositions.at(-1)).toBe(42);
+        expect(states.at(-1)).toMatchObject({ error: null, isPlaying: true });
+
+        // Renewal must preserve the source's finite-media classification.
+        audio.error = { code: MediaError.MEDIA_ERR_NETWORK } as MediaError;
+        audio.emit("error");
+        expect(states.at(-1)?.error).toMatchObject({ recoveryPending: true });
+        jest.advanceTimersByTime(6000);
+        jest.advanceTimersByTime(0);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([radio.streamUrl, renewedUrl]);
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each(["before reconnect", "while reconnecting"])(
+    "pausing %s cancels live recovery and ignores late playback events",
+    async (phase) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          station,
+          "single:station",
+          "native"
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.emit("canplay");
+        await starting;
+        audio.emit("playing");
+        audio.duration = 120;
+        audio.error = { code: MediaError.MEDIA_ERR_ABORTED } as MediaError;
+        audio.emit("error");
+        if (phase === "while reconnecting") {
+          jest.advanceTimersByTime(6000);
+          jest.advanceTimersByTime(0);
+          await flushMicrotasks();
+          expect(audio.loadSources).toEqual([
+            station.streamUrl,
+            station.streamUrl,
+          ]);
+        }
+
+        manager.pauseSound(soundId);
+        const playCount = audio.playPositions.length;
+        audio.emit("abort");
+        audio.error = null;
+        audio.emit("canplay");
+        audio.emit("playing");
+        jest.advanceTimersByTime(60_000);
+        await flushMicrotasks();
+
+        expect(audio.loadSources).toHaveLength(
+          phase === "while reconnecting" ? 2 : 1
+        );
+        expect(audio.playPositions).toHaveLength(playCount);
+        expect(audio.paused).toBe(true);
+        expect(states.some((state) => state.error)).toBe(false);
+        expect(states.at(-1)).toMatchObject({
+          isBuffering: false,
+          isLoading: false,
+          isPlaying: false,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test.each([2, 3])(
+    "a live station's initial media error %s remains a reported start failure",
+    async (code) => {
+      jest.useFakeTimers();
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser } = harness;
+        const soundId = manager.createSound(
+          station,
+          "single:station",
+          "native"
+        );
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        const starting = manager
+          .playSound(soundId)
+          .catch((error: unknown) => error);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.duration = 120;
+        audio.error = { code } as MediaError;
+        audio.emit("error");
+
+        expect(await starting).toBeInstanceOf(Error);
+        expect(
+          states.some(
+            (state) =>
+              state.error?.duringStart &&
+              state.error.code === "STREAM_FETCH_FAILED"
+          )
+        ).toBe(true);
+        jest.advanceTimersByTime(60_000);
+        await flushMicrotasks();
+        expect(audio.loadSources).toEqual([station.streamUrl]);
+        expect(audio.paused).toBe(true);
+        expect(states.at(-1)).toMatchObject({
+          isBuffering: false,
+          isLoading: false,
+          isPlaying: false,
+        });
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test("fresh playback awaits the effects graph even when media playback is ready", async () => {
+    const harness = createMediaPlaybackHarness();
+    const graph = Promise.withResolvers<boolean>();
+    try {
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = () => graph.promise;
+      const soundId = manager.createSound(station, "node:n:video");
+      let settled = false;
+      const playing = manager.playSound(soundId).then(() => {
+        settled = true;
+      });
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await flushMicrotasks();
+      expect(browser.audio().paused).toBe(false);
+      expect(settled).toBe(false);
+      graph.resolve(true);
+      await playing;
+      expect(settled).toBe(true);
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test("unsupported Safari live radio leaves the Node sound stopped", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      Object.defineProperty(navigator, "userAgent", {
+        value:
+          "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/27.0 Safari/605.1.15",
+      });
+      const { manager, effects } = harness;
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(station, "node:n:radio");
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+      await expect(manager.playSound(soundId)).rejects.toMatchObject({
+        code: "UNSUPPORTED_RADIO_GRAPH",
+        expected: true,
+      });
+      expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+      expect(effects.connectGraph).not.toHaveBeenCalled();
+      expect(states.at(-1)).toMatchObject({
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+      });
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test("Safari plays an imported finite File without metadata and still rejects HLS refresh", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      Object.defineProperty(navigator, "userAgent", {
+        value: "AppleWebKit/605.1.15 Version/27.0 Safari/605.1.15",
+      });
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(
+        { name: "Imported MP3", streamUrl: "https://media.example/track.mp3" },
+        "node:n:file",
+        "audio-graph",
+        "media"
+      );
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await starting;
+      expect(browser.audio().paused).toBe(false);
+      const refreshing = manager.refreshStreamUrl(
+        soundId,
+        "https://media.example/track-renewed.mp3"
+      );
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await refreshing;
+      expect(browser.audio().src).toBe(
+        "https://media.example/track-renewed.mp3"
+      );
+      await expect(
+        manager.refreshStreamUrl(
+          soundId,
+          "https://media.example/live",
+          undefined,
+          "hls"
+        )
+      ).rejects.toMatchObject({ code: "UNSUPPORTED_RADIO_GRAPH" });
+    } finally {
+      harness.restore();
+    }
+  });
+
+  test.each(["audio-graph", "native"] as const)(
+    "Safari HLS refresh preserves a rejected graph's playback and permits native playback (%s)",
+    async (mode) => {
+      const harness = createMediaPlaybackHarness();
+      try {
+        const { manager, browser, effects } = harness;
+        Object.defineProperty(navigator, "userAgent", {
+          value: "AppleWebKit/605.1.15",
+        });
+        effects.connectGraph = mock(async () => true);
+        const soundId = manager.createSound(providerTrack, "track", mode);
+        const starting = manager.playSound(soundId);
+        await flushMicrotasks();
+        const audio = browser.audio();
+        audio.nativeHlsSupport = "probably";
+        audio.emit("canplay");
+        await starting;
+        const previousRadio = manager.getSoundRadio(soundId);
+        const previousSource =
+          getRegistry(manager).get(soundId)?.playbackSource;
+        const states: AudioState[] = [];
+        manager.subscribe(soundId, (state) => states.push(state));
+        audio.emit("playing");
+        const refreshing = manager.refreshStreamUrl(
+          soundId,
+          "https://cf-hls-media.sndcdn.com/extensionless",
+          undefined,
+          "hls"
+        );
+        if (mode === "audio-graph") {
+          await expect(refreshing).rejects.toMatchObject({
+            code: "UNSUPPORTED_RADIO_GRAPH",
+            expected: true,
+          });
+          expect(audio.loadSources).not.toContain(
+            "https://cf-hls-media.sndcdn.com/extensionless"
+          );
+          expect(manager.getSoundRadio(soundId)).toBe(previousRadio);
+          expect(audio.paused).toBe(false);
+          expect(getRegistry(manager).get(soundId)?.playbackSource).toBe(
+            previousSource
+          );
+          expect(states.at(-1)).toMatchObject({
+            error: null,
+            isBuffering: false,
+            isLoading: false,
+            isPlaying: true,
+          });
+          // The rejected stream never shows as loading.
+          expect(states.map((state) => state.isLoading)).not.toContain(true);
+          manager.pauseSound(soundId);
+          await manager.playSound(soundId);
+          expect(audio.paused).toBe(false);
+          expect(audio.loadSources).toEqual([providerTrack.streamUrl]);
+        } else {
+          await flushMicrotasks();
+          audio.emit("canplay");
+          await refreshing;
+          expect(audio.paused).toBe(false);
+          expect(audio.src).toBe(
+            "https://cf-hls-media.sndcdn.com/extensionless"
+          );
+        }
+      } finally {
+        harness.restore();
+      }
+    }
+  );
+
+  test("an incompatible Safari refresh preserves an unstarted sound's configuration", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, browser, effects } = harness;
+      Object.defineProperty(navigator, "userAgent", {
+        value: "AppleWebKit/605.1.15",
+      });
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(providerTrack, "track");
+      const previousRadio = manager.getSoundRadio(soundId);
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+
+      await expect(
+        manager.refreshStreamUrl(
+          soundId,
+          "https://cf-hls-media.sndcdn.com/extensionless",
+          undefined,
+          "hls"
+        )
+      ).rejects.toMatchObject({
+        code: "UNSUPPORTED_RADIO_GRAPH",
+        expected: true,
+      });
+
+      expect(manager.getSoundRadio(soundId)).toBe(previousRadio);
+      expect(getRegistry(manager).get(soundId)?.playbackSource).toBeNull();
+      expect(effects.connectGraph).not.toHaveBeenCalled();
+      expect(states).toEqual([]);
+
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      browser.audio().emit("canplay");
+      await starting;
+      expect(browser.audio().loadSources).toEqual([providerTrack.streamUrl]);
+      expect(browser.audio().paused).toBe(false);
+    } finally {
+      harness.restore();
+    }
+  });
+
   test("a fresh source's graph-start failure cleans up without advancing the playlist", async () => {
     const harness = createMediaPlaybackHarness();
     try {
@@ -575,7 +1018,7 @@ describe("AudioManager", () => {
     "a stream refresh reports playing only when its source plays on (%p)",
     async (playsOn) => {
       const manager = AudioManager.getInstance();
-      const soundId = manager.createSound(station, "node:n:track");
+      const soundId = manager.createSound(providerTrack, "node:n:track");
       const instance = getRegistry(manager).get(soundId);
       if (!instance) {
         throw new Error("sound was not created");
@@ -605,7 +1048,7 @@ describe("AudioManager", () => {
 
   test("a renewed stream load rejection retains its cause and promise reporting owner", async () => {
     const manager = AudioManager.getInstance();
-    const soundId = manager.createSound(station, "node:n:track");
+    const soundId = manager.createSound(providerTrack, "node:n:track");
     const instance = getRegistry(manager).get(soundId);
     if (!instance) {
       throw new Error("sound was not created");

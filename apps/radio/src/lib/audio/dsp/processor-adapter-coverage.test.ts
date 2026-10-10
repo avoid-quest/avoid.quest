@@ -171,6 +171,34 @@ describe("worklet effect adapter", () => {
     setFeedback.mockRestore();
   });
 
+  test("shapes through a saved Waveshaper's equation, drive, output and mix", () => {
+    const source = new EffectSource("waveshaper", 48_000);
+    const config = {
+      ...createDefaultEffectConfig("waveshaper", "waveshaper", 0),
+      // The saved equation wins over the legacy curve key.
+      curve: "tanh",
+      deviceInputGain: 20,
+      deviceOutputGain: -6,
+      enabled: true,
+      equation: "hardclip",
+      mix: 0.75,
+    };
+    source.addEffect(config.id, config.type, config, config.order);
+
+    const drive = 10;
+    const output = 10 ** (-6 / 20);
+    const expected = (x: number) =>
+      x * 0.25 + Math.max(-1, Math.min(1, x * drive)) * output * 0.75;
+    for (const x of [-0.5, -0.05, 0, 0.05, 0.5]) {
+      expect(processBlock(source, x)[64]).toBeCloseTo(expected(x), 5);
+    }
+    // Driven past full scale, the wet half clips flat; below it, it stays linear.
+    expect(processBlock(source, 0.5)[64]).toBeCloseTo(
+      processBlock(source, 0.2)[64] + 0.3 * 0.25,
+      5
+    );
+  });
+
   test("maps official schema keys into the radio compatibility processors", () => {
     const source = new EffectSource("mixed", 48_000);
     source.addEffect(
@@ -227,13 +255,6 @@ describe("worklet effect adapter", () => {
       {
         ...createDefaultEffectConfig("gate", "gate", 5),
         return: 6.6,
-      },
-      {
-        ...createDefaultEffectConfig("waveshaper", "waveshaper", 6),
-        deviceInputGain: 17,
-        deviceOutputGain: -7,
-        equation: "hardclip",
-        mix: 0.68,
       },
       {
         ...createDefaultEffectConfig("maximizer", "maximizer", 7),
@@ -304,10 +325,6 @@ describe("worklet effect adapter", () => {
     });
     expect(getProcessor(source, "gate")).toMatchObject({
       returnAmount: 6.6,
-    });
-    expect(getProcessor(source, "waveshaper")).toMatchObject({
-      mix: 0.68,
-      shape: "hardclip",
     });
     expect(getProcessor(source, "maximizer")).toMatchObject({
       lookahead: 0,

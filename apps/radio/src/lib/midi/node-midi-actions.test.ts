@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { getEffectMidiParamDefs } from "@/lib/audio/dsp/effects/param-traversal";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 import { removeNodes, setEffectParams } from "@/lib/node-graph/graph-edits";
+import { setModulatorParams } from "@/lib/node-graph/modulation-parameters";
 import {
   commitNodeGraph,
   createNodeStore,
@@ -220,6 +221,36 @@ describe("createNodeMidiActions", () => {
     expect(effectOf(store, "comp").enabled).toBe(!enabled);
   });
 
+  test("an FX frequency knob spreads by ratio, as its knob does", () => {
+    const graph = buildGraph();
+    const store = createNodeStore({
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        {
+          data: { effect: createNodeEffectConfig("revamp", "eq") },
+          id: "eq",
+          position,
+          type: "revamp",
+        },
+      ],
+    });
+    const actions = createNodeMidiActions(
+      store.state.graph as NodeGraph,
+      storeCommit(store)
+    );
+    const byTarget = new Map(actions.map((a) => [a.targetId, a]));
+
+    byTarget.get("node:eq:midBellFrequency")?.dispatch(0.5);
+    expect(effectOf(store, "eq").midBellFrequency).toBeCloseTo(
+      Math.sqrt(20 * 20_000),
+      6
+    );
+    // Gain stays linear: three quarters of -40..40 dB.
+    byTarget.get("node:eq:midBellGain")?.dispatch(0.75);
+    expect(effectOf(store, "eq").midBellGain).toBeCloseTo(20, 6);
+  });
+
   test("a value past 0..1 from a mapping's transform stays in the param's range", () => {
     const store = createNodeStore(buildGraph());
     const actions = createNodeMidiActions(
@@ -243,6 +274,54 @@ describe("createNodeMidiActions", () => {
 
     // The patch stays one the strict FX schema reads.
     expect(nodeGraphSchema.safeParse(store.state.graph).success).toBe(true);
+  });
+
+  test("Filter resonance spans the logarithmic 0.1–30 range", () => {
+    const store = createNodeStore(buildGraph());
+    const actions = createNodeMidiActions(
+      store.state.graph as NodeGraph,
+      storeCommit(store)
+    );
+    const resonance = actions.find((action) => action.targetId === "node:lp:Q");
+    expect(resonance?.range).toEqual({ max: 30, min: 0.1, step: 0.01 });
+    resonance?.dispatch(0.5);
+    expect(
+      store.state.graph?.nodes.find((node) => node.id === "lp")?.data
+    ).toMatchObject({ Q: expect.closeTo(Math.sqrt(3), 6) });
+    resonance?.dispatch(1);
+    expect(
+      store.state.graph?.nodes.find((node) => node.id === "lp")?.data
+    ).toMatchObject({ Q: 30 });
+  });
+
+  test("MIDI hold range grows with envelope stages and survives storage parsing", () => {
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data: {}, id: "env", position, type: "multiEnvelope" },
+        { id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const points = Array.from({ length: 10 }, (_, index) => ({
+      bend: 0,
+      time: index / 9,
+      value: index / 9,
+    }));
+    const extended = setModulatorParams(graph, "env", { points });
+    expect(nodeMidiSignature(extended)).not.toBe(nodeMidiSignature(graph));
+    const store = createNodeStore(extended);
+    const hold = createNodeMidiActions(extended, storeCommit(store)).find(
+      (action) => action.targetId === "node:env:sustainPoint"
+    );
+    expect(hold?.range).toEqual({ max: 8, min: -1, step: 1 });
+    hold?.dispatch(1);
+    expect(
+      nodeGraphSchema.parse(store.state.graph).nodes[0]?.data
+    ).toMatchObject({
+      points,
+      sustainPoint: 8,
+    });
   });
 
   test("the signature follows the patch's shape, not its params", () => {

@@ -11,14 +11,11 @@ import {
 } from "./schema";
 import {
   analyseGraph,
-  BUS_MERGE_MESSAGE,
   type Connection,
   connectionVerdict,
-  deviceOutVerdict,
   findCycles,
   type Issue,
   type IssueCode,
-  NODE_BUDGETS,
   parseHandleId,
   SAME_SIDE_MESSAGE,
   type ValidateOptions,
@@ -31,7 +28,7 @@ type EdgeInput = NodeGraphInput["edges"][number];
 
 const position = { x: 0, y: 0 };
 /** Words a refusal should never use: engine terms and unshipped nodes. */
-const JARGON = /patch \w+ into|sidechain|Follower/i;
+const JARGON = /patch \w+ into|sidechain/i;
 
 function station(id: string): NodeInput {
   return {
@@ -175,11 +172,49 @@ describe("validate: the migrated Multiple layout", () => {
     const nodes = [station("a"), station("b"), station("c"), speakers];
     const edges = ["a", "b", "c"].map((id) => audio(id, "speakers"));
     expect(check(nodes, edges)).toEqual([]);
-    expect(check(nodes, edges, { profile: "mobile" })).toEqual([]);
   });
 });
 
 describe("validate: port kinds", () => {
+  test("parameter cable identity uses the effective parameter, not the cable id", () => {
+    const patch = graph(
+      [node("macro", "macro"), node("filter", "filter")],
+      [
+        control("macro", "filter", "parameter", "default"),
+        {
+          ...control("macro", "filter", "parameter", "same"),
+          parameter: "frequency",
+        },
+        { ...control("macro", "filter", "parameter", "other"), parameter: "Q" },
+      ]
+    );
+    const analysis = analyseGraph(patch);
+    expect(codes(analysis.issues)).toEqual(["duplicate-edge@same"]);
+    expect(analysis.wired.map(({ edge }) => edge.id)).toEqual([
+      "default",
+      "other",
+    ]);
+    const withoutDuplicate = { ...patch, edges: patch.edges.slice(0, 1) };
+    expect(
+      connectionVerdict(withoutDuplicate, {
+        parameter: "Q",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    ).toEqual({ ok: true });
+    expect(
+      connectionVerdict(withoutDuplicate, {
+        parameter: "frequency",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    ).toMatchObject({ code: "duplicate-edge", ok: false });
+  });
+
   test("audio → audio connects", () => {
     expect(
       check(
@@ -203,7 +238,7 @@ describe("validate: port kinds", () => {
     ).toEqual([]);
   });
 
-  test("audio → sidechain is refused from a bus", () => {
+  test("audio → sidechain connects from a sum", () => {
     const nodes = [
       station("a"),
       station("b"),
@@ -220,12 +255,10 @@ describe("validate: port kinds", () => {
       audio("comp", "speakers"),
       key("bus", "comp"),
     ];
-    expect(check(nodes, edges, { release: "v2" })).toEqual([
-      "sidechain-source@bus->comp",
-    ]);
+    expect(check(nodes, edges)).toEqual([]);
   });
 
-  test("audio → sidechain is refused from a node outside any lane", () => {
+  test("audio → sidechain connects from a loose node", () => {
     expect(
       check(
         [
@@ -240,10 +273,10 @@ describe("validate: port kinds", () => {
           key("loose", "comp"),
         ]
       )
-    ).toEqual(["sidechain-source@loose->comp"]);
+    ).toEqual([]);
   });
 
-  test("audio → sidechain is refused from a node after the station", () => {
+  test("audio → sidechain connects from a node after the station", () => {
     expect(
       check(
         [
@@ -261,10 +294,10 @@ describe("validate: port kinds", () => {
           key("level", "comp"),
         ]
       )
-    ).toEqual(["sidechain-source@level->comp"]);
+    ).toEqual([]);
   });
 
-  test("a key into FX on a bus is refused", () => {
+  test("a key into shared FX connects", () => {
     const nodes = [
       station("a"),
       station("b"),
@@ -280,9 +313,7 @@ describe("validate: port kinds", () => {
       audio("comp", "speakers"),
       key("talk", "comp"),
     ];
-    expect(check(nodes, edges, { release: "v2" })).toEqual([
-      "sidechain-target@talk->comp",
-    ]);
+    expect(check(nodes, edges)).toEqual([]);
   });
 
   test("control → control connects", () => {
@@ -464,10 +495,7 @@ describe("validate: port kinds", () => {
   test("ports that land later are refused until their release", () => {
     const nodes = [station("a"), node("cut", "filter"), node("lfo", "lfo")];
     const edges = [control("lfo", "cut", "cutoff")];
-    expect(check(nodes, edges)).toEqual([
-      "unshipped@lfo",
-      "unshipped@lfo->cut",
-    ]);
+    expect(check(nodes, edges)).toEqual(["unshipped@lfo->cut"]);
     expect(check(nodes, edges, { release: "v2" })).toEqual([]);
   });
 
@@ -482,18 +510,16 @@ describe("validate: port kinds", () => {
 });
 
 describe("validate: per-port max", () => {
-  test("an FX input takes one cable", () => {
-    const issues = validate(
-      graph(
+  test("an FX input sums several cables", () => {
+    expect(
+      check(
         [station("a"), station("b"), fx("verb", "cheapReverb"), speakers],
         [audio("a", "verb"), audio("b", "verb"), audio("verb", "speakers")]
       )
-    );
-    expect(codes(issues)).toEqual(["port-max@b->verb"]);
-    expect(issues[0]?.message).toBe("This input takes one cable");
+    ).toEqual([]);
   });
 
-  test("a key input takes one cable", () => {
+  test("a key input sums several cables", () => {
     expect(
       check(
         [
@@ -510,21 +536,18 @@ describe("validate: per-port max", () => {
           key("t2", "comp"),
         ]
       )
-    ).toEqual(["port-max@t2->comp"]);
+    ).toEqual([]);
   });
 
-  test("Merge takes eight inputs", () => {
+  test("Merge accepts more than eight inputs", () => {
     const sources = range(9).map((index) => station(`s${index}`));
     const edges = range(9).map((index) => audio(`s${index}`, "mix"));
-    const issues = validate(
-      graph(
+    expect(
+      check(
         [...sources, node("mix", "merge"), speakers],
         [...edges, audio("mix", "speakers")]
-      ),
-      { release: "v2" }
-    );
-    expect(codes(issues)).toEqual(["port-max@s9->mix"]);
-    expect(issues[0]?.message).toBe("This input is full (8 cables)");
+      )
+    ).toEqual([]);
   });
 
   test("Speakers and outputs take any number of cables", () => {
@@ -553,16 +576,16 @@ describe("validate: one of a kind", () => {
     ]);
   });
 
-  test("one Filter per lane", () => {
+  test("several Filters can share a path", () => {
     expect(
       check(
         [station("a"), node("f1", "filter"), node("f2", "filter"), speakers],
         [audio("a", "f1"), audio("f1", "f2"), audio("f2", "speakers")]
       )
-    ).toEqual(["lane-filter@f2"]);
+    ).toEqual([]);
   });
 
-  test("one Filter per lane, parallel branches included", () => {
+  test("Filters on parallel branches validate; the compiler places them", () => {
     expect(
       check(
         [
@@ -582,7 +605,7 @@ describe("validate: one of a kind", () => {
           audio("join", "speakers"),
         ]
       )
-    ).toEqual(["lane-filter@f2", "native-position@f1", "native-position@f2"]);
+    ).toEqual([]);
   });
 
   test("a Filter in each lane is fine", () => {
@@ -605,7 +628,7 @@ describe("validate: one of a kind", () => {
     ).toEqual([]);
   });
 
-  test("one Pan per lane", () => {
+  test("several Pan nodes can share a path, after FX too", () => {
     expect(
       check(
         [
@@ -622,10 +645,10 @@ describe("validate: one of a kind", () => {
           audio("p2", "speakers"),
         ]
       )
-    ).toEqual(["lane-pan@p2", "native-position@p2"]);
+    ).toEqual([]);
   });
 
-  test("one key per lane", () => {
+  test("several effects on one path can have independent keys", () => {
     const nodes = [
       station("music"),
       station("talk"),
@@ -640,9 +663,7 @@ describe("validate: one of a kind", () => {
       key("talk", "comp"),
       key("talk", "gate", "talk->gate"),
     ];
-    const issues = validate(graph(nodes, edges));
-    expect(codes(issues)).toEqual(["lane-key@gate"]);
-    expect(issues[0]?.message).toBe("One key per lane");
+    expect(validate(graph(nodes, edges))).toEqual([]);
   });
 
   test("a keyed FX in each lane is fine", () => {
@@ -702,19 +723,12 @@ describe("validate: audio inputs and output devices", () => {
     expect(connectionVerdict(more, plug("c", "desk"))).toEqual({ ok: true });
   });
 
-  test("a second Output device on the same device is refused", () => {
+  test("several Output device nodes can route to the same physical device", () => {
     const twice = graph([
       desk,
       node("booth", "deviceOut", { deviceId: "usb" }),
     ]);
-    expect(check(twice.nodes)).toEqual(["one-device-out@booth"]);
-    expect(deviceOutVerdict(io, "usb")).toEqual({
-      code: "one-device-out",
-      message: "This output already has a module",
-      ok: false,
-    });
-    expect(deviceOutVerdict(io, "usb", "desk")).toEqual({ ok: true });
-    expect(deviceOutVerdict(io, "hdmi")).toEqual({ ok: true });
+    expect(check(twice.nodes)).toEqual([]);
   });
 
   test("Output devices with no device picked yet don't clash", () => {
@@ -725,7 +739,7 @@ describe("validate: audio inputs and output devices", () => {
 });
 
 describe("validate: releases", () => {
-  test("an in-lane Merge ships in v1, a bus Merge waits for v2", () => {
+  test("a branch Merge and a Merge summing stations both ship in v1", () => {
     const inLane = [
       [
         station("a"),
@@ -752,8 +766,7 @@ describe("validate: releases", () => {
       audio("b", "join"),
       audio("join", "speakers"),
     ];
-    expect(check(bus, busEdges)).toEqual(["unshipped@join"]);
-    expect(check(bus, busEdges, { release: "v2" })).toEqual([]);
+    expect(check(bus, busEdges)).toEqual([]);
   });
 });
 
@@ -918,9 +931,8 @@ describe("validate: feedback", () => {
     ).toEqual(["feedback-needs-loop@trim-back", "feedback-needs-loop@back"]);
   });
 
-  test("a key from downstream of its FX closes no cycle", () => {
-    // The key taps its lane before the FX, so no audio runs back: only its
-    // source is refused, as every key not straight from a Station is.
+  test("a downstream key closes an audio feedback cycle", () => {
+    // The key carries what its point carries, so it feeds the FX back.
     expect(
       check(
         [
@@ -936,10 +948,10 @@ describe("validate: feedback", () => {
           key("g", "comp"),
         ]
       )
-    ).toEqual(["sidechain-source@g->comp"]);
+    ).toEqual(["feedback-needs-loop@g->comp"]);
   });
 
-  test("two lanes keying each other close no cycle", () => {
+  test("mutually keyed effect outputs form an audio feedback cycle", () => {
     expect(
       check(
         [
@@ -958,7 +970,7 @@ describe("validate: feedback", () => {
           key("cb", "ca"),
         ]
       )
-    ).toEqual(["sidechain-source@ca->cb", "sidechain-source@cb->ca"]);
+    ).toEqual(["feedback-needs-loop@cb->ca"]);
   });
 
   test("control cycles are refused", () => {
@@ -1040,7 +1052,7 @@ describe("validateConnection", () => {
     ).toEqual(["missing-node@candidate"]);
   });
 
-  test("refuses wiring a second station into an in-lane Merge, with the bus message", () => {
+  test("accepts a second station into a Merge closing a Split", () => {
     const merged = graph(
       [
         station("a"),
@@ -1065,12 +1077,8 @@ describe("validateConnection", () => {
     };
 
     expect(validate(merged)).toEqual([]);
-    expect(codes(validateConnection(merged, second))).toEqual([
-      "unshipped@mix",
-    ]);
-    expect(refusal(merged, second)).toBe(BUS_MERGE_MESSAGE);
-    expect(BUS_MERGE_MESSAGE).toContain("needs a bus");
-    // The same Merge still takes more of its own station's branches.
+    expect(validateConnection(merged, second)).toEqual([]);
+    // The same Merge takes more of its own station's branches too.
     expect(
       refusal(merged, {
         ...second,
@@ -1115,43 +1123,16 @@ describe("validateConnection", () => {
       expect(refusal(unkeyed, keyInto("talk", "comp"))).toBeNull();
     });
 
-    test("a second key into the same lane is refused with One key per lane", () => {
-      expect(codes(validateConnection(keyed, keyInto("news", "gate")))).toEqual(
-        ["lane-key@gate"]
-      );
-      expect(refusal(keyed, keyInto("news", "gate"))).toBe("One key per lane");
+    test("a second FX key on the same path connects", () => {
+      expect(validateConnection(keyed, keyInto("news", "gate"))).toEqual([]);
     });
 
-    test("an audio cable that brings a second keyed FX into a lane is refused too", () => {
-      const spare = graph(
-        [
-          station("music"),
-          station("talk"),
-          fx("comp", "compressor"),
-          fx("gate", "gate"),
-          speakers,
-        ],
-        [
-          audio("music", "comp"),
-          audio("comp", "speakers"),
-          key("talk", "comp"),
-          key("talk", "gate", "talk~>gate"),
-        ]
-      );
-      expect(
-        refusal(spare, {
-          source: "comp",
-          sourceHandle: "out:audio:main",
-          target: "gate",
-          targetHandle: "in:audio:main",
-        })
-      ).toBe("One key per lane");
+    test("a key input sums another cable", () => {
+      expect(validateConnection(keyed, keyInto("news", "comp"))).toEqual([]);
     });
 
-    test("a key from a node in no lane is refused", () => {
-      expect(refusal(keyed, keyInto("loose", "gate"))).toBe(
-        "A key must come from a station lane"
-      );
+    test("a key from a loose node can be connected before a source is added", () => {
+      expect(refusal(keyed, keyInto("loose", "gate"))).toBeNull();
     });
   });
 
@@ -1190,7 +1171,7 @@ describe("validateConnection", () => {
     ).toEqual(["duplicate-edge@mix->echo"]);
   });
 
-  test("reports lane issues the cable would introduce", () => {
+  test("a second Filter on a path connects", () => {
     const twoFilters = graph(
       [station("a"), node("f1", "filter"), node("f2", "filter"), speakers],
       [audio("a", "f1"), audio("f1", "speakers"), audio("f2", "speakers")]
@@ -1204,7 +1185,7 @@ describe("validateConnection", () => {
           targetHandle: "in:audio:main",
         })
       )
-    ).toEqual(["lane-filter@f2", "native-position@f2"]);
+    ).toEqual([]);
   });
 });
 
@@ -1241,10 +1222,37 @@ describe("connectionVerdict", () => {
   });
 
   test("a full input says how many cables it takes", () => {
-    expect(connectionVerdict(chain, plug("verb", "comp"))).toEqual({
+    // A knob takes one control cable; audio and key inputs sum.
+    const controlled = graph(
+      [
+        station("a"),
+        node("cut", "filter"),
+        node("one", "lfo"),
+        node("two", "lfo"),
+      ],
+      [control("one", "cut", "cutoff")]
+    );
+    expect(
+      connectionVerdict(
+        controlled,
+        {
+          source: "two",
+          sourceHandle: "out:control:main",
+          target: "cut",
+          targetHandle: "in:control:cutoff",
+        },
+        { release: "v2" }
+      )
+    ).toEqual({
       code: "port-max",
       message: "This input takes one cable",
       ok: false,
+    });
+  });
+
+  test("an occupied audio input takes another cable", () => {
+    expect(connectionVerdict(chain, plug("verb", "comp"))).toEqual({
+      ok: true,
     });
   });
 
@@ -1326,43 +1334,21 @@ describe("connectionVerdict", () => {
 
 describe("validate: messages", () => {
   // Every problem the validator raises, as the interface says it. The
-  // compiler's own codes (native-position and on) are covered in
+  // compiler's own codes are covered in
   // compile.test.ts.
   type ValidatorCode = Exclude<
     IssueCode,
-    | "native-position"
-    | "lane-branches"
-    | "split-depth"
-    | "split-branches"
-    | "not-series-parallel"
+    "split-depth" | "split-branches" | "key-enclosed"
   >;
   const v2 = { release: "v2" } as const;
-  const busPatch = (count: number, withFx: boolean) => {
-    const nodes: NodeInput[] = [speakers];
-    const edges: EdgeInput[] = [];
-    for (const index of range(count)) {
-      nodes.push(
-        station(`a${index}`),
-        station(`b${index}`),
-        node(`bus${index}`, "merge")
-      );
-      edges.push(
-        audio(`a${index}`, `bus${index}`),
-        audio(`b${index}`, `bus${index}`)
-      );
-      if (withFx) {
-        nodes.push(fx(`verb${index}`, "cheapReverb"));
-        edges.push(
-          audio(`bus${index}`, `verb${index}`),
-          audio(`verb${index}`, "speakers")
-        );
-      } else {
-        edges.push(audio(`bus${index}`, "speakers"));
-      }
-    }
-    return graph(nodes, edges);
-  };
   const scenarios: Issue[][] = [
+    validate(
+      graph(
+        [node("lfo", "lfo"), node("cut", "filter")],
+        [{ ...control("lfo", "cut", "parameter"), parameter: "enabled" }]
+      )
+    ),
+    validate(graph([node("title", "titleTrigger")])),
     validate(
       graph(
         [station("a"), node("cut", "filter"), node("lfo", "lfo")],
@@ -1411,10 +1397,24 @@ describe("validate: messages", () => {
     validate(
       graph(
         [
-          ...range(9).map((index) => station(`s${index}`)),
-          node("mix", "merge"),
+          station("music"),
+          station("t1"),
+          station("t2"),
+          fx("comp", "compressor"),
+          speakers,
         ],
-        range(9).map((index) => audio(`s${index}`, "mix"))
+        [
+          audio("music", "comp"),
+          audio("comp", "speakers"),
+          key("t1", "comp"),
+          key("t2", "comp"),
+        ]
+      )
+    ),
+    validate(
+      graph(
+        [node("cut", "filter"), node("one", "lfo"), node("two", "lfo")],
+        [control("one", "cut", "cutoff"), control("two", "cut", "cutoff")]
       ),
       v2
     ),
@@ -1482,35 +1482,10 @@ describe("validate: messages", () => {
       ),
       v2
     ),
-    validate(graph([...range(7).map((index) => station(`s${index}`))], []), {
-      playing: range(7).map((index) => `s${index}`),
-    }),
-    validate(graph(range(25).map((index) => station(`s${index}`)))),
-    validate(busPatch(7, false), v2),
-    validate(busPatch(4, true), v2),
-    validate(
-      graph([
-        ...range(5).map((index) => node(`loop${index}`, "loop")),
-        ...range(3).map((index) => node(`warp${index}`, "tapeWarp")),
-        ...range(9).map((index) => node(`lfo${index}`, "lfo")),
-      ]),
-      v2
-    ),
     validate(
       graph(
         [station("a"), station("b"), node("mix", "merge"), speakers],
         [audio("a", "mix"), audio("b", "mix"), audio("mix", "speakers")]
-      )
-    ),
-    // The schema caps a Tape Warp at 30 s, so only a phone's cap can bite.
-    validate(graph([node("long", "tapeWarp", { time: 20 })]), {
-      ...v2,
-      profile: "mobile",
-    }),
-    validate(
-      graph(
-        [station("a"), ...range(65).map((index) => node(`g${index}`, "gain"))],
-        range(65).map((index) => audio("a", `g${index}`, { id: `e${index}` }))
       )
     ),
     validate(
@@ -1532,15 +1507,6 @@ describe("validate: messages", () => {
     expect(messages).toEqual({
       "audio-to-control": ["Audio can't turn a knob"],
       "bad-handle": ["Cable has a malformed port id"],
-      "budget-bus-fx": ["Up to 3 buses with FX per patch"],
-      "budget-buses": ["Up to 6 buses per patch"],
-      "budget-edges": ["Up to 64 cables per patch"],
-      "budget-lfos": ["Up to 8 LFOs per patch"],
-      "budget-loops": ["Up to 4 Loops per patch"],
-      "budget-playing": ["Up to 6 streams can play at once"],
-      "budget-sources": ["Up to 24 sources per patch"],
-      "budget-tape-warp": ["Up to 2 Tape Warp per patch"],
-      "budget-tape-warp-time": ["Tape Warp is limited to 10 s here"],
       "control-cycle": ["That would feed the control back into itself"],
       "duplicate-edge": ["These are already connected"],
       "feedback-needs-loop": ["That would feed the sound back into itself"],
@@ -1550,26 +1516,19 @@ describe("validate: messages", () => {
         "Only a control cable turns this knob",
         "Only MIDI goes in here",
       ],
-      "lane-filter": ["One Filter per lane"],
-      "lane-key": ["One key per lane"],
-      "lane-pan": ["One Pan per lane"],
       "missing-node": ["Cable points at a missing node"],
+      "modulation-target": [
+        "Choose a numeric parameter this module can modulate",
+      ],
       "no-audio-in": ["A Station makes its own sound and takes no audio in"],
       "no-out": ["The sound ends at Speakers; it has no output"],
-      "one-device-out": ["This output already has a module"],
       "one-speakers": ["A patch has one Speakers"],
-      "port-max": [
-        "This input takes one cable",
-        "This input is full (8 cables)",
-      ],
+      "port-max": ["This input takes one cable"],
       "self-loop": ["A module can't feed itself"],
-      "sidechain-source": ["A key must come from a station lane"],
-      "sidechain-target": ["A key only works on a station lane"],
       "unknown-port": ["Cable points at a missing port"],
       unshipped: [
-        "LFO isn't available yet",
+        "Title trigger isn't available yet",
         "Cutoff isn't available yet",
-        BUS_MERGE_MESSAGE,
       ],
     } satisfies Record<ValidatorCode, string[]>);
   });
@@ -1581,222 +1540,71 @@ describe("validate: messages", () => {
   });
 });
 
-describe("validate: budgets", () => {
-  test("an oversized chain stored downstream first labels in linear time", () => {
-    // Quadratic labelling took tens of seconds here, before any budget.
-    const count = 20_000;
-    const ids = range(count).map((index) => `g${index}`);
-    const chain = (head: string, first: string[]) =>
-      graph(
-        [
-          ...first.map(station),
-          ...(head === "merge" ? [node("merge", "merge")] : []),
-          ...[...ids].reverse().map((id) => node(id, "gain")),
-          speakers,
-        ],
-        [
-          ...(head === "merge" ? first.map((id) => audio(id, "merge")) : []),
-          ...[head, ...ids]
-            .slice(0, -1)
-            .map((id, index) => audio(id, ids[index] ?? "")),
-          audio(ids.at(-1) ?? "", "speakers"),
-        ]
-      );
-    const lane = analyseGraph(chain("a", ["a"])).topology;
-    expect(lane.lanes.get(ids.at(-1) ?? "")).toBe("a");
-    const bus = analyseGraph(chain("merge", ["a", "b"])).topology;
-    expect(bus.lanes.get(ids.at(-1) ?? "")).toBeNull();
-    expect(bus.buses.get(ids.at(-1) ?? "")).toBe("merge");
+describe("validate: large patches", () => {
+  test("an oversized chain stored downstream first keeps every cable", () => {
+    const ids = range(20_000).map((index) => `g${index}`);
+    const nodes = [
+      station("a"),
+      ...ids.map((id) => node(id, "gain")).reverse(),
+      speakers,
+    ];
+    const edges = [
+      audio("a", ids[0] ?? ""),
+      ...ids.slice(1).map((id, index) => audio(ids[index] ?? "", id)),
+      audio(ids.at(-1) ?? "", "speakers"),
+    ];
+    const analysis = analyseGraph(graph(nodes, edges));
+    expect(analysis.issues).toEqual([]);
+    expect(analysis.wired).toHaveLength(edges.length);
   }, 3000);
 
-  test("the budget table matches the proposal", () => {
-    expect(NODE_BUDGETS).toEqual({
-      desktop: {
-        buses: 6,
-        busesWithFx: 3,
-        edges: 64,
-        lfos: 8,
-        loops: 4,
-        playingStreams: 6,
-        sources: 24,
-        tapeWarpSeconds: 30,
-        tapeWarps: 2,
-      },
-      mobile: {
-        buses: 3,
-        busesWithFx: 2,
-        edges: 64,
-        lfos: 8,
-        loops: 4,
-        playingStreams: 4,
-        sources: 24,
-        tapeWarpSeconds: 10,
-        tapeWarps: 1,
-      },
-    });
-  });
-
   test.each([
-    ["desktop", 6],
-    ["mobile", 4],
-  ] as const)("%s plays %i streams at once", (profile, limit) => {
-    const ids = range(limit + 1).map((index) => `s${index}`);
-    const nodes = [...ids.map(station), node("hiss", "static"), speakers];
-    const edges = ids.map((id) => audio(id, "speakers"));
-    expect(
-      check(nodes, edges, {
-        playing: [...ids.slice(0, limit), "hiss", ids[limit] ?? ""],
-        profile,
-        release: "v2",
-      })
-    ).toEqual([`budget-playing@s${limit + 1}`]);
-    expect(
-      check(nodes, edges, { playing: ids.slice(0, limit), profile })
-    ).toEqual(["unshipped@hiss"]);
+    ["station", 25],
+    ["loop", 5],
+    ["tapeWarp", 3],
+    ["lfo", 9],
+    ["macro", 33],
+    ["follower", 9],
+  ] as const)("accepts %s nodes past the former cap (%i)", (type, count) => {
+    const nodes = range(count).map((index) =>
+      type === "station" ? station(`s${index}`) : node(`${type}${index}`, type)
+    );
+    expect(check(nodes, [], { release: "v2" })).toEqual([]);
   });
 
-  test.each(["desktop", "mobile"] as const)(
-    "%s allows 24 sources",
-    (profile) => {
-      const nodes = range(25).map((index) => station(`s${index}`));
-      expect(check(nodes, [], { profile })).toEqual(["budget-sources@s25"]);
-      expect(check(nodes.slice(0, 24), [], { profile })).toEqual([]);
-    }
-  );
-
-  function busPatch(count: number, withFx: boolean) {
+  test("accepts seven buses with FX", () => {
     const nodes: NodeInput[] = [speakers];
     const edges: EdgeInput[] = [];
-    for (const index of range(count)) {
-      nodes.push(
-        station(`a${index}`),
-        station(`b${index}`),
-        node(`bus${index}`, "merge")
-      );
-      edges.push(
-        audio(`a${index}`, `bus${index}`),
-        audio(`b${index}`, `bus${index}`)
-      );
-      if (withFx) {
-        nodes.push(fx(`verb${index}`, "cheapReverb"));
-        edges.push(
-          audio(`bus${index}`, `verb${index}`),
-          audio(`verb${index}`, "speakers")
-        );
-      } else {
-        edges.push(audio(`bus${index}`, "speakers"));
-      }
-    }
-    return [nodes, edges] as const;
-  }
-
-  test.each([
-    ["desktop", 6],
-    ["mobile", 3],
-  ] as const)("%s allows %i buses", (profile, limit) => {
-    const [nodes, edges] = busPatch(limit + 1, false);
-    expect(check(nodes, edges, { profile, release: "v2" })).toEqual([
-      `budget-buses@bus${limit + 1}`,
-    ]);
-  });
-
-  test.each([
-    ["desktop", 3],
-    ["mobile", 2],
-  ] as const)("%s allows %i buses with FX", (profile, limit) => {
-    const [nodes, edges] = busPatch(limit + 1, true);
-    expect(check(nodes, edges, { profile, release: "v2" })).toEqual([
-      `budget-bus-fx@bus${limit + 1}`,
-    ]);
-    const [fewer, fewerEdges] = busPatch(limit, true);
-    expect(check(fewer, fewerEdges, { profile, release: "v2" })).toEqual([]);
-  });
-
-  test("a Split and Merge inside a bus stay one bus", () => {
-    const nodes: NodeInput[] = [speakers];
-    const edges: EdgeInput[] = [];
-    for (const index of range(NODE_BUDGETS.mobile.buses)) {
+    for (const index of range(7)) {
       nodes.push(
         station(`a${index}`),
         station(`b${index}`),
         node(`bus${index}`, "merge"),
-        fx(`split${index}`, "fxComposite"),
-        fx(`crush${index}`, "crusher"),
-        fx(`fold${index}`, "fold"),
-        node(`join${index}`, "merge")
+        fx(`verb${index}`, "cheapReverb")
       );
       edges.push(
         audio(`a${index}`, `bus${index}`),
         audio(`b${index}`, `bus${index}`),
-        audio(`bus${index}`, `split${index}`),
-        audio(`split${index}`, `crush${index}`, { from: "branch-1" }),
-        audio(`split${index}`, `fold${index}`, { from: "branch-2" }),
-        audio(`crush${index}`, `join${index}`),
-        audio(`fold${index}`, `join${index}`),
-        audio(`join${index}`, "speakers")
+        audio(`bus${index}`, `verb${index}`),
+        audio(`verb${index}`, "speakers")
       );
     }
-    // Three buses, each with FX: within the mobile bus budget, over the
-    // mobile FX-bus budget by one.
-    expect(check(nodes, edges, { profile: "mobile", release: "v2" })).toEqual([
-      "budget-bus-fx@bus3",
-    ]);
     expect(check(nodes, edges, { release: "v2" })).toEqual([]);
   });
 
-  test.each(["desktop", "mobile"] as const)("%s allows 4 Loops", (profile) => {
-    const nodes = range(5).map((index) => node(`loop${index}`, "loop"));
-    expect(check(nodes, [], { profile, release: "v2" })).toEqual([
-      "budget-loops@loop5",
-    ]);
-  });
-
-  test.each([
-    ["desktop", 2],
-    ["mobile", 1],
-  ] as const)("%s allows %i Tape Warp", (profile, limit) => {
-    const nodes = range(limit + 1).map((index) =>
-      node(`warp${index}`, "tapeWarp")
-    );
-    expect(check(nodes, [], { profile, release: "v2" })).toEqual([
-      `budget-tape-warp@warp${limit + 1}`,
-    ]);
-  });
-
-  test("Tape Warp time is 30 s on desktop and 10 s on mobile", () => {
-    const nodes = [node("warp", "tapeWarp", { time: 20 })];
-    expect(check(nodes, [], { profile: "desktop", release: "v2" })).toEqual([]);
-    expect(check(nodes, [], { profile: "mobile", release: "v2" })).toEqual([
-      "budget-tape-warp-time@warp",
-    ]);
+  test("accepts a Tape Warp longer than ten seconds", () => {
     expect(
-      check([node("warp", "tapeWarp", { time: 10 })], [], {
-        profile: "mobile",
+      check([node("warp", "tapeWarp", { time: 30 })], [], {
         release: "v2",
       })
     ).toEqual([]);
   });
 
-  test.each(["desktop", "mobile"] as const)("%s allows 8 LFOs", (profile) => {
-    const nodes = range(9).map((index) => node(`lfo${index}`, "lfo"));
-    expect(check(nodes, [], { profile, release: "v2" })).toEqual([
-      "budget-lfos@lfo9",
-    ]);
+  test("accepts more than 64 cables", () => {
+    const gains = range(65).map((index) => node(`g${index}`, "gain"));
+    const edges = range(65).map((index) =>
+      audio("a", `g${index}`, { id: `e${index}` })
+    );
+    expect(check([station("a"), ...gains], edges)).toEqual([]);
   });
-
-  test.each(["desktop", "mobile"] as const)(
-    "%s allows 64 cables",
-    (profile) => {
-      const gains = range(65).map((index) => node(`g${index}`, "gain"));
-      const edges = range(65).map((index) =>
-        audio("a", `g${index}`, { id: `e${index}` })
-      );
-      expect(check([station("a"), ...gains], edges, { profile })).toEqual([
-        "budget-edges@e65",
-      ]);
-      expect(
-        check([station("a"), ...gains], edges.slice(0, 64), { profile })
-      ).toEqual([]);
-    }
-  );
 });

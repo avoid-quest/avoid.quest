@@ -3,11 +3,13 @@ import { createDefaultEffectConfig } from "@/lib/audio/dsp/effects/registry";
 import { EFFECT_DEFINITIONS } from "@/lib/audio/dsp/effects/schema";
 import {
   createNodeEffectConfig,
+  findPort,
   isShipped,
   NODE_DEFINITIONS,
   portHandleId,
   SIDECHAIN_EFFECT_TYPES,
 } from "./catalogue";
+import { MODULATION_NODE_TYPES } from "./modulation-schema";
 import { NODE_TYPES, type NodeType, nodeGraphSchema } from "./schema";
 import { validate } from "./validate";
 
@@ -67,18 +69,21 @@ describe("NODE_DEFINITIONS", () => {
       )
       .map((definition) => definition.type)
       .sort();
-    expect(v1).toEqual([
-      "deviceIn",
-      "deviceOut",
-      "file",
-      "filter",
-      "gain",
-      "merge",
-      "pan",
-      "platform",
-      "speakers",
-      "station",
-    ]);
+    expect(v1).toEqual(
+      [
+        ...MODULATION_NODE_TYPES,
+        "deviceIn",
+        "deviceOut",
+        "file",
+        "filter",
+        "gain",
+        "merge",
+        "pan",
+        "platform",
+        "speakers",
+        "station",
+      ].sort() as NodeType[]
+    );
   });
 
   test("only compressor, gate and vocoder take a key", () => {
@@ -88,7 +93,7 @@ describe("NODE_DEFINITIONS", () => {
       )
       .map((definition) => definition.type)
       .sort();
-    expect(keyed).toEqual([...SIDECHAIN_EFFECT_TYPES].sort());
+    expect(keyed).toEqual([...SIDECHAIN_EFFECT_TYPES].sort() as NodeType[]);
   });
 
   test("ports have unique handle ids and sane limits", () => {
@@ -103,7 +108,22 @@ describe("NODE_DEFINITIONS", () => {
         }
       }
     }
-    expect(NODE_DEFINITIONS.merge.ports[0]?.max).toBe(8);
+    // An audio input sums every cable into it.
+    expect(NODE_DEFINITIONS.merge.ports[0]?.max).toBe(Number.POSITIVE_INFINITY);
+    expect(NODE_DEFINITIONS.compressor.ports[0]?.max).toBe(
+      Number.POSITIVE_INFINITY
+    );
+  });
+
+  test("resolves numbered Split outputs without accepting malformed branch numbers", () => {
+    expect(findPort("fxComposite", "out", "audio", "branch-12")).toMatchObject({
+      id: "branch-12",
+      label: "Branch 12",
+      max: Number.POSITIVE_INFINITY,
+    });
+    for (const id of ["branch-0", "branch-1.5", "branch-9007199254740993"]) {
+      expect(findPort("fxComposite", "out", "audio", id)).toBeUndefined();
+    }
   });
 
   test("describes Station control ports as landing with Control", () => {
@@ -197,13 +217,12 @@ describe("catalogue invariants", () => {
         category: "source",
         ship: "v1",
         source: true,
-        stream: true,
       });
       expect(
         definition.ports
           .filter((port) => isShipped(port.ship ?? definition.ship, "v1"))
           .map(portHandleId)
-      ).toEqual(["out:audio:main"]);
+      ).toEqual(["in:control:parameter", "out:audio:main"]);
     }
     expect(NODE_DEFINITIONS.platform.name).toBe("Track");
   });

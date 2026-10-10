@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
+import { BANDCAMP_RELAY_BASE_URLS } from "./bandcamp-relays";
 import {
-  BANDCAMP_RELAY_BASE_URLS,
   type PlatformItem,
   preparePlatformItem,
   resolvePlatformItem,
@@ -27,12 +27,8 @@ function rangedAudioResponse(body: BodyInit | null = new Uint8Array([0])) {
 }
 
 describe("preparePlatformItem", () => {
-  test("keeps every byte-compatible Bandcamp relay in maintenance order", () => {
-    expect(BANDCAMP_RELAY_BASE_URLS).toEqual([
-      "https://seep.eu.org/",
-      "https://proxy.cors.sh/",
-      "https://cors.zme.ink/",
-    ]);
+  test("keeps only the live Bandcamp relay", () => {
+    expect(BANDCAMP_RELAY_BASE_URLS).toEqual(["https://seep.eu.org/"]);
   });
 
   test("routes every Bandcamp stream through the curated relay", async () => {
@@ -70,17 +66,10 @@ describe("preparePlatformItem", () => {
     );
   });
 
-  test("selects the first relay that serves ranged audio", async () => {
-    const fetchImpl = mock((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith(BANDCAMP_RELAY_BASE_URLS[0])) {
-        return Promise.resolve(
-          new Response(new Uint8Array([0]), {
-            headers: { "Content-Type": "audio/mpeg" },
-            status: 200,
-          })
-        );
-      }
+  test("selects seep when its one-byte audio probe succeeds", async () => {
+    const fetchImpl = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(BANDCAMP_RELAY_BASE_URLS[0] + BANDCAMP_STREAM);
+      expect(new Headers(init?.headers).get("Range")).toBe("bytes=0-0");
       return Promise.resolve(rangedAudioResponse());
     });
 
@@ -88,32 +77,117 @@ describe("preparePlatformItem", () => {
       selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       })
-    ).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[1]);
-    expect(fetchImpl).toHaveBeenCalledTimes(BANDCAMP_RELAY_BASE_URLS.length);
+    ).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[0]);
   });
 
-  test("skips a relay that returns ranged headers without a byte", async () => {
-    const fetchImpl = mock((input: RequestInfo | URL) => {
-      const url = String(input);
-      return Promise.resolve(
-        url.startsWith(BANDCAMP_RELAY_BASE_URLS[0])
-          ? rangedAudioResponse(null)
-          : rangedAudioResponse()
-      );
-    });
+  test("accepts exactly one byte without Content-Length when CORS hides Content-Range", async () => {
+    const fetchImpl = async () =>
+      new Response(new Uint8Array([0]), {
+        headers: { "Content-Type": "audio/mpeg" },
+        status: 206,
+      });
 
     await expect(
-      selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
-        fetchImpl: fetchImpl as unknown as typeof fetch,
-      })
-    ).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[1]);
+      selectBandcampRelayBaseUrl(BANDCAMP_STREAM, { fetchImpl })
+    ).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[0]);
   });
 
-  test("probes every relay concurrently under one deadline", async () => {
-    const fetchImpl = mock((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.startsWith(BANDCAMP_RELAY_BASE_URLS[0])) {
-        return new Promise<Response>((_resolve, reject) => {
+  test.each(["0", "2", "5605667"])(
+    "rejects a relay that declares Content-Length %s for a one-byte probe",
+    async (length) => {
+      await expect(
+        selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
+          fetchImpl: async () =>
+            new Response(new Uint8Array([0]), {
+              headers: {
+                "Content-Length": length,
+                "Content-Type": "audio/mpeg",
+              },
+              status: 206,
+            }),
+        })
+      ).rejects.toThrow("No public Bandcamp relay is currently available");
+    }
+  );
+
+  test.each([
+    { chunks: [[0, 1]] },
+    { chunks: [[0, 1, 2]] },
+    { chunks: [[0], [1]] },
+  ])(
+    "rejects more than one byte without Content-Length and cancels an unfinished body: %j",
+    async ({ chunks }) => {
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true;
+        },
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(new Uint8Array(chunk));
+          }
+        },
+      });
+      await expect(
+        selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
+          fetchImpl: async () =>
+            new Response(body, {
+              headers: { "Content-Type": "audio/mpeg" },
+              status: 206,
+            }),
+        })
+      ).rejects.toThrow("No public Bandcamp relay is currently available");
+      expect(cancelled).toBe(true);
+    }
+  );
+
+  test("accepts a one-byte Content-Length when Content-Range is hidden", async () => {
+    await expect(
+      selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
+        fetchImpl: async () =>
+          new Response(new Uint8Array([0]), {
+            headers: { "Content-Length": "1", "Content-Type": "audio/mpeg" },
+            status: 206,
+          }),
+      })
+    ).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[0]);
+  });
+
+  test.each([{ chunks: [[0, 1]] }, { chunks: [[0], [1]] }])(
+    "rejects extra received bytes despite Content-Length: 1: %j",
+    async ({ chunks }) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(new Uint8Array(chunk));
+          }
+          controller.close();
+        },
+      });
+      await expect(
+        selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
+          fetchImpl: async () =>
+            new Response(body, {
+              headers: { "Content-Length": "1", "Content-Type": "audio/mpeg" },
+              status: 206,
+            }),
+        })
+      ).rejects.toThrow("No public Bandcamp relay is currently available");
+    }
+  );
+
+  test("fails when seep returns ranged headers without a byte", async () => {
+    await expect(
+      selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
+        fetchImpl: async () => rangedAudioResponse(null),
+      })
+    ).rejects.toThrow("No public Bandcamp relay is currently available");
+  });
+
+  test("bounds a stalled seep probe by the shared deadline", async () => {
+    const fetchImpl = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
           const signal = init?.signal;
           const rejectAbort = () =>
             reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
@@ -122,17 +196,16 @@ describe("preparePlatformItem", () => {
           } else {
             signal?.addEventListener("abort", rejectAbort, { once: true });
           }
-        });
-      }
-      return Promise.resolve(rangedAudioResponse());
-    });
+        })
+    );
 
     const selection = selectBandcampRelayBaseUrl(BANDCAMP_STREAM, {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       timeoutMs: 10,
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(BANDCAMP_RELAY_BASE_URLS.length);
-    await expect(selection).resolves.toBe(BANDCAMP_RELAY_BASE_URLS[1]);
+    await expect(selection).rejects.toThrow(
+      "No public Bandcamp relay is currently available"
+    );
   });
 
   test("fails when every curated relay is unavailable", async () => {

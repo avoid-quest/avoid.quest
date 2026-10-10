@@ -1,4 +1,5 @@
 import type { Radio } from "../playback/index.js";
+import type { RadioSourceKind } from "../playback/playback-source-factory.js";
 import {
   createSoundInstance,
   type SoundInstance,
@@ -14,7 +15,8 @@ class SoundRegistry {
     radio: Radio,
     soundId?: string,
     cleanupExisting?: CleanupExistingSound,
-    outputMode: SoundOutputMode = "audio-graph"
+    outputMode: SoundOutputMode = "audio-graph",
+    sourceKind?: RadioSourceKind
   ): string {
     const id = soundId ?? `sound_${radio.id ?? Date.now()}`;
 
@@ -22,7 +24,7 @@ class SoundRegistry {
       cleanupExisting?.(id);
     }
 
-    this.sounds.set(id, createSoundInstance(radio, id, outputMode));
+    this.sounds.set(id, createSoundInstance(radio, id, outputMode, sourceKind));
     return id;
   }
 

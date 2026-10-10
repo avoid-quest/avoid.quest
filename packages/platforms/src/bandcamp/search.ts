@@ -4,6 +4,8 @@
  * Uses the Bandcamp autocomplete_elastic endpoint to search for tracks and albums.
  */
 
+import { BROWSER_USER_AGENT } from "../browser-user-agent.js";
+
 export type BandcampSearchFilter = "" | "t" | "a" | "b";
 // "" = all, "t" = tracks, "a" = albums, "b" = bands/artists
 
@@ -113,8 +115,7 @@ export async function searchBandcamp(
       }),
       headers: {
         "Content-Type": "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": BROWSER_USER_AGENT,
       },
       method: "POST",
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),

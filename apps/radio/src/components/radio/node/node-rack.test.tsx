@@ -15,6 +15,7 @@ import {
   AUDIO_IN_HANDLE,
   AUDIO_OUT_HANDLE,
   buildNodeGraphFromTemplate,
+  KEY_IN_HANDLE,
   SPEAKERS_NODE_ID,
 } from "@/lib/node-graph/templates";
 import {
@@ -90,7 +91,7 @@ afterEach(() => {
   revealNode.mockClear();
 });
 
-const ENV: CompileEnv = { crossOriginIsolated: false, profile: "desktop" };
+const ENV: CompileEnv = { crossOriginIsolated: false };
 const position = { x: 0, y: 0 };
 const noop = () => undefined;
 const asyncNoop = async () => undefined;
@@ -120,6 +121,14 @@ function cable(source: string, target: string) {
     sourceHandle: AUDIO_OUT_HANDLE,
     target,
     targetHandle: AUDIO_IN_HANDLE,
+  };
+}
+
+function keyCable(source: string, target: string) {
+  return {
+    ...cable(source, target),
+    id: `${source}~>${target}`,
+    targetHandle: KEY_IN_HANDLE,
   };
 }
 
@@ -390,6 +399,149 @@ describe("NodeRack", () => {
       name: "Compressor settings, keyed by BBC Radio 4",
     });
     expect(chip.getAttribute("title")).toBe("Keyed by BBC Radio 4");
+  });
+
+  test("a keyed FX chip names every station keying it, through a Filter too", () => {
+    const { view } = renderRack(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("kexp", "comp"),
+          cable("comp", SPEAKERS_NODE_ID),
+          // Two stations into one Filter make it a point of its own.
+          cable("r4", "tone"),
+          cable("ws", "tone"),
+          cable("tone", SPEAKERS_NODE_ID),
+          keyCable("tone", "comp"),
+          cable("nts", SPEAKERS_NODE_ID),
+          keyCable("nts", "comp"),
+        ],
+        nodes: [
+          station("kexp", "KEXP"),
+          station("r4", "BBC Radio 4"),
+          station("ws", "World Service"),
+          station("nts", "NTS 1"),
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("compressor", "comp"),
+                enabled: true,
+              },
+            },
+            id: "comp",
+            position,
+            type: "compressor",
+          },
+          { data: {}, id: "tone", position, type: "filter" },
+          { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+        ],
+        version: 2,
+      } satisfies NodeGraphInput)
+    );
+
+    const chip = view.getByRole("button", {
+      name: "Compressor settings, keyed by BBC Radio 4, World Service, NTS 1",
+    });
+    expect(chip.getAttribute("title")).toBe(
+      "Keyed by BBC Radio 4, World Service, NTS 1"
+    );
+  });
+
+  test("a key from inside a Loop's feedback path names the stations feeding it", () => {
+    const { view } = renderRack(
+      nodeGraphSchema.parse({
+        edges: [
+          cable("kexp", "comp"),
+          cable("comp", SPEAKERS_NODE_ID),
+          cable("r4", "tone"),
+          cable("ws", "tone"),
+          cable("tone", SPEAKERS_NODE_ID),
+          // Tone feeds itself back through the Loop, and keys the Compressor.
+          cable("tone", "echo"),
+          cable("echo", "tone"),
+          keyCable("tone", "comp"),
+        ],
+        nodes: [
+          station("kexp", "KEXP"),
+          station("r4", "BBC Radio 4"),
+          station("ws", "World Service"),
+          {
+            data: {
+              effect: {
+                ...createNodeEffectConfig("compressor", "comp"),
+                enabled: true,
+              },
+            },
+            id: "comp",
+            position,
+            type: "compressor",
+          },
+          { data: {}, id: "tone", position, type: "filter" },
+          { data: {}, id: "echo", position, type: "loop" },
+          { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+        ],
+        version: 2,
+      } satisfies NodeGraphInput)
+    );
+
+    expect(
+      view.getByRole("button", {
+        name: "Compressor settings, keyed by BBC Radio 4, World Service",
+      })
+    ).toBeTruthy();
+  });
+
+  test("shared upstream routes discover station names once per endpoint", () => {
+    const nodes: NodeInput[] = [
+      station("source", "Shared station"),
+      station("other", "Other station"),
+      {
+        data: {
+          effect: {
+            ...createNodeEffectConfig("compressor", "comp"),
+            enabled: true,
+          },
+        },
+        id: "comp",
+        position,
+        type: "compressor",
+      },
+      { data: {}, id: SPEAKERS_NODE_ID, position, type: "speakers" },
+    ];
+    const edges: NodeGraphInput["edges"] = [];
+    let previous = "source";
+    for (let layer = 0; layer < 18; layer += 1) {
+      const merged = `merge-${layer}`;
+      for (const suffix of ["a", "b"]) {
+        const id = `${layer}-${suffix}`;
+        nodes.push({ data: {}, id, position, type: "pan" });
+        edges.push(cable(previous, id), cable(id, merged));
+      }
+      nodes.push({ data: {}, id: merged, position, type: "merge" });
+      previous = merged;
+    }
+    edges.push(
+      cable(previous, SPEAKERS_NODE_ID),
+      keyCable(previous, "comp"),
+      cable("other", "comp"),
+      cable("comp", SPEAKERS_NODE_ID)
+    );
+    const graph = nodeGraphSchema.parse({ edges, nodes, version: 2 });
+    expect(compile(graph, ENV).issues).toEqual([]);
+    const source = graph.nodes.find((node) => node.id === "source");
+    if (source?.type !== "station" || !source.data.radio) {
+      throw new Error("Missing station fixture");
+    }
+    const name = mock(() => "Shared station");
+    Object.defineProperty(source.data.radio, "name", { get: name });
+    const { view } = renderRack(graph);
+    expect(
+      view.getByRole("button", {
+        name: "Compressor settings, keyed by Shared station",
+      })
+    ).toBeTruthy();
+    // Count reads instead of asserting wall-clock time: the old traversal reads
+    // the same leaf once for each of 2^18 paths through this valid graph.
+    expect(name.mock.calls.length).toBeLessThan(1000);
   });
 
   test("a key on a switched-off FX names no station, as its cable reads idle", () => {

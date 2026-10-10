@@ -5,12 +5,7 @@
  */
 
 // Effect Processors
-export {
-  BiquadFilter,
-  type BiquadFilterParams,
-  type BiquadFilterType,
-} from "./biquad-filter.js";
-export { Compressor } from "./compressor.js";
+export { BiquadFilter } from "./biquad-filter.js";
 export { CrusherEffect } from "./crusher.js";
 export {
   CTAGCompressor,
@@ -44,11 +39,9 @@ export {
   convertEffectParamValue,
   convertPartialEffectConfigToEngine,
   EFFECT_DEFINITIONS,
-  EFFECT_PARAMETER_ROLE_MAP,
   EFFECT_SCHEMAS,
   type EffectDefinition,
   type EffectParamDef,
-  type EffectParameterRole,
   type EffectSchema,
   type EngineEffectConfig,
   type EngineEffectParamValue,
@@ -60,7 +53,6 @@ export {
   getEffectSliderParamDefs,
   type ParamDef,
   UNIVERSAL_EFFECT_PARAM_DEFS,
-  UNIVERSAL_EFFECT_PARAMETER_ROLES,
   type VisualizationType,
 } from "./schema.js";
 export { StereoToolEffect } from "./stereo-tool.js";

@@ -83,7 +83,7 @@ const UNRESTORED_PLATFORMS: ReadonlySet<string> = new Set([
   "device-input",
 ]);
 
-function isRestorableRadio(
+export function isRestorableRadio(
   radio: Radio | null,
   sessionId: ManagedPlaybackSessionId
 ): radio is Radio {
@@ -224,6 +224,6 @@ export function setManagedSessionMasterVolume(
   });
   // A legacy "multiple" that failed its rewrite still runs Node.
   if (normalizePlayerMode(getSettings()?.player.mode) === sessionId) {
-    ctx.audio.setGlobalVolume(volume);
+    applySessionMasterVolume(sessionId, ctx);
   }
 }

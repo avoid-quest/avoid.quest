@@ -20,15 +20,11 @@ import {
   type ActiveSource,
   type WorkletManagerEvents as ManagerEvents,
   MessageType,
-  type FilterType as WorkletFilterType,
   type WorkletPortMessage,
 } from "./worklet-manager-protocol.js";
 
-export type { EffectType } from "../dsp/effects/types.js";
-export type {
-  FilterType,
-  WorkletManagerEvents,
-} from "./worklet-manager-protocol.js";
+export type { EffectType, FilterType } from "../dsp/effects/types.js";
+export type { WorkletManagerEvents } from "./worklet-manager-protocol.js";
 
 export type WorkletEffectConfig = Record<string, unknown>;
 
@@ -359,52 +355,6 @@ export class WorkletManager {
     this.postMessage({
       payload: { effectIds, sourceId },
       type: MessageType.REORDER_EFFECTS,
-    });
-  }
-
-  // ============================================
-  // Filter Methods
-  // ============================================
-
-  /**
-   * Add a filter to a source
-   */
-  addFilter(
-    sourceId: string,
-    filterId: string,
-    type: WorkletFilterType,
-    frequency: number,
-    Q: number,
-    gain: number
-  ): void {
-    this.postMessage({
-      payload: { filterId, frequency, gain, Q, sourceId, type },
-      type: MessageType.ADD_FILTER,
-    });
-  }
-
-  /**
-   * Remove a filter from a source
-   */
-  removeFilter(sourceId: string, filterId: string): void {
-    this.postMessage({
-      payload: { filterId, sourceId },
-      type: MessageType.REMOVE_FILTER,
-    });
-  }
-
-  /**
-   * Set a filter parameter
-   */
-  setFilterParam(
-    sourceId: string,
-    filterId: string,
-    param: "frequency" | "Q" | "gain" | "type",
-    value: number | string
-  ): void {
-    this.postMessage({
-      payload: { filterId, param, sourceId, value },
-      type: MessageType.SET_FILTER_PARAM,
     });
   }
 

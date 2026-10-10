@@ -81,6 +81,32 @@ function accepted(edit: GraphEdit): NodeGraph {
   return edit.graph;
 }
 
+function modulationPatch(): NodeGraph {
+  const position = { x: 0, y: 0 };
+  return nodeGraphSchema.parse({
+    edges: [
+      {
+        depth: -0.5,
+        id: "control",
+        parameter: "Q",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      },
+    ],
+    nodes: [
+      { id: "macro", position, type: "macro" },
+      { id: "other-macro", position, type: "macro" },
+      { data: {}, id: "filter", position, type: "filter" },
+      { data: {}, id: "pan", position, type: "pan" },
+      { id: "slew", position, type: "slew" },
+      { id: "speakers", position, type: "speakers" },
+    ],
+    version: 2,
+  });
+}
+
 describe("addStationNode", () => {
   test("adds a Station below the others, wired to Speakers", () => {
     const { graph, nodeId } = addStationNode(patch(radio("a")), radio("b"));
@@ -340,6 +366,141 @@ describe("where a new node lands", () => {
 });
 
 describe("reconnectEdge", () => {
+  test.each([
+    ["parameter", "gate", undefined, 0.25],
+    ["gate", "parameter", undefined, 1],
+    ["parameter", "gate", -0.5, -0.5],
+    ["gate", "parameter", -0.5, -0.5],
+    ["parameter", "gate", 0, 0],
+    ["gate", "parameter", 0, 0],
+  ] as const)(
+    "rewiring %s to %s preserves effective depth %s",
+    (from, to, depth, expected) => {
+      const base = modulationPatch();
+      const targets = {
+        gate: { target: "envelope", targetHandle: "in:control:gate" },
+        parameter: { target: "filter", targetHandle: "in:control:parameter" },
+      };
+      const source = { source: "macro", sourceHandle: "out:control:main" };
+      const wired = connectNodes(
+        nodeGraphSchema.parse({
+          ...base,
+          edges: [],
+          nodes: [
+            ...base.nodes,
+            { id: "envelope", position: { x: 0, y: 0 }, type: "envelope" },
+          ],
+        }),
+        { ...source, ...targets[from] }
+      );
+      expect(wired.edges[0]?.depth).toBeUndefined();
+      const start =
+        depth === undefined
+          ? wired
+          : {
+              ...wired,
+              edges: wired.edges.map((edge) => ({ ...edge, depth })),
+            };
+      const next = accepted(
+        reconnectEdge(start, start.edges[0]?.id ?? "", {
+          ...source,
+          ...targets[to],
+        })
+      );
+      expect(next.edges[0]).toMatchObject({ depth: expected, ...targets[to] });
+      expect(validate(next)).toEqual([]);
+    }
+  );
+
+  test("rewiring an incompatible parameter persists the first unused target parameter", () => {
+    const initial = modulationPatch();
+    const start = nodeGraphSchema.parse({
+      ...initial,
+      edges: [
+        { ...initial.edges[0], id: "cutoff", parameter: "frequency" },
+        { ...initial.edges[0], parameter: "pan", target: "pan" },
+      ],
+    });
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[1]).toMatchObject({
+      depth: -0.5,
+      id: "control",
+      parameter: "Q",
+      target: "filter",
+    });
+    expect(validate(next)).toEqual([]);
+  });
+
+  test("an explicit reconnect parameter updates even when the endpoints stay the same", () => {
+    const start = modulationPatch();
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        parameter: "frequency",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[0]).toMatchObject({
+      depth: -0.5,
+      parameter: "frequency",
+    });
+    expect(validate(next)).toEqual([]);
+  });
+
+  test("reconnecting to another parameter module clears incompatible metadata", () => {
+    const start = modulationPatch();
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "pan",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[0]).toMatchObject({ depth: -0.5, target: "pan" });
+    expect(next.edges[0]?.parameter).toBe("pan");
+    expect(validate(next)).toEqual([]);
+  });
+
+  test("reconnecting a source keeps a compatible target and checks the final cable", () => {
+    const start = modulationPatch();
+    const next = accepted(
+      reconnectEdge(start, "control", {
+        source: "other-macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    );
+    expect(next.edges[0]).toMatchObject({ depth: -0.5, parameter: "Q" });
+    expect(validate(next)).toEqual([]);
+
+    const occupied = nodeGraphSchema.parse({
+      ...start,
+      edges: [
+        ...start.edges,
+        { ...start.edges[0], id: "occupied", source: "other-macro" },
+      ],
+    });
+    expect(
+      reconnectEdge(occupied, "control", {
+        source: "other-macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      })
+    ).toMatchObject({ message: "These are already connected", ok: false });
+  });
+
   test("moves a cable end in one edit, keeping its identity and settings", () => {
     const start = patch(radio("a"), radio("b"));
     const [cable] = start.edges;
@@ -382,7 +543,6 @@ describe("reconnectEdge", () => {
     );
     expect(edit.graph.edges[0]).toMatchObject({
       color: "#abc123",
-      depth: 0.25,
       gain: 0.5,
       id: cable?.id,
       muted: true,
@@ -390,6 +550,7 @@ describe("reconnectEdge", () => {
       target: withGain.nodeId,
       transform: { max: 0.8, min: 0.2 },
     });
+    expect(edit.graph.edges[0]?.depth).toBeUndefined();
   });
 
   test("rewiring a branch preserves its compiled pan, solo and gain", () => {
@@ -497,7 +658,7 @@ describe("reconnectEdge", () => {
     expect(moved?.solo).toBeUndefined();
   });
 
-  test("takes a one-cable input its own cable filled; refuses one another cable fills", () => {
+  test("reconnects into an occupied input without replacing its other cable", () => {
     const start = patch(radio("a"), radio("b"));
     const withGain = addPaletteNode(start, {
       id: "gain",
@@ -524,17 +685,24 @@ describe("reconnectEdge", () => {
     });
     expect(moved.ok).toBe(true);
 
-    // Station B's cable to Speakers onto the Gain's input Station A holds.
+    // Station B's cable to Speakers onto the Gain's input Station A holds:
+    // the input sums both.
     const toSpeakers = wired.edges.find((edge) => edge.source === "src-b");
-    const original = structuredClone(wired);
-    const refused = reconnectEdge(wired, toSpeakers?.id ?? "", {
+    const summed = reconnectEdge(wired, toSpeakers?.id ?? "", {
       source: "src-b",
       sourceHandle: "out:audio:main",
       target: gain,
       targetHandle: "in:audio:main",
     });
-    expect(refused.ok).toBe(false);
-    expect(wired).toEqual(original);
+    expect(summed.ok).toBe(true);
+    if (summed.ok) {
+      expect(
+        summed.graph.edges
+          .filter((edge) => edge.target === gain)
+          .map((edge) => edge.source)
+          .sort()
+      ).toEqual(["src-a", "src-b"]);
+    }
   });
 
   test("the same ends are a no-op", () => {
@@ -807,6 +975,49 @@ function cables(graph: NodeGraph) {
 }
 
 describe("insertNodeOnEdge", () => {
+  test("inserting and removing a Slew retains the original parameter assignment", () => {
+    const start = modulationPatch();
+    const edited = accepted(insertNodeOnEdge(start, "slew", "control"));
+    const upstream = edited.edges.find((edge) => edge.target === "slew");
+    const downstream = edited.edges.find((edge) => edge.source === "slew");
+    expect(upstream?.depth).toBeUndefined();
+    expect(upstream?.parameter).toBeUndefined();
+    expect(downstream).toMatchObject({
+      depth: -0.5,
+      parameter: "Q",
+      target: "filter",
+    });
+    expect(validate(edited)).toEqual([]);
+    const healed = accepted(removeNodesHealed(edited, ["slew"]));
+    expect(healed.edges).toHaveLength(1);
+    expect(healed.edges[0]).toMatchObject({
+      depth: -0.5,
+      parameter: "Q",
+      source: "macro",
+      target: "filter",
+    });
+    expect(validate(healed)).toEqual([]);
+  });
+
+  test("healing combines signed control depths, including the default parameter depth", () => {
+    const start = accepted(
+      insertNodeOnEdge(modulationPatch(), "slew", "control")
+    );
+    const scaled = {
+      ...start,
+      edges: start.edges.map((edge) => {
+        if (edge.target === "slew") {
+          return { ...edge, depth: -0.5 };
+        }
+        const { depth: _depth, ...defaultDepth } = edge;
+        return defaultDepth;
+      }),
+    };
+    const healed = accepted(removeNodesHealed(scaled, ["slew"]));
+    expect(healed.edges[0]).toMatchObject({ depth: -0.125, parameter: "Q" });
+    expect(validate(healed)).toEqual([]);
+  });
+
   test("splits one cable into two, the first keeping its id and level", () => {
     const start = patch(radio("a"));
     const gained = {
@@ -888,14 +1099,14 @@ describe("insertNodeOnEdge", () => {
       insertNodeOnEdge(slot.graph, slot.nodeId, "src-b->speakers").ok
     ).toBe(false);
 
-    // A Filter belongs right after its station, not after an FX.
+    // A Filter after an FX runs as its own module.
     const filter = withLoose(start, "filter");
     const late = insertNodeOnEdge(
       filter.graph,
       filter.nodeId,
       "compressor->speakers"
     );
-    expect(late.ok).toBe(false);
+    expect(late.ok).toBe(true);
     // The station's cable into the Compressor keeps its old id.
     expect(
       insertNodeOnEdge(filter.graph, filter.nodeId, "src-a->speakers").ok
@@ -980,7 +1191,7 @@ describe("removeNodesHealed", () => {
     expect(healed.edges).toEqual([]);
   });
 
-  test("refuses deleting a Merge when its branches cannot heal to Speakers", () => {
+  test("deleting a Merge heals its branches to Speakers, where they meet again", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", "compressor->speakers");
     const split = seriesToParallel(two.graph, {
@@ -994,17 +1205,15 @@ describe("removeNodesHealed", () => {
 
     const before = compile(split.graph, ENV);
     expect(before.lanes.size).toBe(1);
-    expect(before.edges.size).toBe(1);
+    expect(before.cables.size).toBe(1);
     expect(before.issues).toEqual([]);
 
-    // Branches straight into Speakers would never rejoin in the lane.
-    const edit = removeNodesHealed(split.graph, [merge?.id ?? ""]);
-
-    expect(edit.ok).toBe(false);
-    if (edit.ok) {
-      throw new Error("A failed heal must refuse the whole deletion");
-    }
-    expect(edit.message).toContain("disconnecting a source from its output");
+    // Branches straight into Speakers meet again there, still one region.
+    const healed = accepted(removeNodesHealed(split.graph, [merge?.id ?? ""]));
+    const after = compile(healed, ENV);
+    expect(after.issues).toEqual([]);
+    expect(after.units.size + after.modules.size).toBe(0);
+    expect(after.cables.size).toBe(1);
 
     const store = createNodeStore(split.graph);
     const { state } = store;
@@ -1016,9 +1225,9 @@ describe("removeNodesHealed", () => {
       store,
       "snapshot"
     );
-    expect(store.state).toBe(state);
-    expect(undoNodeGraph(store)).toBe(false);
-    expect(compile(store.state.graph as NodeGraph, ENV).edges.size).toBe(1);
+    expect(store.state).not.toBe(state);
+    expect(undoNodeGraph(store)).toBe(true);
+    expect(store.state.graph).toEqual(split.graph);
 
     // Explicitly deleting the branch's source makes the disconnection deliberate.
     const deleted = accepted(
@@ -1042,10 +1251,10 @@ describe("removeNodesHealed", () => {
       "src-a",
       "speakers",
     ]);
-    expect(compile(wholeBranch, ENV).edges.size).toBe(1);
+    expect(compile(wholeBranch, ENV).cables.size).toBe(1);
   });
 
-  test("refuses deleting a Merge that would drop a hidden Station's route", () => {
+  test("deleting a Merge keeps a hidden Station's route for when it shows again", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", `${one.nodeId}->speakers`);
     const split = seriesToParallel(two.graph, {
@@ -1057,14 +1266,15 @@ describe("removeNodesHealed", () => {
     }
     const merge = split.graph.nodes.find((node) => node.type === "merge");
     const hidden = setStationsEnabled(split.graph, ["src-a"], false);
-    expect(compile(hidden, ENV).edges.size).toBe(0);
+    expect(compile(hidden, ENV).cables.size).toBe(0);
 
-    const edit = removeNodesHealed(hidden, [merge?.id ?? ""]);
+    const edit = accepted(removeNodesHealed(hidden, [merge?.id ?? ""]));
 
-    expect(edit.ok).toBe(false);
+    const shown = setStationsEnabled(edit, ["src-a"], true);
+    expect(compile(shown, ENV).cables.size).toBe(1);
   });
 
-  test("refuses deleting a Merge that would drop an empty Audio input's route", () => {
+  test("deleting a Merge keeps an empty Audio input's route for when it's set", () => {
     const one = inserted(patch(radio("a")), "compressor", "src-a->speakers");
     const two = inserted(one.graph, "delay", `${one.nodeId}->speakers`);
     const split = seriesToParallel(two.graph, {
@@ -1082,13 +1292,13 @@ describe("removeNodesHealed", () => {
         node.id === "src-a" && input ? input : node
       ),
     };
-    expect(compile(empty, ENV).edges.size).toBe(0);
+    expect(compile(empty, ENV).cables.size).toBe(0);
     const merge = empty.nodes.find((node) => node.type === "merge");
 
-    expect(removeNodesHealed(empty, [merge?.id ?? ""]).ok).toBe(false);
-    // Once it has a device, the same patch plays through the region.
-    const live = setDeviceParams(empty, "src-a", { deviceId: "mic" });
-    expect(compile(live, ENV).edges.size).toBe(1);
+    const healed = accepted(removeNodesHealed(empty, [merge?.id ?? ""]));
+    // Once it has a device, the healed patch plays through the region.
+    const live = setDeviceParams(healed, "src-a", { deviceId: "mic" });
+    expect(compile(live, ENV).cables.size).toBe(1);
   });
 
   test("deleting a split turns a branch solo into mutes, never a hidden solo", () => {
@@ -1384,7 +1594,7 @@ describe("removeNodesHealed", () => {
     const loose = withLoose(patch(radio("a")), "compressor");
     const deleted = accepted(removeNodesHealed(loose.graph, [loose.nodeId]));
     expect(deleted.nodes.some((node) => node.id === loose.nodeId)).toBe(false);
-    expect(compile(deleted, ENV).edges.size).toBe(1);
+    expect(compile(deleted, ENV).cables.size).toBe(1);
 
     const insertedNode = inserted(
       patch(radio("a")),
@@ -1464,17 +1674,13 @@ describe("toggleBypass", () => {
 
     expect(effectIn(bypassed, "compressor").enabled).toBe(false);
     const ops = diff(compile(start, ENV), compile(bypassed, ENV));
-    expect(ops.map((op) => op.type)).toEqual([
-      "duckLane",
-      "replaceLaneEffects",
-      "unduckLane",
-    ]);
+    expect(ops.map((op) => op.type)).toEqual(["replaceLaneEffects"]);
 
     const back = toggleBypass(bypassed, ["compressor"]);
     expect(effectIn(back, "compressor").enabled).toBe(true);
     expect(
       diff(compile(bypassed, ENV), compile(back, ENV)).map((op) => op.type)
-    ).toEqual(["duckLane", "replaceLaneEffects", "unduckLane"]);
+    ).toEqual(["replaceLaneEffects"]);
   });
 
   test("a mixed selection bypasses all; nothing to bypass is a no-op", () => {
@@ -1522,7 +1728,7 @@ describe("setDeviceParams", () => {
     });
   });
 
-  test("a copied Output device picks its own device", () => {
+  test("a copied Output device keeps its device and independent mute", () => {
     const start = setDeviceParams(withDevices(), "deviceOut", {
       deviceId: "usb",
       deviceLabel: "USB interface",
@@ -1532,8 +1738,16 @@ describe("setDeviceParams", () => {
 
     expect(
       graph.nodes.find((node) => node.id === nodeIds[0])?.data
-    ).toMatchObject({ deviceId: null, deviceLabel: "" });
+    ).toMatchObject({ deviceId: "usb", deviceLabel: "USB interface" });
+    const mutedCopy = setDeviceParams(graph, nodeIds[0] ?? "", { muted: true });
+    expect(
+      mutedCopy.nodes.find((node) => node.id === nodeIds[0])?.data
+    ).toMatchObject({ deviceId: "usb", muted: true });
+    expect(
+      mutedCopy.nodes.find((node) => node.id === "deviceOut")?.data
+    ).toMatchObject({ deviceId: "usb", muted: false });
     expect(validate(graph)).toEqual([]);
+    expect(validate(mutedCopy)).toEqual([]);
   });
 });
 
@@ -1570,7 +1784,7 @@ describe("duplicateNodes", () => {
     expect([...compile(graph, ENV).lanes.keys()]).toEqual(["src-a", "src-a-2"]);
   });
 
-  test("a copied Station comes wired to Speakers; a copy can't take a full input", () => {
+  test("a copied Station keeps its cables out, an occupied input included", () => {
     const start = inserted(
       patch(radio("a")),
       "compressor",
@@ -1582,9 +1796,11 @@ describe("duplicateNodes", () => {
       "src-a-2->speakers: src-a-2 out:audio:main -> speakers in:audio:main"
     );
 
+    // The Compressor's input sums the copy with the original.
     const feeding = duplicateNodes(start, ["src-a"]);
-    expect(feeding.graph.edges).toHaveLength(start.edges.length);
+    expect(feeding.graph.edges).toHaveLength(start.edges.length + 1);
     expect(feeding.nodeIds).toEqual(["src-a-2"]);
+    expect(validate(feeding.graph)).toEqual([]);
 
     expect(duplicateNodes(start, [SPEAKERS_NODE_ID])).toEqual({
       graph: start,
@@ -1608,45 +1824,53 @@ describe("duplicateNodes", () => {
     expect(edit.ok).toBe(true);
   });
 
-  test("refuses copies past a patch budget instead of leaving them silent", () => {
-    const full = patch(
+  test("copies a source past the former source cap and keeps it connected", () => {
+    const start = patch(
       ...Array.from({ length: 24 }, (_, index) => radio(String(index)))
     );
-    expect(validate(full)).toEqual([]);
+    const { graph, nodeIds, message } = duplicateNodes(start, ["src-0"]);
+    expect(message).toBeUndefined();
+    expect(nodeIds).toHaveLength(1);
+    expect(graph.nodes.filter((node) => node.type === "station")).toHaveLength(
+      25
+    );
+    expect(
+      graph.edges.some(
+        (edge) => edge.source === nodeIds[0] && edge.target === SPEAKERS_NODE_ID
+      )
+    ).toBe(true);
+    expect(validate(graph)).toEqual([]);
+  });
 
-    expect(duplicateNodes(full, ["src-0"])).toEqual({
-      graph: full,
-      message: "Up to 24 sources per patch",
-      nodeIds: [],
-    });
-
-    // 2 cables plus 62 fillers into Speakers; the copied A -> FX cable is 65th.
+  test("copies an internal cable past the former cable cap and keeps it playing", () => {
     const start = inserted(
-      patch(radio("a")),
+      patch(...Array.from({ length: 63 }, (_, index) => radio(String(index)))),
       "compressor",
-      "src-a->speakers"
+      "src-0->speakers"
     ).graph;
-    const cabled = {
-      ...start,
-      edges: [
-        ...start.edges,
-        ...Array.from({ length: 62 }, (_, index) => ({
-          gain: 1,
-          id: `filler-${index}`,
-          muted: false,
-          source: "src-a",
-          sourceHandle: "out:audio:main",
-          target: SPEAKERS_NODE_ID,
-          targetHandle: "in:audio:main",
-        })),
-      ],
-    };
-    const copied = duplicateNodes(cabled, ["src-a", "compressor"]);
-    expect(copied).toMatchObject({
-      graph: cabled,
-      message: "Up to 64 cables per patch",
-      nodeIds: [],
-    });
+    expect(start.edges).toHaveLength(64);
+    expect(validate(start)).toEqual([]);
+
+    const { graph, nodeIds, message } = duplicateNodes(start, [
+      "src-0",
+      "compressor",
+    ]);
+    const [sourceCopy = "", effectCopy = ""] = nodeIds;
+
+    expect(message).toBeUndefined();
+    expect(nodeIds).toHaveLength(2);
+    expect(graph.edges).toHaveLength(66);
+    expect(graph.edges.slice(64)).toMatchObject([
+      { source: sourceCopy, target: effectCopy },
+      { source: effectCopy, target: SPEAKERS_NODE_ID },
+    ]);
+    expect(validate(graph)).toEqual([]);
+    const plan = compile(graph, ENV);
+    expect(plan.issues).toEqual([]);
+    expect(plan.lanes.get(sourceCopy)?.effects[0]?.id).toBe(effectCopy);
+    expect(plan.cables.get(`${effectCopy}->speakers`)?.from.id).toBe(
+      sourceCopy
+    );
   });
 
   test("a copy never takes a deleted copy's id, so its MIDI stays dormant", () => {

@@ -25,8 +25,6 @@ test("an edit and every compile environment get their own plan", () => {
   expect(compiledPlan(graph, { ...env, crossOriginIsolated: true })).not.toBe(
     base
   );
-  expect(compiledPlan(graph, { ...env, profile: "mobile" })).not.toBe(base);
   expect(compiledPlan(graph, { ...env, release: "v1" })).not.toBe(base);
-  expect(compiledPlan(graph, { ...env, playing: ["station"] })).not.toBe(base);
   expect(compiledPlan(graph, { ...env })).toBe(base);
 });

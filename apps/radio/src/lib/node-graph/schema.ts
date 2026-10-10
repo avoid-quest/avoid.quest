@@ -18,6 +18,13 @@ import {
   isEffectContainer,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { MidiTransform } from "@/lib/midi/types";
+import {
+  isModulationType,
+  MODULATION_DATA_SCHEMAS,
+  MODULATION_NODE_TYPES,
+  type ModulationNodeType,
+  normalizeModulationData,
+} from "./modulation-schema";
 
 export const NODE_GRAPH_VERSION = 2;
 
@@ -26,6 +33,11 @@ export const NODE_GRAPH_VERSION = 2;
  * params, so an imported or shared patch cannot blast the speakers.
  */
 export const MAX_EDGE_GAIN = 4;
+
+export const FILTER_PARAM_BOUNDS = {
+  frequency: { max: 20_000, min: 20 },
+  Q: { max: 30, min: 0.1 },
+};
 
 export const SOURCE_NODE_TYPES = [
   "station",
@@ -71,14 +83,9 @@ export const ROUTING_NODE_TYPES = [
 ] as const;
 
 export const CONTROL_NODE_TYPES = [
-  "macro",
-  "lfo",
-  "clock",
-  "randomiser",
-  "follower",
+  ...MODULATION_NODE_TYPES,
   "titleTrigger",
   "sundial",
-  "midiIn",
 ] as const;
 
 export const OUTPUT_NODE_TYPES = [
@@ -112,6 +119,7 @@ const TYPED_NODE_TYPES = [
   "merge",
   "loop",
   "tapeWarp",
+  ...MODULATION_NODE_TYPES,
 ] as const satisfies readonly NodeType[];
 
 const LOOSE_NODE_TYPES = NODE_TYPES.filter(
@@ -323,7 +331,7 @@ const speakersNodeSchema = z.object({
  * A number pulled into `[min, max]` rather than refused. `z.number()`
  * still refuses NaN and the infinities, which have no place to clamp to.
  */
-function clampedNumber(min: number, max: number) {
+function clampedNumber({ min, max }: { min: number; max: number }) {
   return z.number().transform((value) => Math.min(max, Math.max(min, value)));
 }
 
@@ -333,8 +341,8 @@ const filterNodeSchema = z.object({
   // Clamped to what the old Filter allowed (Q up to 30), so a migrated
   // patch still opens rather than going invalid.
   data: z.object({
-    frequency: clampedNumber(20, 20_000).default(1000),
-    Q: clampedNumber(0.1, 30).default(1),
+    frequency: clampedNumber(FILTER_PARAM_BOUNDS.frequency).default(1000),
+    Q: clampedNumber(FILTER_PARAM_BOUNDS.Q).default(1),
     type: z.enum(["lowpass", "highpass"]).default("lowpass"),
   }),
   type: z.literal("filter"),
@@ -418,6 +426,17 @@ const looseNodeSchema = z.object({
   type: z.enum(LOOSE_NODE_TYPES),
 });
 
+function modulationNode<T extends ModulationNodeType>(type: T) {
+  return z.object({
+    ...nodeBase,
+    data: z.preprocess(
+      (data) => (data === undefined ? {} : data),
+      MODULATION_DATA_SCHEMAS[type]
+    ),
+    type: z.literal(type),
+  });
+}
+
 export const graphNodeSchema = z.discriminatedUnion("type", [
   stationNodeSchema,
   platformNodeSchema,
@@ -432,6 +451,18 @@ export const graphNodeSchema = z.discriminatedUnion("type", [
   mergeNodeSchema,
   loopNodeSchema,
   tapeWarpNodeSchema,
+  modulationNode("macro"),
+  modulationNode("lfo"),
+  modulationNode("steps"),
+  modulationNode("randomiser"),
+  modulationNode("follower"),
+  modulationNode("envelope"),
+  modulationNode("curve"),
+  modulationNode("slew"),
+  modulationNode("multiEnvelope"),
+  modulationNode("shapedLfo"),
+  modulationNode("clock"),
+  modulationNode("midiIn"),
   looseNodeSchema,
 ]);
 
@@ -446,13 +477,16 @@ export const graphEdgeSchema = z.object({
   /** User cable colour override. */
   color: z.string().optional(),
   /** Modulation depth on control cables. */
-  depth: z.number().optional(),
+  // Older v2 patches allowed any finite depth; keep them readable at a safe level.
+  depth: clampedNumber({ max: 1, min: -1 }).optional(),
   /** Linear, capped like a container branch gain (+12 dB). */
   gain: z.number().min(0).max(MAX_EDGE_GAIN).default(1),
   id: z.string().min(1),
   muted: z.boolean().default(false),
   /** A branch cable's pan, added to its chain's (Split, Stereo or Band Split). */
   pan: z.number().min(-1).max(1).optional(),
+  /** Numeric parameter selected on a modulation cable. */
+  parameter: z.string().max(80).optional(),
   /** A branch cable's solo: its chain plays and unsoloed siblings go quiet. */
   solo: z.boolean().optional(),
   source: z.string().min(1),
@@ -522,6 +556,13 @@ export type NodeGraphInput = z.input<typeof nodeGraphSchema>;
 export type GraphNode = NodeGraph["nodes"][number];
 export type GraphEdge = NodeGraph["edges"][number];
 export type RadioSourceNode = Extract<GraphNode, { type: RadioSourceNodeType }>;
+export type ModulationNode = Extract<GraphNode, { type: ModulationNodeType }>;
+
+export function isModulationNode(
+  node: GraphNode | undefined
+): node is ModulationNode {
+  return node !== undefined && isModulationType(node.type);
+}
 
 export function isRadioSourceNode(
   node: GraphNode | undefined
@@ -678,6 +719,24 @@ export function migrateNodeGraph(raw: unknown): NodeGraphMigration {
   let upgraded = raw as object;
   for (let step = version; step < NODE_GRAPH_VERSION; step += 1) {
     upgraded = UPGRADES[step]?.(upgraded) ?? upgraded;
+  }
+  const nodes = Reflect.get(upgraded, "nodes");
+  if (Array.isArray(nodes)) {
+    upgraded = {
+      ...upgraded,
+      nodes: nodes.map((node: unknown) => {
+        if (!node || typeof node !== "object") {
+          return node;
+        }
+        const type = Reflect.get(node, "type");
+        return typeof type === "string" && isModulationType(type)
+          ? {
+              ...node,
+              data: normalizeModulationData(type, Reflect.get(node, "data")),
+            }
+          : node;
+      }),
+    };
   }
   const parsed = nodeGraphSchema.safeParse(upgraded);
   if (!parsed.success) {

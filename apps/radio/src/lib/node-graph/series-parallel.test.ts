@@ -151,7 +151,7 @@ describe("seriesToParallel (P)", () => {
   });
 });
 
-describe("seriesToParallel (P): the cable budget", () => {
+describe("seriesToParallel (P): large patches", () => {
   /** The series patch with filler stations cabled to Speakers and two outputs. */
   function withCables(total: number): NodeGraph {
     const targets = ["speakers", "out-1", "out-2"];
@@ -189,20 +189,16 @@ describe("seriesToParallel (P): the cable budget", () => {
     });
   }
 
-  test("refuses P when its three new cables would pass 64", () => {
-    const full = withCables(62);
-    expect(compile(full, { crossOriginIsolated: false }).issues).toEqual([]);
-
-    expect(seriesToParallel(full, both)).toEqual({
-      message: "Up to 64 cables per patch",
-      ok: false,
-    });
-  });
-
-  test("allows P that lands on exactly 64 cables", () => {
-    const result = seriesToParallel(withCables(61), both);
-
-    expect(result.ok && result.graph.edges.length).toBe(64);
+  test("adds three cables past the former 64-cable cap", () => {
+    const result = seriesToParallel(withCables(64), both);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+    expect(result.graph.edges).toHaveLength(67);
+    expect(
+      compile(result.graph, { crossOriginIsolated: false }).issues
+    ).toEqual([]);
   });
 });
 

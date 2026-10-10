@@ -63,6 +63,9 @@ export function getFriendlyPlaybackErrorMessage(
   error: unknown,
   fallback = DEFAULT_PLAYBACK_START_ERROR_MESSAGE
 ): string {
+  if (error instanceof AppError && error.code === "UNSUPPORTED_RADIO_GRAPH") {
+    return error.safeMessage;
+  }
   // Tab sharing says what to do itself; it is no station stream or mic.
   if (error instanceof DisplayAudioError) {
     return error.message;

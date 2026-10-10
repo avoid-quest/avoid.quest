@@ -42,9 +42,15 @@ export function createNodeSessionPersistence(
         transaction.isPersisted.promise.catch(onError);
       }
     },
+    /** Waits for writes made while waiting too, e.g. a commit's. */
     async whenSettled() {
-      throttler.flush();
-      await pending?.isPersisted.promise;
+      let settled: Transaction | undefined;
+      while (settled !== pending) {
+        settled = pending;
+        throttler.flush();
+        // biome-ignore lint/performance/noAwaitInLoops: a write can follow while this one persists.
+        await settled?.isPersisted.promise;
+      }
     },
   };
 }

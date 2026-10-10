@@ -48,31 +48,73 @@ membership and patch membership are separate: saving a search result to the
 library does not add another node automatically.
 
 A patch has exactly one Speakers. An Output device adds a separately selected
-physical sink when the browser supports routing. Source lanes can feed both;
-a lane without an output cable is silent. Output-device selection failures use the
+physical sink when the browser supports routing. Several Output device nodes
+may play to the same device, each with its own cables and mute. Source lanes
+can feed both; a lane without an output cable is silent. Output-device selection failures use the
 existing main-output fallback and expose a user retry. Browser capability checks
 and device status determine which controls are available.
 
-FX lower to the existing `EffectConfig` tree. Native Filter and Pan occupy the
-leading source strip. Gain nodes and cable trims retain the whole signal level,
-including the dry path at partial FX mix. Split, Stereo Split, Band Split and
-same-source fan-out regions use the existing series/parallel containers and
-reconverge at an in-lane Merge. Branch controls distinguish the configured base
-level from cable trim and display their combined gain. Cross-source Merge buses
-remain roadmap work.
+FX lower to the existing `EffectConfig` tree. A source's leading Filter and Pan
+occupy its native strip, and the FX only it feeds are its insert, before its
+fader. Past the first point (`node-graph/regions.ts`) the patch is a routing
+graph after the faders: a node whose input sums several cables, a Filter or
+Pan off the strip, and an output whose branches go different ways are points
+in Web Audio, except a node that closes a Split region, which stays inside
+that region's `EffectConfig` tree; the FX between points run as graph units,
+one openDAW chain each. A Filter in series between FX runs inside their chain as Revamp's
+pass filter, which does the same, so the signal stays in openDAW; a Pan
+stays Web Audio's panner, which no openDAW device matches. Where a path
+leaves openDAW and goes back in, Web Audio reads it a render quantum late on
+its own; that cable passes a DelayNode that adds nothing, as every loop
+through the worklet wants one, and the other cables into the same point wait
+the quantum on theirs. Chromium decides which of them it renders first, so
+same-source paths that rejoin across such a loop can still land one quantum
+(about 2.7 ms) apart; closed regions without native points never leave
+openDAW and stay exact. So stations mix into shared FX through a Merge or any FX
+input, Filters and Pans repeat anywhere, and one output can feed several
+places. Gain nodes
+and cable trims retain the whole signal level, including the dry path at
+partial FX mix. Split, Stereo Split, Band Split and implicit fan-out regions
+use the existing series/parallel containers and reconverge at the nearest
+node that joins them: a Merge, an output, or any node that sums. An explicit
+Split or Stereo Split whose branches go different ways runs as a split stage
+in Web Audio
+([split-routing-measurements.md](node/docs/split-routing-measurements.md)):
+each cabled port is its own output, its branch's gain, pan, mute and solo
+applied there, and the ports together sum to what the same Split gives when
+its branches rejoin. Band Split branches must rejoin in the openDAW container
+until the comparison gate passes. Branch controls distinguish the configured
+base level from cable trim and display
+their combined gain. Each Output node has its own gain, which carries its
+mute and Node's master volume: they act at the outputs, after every effect,
+on every cable into the node, those still fading out included, so shared FX
+sound the same at any master level.
 
 Audio cables carry signal and branch controls; dashed key cables feed supported
-FX sidechains. A connected Vocoder key selects its external modulator in the
-compiled plan; removing it uses the authored modulator setting, which connecting
-no longer overwrites. The shared connection verdict checks port kinds, limits and
-native placement before all connection paths commit an edit.
+FX sidechains. A key cable can start anywhere a cable can, except inside a
+Split whose branches meet again, whose signals stay inside its openDAW
+container: the key hears exactly what that point carries, cable gain and mute
+included, and a key input
+sums every cable into it, in stereo. Each keyed effect has its own key, so
+several effects on one path can be keyed independently; one whose key cables
+are all muted or have zero gain detects on its own input. A key and the audio of the
+effect it keys arrive in step: whichever comes back from openDAW later, the
+other waits for it, except in a source's own insert, which hears its source
+first hand. A key exists, silent, as soon as Node has audio, so an insert and
+its keys take their openDAW input channels together; an insert whose key
+can't get one falls back to the compatibility engine. The compatibility
+engine keys one effect per chain and labels the others. A connected Vocoder key
+selects its external modulator in the compiled plan; removing it uses the
+authored modulator setting, which connecting no longer overwrites. Key cables
+count in the feedback check. The shared connection verdict checks port kinds,
+limits and feedback before all connection paths commit an edit.
 Compilation validates again and excludes refused routes rather than sending an
 invalid topology to audio.
 
 The catalogue's ship flags define the available v1 nodes and ports. The schema
 also describes future nodes so migrations can identify them; schema membership
-alone does not make a node playable. `validate.ts` owns device budgets and graph
-issues, and the runtime enforces the playing-stream limit at start time.
+alone does not make a node playable. `validate.ts` owns graph issues. openDAW's
+8 live-input channels are handled by automatic compatibility fallback.
 
 Each source strip has trim, pan, mute and solo. Track and File add speed, key lock,
 seek/cue, whole-track Loop and headphone cue listening. Their Loop suppresses
@@ -123,11 +165,11 @@ throttled graph or engine writes.
 | --- | --- |
 | Document versions, source strip defaults | [`schema.ts`](../../lib/node-graph/schema.ts) |
 | Available nodes, typed ports and FX defaults | [`catalogue.ts`](../../lib/node-graph/catalogue.ts) |
-| Budgets, diagnostics, connection verdict | [`validate.ts`](../../lib/node-graph/validate.ts) |
+| Diagnostics, connection verdict | [`validate.ts`](../../lib/node-graph/validate.ts) |
 | Lane lowering, branch shape and sidechains | [`compile.ts`](../../lib/node-graph/compile.ts) |
 | Parameter versus structural engine changes | [`reconcile.ts`](../../lib/node-graph/reconcile.ts) |
 | Pure graph edits, templates, undo/history | [`graph-edits.ts`](../../lib/node-graph/graph-edits.ts), [`templates.ts`](../../lib/node-graph/templates.ts), [`node-store.ts`](../../lib/node-graph/node-store.ts) |
-| Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts), [`pending-channel-starts.ts`](../../lib/pending-channel-starts.ts) |
+| Activation, lane ownership and transport | [`node-playback.ts`](../../lib/node-playback.ts), [`engine.ts`](../../lib/node-engine/engine.ts), [`lane.ts`](../../lib/node-engine/lane.ts) |
 | Output sends and physical device sinks | [`node-lane-outputs.ts`](../../lib/audio/routing/node-lane-outputs.ts), [`node-device-sinks.ts`](../../lib/audio/routing/node-device-sinks.ts) |
 | External source loading and local file lifetime | [`node-source-loaders.ts`](../../lib/node-source-loaders.ts), [`sources.ts`](../../lib/node-graph/sources.ts) |
 | Persistence, migration and local NAM retention | [`playback-sessions.ts`](../../lib/collections/playback-sessions.ts), [`migrations/`](../../lib/collections/migrations/) |
@@ -154,3 +196,13 @@ MIDI hardware, touch drag/pinch/rewire and audible structural FX swaps. Platform
 search/resolve depends on live providers and also needs release checks. Record the
 browser/device, scenario and observed result when completing each gate; mark a
 missing device or unavailable provider as unverified.
+
+## Parameter modulation
+
+Twelve control sources, parameter cables, signed depths and pattern editors are
+implemented. Ordinary openDAW effect fields use native assignments. Logical Mix,
+linear/folded gains and Crusher/Fold compensation use transient scalar writes;
+Web Audio pan/filter/sends use the same owned parameter path. Frames never
+compile or save a patch. Native Steps has no custom seed. A cable the runtime
+doesn't apply says so, and why. See [modulation](node/docs/modulation.md)
+and [device acceptance](node/docs/acceptance.md) for timing and verification.

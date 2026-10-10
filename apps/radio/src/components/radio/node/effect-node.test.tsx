@@ -11,6 +11,7 @@ import {
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { EffectConfig } from "@/lib/audio";
+import type { NodeBackendBadges } from "@/lib/node-playback";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -247,7 +248,7 @@ describe("EffectNodeBody", () => {
 
   test("shows a backend badge in its header", () => {
     const view = renderBody(createDefaultEffectConfig("limiter", "l1", 0), {
-      badge: "compat",
+      badge: { cause: "radio-only:limiter", kind: "compat" },
     });
 
     expect(view.getByText("compat")).toBeTruthy();
@@ -545,8 +546,8 @@ describe("EffectNode on the canvas", () => {
 
 describe("BackendBadge", () => {
   test("shows what node playback published for the node, and nothing else", () => {
-    const store = new Store<Record<string, "compat" | "bypassed">>({
-      comp: "compat",
+    const store = new Store<NodeBackendBadges>({
+      comp: { cause: "capacity", kind: "compat" },
     });
     const view = render(
       <>
@@ -558,12 +559,34 @@ describe("BackendBadge", () => {
     expect(view.getByText("compat")).toBeTruthy();
 
     act(() => {
-      store.setState(() => ({ comp: "bypassed" }));
+      store.setState(() => ({ comp: { kind: "bypassed" } }));
     });
 
     expect(view.queryByText("compat")).toBeNull();
     expect(view.getByText("bypassed").getAttribute("title")).toContain(
       "plays dry"
+    );
+  });
+
+  test.each([
+    ["radio-only:limiter", "Limiter only runs there"],
+    ["unsupported-config:delay", "this Delay configuration only runs there"],
+    [
+      "capacity",
+      "openDAW's 8 monitoring input channels are in use: each stereo FX lane or unit takes two, and so does each distinct key input",
+    ],
+    ["startup-failed", "openDAW couldn't start"],
+    ["not-isolated", "this browser can't run openDAW"],
+  ] as const)("a compat badge says why: %s", (cause, why) => {
+    const view = render(
+      <BackendBadge
+        nodeId="fx"
+        store={new Store<NodeBackendBadges>({ fx: { cause, kind: "compat" } })}
+      />
+    );
+
+    expect(view.getByText("compat").getAttribute("title")).toBe(
+      `Runs on the compatibility effects engine because ${why}`
     );
   });
 });
@@ -747,7 +770,7 @@ describe("NodePort", () => {
     start: element.classList.contains("connectablestart"),
   });
 
-  test("a Merge input holding eight cables takes no ninth", () => {
+  test("a Merge input accepts more than eight cables", () => {
     const merge = { data: {}, id: "mix", position: at, type: "merge" };
     const seven = renderPorts(
       [...stations(8), merge],
@@ -764,14 +787,14 @@ describe("NodePort", () => {
       cablesInto("mix", "in:audio:main", 8)
     );
     expect(takes(eight.port("mix", "in:audio:main"))).toEqual({
-      end: false,
-      start: false,
+      end: true,
+      start: true,
     });
     // An output takes any number.
     expect(takes(eight.port("mix", "out:audio:main")).start).toBe(true);
   });
 
-  test("a Compressor key with one cable is locked for a second", () => {
+  test("a Compressor key sums multiple cables", () => {
     const { port } = renderPorts(
       [
         ...stations(1),
@@ -781,7 +804,7 @@ describe("NodePort", () => {
     );
     const key = port("comp", "in:sidechain:key");
     expect(key.dataset.kind).toBe("sidechain");
-    expect(takes(key)).toEqual({ end: false, start: false });
+    expect(takes(key)).toEqual({ end: true, start: true });
     expect(takes(port("comp", "in:audio:main")).end).toBe(true);
   });
 

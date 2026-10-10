@@ -5,12 +5,7 @@ const plans = new WeakMap<NodeGraph, Map<string, EnginePlan>>();
 
 /** Immutable editor snapshots share their plan across playback, canvas and Rack. */
 export function compiledPlan(graph: NodeGraph, env: CompileEnv): EnginePlan {
-  const key = JSON.stringify([
-    env.crossOriginIsolated,
-    env.profile,
-    env.release,
-    env.playing,
-  ]);
+  const key = JSON.stringify([env.crossOriginIsolated, env.release]);
   const variants = plans.get(graph) ?? new Map<string, EnginePlan>();
   let plan = variants.get(key);
   if (!plan) {

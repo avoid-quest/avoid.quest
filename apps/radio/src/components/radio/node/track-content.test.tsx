@@ -1,5 +1,13 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
@@ -31,6 +39,7 @@ for (const [key, value] of Object.entries({
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
   Element: dom.window.Element,
+  Event: dom.window.Event,
   getComputedStyle: dom.window.getComputedStyle,
   HTMLElement: dom.window.HTMLElement,
   HTMLFormElement: dom.window.HTMLFormElement,
@@ -164,13 +173,11 @@ describe("TrackNodeContent", () => {
     expect(stream?.isCurrent()).toBe(true);
 
     // Choosing a platform in the inspector supersedes the patch's request.
-    const soundCloud = Array.from(
-      inspector.querySelectorAll<HTMLButtonElement>("button")
-    ).find((button) => button.textContent === "SoundCloud");
-    if (!soundCloud) {
-      throw new Error("missing SoundCloud chip");
+    const select = inspector.querySelector("select") as HTMLElement | null;
+    if (!select) {
+      throw new Error("missing source selector");
     }
-    fireEvent.click(soundCloud);
+    fireEvent.change(select, { target: { value: "soundcloud" } });
     expect(stream?.isCurrent()).toBe(false);
 
     await act(async () => {
@@ -192,4 +199,46 @@ describe("TrackNodeContent", () => {
       "Couldn't load that stream"
     );
   });
+});
+
+test("a platform link pending in one view cannot report a stale failure after the other view starts searching", async () => {
+  const loader = await import("@/lib/platform-item-loader");
+  let finish: (result: {
+    success: false;
+    error: string;
+    code: string;
+  }) => void = () => undefined;
+  const pending = new Promise<{ success: false; error: string; code: string }>(
+    (resolve) => {
+      finish = resolve;
+    }
+  );
+  const load = spyOn(loader, "loadPlatformItem").mockImplementation(
+    () => pending
+  );
+  try {
+    const { patch, inspector } = renderBothViews();
+    const input = patch.querySelector(
+      'input[type="search"]'
+    ) as HTMLInputElement;
+    const other = inspector.querySelector(
+      'input[type="search"]'
+    ) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { value: "https://youtube.com/watch?v=old" },
+    });
+    await act(async () => {
+      fireEvent.submit(input.closest("form") as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    fireEvent.change(other, { target: { value: "new search" } });
+    await act(async () => {
+      finish({ code: "LOAD_FAILED", error: "Old link failed", success: false });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(patch.textContent).not.toContain("Old link failed");
+  } finally {
+    load.mockRestore();
+  }
 });

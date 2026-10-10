@@ -20,14 +20,18 @@ function firstStep(graph: NodeGraph, isPhone: boolean): string {
   const addNode = isPhone ? "tap + to add a node" : "press / to add a node";
   const slot = graph.nodes.find(isStripSource);
   if (!slot) {
-    return `Search to add a station, or ${addNode}`;
+    return `Search to add a source, or ${addNode}`;
   }
   if (slot.type === "deviceIn") {
     return "Choose an input on the node, then Go live to start capture";
   }
-  return slot.type === "station"
-    ? `Search a station in the slot, or ${addNode}`
-    : `Fill the ${slot.type === "file" ? "File" : "Track"}, or ${addNode}`;
+  if (slot.type === "station") {
+    return `Search a station in the slot, or ${addNode}`;
+  }
+  if (slot.type === "file") {
+    return `Choose a file, or ${addNode}`;
+  }
+  return `Search tracks, shows or stations, or ${addNode}`;
 }
 
 /**

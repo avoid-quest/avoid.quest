@@ -20,7 +20,6 @@ import {
   type NodeStore,
   nodeStore,
 } from "@/lib/node-graph/node-store";
-import { trackChip } from "@/lib/node-graph/palette";
 import {
   type GraphNode,
   TRACK_SEARCH_PLATFORMS,
@@ -49,8 +48,8 @@ import { beginSourceRequest } from "./use-node-radio-management";
  *
  * A YouTube, SoundCloud, Bandcamp or Spotify track, album or playlist, or a
  * Mixcloud show, as a source.
- * Empty, its body is DJ's external search, unlocked ("Search all") or
- * locked by a platform chip; a pick or a pasted link loads through DJ's
+ * Empty, its body is the unified source search shared with DJ.
+ * A pick or a pasted link loads through DJ's
  * track loader. A radio link hands off: the node becomes a Station. Filled,
  * it is a card like a Station's, with the album's place in its subtitle.
  */
@@ -79,52 +78,6 @@ export function sourceChipOf(radio: Radio): {
     color: definition?.color ?? SEARCH_ALL.color,
     Icon: platformSourceIcon(definition?.icon ?? "static-audio"),
   };
-}
-
-/** The chips over an empty Track's search: All, then DJ's platforms. */
-export function PlatformChips({
-  value,
-  onChange,
-}: {
-  value: TrackSearchPlatform | undefined;
-  onChange: (platform: TrackSearchPlatform | undefined) => void;
-}) {
-  const chips = [
-    { color: SEARCH_ALL.color, id: undefined, name: "All" },
-    ...TRACK_SEARCH_PLATFORMS.map((platform) => ({
-      color: trackChip(platform).color,
-      id: platform,
-      name: trackChip(platform).name,
-    })),
-  ];
-  return (
-    <fieldset className="flex flex-wrap gap-0.5">
-      <legend className="sr-only">Search on</legend>
-      {chips.map((chip) => {
-        const pressed = chip.id === value;
-        return (
-          <Button
-            aria-pressed={pressed}
-            className={cn(
-              "h-6 gap-1.5 px-1.5 text-xs",
-              !pressed && "text-muted-foreground"
-            )}
-            key={chip.name}
-            onClick={() => onChange(chip.id)}
-            size="sm"
-            variant={pressed ? "secondary" : "ghost"}
-          >
-            <span
-              aria-hidden="true"
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: chip.color }}
-            />
-            {chip.name}
-          </Button>
-        );
-      })}
-    </fieldset>
-  );
 }
 
 /** A filled Track or File: its tile, name and subtitle, menu, error, strip. */
@@ -203,6 +156,8 @@ export function TrackCard({
 
 type TrackNodeBodyProps = Omit<SourceTransportProps, "target"> & {
   data: TrackData;
+  embedded?: boolean;
+  radios?: readonly Radio[];
   error: string | null;
   selected?: boolean;
   /** A search pick or pasted link, resolved by DJ's track loader. */
@@ -210,16 +165,20 @@ type TrackNodeBodyProps = Omit<SourceTransportProps, "target"> & {
   /** A pasted radio stream link, which makes the Track a Station. */
   onStreamLink?: (url: string) => void;
   onSearchPlatformChange: (platform: TrackSearchPlatform | undefined) => void;
+  onSearchChange?: () => () => boolean;
   onRemove?: () => void;
 };
 
 export function TrackNodeBody({
   data,
+  embedded,
+  radios,
   error,
   selected = false,
   onLoad,
   onStreamLink,
   onSearchPlatformChange,
+  onSearchChange,
   onRemove,
   ...transport
 }: TrackNodeBodyProps) {
@@ -239,24 +198,33 @@ export function TrackNodeBody({
   return (
     <EmptySourceFrame
       className="w-84"
+      embedded={embedded}
       onRemove={onRemove}
       removeLabel="Remove empty Track"
       selected={selected}
       title="Track"
     >
       <div className="flex flex-col gap-1">
-        <PlatformChips
-          onChange={onSearchPlatformChange}
-          value={data.searchPlatform}
-        />
         <div className="flex max-h-80 flex-col">
-          {/* The chips above pick the platform, so its own select stays off. */}
           <ExternalSearch
             initialPlatform={data.searchPlatform ?? "all"}
             mode="node"
             onLoad={onLoad}
             onOtherLink={onStreamLink}
-            showPlatform={false}
+            onPlatformChange={(platform) => {
+              if (
+                platform === "all" ||
+                TRACK_SEARCH_PLATFORMS.includes(platform as TrackSearchPlatform)
+              ) {
+                onSearchPlatformChange(
+                  platform === "all"
+                    ? undefined
+                    : (platform as TrackSearchPlatform)
+                );
+              }
+            }}
+            onSearchChange={onSearchChange}
+            radios={radios}
           />
         </div>
         {error?.trim() ? <InlineError>{error}</InlineError> : null}
@@ -316,6 +284,7 @@ export function TrackNodeContent({
   return (
     <TrackNodeBody
       data={data}
+      embedded={!showStrip}
       error={radio ? lane.error : loadError}
       isLoading={lane.isLoading}
       isPlaying={lane.isPlaying}
@@ -325,6 +294,7 @@ export function TrackNodeContent({
         handleLoad(picked, isCurrent).catch(reportLoadFailure(isCurrent));
       }}
       onRemove={() => actions.removeNode(id)}
+      onSearchChange={() => beginSourceRequest(id)}
       onSearchPlatformChange={(platform) => {
         beginSourceRequest(id);
         commitNodeGraph(
@@ -341,6 +311,7 @@ export function TrackNodeContent({
       onTogglePlayPause={lane.onTogglePlayPause}
       onVolumeChange={lane.onVolumeChange}
       onVolumeCommit={lane.onVolumeCommit}
+      radios={actions.radios}
       selected={selected}
       strip={
         radio && showStrip ? (

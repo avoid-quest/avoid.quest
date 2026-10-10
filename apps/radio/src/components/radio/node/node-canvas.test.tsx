@@ -154,7 +154,7 @@ beforeAll(async () => {
 });
 
 const noop = () => undefined;
-const EMPTY_HINT = "Search a station in the slot, or press / to add a node";
+const EMPTY_HINT = "Search tracks, shows or stations, or press / to add a node";
 const CABLE_HINT =
   "Drag between ports to connect, or to empty space to add a node";
 
@@ -589,7 +589,7 @@ describe("NodeCanvas", () => {
       nodeStoreModule.commitNodeGraph((graph) => ({
         ...graph,
         nodes: graph.nodes.map((node) =>
-          node.type === "station"
+          node.type === "platform"
             ? { ...node, data: { ...node.data, radio: kexp } }
             : node
         ),
@@ -643,7 +643,7 @@ describe("NodeCanvas", () => {
     );
 
     expect(
-      view.getByText("Search to add a station, or press / to add a node")
+      view.getByText("Search to add a source, or press / to add a node")
     ).toBeTruthy();
   });
 
@@ -656,7 +656,7 @@ describe("NodeCanvas", () => {
     );
 
     expect(
-      view.getByText("Search a station in the slot, or tap + to add a node")
+      view.getByText("Search tracks, shows or stations, or tap + to add a node")
     ).toBeTruthy();
   });
 });

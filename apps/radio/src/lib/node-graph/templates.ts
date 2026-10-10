@@ -3,7 +3,7 @@
  *
  * Pure builders for the patches a node session can start from:
  *
- * - "starter": the default, one empty Station slot wired to Speakers;
+ * - "starter": the default, one empty search slot wired to Speakers;
  * - "start-from-multiple": every enabled saved station, then the session
  *   stations, in Multiple's order, each wired to Speakers at its volume;
  * - "duck": a talk station keys a Compressor on a music station, so the
@@ -116,11 +116,11 @@ function speakersNode(position: { x: number; y: number }): GraphNode {
   };
 }
 
-/** The Starter template's empty Station slot. */
+/** The Starter template's search slot. Its ID stays stable for existing patches. */
 export const STARTER_STATION_ID = "src-station";
 
 /**
- * The smallest patch that plays: one empty Station slot to search, wired to
+ * The smallest patch that plays: one empty search slot to search, wired to
  * Speakers, in Duck's columns.
  */
 function starter(): NodeGraph {
@@ -141,15 +141,15 @@ function starter(): NodeGraph {
         data: {
           muted: false,
           radio: null,
-          strip: stripForType("station"),
+          strip: stripForType("platform"),
           volume: 1,
         },
         id: STARTER_STATION_ID,
         position: { x: 0, y: 0 },
-        type: "station",
+        type: "platform",
       },
       // A cable's length right of the slot, as in Duck.
-      speakersNode({ x: STATION_WIDTH + 120, y: 0 }),
+      speakersNode({ x: 336 + 120, y: 0 }),
     ],
     version: NODE_GRAPH_VERSION,
     viewport: { x: 0, y: 0, zoom: 1 },

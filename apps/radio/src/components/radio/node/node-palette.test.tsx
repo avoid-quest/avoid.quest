@@ -474,7 +474,8 @@ describe("NodePalette devices", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     const track = store.state.graph?.nodes.find(
-      (node) => node.type === "platform"
+      (node) =>
+        node.type === "platform" && node.data.searchPlatform === "youtube"
     );
     expect(track?.data).toMatchObject({
       radio: null,

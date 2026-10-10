@@ -712,7 +712,7 @@ describe("NodeInspector", () => {
       expect(view.getByPlaceholderText("Search or paste a stream")).toBeTruthy()
     );
     checkSettings("Empty Track", () =>
-      expect(view.getByRole("group", { name: "Search on" })).toBeTruthy()
+      expect(view.getByRole("combobox", { name: "Platform" })).toBeTruthy()
     );
     checkSettings("Empty File", () =>
       expect(view.getByText("Browse files")).toBeTruthy()

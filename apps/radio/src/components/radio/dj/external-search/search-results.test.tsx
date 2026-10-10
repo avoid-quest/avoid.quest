@@ -319,3 +319,35 @@ describe("SearchResults", () => {
     }
   );
 });
+
+test("a verified directory result loads its prepared radio without resolving a track URL", () => {
+  const onLoad = mock(() => undefined);
+  const station: Radio = {
+    id: "rb-station",
+    name: "Ambient station",
+    streamUrl: "https://radio.example/live.mp3",
+  };
+  const view = render(
+    <SearchResults
+      error={null}
+      onLoad={onLoad}
+      results={[
+        {
+          artist: "Rome",
+          id: "rb-station",
+          platform: "radio-browser",
+          radio: station,
+          title: station.name,
+          type: "station",
+          url: station.streamUrl,
+        },
+      ]}
+    />,
+    { wrapper: QueryProvider }
+  );
+  fireEvent.click(
+    view.getByRole("button", { name: "RB Ambient station Rome · station" })
+  );
+  expect(onLoad).toHaveBeenCalledWith(station);
+  expect(loadPlatformItemMock).not.toHaveBeenCalled();
+});

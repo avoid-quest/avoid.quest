@@ -1,5 +1,5 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
-import type { UnifiedSearchResult } from "@avoid.quest/platforms";
+
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
@@ -9,6 +9,7 @@ import type { Radio } from "@/lib/audio";
 import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
+import type { SourceSearchResult as UnifiedSearchResult } from "@/lib/source-search-workflow";
 import { EmptyHint } from "../../empty-hint";
 import { InlineError } from "../../inline-error";
 import {
@@ -23,13 +24,16 @@ type SearchResultsProps = {
   onLoad: (radio: Radio) => void;
   /** Called when a result is picked, before it resolves. */
   onPick?: () => void;
+  isCurrentPick?: () => boolean;
   results: UnifiedSearchResult[];
   showEmpty?: boolean;
 };
 
 const PLATFORM_LABELS = {
   bandcamp: "BC",
+  local: "FM",
   mixcloud: "MC",
+  "radio-browser": "RB",
   radiogarden: "RG",
   soundcloud: "SC",
   youtube: "YT",
@@ -40,6 +44,7 @@ function ResultItem({
   result,
   onLoad,
   onPick,
+  isCurrentPick,
   onError,
   isDisabled,
   isLoading,
@@ -49,6 +54,7 @@ function ResultItem({
   result: UnifiedSearchResult;
   onLoad: (radio: Radio) => void;
   onPick?: () => void;
+  isCurrentPick?: () => boolean;
   onError: (message: string) => void;
   isDisabled: boolean;
   isLoading: boolean;
@@ -56,7 +62,11 @@ function ResultItem({
 }) {
   const { mutate: loadItem, isPending } = useDjTrackLoad({
     mode,
-    onError,
+    onError: (message) => {
+      if (isCurrentPick?.() !== false) {
+        onError(message);
+      }
+    },
     onLoad: (radio) => {
       onError("");
       onLoad(radio);
@@ -68,10 +78,19 @@ function ResultItem({
     onError("");
     onLoadingChange(true);
     onPick?.();
-    loadItem(result.url);
+    if (result.radio) {
+      onLoad(result.radio);
+      onLoadingChange(false);
+    } else {
+      loadItem(result.url);
+    }
   };
 
-  const platformColor = getPlatformSourceColor(result.platform);
+  const platformColor = getPlatformSourceColor(
+    result.platform === "local" || result.platform === "radio-browser"
+      ? "external"
+      : result.platform
+  );
   const platformLabel = PLATFORM_LABELS[result.platform];
   const showLoading = isPending || isLoading;
 
@@ -133,6 +152,7 @@ function ManagedResultItem({
   loadingId,
   onLoad,
   onPick,
+  isCurrentPick,
   onError,
   onLoadingIdChange,
 }: {
@@ -141,6 +161,7 @@ function ManagedResultItem({
   loadingId: string | null;
   onLoad: (radio: Radio) => void;
   onPick?: () => void;
+  isCurrentPick?: () => boolean;
   onError: (message: string) => void;
   onLoadingIdChange: (id: string | null) => void;
 }) {
@@ -149,6 +170,7 @@ function ManagedResultItem({
 
   return (
     <ResultItem
+      isCurrentPick={isCurrentPick}
       isDisabled={loadingId !== null}
       isLoading={loadingId === result.id}
       mode={mode}
@@ -166,6 +188,7 @@ export function SearchResults({
   error,
   onLoad,
   onPick,
+  isCurrentPick,
   results,
   showEmpty = false,
 }: SearchResultsProps) {
@@ -191,13 +214,18 @@ export function SearchResults({
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <ScrollArea
+      aria-label="Search results"
+      className="nowheel min-h-0 flex-1"
+      role="region"
+    >
       <div className="space-y-2">
         {!!loadError?.trim() && <InlineError>{loadError}</InlineError>}
 
         <div className="flex w-0 min-w-full flex-col gap-1">
           {results.map((result) => (
             <ManagedResultItem
+              isCurrentPick={isCurrentPick}
               key={result.id}
               loadingId={loadingId}
               mode={mode}

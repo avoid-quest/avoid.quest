@@ -9,6 +9,9 @@ export function createSearchRequestGuard() {
       return () =>
         requestGeneration === generation && requestContext === context;
     },
+    invalidate(): void {
+      generation += 1;
+    },
     setContext(nextContext: string): void {
       if (context !== nextContext) {
         generation += 1;

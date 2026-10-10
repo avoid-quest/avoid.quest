@@ -72,7 +72,7 @@ export const PLATFORM_SOURCE_DEFINITIONS = [
     id: SEARCH_ALL_PLATFORM_ID,
     pendingPlatform: "external",
     radio: {
-      description: "Search across all platforms",
+      description: "Search tracks, shows and stations",
       enabled: true,
       id: SEARCH_ALL_PLATFORM_ID,
       name: "Search all",

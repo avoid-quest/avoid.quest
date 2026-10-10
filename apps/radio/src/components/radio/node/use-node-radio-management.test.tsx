@@ -25,6 +25,7 @@ import { DEFAULT_STATION_STRIP } from "@/lib/node-graph/schema";
 import {
   buildNodeGraphFromTemplate,
   SPEAKERS_NODE_ID,
+  STARTER_STATION_ID,
 } from "@/lib/node-graph/templates";
 import {
   resetAllPlaybackRuntime,
@@ -396,7 +397,7 @@ describe("useNodeRadioManagement", () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));
     const hook = renderManagement();
     const slot = store.state.graph?.nodes.find(
-      (node) => node.type === "station"
+      (node) => node.id === STARTER_STATION_ID
     );
     const radioBrowser = {
       id: "rb_1234",
@@ -412,7 +413,7 @@ describe("useNodeRadioManagement", () => {
     } satisfies Radio;
 
     await act(async () => {
-      await hook.current().fillStation(slot?.id ?? "", radioBrowser);
+      await hook.current().fillSource(slot?.id ?? "", radioBrowser);
     });
     expect(station(slot?.id ?? "")?.data.radio?.id).toBe("rb_1234");
 
@@ -427,8 +428,8 @@ describe("useNodeRadioManagement", () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));
     const hook = renderManagement();
     const slotId =
-      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
-      "";
+      store.state.graph?.nodes.find((node) => node.id === STARTER_STATION_ID)
+        ?.id ?? "";
 
     let failure: string | null = "unset";
     await act(async () => {
@@ -449,8 +450,8 @@ describe("useNodeRadioManagement", () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));
     const hook = renderManagement();
     const slotId =
-      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
-      "";
+      store.state.graph?.nodes.find((node) => node.id === STARTER_STATION_ID)
+        ?.id ?? "";
 
     await act(async () => {
       await hook
@@ -469,8 +470,8 @@ describe("useNodeRadioManagement", () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));
     const hook = renderManagement();
     const slotId =
-      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
-      "";
+      store.state.graph?.nodes.find((node) => node.id === STARTER_STATION_ID)
+        ?.id ?? "";
     let finishLoad: () => void = () => undefined;
     const loaded = new Promise<void>((resolve) => {
       finishLoad = resolve;
@@ -496,7 +497,7 @@ describe("useNodeRadioManagement", () => {
         .then((result) => {
           failure = result;
         });
-      await hook.current().fillStation(slotId, kexp);
+      await hook.current().fillSource(slotId, kexp);
       finishLoad();
       await pasted;
     });
@@ -509,8 +510,8 @@ describe("useNodeRadioManagement", () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));
     const hook = renderManagement();
     const slotId =
-      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
-      "";
+      store.state.graph?.nodes.find((node) => node.id === STARTER_STATION_ID)
+        ?.id ?? "";
     let finishLoad: () => void = () => undefined;
     const loaded = new Promise<void>((resolve) => {
       finishLoad = resolve;
@@ -552,8 +553,8 @@ describe("useNodeRadioManagement", () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));
     const hook = renderManagement();
     const slotId =
-      store.state.graph?.nodes.find((node) => node.type === "station")?.id ??
-      "";
+      store.state.graph?.nodes.find((node) => node.id === STARTER_STATION_ID)
+        ?.id ?? "";
     const controller = new AbortController();
 
     await act(async () => {

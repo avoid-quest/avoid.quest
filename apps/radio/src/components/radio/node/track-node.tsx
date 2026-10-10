@@ -5,7 +5,6 @@ import { SourceOutPort } from "./source-out-port";
 import { TrackNodeContent } from "./track-content";
 
 export {
-  PlatformChips,
   sourceChipOf,
   TrackCard,
   TrackNodeBody,

@@ -474,6 +474,7 @@ function DeckPanelInner({
         key={searchPlatform}
         onCancel={cancelPendingSource}
         onLoad={handleLoadPlatformItem}
+        radios={radios}
       />
     );
   } else if (contentKind === "loaded" && radio) {
@@ -511,6 +512,7 @@ function DeckPanelInner({
           key={changeSourceSearchPlatform}
           onCancel={handleCancelUrlChange}
           onLoad={handleUrlChanged}
+          radios={radios}
         />
       );
     } else if (isChangingDevice && isDeviceInput) {

@@ -149,6 +149,7 @@ export function StripMuteSolo({
   muted,
   solo,
   soloedOut = false,
+  showMute = true,
   onToggleMute,
   onToggleSolo,
 }: {
@@ -157,22 +158,25 @@ export function StripMuteSolo({
   solo: boolean;
   /** Another source is soloed: this S shows it's silenced, unpressed. */
   soloedOut?: boolean;
+  /** Hide when the adjacent volume control already exposes mute. */
+  showMute?: boolean;
   onToggleMute: () => void;
   onToggleSolo: () => void;
 }) {
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <Toggle
-        // "channel", so it reads apart from the fader's own Mute beside it.
-        aria-label={`Mute channel ${target}`}
-        className={cn(STRIP_TOGGLE, "data-[state=on]:bg-destructive/15")}
-        onPressedChange={onToggleMute}
-        pressed={muted}
-        size="sm"
-        title="Mute"
-      >
-        M
-      </Toggle>
+      {showMute ? (
+        <Toggle
+          aria-label={`Mute channel ${target}`}
+          className={cn(STRIP_TOGGLE, "data-[state=on]:bg-destructive/15")}
+          onPressedChange={onToggleMute}
+          pressed={muted}
+          size="sm"
+          title="Mute"
+        >
+          M
+        </Toggle>
+      ) : null}
       <Toggle
         aria-label={`Solo ${target}`}
         className={cn(
@@ -242,6 +246,8 @@ export type CompactSourceStripProps = {
   /** Another source is soloed, so this one is silenced. */
   soloedOut?: boolean;
   pan: number;
+  /** Hide when the adjacent volume control already exposes mute. */
+  showMute?: boolean;
   onToggleMute: () => void;
   onToggleSolo: () => void;
   onPanChange: (pan: number) => void;
@@ -256,6 +262,7 @@ export function CompactSourceStrip({
   solo,
   soloedOut = false,
   pan,
+  showMute = true,
   onToggleMute,
   onToggleSolo,
   onPanChange,
@@ -272,6 +279,7 @@ export function CompactSourceStrip({
         muted={muted}
         onToggleMute={onToggleMute}
         onToggleSolo={onToggleSolo}
+        showMute={showMute}
         solo={solo}
         soloedOut={soloedOut}
         target={target}
@@ -507,6 +515,8 @@ export type SourceStripProps = {
   muted: boolean;
   /** Another source is soloed, so this one is silenced. */
   soloedOut?: boolean;
+  /** Hide when the adjacent volume control already exposes mute. */
+  showMute?: boolean;
   onToggleMute: () => void;
   /** A knob turn or toggle; the inspector takes the undo step on release. */
   onStripChange: (patch: Partial<MediaStrip & InputStrip>) => void;
@@ -526,6 +536,7 @@ export function SourceStrip({
   strip,
   muted,
   soloedOut = false,
+  showMute = true,
   onToggleMute,
   onStripChange,
   media,
@@ -564,6 +575,7 @@ export function SourceStrip({
           muted={muted}
           onToggleMute={onToggleMute}
           onToggleSolo={() => onStripChange({ solo: !strip.solo })}
+          showMute={showMute}
           solo={strip.solo}
           soloedOut={soloedOut}
           target={target}

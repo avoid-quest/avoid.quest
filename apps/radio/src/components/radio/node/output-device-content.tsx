@@ -77,13 +77,12 @@ function OutputState({
   supported,
   onRetry,
 }: Omit<OutputDeviceBodyProps, "onPickDevice" | "onToggleMute" | "onRemove">) {
-  if (data.deviceId === null) {
-    return <DeviceNote>Pick the output to play on</DeviceNote>;
-  }
   if (!supported || status?.state === "unsupported") {
     return (
       <DeviceNote tone="warning">
-        This browser can't choose an output, playing through Speakers
+        {data.deviceId === null
+          ? "This browser can’t select an output device. Connect to Speakers instead."
+          : "This browser can’t select an output device. Audio uses Speakers instead."}
       </DeviceNote>
     );
   }
@@ -114,6 +113,9 @@ function OutputState({
         </Button>
       </InlineError>
     );
+  }
+  if (data.deviceId === null) {
+    return null;
   }
   if (data.deviceId === mainOutputId) {
     return <DeviceNote>Same device as Speakers</DeviceNote>;

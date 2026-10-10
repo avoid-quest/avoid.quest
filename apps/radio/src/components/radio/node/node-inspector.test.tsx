@@ -722,11 +722,15 @@ describe("NodeInspector", () => {
         view.getByRole("button", { name: "Allow microphone" })
       ).toBeTruthy();
       expect(
-        view.getByRole("combobox", { name: "Input channels" })
-      ).toBeTruthy();
+        view.queryByRole("combobox", { name: "Input channels" })
+      ).toBeNull();
     });
     checkSettings("Output device", () =>
-      expect(view.getByText("Pick the output to play on")).toBeTruthy()
+      expect(
+        view.getByText(
+          "This browser can’t select an output device. Connect to Speakers instead."
+        )
+      ).toBeTruthy()
     );
     checkSettings("Speakers", () =>
       expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy()

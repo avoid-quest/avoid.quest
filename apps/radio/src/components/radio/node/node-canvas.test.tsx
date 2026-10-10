@@ -155,7 +155,8 @@ beforeAll(async () => {
 
 const noop = () => undefined;
 const EMPTY_HINT = "Search a station in the slot, or press / to add a node";
-const CABLE_HINT = "Drag a cable to empty space to add a node";
+const CABLE_HINT =
+  "Drag between ports to connect, or to empty space to add a node";
 
 const kexp = {
   enabled: true,
@@ -597,6 +598,43 @@ describe("NodeCanvas", () => {
 
     expect(view.queryByText(EMPTY_HINT)).toBeNull();
     expect(view.getByText(CABLE_HINT)).toBeTruthy();
+  });
+
+  test("an audio input gets setup guidance and never asks for a station", () => {
+    const graph = schema.nodeGraphSchema.parse({
+      ...templates.buildNodeGraphFromTemplate("blank"),
+      nodes: [
+        { data: {}, id: "mic", position: { x: 0, y: 0 }, type: "deviceIn" },
+        ...templates.buildNodeGraphFromTemplate("blank").nodes,
+      ],
+    });
+    const view = render(<NodeCanvasHint graph={graph} />);
+    expect(
+      view.getByText(
+        "Choose an input on the node, then Go live to start capture"
+      )
+    ).toBeTruthy();
+    view.rerender(
+      <NodeCanvasHint
+        graph={schema.nodeGraphSchema.parse({
+          ...graph,
+          nodes: [
+            {
+              ...graph.nodes[0],
+              data: { deviceId: "mic", deviceLabel: "Desk mic" },
+            },
+            ...graph.nodes.slice(1),
+          ],
+        })}
+      />
+    );
+    expect(view.getByText(CABLE_HINT)).toBeTruthy();
+    expect(view.queryByText(EMPTY_HINT)).toBeNull();
+  });
+
+  test("loading a patch does not offer a cable gesture before the canvas is ready", () => {
+    const view = render(<NodeCanvasHint graph={null} />);
+    expect(view.container.textContent).toBe("");
   });
 
   test("a patch with no slot points at the search bar", () => {

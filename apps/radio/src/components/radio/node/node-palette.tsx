@@ -179,7 +179,7 @@ const SECTION_TITLES = {
   outputs: "Outputs",
   routing: "Routing",
   sources: "Sources",
-  templates: "Templates",
+  templates: "Replace patch with a template",
 } as const;
 
 type PaletteItem = PickerItem & { entry: PaletteEntry };

@@ -211,7 +211,7 @@ describe("NodeRack", () => {
     const plan = compile(graph, ENV);
     const { view } = renderRack(graph);
 
-    const direct = view.getByRole("list", { name: "Direct to Speakers" });
+    const direct = view.getByRole("list", { name: "To Speakers" });
     const unwired = view.getByRole("list", { name: "Not connected" });
     const laneRows = [
       ...within(direct).getAllByRole("listitem"),
@@ -269,7 +269,7 @@ describe("NodeRack", () => {
     const { controls, view } = renderRack(graph);
 
     const both = view.getByRole("list", {
-      name: "Direct to USB interface and Speakers",
+      name: "To USB interface and Speakers",
     });
     fireEvent.click(
       within(both).getByRole("button", { name: "Go live Desk mic" })
@@ -284,7 +284,7 @@ describe("NodeRack", () => {
     expect(
       within(both).queryByRole("button", { name: STATION_MENU })
     ).toBeNull();
-    expect(view.getByRole("list", { name: "Direct to Speakers" })).toBeTruthy();
+    expect(view.getByRole("list", { name: "To Speakers" })).toBeTruthy();
   });
 
   test("every Station's play and volume are reachable by role", () => {
@@ -334,9 +334,12 @@ describe("NodeRack", () => {
       expect(within(row).getByRole("slider", { name: `Pan ${name}` }));
 
       fireEvent.click(
-        within(row).getByRole("button", { name: `Mute channel ${name}` })
+        within(row).getByRole("button", { name: `Mute ${name}` })
       );
       expect(controls.toggleMute).toHaveBeenLastCalledWith(lane.id);
+      expect(
+        within(row).queryByRole("button", { name: `Mute channel ${name}` })
+      ).toBeNull();
       fireEvent.click(
         within(row).getByRole("button", { name: `Channel strip of ${name}` })
       );

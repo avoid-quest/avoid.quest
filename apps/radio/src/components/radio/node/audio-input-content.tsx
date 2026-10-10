@@ -49,7 +49,7 @@ import {
  * A mic or line-in as a source, through the device path DJ decks use. Its
  * body walks the states a live input goes through: the mic to allow (a
  * gesture), a blocked mic, the device and its channels, an unplugged
- * device, and Go live / Mute with an Off / Live badge. While its audio
+ * device, and Go live / Pause input with an Paused / Live badge. While its audio
  * reaches an output, an amber note says to use headphones, beside the
  * browser's echo cancellation. Going live is never restored after a
  * reload; the mic opens only from Go live.
@@ -64,6 +64,7 @@ type AudioInputBodyProps = {
   isLoading: boolean;
   error: string | null;
   selected?: boolean;
+  embedded?: boolean;
   onPickDevice: (device: NodeDevice) => void;
   onChannelsChange: (selection: ChannelSelection) => void;
   onEchoCancellationChange: (enabled: boolean) => void;
@@ -78,11 +79,9 @@ type AudioInputBodyProps = {
 
 /** What the body says about the mic permission and the device, if anything. */
 function InputState({
-  data,
   devices,
   unplugged,
 }: {
-  data: AudioInputNodeData;
   devices: NodeDevices;
   unplugged: boolean;
 }) {
@@ -116,10 +115,98 @@ function InputState({
       </DeviceNote>
     );
   }
-  if (data.deviceId === null) {
-    return <DeviceNote>Pick the input to play</DeviceNote>;
+  if (devices.inputsListed && devices.inputs.length === 0) {
+    return (
+      <DeviceNote>No audio inputs found. Connect one, then refresh.</DeviceNote>
+    );
   }
   return null;
+}
+
+function inputAvailability(data: AudioInputNodeData, devices: NodeDevices) {
+  const isDisplay = data.capture === "display";
+  const denied = !isDisplay && devices.permissionState === "denied";
+  const unplugged =
+    !isDisplay &&
+    isUnplugged(data.deviceId, devices.inputs, devices.inputsListed);
+  const canGoLive = data.deviceId !== null && !denied && !unplugged;
+  const showDeviceControls =
+    !(isDisplay || denied) &&
+    (devices.permissionState === "granted" || devices.inputs.length > 0);
+  return { canGoLive, denied, isDisplay, showDeviceControls, unplugged };
+}
+
+function InputSetup({
+  data,
+  devices,
+  embedded,
+  onPickDevice,
+  onChannelsChange,
+  onEchoCancellationChange,
+}: Pick<
+  AudioInputBodyProps,
+  | "data"
+  | "devices"
+  | "embedded"
+  | "onPickDevice"
+  | "onChannelsChange"
+  | "onEchoCancellationChange"
+>) {
+  const { isDisplay, unplugged, canGoLive, showDeviceControls } =
+    inputAvailability(data, devices);
+  return (
+    <>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
+      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
+      <div
+        className={cn(
+          "flex flex-col gap-2 border-border/50 border-t bg-muted/30 px-2 py-2",
+          embedded && "border-0 bg-transparent px-0 pt-0",
+          INTERACTIVE
+        )}
+        onKeyDown={keepControlKeys}
+      >
+        {isDisplay ? (
+          <BrowserAudioHelp
+            key={data.sourceUrl}
+            showRadios={data.deviceLabel === "Radio episodes / shows"}
+            url={data.sourceUrl}
+          />
+        ) : (
+          <InputState devices={devices} unplugged={unplugged} />
+        )}
+        {showDeviceControls ? (
+          <>
+            <DeviceSelect
+              devices={devices.inputs}
+              isLoading={devices.isLoading}
+              label="Audio input device"
+              onChange={onPickDevice}
+              onRefresh={() => {
+                devices.refreshDevices();
+              }}
+              placeholder={
+                unplugged ? data.deviceLabel || "Unplugged" : "Choose an input"
+              }
+              value={data.deviceId}
+            />
+            {data.deviceId !== null && !unplugged ? (
+              <InputChannelSelect
+                onChange={onChannelsChange}
+                value={data.channelSelection}
+              />
+            ) : null}
+          </>
+        ) : null}
+        {data.feedsOutput && canGoLive && !isDisplay ? (
+          <FeedbackGuard
+            echoCancellation={data.echoCancellation}
+            onEchoCancellationChange={onEchoCancellationChange}
+          />
+        ) : null}
+      </div>
+    </>
+  );
 }
 
 export function AudioInputNodeBody({
@@ -129,6 +216,7 @@ export function AudioInputNodeBody({
   isLoading,
   error,
   selected = false,
+  embedded = false,
   onPickDevice,
   onChannelsChange,
   onEchoCancellationChange,
@@ -140,23 +228,24 @@ export function AudioInputNodeBody({
   strip,
 }: AudioInputBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || AUDIO_INPUT_NAME;
-  const isDisplay = data.capture === "display";
-  const denied = !isDisplay && devices.permissionState === "denied";
-  const unplugged =
-    !isDisplay &&
-    isUnplugged(data.deviceId, devices.inputs, devices.inputsListed);
   const isLive = isPlaying && !isLoading;
-  const canGoLive = data.deviceId !== null && !denied && !unplugged;
+  const { denied, unplugged, canGoLive } = inputAvailability(data, devices);
 
   return (
     <div
       className={cn(
         "w-60 rounded-md border bg-card text-card-foreground",
         isLive ? "border-foreground/40" : "border-border/50",
-        selected && "border-ring"
+        selected && "border-ring",
+        embedded && "w-full border-0 bg-transparent"
       )}
     >
-      <div className="flex h-8 items-center gap-1.5 pr-1 pl-2">
+      <div
+        className={cn(
+          "flex h-8 items-center gap-1.5 pr-1 pl-2",
+          embedded && "hidden"
+        )}
+      >
         <span
           className={cn(
             "flex size-6 shrink-0 items-center justify-center rounded-sm",
@@ -173,7 +262,7 @@ export function AudioInputNodeBody({
         >
           {title}
         </span>
-        <InputLiveBadge isLive={isLive} />
+        <InputLiveBadge isLive={isLive} isLoading={isLoading} />
         {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
         {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
         <div className={INTERACTIVE} onKeyDown={keepControlKeys}>
@@ -197,52 +286,14 @@ export function AudioInputNodeBody({
           </DropdownMenu>
         </div>
       </div>
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
-      {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
-      <div
-        className={cn(
-          "flex flex-col gap-2 border-border/50 border-t bg-muted/30 px-2 py-2",
-          INTERACTIVE
-        )}
-        onKeyDown={keepControlKeys}
-      >
-        {isDisplay ? (
-          <BrowserAudioHelp
-            key={data.sourceUrl}
-            showRadios={data.deviceLabel === "Radio episodes / shows"}
-            url={data.sourceUrl}
-          />
-        ) : (
-          <InputState data={data} devices={devices} unplugged={unplugged} />
-        )}
-        {denied || isDisplay ? null : (
-          <>
-            <DeviceSelect
-              devices={devices.inputs}
-              isLoading={devices.isLoading}
-              label="Audio input device"
-              onChange={onPickDevice}
-              onRefresh={() => {
-                devices.refreshDevices();
-              }}
-              placeholder={
-                unplugged ? data.deviceLabel || "Unplugged" : "Choose an input"
-              }
-              value={data.deviceId}
-            />
-            <InputChannelSelect
-              onChange={onChannelsChange}
-              value={data.channelSelection}
-            />
-          </>
-        )}
-        {data.feedsOutput && !denied && !isDisplay ? (
-          <FeedbackGuard
-            echoCancellation={data.echoCancellation}
-            onEchoCancellationChange={onEchoCancellationChange}
-          />
-        ) : null}
-      </div>
+      <InputSetup
+        data={data}
+        devices={devices}
+        embedded={embedded}
+        onChannelsChange={onChannelsChange}
+        onEchoCancellationChange={onEchoCancellationChange}
+        onPickDevice={onPickDevice}
+      />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: holds its controls' keys; each control is focusable itself */}
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
       <div
@@ -272,7 +323,7 @@ export function AudioInputNodeBody({
         </div>
         {strip}
       </div>
-      {error?.trim() ? (
+      {error?.trim() && !denied && !unplugged ? (
         <InlineError className="mx-2 mb-2">{error}</InlineError>
       ) : null}
     </div>
@@ -320,6 +371,7 @@ export function AudioInputNodeContent({
     <AudioInputNodeBody
       data={data}
       devices={devices}
+      embedded={!showStrip}
       error={runtime?.error?.message ?? null}
       isLoading={isLoading}
       isPlaying={isPlaying}

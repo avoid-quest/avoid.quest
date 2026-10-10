@@ -73,6 +73,29 @@ isolated harness uses the production runtime and public FX writer; its synthetic
 audio and parameter observations establish wiring, not listening quality.
 Feedback availability still returned HTTP 502 independently of modulation.
 
+## Release-fix recheck, 2026-10-10
+
+Tested the code committed as `aafe689373d866a1e193b4cb80aa0c5506285501`
+on localhost in T3's Chromium 154.0.0.0, Linux x86_64, 1280×800 preview.
+This was a desktop browser session without physical audio/MIDI hardware.
+
+| Scenario | Result and evidence |
+| --- | --- |
+| Steps count editing | **Passed:** selecting 8 and typing 16 kept the original eight values during the intermediate `1`. Enter and blur each committed 16 with the original values followed by zeros. One Undo restored eight steps. Escape followed by blur discarded a draft without changing the pattern. |
+| MIDI state across Follower growth | **Passed in a synthetic API harness with the real AudioWorklet:** adding a second Follower retained MIDI gate 1, CC 99/127 (0.779527559) and ADSR sustain 0.5. Note-off and gate release returned gate/envelope to zero while CC stayed unchanged. No physical MIDI controller or audible timing was tested. |
+| Band Split parity | **Failed on pre-fix `cb783dd`:** the real openDAW comparison measured about −25.9 dBFS for two/three bands against the required −60 dBFS. The fix refuses divergent Band Splits; rejoined Band Splits remain available. See [measurement setup and results](split-routing-measurements.md#browser-recheck-2026-10-10). |
+
+Automated validation on the fix: `bun run check`, `bun run typecheck`,
+`bun run --filter @avoid.quest/radio build`, radio tests (3,233 pass, 0 fail),
+and platforms tests (339 pass, 0 fail). Used Bun 1.4.2 and Node 24.21.0.
+Safari guard tests use a simulated user agent; they are not Safari device results.
+
+The release owner confirmed on 2026-10-10 that there are **no additional device
+test results**. Physical listening, Safari/iPhone, hardware MIDI, output-device
+routing and G2 click counts remain unverified, with no tested device/version or
+pass/fail observation to record. These browser and regression results do not
+complete those gates.
+
 ## Pending device and listening gates
 
 Every row below is **unverified**. The preview has no physical iPhone, external

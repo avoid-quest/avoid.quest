@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 
@@ -32,6 +32,10 @@ class TestAudioContext {
   onstatechange: (() => void) | null = null;
   readonly state = "running";
 
+  close(): Promise<void> {
+    return Promise.resolve();
+  }
+
   createDelay(): TestDelayNode {
     return new TestDelayNode(this);
   }
@@ -47,6 +51,7 @@ class TestAudioContext {
 
 let getAudioSettings: typeof import("./collections/settings")["getAudioSettings"];
 let getOutputRouting: typeof import("./output-routing")["getOutputRouting"];
+const originalGlobals = new Map<string, PropertyDescriptor | undefined>();
 
 beforeAll(async () => {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -61,6 +66,7 @@ beforeAll(async () => {
     navigator: dom.window.navigator,
     window: dom.window,
   })) {
+    originalGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, key, {
       configurable: true,
       value,
@@ -71,6 +77,21 @@ beforeAll(async () => {
   ({ getOutputRouting } = await import("./output-routing"));
   ({ getAudioSettings } = settings);
   await settings.initializeSettings();
+});
+
+afterAll(async () => {
+  getOutputRouting().cleanup();
+  const { AudioContextManager } = await import(
+    "./audio/playback/audio-context"
+  );
+  AudioContextManager.resetForTesting();
+  for (const [key, descriptor] of originalGlobals) {
+    if (descriptor) {
+      Object.defineProperty(globalThis, key, descriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, key);
+    }
+  }
 });
 
 describe("persisted Output routing", () => {

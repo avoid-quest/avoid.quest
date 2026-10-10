@@ -96,6 +96,33 @@ routing and G2 click counts remain unverified, with no tested device/version or
 pass/fail observation to record. These browser and regression results do not
 complete those gates.
 
+## Live-radio recovery recheck, 2026-10-10
+
+Tested the code committed as `1550d72d118f1f60fe4c8c2893e3f942d4bbd0eb`
+on localhost in T3's Chromium 154.0.0.0, Linux x86_64. The native media-element
+harness used a muted, synthetic 30-second WAV with RadioBrowser provenance and
+an injected media abort. It used the production playback source and input
+conversion; it did not reproduce a real network outage or provide listening
+evidence. All temporary sources and object URLs were cleaned up.
+
+| Scenario | Result and evidence |
+| --- | --- |
+| Live station with finite browser duration | **Failed before the fix:** abort entered a terminal error and requested finite-media URL renewal. **Passed after:** streaming → buffering → streaming, with two playing callbacks, no renewal/terminal callback, and media time advancing to 7.24 seconds within the 13.5-second observation. |
+| Finite file control | **Passed:** the same WAV without live metadata, with File provenance, retained the existing renewal request and recovery-pending error behavior. |
+| Pause during live recovery | **Passed:** pausing after the abort kept the element paused for 13.5 seconds, with no second playing callback. |
+
+Automated validation: `bun run check`, `bun run typecheck`,
+`bun run --filter @avoid.quest/radio test` (3,244 pass, 0 fail), and
+`bun run --filter @avoid.quest/radio build`, including the lazy Node chunk check.
+Used Bun 1.4.2 and Node 24.21.0. Independent Standards and Spec reviews found
+no blocking issues.
+
+Related Sentry group RADIO-1V contains two aborted-playback events and two
+load-failure events from Firefox 157 on Mac, tagged `radio@0.7.0`. This fix
+addresses a reproduced recovery defect; those historical interruptions' causes
+and post-release resolution remain unverified. No Firefox/Mac or physical-device
+pass is inferred from the Chromium test.
+
 ## Pending device and listening gates
 
 Every row below is **unverified**. The preview has no physical iPhone, external

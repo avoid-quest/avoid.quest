@@ -272,6 +272,18 @@ export function OutputDeviceNodeBody({
           </>
         ) : null}
       </div>
+      {embedded ? (
+        <Button
+          className={cn("mt-2 text-destructive", INTERACTIVE)}
+          onClick={onRemove}
+          onKeyDown={keepControlKeys}
+          size="sm"
+          variant="ghost"
+        >
+          <Trash2Icon />
+          Remove output device
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
-import { loadStreamStation } from "@/lib/node-source-loaders";
+import { loadSearchSource, loadStreamStation } from "@/lib/node-source-loaders";
 import type {
   SourceSearchPlatform as SearchPlatform,
   SourceSearchResult as UnifiedSearchResult,
@@ -190,12 +190,44 @@ function ExternalSearchContent({
     return true;
   };
   const handleResultPick = () => {
+    streamGeneration.current += 1;
     sourceRequest.current = onSearchChange?.();
     latestPick.current = "result";
   };
-  const handleResultLoad = (radio: Radio) => {
-    if (latestPick.current === "result" && isCurrentPick()) {
+  const handleResultLoad = async (radio: Radio) => {
+    const generation = streamGeneration.current;
+    const isCurrent = () =>
+      latestPick.current === "result" &&
+      generation === streamGeneration.current &&
+      isCurrentPick();
+    if (!isCurrent()) {
+      return;
+    }
+    // Node callers own their source-slot request. DJ picks must enter the
+    // session library before the deck loads them, just like pasted streams.
+    if (mode === "node") {
       onLoad(radio);
+      return;
+    }
+    try {
+      const loaded = await loadSearchSource(radio, {
+        isCurrent,
+        knownRadios: radios,
+      });
+      if (!isCurrent()) {
+        return;
+      }
+      if ("error" in loaded) {
+        setError(loaded.error);
+      } else {
+        onLoad(loaded.radio);
+      }
+    } catch (cause: unknown) {
+      if (isCurrent()) {
+        setError(
+          cause instanceof Error ? cause.message : "Couldn’t load this source"
+        );
+      }
     }
   };
 

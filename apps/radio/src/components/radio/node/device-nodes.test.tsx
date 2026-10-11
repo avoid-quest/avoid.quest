@@ -462,8 +462,12 @@ function OutputHarness({
   supported = true,
   mainOutputId = "default",
   onRetry = noop,
+  onRemove = noop,
+  embedded = false,
 }: {
   data: OutputData;
+  onRemove?: () => void;
+  embedded?: boolean;
   status?: Parameters<typeof OutputDeviceNodeBody>[0]["status"];
   supported?: boolean;
   mainOutputId?: string;
@@ -474,9 +478,10 @@ function OutputHarness({
     <OutputDeviceNodeBody
       data={data}
       devices={devices}
+      embedded={embedded}
       mainOutputId={mainOutputId}
       onPickDevice={noop}
-      onRemove={noop}
+      onRemove={onRemove}
       onRetry={onRetry}
       onToggleMute={noop}
       status={status}
@@ -580,3 +585,20 @@ test("the embedded input inspector retains an accessible Remove action", async (
   fireEvent.click(view.getByRole("button", { name: "Remove audio input" }));
   expect(onRemove).toHaveBeenCalledTimes(1);
 });
+
+for (const supported of [true, false]) {
+  test(`the embedded output inspector retains removal when sink selection is ${supported ? "supported" : "unsupported"}`, async () => {
+    const onRemove = mock(noop);
+    const view = render(
+      <OutputHarness
+        data={usbOut}
+        embedded
+        onRemove={onRemove}
+        supported={supported}
+      />
+    );
+    await flush();
+    fireEvent.click(view.getByRole("button", { name: "Remove output device" }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+}

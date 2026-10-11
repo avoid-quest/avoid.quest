@@ -43,7 +43,9 @@ type ControlFlowNode = FlowNode<ModulationSpec["data"], ModulationNodeType>;
 function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
   const value = useStore(modulationReadouts, (state) => state.values[id] ?? 0);
   const status = useStore(modulationReadouts, (state) => state.status);
-  const error = useStore(modulationReadouts, (state) => state.error);
+  const error = useStore(modulationReadouts, (state) =>
+    state.status === "running" ? null : state.error
+  );
   const backend = useStore(modulationReadouts, (state) => state.backends[id]);
   const nativeWarning = useStore(
     modulationReadouts,

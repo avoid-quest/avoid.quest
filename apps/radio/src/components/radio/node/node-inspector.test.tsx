@@ -1198,3 +1198,46 @@ test("a running modulation context retains retry after native-host failure", asy
     act(() => runtime.modulationReadouts.setState(() => initial));
   }
 });
+
+test("a recovered modulation context hides its stale resume error and retry", async () => {
+  const runtime = await import("@/lib/node-graph/modulation-runtime");
+  const { ModulationControls } = await import("./control-node");
+  const initial = runtime.modulationReadouts.state;
+  const graph = nodeGraphSchema.parse({
+    edges: [],
+    nodes: [
+      { data: {}, id: "lfo-recovered", position, type: "lfo" },
+      { data: {}, id: "speakers", position, type: "speakers" },
+    ],
+    version: 2,
+  });
+  const [node] = graph.nodes;
+  if (node?.type !== "lfo") {
+    throw new Error("Missing LFO");
+  }
+  try {
+    runtime.modulationReadouts.setState(() => ({
+      ...initial,
+      backends: { [node.id]: "DSP" },
+      error: "AudioContext resume failed",
+      nativeWarning: null,
+      status: "error",
+    }));
+    const view = render(<ModulationControls node={node} />);
+    expect(view.getByText("AudioContext resume failed")).toBeTruthy();
+    expect(view.getByRole("button", { name: "Retry modulation" })).toBeTruthy();
+    act(() =>
+      runtime.modulationReadouts.setState((state) => ({
+        ...state,
+        status: "running",
+      }))
+    );
+    expect(view.queryByText("Running") !== null).toBe(true);
+    expect(view.queryByText("AudioContext resume failed") === null).toBe(true);
+    expect(
+      view.queryByRole("button", { name: "Retry modulation" }) === null
+    ).toBe(true);
+  } finally {
+    act(() => runtime.modulationReadouts.setState(() => initial));
+  }
+});

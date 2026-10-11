@@ -1,7 +1,6 @@
 import { captureError } from "@avoid.quest/error";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
-import { radios as curatedRadios } from "@/lib/const";
 import { createExternalPlatformSearchWorkflow } from "@/lib/external-platform-search-workflow";
 import {
   searchBandcamp,
@@ -65,7 +64,6 @@ export function useExternalSearch() {
       return await sourceSearch.search(
         {
           ...params,
-          knownStations: [...(params.knownStations ?? []), ...curatedRadios],
           playbackNeedsNetwork: Object.values(
             playbackRuntimeStore.state.channels
           ).some((channel) => channel.isLoading || channel.isBuffering),

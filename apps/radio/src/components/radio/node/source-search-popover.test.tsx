@@ -238,3 +238,95 @@ for (const cancellation of ["query", "unmount"] as const) {
     expect(onLoad).not.toHaveBeenCalled();
   });
 }
+
+for (const canceled of [false, true]) {
+  test(`a DJ directory pick ${canceled ? "canceled by a new query stays out of" : "enters"} the session library`, async () => {
+    searchStub();
+    const session: Radio[] = [];
+    const intake = createStationIntake({
+      adapters: {},
+      saved: { add: () => "unused", getAll: () => [], update: () => undefined },
+      session: {
+        add: (radio) => {
+          session.push(radio);
+        },
+        getAll: () => session,
+        remove: () => undefined,
+      },
+    });
+    spyOn(stationIntake, "createSession").mockImplementation(
+      intake.createSession
+    );
+    const sessionsAtLoad: Radio[][] = [];
+    const onLoad = mock((_radio: Radio) => {
+      sessionsAtLoad.push([...session]);
+    });
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ExternalSearch onLoad={onLoad} radios={[]} />
+      </QueryClientProvider>
+    );
+    submit(view, "garden");
+    fireEvent.click(view.getByRole("button", { name: GARDEN_RESULT }));
+    if (canceled) {
+      fireEvent.change(view.getByRole("searchbox"), {
+        target: { value: "new query" },
+      });
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(session).toHaveLength(canceled ? 0 : 1);
+    expect(onLoad).toHaveBeenCalledTimes(canceled ? 0 : 1);
+    if (!canceled) {
+      expect(sessionsAtLoad[0]).toHaveLength(1);
+    }
+  });
+}
+
+test("station library search respects the supplied visible collection instead of restoring hidden defaults", async () => {
+  const { renderHook } = await import("@testing-library/react");
+  const { radios } = await import("@/lib/const");
+  const adapters = await import("@/lib/stations/station-discovery-adapters");
+  const { createStationDiscovery } = await import(
+    "@/lib/stations/station-discovery"
+  );
+  const offline = { search: async () => [] };
+  spyOn(adapters, "createProductionStationDiscovery").mockImplementation(() =>
+    createStationDiscovery({
+      radioBrowser: offline,
+      radioGarden: offline,
+      streamProbe: { prepare: async () => null },
+    })
+  );
+  const client = new QueryClient();
+  const { result } = renderHook(() => searchHook.useExternalSearch(), {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+  const [curated] = radios;
+  if (!curated) {
+    throw new Error("Missing curated fixture");
+  }
+  let matches: SourceSearchResult[] = [];
+  await act(async () => {
+    matches = await result.current.mutateAsync({
+      knownStations: [],
+      platform: "local",
+      query: curated.name,
+    });
+  });
+  expect(matches).toEqual([]);
+  const visible = { ...curated, id: "visible-station" };
+  await act(async () => {
+    matches = await result.current.mutateAsync({
+      knownStations: [visible],
+      platform: "local",
+      query: curated.name,
+    });
+  });
+  expect(matches).toHaveLength(1);
+  expect(matches[0]?.radio).toMatchObject({ id: visible.id });
+  client.clear();
+});

@@ -1227,8 +1227,22 @@ describe("cable surgery entries", () => {
 });
 
 test("station search filters do not add duplicate station shortcuts to the palette", () => {
+  const entries = paletteEntries(patch, {
+    radios: [
+      radio("saved-one"),
+      radio("saved-two"),
+      radio("saved-one"),
+      radio("hidden", { enabled: false }),
+    ],
+  });
   expect(
-    paletteEntries(patch)
+    entries
+      .filter((entry) => entry.id.startsWith("station:"))
+      .map((entry) => entry.id)
+      .sort()
+  ).toEqual(["station:saved-one", "station:saved-two"]);
+  expect(
+    entries
       .filter((entry) => entry.id.startsWith("platform:"))
       .map((entry) => entry.id)
       .sort()

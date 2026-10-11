@@ -165,7 +165,9 @@ describe("NodePalette", () => {
     const dialog = view.getByRole("dialog", { name: "Add node" });
     expect(dialog).toBeTruthy();
     expect(view.getByRole("region", { name: "Sources" })).toBeTruthy();
-    expect(view.getByRole("region", { name: "Templates" })).toBeTruthy();
+    expect(
+      view.getByRole("region", { name: "Replace patch with a template" })
+    ).toBeTruthy();
   });
 
   test("Enter adds the first match, wired to Speakers, as one undo step", () => {
@@ -234,7 +236,9 @@ describe("NodePalette", () => {
     expect(
       view.getByRole("dialog", { name: "Add a node to this cable" })
     ).toBeTruthy();
-    expect(view.queryByRole("region", { name: "Templates" })).toBeNull();
+    expect(
+      view.queryByRole("region", { name: "Replace patch with a template" })
+    ).toBeNull();
     const sources = view.getByRole("region", { name: "Sources" });
     const names = [...sources.querySelectorAll("[role=button] h3")].map(
       (heading) => heading.textContent
@@ -289,7 +293,9 @@ describe("NodePalette", () => {
     ).toBeTruthy();
     expect(view.queryByRole("region", { name: "Sources" })).toBeNull();
     expect(view.queryByRole("region", { name: "Outputs" })).toBeNull();
-    expect(view.queryByRole("region", { name: "Templates" })).toBeNull();
+    expect(
+      view.queryByRole("region", { name: "Replace patch with a template" })
+    ).toBeNull();
 
     const search = view.getByRole("searchbox", { name: "Search nodes" });
     fireEvent.change(search, { target: { value: "delay" } });
@@ -468,7 +474,8 @@ describe("NodePalette devices", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     const track = store.state.graph?.nodes.find(
-      (node) => node.type === "platform"
+      (node) =>
+        node.type === "platform" && node.data.searchPlatform === "youtube"
     );
     expect(track?.data).toMatchObject({
       radio: null,

@@ -193,11 +193,19 @@ function inputData(overrides: Partial<InputData> = {}): InputData {
 function InputHarness({
   data = inputData(),
   isPlaying = false,
+  isLoading = false,
+  error = null,
   onToggleLive = noop,
+  embedded = false,
+  onRemove = noop,
   onEchoCancellationChange = noop,
 }: {
   data?: InputData;
+  embedded?: boolean;
+  onRemove?: () => void;
   isPlaying?: boolean;
+  isLoading?: boolean;
+  error?: string | null;
   onToggleLive?: () => void;
   onEchoCancellationChange?: (enabled: boolean) => void;
 }) {
@@ -206,13 +214,14 @@ function InputHarness({
     <AudioInputNodeBody
       data={data}
       devices={devices}
-      error={null}
-      isLoading={false}
+      embedded={embedded}
+      error={error}
+      isLoading={isLoading}
       isPlaying={isPlaying}
       onChannelsChange={noop}
       onEchoCancellationChange={onEchoCancellationChange}
       onPickDevice={noop}
-      onRemove={noop}
+      onRemove={onRemove}
       onToggleLive={onToggleLive}
       onToggleMute={noop}
       onVolumeChange={noop}
@@ -221,6 +230,34 @@ function InputHarness({
 }
 
 describe("Audio input node", () => {
+  test("starting capture is not labelled Paused", async () => {
+    media.permission = "granted";
+    const view = render(<InputHarness isLoading />);
+    await flush();
+    expect(view.getByText("Starting")).toBeTruthy();
+    expect(view.queryByText("Paused")).toBeNull();
+  });
+
+  test("a blocked mic shows one recovery message instead of a duplicate capture error", async () => {
+    media.permission = "denied";
+    const view = render(<InputHarness error="Permission denied by browser" />);
+    await flush();
+    expect(
+      view.getByText("Microphone blocked. Allow it in your browser settings.")
+    ).toBeTruthy();
+    expect(view.queryByText("Permission denied by browser")).toBeNull();
+  });
+
+  test("an unpicked input keeps channel controls out of setup", async () => {
+    media.permission = "granted";
+    const view = render(<InputHarness data={inputData({ deviceId: null })} />);
+    await flush();
+    expect(
+      view.getByRole("combobox", { name: "Audio input device" })
+    ).toBeTruthy();
+    expect(view.queryByRole("combobox", { name: "Input channels" })).toBeNull();
+  });
+
   test("asks for the microphone with a gesture, which calls getUserMedia", async () => {
     const view = render(<InputHarness />);
     await flush();
@@ -258,7 +295,7 @@ describe("Audio input node", () => {
       view.getByRole("combobox", { name: "Audio input device" }).textContent
     ).toContain("Desk mic");
     expect(view.getByRole("combobox", { name: "Input channels" })).toBeTruthy();
-    expect(view.getByText("Off")).toBeTruthy();
+    expect(view.getByText("Paused")).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: "Go live Desk mic" }));
     expect(onToggleLive).toHaveBeenCalledTimes(1);
   });
@@ -400,7 +437,7 @@ describe("Audio input node", () => {
     );
     await flush();
     expect(
-      view.getByRole("button", { name: "Mute live Desk mic" })
+      view.getByRole("button", { name: "Pause input Desk mic" })
     ).toBeTruthy();
     expect(controls.setPlaying).not.toHaveBeenCalled();
 
@@ -460,10 +497,14 @@ describe("Output device node", () => {
       <OutputHarness data={{ ...usbOut, deviceId: null }} supported={false} />
     );
     await flush();
-    expect(view.getByText("Pick the output to play on")).toBeTruthy();
+    expect(
+      view.getByText(
+        "This browser can’t select an output device. Connect to Speakers instead."
+      )
+    ).toBeTruthy();
     expect(
       view.queryByText(
-        "This browser can't choose an output, playing through Speakers"
+        "This browser can’t select an output device. Audio uses Speakers instead."
       )
     ).toBeNull();
   });
@@ -483,7 +524,7 @@ describe("Output device node", () => {
 
     expect(
       view.getByText(
-        "This browser can't choose an output, playing through Speakers"
+        "This browser can’t select an output device. Audio uses Speakers instead."
       )
     ).toBeTruthy();
     expect(view.queryByRole("combobox", { name: "Output device" })).toBeNull();
@@ -530,4 +571,12 @@ describe("Output device node", () => {
 
     expect(view.getByText("Same device as Speakers")).toBeTruthy();
   });
+});
+
+test("the embedded input inspector retains an accessible Remove action", async () => {
+  const onRemove = mock(noop);
+  const view = render(<InputHarness embedded onRemove={onRemove} />);
+  await flush();
+  fireEvent.click(view.getByRole("button", { name: "Remove audio input" }));
+  expect(onRemove).toHaveBeenCalledTimes(1);
 });

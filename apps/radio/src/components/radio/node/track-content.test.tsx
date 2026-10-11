@@ -1,10 +1,19 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useStore } from "@tanstack/react-store";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { createNodeStore } from "@/lib/node-graph/node-store";
-import { DEFAULT_MEDIA_STRIP } from "@/lib/node-graph/schema";
+import { DEFAULT_MEDIA_STRIP, nodeGraphSchema } from "@/lib/node-graph/schema";
 import type { NodeActions } from "./node-actions";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -31,6 +40,7 @@ for (const [key, value] of Object.entries({
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
   Element: dom.window.Element,
+  Event: dom.window.Event,
   getComputedStyle: dom.window.getComputedStyle,
   HTMLElement: dom.window.HTMLElement,
   HTMLFormElement: dom.window.HTMLFormElement,
@@ -122,7 +132,35 @@ function renderBothViews() {
     strip: DEFAULT_MEDIA_STRIP,
     volume: 1,
   };
-  const store = createNodeStore();
+  const store = createNodeStore(
+    nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data, id: TRACK_ID, position: { x: 0, y: 0 }, type: "platform" },
+        {
+          data: {},
+          id: "speakers",
+          position: { x: 0, y: 200 },
+          type: "speakers",
+        },
+      ],
+      version: 2,
+    })
+  );
+  function TrackView({ embedded = false }: { embedded?: boolean }) {
+    const track = useStore(store, (state) => state.graph?.nodes[0]);
+    if (track?.type !== "platform") {
+      throw new Error("Missing Track");
+    }
+    return (
+      <TrackNodeContent
+        data={track.data}
+        id={TRACK_ID}
+        showStrip={!embedded}
+        store={store}
+      />
+    );
+  }
   const client = new QueryClient({
     defaultOptions: { queries: { enabled: false, retry: false } },
   });
@@ -130,10 +168,10 @@ function renderBothViews() {
     <QueryClientProvider client={client}>
       <NodeActionsProvider value={actions}>
         <section aria-label="Patch">
-          <TrackNodeContent data={data} id={TRACK_ID} store={store} />
+          <TrackView />
         </section>
         <section aria-label="Inspector">
-          <TrackNodeContent data={data} id={TRACK_ID} store={store} />
+          <TrackView embedded />
         </section>
       </NodeActionsProvider>
     </QueryClientProvider>
@@ -142,7 +180,7 @@ function renderBothViews() {
   if (!(patch && inspector)) {
     throw new Error("expected both views");
   }
-  return { inspector, patch, streamCalls };
+  return { actions, client, inspector, patch, store, streamCalls, view };
 }
 
 function pasteStreamLink(view: HTMLElement) {
@@ -164,13 +202,11 @@ describe("TrackNodeContent", () => {
     expect(stream?.isCurrent()).toBe(true);
 
     // Choosing a platform in the inspector supersedes the patch's request.
-    const soundCloud = Array.from(
-      inspector.querySelectorAll<HTMLButtonElement>("button")
-    ).find((button) => button.textContent === "SoundCloud");
-    if (!soundCloud) {
-      throw new Error("missing SoundCloud chip");
+    const select = inspector.querySelector("select") as HTMLElement | null;
+    if (!select) {
+      throw new Error("missing source selector");
     }
-    fireEvent.click(soundCloud);
+    fireEvent.change(select, { target: { value: "soundcloud" } });
     expect(stream?.isCurrent()).toBe(false);
 
     await act(async () => {
@@ -193,3 +229,100 @@ describe("TrackNodeContent", () => {
     );
   });
 });
+
+test("a platform link pending in one view cannot report a stale failure after the other view starts searching", async () => {
+  const loader = await import("@/lib/platform-item-loader");
+  let finish: (result: {
+    success: false;
+    error: string;
+    code: string;
+  }) => void = () => undefined;
+  const pending = new Promise<{ success: false; error: string; code: string }>(
+    (resolve) => {
+      finish = resolve;
+    }
+  );
+  const load = spyOn(loader, "loadPlatformItem").mockImplementation(
+    () => pending
+  );
+  try {
+    const { patch, inspector } = renderBothViews();
+    const input = patch.querySelector(
+      'input[type="search"]'
+    ) as HTMLInputElement;
+    const other = inspector.querySelector(
+      'input[type="search"]'
+    ) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { value: "https://youtube.com/watch?v=old" },
+    });
+    await act(async () => {
+      fireEvent.submit(input.closest("form") as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    fireEvent.change(other, { target: { value: "new search" } });
+    await act(async () => {
+      finish({ code: "LOAD_FAILED", error: "Old link failed", success: false });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(patch.textContent).not.toContain("Old link failed");
+  } finally {
+    load.mockRestore();
+  }
+});
+
+for (const provider of ["radio-browser", "radiogarden", "local"]) {
+  test(`Track ${provider} filter syncs both views and survives stored remount`, () => {
+    const { patch, inspector, store, view, client, actions } =
+      renderBothViews();
+    const select = inspector.querySelector("select") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: provider } });
+    expect(store.state.graph?.nodes[0]?.data).toMatchObject({
+      searchPlatform: provider,
+    });
+    expect((patch.querySelector("select") as HTMLSelectElement).value).toBe(
+      provider
+    );
+    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
+      provider
+    );
+    fireEvent.change(patch.querySelector("select") as HTMLSelectElement, {
+      target: { value: "all" },
+    });
+    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
+      "all"
+    );
+    expect(store.state.graph?.nodes[0]?.data).toMatchObject({
+      searchPlatform: undefined,
+    });
+    fireEvent.change(patch.querySelector("select") as HTMLSelectElement, {
+      target: { value: provider },
+    });
+    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
+      provider
+    );
+    const saved = nodeGraphSchema.parse(
+      JSON.parse(JSON.stringify(store.state.graph))
+    );
+    const [track] = saved.nodes;
+    if (track?.type !== "platform") {
+      throw new Error("Missing saved Track");
+    }
+    view.unmount();
+    const reopened = render(
+      <QueryClientProvider client={client}>
+        <NodeActionsProvider value={actions}>
+          <TrackNodeContent
+            data={track.data}
+            id={TRACK_ID}
+            store={createNodeStore(saved)}
+          />
+        </NodeActionsProvider>
+      </QueryClientProvider>
+    );
+    expect(
+      (reopened.container.querySelector("select") as HTMLSelectElement).value
+    ).toBe(provider);
+  });
+}

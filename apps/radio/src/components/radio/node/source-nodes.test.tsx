@@ -46,6 +46,7 @@ for (const [key, value] of Object.entries({
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
   Element: dom.window.Element,
+  Event: dom.window.Event,
   fetch: () => Promise.reject(new Error("offline")),
   getComputedStyle: dom.window.getComputedStyle,
   HTMLElement: dom.window.HTMLElement,
@@ -208,7 +209,7 @@ function pasteLink(
 }
 
 describe("TrackNodeBody", () => {
-  test("an empty Track is DJ's platform search, with All and DJ's platform chips", () => {
+  test("an empty Track uses the shared source selector and search", () => {
     const onSearchPlatformChange = mock(() => undefined);
     const view = render(
       withClient(
@@ -227,18 +228,19 @@ describe("TrackNodeBody", () => {
       )
     );
 
-    const chips = view
-      .getAllByRole("button", { pressed: false })
-      .map((chip) => chip.textContent);
-    expect(chips).toEqual(["YouTube", "SoundCloud", "Bandcamp", "Mixcloud"]);
-    expect(view.getByRole("button", { pressed: true }).textContent).toBe("All");
+    expect(view.getByRole("combobox", { name: "Platform" })).toBeTruthy();
     expect(
       view.getByRole("searchbox", { name: "Search or paste a link" })
     ).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "SoundCloud" }));
+    const select = view.container.querySelector("select");
+    if (!select) {
+      throw new Error("Missing source selector");
+    }
+    expect(Array.from(select.options).map((option) => option.text)).toContain(
+      "Radio Browser"
+    );
+    fireEvent.change(select, { target: { value: "soundcloud" } });
     expect(onSearchPlatformChange).toHaveBeenCalledWith("soundcloud");
-    // The chips pick the platform; DJ's own select would repeat them.
-    expect(view.queryByRole("combobox", { name: "Platform" })).toBeNull();
   });
 
   test("a pasted radio stream link hands off instead of searching", () => {

@@ -321,7 +321,7 @@ describe("where a new node lands", () => {
     expect(positionOf(fx.graph, STARTER_STATION_ID)).toEqual({ x: 0, y: 0 });
     expect(nextStationPosition(fx.graph)).toEqual({
       x: 0,
-      y: STATION_ROW_HEIGHT,
+      y: 320,
     });
   });
 

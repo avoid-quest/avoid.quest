@@ -23,6 +23,7 @@ import { beginSourceRequest } from "./use-node-radio-management";
 type StationData = Extract<GraphNode, { type: "station" }>["data"];
 
 type StationNodeBodyProps = {
+  embedded?: boolean;
   radio: Radio | null;
   volume: number;
   muted: boolean;
@@ -56,6 +57,7 @@ type StationNodeBodyProps = {
  * radio stream link is played as a session station.
  */
 function EmptyStation({
+  embedded,
   radios,
   selected,
   onSelectLocal,
@@ -65,6 +67,7 @@ function EmptyStation({
   onRemove,
 }: Pick<
   StationNodeBodyProps,
+  | "embedded"
   | "radios"
   | "selected"
   | "onSelectLocal"
@@ -75,6 +78,7 @@ function EmptyStation({
 >) {
   return (
     <EmptySourceFrame
+      embedded={embedded}
       onRemove={onRemove}
       removeLabel="Remove empty Station"
       selected={selected}
@@ -101,6 +105,7 @@ function EmptyStation({
  * keeps only its menu, where Show brings it back.
  */
 export function StationNodeBody({
+  embedded,
   radio,
   volume,
   muted,
@@ -136,6 +141,7 @@ export function StationNodeBody({
   if (!radio) {
     return (
       <EmptyStation
+        embedded={embedded}
         onRemove={onRemove}
         onSaveDiscovered={onSaveDiscovered}
         onSelectDiscovered={onSelectDiscovered}
@@ -230,6 +236,7 @@ export function StationNodeContent({
 
   return (
     <StationNodeBody
+      embedded={!showStrip}
       error={lane.error}
       isLoading={lane.isLoading}
       isPlaying={lane.isPlaying}

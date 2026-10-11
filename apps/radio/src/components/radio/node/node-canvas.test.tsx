@@ -154,8 +154,9 @@ beforeAll(async () => {
 });
 
 const noop = () => undefined;
-const EMPTY_HINT = "Search a station in the slot, or press / to add a node";
-const CABLE_HINT = "Drag a cable to empty space to add a node";
+const EMPTY_HINT = "Search tracks, shows or stations, or press / to add a node";
+const CABLE_HINT =
+  "Drag between ports to connect, or to empty space to add a node";
 
 const kexp = {
   enabled: true,
@@ -588,7 +589,7 @@ describe("NodeCanvas", () => {
       nodeStoreModule.commitNodeGraph((graph) => ({
         ...graph,
         nodes: graph.nodes.map((node) =>
-          node.type === "station"
+          node.type === "platform"
             ? { ...node, data: { ...node.data, radio: kexp } }
             : node
         ),
@@ -599,13 +600,50 @@ describe("NodeCanvas", () => {
     expect(view.getByText(CABLE_HINT)).toBeTruthy();
   });
 
+  test("an audio input gets setup guidance and never asks for a station", () => {
+    const graph = schema.nodeGraphSchema.parse({
+      ...templates.buildNodeGraphFromTemplate("blank"),
+      nodes: [
+        { data: {}, id: "mic", position: { x: 0, y: 0 }, type: "deviceIn" },
+        ...templates.buildNodeGraphFromTemplate("blank").nodes,
+      ],
+    });
+    const view = render(<NodeCanvasHint graph={graph} />);
+    expect(
+      view.getByText(
+        "Choose an input on the node, then Go live to start capture"
+      )
+    ).toBeTruthy();
+    view.rerender(
+      <NodeCanvasHint
+        graph={schema.nodeGraphSchema.parse({
+          ...graph,
+          nodes: [
+            {
+              ...graph.nodes[0],
+              data: { deviceId: "mic", deviceLabel: "Desk mic" },
+            },
+            ...graph.nodes.slice(1),
+          ],
+        })}
+      />
+    );
+    expect(view.getByText(CABLE_HINT)).toBeTruthy();
+    expect(view.queryByText(EMPTY_HINT)).toBeNull();
+  });
+
+  test("loading a patch does not offer a cable gesture before the canvas is ready", () => {
+    const view = render(<NodeCanvasHint graph={null} />);
+    expect(view.container.textContent).toBe("");
+  });
+
   test("a patch with no slot points at the search bar", () => {
     const view = render(
       <NodeCanvasHint graph={templates.buildNodeGraphFromTemplate("blank")} />
     );
 
     expect(
-      view.getByText("Search to add a station, or press / to add a node")
+      view.getByText("Search to add a source, or press / to add a node")
     ).toBeTruthy();
   });
 
@@ -618,7 +656,7 @@ describe("NodeCanvas", () => {
     );
 
     expect(
-      view.getByText("Search a station in the slot, or tap + to add a node")
+      view.getByText("Search tracks, shows or stations, or tap + to add a node")
     ).toBeTruthy();
   });
 });

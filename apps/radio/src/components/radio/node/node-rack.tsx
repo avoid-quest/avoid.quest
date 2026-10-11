@@ -80,9 +80,7 @@ function groupLanes(
       key,
       lanes: [],
       title:
-        key === UNWIRED_GROUP
-          ? "Not connected"
-          : `Direct to ${names.join(" and ")}`,
+        key === UNWIRED_GROUP ? "Not connected" : `To ${names.join(" and ")}`,
     };
     group.lanes.push(lane);
     groups.set(key, group);
@@ -106,12 +104,12 @@ function RackSection({
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2 px-2.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 px-2.5">
         <h3 className="font-medium text-xs" id={headingId}>
           {title}
         </h3>
         {hint ? (
-          <span className="truncate text-muted-foreground text-xs">{hint}</span>
+          <span className="text-muted-foreground text-xs">{hint}</span>
         ) : null}
       </div>
       <ul aria-labelledby={headingId} className="flex flex-col gap-1">
@@ -361,7 +359,11 @@ export function NodeRack({
       ) : null}
       {groups.map((group) => (
         <RackSection
-          hint={group.key === UNWIRED_GROUP ? "Silent until cabled" : undefined}
+          hint={
+            group.key === UNWIRED_GROUP
+              ? "Connect to an output to hear it"
+              : undefined
+          }
           key={group.key}
           title={group.title}
         >

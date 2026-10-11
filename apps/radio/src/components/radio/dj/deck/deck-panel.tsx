@@ -16,6 +16,7 @@ import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useDjSession } from "@/lib/hooks/use-dj-session";
 import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
+import { useSessionRadios } from "@/lib/hooks/use-session-radios";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import {
@@ -142,6 +143,8 @@ function DeckPanelInner({
     pendingPlatform,
     cancelPendingSource,
   } = deckState;
+  const sessionRadios = useSessionRadios((state) => state.radios);
+  const searchRadios = [...radios, ...sessionRadios];
   const deck = getDjDeckModule().deck(deckId);
   const djSession = useDjSession();
   const effectsTempo = djSession?.tempo ?? 120;
@@ -474,6 +477,7 @@ function DeckPanelInner({
         key={searchPlatform}
         onCancel={cancelPendingSource}
         onLoad={handleLoadPlatformItem}
+        radios={searchRadios}
       />
     );
   } else if (contentKind === "loaded" && radio) {
@@ -511,6 +515,7 @@ function DeckPanelInner({
           key={changeSourceSearchPlatform}
           onCancel={handleCancelUrlChange}
           onLoad={handleUrlChanged}
+          radios={searchRadios}
         />
       );
     } else if (isChangingDevice && isDeviceInput) {

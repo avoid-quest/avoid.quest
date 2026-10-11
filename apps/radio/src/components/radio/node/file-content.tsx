@@ -37,6 +37,7 @@ type LoadSource<T> = (source: T) => Promise<string | null>;
 
 type FileNodeBodyProps = Omit<SourceTransportProps, "target"> & {
   data: FileData;
+  embedded?: boolean;
   error: string | null;
   selected?: boolean;
   onLoadFile: LoadSource<File>;
@@ -47,6 +48,7 @@ type FileNodeBodyProps = Omit<SourceTransportProps, "target"> & {
 
 export function FileNodeBody({
   data,
+  embedded,
   error,
   selected = false,
   onLoadFile,
@@ -70,6 +72,7 @@ export function FileNodeBody({
   }
   return (
     <EmptySourceFrame
+      embedded={embedded}
       onRemove={onRemove}
       removeLabel={radio ? `Remove ${radio.name}` : "Remove empty File"}
       selected={selected}
@@ -138,6 +141,7 @@ export function FileNodeContent({
   return (
     <FileNodeBody
       data={data}
+      embedded={!showStrip}
       error={lane.error}
       isLoading={lane.isLoading}
       isPlaying={lane.isPlaying}

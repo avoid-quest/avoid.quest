@@ -3,6 +3,7 @@ import type { Radio } from "@/lib/audio";
 import { forgetLocalFileUrls, isLocalFileGone } from "@/lib/node-graph/sources";
 import {
   loadLocalFile,
+  loadSearchSource,
   loadSourceUrl,
   loadStreamStation,
 } from "./node-source-loaders";
@@ -145,13 +146,16 @@ describe("loadStreamStation", () => {
       createSession,
     });
 
-    expect(createSession).toHaveBeenCalledWith({
-      fields: {
-        name: "stream.example",
-        streamUrl: "https://stream.example/live",
+    expect(createSession).toHaveBeenCalledWith(
+      {
+        fields: {
+          name: "stream.example",
+          streamUrl: "https://stream.example/live",
+        },
+        origin: "manual",
       },
-      origin: "manual",
-    });
+      { isCurrent: undefined }
+    );
     expect(loaded).toEqual({
       radio: {
         id: "stream.example",
@@ -159,5 +163,74 @@ describe("loadStreamStation", () => {
         streamUrl: "https://stream.example/live",
       },
     });
+  });
+});
+
+describe("loadSearchSource", () => {
+  const station: Radio = {
+    id: "directory-id",
+    name: "Garden",
+    streamUrl: "https://stream.example/live",
+  };
+
+  test("a directory pick is registered before loading and keeps its session identity", async () => {
+    const session = { ...station, id: "session-id" };
+    const createSession = mock(async () => ({
+      data: { radio: session },
+      ok: true as const,
+    }));
+    const isCurrent = () => true;
+    expect(
+      await loadSearchSource(station, { createSession, isCurrent })
+    ).toEqual({ radio: session });
+    expect(createSession).toHaveBeenCalledWith(
+      { origin: "discovery", radio: expect.objectContaining(station) },
+      { isCurrent }
+    );
+  });
+
+  test("a matching saved or session station keeps its existing identity", async () => {
+    const known = { ...station, id: "saved-id", name: "My station" };
+    const createSession = mock(async () => ({
+      data: { radio: station },
+      ok: true as const,
+    }));
+    expect(
+      await loadSearchSource(station, { createSession, knownRadios: [known] })
+    ).toEqual({ radio: known });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  test("a superseded pick cannot register a station", async () => {
+    const createSession = mock(async () => ({
+      data: { radio: station },
+      ok: true as const,
+    }));
+    let current = true;
+    const pending = loadSearchSource(station, {
+      createSession,
+      isCurrent: () => current,
+    });
+    current = false;
+    expect(await pending).toEqual({ error: "Station request canceled" });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  test("a platform track is prepared without becoming a session station", async () => {
+    const createSession = mock(async () => ({
+      data: { radio: station },
+      ok: true as const,
+    }));
+    const loaded = await loadSearchSource(lazyVideo, {
+      createSession,
+      resolveStream: async () => ({
+        streamFormat: "progressive" as const,
+        streamUrl: "https://media.example/abc.m4a",
+      }),
+    });
+    expect(loaded).toMatchObject({
+      radio: { streamUrl: "https://media.example/abc.m4a" },
+    });
+    expect(createSession).not.toHaveBeenCalled();
   });
 });

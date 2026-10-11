@@ -53,6 +53,7 @@ export const OUTPUT_DEVICE_NAME = "Output device";
 const DEFAULT_OUTPUT_ID = "default";
 
 type OutputDeviceBodyProps = {
+  embedded?: boolean;
   data: OutputDeviceNodeData;
   devices: NodeDevices;
   /** The sink's status from node playback, once it has one. */
@@ -77,13 +78,12 @@ function OutputState({
   supported,
   onRetry,
 }: Omit<OutputDeviceBodyProps, "onPickDevice" | "onToggleMute" | "onRemove">) {
-  if (data.deviceId === null) {
-    return <DeviceNote>Pick the output to play on</DeviceNote>;
-  }
   if (!supported || status?.state === "unsupported") {
     return (
       <DeviceNote tone="warning">
-        This browser can't choose an output, playing through Speakers
+        {data.deviceId === null
+          ? "This browser can’t select an output device. Connect to Speakers instead."
+          : "This browser can’t select an output device. Audio uses Speakers instead."}
       </DeviceNote>
     );
   }
@@ -115,6 +115,9 @@ function OutputState({
       </InlineError>
     );
   }
+  if (data.deviceId === null) {
+    return null;
+  }
   if (data.deviceId === mainOutputId) {
     return <DeviceNote>Same device as Speakers</DeviceNote>;
   }
@@ -122,6 +125,7 @@ function OutputState({
 }
 
 export function OutputDeviceNodeBody({
+  embedded = false,
   data,
   devices,
   status,
@@ -135,6 +139,7 @@ export function OutputDeviceNodeBody({
 }: OutputDeviceBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || OUTPUT_DEVICE_NAME;
   const MuteIcon = data.muted ? VolumeXIcon : Volume2Icon;
+  const muteAction = data.muted ? "Unmute" : "Mute";
   const choices = devices.outputs.filter(
     (device) => device.deviceId !== DEFAULT_OUTPUT_ID
   );
@@ -142,11 +147,18 @@ export function OutputDeviceNodeBody({
   return (
     <div
       className={cn(
-        "w-56 rounded-md border bg-card text-card-foreground",
+        embedded
+          ? "w-full"
+          : "w-56 rounded-md border bg-card text-card-foreground",
         selected ? "border-ring" : "border-border/50"
       )}
     >
-      <div className="flex h-8 items-center gap-1.5 pr-1 pl-2">
+      <div
+        className={cn(
+          "flex h-8 items-center gap-1.5 pr-1 pl-2",
+          embedded && "hidden"
+        )}
+      >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
           <MonitorSpeakerIcon aria-hidden="true" className="size-3.5" />
         </span>
@@ -166,12 +178,12 @@ export function OutputDeviceNodeBody({
           onKeyDown={keepControlKeys}
         >
           <Button
-            aria-label={`${data.muted ? "Unmute" : "Mute"} ${title}`}
+            aria-label={`${muteAction} ${title}`}
             aria-pressed={data.muted}
             className="size-6 text-muted-foreground"
             onClick={onToggleMute}
             size="icon"
-            title={data.muted ? "Unmute" : "Mute"}
+            title={muteAction}
             variant="ghost"
           >
             <MuteIcon />
@@ -200,11 +212,25 @@ export function OutputDeviceNodeBody({
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
       <div
         className={cn(
-          "flex flex-col gap-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
+          embedded
+            ? "flex flex-col gap-2"
+            : "flex flex-col gap-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
           INTERACTIVE
         )}
         onKeyDown={keepControlKeys}
       >
+        {embedded ? (
+          <Button
+            aria-label={`${muteAction} ${title}`}
+            aria-pressed={data.muted}
+            onClick={onToggleMute}
+            size="sm"
+            variant="outline"
+          >
+            <MuteIcon />
+            {muteAction} output
+          </Button>
+        ) : null}
         <OutputState
           data={data}
           devices={devices}
@@ -252,12 +278,14 @@ export function OutputDeviceNodeBody({
 
 /** The Output device's controls, shared by the patch and inspector. */
 export function OutputDeviceNodeContent({
+  embedded,
   id,
   data,
   selected,
   store = nodeStore,
 }: {
   id: string;
+  embedded?: boolean;
   data: OutputDeviceNodeData;
   selected?: boolean;
   store?: NodeStore;
@@ -279,6 +307,7 @@ export function OutputDeviceNodeContent({
     <OutputDeviceNodeBody
       data={data}
       devices={devices}
+      embedded={embedded}
       mainOutputId={mainOutputId}
       onPickDevice={(device) =>
         commit({ deviceId: device.deviceId, deviceLabel: device.label })

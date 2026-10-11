@@ -1,19 +1,21 @@
 import { captureError } from "@avoid.quest/error";
-import type { UnifiedSearchResult } from "@avoid.quest/platforms";
 import { useMutation } from "@tanstack/react-query";
-import {
-  createExternalPlatformSearchWorkflow,
-  type ExternalPlatformSearchParams,
-} from "@/lib/external-platform-search-workflow";
+import { useCallback, useEffect, useRef } from "react";
+import { radios as curatedRadios } from "@/lib/const";
+import { createExternalPlatformSearchWorkflow } from "@/lib/external-platform-search-workflow";
 import {
   searchBandcamp,
   searchMixcloud,
   searchRadioGarden,
   searchSoundCloud,
 } from "@/lib/platform-client";
+import {
+  createSourceSearchWorkflow,
+  type SourceSearchParams,
+} from "@/lib/source-search-workflow";
+import { createProductionStationDiscovery } from "@/lib/stations/station-discovery-adapters";
+import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { getYouTubeClient } from "@/lib/youtube";
-
-type SearchParams = ExternalPlatformSearchParams;
 
 const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   adapters: {
@@ -43,19 +45,39 @@ const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
   },
 });
 
+const sourceSearch = createSourceSearchWorkflow({
+  createDiscovery: (platform) =>
+    createProductionStationDiscovery({
+      radioBrowser: platform === "all" || platform === "radio-browser",
+      radioGarden: platform === "all" || platform === "radiogarden",
+    }),
+  searchPlatform: externalPlatformSearchWorkflow.search,
+});
+
 export function useExternalSearch() {
-  return useMutation({
-    mutationFn: async ({
-      query,
-      platform,
-      bandcampFilter,
-      youtubeFilter,
-    }: SearchParams): Promise<UnifiedSearchResult[]> =>
-      await externalPlatformSearchWorkflow.search({
-        bandcampFilter,
-        platform,
-        query,
-        youtubeFilter,
-      }),
+  const active = useRef<AbortController | null>(null);
+  useEffect(() => () => active.current?.abort(), []);
+  const { reset: resetMutation, ...mutation } = useMutation({
+    mutationFn: async (params: SourceSearchParams) => {
+      active.current?.abort();
+      const controller = new AbortController();
+      active.current = controller;
+      return await sourceSearch.search(
+        {
+          ...params,
+          knownStations: [...(params.knownStations ?? []), ...curatedRadios],
+          playbackNeedsNetwork: Object.values(
+            playbackRuntimeStore.state.channels
+          ).some((channel) => channel.isLoading || channel.isBuffering),
+        },
+        controller.signal
+      );
+    },
   });
+  // Stable identity is required by SearchInput’s context reset effect.
+  const reset = useCallback(() => {
+    active.current?.abort();
+    resetMutation();
+  }, [resetMutation]);
+  return { ...mutation, reset };
 }

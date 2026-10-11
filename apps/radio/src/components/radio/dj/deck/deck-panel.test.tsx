@@ -4,10 +4,10 @@ import {
   beforeEach,
   describe,
   expect,
+  spyOn,
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { Radio } from "@/lib/audio";
@@ -18,6 +18,12 @@ import {
   initializePlaybackSessions,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
+import {
+  addSessionRadio,
+  removeSessionRadio,
+} from "@/lib/collections/session-radios";
+import { getDjDeckModule } from "@/lib/dj-deck";
+import { PLATFORM_ITEMS } from "@/lib/dj-library-sources";
 import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
@@ -55,14 +61,17 @@ Object.defineProperty(dom.window, "matchMedia", {
 });
 
 for (const [key, value] of Object.entries({
+  CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
   Element: dom.window.Element,
+  Event: dom.window.Event,
   fetch: () => Promise.reject(new Error("offline")),
   getComputedStyle: dom.window.getComputedStyle,
   HTMLElement: dom.window.HTMLElement,
   HTMLFormElement: dom.window.HTMLFormElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
   IntersectionObserver: ObserverStub,
   MutationObserver: dom.window.MutationObserver,
   Node: dom.window.Node,
@@ -84,6 +93,17 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   writable: true,
 });
 
+// Input change detection must initialize after the DOM is available.
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
+
+const SESSION_STATION: Radio = {
+  id: "rb_deck-search-session-regression",
+  name: "Session-only deck regression station",
+  streamUrl: "https://radio.test/session-only-deck.mp3",
+};
+
 const STATION: Radio = {
   id: "station-a",
   name: "Station A",
@@ -91,8 +111,15 @@ const STATION: Radio = {
 };
 
 let DeckPanel: typeof import("./deck-panel")["DeckPanel"];
+let realUseSessionRadios: typeof import("@/lib/hooks/use-session-radios")["useSessionRadios"];
+let restoreSessionHook: () => void = () => undefined;
 
 beforeAll(async () => {
+  // The Node-management suite replaces the session hook globally. Keep the
+  // real collection-backed hook available without adding another module mock.
+  ({ useSessionRadios: realUseSessionRadios } = (await import(
+    `../../../../lib/hooks/use-session-radios.ts?${"deck-real-sessions"}`
+  )) as typeof import("@/lib/hooks/use-session-radios"));
   // The mobile console test replaces this module with mock.module, which
   // leaks across files in one `bun test` process. The query suffix loads a
   // real instance.
@@ -171,6 +198,12 @@ describe("DeckPanel source picker", () => {
   let volumesBefore = new Map<string, number>();
 
   beforeEach(async () => {
+    const sessionHooks = await import("@/lib/hooks/use-session-radios");
+    const sessionHook = spyOn(
+      sessionHooks,
+      "useSessionRadios"
+    ).mockImplementation(realUseSessionRadios);
+    restoreSessionHook = () => sessionHook.mockRestore();
     await initializePlaybackSessions();
     volumesBefore = new Map(
       [DECK_A_CHANNEL_ID, DECK_B_CHANNEL_ID].map((channelId) => [
@@ -183,8 +216,11 @@ describe("DeckPanel source picker", () => {
 
   afterEach(() => {
     cleanup();
+    restoreSessionHook();
     resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
     setDeckRadio(DECK_A_CHANNEL_ID, null);
+    getDjDeckModule().pendingSource.cancel("deck-a");
+    removeSessionRadio(SESSION_STATION.id as string);
     for (const [channelId, volume] of volumesBefore) {
       updatePlaybackChannel("dj", channelId, (draft) => {
         draft.volume = volume;
@@ -242,4 +278,49 @@ describe("DeckPanel source picker", () => {
 
     expect(isPickerOpen(view)).toBeFalse();
   });
+
+  for (const surface of ["pending platform", "change loaded source"] as const) {
+    test(`${surface} search finds a station held only in the session library`, async () => {
+      addSessionRadio(SESSION_STATION);
+      if (surface === "pending platform") {
+        const [searchSource] = PLATFORM_ITEMS;
+        if (!searchSource) {
+          throw new Error("Missing search source");
+        }
+        await getDjDeckModule()
+          .deck("deck-a")
+          .load({ radio: searchSource, type: "library" });
+      } else {
+        setDeckRadio(DECK_A_CHANNEL_ID, {
+          ...STATION,
+          platformMetadata: {
+            itemType: "track",
+            platform: "soundcloud",
+            url: "https://soundcloud.com/artist/track",
+          },
+        });
+      }
+      const view = renderDeckA();
+      if (surface === "change loaded source") {
+        fireEvent.click(view.getByRole("button", { name: CHANGE_SOURCE }));
+      }
+      const provider = view.container.querySelector("select");
+      if (!provider) {
+        throw new Error("Missing provider selector");
+      }
+      fireEvent.change(provider, { target: { value: "local" } });
+      const input = view.getByRole("searchbox", {
+        name: "Search or paste a link",
+      });
+      fireEvent.change(input, { target: { value: SESSION_STATION.name } });
+      const form = input.closest("form");
+      if (!form) {
+        throw new Error("Missing search form");
+      }
+      fireEvent.submit(form);
+      await waitFor(() =>
+        expect(view.queryByText(SESSION_STATION.name) !== null).toBe(true)
+      );
+    });
+  }
 });

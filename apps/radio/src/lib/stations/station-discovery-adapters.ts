@@ -172,6 +172,19 @@ export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
   },
 };
 
-export function createProductionStationDiscovery() {
-  return createStationDiscovery(productionStationDiscoveryAdapters);
+export function createProductionStationDiscovery(
+  options: { radioBrowser?: boolean; radioGarden?: boolean } = {}
+) {
+  const emptyDirectory = { search: async () => [] };
+  return createStationDiscovery({
+    ...productionStationDiscoveryAdapters,
+    radioBrowser:
+      options.radioBrowser === false
+        ? emptyDirectory
+        : productionStationDiscoveryAdapters.radioBrowser,
+    radioGarden:
+      options.radioGarden === false
+        ? emptyDirectory
+        : productionStationDiscoveryAdapters.radioGarden,
+  });
 }

@@ -293,7 +293,12 @@ function InspectorParams({
     params = <ModulationControls node={node} store={store} />;
   } else if (node.type === "deviceOut") {
     params = (
-      <OutputDeviceNodeContent data={node.data} id={node.id} store={store} />
+      <OutputDeviceNodeContent
+        data={node.data}
+        embedded
+        id={node.id}
+        store={store}
+      />
     );
   } else if (node.type === "speakers") {
     params = <NodeMasterControls />;

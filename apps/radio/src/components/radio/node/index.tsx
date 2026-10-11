@@ -27,7 +27,6 @@ import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import { RadioDialog } from "../../settings/radio-dialog";
 import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
 import { NodeCanvasSkeleton } from "../radio-loading-skeleton";
-import { RadioSearchBar } from "../radio-search-bar";
 import { NodeCanvasHint } from "./canvas-hint";
 import { ConnectDialog } from "./connect-dialog";
 import { type NodeActions, NodeActionsProvider } from "./node-actions";
@@ -41,6 +40,7 @@ import {
 import { NodeRack } from "./node-rack";
 import { NodeToolbar, useUndoShortcuts } from "./node-toolbar";
 import { RewireDialog } from "./rewire-dialog";
+import { SourceSearchPopover } from "./source-search-popover";
 import { useNodeRadioManagement } from "./use-node-radio-management";
 
 /**
@@ -153,7 +153,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     handleSaveSessionRadio: management.handleSaveSessionRadio,
     handleToggleRadio: management.handleToggleRadio,
     inspectNode: inspector.inspect,
-    radios: radios ?? [],
+    radios: [...(radios ?? []), ...management.sessionRadios],
     removeNode: (nodeId) => {
       const current = nodeStore.state.graph;
       if (!current) {
@@ -172,9 +172,6 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     saveDiscoveredStation: management.saveDiscoveredStation,
     selectDiscoveredForStation: management.selectDiscoveredForStation,
     swapEffect: (nodeId) => openPalette({ swap: nodeId }),
-  };
-  const handleSelectLocal = (radio: Radio) => {
-    management.addStation(radio);
   };
   const handleCancelDelete = () => management.setDeleteConfirm(null);
   // A node placed where the user pointed is in view already; one placed in
@@ -232,15 +229,9 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     <NodeActionsProvider value={actions}>
       <div className="flex h-full min-h-0 w-full flex-col">
         <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-          <RadioSearchBar
-            className="w-full min-w-0 max-w-md"
-            onSaveDiscovered={management.saveDiscoveredStation}
-            onSelectDiscovered={management.selectDiscoveredStation}
-            onSelectLocal={handleSelectLocal}
-            placeholder={
-              isPhone ? "Search stations" : "Search to add a station"
-            }
-            radios={radios ?? []}
+          <SourceSearchPopover
+            onLoad={management.addStation}
+            radios={[...(radios ?? []), ...management.sessionRadios]}
           />
           <NodeToolbar
             isPhone={isPhone}

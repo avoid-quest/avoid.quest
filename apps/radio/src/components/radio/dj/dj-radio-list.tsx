@@ -25,19 +25,17 @@ import {
   isSessionRadio,
   useSessionRadios,
 } from "@/lib/hooks/use-session-radios";
-import { useUnifiedRadioSearch } from "@/lib/hooks/use-unified-radio-search";
 import { EmptyHint } from "../empty-hint";
 import { platformSourceIcon } from "../platform-source-icon";
 import { RadioListItemMetadata } from "../radio-list-item-metadata";
 import { RadioLogo } from "../radio-logo";
-import { SearchField } from "../search-field";
 import {
   StationRowSubtitle,
   StationRowText,
   stationFallbackSubtitle,
   stationRowButtonOnlyClassName,
 } from "../station-row";
-import { toDjBrowserRadio } from "./browser/browser-model";
+import { ExternalSearch } from "./external-search";
 
 export {
   AUDIO_INPUT_PLATFORM_ID,
@@ -212,7 +210,6 @@ export function DjRadioList({
   deckId: DeckId;
 }) {
   const [activeTab, setActiveTab] = useState("stations");
-  const [query, setQuery] = useState("");
   const sessionRadios = useSessionRadios((state) => state.radios);
   const allRadios = [
     ...sessionRadios,
@@ -221,74 +218,48 @@ export function DjRadioList({
         !sessionRadios.some((sessionRadio) => sessionRadio.id === radio.id)
     ),
   ];
-  const { isSearching, results } = useUnifiedRadioSearch(query, allRadios);
-  const hasQuery = query.trim().length > 0;
-  const visibleRadios = hasQuery ? results.map(toDjBrowserRadio) : allRadios;
-  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) =>
-    setQuery(event.target.value);
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      setQuery("");
-      return;
-    }
-    const [first] = visibleRadios;
-    if (event.key === "Enter" && hasQuery && first) {
-      event.preventDefault();
-      loadIntoDeck(deckId, first);
-    }
-  };
 
   return (
-    <Tabs
-      className="flex h-full min-h-0 flex-col"
-      onValueChange={setActiveTab}
-      value={activeTab}
+    <ExternalSearch
+      onLoad={(radio) => loadIntoDeck(deckId, radio)}
+      radios={allRadios}
     >
-      <TabsList className="mb-2 w-full shrink-0">
-        <TabsTrigger className="flex-1 text-xs" value="stations">
-          Stations
-        </TabsTrigger>
-        <TabsTrigger className="flex-1 text-xs" value="sources">
-          Other sources
-        </TabsTrigger>
-      </TabsList>
-      {activeTab === "stations" && (
-        <SearchField
-          aria-label="Search stations"
-          className="mb-2 shrink-0"
-          isSearching={isSearching}
-          onChange={handleQueryChange}
-          onKeyDown={handleKeyDown}
-          value={query}
-        />
-      )}
-      <TabsContent
-        className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
-        tabIndex={-1}
-        value="stations"
+      <Tabs
+        className="flex min-h-0 flex-1 flex-col"
+        onValueChange={setActiveTab}
+        value={activeTab}
       >
-        <RowList
-          deckId={deckId}
-          emptyLabel={
-            (isSearching && "Checking station directories…") ||
-            (hasQuery && "No stations found") ||
-            "Search to add a station"
-          }
-          isSearch={hasQuery}
-          items={visibleRadios}
-        />
-      </TabsContent>
-      <TabsContent
-        className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
-        tabIndex={-1}
-        value="sources"
-      >
-        <RowList
-          deckId={deckId}
-          emptyLabel="No sources available"
-          items={PLATFORM_ITEMS}
-        />
-      </TabsContent>
-    </Tabs>
+        <TabsList className="mb-2 w-full shrink-0">
+          <TabsTrigger className="flex-1 text-xs" value="stations">
+            Stations
+          </TabsTrigger>
+          <TabsTrigger className="flex-1 text-xs" value="sources">
+            Other sources
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent
+          className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+          tabIndex={-1}
+          value="stations"
+        >
+          <RowList
+            deckId={deckId}
+            emptyLabel="Search to find a station"
+            items={allRadios}
+          />
+        </TabsContent>
+        <TabsContent
+          className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden"
+          tabIndex={-1}
+          value="sources"
+        >
+          <RowList
+            deckId={deckId}
+            emptyLabel="No sources available"
+            items={PLATFORM_ITEMS}
+          />
+        </TabsContent>
+      </Tabs>
+    </ExternalSearch>
   );
 }

@@ -355,12 +355,15 @@ export function nextOutputPosition(graph: NodeGraph): Position | null {
  * Speakers, as a new Station from the search would be wired. A slot that
  * also feeds an effect or a key input keeps its role.
  */
-function emptySlotOnSpeakers(graph: NodeGraph): StationNode | undefined {
+function emptySlotOnSpeakers(graph: NodeGraph): GraphNode | undefined {
   const speakers = new Set(
     graph.nodes.filter((node) => node.type === "speakers").map((n) => n.id)
   );
-  return graph.nodes.find((node): node is StationNode => {
-    if (!isStation(node) || node.data.radio !== null) {
+  return graph.nodes.find((node) => {
+    if (
+      (node.type !== "station" && node.type !== "platform") ||
+      node.data.radio !== null
+    ) {
       return false;
     }
     const out = graph.edges.filter((edge) => edge.source === node.id);
@@ -390,7 +393,7 @@ export function addStationNode(
   }
   const slot = emptySlotOnSpeakers(graph);
   if (slot) {
-    return { graph: setStationRadio(graph, slot.id, radio), nodeId: slot.id };
+    return { graph: setSourceRadio(graph, slot.id, radio), nodeId: slot.id };
   }
   const nodeId = stationNodeId(
     radio,
@@ -406,7 +409,11 @@ export function addStationNode(
     },
   ];
   return {
-    graph: { ...graph, edges: wireToSpeakers(graph, nodeId), nodes },
+    graph: setSourceRadio(
+      { ...graph, edges: wireToSpeakers(graph, nodeId), nodes },
+      nodeId,
+      radio
+    ),
     nodeId,
   };
 }

@@ -129,6 +129,7 @@ export function NodeCompactStrip({
           commitStrip(nodeId, { solo: !strip.solo }, store, true)
         }
         pan={strip.pan}
+        showMute={false}
         solo={strip.solo}
         soloedOut={soloedOut}
         soundId={runtime?.soundId ?? null}
@@ -263,6 +264,7 @@ export function NodeSourceStripPanel({
         playback.toggleMute(node.id);
         snapshotNodeGraph(store);
       }}
+      showMute={node.type !== "deviceIn" || showInputControls}
       soloedOut={soloedOut}
       soundId={soundId}
       station={station}

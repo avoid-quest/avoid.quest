@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { parsePlaybackSessionRecord } from "@/lib/collections/playback-sessions";
 import { compile } from "./compile";
-import { DEFAULT_STATION_STRIP, nodeGraphSchema } from "./schema";
+import { DEFAULT_MEDIA_STRIP, nodeGraphSchema } from "./schema";
 import { buildNodeSessionFromTemplate } from "./template-sessions";
 import {
   buildNodeGraphFromTemplate,
@@ -30,7 +30,7 @@ function stationIds(graph: ReturnType<typeof buildNodeGraphFromTemplate>) {
 }
 
 describe("starter", () => {
-  test("is one empty Station slot wired to Speakers", () => {
+  test("is one unified search slot wired to Speakers", () => {
     const graph = buildNodeGraphFromTemplate("starter", {
       saved: [radio("a", { enabled: true })],
     });
@@ -40,11 +40,11 @@ describe("starter", () => {
         data: {
           muted: false,
           radio: null,
-          strip: DEFAULT_STATION_STRIP,
+          strip: DEFAULT_MEDIA_STRIP,
           volume: 1,
         },
         id: STARTER_STATION_ID,
-        type: "station",
+        type: "platform",
       }),
       expect.objectContaining({ id: SPEAKERS_NODE_ID, type: "speakers" }),
     ]);

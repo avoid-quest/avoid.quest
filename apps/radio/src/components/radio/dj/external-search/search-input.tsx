@@ -1,8 +1,5 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
-import type {
-  SearchPlatform,
-  UnifiedSearchResult,
-} from "@avoid.quest/platforms";
+
 import {
   Select,
   SelectContent,
@@ -13,12 +10,18 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { useLayoutEffect, useRef, useState } from "react";
+import type { Radio } from "@/lib/audio";
 import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { useExternalSearch } from "@/lib/hooks/use-external-search";
+import type {
+  SourceSearchPlatform as SearchPlatform,
+  SourceSearchResult as UnifiedSearchResult,
+} from "@/lib/source-search-workflow";
 import { SearchField } from "../../search-field";
 import { createSearchRequestGuard } from "./search-request-guard";
 
 type SearchInputProps = {
+  radios?: readonly Radio[];
   platform: SearchPlatform;
   onPlatformChange: (platform: SearchPlatform) => void;
   bandcampFilter: "" | "t" | "a";
@@ -26,6 +29,7 @@ type SearchInputProps = {
   onClearResults: () => void;
   onError: (message: string) => void;
   onResults: (results: UnifiedSearchResult[]) => void;
+  onSearchingChange?: (searching: boolean) => void;
   youtubeFilter: "songs" | "videos";
   onYoutubeFilterChange: (filter: "songs" | "videos") => void;
   searchContextKey: string;
@@ -40,18 +44,22 @@ type SearchInputProps = {
 };
 
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
-  all: "Tracks from all platforms",
+  all: "Tracks, shows and stations",
   bandcamp: "Tracks & albums from independent artists",
+  local: "Curated and saved stations",
   mixcloud: "DJ mixes, radio shows & podcasts",
+  "radio-browser": "Worldwide radio stations",
   radiogarden: "40,000+ radio stations worldwide",
   soundcloud: "Tracks, mixes & DJ sets",
   youtube: "Music videos & audio",
 };
 
 const PLATFORM_LABELS: Record<SearchPlatform, string> = {
-  all: "All platforms",
+  all: "All sources",
   bandcamp: "Bandcamp",
+  local: "Station library",
   mixcloud: "Mixcloud",
+  "radio-browser": "Radio Browser",
   radiogarden: "Radio Garden",
   soundcloud: "SoundCloud",
   youtube: "YouTube",
@@ -61,6 +69,8 @@ const PLATFORM_OPTIONS = [
   "bandcamp",
   "mixcloud",
   "radiogarden",
+  "radio-browser",
+  "local",
   "soundcloud",
   "youtube",
 ] as const satisfies SearchPlatform[];
@@ -71,7 +81,11 @@ function PlatformDot({ platform }: { platform: SearchPlatform }) {
       className="size-2 shrink-0 rounded-full"
       style={{
         backgroundColor: getPlatformSourceColor(
-          platform === "all" ? "external" : platform
+          platform === "all" ||
+            platform === "local" ||
+            platform === "radio-browser"
+            ? "external"
+            : platform
         ),
       }}
     />
@@ -80,12 +94,14 @@ function PlatformDot({ platform }: { platform: SearchPlatform }) {
 
 export function SearchInput({
   platform,
+  radios,
   onPlatformChange,
   bandcampFilter,
   onBandcampFilterChange,
   onClearResults,
   onError,
   onResults,
+  onSearchingChange,
   youtubeFilter,
   onYoutubeFilterChange,
   searchContextKey,
@@ -100,6 +116,7 @@ export function SearchInput({
   useLayoutEffect(() => {
     requestGuard.setContext(searchContextKey);
     reset();
+    return () => requestGuard.invalidate();
   }, [requestGuard, reset, searchContextKey]);
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -107,15 +124,23 @@ export function SearchInput({
     if (isPending || !query.trim()) {
       return;
     }
+    requestGuard.invalidate();
     if (onDirectLink?.(query.trim())) {
       setQuery("");
       return;
     }
     onClearResults();
+    onSearchingChange?.(true);
     const isCurrentRequest = requestGuard.begin(searchContextKey);
     search(
       {
         bandcampFilter: platform === "bandcamp" ? bandcampFilter : undefined,
+        knownStations: radios,
+        onProgress: (results) => {
+          if (isCurrentRequest()) {
+            onResults(results);
+          }
+        },
         platform,
         query: query.trim(),
         youtubeFilter: platform === "youtube" ? youtubeFilter : undefined,
@@ -123,11 +148,13 @@ export function SearchInput({
       {
         onError: (error) => {
           if (isCurrentRequest()) {
+            onSearchingChange?.(false);
             onError(error.message);
           }
         },
         onSuccess: (results) => {
           if (isCurrentRequest()) {
+            onSearchingChange?.(false);
             onResults(results);
           }
         },
@@ -136,8 +163,12 @@ export function SearchInput({
   };
   const handlePlatformChange = (value: string) =>
     onPlatformChange(value as SearchPlatform);
-  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) =>
+  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    requestGuard.invalidate();
+    reset();
+    onClearResults();
     setQuery(event.target.value);
+  };
   const handleBandcampFilterChange = (value: string) =>
     onBandcampFilterChange(value === "all" ? "" : (value as "t" | "a"));
   const handleYoutubeFilterChange = (value: string) =>
@@ -152,7 +183,7 @@ export function SearchInput({
     <Select onValueChange={handlePlatformChange} value={platform}>
       <SelectTrigger
         aria-label="Platform"
-        className="w-[120px] shrink-0 text-xs"
+        className="w-full shrink-0 text-xs"
         size="sm"
       >
         <SelectValue />
@@ -160,10 +191,10 @@ export function SearchInput({
       <SelectContent>
         <SelectGroup>
           <SelectLabel>Search</SelectLabel>
-          <SelectItem value="all">All platforms</SelectItem>
+          <SelectItem value="all">All sources</SelectItem>
         </SelectGroup>
         <SelectGroup>
-          <SelectLabel>One platform</SelectLabel>
+          <SelectLabel>One source</SelectLabel>
           {PLATFORM_OPTIONS.map((option) => (
             <SelectItem key={option} value={option}>
               <span className="flex items-center gap-1.5">
@@ -178,8 +209,8 @@ export function SearchInput({
   );
 
   return (
-    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-      <div className="flex gap-2">
+    <form className="flex shrink-0 flex-col gap-2" onSubmit={handleSubmit}>
+      <div className="flex flex-col gap-2">
         {showPlatform ? platformControl : null}
 
         <SearchField
@@ -189,7 +220,6 @@ export function SearchInput({
           maxLength={2048}
           onChange={handleQueryChange}
           placeholder="Search, or paste a link"
-          readOnly={isPending}
           value={query}
         />
       </div>

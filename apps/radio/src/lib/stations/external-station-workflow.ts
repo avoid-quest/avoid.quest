@@ -639,11 +639,23 @@ export function createStationIntake(dependencies: StationIntakeDependencies) {
 
   return {
     async createSession(
-      candidate: StationCandidate
+      candidate: StationCandidate,
+      { isCurrent }: { isCurrent?: () => boolean } = {}
     ): Promise<StationIntakeResult> {
       const prepared = await prepare(candidate);
       if (!prepared.ok) {
         return prepared;
+      }
+      // Resolution may outlive the search that requested it. Check before
+      // either adding the station or cleaning up previous session records.
+      if (isCurrent && !isCurrent()) {
+        return {
+          error: {
+            code: "STATION_INTAKE_CANCELED",
+            message: "Station request canceled",
+          },
+          ok: false,
+        };
       }
       const staleSessions = findStationsByIdentity(
         dependencies.session.getAll(),

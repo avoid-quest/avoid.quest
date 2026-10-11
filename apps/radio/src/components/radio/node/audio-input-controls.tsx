@@ -14,7 +14,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   HeadphonesIcon,
   MicIcon,
-  MicOffIcon,
+  PauseIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useId } from "react";
@@ -30,7 +30,7 @@ import type { NodeDevice } from "./use-node-devices";
  * Audio Input Controls
  *
  * The pieces an Audio input shows on the canvas and in the Stage and Rack,
- * in DJ's words: Go live and Mute, Off and Live, the device and its
+ * in DJ's words: Go live and Pause input, Paused and Live, the device and its
  * channels. None of them import React Flow, so the Stage and Rack can load
  * them without the canvas chunk.
  */
@@ -64,19 +64,27 @@ export function DeviceNote({
   );
 }
 
-/** Off or Live, as a DJ deck's input reads. */
-export function InputLiveBadge({ isLive }: { isLive: boolean }) {
+/** Playback status, separate from microphone permission. */
+export function InputLiveBadge({
+  isLive,
+  isLoading = false,
+}: {
+  isLive: boolean;
+  isLoading?: boolean;
+}) {
+  const settled = isLive ? "Live" : "Paused";
+  const label = isLoading ? "Starting" : settled;
   return (
     <Badge
       className="shrink-0 px-1.5 py-0 text-[10px]"
       variant={isLive ? "default" : "secondary"}
     >
-      {isLive ? "Live" : "Off"}
+      {label}
     </Badge>
   );
 }
 
-/** Go live, or Mute while live: DJ's input button. */
+/** Start or pause input audio, separately from volume mute. */
 export function InputLiveButton({
   target,
   isPlaying,
@@ -94,10 +102,10 @@ export function InputLiveButton({
   compact?: boolean;
   onToggle: () => void;
 }) {
-  const label = isPlaying ? "Mute" : "Go live";
-  const Icon = isPlaying ? MicOffIcon : MicIcon;
-  // "Mute live", so it reads apart from the volume's own Mute.
-  const name = isPlaying ? `Mute live ${target}` : `Go live ${target}`;
+  const label = isPlaying ? "Pause input" : "Go live";
+  const Icon = isPlaying ? PauseIcon : MicIcon;
+  // Pausing changes playback state; volume mute leaves playback running.
+  const name = isPlaying ? `Pause input ${target}` : `Go live ${target}`;
   return (
     <Button
       aria-label={name}
@@ -105,7 +113,7 @@ export function InputLiveButton({
       disabled={disabled || isLoading}
       onClick={onToggle}
       size={compact ? "icon" : "sm"}
-      title={compact ? label : undefined}
+      title={isPlaying ? "Pause input audio" : "Play input audio"}
       variant={isPlaying ? "outline" : "default"}
     >
       {isLoading ? <Spinner /> : <Icon />}

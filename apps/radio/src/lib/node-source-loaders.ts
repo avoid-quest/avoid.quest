@@ -19,7 +19,11 @@ import {
   localAudioUrls,
 } from "@/lib/audio/local-audio-playlist";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
-import { keepLocalFileUrl, localFileRadio } from "@/lib/node-graph/sources";
+import {
+  keepLocalFileUrl,
+  localFileRadio,
+  sourceTypeForRadio,
+} from "@/lib/node-graph/sources";
 import {
   type LoadPlatformItemResult,
   loadPlatformItem,
@@ -29,7 +33,7 @@ import {
   radioOnTrack,
 } from "@/lib/platform-stream-refresh";
 import {
-  type StationIntakeResult,
+  findLiveStation,
   stationIntake,
 } from "@/lib/stations/external-station-workflow";
 
@@ -39,9 +43,8 @@ export type NodeSourceLoaderDependencies = {
   loadFile?: (file: File) => Promise<FileAudioMetadata>;
   loadItem?: (url: string) => Promise<LoadPlatformItemResult>;
   resolveStream?: ResolvePlatformStream;
-  createSession?: (
-    candidate: Parameters<typeof stationIntake.createSession>[0]
-  ) => Promise<StationIntakeResult>;
+  createSession?: typeof stationIntake.createSession;
+  isCurrent?: () => boolean;
 };
 
 const TRACK_UNPLAYABLE = "Couldn't play this track";
@@ -67,6 +70,40 @@ export async function prepareSourceRadio(
   } catch {
     return { error: TRACK_UNPLAYABLE };
   }
+}
+
+/** Resolve a search pick and register previously unknown stations before use. */
+export async function loadSearchSource(
+  radio: Radio,
+  {
+    knownRadios = [],
+    isCurrent = () => true,
+    createSession = stationIntake.createSession,
+    ...dependencies
+  }: NodeSourceLoaderDependencies & { knownRadios?: readonly Radio[] } = {}
+): Promise<SourceLoad> {
+  const prepared = await prepareSourceRadio(radio, dependencies);
+  if (!isCurrent()) {
+    return { error: "Station request canceled" };
+  }
+  if (
+    "error" in prepared ||
+    sourceTypeForRadio(prepared.radio) !== "station" ||
+    prepared.radio.platformMetadata?.platform === "device-input"
+  ) {
+    return prepared;
+  }
+  const known = findLiveStation(knownRadios, prepared.radio);
+  if (known) {
+    return { radio: known };
+  }
+  const result = await createSession(
+    { origin: "discovery", radio: prepared.radio },
+    { isCurrent }
+  );
+  return result.ok
+    ? { radio: result.data.radio }
+    : { error: result.error.message };
 }
 
 /** A platform link or static audio URL, resolved as a DJ deck loads one. */
@@ -116,13 +153,17 @@ function streamName(url: string): string {
 export async function loadStreamStation(
   url: string,
   {
-    createSession = (candidate) => stationIntake.createSession(candidate),
+    createSession = stationIntake.createSession,
+    isCurrent,
   }: NodeSourceLoaderDependencies = {}
 ): Promise<SourceLoad> {
-  const result = await createSession({
-    fields: { name: streamName(url), streamUrl: url },
-    origin: "manual",
-  });
+  const result = await createSession(
+    {
+      fields: { name: streamName(url), streamUrl: url },
+      origin: "manual",
+    },
+    { isCurrent }
+  );
   if (!result.ok) {
     return { error: result.error.message };
   }

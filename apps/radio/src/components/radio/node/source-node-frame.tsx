@@ -27,6 +27,7 @@ export const SOURCE_NODE_FRAME =
 /** An empty slot: a dashed frame titled by its type, holding its body. */
 export function EmptySourceFrame({
   title,
+  embedded = false,
   removeLabel,
   selected = false,
   className,
@@ -34,6 +35,7 @@ export function EmptySourceFrame({
   children,
 }: {
   title: string;
+  embedded?: boolean;
   removeLabel: string;
   selected?: boolean;
   /** A wider body (a platform search) sets its width here. */
@@ -41,6 +43,9 @@ export function EmptySourceFrame({
   onRemove?: () => void;
   children: React.ReactNode;
 }) {
+  if (embedded) {
+    return <div className="min-w-0">{children}</div>;
+  }
   return (
     <div
       className={cn(

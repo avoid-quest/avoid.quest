@@ -66,6 +66,46 @@ function createHarness(options?: {
 }
 
 describe("createStationIntake", () => {
+  test("a superseded intake does not add or clean up session stations", async () => {
+    const pending = Promise.withResolvers<{
+      ok: true;
+      data: { streamUrl: string };
+    }>();
+    const previous = {
+      id: "old",
+      name: "Garden",
+      streamUrl: "https://stream.example/live",
+    };
+    const harness = createHarness({
+      adapters: { radioGarden: { resolveStream: () => pending.promise } },
+      session: [previous],
+    });
+    let current = true;
+    const loading = harness.intake.createSession(
+      {
+        origin: "radio-garden",
+        result: {
+          channelId: "garden-1",
+          countryTitle: "",
+          placeTitle: "",
+          subtitle: "",
+          title: "Garden",
+          url: "https://radio.garden/listen/garden/garden-1",
+        },
+      },
+      { isCurrent: () => current }
+    );
+    current = false;
+    pending.resolve({ data: { streamUrl: previous.streamUrl }, ok: true });
+    expect(await loading).toMatchObject({
+      error: { code: "STATION_INTAKE_CANCELED" },
+      ok: false,
+    });
+    expect(harness.addSession).not.toHaveBeenCalled();
+    expect(harness.removeSession).not.toHaveBeenCalled();
+    expect(harness.session).toEqual([previous]);
+  });
+
   test("rejects invalid candidates without changing Saved or Session stations", async () => {
     const harness = createHarness();
 

@@ -69,3 +69,47 @@ test("submitting a pending search again does not launch another request", () => 
   fireEvent.submit(form);
   expect(search).toHaveBeenCalledTimes(1);
 });
+
+test("editing a query invalidates late results, progress and errors from the previous search", () => {
+  const search = mock(() => undefined);
+  spyOn(searchHook, "useExternalSearch").mockReturnValue({
+    isPending: false,
+    mutate: search,
+    reset: mock(() => undefined),
+  } as unknown as ReturnType<typeof searchHook.useExternalSearch>);
+  const noop = () => undefined;
+  const onResults = mock(() => undefined);
+  const onError = mock(() => undefined);
+  const view = render(
+    <SearchInput
+      bandcampFilter="t"
+      onBandcampFilterChange={noop}
+      onClearResults={noop}
+      onError={onError}
+      onPlatformChange={noop}
+      onResults={onResults}
+      onYoutubeFilterChange={noop}
+      platform="all"
+      searchContextKey="all"
+      showPlatform={false}
+      youtubeFilter="songs"
+    />
+  );
+  const input = view.getByRole("searchbox");
+  fireEvent.change(input, { target: { value: "old" } });
+  const form = input.closest("form");
+  if (!form) {
+    throw new Error("Missing form");
+  }
+  fireEvent.submit(form);
+  const [params, callbacks] = search.mock.calls[0] as unknown as [
+    { onProgress: (results: []) => void },
+    { onSuccess: (results: []) => void; onError: (error: Error) => void },
+  ];
+  fireEvent.change(input, { target: { value: "new" } });
+  params.onProgress([]);
+  callbacks.onSuccess([]);
+  callbacks.onError(new Error("late error"));
+  expect(onResults).not.toHaveBeenCalled();
+  expect(onError).not.toHaveBeenCalled();
+});

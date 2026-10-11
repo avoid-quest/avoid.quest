@@ -42,7 +42,7 @@ describe("hosted audio links", () => {
         sourceUrl: url,
       });
       const graph = buildNodeGraphFromTemplate("starter");
-      const source = graph.nodes.find((node) => node.type === "station");
+      const source = graph.nodes.find((node) => node.type === "platform");
       if (!source) {
         throw new Error("Expected starter source");
       }

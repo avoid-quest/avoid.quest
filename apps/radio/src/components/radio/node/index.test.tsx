@@ -174,9 +174,9 @@ test("Space on the canvas background plays and pauses all sources", async () => 
   });
 });
 
-test("Space in a search input or SVG cable target leaves playback alone", async () => {
+test("Space on the source search control or SVG cable target leaves playback alone", async () => {
   const view = await renderShortcut();
-  fireEvent.keyDown(view.getByRole("combobox", { name: "Search stations" }), {
+  fireEvent.keyDown(view.getByRole("button", { name: "Search sources" }), {
     code: "Space",
     key: " ",
   });

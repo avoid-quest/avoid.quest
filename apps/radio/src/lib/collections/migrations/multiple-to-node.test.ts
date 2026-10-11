@@ -941,7 +941,7 @@ describe("from raw localStorage", () => {
       // Restore keeps the kept stations and the old master; without it,
       // Node is rebuilt from the Starter patch, one empty slot.
       expect(result.nodeStations).toEqual(
-        restoreStateOnLoad ? ["src-kexp", "src-rg_live"] : ["src-station"]
+        restoreStateOnLoad ? ["src-kexp", "src-rg_live"] : []
       );
       expect(result.masterVolume).toBe(restoreStateOnLoad ? 0.3 : 1);
       expect(result.laneVolumes).toEqual(restoreStateOnLoad ? [0.9, 1] : []);

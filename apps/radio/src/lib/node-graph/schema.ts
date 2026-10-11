@@ -56,7 +56,7 @@ export const RADIO_SOURCE_NODE_TYPES = ["station", "platform", "file"] as const;
 
 export type RadioSourceNodeType = (typeof RADIO_SOURCE_NODE_TYPES)[number];
 
-/** The platforms a Track's search can lock to; unset searches them all. */
+/** Media-platform shortcuts offered in the node palette. */
 export const TRACK_SEARCH_PLATFORMS = [
   "youtube",
   "soundcloud",
@@ -64,7 +64,15 @@ export const TRACK_SEARCH_PLATFORMS = [
   "mixcloud",
 ] as const;
 
-export type TrackSearchPlatform = (typeof TRACK_SEARCH_PLATFORMS)[number];
+/** Every provider an empty Track can retain as its search filter. */
+export const TRACK_SEARCH_PROVIDERS = [
+  ...TRACK_SEARCH_PLATFORMS,
+  "radio-browser",
+  "radiogarden",
+  "local",
+] as const;
+
+export type TrackSearchPlatform = (typeof TRACK_SEARCH_PROVIDERS)[number];
 
 export const NATIVE_NODE_TYPES = ["filter", "pan", "gain"] as const;
 
@@ -246,8 +254,8 @@ const platformNodeSchema = z.object({
   data: z
     .object({
       ...radioSourceData,
-      /** The platform chip an empty Track's search is locked to. */
-      searchPlatform: z.enum(TRACK_SEARCH_PLATFORMS).optional(),
+      /** The saved search provider; unset searches all sources. */
+      searchPlatform: z.enum(TRACK_SEARCH_PROVIDERS).optional(),
       strip: mediaStrip,
     })
     .default(() => ({

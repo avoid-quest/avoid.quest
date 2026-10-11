@@ -136,6 +136,9 @@ export function NodeToolbar({
               <DropdownMenuLabel>Templates</DropdownMenuLabel>
             </>
           ) : null}
+          <p className="px-2 py-1.5 text-muted-foreground text-xs">
+            Replaces this patch. Undo restores it.
+          </p>
           {PALETTE_TEMPLATES.map((template) => (
             <DropdownMenuItem
               className="flex-col items-start gap-0.5"

@@ -72,7 +72,7 @@ type NodeSourceRowProps = {
  * One source lane as a station row, plus whatever the view adds (a menu,
  * its compact channel strip, FX chips): a Station with play, name, now
  * playing and volume (a Track or File with where it comes from instead of
- * now playing), or an Audio input with Go live, its device, Off / Live and
+ * now playing), or an Audio input with Go live, its device, Paused / Live and
  * volume. Live state comes from the runtime store by lane channel, as on
  * the canvas node.
  */
@@ -85,21 +85,17 @@ export function NodeSourceRow(props: NodeSourceRowProps) {
 }
 
 /** What an Audio input row says under its name. */
-function inputSubtitle(
-  permission: string,
-  unplugged: boolean,
-  isLive: boolean
-): string {
+function inputSubtitle(permission: string, unplugged: boolean): string {
   if (permission === "denied") {
     return "Microphone blocked. Allow it in your browser settings.";
   }
   if (unplugged) {
     return "Unplugged: plug it back in or pick another";
   }
-  return isLive ? "Audio input, live" : "Audio input";
+  return "Audio input";
 }
 
-/** An Audio input lane: Go live or Mute, its device, Off / Live, volume. */
+/** An Audio input lane: Go live or Pause input, its device, Paused / Live, volume. */
 function InputSourceRow({
   nodeId,
   radio,
@@ -150,13 +146,13 @@ function InputSourceRow({
         />
         <div className="flex min-w-0 flex-1 overflow-hidden">
           <StationRowText
-            indicator={<InputLiveBadge isLive={isLive} />}
+            indicator={<InputLiveBadge isLive={isLive} isLoading={isLoading} />}
             title={radio.name}
           >
             <StationRowSubtitle>
               {isDisplay
                 ? "Shared tab audio"
-                : inputSubtitle(devices.permissionState, unplugged, isLive)}
+                : inputSubtitle(devices.permissionState, unplugged)}
             </StationRowSubtitle>
           </StationRowText>
         </div>
@@ -188,7 +184,9 @@ function InputSourceRow({
         />
       ) : null}
       {children}
-      {error ? <InlineError>{error}</InlineError> : null}
+      {error && !denied && !unplugged ? (
+        <InlineError>{error}</InlineError>
+      ) : null}
     </div>
   );
 }

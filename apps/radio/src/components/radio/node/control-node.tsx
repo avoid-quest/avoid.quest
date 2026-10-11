@@ -43,11 +43,16 @@ type ControlFlowNode = FlowNode<ModulationSpec["data"], ModulationNodeType>;
 function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
   const value = useStore(modulationReadouts, (state) => state.values[id] ?? 0);
   const status = useStore(modulationReadouts, (state) => state.status);
-  const error = useStore(modulationReadouts, (state) => state.error);
+  const error = useStore(modulationReadouts, (state) =>
+    state.status === "running" ? null : state.error
+  );
   const backend = useStore(modulationReadouts, (state) => state.backends[id]);
   const nativeWarning = useStore(
     modulationReadouts,
     (state) => state.nativeWarning
+  );
+  const needsRetry = Boolean(
+    error || nativeWarning || backend === "unavailable"
   );
   const samples = useRef<number[]>([]);
   const line = useRef<SVGPolylineElement>(null);
@@ -74,23 +79,18 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
           <output
             aria-label="Modulation output"
             className="font-mono text-foreground"
+            title={backend ? `Engine: ${backend}` : undefined}
           >
             {value.toFixed(3)}
           </output>
         </span>
-        <span
-          title={
-            nativeWarning ??
-            (backend === "unavailable"
-              ? "unavailable on Safari/fallback"
-              : `${backend ?? "Starting"} source`)
-          }
-        >
-          {backend}
-        </span>
-        <Button onClick={runModulation} size="sm" variant="ghost">
-          {status === "running" ? "Running" : "Run"}
-        </Button>
+        {status === "running" && !needsRetry ? (
+          <span>Running</span>
+        ) : (
+          <Button onClick={runModulation} size="sm" variant="ghost">
+            {needsRetry ? "Retry modulation" : "Start modulation"}
+          </Button>
+        )}
       </div>
       <svg
         aria-label="Live modulation trace"
@@ -113,6 +113,11 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
       </svg>
       {error ? (
         <p className="mt-1 break-words text-destructive text-xs">{error}</p>
+      ) : null}
+      {backend === "unavailable" ? (
+        <p className="mt-1 text-amber-700 text-xs dark:text-amber-400">
+          {nativeWarning ?? "This modulator is unavailable in this browser."}
+        </p>
       ) : null}
     </div>
   );
@@ -262,9 +267,14 @@ export function ModulationControls({
         </p>
       ) : null}
       {"sync" in node.data ? (
-        <p className="px-2 pb-2 text-[10px] text-muted-foreground">
-          Free Hz adds to Sync. Set Free Hz to 0 for tempo-only timing.
-        </p>
+        <details className="px-2 pb-2 text-[10px] text-muted-foreground">
+          <summary className="cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-ring">
+            Timing help
+          </summary>
+          <p className="pt-1">
+            Free Hz adds to Sync. Set Free Hz to 0 for tempo-only timing.
+          </p>
+        </details>
       ) : null}
       <ModulationMonitor bipolar={node.data.bipolar} id={node.id} />
     </>

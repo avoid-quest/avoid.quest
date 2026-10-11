@@ -49,7 +49,7 @@ import {
  * A mic or line-in as a source, through the device path DJ decks use. Its
  * body walks the states a live input goes through: the mic to allow (a
  * gesture), a blocked mic, the device and its channels, an unplugged
- * device, and Go live / Pause input with an Paused / Live badge. While its audio
+ * device, and Go live / Pause input with a Paused / Live badge. While its audio
  * reaches an output, an amber note says to use headphones, beside the
  * browser's echo cancellation. Going live is never restored after a
  * reload; the mic opens only from Go live.
@@ -323,6 +323,18 @@ export function AudioInputNodeBody({
         </div>
         {strip}
       </div>
+      {embedded ? (
+        <Button
+          className={cn("mt-2 text-destructive", INTERACTIVE)}
+          onClick={onRemove}
+          onKeyDown={keepControlKeys}
+          size="sm"
+          variant="ghost"
+        >
+          <Trash2Icon />
+          Remove audio input
+        </Button>
+      ) : null}
       {error?.trim() && !denied && !unplugged ? (
         <InlineError className="mx-2 mb-2">{error}</InlineError>
       ) : null}

@@ -1,5 +1,13 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { NodeStore } from "@/lib/node-graph/node-store";
@@ -1143,4 +1151,50 @@ describe("NodeInspector: a Track's tracklist", () => {
       within(panel).getByRole("button", { name: "Next track" })
     ).toHaveProperty("disabled", true);
   });
+});
+
+test("a running modulation context retains retry after native-host failure", async () => {
+  const runtime = await import("@/lib/node-graph/modulation-runtime");
+  const { ModulationControls } = await import("./control-node");
+  const initial = runtime.modulationReadouts.state;
+  const run = spyOn(runtime, "runModulation").mockImplementation(
+    () => undefined
+  );
+  const graph = nodeGraphSchema.parse({
+    edges: [],
+    nodes: [
+      { data: {}, id: "lfo-retry", position, type: "lfo" },
+      { data: {}, id: "speakers", position, type: "speakers" },
+    ],
+    version: 2,
+  });
+  const [node] = graph.nodes;
+  if (node?.type !== "lfo") {
+    throw new Error("Missing LFO");
+  }
+  try {
+    runtime.modulationReadouts.setState(() => ({
+      ...initial,
+      backends: { [node.id]: "unavailable" },
+      error: null,
+      nativeWarning: "Native modulation unavailable: host failed",
+      status: "running",
+    }));
+    const view = render(<ModulationControls node={node} />);
+    expect(view.queryByText("Running") === null).toBe(true);
+    fireEvent.click(view.getByRole("button", { name: "Retry modulation" }));
+    expect(run).toHaveBeenCalledTimes(1);
+    act(() =>
+      runtime.modulationReadouts.setState((state) => ({
+        ...state,
+        backends: { [node.id]: "DSP" },
+        nativeWarning: null,
+      }))
+    );
+    expect(view.getByText("Running")).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Retry modulation" })).toBeNull();
+  } finally {
+    run.mockRestore();
+    act(() => runtime.modulationReadouts.setState(() => initial));
+  }
 });

@@ -9,10 +9,11 @@ import {
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useStore } from "@tanstack/react-store";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { createNodeStore } from "@/lib/node-graph/node-store";
-import { DEFAULT_MEDIA_STRIP } from "@/lib/node-graph/schema";
+import { DEFAULT_MEDIA_STRIP, nodeGraphSchema } from "@/lib/node-graph/schema";
 import type { NodeActions } from "./node-actions";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -131,7 +132,35 @@ function renderBothViews() {
     strip: DEFAULT_MEDIA_STRIP,
     volume: 1,
   };
-  const store = createNodeStore();
+  const store = createNodeStore(
+    nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { data, id: TRACK_ID, position: { x: 0, y: 0 }, type: "platform" },
+        {
+          data: {},
+          id: "speakers",
+          position: { x: 0, y: 200 },
+          type: "speakers",
+        },
+      ],
+      version: 2,
+    })
+  );
+  function TrackView({ embedded = false }: { embedded?: boolean }) {
+    const track = useStore(store, (state) => state.graph?.nodes[0]);
+    if (track?.type !== "platform") {
+      throw new Error("Missing Track");
+    }
+    return (
+      <TrackNodeContent
+        data={track.data}
+        id={TRACK_ID}
+        showStrip={!embedded}
+        store={store}
+      />
+    );
+  }
   const client = new QueryClient({
     defaultOptions: { queries: { enabled: false, retry: false } },
   });
@@ -139,10 +168,10 @@ function renderBothViews() {
     <QueryClientProvider client={client}>
       <NodeActionsProvider value={actions}>
         <section aria-label="Patch">
-          <TrackNodeContent data={data} id={TRACK_ID} store={store} />
+          <TrackView />
         </section>
         <section aria-label="Inspector">
-          <TrackNodeContent data={data} id={TRACK_ID} store={store} />
+          <TrackView embedded />
         </section>
       </NodeActionsProvider>
     </QueryClientProvider>
@@ -151,7 +180,7 @@ function renderBothViews() {
   if (!(patch && inspector)) {
     throw new Error("expected both views");
   }
-  return { inspector, patch, streamCalls };
+  return { actions, client, inspector, patch, store, streamCalls, view };
 }
 
 function pasteStreamLink(view: HTMLElement) {
@@ -242,3 +271,58 @@ test("a platform link pending in one view cannot report a stale failure after th
     load.mockRestore();
   }
 });
+
+for (const provider of ["radio-browser", "radiogarden", "local"]) {
+  test(`Track ${provider} filter syncs both views and survives stored remount`, () => {
+    const { patch, inspector, store, view, client, actions } =
+      renderBothViews();
+    const select = inspector.querySelector("select") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: provider } });
+    expect(store.state.graph?.nodes[0]?.data).toMatchObject({
+      searchPlatform: provider,
+    });
+    expect((patch.querySelector("select") as HTMLSelectElement).value).toBe(
+      provider
+    );
+    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
+      provider
+    );
+    fireEvent.change(patch.querySelector("select") as HTMLSelectElement, {
+      target: { value: "all" },
+    });
+    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
+      "all"
+    );
+    expect(store.state.graph?.nodes[0]?.data).toMatchObject({
+      searchPlatform: undefined,
+    });
+    fireEvent.change(patch.querySelector("select") as HTMLSelectElement, {
+      target: { value: provider },
+    });
+    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
+      provider
+    );
+    const saved = nodeGraphSchema.parse(
+      JSON.parse(JSON.stringify(store.state.graph))
+    );
+    const [track] = saved.nodes;
+    if (track?.type !== "platform") {
+      throw new Error("Missing saved Track");
+    }
+    view.unmount();
+    const reopened = render(
+      <QueryClientProvider client={client}>
+        <NodeActionsProvider value={actions}>
+          <TrackNodeContent
+            data={track.data}
+            id={TRACK_ID}
+            store={createNodeStore(saved)}
+          />
+        </NodeActionsProvider>
+      </QueryClientProvider>
+    );
+    expect(
+      (reopened.container.querySelector("select") as HTMLSelectElement).value
+    ).toBe(provider);
+  });
+}

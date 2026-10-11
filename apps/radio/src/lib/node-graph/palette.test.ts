@@ -1225,3 +1225,17 @@ describe("cable surgery entries", () => {
     expect(paletteEntries(withComp, { swap: "src-a" })).toEqual([]);
   });
 });
+
+test("station search filters do not add duplicate station shortcuts to the palette", () => {
+  expect(
+    paletteEntries(patch)
+      .filter((entry) => entry.id.startsWith("platform:"))
+      .map((entry) => entry.id)
+      .sort()
+  ).toEqual([
+    "platform:bandcamp",
+    "platform:mixcloud",
+    "platform:soundcloud",
+    "platform:youtube",
+  ]);
+});

@@ -196,7 +196,7 @@ export function useNodeRadioManagement({
   ): Promise<string | null> => {
     const loaded = detectPlatformFromUrl(url)
       ? await loadSourceUrl(url, loaders)
-      : await loadStreamStation(url, loaders);
+      : await loadStreamStation(url, { ...loaders, isCurrent });
     if (!isCurrent()) {
       return null;
     }

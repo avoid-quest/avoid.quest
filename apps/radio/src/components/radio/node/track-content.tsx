@@ -22,11 +22,11 @@ import {
 } from "@/lib/node-graph/node-store";
 import {
   type GraphNode,
-  TRACK_SEARCH_PLATFORMS,
+  TRACK_SEARCH_PROVIDERS,
   type TrackSearchPlatform,
 } from "@/lib/node-graph/schema";
 import { trackSubtitle } from "@/lib/node-graph/sources";
-import { prepareSourceRadio } from "@/lib/node-source-loaders";
+import { loadSearchSource } from "@/lib/node-source-loaders";
 import { ExternalSearch } from "../dj/external-search";
 import { InlineError } from "../inline-error";
 import { platformSourceIcon } from "../platform-source-icon";
@@ -214,7 +214,7 @@ export function TrackNodeBody({
             onPlatformChange={(platform) => {
               if (
                 platform === "all" ||
-                TRACK_SEARCH_PLATFORMS.includes(platform as TrackSearchPlatform)
+                TRACK_SEARCH_PROVIDERS.includes(platform as TrackSearchPlatform)
               ) {
                 onSearchPlatformChange(
                   platform === "all"
@@ -262,7 +262,10 @@ export function TrackNodeContent({
 
   const handleLoad = async (picked: Radio, isCurrent: () => boolean) => {
     setLoadError(null);
-    const loaded = await prepareSourceRadio(picked);
+    const loaded = await loadSearchSource(picked, {
+      isCurrent,
+      knownRadios: actions.radios,
+    });
     if (!isCurrent()) {
       return;
     }

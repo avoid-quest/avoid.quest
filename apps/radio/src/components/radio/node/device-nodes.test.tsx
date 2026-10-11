@@ -196,9 +196,13 @@ function InputHarness({
   isLoading = false,
   error = null,
   onToggleLive = noop,
+  embedded = false,
+  onRemove = noop,
   onEchoCancellationChange = noop,
 }: {
   data?: InputData;
+  embedded?: boolean;
+  onRemove?: () => void;
   isPlaying?: boolean;
   isLoading?: boolean;
   error?: string | null;
@@ -210,13 +214,14 @@ function InputHarness({
     <AudioInputNodeBody
       data={data}
       devices={devices}
+      embedded={embedded}
       error={error}
       isLoading={isLoading}
       isPlaying={isPlaying}
       onChannelsChange={noop}
       onEchoCancellationChange={onEchoCancellationChange}
       onPickDevice={noop}
-      onRemove={noop}
+      onRemove={onRemove}
       onToggleLive={onToggleLive}
       onToggleMute={noop}
       onVolumeChange={noop}
@@ -566,4 +571,12 @@ describe("Output device node", () => {
 
     expect(view.getByText("Same device as Speakers")).toBeTruthy();
   });
+});
+
+test("the embedded input inspector retains an accessible Remove action", async () => {
+  const onRemove = mock(noop);
+  const view = render(<InputHarness embedded onRemove={onRemove} />);
+  await flush();
+  fireEvent.click(view.getByRole("button", { name: "Remove audio input" }));
+  expect(onRemove).toHaveBeenCalledTimes(1);
 });

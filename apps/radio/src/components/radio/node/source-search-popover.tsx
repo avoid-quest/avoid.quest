@@ -6,9 +6,9 @@ import {
   PopoverTrigger,
 } from "@avoid.quest/ui/components/popover";
 import { SearchIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import { prepareSourceRadio } from "@/lib/node-source-loaders";
+import { loadSearchSource } from "@/lib/node-source-loaders";
 import { ExternalSearch } from "../dj/external-search";
 import { InlineError } from "../inline-error";
 
@@ -21,18 +21,51 @@ export function SourceSearchPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const load = async (radio: Radio) => {
+  const generation = useRef(0);
+  useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    []
+  );
+  const invalidate = () => {
+    generation.current += 1;
+    const { current } = generation;
     setError(null);
-    const prepared = await prepareSourceRadio(radio);
-    if ("error" in prepared) {
-      setError(prepared.error);
-      return;
+    return () => current === generation.current;
+  };
+  const handleOpenChange = (nextOpen: boolean) => {
+    invalidate();
+    setOpen(nextOpen);
+  };
+  const load = async (radio: Radio) => {
+    const isCurrent = invalidate();
+    try {
+      const prepared = await loadSearchSource(radio, {
+        isCurrent,
+        knownRadios: radios,
+      });
+      if (!isCurrent()) {
+        return;
+      }
+      if ("error" in prepared) {
+        setError(prepared.error);
+        return;
+      }
+      await onLoad(prepared.radio);
+      if (isCurrent()) {
+        handleOpenChange(false);
+      }
+    } catch (cause: unknown) {
+      if (isCurrent()) {
+        setError(
+          cause instanceof Error ? cause.message : "Couldn’t add this source"
+        );
+      }
     }
-    await onLoad(prepared.radio);
-    setOpen(false);
   };
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover onOpenChange={handleOpenChange} open={open}>
       <PopoverTrigger asChild>
         <Button
           className="min-w-0 max-w-md flex-1 justify-start text-muted-foreground"
@@ -49,15 +82,8 @@ export function SourceSearchPopover({
       >
         <ExternalSearch
           mode="node"
-          onLoad={(radio) => {
-            load(radio).catch((cause: unknown) =>
-              setError(
-                cause instanceof Error
-                  ? cause.message
-                  : "Couldn’t add this source"
-              )
-            );
-          }}
+          onLoad={load}
+          onSearchChange={invalidate}
           radios={radios}
         />
         {error ? <InlineError>{error}</InlineError> : null}

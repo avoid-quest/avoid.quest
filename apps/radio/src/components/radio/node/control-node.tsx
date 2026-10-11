@@ -49,6 +49,9 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
     modulationReadouts,
     (state) => state.nativeWarning
   );
+  const needsRetry = Boolean(
+    error || nativeWarning || backend === "unavailable"
+  );
   const samples = useRef<number[]>([]);
   const line = useRef<SVGPolylineElement>(null);
   useEffect(() => {
@@ -79,11 +82,11 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
             {value.toFixed(3)}
           </output>
         </span>
-        {status === "running" ? (
+        {status === "running" && !needsRetry ? (
           <span>Running</span>
         ) : (
           <Button onClick={runModulation} size="sm" variant="ghost">
-            Start modulation
+            {needsRetry ? "Retry modulation" : "Start modulation"}
           </Button>
         )}
       </div>

@@ -143,7 +143,12 @@ function ExternalSearchContent({
           latestPick.current = "stream";
           const generation = streamGeneration.current;
           setIsLoadingStream(true);
-          loadStreamStation(value)
+          loadStreamStation(value, {
+            isCurrent: () =>
+              isCurrentPick() &&
+              latestPick.current === "stream" &&
+              generation === streamGeneration.current,
+          })
             .then((loaded) => {
               if (
                 !isCurrentPick() ||

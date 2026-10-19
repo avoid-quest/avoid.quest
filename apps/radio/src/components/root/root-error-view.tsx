@@ -28,12 +28,12 @@ export function RootErrorView({ error, reset }: ErrorComponentProps) {
           <Button onClick={reset} size="sm">
             Try again
           </Button>
-          <Link to="/">
-            <Button size="sm" variant="outline">
+          <Button asChild size="sm" variant="outline">
+            <Link to="/">
               <HomeIcon className="size-3.5" />
               Go home
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </div>
     </div>
@@ -48,12 +48,12 @@ export function NotFoundView() {
         <p className="mb-6 text-muted-foreground text-sm">
           This page doesn't exist or has moved.
         </p>
-        <Link to="/">
-          <Button size="sm">
+        <Button asChild size="sm">
+          <Link to="/">
             <HomeIcon className="size-3.5" />
             Go home
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
     </div>
   );

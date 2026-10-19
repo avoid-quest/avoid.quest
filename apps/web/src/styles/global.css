@@ -15,3 +15,9 @@
   --font-geist-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
   --font-geist-mono: "Geist Mono", ui-monospace, monospace;
 }
+
+@layer base {
+  .dark body {
+    @apply bg-linear-to-br from-darkest via-darker to-dark;
+  }
+}

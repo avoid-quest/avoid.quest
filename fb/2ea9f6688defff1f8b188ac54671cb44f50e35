@@ -1,0 +1,37 @@
+docs/ui-review/2026-10-19-code-quality-review.md
+  s_3504d2fecc8c4b::t_602fbc27032280 1-211
+docs/ui-review/2026-10-19-inventory-radix-surface-and-style-drift.md
+  s_3504d2fecc8c4b::t_27897ac08be72d 1-149
+docs/ui-review/2026-10-19-research-base-ui-tokens-storybook-extraction.md
+  s_3504d2fecc8c4b::t_42fd34f8a725fc 1-884
+docs/ui-review/2026-10-19-live-audit-measurements.md
+  s_27982af0935e72::t_3c2e052b8556e7 1-52
+docs/ui-review/2026-10-19-live-audit.md
+  s_27982af0935e72::t_59a4c87c6ac3d2 1-142
+docs/ui-review/README.md
+  s_27982af0935e72::t_c73e182d847dfd 1-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb2ea9f6688defff1f8b188ac54671cb44f50e35",
+  "prompts": {},
+  "sessions": {
+    "s_27982af0935e72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_27982af0935e72",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_3504d2fecc8c4b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15575-8bbf-7503-98f8-45687f30b633",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

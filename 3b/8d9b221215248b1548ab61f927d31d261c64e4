@@ -1,0 +1,43 @@
+apps/radio/package.json
+  s_c377972c195577::t_0f88f19fc64a42 26-27
+apps/radio/src/components/root/root-error-view.tsx
+  s_c377972c195577::t_7eec5c919518e6 31-32,35-36,51-52,55-56
+apps/radio/src/routes/__root.tsx
+  s_c377972c195577::t_ba98e7edadd70d 14
+apps/radio/src/styles/app.css
+  s_c377972c195577::t_b61e0dc021b780 1-12
+apps/radio/tsconfig.json
+  s_c377972c195577::t_721a63cbb6c1d6 21
+apps/web/src/styles/global.css
+  s_c377972c195577::t_5e2e14e40acacc 13-18
+apps/web/tsconfig.json
+  s_c377972c195577::t_ed1328549c7f63 5
+bun.lock
+  s_c377972c195577::t_1815c9d69d0786 47-48,191-194
+packages/ui/package.json
+  s_c377972c195577::t_43b21809b60717 12,15,50-53
+packages/ui/src/components/control-reset.test.tsx
+  s_c377972c195577::t_37d55c9484034f 44-48
+packages/ui/src/components/field.tsx
+  s_c377972c195577::t_d341e616bdc547 217
+packages/ui/src/styles/globals.css
+  s_c377972c195577::t_b3ba3fec9ba978 10-11
+packages/ui/tsconfig.json
+  s_c377972c195577::t_94321266af0ebd 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b8d9b221215248b1548ab61f927d31d261c64e4",
+  "prompts": {},
+  "sessions": {
+    "s_c377972c195577": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_c377972c195577",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -47,3 +47,6 @@ tmp
 temp
 
 apps/openDAW
+
+*storybook.log
+storybook-static

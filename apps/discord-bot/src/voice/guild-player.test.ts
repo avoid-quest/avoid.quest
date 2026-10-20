@@ -5,10 +5,17 @@ import {
   describe,
   expect,
   mock,
+  spyOn,
   test,
 } from "bun:test";
 import { Readable } from "node:stream";
+// biome-ignore lint/performance/noNamespaceImport: spies need the real module namespace to restore its exports
+import * as voice from "@discordjs/voice";
+// biome-ignore lint/performance/noNamespaceImport: spies need the real module namespace to restore its exports
+import * as directAudio from "./direct-audio.js";
 import type { QueueTrack } from "./queue";
+// biome-ignore lint/performance/noNamespaceImport: spies need the real module namespace to restore its exports
+import * as streamResolver from "./stream-resolver.js";
 
 type GuildPlayerModule = typeof import("./guild-player");
 
@@ -30,18 +37,7 @@ const joinVoiceChannelMock = mock((_options: unknown) => ({
   subscribe: mock((_player: unknown) => undefined),
 }));
 
-const AudioPlayerStatus = {
-  Buffering: "buffering",
-  Idle: "idle",
-  Paused: "paused",
-  Playing: "playing",
-} as const;
-const VoiceConnectionStatus = {
-  Connecting: "connecting",
-  Disconnected: "disconnected",
-  Ready: "ready",
-  Signalling: "signalling",
-} as const;
+const { AudioPlayerStatus } = voice;
 
 let emitAudioPlayerIdle:
   | ((oldState: unknown, newState: unknown) => void)
@@ -114,56 +110,57 @@ function createDirectAudioStream(id: string): Readable {
 }
 
 beforeAll(async () => {
-  mock.module("@discordjs/voice", () => ({
-    AudioPlayerStatus,
-    createAudioPlayer: () => {
-      const player = {
-        on: mock((event: string, listener: (...args: unknown[]) => void) => {
-          if (event === AudioPlayerStatus.Idle) {
-            emitAudioPlayerIdle = listener;
-          }
-          return player;
-        }),
-        pause: mock(() => {
-          player.state.status = AudioPlayerStatus.Paused;
-          return true;
-        }),
-        play: mock((resource: unknown) => {
-          player.state = {
-            resource,
-            status: AudioPlayerStatus.Playing,
-          };
-          audioPlayerPlayMock(resource);
-        }),
-        state: { status: AudioPlayerStatus.Idle } as {
-          resource?: unknown;
-          status: (typeof AudioPlayerStatus)[keyof typeof AudioPlayerStatus];
-        },
-        stop: mock((force?: boolean) => {
-          player.state = { status: AudioPlayerStatus.Idle };
-          audioPlayerStopMock(force);
-          return true;
-        }),
-        unpause: mock(() => {
-          player.state.status = AudioPlayerStatus.Playing;
-          return true;
-        }),
-      };
-      return player;
-    },
-    createAudioResource: createAudioResourceMock,
-    entersState: mock(async () => undefined),
-    joinVoiceChannel: joinVoiceChannelMock,
-    VoiceConnectionStatus,
-  }));
+  // Bun's mock.restore() restores spies, but not mock.module() overrides.
+  // Keep every dependency real again for test files that run after this one.
+  spyOn(voice, "createAudioPlayer").mockImplementation(() => {
+    const player = {
+      on: mock((event: string, listener: (...args: unknown[]) => void) => {
+        if (event === AudioPlayerStatus.Idle) {
+          emitAudioPlayerIdle = listener;
+        }
+        return player;
+      }),
+      pause: mock(() => {
+        player.state.status = AudioPlayerStatus.Paused;
+        return true;
+      }),
+      play: mock((resource: unknown) => {
+        player.state = {
+          resource,
+          status: AudioPlayerStatus.Playing,
+        };
+        audioPlayerPlayMock(resource);
+      }),
+      state: { status: AudioPlayerStatus.Idle } as {
+        resource?: unknown;
+        status: (typeof AudioPlayerStatus)[keyof typeof AudioPlayerStatus];
+      },
+      stop: mock((force?: boolean) => {
+        player.state = { status: AudioPlayerStatus.Idle };
+        audioPlayerStopMock(force);
+        return true;
+      }),
+      unpause: mock(() => {
+        player.state.status = AudioPlayerStatus.Playing;
+        return true;
+      }),
+    };
+    return player as never;
+  });
+  spyOn(voice, "createAudioResource").mockImplementation(
+    (input: unknown, options: unknown) =>
+      createAudioResourceMock(input, options) as never
+  );
+  spyOn(voice, "entersState").mockResolvedValue(undefined as never);
+  spyOn(voice, "joinVoiceChannel").mockImplementation(
+    (options) => joinVoiceChannelMock(options) as never
+  );
 
-  mock.module("./direct-audio.js", () => ({
-    fetchDirectAudioStream: fetchDirectAudioStreamMock,
-  }));
+  spyOn(directAudio, "fetchDirectAudioStream").mockImplementation(
+    fetchDirectAudioStreamMock
+  );
 
-  mock.module("./stream-resolver.js", () => ({
-    resolveYouTubeStreamUrl: mock(async () => null),
-  }));
+  spyOn(streamResolver, "resolveYouTubeStreamUrl").mockResolvedValue(null);
 
   ({
     clearGuildPlayback,

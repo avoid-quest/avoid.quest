@@ -1,0 +1,40 @@
+packages/platforms/src/playable.ts
+  s_4bf9d426479234::t_747f30d5a60048 3,18
+  s_4bf9d426479234::t_4be951e270f185 9,22-25
+packages/platforms/src/detect.ts
+  s_4bf9d426479234::t_747f30d5a60048 6,23,89-114
+packages/platforms/src/static-audio.ts
+  s_4bf9d426479234::t_747f30d5a60048 1,9-16
+apps/radio/src/lib/audio/remote-url.ts
+  s_4bf9d426479234::t_747f30d5a60048 8
+apps/radio/src/lib/platform-item-loader.ts
+  s_4bf9d426479234::t_747f30d5a60048 3,6
+packages/platforms/src/static-audio/detect.ts
+  s_4bf9d426479234::t_747f30d5a60048 1-55
+packages/platforms/src/detect.test.ts
+  s_4bf9d426479234::t_791470f42d79a6 60,62
+  s_4bf9d426479234::t_300740ebcc9bc5 1-8,14-48,50-59,61,63-65
+  s_4bf9d426479234::t_f94bcf6d89a9c3 9-13,49
+apps/radio/src/lib/external-url/detect.ts
+  s_4bf9d426479234::t_747f30d5a60048 1,9
+packages/platforms/package.json
+  s_4bf9d426479234::t_747f30d5a60048 9
+apps/radio/src/lib/platform-client.ts
+  s_4bf9d426479234::t_4be951e270f185 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0c770cf7aaa9256acf878ceff29a3d6038ee6d2",
+  "prompts": {},
+  "sessions": {
+    "s_4bf9d426479234": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15831-be12-7170-a37e-d60fd623d6c7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

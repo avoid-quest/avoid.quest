@@ -33,10 +33,17 @@ const { title = "avoid.quest", description = "avoid.quest" } = Astro.props;
     <script is:inline>
       (() => {
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+        try {
+          // Earlier versions saved the system theme under "theme" on every
+          // visit, so it cannot be told apart from a deliberate choice.
+          localStorage.removeItem("theme");
+        } catch {
+          // Storage may be unavailable.
+        }
         function applyTheme() {
           let stored;
           try {
-            stored = localStorage.getItem("theme");
+            stored = localStorage.getItem("theme-preference");
           } catch {
             // Follow the system when storage is unavailable.
           }

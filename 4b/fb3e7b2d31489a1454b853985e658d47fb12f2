@@ -1,0 +1,31 @@
+apps/radio/src/styles/app.css
+  s_26b4bfb8ff5fee::t_77135f5fadbf6c 3
+  s_26b4bfb8ff5fee::t_15be6836be36d5 1-2,4
+apps/web/src/layouts/Layout.astro
+  s_26b4bfb8ff5fee::t_15be6836be36d5 34-45,47-48
+packages/ui/src/styles/globals.css
+  s_26b4bfb8ff5fee::t_15be6836be36d5 1
+apps/radio/src/routes/__root.tsx
+  s_26b4bfb8ff5fee::t_9704a7f98c54ad 14
+apps/web/src/styles/global.css
+  s_26b4bfb8ff5fee::t_15be6836be36d5 7-11
+  s_26b4bfb8ff5fee::t_30c0d12a75674f 12
+apps/web/astro.config.ts
+  s_26b4bfb8ff5fee::t_15be6836be36d5 13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4bfb3e7b2d31489a1454b853985e658d47fb12f2",
+  "prompts": {},
+  "sessions": {
+    "s_26b4bfb8ff5fee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157fd-8148-7661-a6ea-09023b06b4a5",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

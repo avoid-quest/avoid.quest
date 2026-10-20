@@ -1,0 +1,128 @@
+apps/radio/src/components/radio/dj/dj-midi-effects.tsx
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 1-11
+apps/radio/src/components/radio/dj/shared/animation-test-utils.ts
+  s_a8b3303ad87e95::t_3c59e4b2d026b5 1-34,36-37,39-53,56-61,63-65,67-83,91-93
+  s_a8b3303ad87e95::t_dbf935968ff446 54-55
+  s_a8b3303ad87e95::t_cd5f63b562a128 35,62,84-90
+  s_a8b3303ad87e95::t_b1c9ee5fafa29c 38,66
+apps/radio/src/components/radio/dj/deck/deck-panel.tsx
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 52,55-58,60,63,66,72,76,85,93,97,106,120,129,319-320,429
+  s_a8b3303ad87e95::t_7939549ac4c6a5 59,62,64
+apps/radio/src/components/radio/dj/shared/peak-meter.tsx
+  s_a8b3303ad87e95::t_4d15174bb52fde 3,8-15,17-20,102,105,118-119,122-123,125,127-132,134-159,166-169,182,184-187,192-197,200-205,208,212-217,219-221,223-234,250-313,317,319-320
+  s_a8b3303ad87e95::t_dbf935968ff446 23-26,28,30-36,38-39,42,48-52,54-66,68-70,74-85,87-97,209-211,235-241,245,247-249
+  s_a8b3303ad87e95::t_2e17e6b8fbf8de 21-22,27,53,67,206-207,218,222,242-244,246
+apps/radio/src/components/radio/dj/dj-player.tsx
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 16,60
+apps/radio/src/lib/stores/dj-runtime-store.ts
+  s_a8b3303ad87e95::t_fae514d68e3cb0 12,28,32
+apps/radio/src/components/radio/dj/shared/peak-meter.test.tsx
+  s_a8b3303ad87e95::t_3c59e4b2d026b5 1-3,5-9,37-89,91-105
+  s_a8b3303ad87e95::t_0604a38c00d255 90,106
+apps/radio/src/components/radio/dj/deck/deck-context.tsx
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 49
+apps/radio/src/lib/hooks/track-progress-state.ts
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 12-34
+apps/radio/src/lib/dj-deck.ts
+  s_a8b3303ad87e95::t_4d15174bb52fde 216-218,485-487,534,1270,1815-1818,1822
+  s_a8b3303ad87e95::t_04e0c11dd0d5f1 191,220,248,520-533,535-540,546,556,587-589,1003-1005,1039,1444-1446,1517,1543-1572,1608,1811
+  s_a8b3303ad87e95::t_1222571b5436ea 100,219,221-222
+apps/radio/src/components/audio/effect-chain-order.test.tsx
+  s_a8b3303ad87e95::t_72694c0324896d 31,37,44-72
+  s_a8b3303ad87e95::t_74669a6f4c9b7a 1-30,32-36,38-43,73-79
+apps/radio/src/lib/hooks/use-master-peak-level.ts
+  s_a8b3303ad87e95::t_fae514d68e3cb0 35-41
+apps/radio/src/lib/hooks/use-track-progress.test.tsx
+  s_a8b3303ad87e95::t_1a7f69f3a788fe 63-74
+  s_a8b3303ad87e95::t_3c59e4b2d026b5 1-14,16-35,37-48,50-56,58,60-62
+  s_a8b3303ad87e95::t_124bb586c53eb7 15,36,49,57,59
+apps/radio/src/lib/dj-deck.test.ts
+  s_a8b3303ad87e95::t_1ae9ee81c134d3 2617-2627,2630-2634,2636-2643,2645-2647,2649-2651,2653-2660,2662-2686,2689-2694,2696-2700,2702-2705,2707-2711,2713-2723,2725-2734,2746,2752,2764
+  s_a8b3303ad87e95::t_dbf935968ff446 2652
+  s_a8b3303ad87e95::t_77e0121770363c 2628-2629,2635,2644,2648,2661,2687-2688,2695,2701,2706,2712,2724,2735-2745,2747-2751,2753-2763
+apps/radio/src/components/radio/dj/mixer/mixer-channel.test.tsx
+  s_a8b3303ad87e95::t_cd5f63b562a128 14,18-19,98-99,104-105,107-108,110,112-114,116,119-137,139-140,144-158,160
+  s_a8b3303ad87e95::t_02673c58b891a7 111,138,141-143
+apps/radio/src/components/radio/dj/deck/deck-tracklist.tsx
+  s_a8b3303ad87e95::t_dbf935968ff446 213,216
+  s_a8b3303ad87e95::t_4d15174bb52fde 214,219
+  s_a8b3303ad87e95::t_04e0c11dd0d5f1 4,7,9,62,65-71,81,93,106,129-131,191,197
+  s_a8b3303ad87e95::t_7ff3ad519e0aa8 204,215,218
+apps/radio/src/components/radio/dj/external-search/search-results.test.tsx
+  s_a8b3303ad87e95::t_dbf935968ff446 379
+  s_a8b3303ad87e95::t_22be4d95491961 396,402-429
+  s_a8b3303ad87e95::t_40d30a513c4ca3 354-378,380-395,397-401,430-431
+apps/radio/src/lib/stores/playback-runtime-store.ts
+  s_a8b3303ad87e95::t_fae514d68e3cb0 2,7-51,115-117,160-163,167-168,186-189
+apps/radio/src/components/radio/dj/deck/deck-progress-isolation.test.tsx
+  s_a8b3303ad87e95::t_72694c0324896d 1-36,42-107
+  s_a8b3303ad87e95::t_87b29d0b318bf4 37-41
+apps/radio/src/components/radio/dj/mixer/mixer-channel.tsx
+  s_a8b3303ad87e95::t_fae514d68e3cb0 9,52-55
+  s_a8b3303ad87e95::t_70856ebf582e83 51,56
+apps/radio/src/components/audio/midi-control-wrapper.tsx
+  s_a8b3303ad87e95::t_4d15174bb52fde 61
+  s_a8b3303ad87e95::t_fdbc88bad1ec1b 19,38-42
+apps/radio/src/lib/hooks/use-dj-keyboard.test.tsx
+  s_a8b3303ad87e95::t_3c59e4b2d026b5 1-3,6-14,16-42
+  s_a8b3303ad87e95::t_dbf935968ff446 4
+  s_a8b3303ad87e95::t_653cce28a917e4 5,15
+apps/radio/src/lib/midi/midi-control.test.ts
+  s_a8b3303ad87e95::t_1ae9ee81c134d3 1404-1409,1411,1413-1438
+  s_a8b3303ad87e95::t_084327becc0e5d 1410,1412
+apps/radio/src/lib/hooks/use-dj-keyboard.ts
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 26
+apps/radio/src/components/radio/dj/dj-console-mobile.tsx
+  s_a8b3303ad87e95::t_fae514d68e3cb0 10,39,45
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 204-224
+apps/radio/src/components/radio/dj/mixer/mixer-master.tsx
+  s_a8b3303ad87e95::t_fae514d68e3cb0 6,83
+apps/radio/src/components/radio/dj/deck/deck-transport.tsx
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 9,145-146,166-167
+  s_a8b3303ad87e95::t_1a7f69f3a788fe 160-165
+  s_a8b3303ad87e95::t_474b2a3295f3c8 168
+apps/radio/src/components/radio/dj/external-search/search-results.tsx
+  s_a8b3303ad87e95::t_22be4d95491961 66-68,78,84,86-88
+  s_a8b3303ad87e95::t_af10e52e8a0e3c 63,80
+  s_a8b3303ad87e95::t_a7ed5683654e22 7,24,55,64-65,69-77,79,81-83,85,89-90,97,99,107,133,135,188
+apps/radio/src/lib/midi/midi-control.ts
+  s_a8b3303ad87e95::t_4d15174bb52fde 856
+  s_a8b3303ad87e95::t_1ae9ee81c134d3 2,81-85,130,167-172,174-180,290-306,353-360,406,409-412,715,733-740
+  s_a8b3303ad87e95::t_8ad8d8f7663658 173,903,923-935
+apps/radio/src/lib/dj-platform-stream-port.test.ts
+  s_a8b3303ad87e95::t_06931a1a8044dc 212-215,248-251
+  s_a8b3303ad87e95::t_0a630150ef9b2b 68,179,374-421
+apps/radio/src/lib/dj-platform-stream-port.ts
+  s_a8b3303ad87e95::t_139edda5a51284 22,31,40,111,136,150
+apps/radio/src/lib/hooks/use-track-progress.ts
+  s_a8b3303ad87e95::t_1a7f69f3a788fe 14-15,26,66-70,80
+  s_a8b3303ad87e95::t_dbf935968ff446 33
+  s_a8b3303ad87e95::t_b0ce5643f3ca52 5,10-13,16,29-32,45-65,71-72,74-77
+  s_a8b3303ad87e95::t_1ae9ee81c134d3 1,23,34-44
+apps/radio/src/components/audio/effect-chain.tsx
+  s_a8b3303ad87e95::t_9dc9eb617c8798 168-169,171,173
+apps/radio/src/components/audio/midi-control-wrapper.test.tsx
+  s_a8b3303ad87e95::t_d8744b7de7ece8 1-40
+apps/radio/src/components/radio/dj/dj-console-mobile.test.tsx
+  s_a8b3303ad87e95::t_6948127d69d9f9 1-12,14,17-18,22-24,26-40,49,53-76,79,81-86,88-115
+apps/radio/src/components/radio/dj/dj-midi-effects.test.tsx
+  s_a8b3303ad87e95::t_90818a02c251e3 1-160
+apps/radio/src/components/radio/dj/external-search/index.tsx
+  s_a8b3303ad87e95::t_67471402a79f0b 21,209,223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c47b5b1a28f13cb45d06d865c13b3e8ab51d0be",
+  "prompts": {},
+  "sessions": {
+    "s_a8b3303ad87e95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157cc-de02-7610-a35c-07d5ce596813",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

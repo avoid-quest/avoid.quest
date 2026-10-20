@@ -71,7 +71,6 @@ function PlayerPanel({
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-5">
       <RadioNowPlaying
-        announce={false}
         isBuffering={isBuffering}
         isLoading={isLoading}
         metadata={metadata}

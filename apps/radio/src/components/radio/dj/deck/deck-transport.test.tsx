@@ -118,6 +118,15 @@ describe("DeckTransport", () => {
     expect(paused.includes("Connecting…")).toBeFalse();
   });
 
+  test("keeps both playing decks out of live announcements", () => {
+    deckContextMock.isPlaying = true;
+    const decks = (["left", "right"] as const).map((side) => {
+      deckContextMock.deckSide = side;
+      return renderToStaticMarkup(<DeckTransport />);
+    });
+    expect(decks.join("").includes("aria-live")).toBeFalse();
+  });
+
   for (const side of ["left", "right"] as const) {
     test(`shows current radio metadata inside the ${side} transport`, () => {
       deckContextMock.deckSide = side;

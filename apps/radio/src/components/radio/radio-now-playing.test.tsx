@@ -74,13 +74,16 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 afterEach(cleanup);
 
 let RadioNowPlaying: typeof import("./radio-now-playing")["RadioNowPlaying"];
+let RadioNowPlayingAnnouncement: typeof import("./radio-now-playing")["RadioNowPlayingAnnouncement"];
 let NowPlayingPanel: typeof import("./single/single-player-now-playing")["NowPlayingPanel"];
 let StationNodeBody: typeof import("./node/station-node")["StationNodeBody"];
 let StationList: typeof import("./single/single-player-station-list")["StationList"];
 let useRadioMetadata: typeof import("@/lib/hooks/use-radio-metadata")["useRadioMetadata"];
 
 beforeAll(async () => {
-  ({ RadioNowPlaying } = await import("./radio-now-playing"));
+  ({ RadioNowPlaying, RadioNowPlayingAnnouncement } = await import(
+    "./radio-now-playing"
+  ));
   ({ NowPlayingPanel } = await import("./single/single-player-now-playing"));
   ({ StationNodeBody } = await import("./node/station-node"));
   ({ StationList } = await import("./single/single-player-station-list"));
@@ -745,6 +748,7 @@ describe("RadioNowPlaying", () => {
       </QueryClientProvider>
     );
     expect(view.getByRole("heading", { name: "Current Show" })).toBeTruthy();
+    expect(view.container.querySelector("[aria-live]")).toBeNull();
     fireEvent.click(
       view.getByRole("button", { name: "Details for Current Show" })
     );
@@ -834,8 +838,27 @@ test("unmounting a metadata request aborts its network signal", async () => {
   }
 });
 
-test("now-playing announcements ignore metadata-only polls and announce identity changes", () => {
-  const view = render(<RadioNowPlaying metadata={metadata} radio={radio} />);
+test("players stay silent unless they opt in to announcing", () => {
+  const view = render(
+    <>
+      <RadioNowPlaying metadata={metadata} radio={radio} />
+      <RadioNowPlaying
+        metadata={{ ...metadata, title: "Other Show" }}
+        radio={{ ...radio, name: "Other Radio" }}
+      />
+    </>
+  );
+  expect(view.container.querySelector("[aria-live]")).toBeNull();
+  view.rerender(<RadioNowPlaying announce metadata={metadata} radio={radio} />);
+  expect(
+    view.container.querySelector('[aria-live="polite"]')?.textContent
+  ).toBe("Example Radio — Current Show — Host Name");
+});
+
+test("Single's announcement ignores metadata-only polls and announces station and track changes", () => {
+  const view = render(
+    <RadioNowPlayingAnnouncement metadata={metadata} radio={radio} />
+  );
   const live = view.container.querySelector('[aria-live="polite"]');
   expect(live?.getAttribute("aria-atomic")).toBe("true");
   expect(live?.textContent).toBe("Example Radio — Current Show — Host Name");
@@ -850,19 +873,26 @@ test("now-playing announcements ignore metadata-only polls and announce identity
     subtree: true,
   });
   view.rerender(
-    <RadioNowPlaying
+    <RadioNowPlayingAnnouncement
       metadata={{ ...metadata, sampledAt: metadata.sampledAt + 1 }}
       radio={radio}
     />
   );
   expect(observer.takeRecords()).toHaveLength(0);
   view.rerender(
-    <RadioNowPlaying
+    <RadioNowPlayingAnnouncement
       metadata={{ ...metadata, title: "Next Show" }}
       radio={radio}
     />
   );
-  expect(live.textContent).toContain("Next Show");
+  expect(live.textContent).toBe("Example Radio — Next Show — Host Name");
+  view.rerender(
+    <RadioNowPlayingAnnouncement
+      metadata={null}
+      radio={{ ...radio, name: "Other Radio" }}
+    />
+  );
+  expect(live.textContent).toBe("Other Radio");
   observer.disconnect();
 });
 

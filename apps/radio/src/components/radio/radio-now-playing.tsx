@@ -28,6 +28,11 @@ type RadioNowPlayingProps = {
   metadata?: RadioNowPlayingMetadata | null;
   isLoading?: boolean;
   isBuffering?: boolean;
+  /**
+   * Adds a polite live region for this player. Off by default: Node and DJ
+   * mount several players at once, so only a single deliberate region
+   * (Single mode's `RadioNowPlayingAnnouncement`) should speak.
+   */
   announce?: boolean;
   variant?: "featured" | "compact";
   className?: string;
@@ -165,7 +170,7 @@ export function RadioNowPlaying({
   metadata,
   isLoading = false,
   isBuffering = false,
-  announce = true,
+  announce = false,
   variant = "compact",
   className,
 }: RadioNowPlayingProps) {

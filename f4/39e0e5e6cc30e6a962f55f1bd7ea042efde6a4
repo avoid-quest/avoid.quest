@@ -50,6 +50,7 @@ packages/ui/src/components/badge.tsx
   s_db2676bf9b5672::t_1a3a1eca9cdf8a 7
 apps/radio/src/components/settings/midi-settings.test.tsx
   s_db2676bf9b5672::t_1a3a1eca9cdf8a 20-28,31,140-187
+  s_db2676bf9b5672::t_de74cff42dbbd1 64-66
 apps/radio/src/components/settings/mode-select.tsx
   s_db2676bf9b5672::t_1a3a1eca9cdf8a 2,4,16,36-48,50,54,62-63,86,90,94-98
 packages/ui/src/components/dialog.tsx

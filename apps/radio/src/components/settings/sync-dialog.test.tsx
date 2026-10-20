@@ -58,8 +58,8 @@ const changes: SyncChanges = {
 
 afterEach(async () => {
   cleanup();
-  // Radix dispatches its final focus event on the next timer tick.
-  await Bun.sleep(0);
+  // Flush Radix's deferred focus cleanup before restoring this DOM's globals.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   mock.restore();
 });
 

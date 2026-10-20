@@ -1,0 +1,104 @@
+apps/radio/src/components/audio/visualizations/compressor-canvas.tsx
+  s_a2913643c4bf37::t_d16b363b194236 9,12,37-40,136-137
+apps/radio/src/components/settings/midi-settings.test.tsx
+  s_a2913643c4bf37::t_8018a634fe1f4a 2,15,18,114-127,131,133-136,138,140-161
+  s_a2913643c4bf37::t_b42cc1b57dc85d 58-61
+  s_a2913643c4bf37::t_6b83d082d69102 10-14,16-17,21,57,62-64,128-130,132,137,139
+apps/radio/src/components/radio/radio-loading-skeleton.tsx
+  s_a2913643c4bf37::t_8108d19d364ac4 50-68
+apps/radio/src/components/settings/import-export.test.tsx
+  s_a2913643c4bf37::t_1747776f370441 18,31,78-80
+  s_a2913643c4bf37::t_8018a634fe1f4a 1-17,19-30,32-77,81-142
+packages/ui/src/components/input.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 9
+apps/radio/src/components/settings/settings-form.tsx
+  s_a2913643c4bf37::t_8108d19d364ac4 170-176,178-192,196-217,219,291-313
+  s_a2913643c4bf37::t_5f8224c72f1c9d 21-26
+apps/radio/src/components/audio/visualizations/use-canvas-draw.ts
+  s_a2913643c4bf37::t_d16b363b194236 1-15,17-23,25-42,47-51,55-58,62-82
+  s_a2913643c4bf37::t_8018a634fe1f4a 16,24,43-46,52-54,59-61
+packages/ui/src/styles/globals.css
+  s_a2913643c4bf37::t_4b3e65978499c4 105
+apps/radio/src/components/settings/radio-from-url-tab.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 204-205,214-215,234,248-250,289-290
+apps/radio/src/components/settings/mode-select.tsx
+  s_a2913643c4bf37::t_8108d19d364ac4 36-48,54,62-63,86,90,94-98
+  s_a2913643c4bf37::t_bd453ef4776def 2,4,16,50
+apps/radio/src/components/theme/theme-provider.tsx
+  s_a2913643c4bf37::t_8e2fd89110881d 18,23-24
+  s_a2913643c4bf37::t_4b3e65978499c4 1-17,19,21-22,36-38,44-49
+  s_a2913643c4bf37::t_26d96343ab8699 20,25-35
+apps/radio/src/components/settings/settings-regressions.test.tsx
+  s_a2913643c4bf37::t_b42cc1b57dc85d 177-180,184-187
+  s_a2913643c4bf37::t_6930b49b9e29b5 340-342
+  s_a2913643c4bf37::t_e223b01326d0df 303-304,307
+  s_a2913643c4bf37::t_5336e6c844d555 286
+  s_a2913643c4bf37::t_d1d040d34dffc5 282-285,287-302,308,311-323,327-329,331-335
+  s_a2913643c4bf37::t_8e2fd89110881d 214,365,376
+  s_a2913643c4bf37::t_1747776f370441 1-6,11,13,15-176,181-183,188-213,215-281,310,337-339,343-346,348-362,366-373,377-403
+  s_a2913643c4bf37::t_1051ccabbcc7b8 324-325,330
+  s_a2913643c4bf37::t_868e29195d458b 7-10,12,14,305-306,309,326,336,347,363-364,374-375
+packages/ui/src/components/knob.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 85,140,152-157
+packages/ui/src/components/scroll-area.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 25
+apps/radio/src/components/settings/import-export.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 33-38,77,87,96,108,117,132,143
+packages/ui/src/components/item.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 35
+apps/radio/src/components/settings/midi-settings.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 35,209-225,299,303
+apps/radio/src/components/settings/settings-test-dom.ts
+  s_a2913643c4bf37::t_8018a634fe1f4a 1-40
+apps/radio/src/components/audio/visualizations/eq-canvas.tsx
+  s_a2913643c4bf37::t_d16b363b194236 8,20-21,192,194-210,213-217
+packages/ui/src/components/tooltip.tsx
+  s_a2913643c4bf37::t_4b3e65978499c4 19-20,24-31,37-39
+  s_a2913643c4bf37::t_8018a634fe1f4a 14-16,36
+apps/radio/src/components/audio/visualizations/use-canvas-draw.test.tsx
+  s_a2913643c4bf37::t_e11bef510613d3 1-146
+apps/radio/src/components/settings/radio-management.tsx
+  s_a2913643c4bf37::t_7af8580a215d9a 89
+packages/ui/src/components/accordion.tsx
+  s_a2913643c4bf37::t_4efea219efdfc7 40
+packages/ui/src/components/badge.tsx
+  s_a2913643c4bf37::t_63817b1fa08190 7
+packages/ui/src/components/button.tsx
+  s_a2913643c4bf37::t_be26e2e501c865 7
+packages/ui/src/components/checkbox.tsx
+  s_a2913643c4bf37::t_6bd66aee8314e6 12
+packages/ui/src/components/dialog.tsx
+  s_a2913643c4bf37::t_2983a1f82903b8 113
+packages/ui/src/components/drawer.tsx
+  s_a2913643c4bf37::t_0dad67b0202bab 7-11,53,73
+packages/ui/src/components/radio-group.tsx
+  s_a2913643c4bf37::t_be446a50c13745 28
+packages/ui/src/components/select.tsx
+  s_a2913643c4bf37::t_efd2f21b329bd0 48
+packages/ui/src/components/slider.tsx
+  s_a2913643c4bf37::t_c5564d8cf399b7 293,365
+packages/ui/src/components/switch.tsx
+  s_a2913643c4bf37::t_3aa4b3dd29ec6a 11
+packages/ui/src/components/tabs.tsx
+  s_a2913643c4bf37::t_f7cfc12d703ba4 37
+packages/ui/src/components/textarea.tsx
+  s_a2913643c4bf37::t_108467cbd55444 8
+packages/ui/src/components/toggle.tsx
+  s_a2913643c4bf37::t_0206fd4c64ae00 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb8217f61814817b8da7508b82aadbb6eae7bc48",
+  "prompts": {},
+  "sessions": {
+    "s_a2913643c4bf37": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157fc-9a47-7d43-b837-947636cdc8db",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

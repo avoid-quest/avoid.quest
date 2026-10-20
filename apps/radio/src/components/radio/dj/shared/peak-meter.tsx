@@ -1,112 +1,110 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useEffect, useRef } from "react";
-
-function amplify(level: number) {
-  return Math.min(1, Math.max(0, Math.sqrt(level) * 1.2));
-}
+import type { PeakLevelSource } from "@/lib/stores/playback-runtime-store";
 
 const COLOR_GREEN = "#34d399";
 const COLOR_AMBER = "#fbbf24";
 const COLOR_RED = "#ef4444";
+const AMBER_AT = 0.7;
+const RED_AT = 0.9;
+const FRAME_MS = 1000 / 60;
+const PEAK_HOLD_MS = 12 * FRAME_MS;
+const PEAK_DECAY_PER_MS = 0.02 / FRAME_MS;
+const SAMPLE_TIMEOUT_MS = 100;
+const ZONED_V = `linear-gradient(to top, ${COLOR_GREEN} 70%, ${COLOR_AMBER} 70%, ${COLOR_AMBER} 90%, ${COLOR_RED} 90%)`;
+const ZONED_H = `linear-gradient(to right, ${COLOR_GREEN} 70%, ${COLOR_AMBER} 70%, ${COLOR_AMBER} 90%, ${COLOR_RED} 90%)`;
 
-const AMBER_AT = 70;
-const RED_AT = 90;
+function amplify(level: number) {
+  return Number.isFinite(level)
+    ? Math.min(1, Math.sqrt(Math.max(0, level)) * 1.2)
+    : 0;
+}
 
-// Hard-stop gradient: green up to 70%, amber 70-90%, red 90-100%
-const ZONED_V = `linear-gradient(to top, ${COLOR_GREEN} ${AMBER_AT}%, ${COLOR_AMBER} ${AMBER_AT}%, ${COLOR_AMBER} ${RED_AT}%, ${COLOR_RED} ${RED_AT}%)`;
-const ZONED_H = `linear-gradient(to right, ${COLOR_GREEN} ${AMBER_AT}%, ${COLOR_AMBER} ${AMBER_AT}%, ${COLOR_AMBER} ${RED_AT}%, ${COLOR_RED} ${RED_AT}%)`;
+type MeterChannel = {
+  holdUntil: number;
+  level: number;
+  peak: number;
+  target: number;
+};
 
-function getPeakHoldColor(percent: number): string {
-  if (percent > RED_AT) {
+type MeterElements = {
+  fill: HTMLElement | undefined;
+  gradient: HTMLElement | undefined;
+  peak: HTMLElement | undefined;
+  line: HTMLElement | undefined;
+  clip: HTMLElement | undefined;
+};
+
+function peakColor(peak: number): string {
+  if (peak > RED_AT) {
     return COLOR_RED;
   }
-  if (percent > AMBER_AT) {
+  if (peak > AMBER_AT) {
     return COLOR_AMBER;
   }
   return COLOR_GREEN;
 }
 
-// Smoothed level — fast attack, slow release (like analog ballistics)
-// When level is exactly 0 (e.g. after eject), snap to 0 immediately
-// instead of slowly decaying — otherwise the bar freezes because ref
-// mutations don't trigger re-renders.
-function useSmoothedLevel(level: number) {
-  const smoothedRef = useRef(0);
-
-  if (level === 0) {
-    smoothedRef.current = 0;
+function paintChannel(
+  channel: MeterChannel,
+  elements: MeterElements,
+  isVertical: boolean
+) {
+  const { fill, gradient, peak, line, clip } = elements;
+  if (fill) {
+    fill.style.transform = `${isVertical ? "scaleY" : "scaleX"}(${channel.level})`;
   }
-
-  useEffect(() => {
-    if (level === 0) {
-      smoothedRef.current = 0;
-      return;
-    }
-    const target = amplify(level);
-    const { current } = smoothedRef;
-    if (target >= current) {
-      // Attack: jump to 70% immediately, ease the rest
-      smoothedRef.current = current + (target - current) * 0.7;
-    } else {
-      // Release: slow decay
-      smoothedRef.current = current + (target - current) * 0.15;
-    }
-  });
-
-  return smoothedRef.current;
+  if (gradient) {
+    gradient.style.transform = `${isVertical ? "scaleY" : "scaleX"}(${channel.level > 0 ? 1 / channel.level : 1})`;
+  }
+  if (peak) {
+    peak.style.transform = isVertical
+      ? `translateY(${-channel.peak * 100}%)`
+      : `translateX(${channel.peak * 100}%)`;
+    peak.style.opacity = channel.peak > 0.02 ? "1" : "0";
+  }
+  if (line) {
+    line.style.background = peakColor(channel.peak);
+  }
+  if (clip) {
+    clip.style.opacity = channel.level > RED_AT ? "1" : "0";
+  }
 }
 
-function usePeakHold(level: number) {
-  const peakRef = useRef(0);
-  const decayRef = useRef(0);
-
-  if (level === 0) {
-    peakRef.current = 0;
-    decayRef.current = 0;
+function animateChannel(
+  channel: MeterChannel,
+  now: number,
+  elapsed: number,
+  sampledAt: number
+): boolean {
+  const target = now - sampledAt <= SAMPLE_TIMEOUT_MS ? channel.target : 0;
+  const factor =
+    1 - (target >= channel.level ? 0.3 : 0.85) ** (elapsed / FRAME_MS);
+  channel.level += (target - channel.level) * factor;
+  if (channel.level < 0.001) {
+    channel.level = 0;
   }
-
-  useEffect(() => {
-    if (level === 0) {
-      peakRef.current = 0;
-      decayRef.current = 0;
-      return;
-    }
-    const amplified = amplify(level);
-    if (amplified >= peakRef.current) {
-      peakRef.current = amplified;
-      decayRef.current = 0;
-    } else {
-      decayRef.current += 1;
-      if (decayRef.current > 12) {
-        peakRef.current = Math.max(amplified, peakRef.current - 0.02);
-      }
-    }
-  });
-
-  return peakRef.current;
+  if (target > 0 && target >= channel.peak) {
+    channel.peak = target;
+    channel.holdUntil = now + PEAK_HOLD_MS;
+  } else if (now > channel.holdUntil) {
+    const decayTime = Math.min(elapsed, now - channel.holdUntil);
+    channel.peak = Math.max(
+      target,
+      channel.peak - PEAK_DECAY_PER_MS * decayTime
+    );
+  }
+  return target > 0 || channel.level > 0 || channel.peak > 0;
 }
-
-// ─── Single bar ─────────────────────────────────────────────────────────────
 
 function MeterBar({
-  level,
   orientation,
-  compact = false,
+  compact,
 }: {
-  level: number;
   orientation: "vertical" | "horizontal";
-  compact?: boolean;
+  compact: boolean;
 }) {
-  const smoothed = useSmoothedLevel(level);
-  const percent = smoothed * 100;
-  const peakHold = usePeakHold(level);
-  const peakPercent = peakHold * 100;
   const isVertical = orientation === "vertical";
-
-  const clipPath = isVertical
-    ? `inset(${100 - percent}% 0 0 0)`
-    : `inset(0 ${100 - percent}% 0 0)`;
-
   return (
     <div
       className={cn(
@@ -117,52 +115,58 @@ function MeterBar({
       )}
     >
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 overflow-hidden"
+        data-meter-fill=""
         style={{
-          background: isVertical ? ZONED_V : ZONED_H,
-          clipPath,
           opacity: 0.85,
+          transform: isVertical ? "scaleY(0)" : "scaleX(0)",
+          transformOrigin: isVertical ? "bottom" : "left",
         }}
-      />
-      {!compact && peakPercent > 2 && (
+      >
         <div
-          className="absolute"
-          style={
-            isVertical
-              ? {
-                  background: getPeakHoldColor(peakPercent),
-                  bottom: `${peakPercent}%`,
-                  height: 1,
-                  insetInline: 0,
-                }
-              : {
-                  background: getPeakHoldColor(peakPercent),
-                  insetBlock: 0,
-                  left: `${peakPercent}%`,
-                  width: 1,
-                }
-          }
+          className="absolute inset-0"
+          data-meter-gradient=""
+          style={{
+            background: isVertical ? ZONED_V : ZONED_H,
+            transformOrigin: isVertical ? "bottom" : "left",
+          }}
         />
-      )}
-      {!compact && percent > RED_AT && (
-        <div
-          className="absolute rounded-full bg-red-500"
-          style={
-            isVertical
-              ? { height: 3, right: 1, top: 2, width: 3 }
-              : { height: 2, right: 2, top: 1, width: 2 }
-          }
-        />
+      </div>
+      {!compact && (
+        <>
+          <div
+            className="pointer-events-none absolute inset-0"
+            data-meter-peak=""
+            style={{ opacity: 0 }}
+          >
+            <div
+              className={cn(
+                "absolute",
+                isVertical ? "inset-x-0 bottom-0 h-px" : "inset-y-0 left-0 w-px"
+              )}
+              data-meter-peak-line=""
+            />
+          </div>
+          <div
+            className="absolute rounded-full bg-red-500"
+            data-meter-clip=""
+            style={
+              isVertical
+                ? { height: 3, opacity: 0, right: 1, top: 2, width: 3 }
+                : { height: 2, opacity: 0, right: 2, top: 1, width: 2 }
+            }
+          />
+        </>
       )}
     </div>
   );
 }
 
-// ─── Stereo pair ────────────────────────────────────────────────────────────
-
 type PeakMeterProps = {
-  left: number;
-  right: number;
+  left?: number;
+  right?: number;
+  source?: PeakLevelSource;
+  visible?: boolean;
   orientation?: "vertical" | "horizontal";
   className?: string;
   compact?: boolean;
@@ -175,21 +179,145 @@ function meterLayoutClass(isVertical: boolean, compact: boolean): string {
   return compact ? "w-full flex-col gap-px" : "w-full flex-col gap-0.5";
 }
 
+/** Audio samples wake one stereo animation; ballistics are elapsed-time based. */
 export function PeakMeter({
-  left,
-  right,
+  left = 0,
+  right = 0,
+  source,
+  visible = true,
   orientation = "vertical",
   className,
   compact = false,
 }: PeakMeterProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const updateRef = useRef<((left: number, right: number) => void) | null>(
+    null
+  );
+  const levelsRef = useRef({ left, right });
+  levelsRef.current = { left, right };
   const isVertical = orientation === "vertical";
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
+    const fills = root.querySelectorAll<HTMLElement>("[data-meter-fill]");
+    const gradients = root.querySelectorAll<HTMLElement>(
+      "[data-meter-gradient]"
+    );
+    const peaks = compact
+      ? []
+      : root.querySelectorAll<HTMLElement>("[data-meter-peak]");
+    const lines = root.querySelectorAll<HTMLElement>("[data-meter-peak-line]");
+    const clips = root.querySelectorAll<HTMLElement>("[data-meter-clip]");
+    const channels = [0, 1].map(() => ({
+      holdUntil: 0,
+      level: 0,
+      peak: 0,
+      target: 0,
+    }));
+    let frame: number | null = null;
+    let lastFrame = performance.now();
+    let sampledAt = Number.NEGATIVE_INFINITY;
+    let intersecting = true;
+    const canAnimate = () =>
+      visible && intersecting && !document.hidden && !root.closest("[hidden]");
+    const tick = (now: number) => {
+      frame = null;
+      if (!canAnimate()) {
+        return;
+      }
+      const elapsed = Math.max(0, now - lastFrame);
+      lastFrame = now;
+      let animating = false;
+      for (const channel of channels) {
+        const active = animateChannel(channel, now, elapsed, sampledAt);
+        animating ||= active;
+      }
+      for (const [index, channel] of channels.entries()) {
+        paintChannel(
+          channel,
+          {
+            clip: clips[index],
+            fill: fills[index],
+            gradient: gradients[index],
+            line: lines[index],
+            peak: peaks[index],
+          },
+          isVertical
+        );
+      }
+      if (animating) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+    const wake = () => {
+      if (
+        frame === null &&
+        canAnimate() &&
+        channels.some(
+          (channel) =>
+            channel.target > 0 || channel.level > 0 || channel.peak > 0
+        )
+      ) {
+        lastFrame = performance.now();
+        frame = requestAnimationFrame(tick);
+      }
+    };
+    const update = (nextLeft: number, nextRight: number) => {
+      sampledAt = performance.now();
+      for (const [index, channel] of channels.entries()) {
+        channel.target = amplify(index === 0 ? nextLeft : nextRight);
+      }
+      wake();
+    };
+    updateRef.current = update;
+    const initial = source?.getSnapshot() ?? levelsRef.current;
+    update(initial.left, initial.right);
+    const unsubscribe = source?.subscribe((level) =>
+      update(level.left, level.right)
+    );
+    const updateVisibility = () => {
+      if (!canAnimate() && frame !== null) {
+        cancelAnimationFrame(frame);
+        frame = null;
+      }
+      wake();
+    };
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => {
+            intersecting = entry?.isIntersecting ?? false;
+            updateVisibility();
+          });
+    observer?.observe(root);
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => {
+      unsubscribe?.();
+      observer?.disconnect();
+      document.removeEventListener("visibilitychange", updateVisibility);
+      updateRef.current = null;
+      if (frame !== null) {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, [source, visible, isVertical, compact]);
+
+  useEffect(() => {
+    if (!source) {
+      updateRef.current?.(left, right);
+    }
+  }, [left, right, source]);
 
   return (
     <div
       className={cn("flex", meterLayoutClass(isVertical, compact), className)}
+      ref={rootRef}
     >
-      <MeterBar compact={compact} level={left} orientation={orientation} />
-      <MeterBar compact={compact} level={right} orientation={orientation} />
+      <MeterBar compact={compact} orientation={orientation} />
+      <MeterBar compact={compact} orientation={orientation} />
     </div>
   );
 }

@@ -1401,3 +1401,38 @@ describe("MidiControl", () => {
     expect(values).toEqual([32 / 127, 64 / 127]);
   });
 });
+
+test("parameter reconciliation keeps descriptors quiet and target subscribers isolated", () => {
+  const control = createMidiControl({
+    browser: unsupportedBrowser,
+    persistence: new MemoryPersistence({
+      state: { activePresetId: null, enabled: true, mappings: [mapping] },
+      version: 2,
+    }),
+    staticActions: [],
+  });
+  const binding = control.bindDeckEffects("deck-a");
+  const effect = createDefaultEffectConfig("limiter", "limiter", 0);
+  binding.reconcile([effect]);
+  const original = control.getSnapshot();
+  const global = mock(() => undefined);
+  const target = mock(() => undefined);
+  control.subscribe(global);
+  control.subscribeTarget("deck-a:volume", target);
+  const selected = control.getTargetSnapshot("deck-a:volume");
+  for (let i = 0; i < 60; i += 1) {
+    binding.reconcile([{ ...effect, threshold: -i }]);
+  }
+  expect(control.getSnapshot()).toBe(original);
+  expect(global).not.toHaveBeenCalled();
+  expect(target).not.toHaveBeenCalled();
+  control.change({ targetId: "deck-b:volume", type: "start-learn" });
+  expect(target).not.toHaveBeenCalled();
+  expect(control.getTargetSnapshot("deck-a:volume")).toBe(selected);
+  control.change({ targetId: "deck-a:volume", type: "start-learn" });
+  expect(target).toHaveBeenCalledTimes(1);
+  control.change({ targetId: "deck-a:volume", type: "remove-mapping" });
+  expect(target).toHaveBeenCalledTimes(2);
+  expect(control.getTargetSnapshot("deck-a:volume").mapping).toBeUndefined();
+  control.cleanup();
+});

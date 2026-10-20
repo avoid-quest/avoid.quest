@@ -11,9 +11,12 @@ import {
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { AudioManager } from "@/lib/audio";
 import { initializePlaybackSessions } from "@/lib/collections/playback-sessions";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import { setPlaybackChannelPeakLevel } from "@/lib/stores/playback-runtime-store";
+import { installAnimationTestEnvironment } from "../shared/animation-test-utils";
+import { MixerMaster } from "./mixer-master";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -92,28 +95,69 @@ describe("MixerChannel", () => {
     setPlaybackChannelPeakLevel("deck-a", { left: 0, right: 0 });
   });
 
-  test("meter updates re-render only the meter, not the channel", () => {
+  test("sixty meter samples animate without rendering channel controls", () => {
+    const clock = installAnimationTestEnvironment();
     const formatPercent = spyOn(formatUtils, "formatPercent");
     try {
       const view = renderDeckAChannel();
       const meter = () =>
-        view.container.querySelector('[style*="clip-path"]')?.outerHTML;
-      const meterBefore = meter();
+        view.container.querySelector<HTMLElement>("[data-meter-fill]")?.style
+          .transform;
       const channelRenders = formatPercent.mock.calls.length;
-
-      for (let tick = 1; tick <= 10; tick += 1) {
-        act(() => {
+      for (let tick = 1; tick <= 60; tick += 1) {
+        act(() =>
           setPlaybackChannelPeakLevel("deck-a", {
-            left: tick / 20,
-            right: tick / 20,
-          });
-        });
+            left: tick / 100,
+            right: tick / 100,
+          })
+        );
+        clock.advance(1000 / 60);
       }
-
-      expect(meter()).not.toBe(meterBefore);
+      expect(meter()).not.toBe("scaleY(0)");
       expect(formatPercent.mock.calls.length).toBe(channelRenders);
     } finally {
+      cleanup();
       formatPercent.mockRestore();
+      clock.restore();
+    }
+  });
+
+  test("master samples do not render master volume or cue controls", () => {
+    const clock = installAnimationTestEnvironment();
+    let publish: ((level: { left: number; right: number }) => void) | undefined;
+    const subscribe = spyOn(
+      AudioManager.getInstance(),
+      "subscribeMasterMeter"
+    ).mockImplementation((listener) => {
+      publish = listener;
+      return () => undefined;
+    });
+    const formatPercent = spyOn(formatUtils, "formatPercent");
+    try {
+      const view = render(
+        <MixerMaster
+          headphoneVolume={1}
+          isCueActive={true}
+          masterVolume={1}
+          onHeadphoneVolumeChange={handleCueChange}
+          onMasterVolumeChange={handleCueChange}
+        />
+      );
+      const baseline = formatPercent.mock.calls.length;
+      for (let tick = 1; tick <= 60; tick += 1) {
+        publish?.({ left: tick / 100, right: tick / 100 });
+        clock.advance(1000 / 60);
+      }
+      expect(
+        view.container.querySelector<HTMLElement>("[data-meter-fill]")?.style
+          .transform
+      ).not.toBe("scaleY(0)");
+      expect(formatPercent.mock.calls.length).toBe(baseline);
+    } finally {
+      cleanup();
+      subscribe.mockRestore();
+      formatPercent.mockRestore();
+      clock.restore();
     }
   });
 

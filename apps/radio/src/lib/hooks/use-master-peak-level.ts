@@ -32,3 +32,10 @@ export function useMasterPeakLevel(): PeakLevel {
 
   return level;
 }
+
+/** The DJ meter consumes audio samples without scheduling React renders. */
+export const masterPeakLevelSource = {
+  getSnapshot: () => ({ left: 0, right: 0 }),
+  subscribe: (listener: (level: PeakLevel) => void) =>
+    AudioManager.getInstance().subscribeMasterMeter(listener),
+};

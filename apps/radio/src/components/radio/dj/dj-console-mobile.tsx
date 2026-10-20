@@ -7,10 +7,7 @@ import { AudioLinesIcon, HeadphonesIcon, Volume2Icon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { useDeckA, useDeckB, useDjError } from "@/lib/hooks/use-dj-state";
-import {
-  useDeckAPeakLevel,
-  useDeckBPeakLevel,
-} from "@/lib/stores/dj-runtime-store";
+import { getPlaybackChannelMeterSource } from "@/lib/stores/playback-runtime-store";
 import { InlineError } from "../inline-error";
 import { DeckPanel } from "./deck/deck-panel";
 import { PeakMeter } from "./shared/peak-meter";
@@ -33,23 +30,19 @@ type DjConsoleMobileProps = {
  * read peak levels here rather than re-rendering the whole console.
  */
 function MiniMixerMeters() {
-  const deckAPeakLevel = useDeckAPeakLevel();
-  const deckBPeakLevel = useDeckBPeakLevel();
   return (
     <div className="flex items-center gap-2 px-7">
       <PeakMeter
         className="flex-1"
         compact={true}
-        left={deckAPeakLevel.left}
         orientation="horizontal"
-        right={deckAPeakLevel.right}
+        source={getPlaybackChannelMeterSource("deck-a")}
       />
       <PeakMeter
         className="flex-1"
         compact={true}
-        left={deckBPeakLevel.left}
         orientation="horizontal"
-        right={deckBPeakLevel.right}
+        source={getPlaybackChannelMeterSource("deck-b")}
       />
     </div>
   );
@@ -208,12 +201,27 @@ export function DjConsoleMobile({
 
       {/* Deck content */}
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <div className={cn("h-full min-w-0")}>
-          {mobileTab === "left" ? (
-            <DeckPanel deckId="deck-a" key="deck-a" radios={radios} />
-          ) : (
-            <DeckPanel deckId="deck-b" key="deck-b" radios={radios} />
-          )}
+        <div
+          className="h-full min-w-0"
+          hidden={mobileTab !== "left"}
+          inert={mobileTab !== "left"}
+        >
+          <DeckPanel
+            deckId="deck-a"
+            radios={radios}
+            visible={mobileTab === "left"}
+          />
+        </div>
+        <div
+          className="h-full min-w-0"
+          hidden={mobileTab !== "right"}
+          inert={mobileTab !== "right"}
+        >
+          <DeckPanel
+            deckId="deck-b"
+            radios={radios}
+            visible={mobileTab === "right"}
+          />
         </div>
       </div>
     </div>

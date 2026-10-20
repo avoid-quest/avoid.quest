@@ -3,7 +3,7 @@ import { Knob } from "@avoid.quest/ui/components/knob";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { HeadphonesIcon } from "lucide-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
-import { useMasterPeakLevel } from "@/lib/hooks/use-master-peak-level";
+import { masterPeakLevelSource } from "@/lib/hooks/use-master-peak-level";
 import { formatPercent } from "../shared/format-utils";
 import { PeakMeter } from "../shared/peak-meter";
 
@@ -26,7 +26,6 @@ export function MixerMaster({
   onMasterVolumeChange,
   onHeadphoneVolumeChange,
 }: MixerMasterProps) {
-  const masterPeak = useMasterPeakLevel();
   const handleMasterVolumeChange = ([value]: number[]) =>
     onMasterVolumeChange((value ?? 0) / 100);
 
@@ -81,11 +80,7 @@ export function MixerMaster({
             </span>
           </div>
           <div className="flex w-4 py-5">
-            <PeakMeter
-              className="w-full"
-              left={masterPeak.left}
-              right={masterPeak.right}
-            />
+            <PeakMeter className="w-full" source={masterPeakLevelSource} />
           </div>
         </div>
       </MidiControlWrapper>

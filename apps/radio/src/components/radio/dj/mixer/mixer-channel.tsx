@@ -6,10 +6,7 @@ import { HeadphonesIcon } from "lucide-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
-import {
-  useDeckAPeakLevel,
-  useDeckBPeakLevel,
-} from "@/lib/stores/dj-runtime-store";
+import { getPlaybackChannelMeterSource } from "@/lib/stores/playback-runtime-store";
 import { ChannelSlider } from "../shared/channel-slider";
 import {
   formatChannelFilter,
@@ -50,22 +47,13 @@ function MixerChannelB(props: MixerChannelProps) {
   return <ChannelBody deck={deck} {...props} />;
 }
 
-/**
- * The channel's meter. It updates at meter rate, so it reads the peak level
- * here rather than re-rendering the whole channel.
- */
 function ChannelPeakMeter({ deckId }: { deckId: MixerChannelProps["deckId"] }) {
-  return deckId === "deck-a" ? <DeckAPeakMeter /> : <DeckBPeakMeter />;
-}
-
-function DeckAPeakMeter() {
-  const peak = useDeckAPeakLevel();
-  return <PeakMeter className="w-full" left={peak.left} right={peak.right} />;
-}
-
-function DeckBPeakMeter() {
-  const peak = useDeckBPeakLevel();
-  return <PeakMeter className="w-full" left={peak.left} right={peak.right} />;
+  return (
+    <PeakMeter
+      className="w-full"
+      source={getPlaybackChannelMeterSource(deckId)}
+    />
+  );
 }
 
 function ChannelBody({

@@ -4,7 +4,7 @@ import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { MusicIcon, PlayIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
@@ -21,7 +21,7 @@ import {
 type SearchResultsProps = {
   mode?: "dj" | "node";
   error: string | null;
-  onLoad: (radio: Radio) => void;
+  onLoad: (radio: Radio) => void | Promise<void>;
   /** Called when a result is picked, before it resolves. */
   onPick?: () => void;
   isCurrentPick?: () => boolean;
@@ -52,7 +52,7 @@ function ResultItem({
 }: {
   mode?: "dj" | "node";
   result: UnifiedSearchResult;
-  onLoad: (radio: Radio) => void;
+  onLoad: (radio: Radio) => void | Promise<void>;
   onPick?: () => void;
   isCurrentPick?: () => boolean;
   onError: (message: string) => void;
@@ -60,18 +60,43 @@ function ResultItem({
   isLoading: boolean;
   onLoadingChange: (loading: boolean) => void;
 }) {
+  const mounted = useRef<boolean>(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const finishLoad = async (radio: Radio) => {
+    try {
+      onError("");
+      if (mode === "node") {
+        // Node owns source preparation and allows a newer pick to supersede it.
+        onLoad(radio);
+      } else {
+        await onLoad(radio);
+      }
+    } catch (cause: unknown) {
+      if (mounted.current && isCurrentPick?.() !== false) {
+        onError(
+          cause instanceof Error ? cause.message : "Couldn’t load this source"
+        );
+      }
+    } finally {
+      if (mounted.current) {
+        onLoadingChange(false);
+      }
+    }
+  };
   const { mutate: loadItem, isPending } = useDjTrackLoad({
     mode,
     onError: (message) => {
       if (isCurrentPick?.() !== false) {
         onError(message);
       }
+      onLoadingChange(false);
     },
-    onLoad: (radio) => {
-      onError("");
-      onLoad(radio);
-    },
-    onSettled: () => onLoadingChange(false),
+    onLoad: finishLoad,
   });
 
   const handleClick = () => {
@@ -79,8 +104,7 @@ function ResultItem({
     onLoadingChange(true);
     onPick?.();
     if (result.radio) {
-      onLoad(result.radio);
-      onLoadingChange(false);
+      finishLoad(result.radio);
     } else {
       loadItem(result.url);
     }
@@ -106,7 +130,9 @@ function ResultItem({
           <img
             alt=""
             className="size-full object-cover"
+            decoding="async"
             height={40}
+            loading="lazy"
             src={result.thumbnail}
             width={40}
           />
@@ -159,7 +185,7 @@ function ManagedResultItem({
   mode?: "dj" | "node";
   result: UnifiedSearchResult;
   loadingId: string | null;
-  onLoad: (radio: Radio) => void;
+  onLoad: (radio: Radio) => void | Promise<void>;
   onPick?: () => void;
   isCurrentPick?: () => boolean;
   onError: (message: string) => void;

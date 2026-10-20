@@ -472,7 +472,10 @@ test("offscreen meters unsubscribe, cancel queued frames and resume when visible
         </Profiler>
       </div>
     );
-    const [observer] = observers;
+    // PeakMeter observes its own bars to pause animation; pick the strip's.
+    const observer = observers.find(
+      (entry) => entry.target?.getAttribute("data-slot") === "strip-meter"
+    );
     if (!observer) {
       throw new Error("Missing meter observer");
     }

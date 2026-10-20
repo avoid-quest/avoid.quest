@@ -2625,6 +2625,154 @@ describe("DjDeckModule pending sources", () => {
   });
 });
 
+describe("DjDeckModule replacement loads", () => {
+  test("opening a library picker cancels an older resolution and preserves active audio", async () => {
+    const audio = createAudioAdapter();
+    const platform = createPlatform();
+    const deferred = Promise.withResolvers<PlatformStreamResolution | null>();
+    platform.resolveStream = mock(() => deferred.promise);
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    const deck = module.deck("deck-a");
+    const current = {
+      id: "current",
+      name: "Current",
+      streamUrl: "https://audio.example/current.mp3",
+    };
+    await deck.load({ radio: current, type: "radio" });
+    audio.emit("left_current:1", {
+      error: null,
+      hasEnded: false,
+      isBuffering: false,
+      isLoading: false,
+      isPlaying: true,
+      volume: 1,
+    });
+    const older = deck.load({
+      radio: { id: "older", name: "Older", streamUrl: "yt:older" },
+      type: "track",
+    });
+    const [request] =
+      (platform.resolveStream as ReturnType<typeof mock>).mock.calls[0] ?? [];
+    const [picker] = PLATFORM_ITEMS;
+    if (!picker) {
+      throw new Error("Missing platform picker");
+    }
+    await deck.load({ radio: picker, type: "library" });
+    expect(request.signal.aborted).toBe(true);
+    const pending = module.pendingSource.getSnapshot()["deck-a"];
+    deferred.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://audio.example/older.mp3",
+    });
+    await older;
+    expect(module.pendingSource.getSnapshot()["deck-a"]).toBe(pending);
+    expect(getPlaybackChannel("dj", "deck-a")?.radio).toEqual(current);
+    expect(getPlaybackChannelRuntime("deck-a")).toMatchObject({
+      isPlaying: true,
+      soundId: "left_current:1",
+    });
+    expect(audio.cleanedSounds).toEqual([]);
+  });
+
+  test("pending track belongs to the newest selection and deactivation aborts silently", async () => {
+    const audio = createAudioAdapter();
+    const first = Promise.withResolvers<PlatformStreamResolution | null>();
+    const second = Promise.withResolvers<PlatformStreamResolution | null>();
+    const resolveStream = mock(
+      (input: Parameters<DjDeckPlatformAdapter["resolveStream"]>[0]) =>
+        input.platform === "youtube" && input.videoId === "first"
+          ? first.promise
+          : second.promise
+    );
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform: { ...createPlatform(), resolveStream },
+    });
+    const deck = module.deck("deck-a");
+    const radio = { id: "album", name: "Album", streamUrl: "yt:first" };
+    const oldLoad = deck.load({
+      radio,
+      streamUrl: "yt:first",
+      type: "track-url",
+    });
+    expect(module.pendingTrack.getSnapshot()["deck-a"]).toBe("yt:first");
+    const newLoad = deck.load({
+      radio,
+      streamUrl: "yt:second",
+      type: "track-url",
+    });
+    expect(resolveStream.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    first.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://audio.example/first.mp3",
+    });
+    await oldLoad;
+    expect(module.pendingTrack.getSnapshot()["deck-a"]).toBe("yt:second");
+    second.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://audio.example/second.mp3",
+    });
+    await newLoad;
+    expect(module.pendingTrack.getSnapshot()["deck-a"]).toBeNull();
+    expect(getPlaybackChannel("dj", "deck-a")?.radio?.streamUrl).toBe(
+      "https://audio.example/second.mp3"
+    );
+    const cancelled = Promise.withResolvers<PlatformStreamResolution | null>();
+    resolveStream.mockImplementation(() => cancelled.promise);
+    const pending = deck.load({
+      radio,
+      streamUrl: "yt:cancelled",
+      type: "track-url",
+    });
+    const signal = resolveStream.mock.calls.at(-1)?.[0].signal;
+    module.deactivate();
+    expect(signal?.aborted).toBe(true);
+    cancelled.reject(new DOMException("Aborted", "AbortError"));
+    await pending;
+    expect(getDjError()).toBeNull();
+    expect(module.pendingTrack.getSnapshot()["deck-a"]).toBeNull();
+  });
+});
+
+test("finishing an adopted source does not close a newer library picker", async () => {
+  const audio = createAudioAdapter();
+  const activation = Promise.withResolvers<void>();
+  audio.startDevice = mock(() => activation.promise);
+  const module = createDjDeckModule({
+    audio,
+    context: createContext(),
+    effects: createEffects(),
+    output: createOutput(),
+    platform: createPlatform(),
+  });
+  const deck = module.deck("deck-a");
+  const older = deck.load({
+    deviceId: "mic",
+    deviceLabel: "Microphone",
+    type: "device-input",
+  });
+  await Promise.resolve();
+  const [picker] = PLATFORM_ITEMS;
+  if (!picker) {
+    throw new Error("Missing platform picker");
+  }
+  await deck.load({ radio: picker, type: "library" });
+  const pending = module.pendingSource.getSnapshot()["deck-a"];
+  activation.resolve();
+  await older;
+  expect(module.pendingSource.getSnapshot()["deck-a"]).toBe(pending);
+  expect(audio.activeSounds.size).toBe(1);
+});
+
 afterEach(() => {
   flushPlaybackSessionWrites();
 });

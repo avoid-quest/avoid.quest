@@ -43,6 +43,7 @@ type EffectChainProps = {
   onAddEffect: (type: EffectType) => void;
   onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   onRemoveEffect: (effectId: string) => void;
+  onResetEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
   onReorderEffects: (effectIds: string[]) => void;
   title?: string;
   showAddButton?: boolean;
@@ -121,6 +122,7 @@ export function EffectChain({
   onAddEffect,
   onUpdateEffect,
   onRemoveEffect,
+  onResetEffect,
   onReorderEffects,
   title,
   showAddButton = true,
@@ -165,19 +167,12 @@ export function EffectChain({
     effects.map((effect) => effect.id)
   );
 
-  // Sync local order when effects are added/removed externally.
-  // We compare sorted ID sets to detect structural changes (add/remove)
-  // without resetting on every reorder from the store.
+  // A changed incoming order acknowledges our drag or replaces it externally.
+  // Unchanged props keep the optimistic order until that acknowledgement.
   const [prevIdKey, setPrevIdKey] = useState(() =>
-    effects
-      .map((e) => e.id)
-      .sort()
-      .join(",")
+    effects.map((e) => e.id).join(",")
   );
-  const currentIdKey = effects
-    .map((e) => e.id)
-    .sort()
-    .join(",");
+  const currentIdKey = effects.map((e) => e.id).join(",");
   if (currentIdKey !== prevIdKey) {
     const added = effects
       .map((effect) => effect.id)
@@ -253,6 +248,7 @@ export function EffectChain({
                   isDraggingAny={activeId !== null}
                   key={effect.id}
                   onRemoveEffect={onRemoveEffect}
+                  onResetEffect={onResetEffect}
                   onUpdateEffect={onUpdateEffect}
                   setExpandedEffectId={setExpandedEffectId}
                 />
@@ -302,6 +298,7 @@ function EffectListItem({
   expandedEffectId,
   isDraggingAny,
   onRemoveEffect,
+  onResetEffect,
   onUpdateEffect,
   setExpandedEffectId,
 }: {
@@ -310,6 +307,7 @@ function EffectListItem({
   expandedEffectId: string | null;
   isDraggingAny: boolean;
   onRemoveEffect: (effectId: string) => void;
+  onResetEffect?: (effectId: string, config: Partial<EffectConfig>) => void;
   onUpdateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   setExpandedEffectId: Dispatch<SetStateAction<string | null>>;
 }) {
@@ -321,6 +319,10 @@ function EffectListItem({
 
   function remove() {
     onRemoveEffect(effect.id);
+  }
+
+  function reset(config: Partial<EffectConfig>) {
+    onResetEffect?.(effect.id, config);
   }
 
   function update(config: Partial<EffectConfig>) {
@@ -335,6 +337,7 @@ function EffectListItem({
       isExpanded={expandedEffectId === effect.id}
       onExpand={expand}
       onRemove={remove}
+      onReset={onResetEffect ? reset : undefined}
       onUpdate={update}
     />
   );
@@ -346,6 +349,7 @@ function SortableEffectItem({
   isDraggingAny,
   onUpdate,
   onRemove,
+  onReset,
   onExpand,
   deckId,
 }: {
@@ -354,6 +358,7 @@ function SortableEffectItem({
   isDraggingAny: boolean;
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
+  onReset?: (config: Partial<EffectConfig>) => void;
   onExpand: () => void;
   deckId?: "deck-a" | "deck-b";
 }) {
@@ -394,6 +399,7 @@ function SortableEffectItem({
         isExpanded={isExpanded}
         onExpand={onExpand}
         onRemove={onRemove}
+        onReset={onReset}
         onUpdate={onUpdate}
       />
     </div>

@@ -5,6 +5,7 @@
 @import "@avoid.quest/ui/globals.css";
 
 @source "../";
+/* List each shared component the site renders: globbing packages/ui triples this CSS. */
 @source "../../../../packages/ui/src/components/avoid-logo.tsx";
 @source "../../../../packages/ui/src/components/button.tsx";
 @source "../../../../packages/ui/src/components/github-icon.tsx";

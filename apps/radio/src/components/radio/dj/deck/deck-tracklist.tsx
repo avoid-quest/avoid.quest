@@ -1,9 +1,12 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
+import { getDjDeckModule } from "@/lib/dj-deck";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import type { PlatformTrack } from "@/lib/platform-types";
 import { useDeckContext } from "./deck-context";
@@ -56,8 +59,15 @@ function getTrackKey(track: PlatformTrack) {
 }
 
 export function DeckTracklist({ className }: { className?: string }) {
-  const { tracks, currentTrackIndex, hasTracklist, loadTrack } =
+  const { tracks, currentTrackIndex, hasTracklist, loadTrack, deckId } =
     useDeckContext();
+
+  const { pendingTrack } = getDjDeckModule();
+  const pendingTracks = useSyncExternalStore(
+    pendingTrack.subscribe,
+    pendingTrack.getSnapshot,
+    pendingTrack.getSnapshot
+  );
 
   if (!(hasTracklist && tracks) || tracks.length === 0) {
     return null;
@@ -68,6 +78,7 @@ export function DeckTracklist({ className }: { className?: string }) {
       className={className}
       currentTrackIndex={currentTrackIndex}
       onPlayTrack={loadTrack}
+      pendingTrackUrl={pendingTracks[deckId]}
       tracks={tracks}
     />
   );
@@ -79,6 +90,7 @@ type TracklistViewProps = {
   /** Plays a track by its play URL; errors are surfaced by the caller. */
   onPlayTrack: (url: string) => Promise<unknown>;
   className?: string;
+  pendingTrackUrl?: string | null;
 };
 
 /**
@@ -91,6 +103,7 @@ export function TracklistView({
   currentTrackIndex,
   onPlayTrack,
   className,
+  pendingTrackUrl,
 }: TracklistViewProps) {
   const playUrl = (url: string) => {
     if (url) {
@@ -113,6 +126,9 @@ export function TracklistView({
             <TrackRow
               index={index}
               isCurrent={index === currentTrackIndex}
+              isPending={
+                !!pendingTrackUrl && getTrackPlayUrl(track) === pendingTrackUrl
+              }
               key={getTrackKey(track)}
               onPlay={playUrl}
               track={track}
@@ -172,17 +188,20 @@ function TrackRow({
   track,
   index,
   isCurrent,
+  isPending,
   onPlay,
 }: {
   track: PlatformTrack;
   index: number;
   isCurrent: boolean;
+  isPending: boolean;
   onPlay: (url: string) => void;
 }) {
   const handlePlay = () => onPlay(getTrackPlayUrl(track));
 
   return (
     <button
+      aria-busy={isPending}
       className={cn(
         "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isCurrent && "bg-muted/40 font-medium"
@@ -191,9 +210,13 @@ function TrackRow({
       type="button"
     >
       <div className="flex size-4 shrink-0 items-center justify-center">
-        {isCurrent ? (
+        {!!isPending && (
+          <Spinner aria-label="Loading track" className="size-2.5" />
+        )}
+        {!isPending && !!isCurrent && (
           <PlayIcon aria-label="Current track" className="size-2.5" />
-        ) : (
+        )}
+        {!(isPending || isCurrent) && (
           <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
             {index + 1}
           </span>

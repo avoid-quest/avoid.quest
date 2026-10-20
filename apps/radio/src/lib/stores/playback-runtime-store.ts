@@ -1,7 +1,53 @@
 import { Store, shallow, useStore } from "@tanstack/react-store";
+import { useSyncExternalStore } from "react";
 import type { AudioError } from "@/lib/audio";
 
 export type RuntimePeakLevel = { left: number; right: number };
+
+export type PeakLevelSource = {
+  getSnapshot: () => RuntimePeakLevel;
+  subscribe: (listener: (level: RuntimePeakLevel) => void) => () => void;
+};
+
+const silentPeak: RuntimePeakLevel = { left: 0, right: 0 };
+const peakLevels = new Map<string, RuntimePeakLevel>();
+const peakListeners = new Map<string, Set<(level: RuntimePeakLevel) => void>>();
+const meterSources = new Map<string, PeakLevelSource>();
+
+export function getPlaybackChannelMeterSource(
+  channelId: string
+): PeakLevelSource {
+  let source = meterSources.get(channelId);
+  if (!source) {
+    source = {
+      getSnapshot: () => peakLevels.get(channelId) ?? silentPeak,
+      subscribe(listener) {
+        const listeners = peakListeners.get(channelId) ?? new Set();
+        peakListeners.set(channelId, listeners);
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+          if (listeners.size === 0) {
+            peakListeners.delete(channelId);
+          }
+        };
+      },
+    };
+    meterSources.set(channelId, source);
+  }
+  return source;
+}
+
+export function usePlaybackChannelPeakLevel(
+  channelId: string
+): RuntimePeakLevel {
+  const source = getPlaybackChannelMeterSource(channelId);
+  return useSyncExternalStore(
+    source.subscribe,
+    source.getSnapshot,
+    source.getSnapshot
+  );
+}
 
 export type ChannelRuntimeState = {
   soundId: string | null;
@@ -66,7 +112,9 @@ export function usePlaybackChannelRuntimeView(channelId: string) {
 export function getPlaybackChannelRuntime(
   channelId: string
 ): ChannelRuntimeState {
-  return ensureChannelState(channelId);
+  const runtime = ensureChannelState(channelId);
+  const peakLevel = peakLevels.get(channelId);
+  return peakLevel ? { ...runtime, peakLevel } : runtime;
 }
 
 export function getPlaybackRuntimeChannelIds(): string[] {
@@ -109,10 +157,15 @@ export function setPlaybackChannelPeakLevel(
   channelId: string,
   peakLevel: RuntimePeakLevel
 ): void {
-  updatePlaybackChannelRuntime(channelId, () => ({ peakLevel }));
+  peakLevels.set(channelId, peakLevel);
+  for (const listener of peakListeners.get(channelId) ?? []) {
+    listener(peakLevel);
+  }
 }
 
 export function resetPlaybackChannelRuntime(channelId: string): void {
+  setPlaybackChannelPeakLevel(channelId, silentPeak);
+  peakLevels.delete(channelId);
   playbackRuntimeStore.setState((state) => {
     const nextChannels = { ...state.channels };
     delete nextChannels[channelId];
@@ -130,6 +183,10 @@ export function resetPlaybackRuntimeForChannels(channelIds: string[]): void {
 }
 
 export function resetAllPlaybackRuntime(): void {
+  for (const channelId of peakLevels.keys()) {
+    setPlaybackChannelPeakLevel(channelId, silentPeak);
+  }
+  peakLevels.clear();
   playbackRuntimeStore.setState(() => ({
     channels: {},
   }));

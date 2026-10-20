@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 /**
- * Inline editor for MIDI mapping transforms (invert, min/max, curve).
+ * Editor for MIDI mapping transforms (invert, min/max, curve).
  */
 
 import { Button } from "@avoid.quest/ui/components/button";
@@ -13,7 +13,7 @@ import {
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { Switch } from "@avoid.quest/ui/components/switch";
-import { type MouseEvent, useId } from "react";
+import { useId } from "react";
 import {
   DEFAULT_TRANSFORM,
   getMidiControl,
@@ -39,10 +39,6 @@ export function MidiTransformEditor({
     });
   }
 
-  function stopClickPropagation(event: MouseEvent<HTMLDivElement>) {
-    event.stopPropagation();
-  }
-
   function updateInvert(invert: boolean) {
     updateMappingTransform({ invert });
   }
@@ -64,10 +60,7 @@ export function MidiTransformEditor({
   }
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: stopPropagation for context menu
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: stopPropagation for context menu
-    // biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation for context menu
-    <div className="space-y-3 p-2" onClick={stopClickPropagation}>
+    <div className="space-y-3">
       {/* Invert */}
       <label className="flex items-center gap-2 text-xs" htmlFor={invertId}>
         <Switch

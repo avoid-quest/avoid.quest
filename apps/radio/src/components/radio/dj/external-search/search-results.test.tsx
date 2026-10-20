@@ -351,3 +351,81 @@ test("a verified directory result loads its prepared radio without resolving a t
   expect(onLoad).toHaveBeenCalledWith(station);
   expect(loadPlatformItemMock).not.toHaveBeenCalled();
 });
+
+test.each([false, true])(
+  "keeps result loading locked through async source preparation (prepared=%s)",
+  async (prepared) => {
+    const preparation = Promise.withResolvers<void>();
+    const onLoad = mock(() => preparation.promise);
+    loadPlatformItemMock.mockResolvedValue({
+      radio: NEXT_RADIO,
+      success: true,
+    });
+    const [first] = SEARCH_RESULTS;
+    if (!first) {
+      throw new Error("Missing search fixture");
+    }
+    const result = {
+      ...first,
+      thumbnail: "https://images.example/track.jpg",
+      ...(prepared ? { radio: NEXT_RADIO } : {}),
+    };
+    const view = render(
+      <SearchResults error={null} onLoad={onLoad} results={[result]} />,
+      { wrapper: QueryProvider }
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(onLoad).toHaveBeenCalledTimes(1));
+    expect((view.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    expect(view.container.querySelector("img")?.getAttribute("loading")).toBe(
+      "lazy"
+    );
+    expect(view.container.querySelector("img")?.getAttribute("decoding")).toBe(
+      "async"
+    );
+    await act(async () => {
+      preparation.resolve();
+      await preparation.promise;
+    });
+    expect((view.getByRole("button") as HTMLButtonElement).disabled).toBe(
+      false
+    );
+  }
+);
+
+test("an unmounted result's preparation cannot unlock the newer pick", async () => {
+  const first = Promise.withResolvers<void>();
+  const second = Promise.withResolvers<void>();
+  const onLoad = mock(() => first.promise)
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementationOnce(() => second.promise);
+  const [original] = SEARCH_RESULTS;
+  if (!original) {
+    throw new Error("Missing search fixture");
+  }
+  const firstResult = { ...original, radio: ABANDONED_RADIO };
+  const secondResult = { ...NEXT_RESULT, radio: NEXT_RADIO };
+  const view = render(
+    <SearchResults error={null} onLoad={onLoad} results={[firstResult]} />,
+    { wrapper: QueryProvider }
+  );
+  fireEvent.click(view.getByRole("button"));
+  view.rerender(
+    <SearchResults error={null} onLoad={onLoad} results={[secondResult]} />
+  );
+  fireEvent.click(view.getByRole("button"));
+  expect(onLoad).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    first.resolve();
+    await first.promise;
+  });
+  expect((view.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => {
+    second.resolve();
+    await second.promise;
+  });
+  expect((view.getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+});

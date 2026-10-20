@@ -33,7 +33,9 @@ for (const [key, value] of Object.entries({
   });
 }
 
-const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
 const { LazyBoundary, lazyWithRetry } = await import("./lazy-recovery");
 
 let captureError: ReturnType<typeof spyOn<typeof errorSdk, "captureError">>;
@@ -138,10 +140,22 @@ describe("LazyBoundary", () => {
       </LazyBoundary>
     );
     const retry = await view.findByRole("button", { name: "Retry" });
+    expect(view.getByRole("alert").textContent).toBe(
+      "Couldn't load the station form."
+    );
 
-    // React caches the rejection; a second failure stays contained too.
+    // React caches the rejection; a second failure stays contained too, and
+    // points to Reload since the browser may keep the failed fetch.
     fireEvent.click(retry);
-    fireEvent.click(await view.findByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toBe(
+        "Couldn't load the station form, even after retrying."
+      )
+    );
+    expect(
+      view.getByText("Reload to try again. Reloading stops playback.")
+    ).toBeDefined();
+    fireEvent.click(view.getByRole("button", { name: "Retry" }));
     await view.findByRole("alert");
     expect(load).toHaveBeenCalledTimes(3);
 

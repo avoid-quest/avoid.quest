@@ -18,11 +18,14 @@ import { createPortal } from "react-dom";
 export class LazyLoadError extends Error {
   /** Lets the next render import the chunk again. */
   readonly reset: () => void;
+  /** A retry failed too, so only a reload is likely to help. */
+  readonly retried: boolean;
 
-  constructor(cause: unknown, reset: () => void) {
+  constructor(cause: unknown, reset: () => void, retried: boolean) {
     super("A lazy chunk failed to load", { cause });
     this.name = "LazyLoadError";
     this.reset = reset;
+    this.retried = retried;
   }
 }
 
@@ -30,20 +33,36 @@ export class LazyLoadError extends Error {
  * `React.lazy` caches a rejected import, so a retry needs a fresh lazy type.
  * The fresh one is created only when `LazyBoundary` retries: React re-renders
  * once after an error, and swapping earlier would import again on its own.
+ *
+ * Some browsers keep a failed module fetch in their module map, so importing
+ * the same URL again fails at once (HTML allowed refetching only in 2026, and
+ * Safari still lags). After a failed retry, the fallback points to Reload.
  */
 // biome-ignore lint/suspicious/noExplicitAny: matches React.lazy's own signature.
 export function lazyWithRetry<T extends ComponentType<any>>(
   load: () => Promise<{ default: T }>
 ) {
+  let failures = 0;
   const create = (): LazyExoticComponent<T> => {
     const instance = lazy(() =>
-      load().catch((error: unknown) => {
-        throw new LazyLoadError(error, () => {
-          if (current === instance) {
-            current = create();
-          }
-        });
-      })
+      load().then(
+        (module) => {
+          failures = 0;
+          return module;
+        },
+        (error: unknown) => {
+          failures += 1;
+          throw new LazyLoadError(
+            error,
+            () => {
+              if (current === instance) {
+                current = create();
+              }
+            },
+            failures > 1
+          );
+        }
+      )
     );
     return instance;
   };
@@ -61,6 +80,8 @@ type LoadFailedProps = {
   /** What failed, in a sentence: "Couldn't load {label}." */
   label: string;
   onRetry: () => void;
+  /** A retry failed too; the message points to Reload instead. */
+  retried?: boolean;
   variant?: LoadFailedVariant;
   className?: string;
 };
@@ -71,11 +92,17 @@ const reload = () => window.location.reload();
 export function LoadFailed({
   label,
   onRetry,
+  retried = false,
   variant = "panel",
   className,
 }: LoadFailedProps) {
   const popoverId = useId();
-  const message = `Couldn't load ${label}.`;
+  const message = retried
+    ? `Couldn't load ${label}, even after retrying.`
+    : `Couldn't load ${label}.`;
+  const hint = retried
+    ? "Reload to try again. Reloading stops playback."
+    : "Check your connection, then retry. Reloading stops playback.";
 
   if (variant === "icon") {
     // A native popover opens centred in the top layer with no positioning
@@ -103,9 +130,7 @@ export function LoadFailed({
             popover="auto"
           >
             <p className="mb-1 font-medium">{message}</p>
-            <p className="mb-3 text-muted-foreground text-xs">
-              Check your connection, then retry. Reloading stops playback.
-            </p>
+            <p className="mb-3 text-muted-foreground text-xs">{hint}</p>
             <div className="flex justify-end gap-2">
               <Button onClick={reload} size="sm" type="button" variant="ghost">
                 Reload
@@ -165,9 +190,7 @@ export function LoadFailed({
         <p className="font-medium" role="alert">
           {message}
         </p>
-        <p className="text-muted-foreground text-xs">
-          Check your connection, then retry. Reloading stops playback.
-        </p>
+        <p className="text-muted-foreground text-xs">{hint}</p>
       </div>
       <div className="flex gap-2">
         <Button onClick={reload} size="sm" type="button" variant="outline">
@@ -236,6 +259,7 @@ export class LazyBoundary extends Component<
         className={className}
         label={label}
         onRetry={this.retry}
+        retried={error.retried}
         variant={variant}
       />
     );

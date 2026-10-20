@@ -1,0 +1,21 @@
+apps/radio/src/components/settings/settings-button.test.tsx
+  s_db2676bf9b5672::t_041e12b331e464 63-112,181
+apps/radio/src/components/settings/settings-button.tsx
+  s_db2676bf9b5672::t_041e12b331e464 11,43-58,70-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd547e9731e178330dfba99be35298b83666b312",
+  "prompts": {},
+  "sessions": {
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

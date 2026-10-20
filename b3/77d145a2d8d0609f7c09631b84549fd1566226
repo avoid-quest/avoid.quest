@@ -1,0 +1,84 @@
+apps/radio/src/lib/single-playback.ts
+  s_a90d7241c06944::t_cfb17476cb2d79 536
+  s_a90d7241c06944::t_e5b0f8f298eb43 21
+apps/radio/src/lib/db/export-import.ts
+  s_a90d7241c06944::t_a83f233e0fd307 417
+  s_a90d7241c06944::t_af040675ddd29e 21
+apps/radio/src/components/radio/dj/deck/deck-panel.tsx
+  s_a90d7241c06944::t_20669fa998c95a 16,149
+apps/radio/src/lib/hooks/use-dj-session.ts
+  s_a90d7241c06944::t_24d25b5e74db35 52-57
+  s_a90d7241c06944::t_20669fa998c95a 1,3-4,9-17,19-27,29-41,43-44,46-49,59,63-70
+  s_a90d7241c06944::t_9c4bdb7af29f4c 18,42,45,50-51,58,60-62
+apps/radio/src/lib/dj-deck.test.ts
+  s_a90d7241c06944::t_cfb17476cb2d79 2-7,9,37,55,2627-2630
+  s_a90d7241c06944::t_d5590f1439c9f1 1,8
+apps/radio/src/lib/collections/node-session-persistence.test.ts
+  s_a90d7241c06944::t_5a60590644c929 75-77,79-84
+  s_a90d7241c06944::t_55ba49691e5ee1 101
+  s_a90d7241c06944::t_dd7078cd78b92c 37,74,105,130-132,134-217,232,236,239,244,249,252,255,257,267,271,274,279,282-283
+  s_a90d7241c06944::t_0ba57fceb15969 23-28,34-36,73,78,85-100,102-104,106-129,133,218-231,233-235,237-238,240-243,245-248,250-251,253-254,256,258-266,268-270,272-273,275-278,280-281,284,309-313,329-330,342,355,365
+apps/radio/src/lib/dj-deck.ts
+  s_a90d7241c06944::t_cfb17476cb2d79 1774
+  s_a90d7241c06944::t_7636ec01b508d6 33-36,1651-1688,1703,1708,1713,1718,1723,1728
+apps/radio/src/lib/hooks/use-node-session.ts
+  s_a90d7241c06944::t_2d26d7f8f062b7 31,33,35-42,49,89-121,132
+  s_a90d7241c06944::t_595fac999d8bc2 3,7,27,122-131
+apps/radio/src/lib/collections/playback-sessions.ts
+  s_a90d7241c06944::t_cfb17476cb2d79 1018-1019,1021-1023,1040
+  s_a90d7241c06944::t_59c29e1d15ba73 715-725,731,773-775,777
+  s_a90d7241c06944::t_dc8fc9672e4c9a 45
+apps/radio/src/lib/collections/node-session-persistence.ts
+  s_a90d7241c06944::t_cfb17476cb2d79 34
+  s_a90d7241c06944::t_2d26d7f8f062b7 4,78
+  s_a90d7241c06944::t_59c29e1d15ba73 6,12-13,15,23-28,33,35-37,46,48-51,53-58,61,68-73,76-77,79-80,94-138
+  s_a90d7241c06944::t_75dc25ca605363 52,62-67,74-75
+apps/radio/src/lib/collections/playback-sessions.test.ts
+  s_a90d7241c06944::t_33a711f472bc0b 18,1720-1723,1725-1742
+  s_a90d7241c06944::t_5a60590644c929 1724
+  s_a90d7241c06944::t_04483785563b65 1743
+apps/radio/src/components/radio/node/node-master.tsx
+  s_a90d7241c06944::t_2d26d7f8f062b7 11,58
+apps/radio/src/lib/channel-state-manager.ts
+  s_a90d7241c06944::t_20669fa998c95a 171-172,183-194,197-198,200,268,412
+  s_a90d7241c06944::t_74fc47887c2c02 23-27
+apps/radio/src/lib/channel-effects.test.ts
+  s_a90d7241c06944::t_cfb17476cb2d79 1,13,16,397-400
+apps/radio/src/lib/dj-actions.ts
+  s_a90d7241c06944::t_20669fa998c95a 113-116,182-187,192-197
+  s_a90d7241c06944::t_3cce565a6a3671 110-112
+apps/radio/src/lib/node-playback.ts
+  s_a90d7241c06944::t_20669fa998c95a 528-535
+apps/radio/src/components/radio/dj/dj-player.tsx
+  s_a90d7241c06944::t_20669fa998c95a 10,35-36
+apps/radio/src/components/radio/node/node-stage.tsx
+  s_a90d7241c06944::t_2d26d7f8f062b7 1-4,27-28
+apps/radio/src/lib/hooks/use-dj-state.ts
+  s_a90d7241c06944::t_20669fa998c95a 1,4,12,46-48,69-71,75-77,81-98,134-137,144,148-160
+  s_a90d7241c06944::t_b588cb9cfd39e3 13
+apps/radio/src/lib/hooks/use-node-session.test.tsx
+  s_a90d7241c06944::t_24d25b5e74db35 12
+  s_a90d7241c06944::t_1a42acc5a6834b 261-382
+apps/radio/src/components/radio/node/index.tsx
+  s_a90d7241c06944::t_c9741f6e7ae253 16,64
+apps/radio/src/lib/channel-effects.ts
+  s_a90d7241c06944::t_a9856bf0e0b3a3 15,201-233,235-251,253,255-259,261-276,279-288,290-291
+apps/radio/src/lib/managed-playback-internals.ts
+  s_a90d7241c06944::t_74a462271d3b85 20,222-232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b377d145a2d8d0609f7c09631b84549fd1566226",
+  "prompts": {},
+  "sessions": {
+    "s_a90d7241c06944": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157cc-5c67-7630-88e9-718c56c7deba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

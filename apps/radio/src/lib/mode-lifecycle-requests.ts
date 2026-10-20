@@ -1,10 +1,12 @@
 import { captureError } from "@avoid.quest/error";
+import { toast } from "sonner";
 import {
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,
 } from "@/lib/collections/playback-sessions";
 import { getSettings, type SettingsRecord } from "@/lib/collections/settings";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
+import { DjWorkflowLoadError } from "./dj-workflow-load-error";
 import {
   type ModeManager,
   type ModeTransitionSnapshot,
@@ -32,6 +34,32 @@ export function createModeLifecycleRequests({
   manager = modeManager,
   getCurrentSettings = getSettings,
 }: CreateModeLifecycleRequestsOptions = {}): ModeLifecycleRequests {
+  const reportedLoadFailures = new WeakSet<DjWorkflowLoadError>();
+  function reportFailure(
+    error: unknown,
+    mode: string,
+    operation: string
+  ): void {
+    if (error instanceof DjWorkflowLoadError) {
+      if (reportedLoadFailures.has(error)) {
+        return;
+      }
+      reportedLoadFailures.add(error);
+      toast.error("Couldn't load DJ mode", {
+        action: {
+          label: "Reload",
+          onClick: () => window.location.reload(),
+        },
+        description: "Reload to try DJ mode again. Reloading stops playback.",
+        dismissible: false,
+        duration: Number.POSITIVE_INFINITY,
+        id: "dj-mode-load",
+      });
+    }
+    if (!isPlaybackActionError(error)) {
+      captureError(error, { operation, surface: "ui", tags: { mode } });
+    }
+  }
   return {
     getTransitionSnapshot: manager.getSnapshot,
     async requestMode(value: string) {
@@ -47,13 +75,7 @@ export function createModeLifecycleRequests({
       try {
         await manager.switchTo(value);
       } catch (error) {
-        if (!isPlaybackActionError(error)) {
-          captureError(error, {
-            operation: "requestMode",
-            surface: "ui",
-            tags: { mode: value },
-          });
-        }
+        reportFailure(error, value, "requestMode");
         throw error;
       }
     },
@@ -82,13 +104,7 @@ export function createModeLifecycleRequests({
 
         return await manager.switchTo(mode, { commit: false });
       } catch (error) {
-        if (!isPlaybackActionError(error)) {
-          captureError(error, {
-            operation: "synchronizeMode",
-            surface: "ui",
-            tags: { mode },
-          });
-        }
+        reportFailure(error, mode, "synchronizeMode");
         throw error;
       }
     },

@@ -11,6 +11,7 @@ import {
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
 import type { DjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
+import { DjWorkflowLoadError } from "./dj-workflow-load-error";
 import { isPlaybackActionError } from "./playback-action-errors";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
@@ -18,6 +19,8 @@ import { getSinglePlayback } from "./single-playback.js";
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
 export type ModeLifecycle = {
+  /** Load code before stopping the current mode; must not change playback. */
+  prepare?: () => Promise<void>;
   activate: () => Promise<void>;
   deactivate: () => Promise<void>;
   getPhase: () => ModePhase;
@@ -154,18 +157,16 @@ export function createModeLifecycleRegistry({
   PlaybackSessionId,
   ModeLifecycle
 > {
-  // Keep one workflow per registry, including while its module is loading.
-  let djWorkflow: Promise<DjModeLifecycleWorkflow> | undefined;
+  let djWorkflow: DjModeLifecycleWorkflow | undefined;
+  let djModule: ReturnType<typeof loadDjWorkflow> | undefined;
   const loadDj = () => {
-    djWorkflow ??= loadDjWorkflow()
-      .then(({ createDjModeLifecycleWorkflow }) =>
-        createDjModeLifecycleWorkflow({ ctx, fadeOutDurationMs, fadeOutSound })
-      )
-      .catch((error: unknown) => {
-        djWorkflow = undefined;
-        throw error;
-      });
-    return djWorkflow;
+    // Retain failures too: retrying a fixed URL cannot reliably recover the
+    // module graph across browsers or deployments. Only an explicit reload
+    // starts over. Vite's preload helper rethrows into this catch.
+    djModule ??= loadDjWorkflow().catch((error: unknown) => {
+      throw new DjWorkflowLoadError(error);
+    });
+    return djModule;
   };
   const single = getSinglePlayback({
     ctx,
@@ -179,10 +180,26 @@ export function createModeLifecycleRegistry({
       fadeOutSound,
     });
   return {
-    dj: createLifecycle(
-      async () => (await loadDj()).activate(),
-      async () => (await loadDj()).deactivate()
-    ),
+    dj: {
+      ...createLifecycle(
+        async () => {
+          const { createDjModeLifecycleWorkflow } = await loadDj();
+          djWorkflow ??= createDjModeLifecycleWorkflow({
+            ctx,
+            fadeOutDurationMs,
+            fadeOutSound,
+          });
+          await djWorkflow.activate();
+        },
+        async () => {
+          // Rollback must never fetch code for a workflow that never existed.
+          await djWorkflow?.deactivate();
+        }
+      ),
+      async prepare() {
+        await loadDj();
+      },
+    },
     node: createLifecycle(
       async () => (await loadNode()).activate(),
       async () => (await loadNode()).deactivate()
@@ -275,9 +292,13 @@ export function createModeManager({
     const previousMode = snapshot.currentMode;
     let activatedNextMode = false;
     let nextModeActivationStarted = false;
-    emit({ error: null, phase: "deactivating", requestedMode: nextMode });
+    let preparationCompleted = false;
+    emit({ error: null, phase: "activating", requestedMode: nextMode });
 
     try {
+      await lifecycles[nextMode].prepare?.();
+      preparationCompleted = true;
+      emit({ phase: "deactivating" });
       if (previousMode) {
         await lifecycles[previousMode].deactivate();
       }
@@ -298,6 +319,14 @@ export function createModeManager({
       });
     } catch (error) {
       const message = getUserFacingErrorMessage(error);
+      if (!preparationCompleted) {
+        emit({
+          error: message,
+          phase: previousMode ? "active" : "inactive",
+          requestedMode: null,
+        });
+        throw error;
+      }
       await rollbackModeSwitch(
         previousMode,
         activatedNextMode || nextModeActivationStarted ? nextMode : null

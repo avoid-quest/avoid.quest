@@ -131,6 +131,25 @@ if (scenario) {
         });
         expect(loadDjWorkflow).toHaveBeenCalledTimes(1);
         expect(notices).toHaveBeenCalledTimes(1);
+
+        // Choosing another mode renders that mode while it starts, not the
+        // stored DJ renderer whose lifecycle failed.
+        const activation = Promise.withResolvers<undefined>();
+        single.activate.mockImplementation(() => activation.promise);
+        fireEvent.click(view.getByRole("radio", { name: "Single" }));
+        await waitFor(() =>
+          expect(manager.getSnapshot()).toMatchObject({
+            currentMode: null,
+            requestedMode: "single",
+          })
+        );
+        expect(await view.findByText("Single player")).toBeDefined();
+        expect(view.queryByText("DJ player")).toBeNull();
+        activation.resolve(undefined);
+        await waitFor(() =>
+          expect(manager.getSnapshot().currentMode).toBe("single")
+        );
+        expect(view.queryByText("DJ player")).toBeNull();
         return;
       }
       const player = await view.findByText("Single player");

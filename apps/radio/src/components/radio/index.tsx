@@ -46,8 +46,11 @@ export function Radios() {
   const radiosQuery = useEnabledRadios();
   const { mode, isReady, hasSettings } = usePlayerModeState();
   const transition = useModeTransitionSnapshot();
-  // Another tab can change settings before this tab can load that mode.
-  const runningMode = transition.currentMode ?? mode;
+  // Another tab can change settings before this tab can load that mode. With
+  // no lifecycle active, e.g. after DJ failed to start, render the mode being
+  // started rather than the stored one.
+  const runningMode =
+    transition.currentMode ?? transition.requestedMode ?? mode;
 
   useEffect(() => {
     if (!hasSettings) {

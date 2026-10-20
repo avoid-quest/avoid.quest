@@ -1,0 +1,19 @@
+apps/radio/src/components/settings/sync-dialog.test.tsx
+  s_7ab7dab08b29ae::t_fae36ea007aecb 61-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ae0d4535c9f6eecc8fb3ebebb204d5e0850ed56",
+  "prompts": {},
+  "sessions": {
+    "s_7ab7dab08b29ae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ad6-e627-7ca1-92cc-2ed2250f1d18",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

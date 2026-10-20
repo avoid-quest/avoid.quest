@@ -1,0 +1,33 @@
+apps/radio/src/lib/collections/radios.test.ts
+  s_0cc92833dbb662::t_452b6f398e0e0e 146-179
+apps/radio/src/lib/collections/radios.ts
+  s_7ab7dab08b29ae::t_e795dc8cf27da6 138,142,145,153-157,162,165-167,171-191
+apps/radio/src/lib/collections/settings.test.ts
+  s_0cc92833dbb662::t_aa07b9670aa0eb 189-256
+apps/radio/src/lib/collections/settings.ts
+  s_0cc92833dbb662::t_241fdd33b75df6 8-9,60-125,135-136,158,169-175,177,183-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77a31641156c1945660212f23407e4105462f91b",
+  "prompts": {},
+  "sessions": {
+    "s_0cc92833dbb662": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15907-5d14-7803-9411-7c19c808b43f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_7ab7dab08b29ae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ad6-e627-7ca1-92cc-2ed2250f1d18",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+apps/radio/src/components/radio/dj/deck/deck-panel.test.tsx
+  s_c0f40a5372576e::t_b720c7ffaeaa23 2,28,65,79,87,95-106,232
+apps/radio/src/components/settings/midi-settings.test.tsx
+  s_c0f40a5372576e::t_c3db548779fbee 1-10,13-14,25-26,33,38-40,43-52,54-55,65-74,81-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afe41729fb9e863b4fd8e67dc4a7a8b930e68cf8",
+  "prompts": {},
+  "sessions": {
+    "s_c0f40a5372576e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15af6-30b3-7343-be8d-0457681f5e61",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

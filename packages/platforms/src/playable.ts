@@ -1,11 +1,12 @@
 import { getBandcampItem } from "./bandcamp/index.js";
 import {
-  detectPlatformFromUrl,
+  detectPlayablePlatformFromUrl,
   needsResolution,
   normalizeBandcampUrl,
   normalizeMixcloudUrl,
   normalizeSoundCloudUrl,
   normalizeSpotifyUrl,
+  type PlayablePlatform,
 } from "./detect.js";
 import { getMixcloudItem } from "./mixcloud/index.js";
 import { extractChannelId } from "./radiogarden/detect.js";
@@ -14,11 +15,14 @@ import { getSoundCloudItem, resolveShortLink } from "./soundcloud/index.js";
 import { needsSpotifyResolution } from "./spotify/detect.js";
 import { getSpotifyItem, resolveSpotifyShortLink } from "./spotify/index.js";
 import type { SpotifyYouTubeSource } from "./spotify/types.js";
-import { getFilenameFromUrl, isStaticAudioUrl } from "./static-audio.js";
+import { getFilenameFromUrl } from "./static-audio/detect.js";
 import type { Platform, PlatformMetadata, PlatformTrack } from "./types.js";
 import { getYouTubeItem, type InvidiousOptions } from "./youtube/index.js";
 
-export type PlayablePlatform = Platform | "static-audio";
+export {
+  detectPlayablePlatformFromUrl,
+  type PlayablePlatform,
+} from "./detect.js";
 
 export type StaticAudioItemResolver<TMetadata> = (
   url: string
@@ -388,21 +392,6 @@ export async function normalizePlayablePlatformUrl(
   normalized = normalizeMixcloudUrl(normalized);
   normalized = normalizeSpotifyUrl(normalized);
   return normalizeBandcampUrl(normalized);
-}
-
-export function detectPlayablePlatformFromUrl(
-  url: string
-): PlayablePlatform | null {
-  const external = detectPlatformFromUrl(url);
-  if (external) {
-    return external;
-  }
-
-  if (url && isStaticAudioUrl(url)) {
-    return "static-audio";
-  }
-
-  return null;
 }
 
 export function toPlayableSources(

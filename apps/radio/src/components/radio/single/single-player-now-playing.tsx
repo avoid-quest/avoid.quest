@@ -12,6 +12,7 @@ type SharedPanelProps = {
   radio: Radio | null;
   isPlaying: boolean;
   isLoading: boolean;
+  isBuffering?: boolean;
   error: string | null;
   volume: number;
   isMuted: boolean;
@@ -46,6 +47,7 @@ function PlayerPanel({
   radio,
   isPlaying,
   isLoading,
+  isBuffering = false,
   error,
   volume,
   isMuted,
@@ -64,9 +66,13 @@ function PlayerPanel({
     );
   }
 
+  const transportTitle =
+    isPlaying || isBuffering ? "Pause (Space)" : "Play (Space)";
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-5">
       <RadioNowPlaying
+        announce={false}
+        isBuffering={isBuffering}
         isLoading={isLoading}
         metadata={metadata}
         radio={radio}
@@ -77,13 +83,14 @@ function PlayerPanel({
 
       <div className="flex items-center gap-3 border-border/50 border-t pt-3 sm:gap-4 sm:pt-4">
         <PlayPauseButton
+          allowCancelWhileLoading
           className="size-12 shrink-0"
           iconClassName="size-5"
           isLoading={isLoading}
-          isPlaying={isPlaying}
+          isPlaying={isPlaying || isBuffering}
           onClick={onPlayPause}
           size="sm"
-          title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+          title={isLoading ? "Cancel connection (Space)" : transportTitle}
           variant={isPlaying && !isLoading ? "outline" : "default"}
         />
         <VolumeControl

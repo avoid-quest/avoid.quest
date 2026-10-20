@@ -455,7 +455,9 @@ describe("RadioNowPlaying", () => {
     const view = render(<RadioNowPlaying radio={radio} />);
     expect(view.getByRole("heading", { name: "Example Radio" })).toBeTruthy();
     expect(view.queryByText("Ready")).toBeNull();
-    expect(view.getAllByText("Example Radio")).toHaveLength(1);
+    expect(
+      view.getAllByRole("heading", { name: "Example Radio" })
+    ).toHaveLength(1);
     expect(view.container.querySelector("section p")).toBeNull();
     expect(view.queryByRole("link")).toBeNull();
     fireEvent.click(
@@ -748,4 +750,257 @@ describe("RadioNowPlaying", () => {
     );
     expect(view.getByText("Current show description.")).toBeTruthy();
   });
+});
+
+test("offscreen previews retain cached metadata, stop scheduled refreshes, and refresh stale data on re-entry", async () => {
+  const client = new QueryClient();
+  const originalFetch = globalThis.fetch;
+  const requests: RequestInit[] = [];
+  globalThis.fetch = Object.assign(
+    (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests.push(init ?? {});
+      return Promise.resolve(
+        Response.json({ data: metadata, ok: true, refreshAfterMs: 0 })
+      );
+    },
+    { preconnect: originalFetch.preconnect }
+  );
+  try {
+    const view = renderHook(
+      ({ visible }) =>
+        useRadioMetadata({ enabled: true, poll: false, radio, visible }),
+      {
+        initialProps: { visible: true },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      }
+    );
+    await waitFor(() => expect(view.result.current.metadata).toBeTruthy());
+    expect(requests).toHaveLength(1);
+    view.rerender({ visible: false });
+    expect(view.result.current.metadata).toEqual(metadata);
+    const [query] = client.getQueryCache().getAll();
+    const observer = query?.observers[0];
+    if (!(observer && query)) {
+      throw new Error("Missing preview observer");
+    }
+    const interval = observer.options.refetchInterval;
+    expect(typeof interval === "function" ? interval(query) : interval).toBe(
+      false
+    );
+    await act(async () => {
+      await client.invalidateQueries({ refetchType: "none" });
+    });
+    expect(requests).toHaveLength(1);
+    view.rerender({ visible: true });
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[0]?.signal).toBeInstanceOf(AbortSignal);
+    view.unmount();
+  } finally {
+    globalThis.fetch = originalFetch;
+    client.clear();
+  }
+});
+
+test("unmounting a metadata request aborts its network signal", async () => {
+  const originalFetch = globalThis.fetch;
+  let signal: AbortSignal | null | undefined;
+  const client = new QueryClient();
+  globalThis.fetch = Object.assign(
+    (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      signal = init?.signal;
+      return new Promise<Response>((_resolve, reject) =>
+        signal?.addEventListener("abort", () => reject(signal?.reason), {
+          once: true,
+        })
+      );
+    },
+    { preconnect: originalFetch.preconnect }
+  );
+  try {
+    const view = renderHook(() => useRadioMetadata({ poll: true, radio }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(signal).toBeDefined());
+    view.unmount();
+    expect(signal?.aborted).toBe(true);
+    expect(client.getQueryCache().getAll()[0]?.state.error).toBeNull();
+  } finally {
+    globalThis.fetch = originalFetch;
+    client.clear();
+  }
+});
+
+test("now-playing announcements ignore metadata-only polls and announce identity changes", () => {
+  const view = render(<RadioNowPlaying metadata={metadata} radio={radio} />);
+  const live = view.container.querySelector('[aria-live="polite"]');
+  expect(live?.getAttribute("aria-atomic")).toBe("true");
+  expect(live?.textContent).toBe("Example Radio — Current Show — Host Name");
+  expect(live?.querySelector("a, img")).toBeNull();
+  const observer = new MutationObserver(() => undefined);
+  if (!live) {
+    throw new Error("Missing announcement");
+  }
+  observer.observe(live, {
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
+  view.rerender(
+    <RadioNowPlaying
+      metadata={{ ...metadata, sampledAt: metadata.sampledAt + 1 }}
+      radio={radio}
+    />
+  );
+  expect(observer.takeRecords()).toHaveLength(0);
+  view.rerender(
+    <RadioNowPlaying
+      metadata={{ ...metadata, title: "Next Show" }}
+      radio={radio}
+    />
+  );
+  expect(live.textContent).toContain("Next Show");
+  observer.disconnect();
+});
+
+test("Single shows buffering distinctly and its connecting transport remains cancellable", async () => {
+  let clicks = 0;
+  const props = {
+    error: null,
+    isMuted: false,
+    isPlaying: true,
+    onMuteToggle: noop,
+    onPlayPause: () => {
+      clicks += 1;
+    },
+    onVolumeChange: noop,
+    radio,
+    volume: 1,
+  };
+  const view = render(<NowPlayingPanel {...props} isLoading={true} />);
+  const cancel = view.getByRole("button", { name: "Cancel" });
+  expect(cancel.getAttribute("aria-disabled")).toBeNull();
+  fireEvent.click(cancel);
+  expect(clicks).toBe(1);
+  view.rerender(
+    <NowPlayingPanel
+      {...props}
+      isBuffering={true}
+      isLoading={false}
+      isPlaying={false}
+    />
+  );
+  expect(view.getByRole("status").textContent).toBe("Buffering…");
+  fireEvent.click(view.getByRole("button", { name: "Pause" }));
+  expect(clicks).toBe(2);
+  expect(view.container.querySelector('[aria-live="polite"]')).toBeNull();
+  const { PlayPauseButton } = await import(
+    "@avoid.quest/ui/components/play-pause-button"
+  );
+  view.rerender(
+    <PlayPauseButton isLoading isPlaying={false} onClick={props.onPlayPause} />
+  );
+  fireEvent.click(view.getByRole("button", { name: "Loading" }));
+  expect(clicks).toBe(2);
+});
+
+test("logo and editable audio previews recover when their failed URLs are corrected", async () => {
+  const { RadioLogo } = await import("./radio-logo");
+  const { RadioFieldPreview } = await import("../settings/radio-field-preview");
+  const view = render(
+    <RadioLogo
+      loading="lazy"
+      logoUrl="https://radio.example/broken.png"
+      name="Test"
+    />
+  );
+  const logo = view.getByRole("img", { name: "Test logo" });
+  expect(logo.getAttribute("loading")).toBe("lazy");
+  expect(logo.getAttribute("decoding")).toBe("async");
+  fireEvent.error(logo);
+  expect(view.queryByRole("img", { name: "Test logo" })).toBeNull();
+  view.rerender(
+    <RadioLogo logoUrl="https://radio.example/fixed.png" name="Test" />
+  );
+  expect(view.getByRole("img", { name: "Test logo" }).getAttribute("src")).toBe(
+    "https://radio.example/fixed.png"
+  );
+  expect(
+    view.getByRole("img", { name: "Test logo" }).getAttribute("loading")
+  ).toBe("eager");
+  view.rerender(
+    <RadioFieldPreview
+      field="streamUrl"
+      radioName="Test"
+      value="https://radio.example/broken.mp3"
+    />
+  );
+  const audio = view.container.querySelector("audio");
+  if (!audio) {
+    throw new Error("Missing audio preview");
+  }
+  fireEvent.error(audio);
+  expect(view.getByText("Couldn't load")).toBeTruthy();
+  view.rerender(
+    <RadioFieldPreview
+      field="streamUrl"
+      radioName="Test"
+      value="https://radio.example/typing"
+    />
+  );
+  expect(view.container.querySelector("audio")).toBeNull();
+  view.rerender(
+    <RadioFieldPreview
+      field="streamUrl"
+      radioName="Test"
+      value="https://radio.example/fixed.mp3"
+    />
+  );
+  await waitFor(() =>
+    expect(view.container.querySelector("audio")?.getAttribute("src")).toBe(
+      "https://radio.example/fixed.mp3"
+    )
+  );
+});
+
+test("viewport tracking keeps the entry latch while reporting current visibility", async () => {
+  const { useHasEnteredViewport } = await import(
+    "@/lib/hooks/use-has-entered-viewport"
+  );
+  const original = globalThis.IntersectionObserver;
+  let notify:
+    | ((entries: Pick<IntersectionObserverEntry, "isIntersecting">[]) => void)
+    | undefined;
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: class {
+      constructor(callback: typeof notify) {
+        notify = callback;
+      }
+      observe() {
+        /* JSDOM has no layout. */
+      }
+      disconnect() {
+        /* Nothing to release in this stub. */
+      }
+    },
+    writable: true,
+  });
+  try {
+    const view = renderHook(() => useHasEnteredViewport<HTMLDivElement>());
+    act(() => view.result.current.elementRef(document.createElement("div")));
+    expect(view.result.current.hasEnteredViewport).toBe(false);
+    act(() => notify?.([{ isIntersecting: true }]));
+    expect(view.result.current.hasEnteredViewport).toBe(true);
+    expect(view.result.current.isVisible).toBe(true);
+    act(() => notify?.([{ isIntersecting: false }]));
+    expect(view.result.current.hasEnteredViewport).toBe(true);
+    expect(view.result.current.isVisible).toBe(false);
+    view.unmount();
+  } finally {
+    globalThis.IntersectionObserver = original;
+  }
 });

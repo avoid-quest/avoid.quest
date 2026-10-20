@@ -9,6 +9,8 @@ import { PauseIcon, PlayIcon } from "lucide-react";
 type PlayPauseButtonProps = {
   isPlaying: boolean;
   isLoading?: boolean;
+  /** Allow the transport to cancel a pending connection. */
+  allowCancelWhileLoading?: boolean;
   disabled?: boolean;
   onClick: () => void;
   size?: "sm" | "default" | "lg" | "icon";
@@ -43,6 +45,7 @@ type PlayPauseButtonProps = {
 export function PlayPauseButton({
   isPlaying,
   isLoading = false,
+  allowCancelWhileLoading = false,
   disabled = false,
   onClick,
   size = "lg",
@@ -58,10 +61,10 @@ export function PlayPauseButton({
   const playPauseLabel = [isPlaying ? "Pause" : "Play", label]
     .filter(Boolean)
     .join(" ");
-  // While loading the button stays focusable (aria-disabled, clicks ignored),
-  // so keyboard focus isn't dropped to the page.
+  // Loading stays focusable while ignoring clicks, unless the transport
+  // opts into cancelling its pending connection.
   const handleClick = () => {
-    if (!(isLoading || disabled)) {
+    if (!disabled && (!isLoading || allowCancelWhileLoading)) {
       onClick();
     }
   };
@@ -78,12 +81,13 @@ export function PlayPauseButton({
     return <PlayIcon className={cn("size-8", iconClassName)} />;
   };
 
+  const loadingLabel = allowCancelWhileLoading ? "Cancel" : "Loading";
   const button = (
     <Button
-      aria-disabled={isLoading || undefined}
+      aria-disabled={(isLoading && !allowCancelWhileLoading) || undefined}
       aria-label={
         isLoading
-          ? ["Loading", label].filter(Boolean).join(" ")
+          ? [loadingLabel, label].filter(Boolean).join(" ")
           : playPauseLabel
       }
       className={cn(

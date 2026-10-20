@@ -1,11 +1,10 @@
-import { useLiveQuery } from "@tanstack/react-db";
+import { useRef, useSyncExternalStore } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   addSessionRadio,
   getSessionRadios,
   removeSessionRadio,
   sessionRadiosCollection,
-  toSessionRadio,
 } from "@/lib/collections/session-radios";
 
 export {
@@ -32,27 +31,62 @@ function buildSessionRadiosState(radios: Radio[]): SessionRadiosState {
   };
 }
 
+export const sessionRadioActions = {
+  addSessionRadio,
+  getSessionRadios,
+  removeSessionRadio,
+};
+
+let cachedState = buildSessionRadiosState([]);
+function getSnapshot(): SessionRadiosState {
+  const radios = getSessionRadios();
+  if (
+    radios.length !== cachedState.radios.length ||
+    radios.some((radio, index) => radio !== cachedState.radios[index])
+  ) {
+    cachedState = buildSessionRadiosState(radios);
+  }
+  return cachedState;
+}
+
+function subscribe(onChange: () => void) {
+  const subscription = sessionRadiosCollection.subscribeChanges(onChange);
+  return () => subscription.unsubscribe();
+}
+
 type UseSessionRadios = {
   (): SessionRadiosState;
-  <T>(selector: (state: SessionRadiosState) => T): T;
+  <T>(
+    selector: (state: SessionRadiosState) => T,
+    equal?: (a: T, b: T) => boolean
+  ): T;
   getState: () => SessionRadiosState;
 };
 
-const useSessionRadiosSelector = <T>(
-  selector?: (state: SessionRadiosState) => T
-): SessionRadiosState | T => {
-  const result = useLiveQuery((q) =>
-    q
-      .from({ radio: sessionRadiosCollection })
-      .orderBy(({ radio }) => radio.addedAt, "desc")
-  );
-  const state = buildSessionRadiosState(result.data.map(toSessionRadio));
-  return selector ? selector(state) : state;
-};
+function useSessionRadiosSelector<T = SessionRadiosState>(
+  selector?: (state: SessionRadiosState) => T,
+  equal: (
+    a: T | SessionRadiosState,
+    b: T | SessionRadiosState
+  ) => boolean = Object.is
+): SessionRadiosState | T {
+  const cached = useRef<{ value: T | SessionRadiosState } | null>(null);
+  const selectSnapshot = () => {
+    const state = getSnapshot();
+    const value = selector ? selector(state) : state;
+    if (!(cached.current && equal(cached.current.value, value))) {
+      cached.current = { value };
+    }
+    return cached.current.value;
+  };
+  return useSyncExternalStore(subscribe, selectSnapshot, selectSnapshot);
+}
+
+export function useSessionRadiosData() {
+  return useSessionRadiosSelector((state) => state.radios) as Radio[];
+}
 
 export const useSessionRadios = Object.assign(
   useSessionRadiosSelector as UseSessionRadios,
-  {
-    getState: () => buildSessionRadiosState(getSessionRadios()),
-  }
+  { getState: getSnapshot }
 );

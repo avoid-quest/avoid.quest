@@ -41,12 +41,13 @@ function StationRow({
   onToggle: (radio: Radio, enabled: boolean) => void;
 }) {
   const isSession = isSessionRadio(radio);
-  const { elementRef, hasEnteredViewport } =
+  const { elementRef, hasEnteredViewport, isVisible } =
     useHasEnteredViewport<HTMLDivElement>();
   const { metadata } = useRadioMetadata({
     enabled: hasEnteredViewport,
     poll: false,
     radio,
+    visible: isVisible,
   });
   const handleSelect = () => {
     if (isCurrent) {
@@ -60,6 +61,7 @@ function StationRow({
     <div
       className={cn(
         stationRowClassName,
+        "[contain-intrinsic-size:auto_40px] [content-visibility:auto] focus-within:[content-visibility:visible]",
         isCurrent && "bg-muted/40",
         isSession && "border-l-2 border-l-[#00d084]/40"
       )}
@@ -73,6 +75,7 @@ function StationRow({
       >
         <RadioLogo
           decorative
+          loading="lazy"
           logoUrl={radio.logoUrl}
           name={radio.name}
           size="md"

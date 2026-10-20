@@ -171,8 +171,15 @@ function toSessionRadioRecord(radio: Radio): SessionRadioRecord {
   };
 }
 
+const convertedRadios = new WeakMap<SessionRadioRecord, Radio>();
+
 export function toSessionRadio(record: SessionRadioRecord): Radio {
+  const cached = convertedRadios.get(record);
+  if (cached) {
+    return cached;
+  }
   const { addedAt: _addedAt, ...radio } = sessionRadioSchema.parse(record);
+  convertedRadios.set(record, radio);
   return radio;
 }
 

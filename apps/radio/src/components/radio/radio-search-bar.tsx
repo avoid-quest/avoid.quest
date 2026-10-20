@@ -54,27 +54,30 @@ function LinkRow({
   onSelect: () => void;
 }) {
   return (
-    <div
+    <tr
       aria-selected
       className={cn(stationRowClassName, "bg-muted/40")}
       id={id}
-      role="option"
       tabIndex={-1}
     >
-      <button
-        className={stationRowButtonClassName}
-        disabled={isLoading}
-        onClick={onSelect}
-        type="button"
-      >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
-          <LinkIcon className="size-3.5" />
-        </span>
-        <StationRowText title={isLoading ? "Loading link…" : "Play this link"}>
-          <StationRowSubtitle>{url}</StationRowSubtitle>
-        </StationRowText>
-      </button>
-    </div>
+      <td className="flex min-w-0 flex-1">
+        <button
+          className={stationRowButtonClassName}
+          disabled={isLoading}
+          onClick={onSelect}
+          type="button"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+            <LinkIcon className="size-3.5" />
+          </span>
+          <StationRowText
+            title={isLoading ? "Loading link…" : "Play this link"}
+          >
+            <StationRowSubtitle>{url}</StationRowSubtitle>
+          </StationRowText>
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -143,33 +146,35 @@ function SearchResultRow({
   }
 
   return (
-    <div
+    <tr
       aria-selected={isActive}
       className={cn(stationRowClassName, isActive && "bg-muted/40")}
       id={id}
-      role="option"
       tabIndex={-1}
       title={sourceLabel(result)}
     >
-      <button
-        aria-label={`Listen to ${result.name}`}
-        className={stationRowButtonClassName}
-        onClick={handleSelect}
-        type="button"
-      >
-        <RadioLogo
-          decorative
-          logoUrl={result.logoUrl}
-          name={result.name}
-          size="md"
-        />
-        <StationRowText title={result.name}>
-          <StationRowSubtitle>{details}</StationRowSubtitle>
-        </StationRowText>
-        <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
-      </button>
-      {action}
-    </div>
+      <td className="flex min-w-0 flex-1">
+        <button
+          aria-label={`Listen to ${result.name}`}
+          className={stationRowButtonClassName}
+          onClick={handleSelect}
+          type="button"
+        >
+          <RadioLogo
+            decorative
+            loading="lazy"
+            logoUrl={result.logoUrl}
+            name={result.name}
+            size="md"
+          />
+          <StationRowText title={result.name}>
+            <StationRowSubtitle>{details}</StationRowSubtitle>
+          </StationRowText>
+          <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
+        </button>
+      </td>
+      {action ? <td>{action}</td> : null}
+    </tr>
   );
 }
 
@@ -247,18 +252,22 @@ function PastedLinkList({
 }) {
   return (
     <>
-      <div
+      <table
+        aria-label="Station results"
         className="flex w-0 min-w-full flex-col p-1"
         id={listId}
-        role="listbox"
+        // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: grid popups can use native table semantics.
+        role="grid"
       >
-        <LinkRow
-          id={optionId}
-          isLoading={link.isLoading}
-          onSelect={link.submit}
-          url={link.url}
-        />
-      </div>
+        <tbody className="flex flex-col">
+          <LinkRow
+            id={optionId}
+            isLoading={link.isLoading}
+            onSelect={link.submit}
+            url={link.url}
+          />
+        </tbody>
+      </table>
       {link.error ? (
         <InlineError className="mx-2 mb-2">{link.error}</InlineError>
       ) : null}
@@ -285,6 +294,86 @@ function searchStatus(
   return `${resultCount} ${resultCount === 1 ? "station" : "stations"}`;
 }
 
+function isComposing(event: KeyboardEvent) {
+  return event.isComposing || event.keyCode === 229;
+}
+
+function searchEmptyLabel(isSearching: boolean, failed: boolean) {
+  if (isSearching) {
+    return "Checking station directories…";
+  }
+  return failed
+    ? "Couldn’t reach the station directory. Try again."
+    : "No stations found";
+}
+
+function DirectoryFailure({
+  visible,
+  hasResults,
+  retry,
+}: {
+  visible: boolean;
+  hasResults: boolean;
+  retry: () => void;
+}) {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 text-muted-foreground text-xs">
+      {hasResults ? <span>Couldn’t reach the station directory.</span> : null}
+      <Button onClick={retry} size="sm" variant="ghost">
+        Retry station search
+      </Button>
+    </div>
+  );
+}
+
+function SearchResults({
+  results,
+  listId,
+  resultIdPrefix,
+  activeIndex,
+  canSave,
+  onSave,
+  onSelect,
+}: {
+  results: UnifiedRadioSearchResult[];
+  listId: string;
+  resultIdPrefix: string;
+  activeIndex: number;
+  canSave: boolean;
+  onSave: (result: UnifiedRadioSearchResult) => void;
+  onSelect: (result: UnifiedRadioSearchResult) => void;
+}) {
+  if (results.length === 0) {
+    return null;
+  }
+  return (
+    <table
+      aria-label="Station results"
+      className="flex w-0 min-w-full flex-col p-1"
+      id={listId}
+      // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: grid popups can use native table semantics.
+      role="grid"
+    >
+      <tbody className="flex flex-col">
+        {results.map((result, index) => (
+          <SearchResultRow
+            canSave={canSave}
+            id={`${resultIdPrefix}-${index}`}
+            isActive={index === activeIndex}
+            key={result.key}
+            onSave={onSave}
+            onSelect={onSelect}
+            result={result}
+          />
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function RadioSearchBar({
   radios,
   onSelectDiscovered,
@@ -298,20 +387,26 @@ export function RadioSearchBar({
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   // The result Enter plays; arrow keys move it.
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const resultIdPrefix = useId();
   const listId = `${resultIdPrefix}-list`;
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pointerType = useRef("mouse");
   // Focus stays in the input, so typing again reopens the results.
   const resetSearch = () => {
     setIsOpen(false);
     setQuery("");
+    if (pointerType.current !== "touch") {
+      inputRef.current?.focus({ preventScroll: true });
+    }
   };
   const link = usePastedLink(query, onSubmitUrl, resetSearch);
   const pastedUrl = link.url;
-  const { isSearching, results } = useUnifiedRadioSearch(
+  const { isSearching, results, failedSources, retry } = useUnifiedRadioSearch(
     pastedUrl ? "" : query,
-    radios
+    radios,
+    isOpen && !pastedUrl
   );
 
   useEffect(() => {
@@ -350,16 +445,22 @@ export function RadioSearchBar({
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     link.cancel();
     setQuery(event.target.value);
-    setActiveIndex(0);
+    setActiveKey(null);
     setIsOpen(true);
   };
   const hasQuery = query.trim().length > 0;
   const showDropdown = isOpen && hasQuery;
   const lastIndex = results.length - 1;
-  const clampedActiveIndex = Math.min(activeIndex, Math.max(lastIndex, 0));
+  const activeResult =
+    results.find((result) => result.key === activeKey) ?? results[0];
+  const clampedActiveIndex = activeResult ? results.indexOf(activeResult) : 0;
+  const selectedKey = activeResult?.key ?? null;
+  useEffect(() => {
+    setActiveKey(selectedKey);
+  }, [selectedKey]);
   const moveActive = (step: number) => {
     const next = Math.max(0, Math.min(clampedActiveIndex + step, lastIndex));
-    setActiveIndex(next);
+    setActiveKey(results[next]?.key ?? null);
     document
       .getElementById(`${resultIdPrefix}-${next}`)
       ?.scrollIntoView({ block: "nearest" });
@@ -386,6 +487,10 @@ export function RadioSearchBar({
     return Boolean(active);
   };
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isComposing(event.nativeEvent)) {
+      return;
+    }
+    pointerType.current = "keyboard";
     if (event.key === "Escape") {
       if (query || showDropdown) {
         event.preventDefault();
@@ -408,17 +513,19 @@ export function RadioSearchBar({
     }
   };
 
-  const emptyLabel = isSearching
-    ? "Checking station directories…"
-    : "No stations found";
+  const emptyLabel = searchEmptyLabel(
+    isSearching,
+    Boolean(failedSources?.length)
+  );
   const statusLabel = searchStatus(
     showDropdown,
     link,
     results.length,
     emptyLabel
   );
-  const hasListbox = showDropdown && (pastedUrl !== null || results.length > 0);
-  const activeResultId = hasListbox
+  const hasResultsPopup =
+    showDropdown && (pastedUrl !== null || results.length > 0);
+  const activeResultId = hasResultsPopup
     ? `${resultIdPrefix}-${clampedActiveIndex}`
     : undefined;
 
@@ -428,13 +535,17 @@ export function RadioSearchBar({
     <div
       className={cn("relative", className)}
       onBlur={handleBlur}
+      onPointerDownCapture={(event) => {
+        pointerType.current = event.pointerType;
+      }}
       ref={containerRef}
     >
       <SearchField
         aria-activedescendant={activeResultId}
         aria-autocomplete="list"
-        aria-controls={hasListbox ? listId : undefined}
+        aria-controls={hasResultsPopup ? listId : undefined}
         aria-expanded={showDropdown}
+        aria-haspopup="grid"
         aria-label="Search stations"
         isSearching={isSearching}
         // Pasted links can be long (signed HLS, share links); text stays short.
@@ -443,6 +554,7 @@ export function RadioSearchBar({
         onFocus={handleFocus}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        ref={inputRef}
         role="combobox"
         value={query}
       />
@@ -465,29 +577,28 @@ export function RadioSearchBar({
                 optionId={`${resultIdPrefix}-0`}
               />
             ) : null}
-            {!pastedUrl && results.length > 0 ? (
-              <div
-                className="flex w-0 min-w-full flex-col p-1"
-                id={listId}
-                role="listbox"
-              >
-                {results.map((result, index) => (
-                  <SearchResultRow
-                    canSave={Boolean(onSaveDiscovered)}
-                    id={`${resultIdPrefix}-${index}`}
-                    isActive={index === clampedActiveIndex}
-                    key={result.key}
-                    onSave={saveResult}
-                    onSelect={selectResult}
-                    result={result}
-                  />
-                ))}
-              </div>
-            ) : null}
+            {pastedUrl ? null : (
+              <SearchResults
+                activeIndex={clampedActiveIndex}
+                canSave={Boolean(onSaveDiscovered)}
+                listId={listId}
+                onSave={saveResult}
+                onSelect={selectResult}
+                resultIdPrefix={resultIdPrefix}
+                results={results}
+              />
+            )}
             {pastedUrl || results.length > 0 ? null : (
               <EmptyHint>{emptyLabel}</EmptyHint>
             )}
           </ScrollArea>
+          <DirectoryFailure
+            hasResults={results.length > 0}
+            retry={retry}
+            visible={
+              !pastedUrl && Boolean(failedSources?.length) && !isSearching
+            }
+          />
         </div>
       ) : null}
     </div>

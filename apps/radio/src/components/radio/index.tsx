@@ -8,11 +8,8 @@ import {
 } from "react";
 import type { Radio } from "@/lib/audio";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
-import { useSettings } from "@/lib/hooks/use-settings";
-import {
-  normalizePlayerMode,
-  type PlayerMode,
-} from "@/lib/normalize-player-mode";
+import { usePlayerModeState } from "@/lib/hooks/use-settings";
+import type { PlayerMode } from "@/lib/normalize-player-mode";
 import { RadioLoadingSkeleton } from "./radio-loading-skeleton";
 import {
   loadDjPlayer,
@@ -46,12 +43,10 @@ function RadioMode({ mode, radios }: { mode: PlayerMode; radios: Radio[] }) {
 
 export function Radios() {
   const radiosQuery = useEnabledRadios();
-  const settingsQuery = useSettings();
-  const storedMode: unknown = settingsQuery.data?.player.mode;
-  const mode = normalizePlayerMode(storedMode);
+  const { mode, isReady, hasSettings } = usePlayerModeState();
 
   useEffect(() => {
-    if (storedMode === undefined) {
+    if (!hasSettings) {
       return;
     }
     import("@/lib/mode-lifecycle-requests")
@@ -72,9 +67,9 @@ export function Radios() {
       .catch((error) => {
         console.error("[radio] Failed to synchronize playback mode:", error);
       });
-  }, [mode, storedMode]);
+  }, [mode, hasSettings]);
 
-  if (!(radiosQuery.isReady && settingsQuery.isReady)) {
+  if (!(radiosQuery.isReady && isReady)) {
     return <RadioLoadingSkeleton mode={mode} phase="database" />;
   }
 

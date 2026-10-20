@@ -65,6 +65,7 @@ describe("StationDiscovery", () => {
 
       expect(snapshots.at(-1)).toMatchObject({
         duplicateCount: 0,
+        failedSources: ["radio-browser"],
         isSearching: false,
         results: [
           {

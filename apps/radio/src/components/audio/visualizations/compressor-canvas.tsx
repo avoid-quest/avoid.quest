@@ -6,9 +6,10 @@
  */
 
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { memo, useEffect, useRef } from "react";
+import { memo } from "react";
 import type { CompressorConfig } from "@/lib/audio/dsp/effects/types";
 import { computeCompressorCurve } from "@/lib/audio/visualization/compressor-curve";
+import { useCanvasDraw } from "./use-canvas-draw";
 
 type CompressorCanvasProps = {
   config: CompressorConfig;
@@ -33,30 +34,10 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
   minDb = -60,
   maxDb = 0,
 }: CompressorCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sizeRef = useRef({ height: 0, width: 0 });
-
-  useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) {
-      return;
-    }
-    const { canvas } = ctx;
-    // Compression starts where the input, after the device's input gain,
-    // reaches the threshold.
-    const thresholdDb = config.threshold - (config.inputgain ?? 0);
-
-    const draw = () => {
-      const { width: cssWidth, height: cssHeight } = sizeRef.current;
-      if (cssWidth === 0 || cssHeight === 0) {
-        return;
-      }
-
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = cssWidth * dpr;
-      canvas.height = cssHeight * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
+  const canvasRef = useCanvasDraw(
+    (ctx, { width: cssWidth, height: cssHeight }) => {
+      const { canvas } = ctx;
+      const thresholdDb = config.threshold - (config.inputgain ?? 0);
       const w = cssWidth;
       const h = cssHeight;
       const dbRange = maxDb - minDb;
@@ -152,29 +133,8 @@ export const CompressorCanvas = memo(function CompressorCanvasComponent({
         ctx.textAlign = "right";
         ctx.fillText(`${gainReduction.toFixed(1)} dB`, w - grWidth - 8, 14);
       }
-    };
-
-    draw();
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        sizeRef.current = { height, width };
-      }
-      draw();
-    });
-    resizeObserver.observe(canvas);
-    // next-themes switches the theme class on <html>; redraw in the new colours.
-    const themeObserver = new MutationObserver(draw);
-    themeObserver.observe(document.documentElement, {
-      attributeFilter: ["class"],
-    });
-
-    return () => {
-      resizeObserver.disconnect();
-      themeObserver.disconnect();
-    };
-  }, [config, gainReduction, minDb, maxDb]);
+    }
+  );
 
   return (
     <canvas

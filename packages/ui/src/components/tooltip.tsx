@@ -11,21 +11,32 @@ import {
   Trigger,
 } from "@radix-ui/react-tooltip";
 import type * as React from "react";
+import { createContext, useContext } from "react";
+
+const TooltipProviderContext = createContext(false);
 
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration = 300,
+  skipDelayDuration = 300,
   ...props
 }: React.ComponentProps<typeof Provider>) {
   return (
-    <Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
+    <TooltipProviderContext value={true}>
+      <Provider
+        data-slot="tooltip-provider"
+        delayDuration={delayDuration}
+        skipDelayDuration={skipDelayDuration}
+        {...props}
+      />
+    </TooltipProviderContext>
   );
 }
 
 function Tooltip({ ...props }: React.ComponentProps<typeof Root>) {
+  const hasProvider = useContext(TooltipProviderContext);
+  if (hasProvider) {
+    return <Root data-slot="tooltip" {...props} />;
+  }
   return (
     <TooltipProvider>
       <Root data-slot="tooltip" {...props} />

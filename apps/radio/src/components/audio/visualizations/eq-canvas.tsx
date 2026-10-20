@@ -5,7 +5,7 @@
  */
 
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useMemo } from "react";
 import type { RevampConfig } from "@/lib/audio/dsp/effects/types";
 import {
   computeEQCurve,
@@ -16,6 +16,8 @@ import {
   LinearScale,
   LogScale,
 } from "@/lib/audio/visualization/scale";
+
+import { useCanvasDraw } from "./use-canvas-draw";
 
 type EQCanvasProps = {
   config: RevampConfig;
@@ -60,11 +62,6 @@ type DrawContext = {
   frequencies: Float32Array;
   minDb: number;
   maxDb: number;
-};
-
-type CanvasSize = {
-  width: number;
-  height: number;
 };
 
 function drawGrid(dc: DrawContext): void {
@@ -182,9 +179,6 @@ export const EQCanvas = memo(function EQCanvasComponent({
   minDb = -36,
   maxDb = 36,
 }: EQCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sizeRef = useRef<CanvasSize>({ height: 0, width: 0 });
-
   const frequencies = useMemo(
     () => generateLogFrequencies(MIN_FREQ, MAX_FREQ, NUM_POINTS),
     []
@@ -195,70 +189,32 @@ export const EQCanvas = memo(function EQCanvasComponent({
     [config, frequencies, sampleRate]
   );
 
-  useEffect(() => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) {
-      return;
-    }
+  const canvasRef = useCanvasDraw((ctx, { width, height }) => {
     const { canvas } = ctx;
+    const w = width;
+    const h = height;
 
-    const draw = () => {
-      const { width, height } = sizeRef.current;
-      if (width === 0 || height === 0) {
-        return;
-      }
+    ctx.clearRect(0, 0, w, h);
 
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const xScale = new LogScale(MIN_FREQ, MAX_FREQ, 0, w);
+    const yScale = new LinearScale(maxDb, minDb, 0, h);
 
-      const w = width;
-      const h = height;
-
-      ctx.clearRect(0, 0, w, h);
-
-      const xScale = new LogScale(MIN_FREQ, MAX_FREQ, 0, w);
-      const yScale = new LinearScale(maxDb, minDb, 0, h);
-
-      const dc: DrawContext = {
-        ctx,
-        frequencies,
-        h,
-        maxDb,
-        minDb,
-        w,
-        xScale,
-        yScale,
-      };
-
-      drawGrid(dc);
-      drawBandCurves(dc, curveResult.bands);
-      // The canvas carries text-foreground, so the curve follows the theme.
-      drawStrokeCurve(dc, curveResult.totalDb, getComputedStyle(canvas).color);
+    const dc: DrawContext = {
+      ctx,
+      frequencies,
+      h,
+      maxDb,
+      minDb,
+      w,
+      xScale,
+      yScale,
     };
 
-    draw();
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        sizeRef.current = { height, width };
-      }
-      draw();
-    });
-    resizeObserver.observe(canvas);
-    // next-themes switches the theme class on <html>; redraw in the new colours.
-    const themeObserver = new MutationObserver(draw);
-    themeObserver.observe(document.documentElement, {
-      attributeFilter: ["class"],
-    });
-
-    return () => {
-      resizeObserver.disconnect();
-      themeObserver.disconnect();
-    };
-  }, [curveResult, frequencies, minDb, maxDb]);
+    drawGrid(dc);
+    drawBandCurves(dc, curveResult.bands);
+    // The canvas carries text-foreground, so the curve follows the theme.
+    drawStrokeCurve(dc, curveResult.totalDb, getComputedStyle(canvas).color);
+  });
 
   return (
     <canvas

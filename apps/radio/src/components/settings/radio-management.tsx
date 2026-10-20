@@ -86,7 +86,7 @@ function SortableRadioItem({
     >
       <button
         aria-label={`Reorder ${radio.name}`}
-        className="cursor-grab touch-manipulation rounded-sm text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+        className="flex size-8 shrink-0 cursor-grab touch-none select-none items-center justify-center rounded-sm text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing [@media(pointer:coarse)]:size-11"
         type="button"
         {...attributes}
         {...listeners}

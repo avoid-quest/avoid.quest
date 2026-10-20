@@ -32,7 +32,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMidiControlSnapshot } from "@/lib/hooks/use-midi";
 import { usePlayerMode } from "@/lib/hooks/use-settings";
 import {
@@ -206,6 +206,23 @@ export function MidiSettings() {
   const playerMode = usePlayerMode();
   const control = getMidiControl();
   const snapshot = useMidiControlSnapshot();
+  const ownedLearning = useRef<string | null>(null);
+  useEffect(() => {
+    const unsubscribe = control.subscribe(() => {
+      if (control.getSnapshot().learningTarget !== ownedLearning.current) {
+        ownedLearning.current = null;
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (
+        ownedLearning.current !== null &&
+        control.getSnapshot().learningTarget === ownedLearning.current
+      ) {
+        control.change({ type: "stop-learn" });
+      }
+    };
+  }, [control]);
   const {
     actions,
     activePresetId,
@@ -279,9 +296,11 @@ export function MidiSettings() {
   };
   const handleStartLearn = (targetId: string) => {
     control.change({ targetId, type: "start-learn" });
+    ownedLearning.current = targetId;
   };
   const handleStopLearn = () => {
     control.change({ type: "stop-learn" });
+    ownedLearning.current = null;
   };
 
   if (!isSupported) {

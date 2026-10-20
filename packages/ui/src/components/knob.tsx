@@ -82,6 +82,7 @@ function Knob({
   const changeValue = (next: number) => changeValues([next]);
   const inputValue = inputValues[0] ?? value;
   const drag = useRef<{
+    fine: boolean;
     pointerId: number;
     startY: number;
     startValue: number;
@@ -136,6 +137,7 @@ function Knob({
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus();
     drag.current = {
+      fine: event.shiftKey,
       pointerId: event.pointerId,
       startValue: toPosition(getRequestedValues()[0] ?? value),
       startY: event.clientY,
@@ -147,7 +149,12 @@ function Knob({
     if (current === null || current.pointerId !== event.pointerId) {
       return;
     }
-    const fine = event.shiftKey ? 4 : 1;
+    if (current.fine !== event.shiftKey) {
+      current.fine = event.shiftKey;
+      current.startY = event.clientY;
+      current.startValue = toPosition(getRequestedValues()[0] ?? value);
+    }
+    const fine = current.fine ? 4 : 1;
     const delta =
       (current.startY - event.clientY) / (DRAG_PIXELS_FOR_FULL_RANGE * fine);
     changeValue(snap(fromPosition(current.startValue + delta)));

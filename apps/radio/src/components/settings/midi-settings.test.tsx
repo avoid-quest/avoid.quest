@@ -17,9 +17,18 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://radio.test",
 });
 
+const input = Object.assign(new dom.window.EventTarget(), {
+  id: "test-controller",
+  manufacturer: "Test",
+  name: "Controller",
+  state: "connected",
+});
+const access = Object.assign(new dom.window.EventTarget(), {
+  inputs: new Map([[input.id, input]]),
+});
 Object.defineProperty(dom.window.navigator, "requestMIDIAccess", {
   configurable: true,
-  value: mock(async () => ({ inputs: new Map() })),
+  value: mock(() => Promise.resolve(access)),
 });
 
 const previousGlobals = new Map<string, PropertyDescriptor | undefined>();
@@ -52,7 +61,9 @@ function installGlobals() {
 installGlobals();
 
 // React DOM caches input-event support when it first loads.
-const { act, cleanup, render } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
 
 let MidiSettings: typeof import("./midi-settings")["MidiSettings"];
 let getMidiControl: typeof import("@/lib/midi")["getMidiControl"];
@@ -125,4 +136,52 @@ test("lists node params under the node's title", () => {
   expect(view.getByText("Threshold")).toBeTruthy();
   // The DJ groups keep their own titles.
   expect(view.queryByRole("heading", { name: "deck-a" })).toBeNull();
+});
+
+test("leaving settings stops its learning without removing mappings or disconnecting", async () => {
+  const control = getMidiControl();
+  await act(async () => {
+    await control.connect();
+  });
+  const before = control.getSnapshot();
+  const view = render(<MidiSettings />);
+  fireEvent.click(
+    view.getByRole("button", { name: "Learn Deck A Play/Pause" })
+  );
+  expect(control.getSnapshot().learningTarget).not.toBeNull();
+  view.unmount();
+  expect(control.getSnapshot().learningTarget).toBeNull();
+  const message = new dom.window.Event("midimessage");
+  Object.defineProperty(message, "data", {
+    value: new Uint8Array([0xb0, 7, 100]),
+  });
+  input.dispatchEvent(message);
+  expect(control.getSnapshot().mappings).toEqual(before.mappings);
+  expect(control.getSnapshot().status).toBe(before.status);
+});
+
+test("leaving settings preserves learning started by another surface", async () => {
+  const control = getMidiControl();
+  await act(async () => {
+    await control.connect();
+  });
+  const view = render(<MidiSettings />);
+  fireEvent.click(
+    view.getByRole("button", { name: "Learn Deck A Play/Pause" })
+  );
+  act(() => {
+    control.change({ targetId: "deck-b:volume", type: "start-learn" });
+  });
+  view.unmount();
+  expect(control.getSnapshot().learningTarget).toBe("deck-b:volume");
+  control.change({ type: "stop-learn" });
+});
+
+test("mounting and leaving settings does not take ownership of existing learning", () => {
+  const control = getMidiControl();
+  control.change({ targetId: "deck-a:volume", type: "start-learn" });
+  const view = render(<MidiSettings />);
+  view.unmount();
+  expect(control.getSnapshot().learningTarget).toBe("deck-a:volume");
+  control.change({ type: "stop-learn" });
 });

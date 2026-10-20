@@ -30,9 +30,12 @@ export function ImportExport({
   resetContent: ReactNode;
 }) {
   const [importMode, setImportMode] = useState<ImportMode>("merge");
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(
-    null
-  );
+  const [draft, setDraft] = useState<{
+    data: DatabaseExport;
+    preview: ImportPreview;
+    source: string;
+  } | null>(null);
+  const importPreview = draft?.preview;
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportKind, setExportKind] = useState<"file" | "link" | null>(null);
@@ -71,6 +74,7 @@ export function ImportExport({
   const handleFileImport = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
+    setDraft(null);
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -80,12 +84,7 @@ export function ImportExport({
     try {
       const importData = await importFromFile(file);
       const preview = await previewImportChanges(importData);
-      setImportPreview(preview);
-
-      // Store import data for later use
-      (
-        window as Window & { pendingImportData?: DatabaseExport }
-      ).pendingImportData = importData;
+      setDraft({ data: importData, preview, source: file.name });
     } catch {
       toast.error("Couldn't read backup file");
     } finally {
@@ -94,6 +93,7 @@ export function ImportExport({
   };
 
   const handleUrlImport = async () => {
+    setDraft(null);
     const url = (document.getElementById("import-url") as HTMLInputElement)
       ?.value;
     if (!url) {
@@ -105,12 +105,7 @@ export function ImportExport({
     try {
       const importData = importFromUrl(url);
       const preview = await previewImportChanges(importData);
-      setImportPreview(preview);
-
-      // Store import data for later use
-      (
-        window as Window & { pendingImportData?: DatabaseExport }
-      ).pendingImportData = importData;
+      setDraft({ data: importData, preview, source: url });
     } catch {
       toast.error("Couldn't read share link");
     } finally {
@@ -119,9 +114,7 @@ export function ImportExport({
   };
 
   const handleApplyImport = async () => {
-    const importData = (
-      window as Window & { pendingImportData?: DatabaseExport }
-    ).pendingImportData;
+    const importData = draft?.data;
     if (!importData) {
       toast.error("Nothing to import");
       return;
@@ -136,10 +129,7 @@ export function ImportExport({
       }
 
       // Clear state
-      setImportPreview(null);
-      (
-        window as Window & { pendingImportData?: DatabaseExport }
-      ).pendingImportData = undefined;
+      setDraft(null);
 
       setFileInputKey((key) => key + 1);
     } catch {
@@ -150,10 +140,7 @@ export function ImportExport({
   };
 
   const handleCancelImport = () => {
-    setImportPreview(null);
-    (
-      window as Window & { pendingImportData?: DatabaseExport }
-    ).pendingImportData = undefined;
+    setDraft(null);
 
     setFileInputKey((key) => key + 1);
   };

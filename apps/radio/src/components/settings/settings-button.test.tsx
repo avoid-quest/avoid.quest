@@ -2,7 +2,9 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { installSettingsTestDom } from "./settings-test-dom";
 
-if (process.env.AVOID_QUEST_SETTINGS_BUTTON_REGRESSION) {
+const scenario = process.env.AVOID_QUEST_SETTINGS_BUTTON_REGRESSION;
+
+function installTriggerTestDom() {
   installSettingsTestDom();
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -12,6 +14,54 @@ if (process.env.AVOID_QUEST_SETTINGS_BUTTON_REGRESSION) {
       removeEventListener: () => undefined,
     }),
   });
+}
+
+if (scenario === "drawer-fails") {
+  installTriggerTestDom();
+  // Focus returns to the trigger, which opens its tooltip and measures it.
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: class {
+      disconnect() {
+        // JSDOM does not perform layout.
+      }
+      observe() {
+        // JSDOM does not perform layout.
+      }
+      unobserve() {
+        // JSDOM does not perform layout.
+      }
+    },
+  });
+  // A throwing factory does not reject the import, so fail on first use.
+  mock.module("./settings-drawer", () => ({
+    get SettingsDrawer() {
+      throw new TypeError("Failed to fetch dynamically imported module");
+    },
+  }));
+  const { cleanup, fireEvent, render, waitFor } = await import(
+    "@testing-library/react"
+  );
+  const { SettingsButton } = await import("./settings-button");
+
+  afterEach(cleanup);
+
+  test("closing a failed drawer load returns focus to the trigger", async () => {
+    const view = render(<SettingsButton />);
+    const trigger = view.getByRole("button", { name: "Open settings" });
+    fireEvent.click(trigger, { detail: 0 });
+    const close = await view.findByRole("button", { name: "Close" });
+    expect(view.getByRole("alert").textContent).toBe("Couldn't load settings.");
+    close.focus();
+    fireEvent.click(close);
+    await waitFor(() =>
+      expect(view.queryByRole("button", { name: "Close" })).toBeNull()
+    );
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+} else if (scenario) {
+  installTriggerTestDom();
   mock.module("./settings-form", () => ({
     SettingsForm: ({ defaultTab }: { defaultTab?: string }) => (
       <label>
@@ -78,20 +128,27 @@ if (process.env.AVOID_QUEST_SETTINGS_BUTTON_REGRESSION) {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 } else {
-  test("settings trigger regressions (isolated module mocks)", async () => {
-    const child = Bun.spawn([process.execPath, "test", import.meta.path], {
-      env: { ...process.env, AVOID_QUEST_SETTINGS_BUTTON_REGRESSION: "1" },
-      stderr: "pipe",
-      stdout: "pipe",
-      timeout: 20_000,
-    });
-    const [stderr, exitCode] = await Promise.all([
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    expect({ errors: exitCode ? stderr : "", exitCode }).toEqual({
-      errors: "",
-      exitCode: 0,
-    });
-  }, 25_000);
+  test.each(["1", "drawer-fails"])(
+    "settings trigger regressions (isolated module mocks: %s)",
+    async (scenarioName) => {
+      const child = Bun.spawn([process.execPath, "test", import.meta.path], {
+        env: {
+          ...process.env,
+          AVOID_QUEST_SETTINGS_BUTTON_REGRESSION: scenarioName,
+        },
+        stderr: "pipe",
+        stdout: "pipe",
+        timeout: 20_000,
+      });
+      const [stderr, exitCode] = await Promise.all([
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      expect({ errors: exitCode ? stderr : "", exitCode }).toEqual({
+        errors: "",
+        exitCode: 0,
+      });
+    },
+    25_000
+  );
 }

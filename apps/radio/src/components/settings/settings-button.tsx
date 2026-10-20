@@ -97,7 +97,12 @@ export function SettingsButton({
                 {failed}
                 <div className="flex justify-center">
                   <Button
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => {
+                      setIsOpen(false);
+                      // The drawer never mounted, so its close handler can't
+                      // return focus to the trigger.
+                      triggerRef.current?.focus();
+                    }}
                     size="sm"
                     type="button"
                     variant="ghost"

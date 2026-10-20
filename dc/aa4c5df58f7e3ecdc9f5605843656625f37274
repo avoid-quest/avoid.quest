@@ -1,0 +1,125 @@
+apps/radio/src/components/audio/effect-chain-order.test.tsx
+  s_3fe15618a30baa::t_c427a598c6bb65 1-79
+apps/radio/src/components/audio/effect-chain.tsx
+  s_3fe15618a30baa::t_652a666e8a5d50 46,125,170-171,173,175,251,301,310,324-327,340,352,361,402
+apps/radio/src/components/audio/effect-item.tsx
+  s_3fe15618a30baa::t_d14dad521d71b8 35,62,84-85
+apps/radio/src/components/audio/midi-control-wrapper.test.tsx
+  s_3fe15618a30baa::t_e31590fbc36c09 1-110
+apps/radio/src/components/audio/midi-control-wrapper.tsx
+  s_3fe15618a30baa::t_b3d531b51cdf7c 16-23,42-46,48-86,100-124,127-131,133,135-159
+apps/radio/src/components/audio/midi-transform-editor.tsx
+  s_3fe15618a30baa::t_0bb53bed700638 3,16,63
+apps/radio/src/components/radio/dj/deck/deck-context.tsx
+  s_3fe15618a30baa::t_c9412ebc354560 40,50
+apps/radio/src/components/radio/dj/deck/deck-device-input-content.tsx
+  s_3fe15618a30baa::t_a8fd2116c03e8a 67,181
+apps/radio/src/components/radio/dj/deck/deck-effect-undo.test.tsx
+  s_3fe15618a30baa::t_263aa95b0dc305 1-307
+apps/radio/src/components/radio/dj/deck/deck-effect-undo.ts
+  s_3fe15618a30baa::t_bc83919415518a 1-308
+apps/radio/src/components/radio/dj/deck/deck-empty.tsx
+  s_3fe15618a30baa::t_36d4bf89c05e6c 14,27,42,47
+apps/radio/src/components/radio/dj/deck/deck-loaded-content.tsx
+  s_3fe15618a30baa::t_8bca3c2ce261f2 36,53
+apps/radio/src/components/radio/dj/deck/deck-panel.tsx
+  s_be08d5ec8d51c5::t_1b1404417137e4 34,53,56-61,63-65,67,73,77,86,94,98,107,121,130,178-187,189,324-325,421,435,582
+apps/radio/src/components/radio/dj/deck/deck-progress-isolation.test.tsx
+  s_3fe15618a30baa::t_c9f56ff3ed85f3 1-108
+apps/radio/src/components/radio/dj/deck/deck-tracklist.tsx
+  s_3fe15618a30baa::t_3c952e2327fe50 4,7,9,62,65-71,81,93,106,129-131,191,197,204,213-216,218-219
+apps/radio/src/components/radio/dj/deck/deck-transport.tsx
+  s_3fe15618a30baa::t_ab6669c725d839 9,145-146,160-168
+apps/radio/src/components/radio/dj/dj-console-mobile.test.tsx
+  s_3fe15618a30baa::t_88c1d2ee1a3a8b 1-12,14,17-18,22-24,26-40,49,53-76,79,81-86,88-115
+apps/radio/src/components/radio/dj/dj-console-mobile.tsx
+  s_3fe15618a30baa::t_5e773ea70ec734 10,39,45,204-224
+apps/radio/src/components/radio/dj/dj-midi-effects.test.tsx
+  s_3fe15618a30baa::t_06774612e7bd05 1-160
+apps/radio/src/components/radio/dj/dj-midi-effects.tsx
+  s_3fe15618a30baa::t_c1a5b6b2b6afb9 1-11
+apps/radio/src/components/radio/dj/dj-player.tsx
+  s_3fe15618a30baa::t_35e5cdc5ba44f8 16,60
+apps/radio/src/components/radio/dj/external-search/index.tsx
+  s_3fe15618a30baa::t_95b4218001ffd6 21,209,223
+apps/radio/src/components/radio/dj/external-search/search-results.test.tsx
+  s_3fe15618a30baa::t_2552099deb62bb 354-431
+apps/radio/src/components/radio/dj/external-search/search-results.tsx
+  s_3fe15618a30baa::t_3b6ce408fbc09c 7,24,55,63-90,97,99,107,133,135,188
+apps/radio/src/components/radio/dj/mixer/mixer-channel.test.tsx
+  s_3fe15618a30baa::t_b7d978f8b0a53b 14,18-19,98-99,104-105,107-108,110-114,116,119-158,160
+apps/radio/src/components/radio/dj/mixer/mixer-channel.tsx
+  s_3fe15618a30baa::t_f523e8c4c05f85 9,51-56
+apps/radio/src/components/radio/dj/mixer/mixer-master.tsx
+  s_3fe15618a30baa::t_40b6225eff1753 6,83
+apps/radio/src/components/radio/dj/shared/animation-test-utils.ts
+  s_3fe15618a30baa::t_c6b0184c9a0e9a 1-100
+apps/radio/src/components/radio/dj/shared/peak-meter.test.tsx
+  s_3fe15618a30baa::t_8400a0cfeb2ace 1-3,5-9,37-106
+apps/radio/src/components/radio/dj/shared/peak-meter.tsx
+  s_3fe15618a30baa::t_769f4e559c2172 3,8-15,17-28,30-36,38-39,42,48-70,74-85,87-97,102,105,118-119,122-123,125,127-132,134-159,166-169,182,184-187,192-197,200-313,317,319-320
+apps/radio/src/components/radio/node/source-strip.test.tsx
+  s_be08d5ec8d51c5::t_0569a837f1c98d 475-478
+apps/radio/src/lib/dj-deck.test.ts
+  s_be08d5ec8d51c5::t_55a44e1c21e07b 2628-2775
+apps/radio/src/lib/dj-deck.ts
+  s_3fe15618a30baa::t_dce79ef1c91e0b 104,195,220-226,252,489-491,524-544,550,560,591-593,1007-1009,1043,1274,1448-1450,1521,1547-1576,1612,1846,1850-1853,1857
+apps/radio/src/lib/dj-platform-stream-port.test.ts
+  s_3fe15618a30baa::t_08ce0649340b6e 68,179,212-215,248-251,374-421
+apps/radio/src/lib/dj-platform-stream-port.ts
+  s_3fe15618a30baa::t_05fbfa1d486f67 22,31,40,111,136,150
+apps/radio/src/lib/hooks/track-progress-state.ts
+  s_3fe15618a30baa::t_05d1d3019da62a 12-34
+apps/radio/src/lib/hooks/use-dj-keyboard.test.tsx
+  s_3fe15618a30baa::t_8a5041136a9c6a 1-97
+apps/radio/src/lib/hooks/use-dj-keyboard.ts
+  s_3fe15618a30baa::t_0d87c8415db4ff 5-7,18,20-22,28
+apps/radio/src/lib/hooks/use-master-peak-level.ts
+  s_3fe15618a30baa::t_3d4a0ed26e75ef 35-41
+apps/radio/src/lib/hooks/use-track-progress.test.tsx
+  s_3fe15618a30baa::t_9523024983bd1d 1-74
+apps/radio/src/lib/hooks/use-track-progress.ts
+  s_3fe15618a30baa::t_59bf9ababb168e 1,5,10-16,23,26,29-72,74-77,80
+apps/radio/src/lib/midi/midi-control.test.ts
+  s_3fe15618a30baa::t_87dc890aba6c81 1404-1438
+apps/radio/src/lib/midi/midi-control.ts
+  s_3fe15618a30baa::t_a9b0036bf34373 2,81-85,130,167-180,290-306,353-360,406,409-412,715,733-740,856,903,923-935
+apps/radio/src/lib/stores/dj-runtime-store.ts
+  s_3fe15618a30baa::t_26138e26368f8d 12,28,32
+apps/radio/src/lib/stores/playback-runtime-store.ts
+  s_3fe15618a30baa::t_5dc0595684b85c 2,7-51,115-117,160-163,167-168,186-189
+apps/web/src/styles/global.css
+  s_a8b3303ad87e95::t_4a59ff4d02e4ef 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dcaa4c5df58f7e3ecdc9f5605843656625f37274",
+  "prompts": {},
+  "sessions": {
+    "s_3fe15618a30baa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15824-7e39-7263-82a1-845a565c751b",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_a8b3303ad87e95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157cc-de02-7610-a35c-07d5ce596813",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_be08d5ec8d51c5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15824-d5ee-7611-8bd5-3d5cbe5abe3a",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -21,9 +21,11 @@ import {
 } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
+  getRetainedNodeGraphs,
   type NodeStore,
   nodeStore,
 } from "@/lib/node-graph/node-store";
+import { type GraphNode, isRadioSourceNode } from "@/lib/node-graph/schema";
 import { getNodePlayback, type NodePlayback } from "@/lib/node-playback";
 import {
   loadSourceUrl,
@@ -35,10 +37,35 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
 type StationPlayback = Pick<NodePlayback, "flush" | "setPlaying">;
 
-type SourceRequests = { generation: number; requests: Map<string, symbol> };
+/** A request and what its source held, as of the last edit it survived. */
+type SourceRequest = { source: string };
+type SourceRequests = {
+  generation: number;
+  requests: Map<string, SourceRequest>;
+};
 const sourceRequests = new WeakMap<NodeStore, SourceRequests>();
 
-/** A replacement has no editor-node lineage; ordinary edits share node data. */
+/** What a source plays; a cosmetic edit (position, strip, fader) keeps it. */
+function sourceOf(node: GraphNode | undefined): string {
+  if (!node) {
+    return "";
+  }
+  if (isRadioSourceNode(node)) {
+    const { radio } = node.data;
+    return JSON.stringify([node.type, radio?.id ?? null, radio?.streamUrl]);
+  }
+  if (node.type === "deviceIn") {
+    const { capture, deviceId, sourceUrl } = node.data;
+    return JSON.stringify([node.type, deviceId, capture, sourceUrl]);
+  }
+  return node.type;
+}
+
+/**
+ * A replacement has no editor-node lineage; ordinary edits share node data.
+ * Undo and Redo bring back other instances of the same nodes, so a request
+ * outlives one only if its own source still plays what it did.
+ */
 function requestsFor(store: NodeStore): SourceRequests {
   const existing = sourceRequests.get(store);
   if (existing) {
@@ -58,10 +85,16 @@ function requestsFor(store: NodeStore): SourceRequests {
           (node) => retained.has(node) || retained.has(node.data)
         )
       ) {
-        const ids = new Set(next.graph.nodes.map((node) => node.id));
-        for (const id of state.requests.keys()) {
-          if (!ids.has(id)) {
+        const restored = getRetainedNodeGraphs(previous).has(next.graph);
+        const nodes = new Map(next.graph.nodes.map((node) => [node.id, node]));
+        for (const [id, request] of state.requests) {
+          const node = nodes.get(id);
+          const source = sourceOf(node);
+          if (!node || (restored && source !== request.source)) {
             state.requests.delete(id);
+          } else {
+            // A forward edit is the request's own fill or follows a record.
+            request.source = source;
           }
         }
       } else {
@@ -89,7 +122,11 @@ export function beginSourceRequest(
 ): () => boolean {
   const state = requestsFor(store);
   const { generation } = state;
-  const request = Symbol(nodeId);
+  const request: SourceRequest = {
+    source: sourceOf(
+      store.state.graph?.nodes.find((node) => node.id === nodeId)
+    ),
+  };
   state.requests.set(nodeId, request);
   return () =>
     state.generation === generation &&

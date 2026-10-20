@@ -18,6 +18,7 @@ import { compile, laneChannelId } from "@/lib/node-graph/compile";
 import {
   moveNodes,
   removeNodes,
+  setSourceRadio,
   setSourceStrip,
 } from "@/lib/node-graph/graph-edits";
 import {
@@ -25,6 +26,7 @@ import {
   createNodeStore,
   loadNodeGraph,
   type NodeStore,
+  redoNodeGraph,
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
 import { templatePatch } from "@/lib/node-graph/palette";
@@ -631,6 +633,110 @@ describe("source request patch ownership", () => {
       expect(playback.setPlaying).not.toHaveBeenCalled();
     }
   );
+
+  /** Starts a pasted stream link on the starter Station that loads `kexp` once `edit` ran. */
+  async function loadAround(edit: () => void) {
+    const hook = renderManagement();
+    const deferred = Promise.withResolvers<void>();
+    loaders.createSession.mockImplementationOnce(async () => {
+      await deferred.promise;
+      return { data: { radio: kexp }, ok: true as const };
+    });
+    await act(async () => {
+      const pending = hook
+        .current()
+        .fillStationFromUrl(STARTER_STATION_ID, "https://stream.example/live");
+      edit();
+      deferred.resolve();
+      await pending;
+    });
+  }
+
+  test.each([
+    ["empties it", [] as Radio[]],
+    ["brings back an earlier station", [nts]],
+  ])(
+    "a load is ignored after Undo %s while other nodes survive",
+    async (_case, earlier) => {
+      store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+      for (const radio of [...earlier, discovered]) {
+        commitNodeGraph(
+          (graph) => setSourceRadio(graph, STARTER_STATION_ID, radio),
+          store,
+          "snapshot"
+        );
+      }
+      const speakers = store.state.graph?.nodes.find(
+        (node) => node.id === SPEAKERS_NODE_ID
+      );
+      let restored = store.state.graph;
+      await loadAround(() => {
+        undoNodeGraph(store);
+        restored = store.state.graph;
+      });
+      expect(store.state.graph).toBe(restored);
+      expect(
+        store.state.graph?.nodes.find((node) => node.id === SPEAKERS_NODE_ID)
+      ).toBe(speakers);
+      expect(station(STARTER_STATION_ID)?.data.radio?.id ?? null).toBe(
+        earlier[0]?.id ?? null
+      );
+      expect(playback.setPlaying).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    [
+      "a move, a trim and its Undo on the same Station",
+      () => {
+        commitNodeGraph(
+          (graph) =>
+            moveNodes(graph, new Map([[STARTER_STATION_ID, { x: 20, y: 30 }]])),
+          store,
+          "snapshot"
+        );
+        commitNodeGraph(
+          (graph) => setSourceStrip(graph, STARTER_STATION_ID, { trimDb: 3 }),
+          store,
+          "snapshot"
+        );
+        undoNodeGraph(store);
+      },
+    ],
+    [
+      "a move of another node and its Undo",
+      () => {
+        commitNodeGraph(
+          (graph) =>
+            moveNodes(graph, new Map([[SPEAKERS_NODE_ID, { x: 400, y: 0 }]])),
+          store,
+          "snapshot"
+        );
+        undoNodeGraph(store);
+      },
+    ],
+  ])("a load still applies after %s", async (_case, edit) => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    await loadAround(edit);
+    expect(station(STARTER_STATION_ID)?.data.radio?.id).toBe("kexp");
+    expect(playback.setPlaying).toHaveBeenCalledTimes(1);
+  });
+
+  test("a load is ignored after Redo removes its source and Undo restores it", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    commitNodeGraph(
+      (graph) => removeNodes(graph, [STARTER_STATION_ID]),
+      store,
+      "snapshot"
+    );
+    undoNodeGraph(store);
+    await loadAround(() => {
+      redoNodeGraph(store);
+      undoNodeGraph(store);
+    });
+    expect(station(STARTER_STATION_ID)?.data.radio ?? null).toBeNull();
+    expect(playback.setPlaying).not.toHaveBeenCalled();
+  });
 
   test("parameter and position edits keep the shared request alive", async () => {
     store = createNodeStore(buildNodeGraphFromTemplate("starter"));

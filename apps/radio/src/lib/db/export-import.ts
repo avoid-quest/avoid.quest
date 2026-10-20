@@ -18,6 +18,7 @@ import {
   prepareNodeSessionGraph,
   writeNodeSessionGraph,
 } from "@/lib/collections/node-session-graph";
+import { flushPlaybackSessionWrites } from "@/lib/collections/node-session-persistence";
 import { playbackSessionsCollection } from "@/lib/collections/playback-sessions";
 import {
   commitNodeGraph,
@@ -413,6 +414,7 @@ function exportSessions(): DatabaseExport["sessions"] {
  * leaves the patch out.
  */
 export const createDatabaseExport = async (): Promise<DatabaseExport> => {
+  flushPlaybackSessionWrites();
   const radios = Array.from(radiosCollection.state.values());
   const settings = getSettings();
   const graph = playbackSessionsCollection.state.get("node")?.graph ?? null;

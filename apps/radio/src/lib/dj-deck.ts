@@ -31,6 +31,10 @@ import {
   channelEffects,
 } from "@/lib/channel-effects.js";
 import {
+  flushPlaybackSessionWrites,
+  getPlaybackSessionPersistence,
+} from "@/lib/collections/node-session-persistence";
+import {
   getPlaybackChannel,
   type PlaybackChannelRecord,
   updatePlaybackChannel,
@@ -1644,8 +1648,44 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   };
 
   const change = (deckId: DeckId, input: DjDeckChange): void => {
-    const update = (updater: (draft: PlaybackChannelRecord) => void) =>
-      updatePlaybackChannel("dj", deckId, updater);
+    const update = (
+      updater: (draft: PlaybackChannelRecord) => void,
+      apply?: () => void
+    ) =>
+      getPlaybackSessionPersistence("dj").update((session) => {
+        const channel = session.channels.find((entry) => entry.id === deckId);
+        if (channel) {
+          updater(channel);
+        }
+      }, apply);
+    const applyStrip = () => {
+      const channel = getPlaybackChannel("dj", deckId);
+      if (!channel) {
+        return;
+      }
+      switch (input.type) {
+        case "mute":
+          changeActiveSound(deckId, { muted: channel.muted, type: "mute" });
+          break;
+        case "pan":
+          changeActiveSound(deckId, { pan: channel.pan, type: "pan" });
+          break;
+        case "speed":
+          changeActiveSound(deckId, { speed: channel.speed, type: "speed" });
+          break;
+        case "channel-filter":
+          changeActiveSound(deckId, {
+            type: "channel-filter",
+            value: channel.channelFilter,
+          });
+          break;
+        case "filter":
+          changeActiveSound(deckId, { filter: channel.filter, type: "filter" });
+          break;
+        default:
+          break;
+      }
+    };
     switch (input.type) {
       case "autoplay":
         update((draft) => {
@@ -1660,38 +1700,32 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       case "volume":
         update((draft) => {
           draft.volume = input.volume;
-        });
-        applyCrossfade();
+        }, applyCrossfade);
         return;
       case "mute":
         update((draft) => {
           draft.muted = input.muted;
-        });
-        changeActiveSound(deckId, input);
+        }, applyStrip);
         return;
       case "pan":
         update((draft) => {
           draft.pan = input.pan;
-        });
-        changeActiveSound(deckId, input);
+        }, applyStrip);
         return;
       case "speed":
         update((draft) => {
           draft.speed = input.speed;
-        });
-        changeActiveSound(deckId, input);
+        }, applyStrip);
         return;
       case "channel-filter":
         update((draft) => {
           draft.channelFilter = input.value;
-        });
-        changeActiveSound(deckId, input);
+        }, applyStrip);
         return;
       case "filter":
         update((draft) => {
           draft.filter = input.filter;
-        });
-        changeActiveSound(deckId, input);
+        }, applyStrip);
         return;
       case "effects-dry-wet":
         options.effects
@@ -1737,6 +1771,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   return {
     deactivate() {
+      flushPlaybackSessionWrites();
       for (const deckId of ["deck-a", "deck-b"] as const) {
         setPendingSource(deckId, null);
         for (const fileUrl of localAudioUrls(

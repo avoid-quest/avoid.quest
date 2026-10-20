@@ -5,7 +5,6 @@ import {
   type PlaybackSessionId,
   type PlaybackSessionRecord,
   playbackSessionsCollection,
-  updatePlaybackSession,
 } from "@/lib/collections/playback-sessions";
 import {
   getSettings,
@@ -18,6 +17,7 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import { getPlaybackSessionPersistence } from "./collections/node-session-persistence";
 import type { PlaybackActionContext } from "./playback-action-context.js";
 import { toRuntimeAudioError } from "./playback-action-errors.js";
 import {
@@ -219,11 +219,15 @@ export function setManagedSessionMasterVolume(
   volume: number,
   ctx: PlaybackActionContext
 ): void {
-  updatePlaybackSession(sessionId, (draft) => {
-    draft.masterVolume = volume;
-  });
-  // A legacy "multiple" that failed its rewrite still runs Node.
-  if (normalizePlayerMode(getSettings()?.player.mode) === sessionId) {
-    applySessionMasterVolume(sessionId, ctx);
-  }
+  getPlaybackSessionPersistence(sessionId).update(
+    (draft) => {
+      draft.masterVolume = volume;
+    },
+    () => {
+      // A legacy "multiple" that failed its rewrite still runs Node.
+      if (normalizePlayerMode(getSettings()?.player.mode) === sessionId) {
+        applySessionMasterVolume(sessionId, ctx);
+      }
+    }
+  );
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createDefaultEffectConfig } from "@/lib/audio";
 import {
   createDefaultChannel,
@@ -10,8 +10,10 @@ import {
   type DesiredEffectsState,
   type EffectsRuntimeOutcome,
 } from "./channel-effects";
+import { flushPlaybackSessionWrites } from "./collections/node-session-persistence";
 
 async function resetPlaybackSessions(): Promise<void> {
+  flushPlaybackSessionWrites();
   await playbackSessionsCollection.stateWhenReady();
   for (const sessionId of playbackSessionsCollection.state.keys()) {
     playbackSessionsCollection.delete(sessionId);
@@ -391,4 +393,8 @@ describe("ChannelEffects", () => {
 
     expect(snapshots.get("sound-a")?.sidechainSoundId).toBe("sound-b");
   });
+});
+
+afterEach(() => {
+  flushPlaybackSessionWrites();
 });

@@ -83,7 +83,6 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
   clearManagedPlaybackErrors,
   getReadyManagedPlaybackSession,
-  setManagedSessionMasterVolume,
 } from "./managed-playback-internals.js";
 import {
   createNodeEngine,
@@ -520,15 +519,20 @@ function createNodePlayback(
   };
 
   const setMasterVolume = (volume: number) => {
-    persistence.flush();
     if (isReadOnly()) {
       return;
     }
     if (volume > 0) {
       unmutedMasterVolume = volume;
     }
-    setManagedSessionMasterVolume("node", volume, ctx);
-    engine?.masterVolumeChanged();
+    persistence.update(
+      (draft) => {
+        draft.masterVolume = volume;
+      },
+      () => {
+        engine?.masterVolumeChanged();
+      }
+    );
   };
 
   /**

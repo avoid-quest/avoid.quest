@@ -107,10 +107,13 @@ function setDeckCueEnabled(deckId: DeckId, enabled: boolean): void {
 
 export function setHeadphoneVolume(volume: number): void {
   const clampedVolume = Math.max(0, Math.min(1, volume));
-  getOutputRouting().setHeadphoneVolume(clampedVolume);
-  updateMixer((draft) => {
-    draft.headphoneVolume = clampedVolume;
-  });
+  updateMixer(
+    (draft) => {
+      draft.headphoneVolume = clampedVolume;
+    },
+    () =>
+      getOutputRouting().setHeadphoneVolume(getMixer()?.headphoneVolume ?? 1)
+  );
 }
 
 export async function setMainOutputDelay(ms: number): Promise<void> {
@@ -176,16 +179,20 @@ export function setCrossfadePosition(
   position: number,
   ctx = getDefaultPlaybackActionContext()
 ) {
-  updateMixer((draft) => {
-    draft.crossfadePosition = position;
-  });
-  applyCrossfade(ctx);
+  updateMixer(
+    (draft) => {
+      draft.crossfadePosition = position;
+    },
+    () => applyCrossfade(ctx)
+  );
 }
 
 export function setMasterVolume(volume: number, ctx?: PlaybackActionContext) {
-  updateMixer((draft) => {
-    draft.masterVolume = volume;
-  });
   const engine = ctx?.audioEngine ?? getAudioEngine();
-  engine.volume.setMasterVolume(volume);
+  updateMixer(
+    (draft) => {
+      draft.masterVolume = volume;
+    },
+    () => engine.volume.setMasterVolume(getMixer()?.masterVolume ?? 1)
+  );
 }

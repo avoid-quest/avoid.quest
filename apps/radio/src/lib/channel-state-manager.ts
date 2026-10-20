@@ -1,5 +1,4 @@
 import { captureError } from "@avoid.quest/error";
-import { eq, useLiveQuery } from "@tanstack/react-db";
 import { AudioManager, type AudioState, type FilterConfig } from "@/lib/audio";
 import type { RadioSourceKind } from "@/lib/audio/playback/playback-source-factory";
 import {
@@ -7,7 +6,6 @@ import {
   PLAYBACK_SESSION_IDS,
   type PlaybackChannelRecord,
   type PlaybackSessionId,
-  playbackSessionsCollection,
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
@@ -22,6 +20,11 @@ import {
   usePlaybackChannelRuntimeView,
 } from "@/lib/stores/playback-runtime-store";
 import { channelEffects } from "./channel-effects.js";
+import {
+  flushPlaybackSessionWrites,
+  getPlaybackSessionPersistence,
+} from "./collections/node-session-persistence";
+import { usePlaybackSessionSelector } from "./hooks/use-dj-session";
 import {
   capturePlaybackActionError,
   createPlaybackActionError,
@@ -165,15 +168,9 @@ export function useChannelState(
   channelId: string
 ): ChannelViewState | null {
   const runtime = usePlaybackChannelRuntimeView(channelId);
-  const result = useLiveQuery((q) =>
-    q
-      .from({ session: playbackSessionsCollection })
-      .where(({ session }) => eq(session.id, sessionId))
+  const persisted = usePlaybackSessionSelector(sessionId, (session) =>
+    session?.channels.find((channel) => channel.id === channelId)
   );
-  const persistedSession = result.data?.[0];
-  const persisted = persistedSession?.channels.find(
-    (channel) => channel.id === channelId
-  ) as PlaybackChannelRecord | undefined;
   return persisted ? { ...persisted, ...runtime } : null;
 }
 
@@ -183,20 +180,24 @@ function updateChannel(
   update: ChannelUpdate,
   syncFields: readonly ChannelAudioField[] = []
 ): void {
-  updatePlaybackChannel(sessionId, channelId, (draft) => {
-    if (typeof update === "function") {
-      update(draft);
+  const apply = () => {
+    const channel = getPlaybackChannel(sessionId, channelId);
+    const runtime = getPlaybackChannelRuntime(channelId);
+    if (channel && runtime.soundId && syncFields.length > 0) {
+      syncChannelAudioFields(runtime.soundId, channel, syncFields);
+    }
+  };
+  getPlaybackSessionPersistence(sessionId).update((session) => {
+    const draft = session.channels.find((channel) => channel.id === channelId);
+    if (!draft) {
       return;
     }
-    Object.assign(draft, update);
-  });
-
-  const channel = getPlaybackChannel(sessionId, channelId);
-  const runtime = getPlaybackChannelRuntime(channelId);
-  if (!(channel && runtime.soundId && syncFields.length > 0)) {
-    return;
-  }
-  syncChannelAudioFields(runtime.soundId, channel, syncFields);
+    if (typeof update === "function") {
+      update(draft);
+    } else {
+      Object.assign(draft, update);
+    }
+  }, apply);
 }
 
 export function setChannelVolume(
@@ -264,6 +265,7 @@ function setChannelSubscriptionCleanup(
 }
 
 export function deactivateAllChannels(): void {
+  flushPlaybackSessionWrites();
   const channelIds = new Set([
     ...subscriptionCleanups.keys(),
     ...channelOutputModes.keys(),
@@ -407,6 +409,7 @@ export function activateChannel(
 }
 
 export function deactivateChannel(channelId: string): void {
+  flushPlaybackSessionWrites();
   const runtime = getPlaybackChannelRuntime(channelId);
   const sessionId =
     channelSessions.get(channelId) ??

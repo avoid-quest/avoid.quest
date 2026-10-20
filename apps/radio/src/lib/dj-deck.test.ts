@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporter
 import * as Sentry from "@sentry/core";
 import {
@@ -26,6 +34,7 @@ import {
   type ChannelEffectsRef,
   createChannelEffects,
 } from "./channel-effects";
+import { flushPlaybackSessionWrites } from "./collections/node-session-persistence";
 import {
   createDjDeckModule,
   type DjDeckAudioAdapter,
@@ -43,6 +52,7 @@ import type { PlaybackActionContext } from "./playback-action-context";
 import { capturePlaybackActionError } from "./playback-action-errors";
 
 async function resetPlaybackSessions(): Promise<void> {
+  flushPlaybackSessionWrites();
   await playbackSessionsCollection.stateWhenReady();
   for (const sessionId of playbackSessionsCollection.state.keys()) {
     playbackSessionsCollection.delete(sessionId);
@@ -2613,4 +2623,8 @@ describe("DjDeckModule pending sources", () => {
     expect(module.pendingSource.getSnapshot()["deck-a"]).toBe("static-audio");
     expect(getDjError()).toBeNull();
   });
+});
+
+afterEach(() => {
+  flushPlaybackSessionWrites();
 });

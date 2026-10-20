@@ -13,7 +13,7 @@ import type { BrowserAudioSource } from "@/lib/audio/playback/display-audio";
 import { channelEffects } from "@/lib/channel-effects";
 import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
-import { useDjSession } from "@/lib/hooks/use-dj-session";
+import { useDjTempo } from "@/lib/hooks/use-dj-session";
 import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useSessionRadios } from "@/lib/hooks/use-session-radios";
@@ -146,8 +146,7 @@ function DeckPanelInner({
   const sessionRadios = useSessionRadios((state) => state.radios);
   const searchRadios = [...radios, ...sessionRadios];
   const deck = getDjDeckModule().deck(deckId);
-  const djSession = useDjSession();
-  const effectsTempo = djSession?.tempo ?? 120;
+  const effectsTempo = useDjTempo();
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
   const trackProgress = useTrackProgress(soundId);

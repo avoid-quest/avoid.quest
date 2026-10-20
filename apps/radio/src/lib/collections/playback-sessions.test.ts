@@ -15,6 +15,7 @@ import {
   NODE_HISTORY_LIMIT,
   nodeStore,
   redoNodeGraph,
+  setNodeSelection,
   undoNodeGraph,
 } from "@/lib/node-graph/node-store";
 import {
@@ -1715,4 +1716,28 @@ describe("session persistence and init", () => {
     await Promise.resolve();
     expect(getCachedNamModel(discardedModelId)).toBeNull();
   });
+});
+
+test("selection changes and retained immutable graphs avoid NAM rescans", () => {
+  const graph = buildNodeGraphFromTemplate("starter");
+  let scans = 0;
+  const { nodes } = graph;
+  Object.defineProperty(graph, "nodes", {
+    configurable: true,
+    get: () => {
+      scans += 1;
+      return nodes;
+    },
+  });
+  loadNodeGraph(graph);
+  const afterLoad = scans;
+  for (let i = 0; i < 600; i += 1) {
+    setNodeSelection({ edges: [], nodes: [String(i)] });
+  }
+  expect(scans).toBe(afterLoad);
+  nodeStore.setState((state) => ({
+    ...state,
+    history: { ...state.history, past: [graph] },
+  }));
+  expect(scans).toBe(afterLoad);
 });

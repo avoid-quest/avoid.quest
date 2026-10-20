@@ -146,7 +146,9 @@ function recoverStoredSettings(): SettingsRecord[] {
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       for (const entry of Object.values(parsed)) {
         const settings = recoverSettingsEntry(entry);
-        if (settings) {
+        // The app only reads the singleton; other rows stay in the backup, and
+        // without the singleton the defaults are inserted instead.
+        if (settings?.id === SETTINGS_ID) {
           recovered.set(settings.id, settings);
         }
       }

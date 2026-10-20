@@ -173,6 +173,26 @@ describe("damaged saved settings", () => {
     }
   );
 
+  test("inserts defaults when only rows other than the settings survive", async () => {
+    const raw = JSON.stringify({
+      broken: null,
+      "s:other": {
+        data: {
+          id: "other",
+          player: { mode: "dj", restoreStateOnLoad: false },
+        },
+        versionKey: "v1",
+      },
+    });
+    storage.setItem(storageKey, raw);
+    const recovered = await reloadSettings();
+    await recovered.initializeSettings();
+    expect(storage.getItem(`${storageKey}:corrupt`)).toBe(raw);
+    expect(recovered.getSettings()?.player.mode).toBe("single");
+    recovered.setPlayerMode("dj");
+    expect(recovered.getSettings()?.player.mode).toBe("dj");
+  });
+
   test("keeps the original if its backup cannot be saved", async () => {
     const raw = "{invalid";
     storage.setItem(storageKey, raw);

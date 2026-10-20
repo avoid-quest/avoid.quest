@@ -1,0 +1,24 @@
+apps/radio/src/lib/mode-lifecycle-manager.ts
+  s_d51f04692819a2::t_5bf6d057e3cfde 13,43-45,152,157-169,183-184
+apps/radio/src/lib/mode-lifecycle-manager.test.ts
+  s_d51f04692819a2::t_b987af05359ee4 258,434-438
+  s_d51f04692819a2::t_444ed61d9c5275 25,265-266,294-374
+  s_d51f04692819a2::t_966497367115a0 256,259-264,267-291
+  s_d51f04692819a2::t_ce31fe6d0d0c9e 208-255,257,292-293,375-433,439-474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9acb23442bb3e16a88fbf1da40bd8bb671ef6431",
+  "prompts": {},
+  "sessions": {
+    "s_d51f04692819a2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15832-2ffc-77d2-af8a-2e3a88379a65",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

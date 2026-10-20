@@ -9,6 +9,7 @@ import type { Radio } from "../audio";
 import { radios as defaultRadios } from "../const";
 import { radioMetadataConfigSchema } from "../metadata/schema";
 import { generateId } from "../types";
+import { createMemoryFallbackStorage } from "./memory-fallback-storage";
 import { platformMetadataSchema } from "./schemas";
 
 const RADIOS_STORAGE_KEY = "radio-app-radios";
@@ -96,6 +97,8 @@ const radioSchema = z.object({
 
 export type RadioRecord = z.infer<typeof radioSchema>;
 
+const radiosStorage = createMemoryFallbackStorage();
+
 export const radiosCollection = createCollection(
   localStorageCollectionOptions({
     // Keep rows resident: the app reads `.state` outside live queries, and
@@ -105,6 +108,8 @@ export const radiosCollection = createCollection(
     id: "radios",
     schema: radioSchema,
     startSync: true,
+    storage: radiosStorage.storage,
+    storageEventApi: radiosStorage.storageEventApi,
     storageKey: RADIOS_STORAGE_KEY,
   })
 );
@@ -378,7 +383,11 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
     const recovered = recoverStoredRadios();
     const radios =
       recovered.length > 0 ? recovered : defaultRadios.map(createSystemRadio);
-    await persistRadioChanges(() => radiosCollection.insert(radios));
+    // The app still opens with these stations if the browser cannot save them.
+    await radiosStorage.persistOrKeepInMemory(
+      () => persistRadioChanges(() => radiosCollection.insert(radios)),
+      "radios"
+    );
     return null;
   }
 
@@ -387,11 +396,18 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
 
   // Auto-apply deletions (system radios removed from defaults)
   if (changes.deletions.length > 0) {
-    await applySyncChanges({
-      additions: [],
-      deletions: changes.deletions,
-      updates: [],
-    });
+    try {
+      await applySyncChanges({
+        additions: [],
+        deletions: changes.deletions,
+        updates: [],
+      });
+    } catch (error) {
+      // The saved library is intact, so the app still opens. Applying the
+      // rest would fail the same way; both are retried on the next launch.
+      console.warn("[radios] Could not remove retired stations", error);
+      return null;
+    }
     // Clear deletions from return since they're auto-applied
     changes.deletions = [];
   }

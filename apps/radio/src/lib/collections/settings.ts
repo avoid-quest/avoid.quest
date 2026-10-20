@@ -5,13 +5,12 @@ import {
 import {
   createCollection,
   localStorageCollectionOptions,
-  type StorageApi,
-  type StorageEventApi,
 } from "@tanstack/react-db";
 import { z } from "zod";
 import { CHANGELOG_STORAGE_KEY, settings as defaultSettings } from "../const";
 import { normalizePlayerMode } from "../normalize-player-mode";
 import { generateId } from "../types";
+import { createMemoryFallbackStorage } from "./memory-fallback-storage";
 
 const playerModeSchema = z.enum(["node", "single", "dj"]);
 
@@ -57,71 +56,7 @@ export const SETTINGS_STORAGE_KEY = "radio-app-settings";
 /** The stored mode the settings migration replaced, if it replaced one. */
 let replacedPlayerMode: string | undefined;
 
-/** Set once the browser refuses the startup settings; lasts for the visit. */
-let keepSettingsInMemory = false;
-const memorySettings = new Map<string, string>();
-
-// Resolved as TanStack DB does, so a page without a window keeps its default.
-const browserStorage =
-  typeof window === "undefined" ? undefined : window.localStorage;
-
-/** localStorage, or memory once the browser refuses the startup settings. */
-const settingsStorage: StorageApi | undefined = browserStorage && {
-  getItem: (key) =>
-    keepSettingsInMemory
-      ? (memorySettings.get(key) ?? null)
-      : browserStorage.getItem(key),
-  removeItem: (key) => {
-    if (keepSettingsInMemory) {
-      memorySettings.delete(key);
-    } else {
-      browserStorage.removeItem(key);
-    }
-  },
-  setItem: (key, value) => {
-    if (keepSettingsInMemory) {
-      memorySettings.set(key, value);
-    } else {
-      browserStorage.setItem(key, value);
-    }
-  },
-};
-
-const forwardedStorageListeners = new WeakMap<
-  (event: StorageEvent) => void,
-  (event: StorageEvent) => void
->();
-
-/**
- * Other tabs' writes, presented as `settingsStorage` events: TanStack DB only
- * takes events from its own storage. Memory-only settings ignore them.
- */
-const settingsStorageEvents: StorageEventApi | undefined = settingsStorage && {
-  addEventListener: (type, listener) => {
-    const forward = (event: StorageEvent) => {
-      if (keepSettingsInMemory || event.storageArea !== browserStorage) {
-        return;
-      }
-      listener(
-        new Proxy(event, {
-          get: (target, property) =>
-            property === "storageArea"
-              ? settingsStorage
-              : Reflect.get(target, property),
-        })
-      );
-    };
-    forwardedStorageListeners.set(listener, forward);
-    window.addEventListener(type, forward);
-  },
-  removeEventListener: (type, listener) => {
-    const forward = forwardedStorageListeners.get(listener);
-    if (forward) {
-      forwardedStorageListeners.delete(listener);
-      window.removeEventListener(type, forward);
-    }
-  },
-};
+const settingsStorage = createMemoryFallbackStorage();
 
 export const settingsCollection = createCollection(
   localStorageCollectionOptions({
@@ -132,8 +67,8 @@ export const settingsCollection = createCollection(
     id: "settings",
     schema: settingsSchema,
     startSync: true,
-    storage: settingsStorage,
-    storageEventApi: settingsStorageEvents,
+    storage: settingsStorage.storage,
+    storageEventApi: settingsStorage.storageEventApi,
     storageKey: SETTINGS_STORAGE_KEY,
   })
 );
@@ -180,26 +115,12 @@ export async function initializeSettings(): Promise<void> {
   migrateLegacyPlayerMode();
 }
 
-/**
- * Insert the settings the app starts with. If the browser refuses to save
- * them, e.g. storage is full or blocked, keep them in memory for this visit
- * rather than leave the app without settings. A failed write rolls the
- * insert back, so they are inserted again into memory.
- */
-async function insertStartupSettings(rows: SettingsRecord[]): Promise<void> {
-  try {
-    await settingsCollection.insert(rows).isPersisted.promise;
-  } catch (error) {
-    if (keepSettingsInMemory || !settingsStorage) {
-      throw error;
-    }
-    console.warn(
-      "[settings] Could not save settings; keeping them for this visit",
-      error
-    );
-    keepSettingsInMemory = true;
-    await settingsCollection.insert(rows).isPersisted.promise;
-  }
+/** Insert the settings the app starts with, in memory if they cannot be saved. */
+function insertStartupSettings(rows: SettingsRecord[]): Promise<void> {
+  return settingsStorage.persistOrKeepInMemory(
+    () => settingsCollection.insert(rows).isPersisted.promise,
+    "settings"
+  );
 }
 
 function recoverStoredSettings(): SettingsRecord[] {

@@ -459,3 +459,118 @@ describe("damaged local storage", () => {
     expect(radiosCollection.state.size).toBe(0);
   });
 });
+
+describe("storage that refuses writes at startup", () => {
+  test("opens with the default stations in memory for the visit", async () => {
+    const { initializeRadios, radiosCollection, reorderRadios } =
+      await reloadRadios();
+    const write = spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await expect(initializeRadios()).resolves.toBeNull();
+    expect(radiosCollection.state.size).toBe(defaultRadios.length);
+    write.mockRestore();
+
+    const ids = [...radiosCollection.state.keys()].reverse();
+    await reorderRadios(ids);
+    expect(ids.map((id) => radiosCollection.state.get(id)?.order)).toEqual(
+      ids.map((_, index) => index)
+    );
+    await radiosCollection.insert({
+      enabled: true,
+      id: "added",
+      isSystem: false,
+      name: "Added station",
+      order: ids.length,
+      streamUrl: "https://example.com/added",
+    }).isPersisted.promise;
+    expect(radiosCollection.state.size).toBe(defaultRadios.length + 1);
+    expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  test("keeps recovered stations in memory beside their backup", async () => {
+    const custom: RadioRecord = {
+      enabled: false,
+      id: "custom",
+      isSystem: false,
+      name: "My station",
+      order: 42,
+      streamUrl: "https://example.com/custom",
+    };
+    const raw = JSON.stringify({
+      "s:broken": { invalid: true },
+      "s:custom": { data: custom, versionKey: "v1" },
+    });
+    storage.setItem(STORAGE_KEY, raw);
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    const setItem = storage.setItem.bind(storage);
+    spyOn(storage, "setItem").mockImplementation((key, value) => {
+      if (key === STORAGE_KEY) {
+        throw new Error("Storage full");
+      }
+      setItem(key, value);
+    });
+    await expect(initializeRadios()).resolves.toBeNull();
+    expect(storage.getItem(`${STORAGE_KEY}:corrupt`)).toBe(raw);
+    expect(storage.getItem(STORAGE_KEY)).toBe(raw);
+    expect(radiosCollection.state.size).toBe(1);
+    expect(radiosCollection.state.get(custom.id)).toMatchObject(custom);
+  });
+
+  test("opens with retired stations it could not remove", async () => {
+    seedSavedRadios();
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    const retired = {
+      enabled: true,
+      id: "retired",
+      isSystem: true,
+      name: "Retired station",
+      order: 99,
+      streamUrl: "https://example.com/retired",
+    };
+    saved[`s:${retired.id}`] = { data: retired, versionKey: retired.id };
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    const original = storage.getItem(STORAGE_KEY);
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await expect(initializeRadios()).resolves.toBeNull();
+    expect(radiosCollection.state.get(retired.id)).toMatchObject(retired);
+    expect(storage.getItem(STORAGE_KEY)).toBe(original);
+  });
+
+  test("follows another tab's stations while they can be saved", async () => {
+    // Call the listeners directly: other files may leave a DOM Event behind.
+    type StorageListener = (event: Partial<StorageEvent>) => void;
+    const listeners = new Set<StorageListener>();
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        addEventListener: (_type: string, listener: StorageListener) =>
+          listeners.add(listener),
+        localStorage: storage,
+        removeEventListener: (_type: string, listener: StorageListener) =>
+          listeners.delete(listener),
+      },
+    });
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    await initializeRadios();
+    const other: RadioRecord = {
+      enabled: true,
+      id: "other-tab",
+      isSystem: false,
+      name: "Other tab station",
+      order: 0,
+      streamUrl: "https://example.com/other",
+    };
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ "s:other-tab": { data: other, versionKey: "v2" } })
+    );
+    for (const listener of listeners) {
+      listener({ key: STORAGE_KEY, storageArea: storage });
+    }
+    expect([...radiosCollection.state.keys()]).toEqual([other.id]);
+  });
+});

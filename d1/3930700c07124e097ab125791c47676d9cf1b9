@@ -1,0 +1,22 @@
+apps/discord-bot/src/voice/guild-player.test.ts
+  s_ce350985ce63b3::t_b6461a7a9fc800 8,13,15,18,40,113-115,149-150,153-163
+  s_ce350985ce63b3::t_4048b6726bc957 12,14,17
+  s_ce350985ce63b3::t_ec57faa907d0d5 116-148
+  s_ce350985ce63b3::t_34ee4452ca0091 151-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d13930700c07124e097ab125791c47676d9cf1b9",
+  "prompts": {},
+  "sessions": {
+    "s_ce350985ce63b3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ad2-fa9e-7112-9bdc-44215ca5ff27",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

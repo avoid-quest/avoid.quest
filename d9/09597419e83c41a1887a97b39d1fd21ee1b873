@@ -1,0 +1,47 @@
+apps/radio/src/components/settings/settings-button.tsx
+  s_7ab7dab08b29ae::t_4331905b5164d0 18-19,21,81-85
+apps/radio/src/components/radio/single/single-player.tsx
+  s_7ab7dab08b29ae::t_b30a7293283ad3 2-8,10,29,250-275
+apps/radio/src/components/radio/node/index.tsx
+  s_db2676bf9b5672::t_725f9f5f88e0cf 10,13,51,193-206
+apps/radio/src/components/settings/radio-dialog.tsx
+  s_7ab7dab08b29ae::t_b2270d965888b2 15-16,22,26,32,99-108,135-139,142-146,149-157
+apps/radio/src/components/settings/settings-form.tsx
+  s_db2676bf9b5672::t_cb729e17da91d6 40,42,48,51,54,246-250,255-259,286-293
+apps/radio/src/components/theme/header.tsx
+  s_db2676bf9b5672::t_cf888b809cd7bb 3,5,7-8,13,18,23,58-67,86-94,105-109
+apps/radio/src/components/lazy-recovery.tsx
+  s_7ab7dab08b29ae::t_b1a5e7f42e5618 1-244
+apps/radio/src/components/root/root-shell.tsx
+  s_db2676bf9b5672::t_42b973555e956c 5,7,14,19-20,58-62
+apps/radio/src/components/feedback/app-feedback.tsx
+  s_db2676bf9b5672::t_5d1f5df91944bc 38,40,67,260-261,263-266,270,273-274,276-308
+apps/radio/src/components/lazy-recovery.test.tsx
+  s_7ab7dab08b29ae::t_33ea25378b6d1b 1-195
+apps/radio/src/routes/__root.tsx
+  s_db2676bf9b5672::t_4a0c15266d143e 8,11-12,18,148-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d909597419e83c41a1887a97b39d1fd21ee1b873",
+  "prompts": {},
+  "sessions": {
+    "s_7ab7dab08b29ae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15ad6-e627-7ca1-92cc-2ed2250f1d18",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

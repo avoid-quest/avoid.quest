@@ -1,0 +1,83 @@
+apps/radio/src/lib/node-graph/modulation-runtime.test.ts
+  s_94cd00528d4c5f::t_01b593491559cc 991-1016
+  s_94cd00528d4c5f::t_9a2d645b4858c5 150,980-990
+apps/radio/src/lib/node-graph/palette.test.ts
+  s_94cd00528d4c5f::t_134268d64421da 1,1256-1287
+  s_94cd00528d4c5f::t_c731b1a4d06f76 1288
+apps/radio/src/lib/node-graph/modulation-runtime.ts
+  s_94cd00528d4c5f::t_8265c2aab4500e 17-21,23-30,227,229,366-367,497-504
+  s_94cd00528d4c5f::t_e55f84f5fc0fd9 228,509-511
+apps/radio/src/components/radio/node/index.tsx
+  s_94cd00528d4c5f::t_8265c2aab4500e 44-47,96-97,101
+apps/radio/src/lib/node-graph/compiled-plan.test.ts
+  s_94cd00528d4c5f::t_40c1db07d66195 75
+  s_94cd00528d4c5f::t_01b593491559cc 77
+  s_94cd00528d4c5f::t_3716d050a1dee9 6-11,30-39,46-74,76,78-100
+apps/radio/src/lib/audio/hooks/use-audio-devices.ts
+  s_94cd00528d4c5f::t_8265c2aab4500e 119-121
+apps/radio/src/lib/node-graph/validate.ts
+  s_94cd00528d4c5f::t_3cee43376a1df5 633-635,667-693,695-703,705-725,730-760,762-764,766-770,779,797-798,810,835-844,875
+  s_a90d7241c06944::t_d229717ea7d834 617-618,694,704,761,765,771-778,780-796
+apps/radio/src/components/radio/node/use-node-radio-management.ts
+  s_94cd00528d4c5f::t_134268d64421da 57,67-69
+  s_94cd00528d4c5f::t_8265c2aab4500e 38-39,41-56,58-66,70-84,87-88,90-97,192,215,239,260
+apps/radio/src/lib/audio/hooks/use-audio-devices.test.tsx
+  s_94cd00528d4c5f::t_2830dbed32ee52 1-51,53-78
+  s_94cd00528d4c5f::t_134268d64421da 52
+apps/radio/src/components/radio/node/connection-hints.test.ts
+  s_94cd00528d4c5f::t_134268d64421da 12,255-257,293-345
+  s_94cd00528d4c5f::t_30cbb3be2c3ac0 346
+apps/radio/src/lib/node-graph/compiled-plan.ts
+  s_94cd00528d4c5f::t_134268d64421da 12-13
+  s_94cd00528d4c5f::t_84a48eb0711db7 5-11,14-32,38-45,49-58
+  s_a2913643c4bf37::t_8c5925d8373ed7 2-4
+apps/radio/src/lib/node-playback.test.ts
+  s_94cd00528d4c5f::t_eb18f079e8a1cb 6876
+  s_94cd00528d4c5f::t_768e2e4cbb2335 63-64,71,76,561-562,564,6826-6875,6877-6902
+apps/radio/src/lib/node-playback.ts
+  s_94cd00528d4c5f::t_84a48eb0711db7 317,319-321,358-362
+apps/radio/src/lib/node-graph/palette.ts
+  s_94cd00528d4c5f::t_134268d64421da 549,573-574,576-577,581-604,616,631-636
+  s_94cd00528d4c5f::t_60d5c4aeef5cb4 33,73,78,81,377,484-485,522-525,527-529,540-548,550-572,575,578-580,642-649
+apps/radio/src/lib/node-graph/graph-edits.ts
+  s_94cd00528d4c5f::t_3cee43376a1df5 41-44,46-47,75,79,907-908,911-914,955-956,972-973,981,1012
+  s_94cd00528d4c5f::t_e567983049a7c5 45
+apps/radio/src/components/radio/node/node-canvas.tsx
+  s_a90d7241c06944::t_c5842a664ad2e6 869-872,880
+apps/radio/src/components/radio/node/node-palette.tsx
+  s_94cd00528d4c5f::t_58476ac1d26749 42-46,60-61,338-341
+apps/radio/src/components/radio/node/use-node-radio-management.test.tsx
+  s_a2913643c4bf37::t_c599f0b5465ecf 18-22,26,28,30,87,91-92,541,550,574,583-663
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1dcfb77142a88fee12a36e383108c9f142d1a557",
+  "prompts": {},
+  "sessions": {
+    "s_94cd00528d4c5f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157cd-a853-7dd1-aad9-47bd3b012175",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_a2913643c4bf37": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157fc-9a47-7d43-b837-947636cdc8db",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_a90d7241c06944": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157cc-5c67-7630-88e9-718c56c7deba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -6,7 +6,7 @@ PWA internet radio player with advanced audio mixing, effects chain, and MIDI su
 
 - **3 Playback Modes**
   - **Single**: focused single-station player; switching releases the old sound before loading its replacement
-  - **Node**: a patch canvas (React Flow) where Station nodes are cabled into a Speakers node with Play all and master volume; `/` opens the node palette, and edits are undoable. On phones the Stage and Rack tabs list every source with play and volume. Node replaced Multiple: a stored Multiple session, mode or backup becomes a Node patch with the same stations, order and levels
+  - **Node**: a patch canvas (React Flow) where Station nodes are cabled into a Speakers node with master volume and mute; Space plays or pauses every source, `/` opens the node palette, and edits are undoable. Phones open directly on the patch, with Fit view, templates and undo/redo in its actions menu. Node replaced Multiple: a stored Multiple session, mode or backup becomes a Node patch with the same stations, order and levels
   - **DJ**: two-deck mixer with crossfader, channel strip, effects chain, CUE monitoring, MIDI control
 - **Audio DSP**: official openDAW effects engine plus a radio AudioWorklet compatibility runtime; see [runtime selection](OPENDAW_EFFECTS_IMPLEMENTATION.md#architecture)
 - **Platform support**: Bandcamp albums/tracks, SoundCloud playlists/tracks, YouTube playlists/videos, and Radio Browser/Radio Garden stations

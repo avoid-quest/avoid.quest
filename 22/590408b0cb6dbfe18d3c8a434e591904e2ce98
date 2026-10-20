@@ -1,0 +1,23 @@
+apps/radio/src/lib/single-playback.ts
+  s_a90d7241c06944::t_2a57ad081cb082 12,153,171-175,179-193,195-207,212,229,332-334,339,416,424,436,441-446,457-460,471,477-482,496,499,502-505,507-509,512-514,522-523,637-643
+apps/radio/src/lib/single-playback.test.ts
+  s_a90d7241c06944::t_9010dbdfab6216 849-907,909-919
+  s_a90d7241c06944::t_7bce79f7201f9a 1,26-27,29,33,60,189-223,289-311,313-364,366-381,753-769,771-825,827-847
+  s_a90d7241c06944::t_fd6d9614b053d7 2-9,28,312,365,770,826,848,908
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22590408b0cb6dbfe18d3c8a434e591904e2ce98",
+  "prompts": {},
+  "sessions": {
+    "s_a90d7241c06944": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a157cc-5c67-7630-88e9-718c56c7deba",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

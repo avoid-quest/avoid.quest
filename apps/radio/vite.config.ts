@@ -18,6 +18,7 @@ import { gitChangelogPlugin } from "./git-changelog.ts";
 import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
 const PRELOAD_HELPER_MODULE = /\0vite\/preload-helper\.js$/;
+const SHARED_AUDIO_MODULE = /\/node_modules\/@opendaw\/lib-(?:std|dsp)\//;
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
 const APP_VERSION = process.env.npm_package_version || "0.7.1";
@@ -135,6 +136,20 @@ function manualVendorChunks(id: string): string | undefined {
   // Let importer boundaries split everything else. A catch-all here pulls
   // parsers, archives and cloud integrations into the initial page graph.
   return undefined;
+}
+
+function manualClientVendorChunks(id: string): string | undefined {
+  const group = manualVendorChunks(id);
+  if (group === "vendor-audio") {
+    // Only std/dsp are shared with cold Single mode. Keep Studio's libraries
+    // together to avoid circular imports between automatic shared chunks.
+    // Keep Studio/NAM's browser-only group and the Worker's grouping intact.
+    const normalizedId = id.replaceAll(path.sep, "/");
+    return SHARED_AUDIO_MODULE.test(normalizedId)
+      ? "vendor-audio-base"
+      : "vendor-audio-studio";
+  }
+  return group;
 }
 
 /**
@@ -382,7 +397,7 @@ function clientChunkBoundariesPlugin(): Plugin {
                     // grouping; preserve its existing vendor/SSR boundaries.
                     includeDependenciesRecursively: !client,
                     name: client
-                      ? manualVendorChunks
+                      ? manualClientVendorChunks
                       : manualWorkerVendorChunks,
                     priority: 10,
                   },

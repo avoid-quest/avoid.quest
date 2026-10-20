@@ -50,7 +50,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
           src="/u/script.js"
         />
       </head>
-      <body className={cn("min-h-screen bg-background antialiased")}>
+      <body className={cn("min-h-dvh bg-background antialiased")}>
         <ClientOnly>
           <Suspense fallback={null}>
             <RootClientEffects />
@@ -65,7 +65,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
           >
             <SWRegister />
             <InstallPrompt />
-            <div className="relative flex h-screen flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
+            <div className="relative flex h-dvh flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
               <Header />
               <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden pt-12">
                 {children}

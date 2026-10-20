@@ -29,6 +29,18 @@ export function loadSingleRadio() {
 }
 
 export function loadNodeRadios() {
+  // Match useIsMobile's 768px breakpoint. Keep the same dynamic boundary as
+  // Node's shell, including its SSR guard; phones keep their existing discovery.
+  if (
+    !import.meta.env.SSR &&
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    !window.matchMedia("(max-width: 767px)").matches
+  ) {
+    import("./node/node-canvas").catch((error: unknown) => {
+      console.error("[radio] Failed to preload Node canvas:", error);
+    });
+  }
   nodePromise ??= Promise.all([import("./node"), preparePlaybackSessions()])
     .then(([component]) => ({ default: component.NodeRadios }))
     .catch((error: unknown) => {

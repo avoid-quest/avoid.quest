@@ -1,11 +1,38 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { DownloadIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+const INSTALL_SNOOZE_KEY = "pwa-install-dismissed";
+const INSTALL_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
+
+function persistInstallSnooze(until: number): void {
+  try {
+    localStorage.setItem(INSTALL_SNOOZE_KEY, String(until));
+  } catch {
+    // The in-memory snooze still applies when storage is unavailable.
+  }
+}
+
+function readInstallSnooze(): number {
+  try {
+    const stored = localStorage.getItem(INSTALL_SNOOZE_KEY);
+    if (stored === "true") {
+      // Convert permanent dismissals once, without immediately prompting again.
+      const until = Date.now() + INSTALL_SNOOZE_MS;
+      persistInstallSnooze(until);
+      return until;
+    }
+    const until = Number(stored);
+    return Number.isFinite(until) && until > 0 ? until : 0;
+  } catch {
+    return 0;
+  }
 }
 
 export function InstallPrompt() {
@@ -14,6 +41,7 @@ export function InstallPrompt() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const snoozedUntil = useRef(0);
 
   useEffect(() => {
     // Check if already installed (standalone mode)
@@ -23,25 +51,47 @@ export function InstallPrompt() {
 
     setIsStandalone(isStandaloneMode);
 
-    // Listen for beforeinstallprompt event (Android/Chrome)
+    snoozedUntil.current = readInstallSnooze();
+    const refreshSnooze = () => {
+      snoozedUntil.current = Math.max(
+        snoozedUntil.current,
+        readInstallSnooze()
+      );
+      setShowPrompt(Date.now() >= snoozedUntil.current);
+    };
+
+    // Keep the browser event even while snoozed; "Not now" does not consume it.
     const handleBeforeInstallPrompt = (e: Event) => {
-      const dismissed = localStorage.getItem("pwa-install-dismissed");
-      if (!dismissed) {
-        e.preventDefault();
-        setDeferredPrompt(e as BeforeInstallPromptEvent);
-        setShowPrompt(true);
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      refreshSnooze();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshSnooze();
       }
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    // Reuse a retained event when returning after expiry, without a month-long timer.
+    window.addEventListener("focus", refreshSnooze);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      window.removeEventListener("focus", refreshSnooze);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener(
         "beforeinstallprompt",
         handleBeforeInstallPrompt
       );
     };
   }, []);
+
+  const handleDismiss = () => {
+    snoozedUntil.current = Date.now() + INSTALL_SNOOZE_MS;
+    persistInstallSnooze(snoozedUntil.current);
+    setShowPrompt(false);
+  };
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
@@ -58,19 +108,15 @@ export function InstallPrompt() {
         setShowPrompt(false);
         setDeferredPrompt(null);
       } else {
-        localStorage.setItem("pwa-install-dismissed", "true");
-        setShowPrompt(false);
+        handleDismiss();
+        // The browser prompt consumed this event; wait for a new one.
+        setDeferredPrompt(null);
       }
     } catch {
       // Install prompt error is non-critical
     } finally {
       setIsInstalling(false);
     }
-  };
-
-  const handleDismiss = () => {
-    setShowPrompt(false);
-    localStorage.setItem("pwa-install-dismissed", "true");
   };
 
   if (isStandalone || !showPrompt || !deferredPrompt) {
@@ -90,7 +136,7 @@ export function InstallPrompt() {
                 Install radio as an app
               </h3>
               <p className="mt-1 text-muted-foreground text-xs">
-                Opens in its own window and works offline.
+                Open radio in its own window.
               </p>
             </div>
             <div className="flex items-center gap-2">

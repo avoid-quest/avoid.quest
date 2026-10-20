@@ -1,6 +1,6 @@
 import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useSyncExternalStore } from "react";
 import { ClientOnly } from "../client-only";
 
 const AppFeedback = lazy(() =>
@@ -24,6 +24,45 @@ const WhatsNew = lazy(() =>
   }))
 );
 
+const desktopQuery = "(min-width: 640px)";
+function subscribeDesktop(listener: () => void) {
+  const media = window.matchMedia(desktopQuery);
+  media.addEventListener("change", listener);
+  return () => media.removeEventListener("change", listener);
+}
+const getDesktopSnapshot = () => window.matchMedia(desktopQuery).matches;
+const getServerDesktopSnapshot = () => false;
+
+function DesktopWidgetsPlaceholder() {
+  return (
+    <>
+      <Skeleton className="size-7" />
+      <Skeleton className="size-7" />
+    </>
+  );
+}
+
+function DesktopWidgets() {
+  const desktop = useSyncExternalStore(
+    subscribeDesktop,
+    getDesktopSnapshot,
+    getServerDesktopSnapshot
+  );
+  if (!desktop) {
+    return <DesktopWidgetsPlaceholder />;
+  }
+  return (
+    <>
+      <Suspense fallback={<Skeleton className="size-7" />}>
+        <AppFeedback />
+      </Suspense>
+      <Suspense fallback={<Skeleton className="size-7" />}>
+        <WhatsNew />
+      </Suspense>
+    </>
+  );
+}
+
 export function Header() {
   return (
     <header className="fixed top-0 right-0 left-0 z-50 flex h-12 items-center justify-between gap-3 border-border/50 border-b bg-background/80 px-3 backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-background/60 dark:bg-background/80">
@@ -46,15 +85,8 @@ export function Header() {
       {/* One look for every icon button: muted, lit on hover and while open. */}
       <div className="flex shrink-0 items-center gap-1.5 [&_button]:size-7 [&_button]:text-muted-foreground [&_button]:text-xs [&_button]:aria-expanded:bg-accent [&_button]:aria-expanded:text-accent-foreground dark:[&_button]:aria-expanded:bg-accent/50 [&_button_svg]:size-3.5">
         <div className="hidden sm:contents">
-          <ClientOnly>
-            <Suspense fallback={null}>
-              <AppFeedback />
-            </Suspense>
-          </ClientOnly>
-          <ClientOnly fallback={<Skeleton className="size-7" />}>
-            <Suspense fallback={<Skeleton className="size-7" />}>
-              <WhatsNew />
-            </Suspense>
+          <ClientOnly fallback={<DesktopWidgetsPlaceholder />}>
+            <DesktopWidgets />
           </ClientOnly>
         </div>
         <ClientOnly fallback={<Skeleton className="size-7" />}>

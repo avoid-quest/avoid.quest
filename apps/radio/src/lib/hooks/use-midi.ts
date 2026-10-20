@@ -1,5 +1,9 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { getMidiControl, type MidiControlSnapshot } from "@/lib/midi";
+import {
+  getMidiControl,
+  type MidiControlSnapshot,
+  preloadMidiRuntime,
+} from "@/lib/midi";
 
 export function useMidiControlSnapshot(): MidiControlSnapshot {
   const control = getMidiControl();
@@ -19,5 +23,10 @@ export function useMidiControlLifecycle(): void {
 }
 
 export function useMidi(): void {
-  useEffect(() => getMidiControl().activateDj(), []);
+  useEffect(() => {
+    preloadMidiRuntime().catch((error: unknown) => {
+      console.error("[midi] Failed to prepare DJ controls:", error);
+    });
+    return getMidiControl().activateDj();
+  }, []);
 }

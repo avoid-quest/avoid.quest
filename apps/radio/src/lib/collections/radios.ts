@@ -174,12 +174,16 @@ export function getSyncChanges(): SyncChanges {
   }
 
   // applySyncChanges skips additions whose stream URL the library keeps, so
-  // offering one would bring the prompt back on every launch.
+  // offering one would bring the prompt back on every launch. Rows with a
+  // queued update are matched by the URL they will have once it applies.
   const deleted = new Set(deletions);
+  const updatedUrls = new Map(
+    updates.map(({ existing: radio, incoming }) => [radio, incoming.streamUrl])
+  );
   const urls = new Set<string>();
   for (const radio of existing) {
     if (!deleted.has(radio)) {
-      urls.add(radio.streamUrl);
+      urls.add(updatedUrls.get(radio) ?? radio.streamUrl);
     }
   }
 

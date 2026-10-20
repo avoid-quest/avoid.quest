@@ -177,6 +177,35 @@ describe("saved radio sync", () => {
       [...radiosCollection.state.values()].map((radio) => radio.name).sort()
     ).toEqual(defaultRadios.map((radio) => radio.name).sort());
   });
+
+  test("offers a new default that adopts the stream an updated default leaves", async () => {
+    const [moved, added] = defaultRadios;
+    seedSavedRadios((radio) => {
+      if (radio.name === moved.name) {
+        radio.streamUrl = added.streamUrl;
+      }
+    });
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    for (const [key, entry] of Object.entries(saved)) {
+      if ((entry as { data: RadioRecord }).data.name === added.name) {
+        delete saved[key];
+      }
+    }
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    const { applySyncChanges, initializeRadios, radiosCollection } =
+      await reloadRadios();
+    const changes = await initializeRadios();
+    expect(changes?.updates.map(({ incoming }) => incoming)).toEqual([moved]);
+    expect(changes?.additions).toEqual([added]);
+    if (!changes) {
+      throw new Error("Expected the moved and added defaults");
+    }
+    await applySyncChanges(changes);
+    expect(await initializeRadios()).toBeNull();
+    expect(
+      [...radiosCollection.state.values()].map((radio) => radio.name).sort()
+    ).toEqual(defaultRadios.map((radio) => radio.name).sort());
+  });
 });
 
 describe("a Spotify or Mixcloud tab saved before both became platforms", () => {

@@ -40,6 +40,7 @@ export function ImportExport({
   const [isExporting, setIsExporting] = useState(false);
   const [exportKind, setExportKind] = useState<"file" | "link" | null>(null);
   const [shareUrl, setShareUrl] = useState<string>("");
+  const [importUrl, setImportUrl] = useState("");
   const [fileInputKey, setFileInputKey] = useState(0);
 
   const lastExportDate = getLastExportDate();
@@ -75,6 +76,7 @@ export function ImportExport({
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     setDraft(null);
+    setImportUrl("");
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -94,8 +96,7 @@ export function ImportExport({
 
   const handleUrlImport = async () => {
     setDraft(null);
-    const url = (document.getElementById("import-url") as HTMLInputElement)
-      ?.value;
+    const url = importUrl;
     if (!url) {
       toast.error("Paste a share link first");
       return;
@@ -212,8 +213,14 @@ export function ImportExport({
                   <Input
                     disabled={isImporting}
                     id="import-url"
+                    onChange={(event) => {
+                      setImportUrl(event.target.value);
+                      setDraft(null);
+                      setFileInputKey((key) => key + 1);
+                    }}
                     placeholder="https://radio.avoid.quest/import#data=…"
                     type="url"
+                    value={importUrl}
                   />
                   <Button
                     className="w-full"

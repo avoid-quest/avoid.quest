@@ -6,7 +6,6 @@ import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
 import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
 import icon1 from "@avoid.quest/ui/assets/favicon/icon1.png";
 import { Button } from "@avoid.quest/ui/components/button";
-import globalsCss from "@avoid.quest/ui/globals.css?url";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
@@ -14,6 +13,7 @@ import { RadioLoadingSkeleton } from "@/components/radio/radio-loading-skeleton"
 import { NotFoundView, RootErrorView } from "@/components/root/root-error-view";
 import { RootShell } from "@/components/root/root-shell";
 import type { SyncChanges } from "@/lib/collections/radios";
+import globalsCss from "../styles/app.css?url";
 
 const SyncDialog = lazyWithRetry(() =>
   import("@/components/settings/sync-dialog").then((module) => ({

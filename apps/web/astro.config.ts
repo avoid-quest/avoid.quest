@@ -10,6 +10,9 @@ export default defineConfig({
   }),
   integrations: [react()],
   vite: {
+    build: {
+      assetsInlineLimit: 0,
+    },
     plugins: [tailwindcss() as unknown as never],
   },
 });

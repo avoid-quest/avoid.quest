@@ -31,19 +31,22 @@ const { title = "avoid.quest", description = "avoid.quest" } = Astro.props;
       data-exclude-search="true"
     ></script>
     <script is:inline>
-      const theme = (() => {
-        const stored = localStorage?.getItem("theme") ?? "";
-        if (stored === "dark" || stored === "light") {
-          return stored;
+      (() => {
+        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+        function applyTheme() {
+          let stored;
+          try {
+            stored = localStorage.getItem("theme");
+          } catch {
+            // Follow the system when storage is unavailable.
+          }
+          const dark =
+            stored === "dark" || (stored !== "light" && systemTheme.matches);
+          document.documentElement.classList.toggle("dark", dark);
         }
-        return window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+        applyTheme();
+        systemTheme.addEventListener("change", applyTheme);
       })();
-      if (theme === "dark") {
-        document.documentElement.classList.add("dark");
-      }
-      localStorage.setItem("theme", theme);
     </script>
   </head>
   <body class="font-sans antialiased">

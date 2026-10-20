@@ -1300,6 +1300,37 @@ describe("MidiControl", () => {
     expect(persistence.value?.state.mappings).toEqual([]);
   });
 
+  test("restores dropped mappings without taking targets or controls learned since", () => {
+    const kept = { ...mapping, control: 8, targetId: "deck-a:effect:fx:mix" };
+    const persistence = new MemoryPersistence({
+      state: { activePresetId: null, enabled: true, mappings: [kept] },
+      version: 2,
+    });
+    const control = createMidiControl({
+      browser: unsupportedBrowser,
+      persistence,
+      staticActions: [],
+    });
+    const restored: MidiMapping = {
+      ...mapping,
+      control: 9,
+      targetId: "deck-a:effect:fx:enabled",
+      transform: { curve: "exp", invert: true, max: 0.8, min: 0.2 },
+    };
+
+    control.change({
+      mappings: [
+        restored,
+        { ...mapping, control: 10, targetId: kept.targetId },
+        { ...mapping, control: 8, targetId: "deck-a:effect:fx:rate" },
+      ],
+      type: "restore-mappings",
+    });
+
+    expect(control.getSnapshot().mappings).toEqual([kept, restored]);
+    expect(persistence.value?.state.mappings).toEqual([kept, restored]);
+  });
+
   test("migrates version-one action IDs before exposing mappings", () => {
     const persistence = new MemoryPersistence({
       state: {

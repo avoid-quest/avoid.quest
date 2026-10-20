@@ -110,6 +110,11 @@ export type MidiControlChange =
     }
   | {
       type: "clear-mappings";
+    }
+  | {
+      /** Brings back mappings an effect removal dropped, e.g. on Undo. */
+      type: "restore-mappings";
+      mappings: readonly MidiMapping[];
     };
 
 type CreateMidiControlOptions = {
@@ -807,6 +812,27 @@ export function createMidiControl({
           persist();
           notify();
           return;
+        case "restore-mappings": {
+          // A target or control learned since the removal keeps its newer
+          // mapping.
+          const restored = change.mappings.filter(
+            (mapping) =>
+              !(
+                mappingsByTarget.has(mapping.targetId) ||
+                mappingsByKey.has(
+                  `${mappingScope(mapping.targetId)}:${mappingKey(mapping)}`
+                )
+              )
+          );
+          if (restored.length === 0) {
+            return;
+          }
+          mappings = [...mappings, ...restored];
+          rebuildMappings();
+          persist();
+          notify();
+          return;
+        }
         default:
           break;
       }

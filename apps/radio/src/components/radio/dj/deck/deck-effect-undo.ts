@@ -13,6 +13,8 @@ import {
 import type { ChannelEffectsChange } from "@/lib/channel-effects";
 import { getPlaybackChannel } from "@/lib/collections/playback-sessions";
 import { type DeckId, getDjDeckModule } from "@/lib/dj-deck";
+import { getMidiControl, type MidiMapping } from "@/lib/midi";
+import { createEffectMidiActions } from "@/lib/midi/effect-actions";
 
 type Position = { chainId: string | null; index: number; siblings: string[] };
 type Snapshot = { effect: EffectConfig; positions: Position[] };
@@ -213,6 +215,46 @@ function snapshots(
   return result;
 }
 
+/** The deck's MIDI binding drops these mappings once their effects are gone. */
+function droppedMappings(
+  mappings: readonly MidiMapping[],
+  deckId: DeckId,
+  effect: EffectConfig,
+  remaining: ReadonlySet<string>
+): MidiMapping[] {
+  const ids: string[] = [];
+  visitEffectTree([effect], ({ id }) => {
+    if (!remaining.has(id)) {
+      ids.push(id);
+    }
+  });
+  return mappings.filter(
+    ({ targetId }) =>
+      targetId.startsWith(`${deckId}:`) &&
+      ids.some((id) => targetId.includes(`:effect:${id}:`))
+  );
+}
+
+/** Only mappings whose targets came back, so none outlive their effect. */
+function restoreMappings(
+  deckId: DeckId,
+  tree: readonly EffectConfig[],
+  mappings: readonly MidiMapping[]
+): void {
+  if (mappings.length === 0) {
+    return;
+  }
+  const targets = new Set(
+    createEffectMidiActions({ change: () => undefined, deckId, tree }).map(
+      ({ targetId }) => targetId
+    )
+  );
+  getMidiControl().change({
+    mappings: mappings.filter(({ targetId }) => targets.has(targetId)),
+    type: "restore-mappings",
+  });
+}
+
 function restoreRemoved(
   tree: readonly EffectConfig[],
   snapshot: Snapshot
@@ -248,6 +290,8 @@ export function changeDjEffectWithUndo(
 ): void {
   const readTree = () => getPlaybackChannel("dj", deckId)?.effects ?? [];
   const before = readTree();
+  // Read before the deck's MIDI binding reconciles the change away.
+  const { mappings } = getMidiControl().getSnapshot();
   const apply = (input: ChannelEffectsChange) =>
     getDjDeckModule().deck(deckId).change({ change: input, type: "effect" });
   apply(change);
@@ -258,6 +302,12 @@ export function changeDjEffectWithUndo(
     reset ? effect.id === change.effectId : !remaining.has(effect.id)
   );
   for (const snapshot of removed) {
+    const dropped = droppedMappings(
+      mappings,
+      deckId,
+      snapshot.effect,
+      remaining
+    );
     const afterEffect = structuredClone(
       findEffectInTree(after, snapshot.effect.id)
     );
@@ -299,6 +349,7 @@ export function changeDjEffectWithUndo(
                 type: "replace",
               });
             }
+            restoreMappings(deckId, readTree(), dropped);
           },
         },
         duration: 8000,

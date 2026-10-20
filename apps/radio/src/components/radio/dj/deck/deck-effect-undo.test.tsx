@@ -33,10 +33,46 @@ import {
   updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { getDjDeckModule } from "@/lib/dj-deck";
+// biome-ignore lint/performance/noNamespaceImport: swap the MIDI control while the deck binding reconciles for real.
+import * as midi from "@/lib/midi";
+import { createEffectMidiActions } from "@/lib/midi/effect-actions";
+import {
+  createMidiControl,
+  type PersistedMidiControl,
+} from "@/lib/midi/midi-control";
+import { DEFAULT_TRANSFORM, type MidiMapping } from "@/lib/midi/types";
+import { DjMidiEffects } from "../dj-midi-effects";
 import { changeDjEffectWithUndo } from "./deck-effect-undo";
 
 let notify: ReturnType<typeof spyOn<typeof toast, "success">>;
+let getControl: ReturnType<typeof spyOn<typeof midi, "getMidiControl">>;
+let midiStore: PersistedMidiControl | null = null;
+let mapped: Record<
+  "after" | "crossfader" | "delay" | "nested" | "rack",
+  MidiMapping
+>;
 const tree = () => getPlaybackChannel("dj", "deck-a")?.effects ?? [];
+/** A fresh control reads persisted mappings as a page reload would. */
+const loadMidi = () =>
+  createMidiControl({
+    browser: {
+      cancelFrame: () => undefined,
+      isSupported: () => false,
+      now: () => 0,
+      requestAccess: () => Promise.reject(new Error("unsupported")),
+      requestFrame: () => 0,
+      subscribePermission: () => () => undefined,
+    },
+    persistence: {
+      read: () => structuredClone(midiStore),
+      write: (value) => {
+        midiStore = structuredClone(value);
+      },
+    },
+    staticActions: [],
+  });
+const mappings = () => getControl().getSnapshot().mappings;
+const storedMappings = () => midiStore?.state.mappings;
 
 beforeEach(async () => {
   clock = installAnimationTestEnvironment();
@@ -64,11 +100,56 @@ beforeEach(async () => {
       createDefaultEffectConfig("limiter", "after", 2),
     ]);
   });
+  const targets = createEffectMidiActions({
+    change: () => undefined,
+    deckId: "deck-a",
+    tree: tree(),
+  }).map(({ targetId }) => targetId);
+  const learned = (id: string, control: number): MidiMapping => {
+    const targetId = targets.find((target) =>
+      target.endsWith(`:effect:${id}:enabled`)
+    );
+    if (!targetId) {
+      throw new Error(`Missing ${id} target`);
+    }
+    return { channel: 0, control, targetId, type: "note" };
+  };
+  mapped = {
+    after: learned("after", 4),
+    crossfader: {
+      channel: 0,
+      control: 5,
+      targetId: "mixer:crossfader",
+      type: "cc",
+    },
+    delay: learned("delay", 3),
+    nested: {
+      ...learned("nested", 2),
+      transform: { ...DEFAULT_TRANSFORM, curve: "exp", invert: true, min: 0.2 },
+    },
+    rack: learned("rack", 1),
+  };
+  midiStore = {
+    state: {
+      activePresetId: null,
+      enabled: true,
+      mappings: [
+        mapped.rack,
+        mapped.nested,
+        mapped.delay,
+        mapped.after,
+        mapped.crossfader,
+      ],
+    },
+    version: 2,
+  };
+  getControl = spyOn(midi, "getMidiControl").mockReturnValue(loadMidi());
 });
 afterEach(async () => {
   cleanup();
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   notify.mockRestore();
+  getControl.mockRestore();
   clock.restore();
 });
 
@@ -305,3 +386,52 @@ test.each(["crossover", "bands", "two-band layout"])(
     expect(effect("before").enabled).toBe(false);
   }
 );
+
+test("remove undo restores the subtree's MIDI mappings across a reload", () => {
+  render(<DjMidiEffects />);
+  const before = structuredClone(tree());
+  act(() => {
+    changeDjEffectWithUndo("deck-a", { effectId: "rack", type: "remove" });
+  });
+  const unrelated = [mapped.after, mapped.crossfader];
+  expect(mappings()).toEqual(unrelated);
+  expect(storedMappings()).toEqual(unrelated);
+  act(undo);
+  expect(tree()).toEqual(before);
+  const restored = [...unrelated, mapped.rack, mapped.nested, mapped.delay];
+  expect(mappings()).toEqual(restored);
+  expect(loadMidi().getSnapshot().mappings).toEqual(restored);
+});
+
+test("reset undo restores nested MIDI mappings and keeps the container's own", () => {
+  render(<DjMidiEffects />);
+  act(() => {
+    changeDjEffectWithUndo(
+      "deck-a",
+      {
+        effectId: "rack",
+        patch: createEffectResetPatch(effect("rack")),
+        type: "update",
+      },
+      true
+    );
+  });
+  const kept = [mapped.rack, mapped.after, mapped.crossfader];
+  expect(mappings()).toEqual(kept);
+  act(undo);
+  const restored = [...kept, mapped.nested, mapped.delay];
+  expect(mappings()).toEqual(restored);
+  expect(storedMappings()).toEqual(restored);
+});
+
+test("a removal that is never undone leaves no MIDI mappings behind on reload", () => {
+  render(<DjMidiEffects />);
+  act(() => {
+    changeDjEffectWithUndo("deck-a", { effectId: "rack", type: "remove" });
+  });
+  expect(findEffectInTree(tree(), "rack")).toBeUndefined();
+  expect(loadMidi().getSnapshot().mappings).toEqual([
+    mapped.after,
+    mapped.crossfader,
+  ]);
+});

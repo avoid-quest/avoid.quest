@@ -42,7 +42,10 @@ import { NodeRack } from "./node-rack";
 import { NodeToolbar, useUndoShortcuts } from "./node-toolbar";
 import { RewireDialog } from "./rewire-dialog";
 import { SourceSearchPopover } from "./source-search-popover";
-import { useNodeRadioManagement } from "./use-node-radio-management";
+import {
+  invalidateSourceRequests,
+  useNodeRadioManagement,
+} from "./use-node-radio-management";
 
 /**
  * React Flow stays in this lazy client chunk. The Worker build folds the
@@ -91,9 +94,12 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   usePaletteShortcut(openPalette);
   useUndoShortcuts();
 
+  useEffect(() => () => invalidateSourceRequests(), []);
+
   /** Replaces the patch with a template, as one undo step, then fits it. */
   const loadTemplate = (template: NodeTemplateId) => {
     const saved = savedRadios.isReady ? savedRadios.data : [];
+    invalidateSourceRequests();
     commitNodeGraph(
       (current) =>
         templatePatch(current, template, {

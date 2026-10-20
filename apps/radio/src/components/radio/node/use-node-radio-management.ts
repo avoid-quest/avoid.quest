@@ -35,22 +35,66 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
 type StationPlayback = Pick<NodePlayback, "flush" | "setPlaying">;
 
-/** The latest fill request per source node, shared by the patch and inspector. */
-const sourceRequests = new Map<string, number>();
+type SourceRequests = { generation: number; requests: Map<string, symbol> };
+const sourceRequests = new WeakMap<NodeStore, SourceRequests>();
 
-/**
- * Starts filling a source node, superseding any earlier fill of it still
- * loading (a pick, pasted link or platform change, from either view).
- * Resolves the returned check after each await: false means a newer request
- * or an aborted `signal` owns the node, so this one must not commit.
- */
+/** A replacement has no editor-node lineage; ordinary edits share node data. */
+function requestsFor(store: NodeStore): SourceRequests {
+  const existing = sourceRequests.get(store);
+  if (existing) {
+    return existing;
+  }
+  const state: SourceRequests = { generation: 0, requests: new Map() };
+  sourceRequests.set(store, state);
+  let previous = store.state;
+  store.subscribe(() => {
+    const next = store.state;
+    if (next.graph !== previous.graph) {
+      const retained = new Set(
+        previous.graph?.nodes.flatMap((node) => [node, node.data]) ?? []
+      );
+      if (
+        next.graph?.nodes.some(
+          (node) => retained.has(node) || retained.has(node.data)
+        )
+      ) {
+        const ids = new Set(next.graph.nodes.map((node) => node.id));
+        for (const id of state.requests.keys()) {
+          if (!ids.has(id)) {
+            state.requests.delete(id);
+          }
+        }
+      } else {
+        state.generation += 1;
+        state.requests.clear();
+      }
+    }
+    previous = next;
+  });
+  return state;
+}
+
+/** Mode exit and explicit replacement invalidate requests from both views. */
+export function invalidateSourceRequests(store: NodeStore = nodeStore): void {
+  const state = requestsFor(store);
+  state.generation += 1;
+  state.requests.clear();
+}
+
+/** Latest request for this source in this patch lifecycle, shared by both views. */
 export function beginSourceRequest(
   nodeId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  store: NodeStore = nodeStore
 ): () => boolean {
-  const request = (sourceRequests.get(nodeId) ?? 0) + 1;
-  sourceRequests.set(nodeId, request);
-  return () => sourceRequests.get(nodeId) === request && !signal?.aborted;
+  const state = requestsFor(store);
+  const { generation } = state;
+  const request = Symbol(nodeId);
+  state.requests.set(nodeId, request);
+  return () =>
+    state.generation === generation &&
+    state.requests.get(nodeId) === request &&
+    !signal?.aborted;
 }
 
 type UseNodeRadioManagementOptions = {
@@ -145,7 +189,7 @@ export function useNodeRadioManagement({
   const fillStation = async (
     nodeId: string,
     radio: Radio,
-    isCurrent = beginSourceRequest(nodeId)
+    isCurrent = beginSourceRequest(nodeId, undefined, store)
   ) => {
     if (!isCurrent()) {
       return;
@@ -168,7 +212,7 @@ export function useNodeRadioManagement({
   const fillSource = async (
     nodeId: string,
     radio: Radio,
-    isCurrent = beginSourceRequest(nodeId)
+    isCurrent = beginSourceRequest(nodeId, undefined, store)
   ) => {
     if (!isCurrent()) {
       return;
@@ -192,7 +236,7 @@ export function useNodeRadioManagement({
   const fillStationFromUrl = async (
     nodeId: string,
     url: string,
-    isCurrent = beginSourceRequest(nodeId)
+    isCurrent = beginSourceRequest(nodeId, undefined, store)
   ): Promise<string | null> => {
     const loaded = detectPlatformFromUrl(url)
       ? await loadSourceUrl(url, loaders)
@@ -213,7 +257,7 @@ export function useNodeRadioManagement({
     });
 
   const selectDiscoveredForStation = (nodeId: string, radio: Radio) => {
-    const isCurrent = beginSourceRequest(nodeId);
+    const isCurrent = beginSourceRequest(nodeId, undefined, store);
     selectDiscoveredStation(radio, (resolved) =>
       fillStation(nodeId, resolved, isCurrent)
     );

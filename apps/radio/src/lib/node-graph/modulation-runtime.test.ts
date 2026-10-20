@@ -147,11 +147,7 @@ function harness(
 }
 async function start(context: ModulationContext) {
   context.loaded.resolve();
-  // Finish worklet loading, native session setup and the runtime's finalizer.
-  for (let index = 0; index < 8; index += 1) {
-    // biome-ignore lint/performance/noAwaitInLoops: flush sequential promise continuations in the startup chain.
-    await Promise.resolve();
-  }
+  await runtimes.at(-1)?.whenSettled();
   const worklet = ModulationWorklet.current;
   if (!worklet) {
     throw new Error("Missing modulation worklet");
@@ -981,3 +977,40 @@ test("compiled outer controls keep Autotune wrapped until the last cable is remo
   patch.edges = patch.edges.filter((edge) => edge.id !== "inputGain");
   expect(wrapped()).toBeUndefined();
 });
+
+test("an empty paused patch starts neither worklet nor native modulation", async () => {
+  const host = mock(async () => null);
+  const h = harness(host);
+  h.runtime.sync(graph());
+  await h.runtime.whenSettled();
+  expect(h.context.audioWorklet.addModule).not.toHaveBeenCalled();
+  expect(host).not.toHaveBeenCalled();
+  expect(modulationReadouts.state.status).toBe("idle");
+});
+
+test.each(["resolve", "reject"])(
+  "disposal while native startup is pending ignores late %s",
+  async (outcome) => {
+    const native = nativeHost();
+    const requested = Promise.withResolvers<void>();
+    const loaded = Promise.withResolvers<ModulationHost | null>();
+    const h = harness(() => {
+      requested.resolve();
+      return loaded.promise;
+    });
+    h.runtime.sync(graph(palette("macro", "macro", { x: 0, y: 0 })));
+    h.context.loaded.resolve();
+    await requested.promise;
+    h.runtime.dispose();
+    if (outcome === "resolve") {
+      loaded.resolve(native.host);
+    } else {
+      loaded.reject(new Error("Late native failure"));
+    }
+    await h.runtime.whenSettled();
+    expect(native.sources.size).toBe(0);
+    expect(ModulationWorklet.current).toBeNull();
+    expect(modulationReadouts.state.status).toBe("idle");
+    expect(modulationReadouts.state.nativeWarning).toBeNull();
+  }
+);

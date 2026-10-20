@@ -38,7 +38,13 @@ import {
   isEffectNodeType,
   portHandleId,
 } from "./catalogue";
-import { compile, isRadioSourceLive, laneRoutes } from "./compile";
+import {
+  compile,
+  type EnginePlan,
+  isRadioSourceLive,
+  laneRoutes,
+} from "./compile";
+import { compiledPlan } from "./compiled-plan";
 import {
   connectionParameter,
   controlDepth,
@@ -66,9 +72,11 @@ import {
 } from "./templates";
 import {
   type Connection,
+  type ConnectionAnalysis,
   connectionVerdict,
   type Issue,
   parseHandleId,
+  prepareConnectionAnalysis,
   type ValidateOptions,
 } from "./validate";
 
@@ -896,11 +904,14 @@ function issueKey(issue: Issue): string {
 export function newIssue(
   before: NodeGraph,
   after: NodeGraph,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  baseline?: EnginePlan
 ): Issue | undefined {
   const env = { crossOriginIsolated: false, ...options };
-  const known = new Set(compile(before, env).issues.map(issueKey));
-  return compile(after, env).issues.find(
+  const known = new Set(
+    (baseline ?? compiledPlan(before, env)).issues.map(issueKey)
+  );
+  return compiledPlan(after, env).issues.find(
     (issue) => !known.has(issueKey(issue))
   );
 }
@@ -941,7 +952,8 @@ export function insertNodeOnEdge(
   graph: NodeGraph,
   nodeId: string,
   edgeId: string,
-  options?: ValidateOptions
+  options?: ValidateOptions,
+  prepared?: { cut: ConnectionAnalysis; plan: EnginePlan }
 ): GraphEdit {
   const edge = graph.edges.find((entry) => entry.id === edgeId);
   const node = graph.nodes.find((entry) => entry.id === nodeId);
@@ -957,6 +969,8 @@ export function insertNodeOnEdge(
   const { ports } = getNodeDefinition(node.type);
   const index = graph.edges.indexOf(edge);
   const others = graph.edges.filter((entry) => entry !== edge);
+  const cut = { ...graph, edges: others };
+  const cutAnalysis = prepared?.cut ?? prepareConnectionAnalysis(cut, options);
   let refusal: string | null = null;
   for (const input of ports.filter((port) => port.direction === "in")) {
     const upstream = normalizeControlCable(graph, {
@@ -964,8 +978,7 @@ export function insertNodeOnEdge(
       target: nodeId,
       targetHandle: portHandleId(input),
     });
-    const cut = { ...graph, edges: others };
-    const up = connectionVerdict(cut, upstream, options);
+    const up = connectionVerdict(cut, upstream, options, cutAnalysis);
     if (!up.ok) {
       refusal ??= up.message;
       continue;
@@ -996,7 +1009,7 @@ export function insertNodeOnEdge(
       const inserted = { ...graph, edges };
       // The compiler's reason beats a port's: it is why the fitting pair
       // failed, e.g. a Filter that must sit right after the station.
-      const issue = newIssue(graph, inserted, options);
+      const issue = newIssue(graph, inserted, options, prepared?.plan);
       if (issue) {
         refusal = issue.message;
         continue;

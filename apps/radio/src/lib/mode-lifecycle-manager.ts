@@ -10,7 +10,7 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
+import type { DjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
 import { isPlaybackActionError } from "./playback-action-errors";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
@@ -40,6 +40,9 @@ type CreateModeLifecycleRegistryOptions = {
   ctx?: PlaybackActionContext;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
+  loadDjWorkflow?: () => Promise<
+    typeof import("./dj-mode-lifecycle-workflow.js")
+  >;
 };
 
 type CreateModeManagerOptions = {
@@ -146,15 +149,24 @@ export function createModeLifecycleRegistry({
   ctx = getDefaultPlaybackActionContext(),
   fadeOutDurationMs = MODE_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
+  loadDjWorkflow = () => import("./dj-mode-lifecycle-workflow.js"),
 }: CreateModeLifecycleRegistryOptions = {}): Record<
   PlaybackSessionId,
   ModeLifecycle
 > {
-  const djWorkflow = createDjModeLifecycleWorkflow({
-    ctx,
-    fadeOutDurationMs,
-    fadeOutSound,
-  });
+  // Keep one workflow per registry, including while its module is loading.
+  let djWorkflow: Promise<DjModeLifecycleWorkflow> | undefined;
+  const loadDj = () => {
+    djWorkflow ??= loadDjWorkflow()
+      .then(({ createDjModeLifecycleWorkflow }) =>
+        createDjModeLifecycleWorkflow({ ctx, fadeOutDurationMs, fadeOutSound })
+      )
+      .catch((error: unknown) => {
+        djWorkflow = undefined;
+        throw error;
+      });
+    return djWorkflow;
+  };
   const single = getSinglePlayback({
     ctx,
     fadeOutDurationMs,
@@ -168,8 +180,8 @@ export function createModeLifecycleRegistry({
     });
   return {
     dj: createLifecycle(
-      () => djWorkflow.activate(),
-      () => djWorkflow.deactivate()
+      async () => (await loadDj()).activate(),
+      async () => (await loadDj()).deactivate()
     ),
     node: createLifecycle(
       async () => (await loadNode()).activate(),

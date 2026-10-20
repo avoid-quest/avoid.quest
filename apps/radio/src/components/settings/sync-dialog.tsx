@@ -118,6 +118,23 @@ function getDescription(changes: SyncChanges) {
   return hasUpdates ? updated : added;
 }
 
+/**
+ * Remember skipped additions. The library change stands even if this write
+ * fails, so the dialog still closes; the stations may just be offered again.
+ */
+function dismissAdditions(names: string[]): void {
+  if (names.length === 0) {
+    return;
+  }
+  try {
+    addDismissedRadios(names);
+  } catch {
+    toast.warning(
+      "Couldn't save your skipped stations. They may be offered again."
+    );
+  }
+}
+
 export function SyncDialog({
   changes,
   open,
@@ -173,27 +190,24 @@ export function SyncDialog({
         ),
       };
       await onApply(filteredChanges);
-      // Only dismiss unselected additions after the library was saved.
-      const skippedAdditions = changes.additions
-        .filter((a) => !selectedAdditions.has(a.name))
-        .map((a) => a.name);
-      if (skippedAdditions.length > 0) {
-        addDismissedRadios(skippedAdditions);
-      }
-      onOpenChange(false);
     } catch {
       toast.error("Couldn't update stations. Please try again.");
+      return;
     } finally {
       setIsApplying(false);
     }
+    // Only dismiss unselected additions after the library was saved.
+    dismissAdditions(
+      changes.additions
+        .filter((a) => !selectedAdditions.has(a.name))
+        .map((a) => a.name)
+    );
+    onOpenChange(false);
   };
 
   const handleSkip = () => {
     // Track all additions as dismissed so they don't re-appear
-    const allAdditionNames = changes.additions.map((a) => a.name);
-    if (allAdditionNames.length > 0) {
-      addDismissedRadios(allAdditionNames);
-    }
+    dismissAdditions(changes.additions.map((a) => a.name));
     onOpenChange(false);
   };
 

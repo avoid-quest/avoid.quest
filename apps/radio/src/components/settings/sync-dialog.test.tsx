@@ -10,6 +10,8 @@ import {
 import { JSDOM } from "jsdom";
 import { toast } from "sonner";
 import type { SyncChanges } from "@/lib/collections/radios";
+// biome-ignore lint/performance/noNamespaceImport: spy on the dismissal write and restore it.
+import * as radios from "@/lib/collections/radios";
 import { applyRootSyncChanges } from "@/lib/root/root-bootstrap";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -50,6 +52,7 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 });
 
 const { SyncDialog } = await import("./sync-dialog");
+const OTHER_STATION = /Other station/;
 const changes: SyncChanges = {
   additions: [{ name: "New station", streamUrl: "https://example.com/live" }],
   deletions: [],
@@ -138,4 +141,64 @@ test("shows a save error, keeps the dialog open and lets the listener retry", as
   fireEvent.click(view.getByRole("button", { name: "Apply (1)" }));
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   expect(onApply).toHaveBeenCalledTimes(2);
+});
+
+test("closes after a saved apply even when skipped stations can't be remembered", async () => {
+  const twoAdditions: SyncChanges = {
+    additions: [
+      { name: "New station", streamUrl: "https://example.com/live" },
+      { name: "Other station", streamUrl: "https://example.com/other" },
+    ],
+    deletions: [],
+    updates: [],
+  };
+  const onApply = mock((): Promise<void> => Promise.resolve());
+  const onOpenChange = mock((_open: boolean) => undefined);
+  const dismiss = spyOn(radios, "addDismissedRadios").mockImplementation(() => {
+    throw new Error("Storage full");
+  });
+  const errorToast = spyOn(toast, "error").mockImplementation(() => "toast-id");
+  const warningToast = spyOn(toast, "warning").mockImplementation(
+    () => "toast-id"
+  );
+  const view = render(
+    <SyncDialog
+      changes={twoAdditions}
+      onApply={onApply}
+      onOpenChange={onOpenChange}
+      open
+    />
+  );
+
+  fireEvent.click(view.getByLabelText(OTHER_STATION));
+  fireEvent.click(view.getByRole("button", { name: "Apply (1)" }));
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  expect(onApply).toHaveBeenCalledTimes(1);
+  expect(dismiss).toHaveBeenCalledWith(["Other station"]);
+  expect(errorToast).not.toHaveBeenCalled();
+  expect(warningToast).toHaveBeenCalledWith(
+    "Couldn't save your skipped stations. They may be offered again."
+  );
+});
+
+test("Skip still closes when skipped stations can't be remembered", () => {
+  const onOpenChange = mock((_open: boolean) => undefined);
+  spyOn(radios, "addDismissedRadios").mockImplementation(() => {
+    throw new Error("Storage full");
+  });
+  const warningToast = spyOn(toast, "warning").mockImplementation(
+    () => "toast-id"
+  );
+  const view = render(
+    <SyncDialog
+      changes={changes}
+      onApply={mock(() => Promise.resolve())}
+      onOpenChange={onOpenChange}
+      open
+    />
+  );
+
+  fireEvent.click(view.getByRole("button", { name: "Skip" }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  expect(warningToast).toHaveBeenCalledTimes(1);
 });

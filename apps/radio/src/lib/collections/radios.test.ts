@@ -143,6 +143,40 @@ describe("saved radio sync", () => {
       ).toEqual(before);
     }
   );
+
+  test("does not offer a default whose stream is saved under another name", async () => {
+    const [edited] = defaultRadios;
+    seedSavedRadios((radio) => {
+      if (radio.name === edited.name) {
+        // Editing a station saves it as custom, as the station form does.
+        radio.name = "My station";
+        radio.isSystem = false;
+      }
+    });
+    const { initializeRadios } = await reloadRadios();
+    expect(await initializeRadios()).toBeNull();
+  });
+
+  test("offers a default renamed upstream once its retired row is gone", async () => {
+    const [renamed] = defaultRadios;
+    seedSavedRadios((radio) => {
+      if (radio.name === renamed.name) {
+        radio.name = "Old default name";
+      }
+    });
+    const { applySyncChanges, initializeRadios, radiosCollection } =
+      await reloadRadios();
+    const changes = await initializeRadios();
+    expect(changes?.additions).toEqual([renamed]);
+    if (!changes) {
+      throw new Error("Expected the renamed default");
+    }
+    await applySyncChanges(changes);
+    expect(await initializeRadios()).toBeNull();
+    expect(
+      [...radiosCollection.state.values()].map((radio) => radio.name).sort()
+    ).toEqual(defaultRadios.map((radio) => radio.name).sort());
+  });
 });
 
 describe("a Spotify or Mixcloud tab saved before both became platforms", () => {

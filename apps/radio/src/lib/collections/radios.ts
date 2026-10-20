@@ -135,14 +135,14 @@ function hasRadioChanged(existing: RadioRecord, incoming: Radio): boolean {
 /**
  * Get pending sync changes between stored radios and defaults.
  * - Updates: system radios with changed metadata
- * - Additions: new radios in defaults not present in storage
+ * - Additions: new radios in defaults not present in storage, by name or URL
  * - Deletions: system radios no longer in defaults (auto-deleted, no prompt)
  */
 export function getSyncChanges(): SyncChanges {
-  const existing = radiosCollection.state;
+  const existing = [...radiosCollection.state.values()];
   const existingByName = new Map<string, RadioRecord>();
 
-  for (const radio of existing.values()) {
+  for (const radio of existing) {
     existingByName.set(radio.name, radio);
   }
 
@@ -150,29 +150,45 @@ export function getSyncChanges(): SyncChanges {
 
   const updates: SyncChanges["updates"] = [];
   const additions: SyncChanges["additions"] = [];
-  const deletions: SyncChanges["deletions"] = [];
+
+  // Check for deletions (system radios no longer in defaults)
+  const deletions = existing.filter(
+    (radio) => radio.isSystem && !defaultNames.has(radio.name)
+  );
 
   // Get dismissed radios to filter out
   const dismissed = getDismissedRadios();
 
-  // Check for updates and additions
+  // Check for updates
   for (const defaultRadio of defaultRadios) {
     const existingRadio = existingByName.get(defaultRadio.name);
-    if (existingRadio) {
-      // Only queue update if actually changed
-      if (hasRadioChanged(existingRadio, defaultRadio)) {
-        updates.push({ existing: existingRadio, incoming: defaultRadio });
-      }
-    } else if (!dismissed.has(defaultRadio.name)) {
-      // New radio not in storage and not dismissed
-      additions.push(defaultRadio);
+    // Only queue update if actually changed
+    if (existingRadio && hasRadioChanged(existingRadio, defaultRadio)) {
+      updates.push({ existing: existingRadio, incoming: defaultRadio });
     }
   }
 
-  // Check for deletions (system radios no longer in defaults)
-  for (const radio of existing.values()) {
-    if (radio.isSystem && !defaultNames.has(radio.name)) {
-      deletions.push(radio);
+  // applySyncChanges skips additions whose stream URL the library keeps, so
+  // offering one would bring the prompt back on every launch.
+  const deleted = new Set(deletions);
+  const urls = new Set<string>();
+  for (const radio of existing) {
+    if (!deleted.has(radio)) {
+      urls.add(radio.streamUrl);
+    }
+  }
+
+  // Check for additions: not in storage, not dismissed
+  for (const defaultRadio of defaultRadios) {
+    if (
+      !(
+        existingByName.has(defaultRadio.name) ||
+        dismissed.has(defaultRadio.name) ||
+        urls.has(defaultRadio.streamUrl)
+      )
+    ) {
+      urls.add(defaultRadio.streamUrl);
+      additions.push(defaultRadio);
     }
   }
 

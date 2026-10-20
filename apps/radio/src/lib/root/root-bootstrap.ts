@@ -19,11 +19,13 @@ export async function loadRootSyncChanges(
   return (await initialize()) ?? null;
 }
 
-export function applyRootSyncChanges(
+export async function applyRootSyncChanges(
   changes: SyncChanges,
-  applyChanges = applySyncChanges
-): void {
-  applyChanges(changes);
+  applyChanges: (
+    changes: SyncChanges
+  ) => void | Promise<void> = applySyncChanges
+): Promise<void> {
+  await applyChanges(changes);
 }
 
 export function reportRootBootstrapError(

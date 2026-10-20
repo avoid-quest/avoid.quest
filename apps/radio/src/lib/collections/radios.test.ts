@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { radios as defaultRadios } from "../const";
 import type { RadioRecord } from "./radios";
 
@@ -131,7 +131,7 @@ describe("saved radio sync", () => {
       if (!changes) {
         throw new Error("Expected a real metadata update");
       }
-      applySyncChanges(changes);
+      await applySyncChanges(changes);
       expect(await initializeRadios()).toBeNull();
 
       const reloaded = await reloadRadios();
@@ -187,5 +187,241 @@ describe("a Spotify or Mixcloud tab saved before both became platforms", () => {
       enabled: false,
       platformMetadata: shared.platformMetadata,
     });
+  });
+});
+
+describe("bulk library persistence", () => {
+  function seedLibrary() {
+    const radios: RadioRecord[] = Array.from({ length: 200 }, (_, index) => ({
+      enabled: true,
+      id: `station-${index}`,
+      isSystem: false,
+      name: `Station ${index}`,
+      order: index,
+      streamUrl: `https://example.com/${index}`,
+    }));
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(
+        Object.fromEntries(
+          radios.map((radio) => [
+            `s:${radio.id}`,
+            { data: radio, versionKey: radio.id },
+          ])
+        )
+      )
+    );
+    return radios;
+  }
+
+  test("persists a 200-station reorder once and skips unchanged rows", async () => {
+    const saved = seedLibrary();
+    const { reorderRadios, radiosCollection } = await reloadRadios();
+    const writes = spyOn(storage, "setItem");
+    const ids = saved.map((radio) => radio.id).reverse();
+    await reorderRadios(ids);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(ids.map((id) => radiosCollection.state.get(id)?.order)).toEqual(
+      saved.map((_, index) => index)
+    );
+    await reorderRadios(ids);
+    expect(writes).toHaveBeenCalledTimes(1);
+  });
+
+  test("rolls back the entire reorder when persistence fails", async () => {
+    const saved = seedLibrary();
+    const { reorderRadios, radiosCollection } = await reloadRadios();
+    const original = storage.getItem(STORAGE_KEY);
+    const write = spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await expect(
+      reorderRadios(saved.map((radio) => radio.id).reverse())
+    ).rejects.toThrow();
+    expect(radiosCollection.state.size).toBe(saved.length);
+    for (const radio of saved) {
+      expect(radiosCollection.state.get(radio.id)).toMatchObject(radio);
+    }
+    expect(storage.getItem(STORAGE_KEY)).toBe(original);
+    write.mockRestore();
+    await reorderRadios(saved.map((radio) => radio.id).reverse());
+    expect(radiosCollection.state.get(saved[0].id)?.order).toBe(199);
+  });
+
+  test("persists 200 sync updates together and skips an already-applied snapshot", async () => {
+    const saved = seedLibrary();
+    const { applySyncChanges } = await reloadRadios();
+    const writes = spyOn(storage, "setItem");
+    const changes = {
+      additions: [],
+      deletions: [],
+      updates: saved.map((radio) => ({
+        existing: radio,
+        incoming: { ...radio, description: "Updated" },
+      })),
+    };
+    await applySyncChanges(changes);
+    expect(writes).toHaveBeenCalledTimes(1);
+    await applySyncChanges(changes);
+    expect(writes).toHaveBeenCalledTimes(1);
+  });
+
+  test("seeds defaults with one storage write", async () => {
+    const { initializeRadios } = await reloadRadios();
+    const writes = spyOn(storage, "setItem");
+    await initializeRadios();
+    expect(
+      writes.mock.calls.filter(([key]) => key === STORAGE_KEY)
+    ).toHaveLength(1);
+  });
+
+  test("auto-deletes retired stations with one storage write", async () => {
+    seedSavedRadios();
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    for (let index = 0; index < 200; index += 1) {
+      const radio = {
+        enabled: true,
+        id: `retired-${index}`,
+        isSystem: true,
+        name: `Retired ${index}`,
+        order: index,
+        streamUrl: "https://example.com/retired",
+      };
+      saved[`s:${radio.id}`] = { data: radio, versionKey: radio.id };
+    }
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    const writes = spyOn(storage, "setItem");
+    expect(await initializeRadios()).toBeNull();
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(radiosCollection.state.size).toBe(defaultRadios.length);
+  });
+
+  test("revalidates stale additions, updates and deletions", async () => {
+    const { applySyncChanges, radiosCollection } = await reloadRadios();
+    const [addition] = defaultRadios;
+    const changes = {
+      additions: [addition, addition],
+      deletions: [],
+      updates: [],
+    };
+    await applySyncChanges(changes);
+    await applySyncChanges(changes);
+    expect(radiosCollection.state.size).toBe(1);
+    const [existing] = radiosCollection.state.values();
+    await applySyncChanges({
+      additions: [{ ...addition, name: "Another name" }],
+      deletions: [],
+      updates: [],
+    });
+    expect(radiosCollection.state.size).toBe(1);
+    await radiosCollection.delete(existing.id).isPersisted.promise;
+    await expect(
+      applySyncChanges({
+        additions: [],
+        deletions: [existing],
+        updates: [{ existing, incoming: addition }],
+      })
+    ).resolves.toBeUndefined();
+    expect(radiosCollection.state.size).toBe(0);
+  });
+
+  test("rolls mixed sync changes back together and permits retry", async () => {
+    seedSavedRadios();
+    const { applySyncChanges, radiosCollection } = await reloadRadios();
+    const saved = [...radiosCollection.state.values()];
+    const changes = {
+      additions: [
+        {
+          ...defaultRadios[0],
+          name: "New station",
+          streamUrl: "https://example.com/new",
+        },
+      ],
+      deletions: [saved[1]],
+      updates: [
+        {
+          existing: saved[0],
+          incoming: { ...defaultRadios[0], description: "Updated" },
+        },
+      ],
+    };
+    const writes = spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await expect(applySyncChanges(changes)).rejects.toThrow();
+    expect(radiosCollection.state.size).toBe(saved.length);
+    for (const radio of saved) {
+      expect(radiosCollection.state.get(radio.id)).toMatchObject(radio);
+    }
+    writes.mockRestore();
+    await applySyncChanges(changes);
+    expect(radiosCollection.state.has(saved[1].id)).toBe(false);
+    expect(radiosCollection.state.get(saved[0].id)?.description).toBe(
+      "Updated"
+    );
+    expect(radiosCollection.state.size).toBe(saved.length);
+  });
+});
+
+describe("damaged local storage", () => {
+  test.each(["{invalid", "{}", '["station", 4]'])(
+    "ignores and backs up malformed dismissed stations: %s",
+    async (raw) => {
+      storage.setItem("radio-app-dismissed-radios", raw);
+      const { getDismissedRadios, initializeRadios } = await reloadRadios();
+      expect(getDismissedRadios()).toEqual(new Set());
+      expect(storage.getItem("radio-app-dismissed-radios:corrupt")).toBe(raw);
+      await expect(initializeRadios()).resolves.toBeNull();
+    }
+  );
+
+  test("recovers valid custom stations beside a malformed envelope entry", async () => {
+    const custom: RadioRecord = {
+      enabled: false,
+      id: "custom",
+      isSystem: false,
+      name: "My station",
+      order: 42,
+      streamUrl: "https://example.com/custom",
+    };
+    const raw = JSON.stringify({
+      "s:broken": { invalid: true },
+      "s:custom": { data: custom, versionKey: "v1" },
+    });
+    storage.setItem(STORAGE_KEY, raw);
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    await initializeRadios();
+    expect(storage.getItem(`${STORAGE_KEY}:corrupt`)).toBe(raw);
+    expect(radiosCollection.state.size).toBe(1);
+    expect(radiosCollection.state.get(custom.id)).toMatchObject(custom);
+    const reloaded = await reloadRadios();
+    expect(reloaded.radiosCollection.state.size).toBe(1);
+    expect(reloaded.radiosCollection.state.get(custom.id)).toMatchObject(
+      custom
+    );
+  });
+
+  test.each(["{invalid", "[]", '{"bad":{"data":{"id":"invalid"}}}'])(
+    "backs up unrecoverable data before seeding: %s",
+    async (raw) => {
+      storage.setItem(STORAGE_KEY, raw);
+      const { initializeRadios, radiosCollection } = await reloadRadios();
+      await initializeRadios();
+      expect(storage.getItem(`${STORAGE_KEY}:corrupt`)).toBe(raw);
+      expect(radiosCollection.state.size).toBe(defaultRadios.length);
+    }
+  );
+
+  test("does not overwrite unreadable data if its backup fails", async () => {
+    const raw = "{invalid";
+    storage.setItem(STORAGE_KEY, raw);
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await expect(initializeRadios()).rejects.toThrow("Storage full");
+    expect(storage.getItem(STORAGE_KEY)).toBe(raw);
+    expect(radiosCollection.state.size).toBe(0);
   });
 });

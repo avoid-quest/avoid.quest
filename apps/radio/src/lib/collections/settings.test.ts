@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { getChangelogSeenAt } from "@avoid.quest/ui/lib/changelog";
 import { CHANGELOG_STORAGE_KEY } from "../const";
 import {
@@ -75,6 +75,116 @@ describe("player mode", () => {
       })
     ).toThrow();
     expect(getSettings()?.player.mode).toBe("single");
+  });
+});
+
+describe("damaged saved settings", () => {
+  const storageKey = "radio-app-settings";
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage"
+  );
+  let recoveredModule: typeof import("./settings") | undefined;
+  let reloadCount = 0;
+  let storage: Storage;
+
+  beforeEach(() => {
+    const data = new Map<string, string>();
+    storage = {
+      clear: () => data.clear(),
+      getItem: (key) => data.get(key) ?? null,
+      key: (index) => [...data.keys()][index] ?? null,
+      get length() {
+        return data.size;
+      },
+      removeItem: (key) => data.delete(key),
+      setItem: (key, value) => {
+        data.set(key, value);
+      },
+    };
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: storage,
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: Object.assign(new EventTarget(), { localStorage: storage }),
+    });
+  });
+
+  afterEach(async () => {
+    await recoveredModule?.settingsCollection.cleanup();
+    recoveredModule = undefined;
+    for (const [key, descriptor] of [
+      ["window", originalWindow],
+      ["localStorage", originalStorage],
+    ] as const) {
+      if (descriptor) {
+        Object.defineProperty(globalThis, key, descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  });
+
+  async function reloadSettings() {
+    reloadCount += 1;
+    recoveredModule = await import(
+      `./settings.ts?recovery-test=${reloadCount}`
+    );
+    if (!recoveredModule) {
+      throw new Error("Settings did not load");
+    }
+    return recoveredModule;
+  }
+
+  test.each(["dj", "multiple"])(
+    "recovers %s preferences beside a malformed entry",
+    async (mode) => {
+      const saved = {
+        audio: { cueOutputId: "cue", mainOutputId: "speakers" },
+        id: SETTINGS_ID,
+        player: { mode, restoreStateOnLoad: false },
+      };
+      const raw = JSON.stringify({
+        broken: null,
+        "s:app-settings": { data: saved, versionKey: "v1" },
+      });
+      storage.setItem(storageKey, raw);
+      const recovered = await reloadSettings();
+      await recovered.initializeSettings();
+      expect(storage.getItem(`${storageKey}:corrupt`)).toBe(raw);
+      expect(recovered.getSettings()).toMatchObject({
+        ...saved,
+        player: { ...saved.player, mode: mode === "multiple" ? "node" : mode },
+      });
+    }
+  );
+
+  test.each(["{invalid", "[]", '{"bad":{"data":{"id":"invalid"}}}'])(
+    "backs up %s before inserting defaults",
+    async (raw) => {
+      storage.setItem(storageKey, raw);
+      const recovered = await reloadSettings();
+      await recovered.initializeSettings();
+      expect(storage.getItem(`${storageKey}:corrupt`)).toBe(raw);
+      expect(recovered.getSettings()?.player.mode).toBe("single");
+    }
+  );
+
+  test("keeps the original if its backup cannot be saved", async () => {
+    const raw = "{invalid";
+    storage.setItem(storageKey, raw);
+    const recovered = await reloadSettings();
+    spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("Storage full");
+    });
+    await expect(recovered.initializeSettings()).rejects.toThrow(
+      "Storage full"
+    );
+    expect(storage.getItem(storageKey)).toBe(raw);
+    expect(recovered.settingsCollection.state.size).toBe(0);
   });
 });
 

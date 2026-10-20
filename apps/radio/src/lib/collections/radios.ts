@@ -1,5 +1,6 @@
 import {
   createCollection,
+  createTransaction,
   deepEquals,
   localStorageCollectionOptions,
 } from "@tanstack/react-db";
@@ -10,6 +11,7 @@ import { radioMetadataConfigSchema } from "../metadata/schema";
 import { generateId } from "../types";
 import { platformMetadataSchema } from "./schemas";
 
+const RADIOS_STORAGE_KEY = "radio-app-radios";
 const DISMISSED_RADIOS_KEY = "radio-app-dismissed-radios";
 
 /**
@@ -20,7 +22,23 @@ export function getDismissedRadios(): Set<string> {
     return new Set();
   }
   const stored = localStorage.getItem(DISMISSED_RADIOS_KEY);
-  return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+  if (!stored) {
+    return new Set();
+  }
+  try {
+    return new Set(z.array(z.string()).parse(JSON.parse(stored)));
+  } catch (error) {
+    console.warn("[radios] Could not read dismissed stations", error);
+    try {
+      preserveCorruptData(DISMISSED_RADIOS_KEY, stored);
+    } catch (backupError) {
+      console.warn(
+        "[radios] Could not back up dismissed stations",
+        backupError
+      );
+    }
+    return new Set();
+  }
 }
 
 /**
@@ -87,7 +105,7 @@ export const radiosCollection = createCollection(
     id: "radios",
     schema: radioSchema,
     startSync: true,
-    storageKey: "radio-app-radios",
+    storageKey: RADIOS_STORAGE_KEY,
   })
 );
 
@@ -165,41 +183,159 @@ export function getSyncChanges(): SyncChanges {
  * Apply selected sync changes.
  * @param changes - The changes to apply (filtered by user selection)
  */
-export function applySyncChanges(changes: SyncChanges): void {
-  // Apply updates
-  for (const { existing, incoming } of changes.updates) {
-    radiosCollection.update(existing.id, (draft) => {
-      draft.streamUrl = incoming.streamUrl;
-      draft.streamFormat = incoming.streamFormat;
-      draft.logoUrl = incoming.logoUrl;
-      draft.description = incoming.description;
-      draft.websiteUrl = incoming.websiteUrl;
-      draft.metadataConfig = incoming.metadataConfig;
-      // Preserve order and enabled status
-    });
+export async function applySyncChanges(changes: SyncChanges): Promise<void> {
+  const current = radiosCollection.state;
+  const deletions = new Set(
+    changes.deletions.map((radio) => radio.id).filter((id) => current.has(id))
+  );
+  const updates = new Map(
+    changes.updates
+      .filter(({ existing, incoming }) => {
+        const radio = current.get(existing.id);
+        return (
+          radio && !deletions.has(radio.id) && hasRadioChanged(radio, incoming)
+        );
+      })
+      .map(({ existing, incoming }) => [existing.id, incoming])
+  );
+  // Names are the identity used by getSyncChanges; URLs also catch renamed rows.
+  const names = new Set<string>();
+  const urls = new Set<string>();
+  for (const radio of current.values()) {
+    if (!deletions.has(radio.id)) {
+      names.add(radio.name);
+      urls.add(updates.get(radio.id)?.streamUrl ?? radio.streamUrl);
+    }
   }
-
-  // Apply additions
+  const additions: RadioRecord[] = [];
   for (const radio of changes.additions) {
-    radiosCollection.insert({
-      description: radio.description,
-      enabled: true,
-      id: generateId(),
-      isSystem: true,
-      logoUrl: radio.logoUrl,
-      metadataConfig: radio.metadataConfig,
-      name: radio.name,
-      order: radio.order ?? 0,
-      streamFormat: radio.streamFormat,
-      streamUrl: radio.streamUrl,
-      websiteUrl: radio.websiteUrl,
-    });
+    if (names.has(radio.name) || urls.has(radio.streamUrl)) {
+      continue;
+    }
+    names.add(radio.name);
+    urls.add(radio.streamUrl);
+    additions.push(createSystemRadio(radio));
   }
 
-  // Apply deletions
-  for (const radio of changes.deletions) {
-    radiosCollection.delete(radio.id);
+  await persistRadioChanges(() => {
+    if (updates.size > 0) {
+      radiosCollection.update([...updates.keys()], (drafts) => {
+        for (const draft of drafts) {
+          const incoming = updates.get(draft.id);
+          if (incoming) {
+            draft.streamUrl = incoming.streamUrl;
+            draft.streamFormat = incoming.streamFormat;
+            draft.logoUrl = incoming.logoUrl;
+            draft.description = incoming.description;
+            draft.websiteUrl = incoming.websiteUrl;
+            draft.metadataConfig = incoming.metadataConfig;
+            // Preserve order and enabled status.
+          }
+        }
+      });
+    }
+    if (additions.length > 0) {
+      radiosCollection.insert(additions);
+    }
+    if (deletions.size > 0) {
+      radiosCollection.delete([...deletions]);
+    }
+  });
+}
+
+function createSystemRadio(radio: Radio): RadioRecord {
+  return {
+    description: radio.description,
+    enabled: true,
+    id: generateId(),
+    isSystem: true,
+    logoUrl: radio.logoUrl,
+    metadataConfig: radio.metadataConfig,
+    name: radio.name,
+    order: radio.order ?? 0,
+    streamFormat: radio.streamFormat,
+    streamUrl: radio.streamUrl,
+    websiteUrl: radio.websiteUrl,
+  };
+}
+
+/** Persist a library operation once, rolling all its rows back on failure. */
+async function persistRadioChanges(write: () => void): Promise<void> {
+  const transaction = createTransaction({
+    mutationFn: ({ transaction: pending }) => {
+      radiosCollection.utils.acceptMutations(pending);
+      return Promise.resolve();
+    },
+  });
+  try {
+    transaction.mutate(write);
+  } catch (error) {
+    transaction.rollback();
+    await transaction.isPersisted.promise.catch(() => undefined);
+    throw error;
   }
+  await transaction.isPersisted.promise;
+}
+
+export function reorderRadios(orderedIds: string[]): Promise<void> {
+  const orders = new Map<string, number>();
+  for (const [index, id] of orderedIds.entries()) {
+    const radio = radiosCollection.state.get(id);
+    if (radio && radio.order !== index) {
+      orders.set(id, index);
+    }
+  }
+  return persistRadioChanges(() => {
+    if (orders.size > 0) {
+      radiosCollection.update([...orders.keys()], (drafts) => {
+        for (const draft of drafts) {
+          draft.order = orders.get(draft.id) ?? draft.order;
+        }
+      });
+    }
+  });
+}
+
+function preserveCorruptData(key: string, raw: string): void {
+  const backupKey = `${key}:corrupt`;
+  const previous = localStorage.getItem(backupKey);
+  if (previous === raw) {
+    return;
+  }
+  localStorage.setItem(
+    previous ? `${backupKey}:${generateId()}` : backupKey,
+    raw
+  );
+}
+
+function recoverStoredRadios(): RadioRecord[] {
+  if (typeof localStorage === "undefined") {
+    return [];
+  }
+  const raw = localStorage.getItem(RADIOS_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+  // An empty adapter result may hide a broken envelope. Back up before any write.
+  preserveCorruptData(RADIOS_STORAGE_KEY, raw);
+  const recovered = new Map<string, RadioRecord>();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const entry of Object.values(parsed)) {
+        if (!(entry && typeof entry === "object" && "data" in entry)) {
+          continue;
+        }
+        const radio = radioSchema.safeParse(entry.data);
+        if (radio.success) {
+          recovered.set(radio.data.id, radio.data);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[radios] Could not recover saved stations", error);
+  }
+  return [...recovered.values()];
 }
 
 /**
@@ -223,22 +359,10 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
   const existing = await radiosCollection.stateWhenReady();
 
   if (existing.size === 0) {
-    // Seed with defaults, marking all as system radios
-    for (const radio of defaultRadios) {
-      radiosCollection.insert({
-        description: radio.description,
-        enabled: true,
-        id: generateId(),
-        isSystem: true,
-        logoUrl: radio.logoUrl,
-        metadataConfig: radio.metadataConfig,
-        name: radio.name,
-        order: radio.order ?? 0,
-        streamFormat: radio.streamFormat,
-        streamUrl: radio.streamUrl,
-        websiteUrl: radio.websiteUrl,
-      });
-    }
+    const recovered = recoverStoredRadios();
+    const radios =
+      recovered.length > 0 ? recovered : defaultRadios.map(createSystemRadio);
+    await persistRadioChanges(() => radiosCollection.insert(radios));
     return null;
   }
 
@@ -247,9 +371,11 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
 
   // Auto-apply deletions (system radios removed from defaults)
   if (changes.deletions.length > 0) {
-    for (const radio of changes.deletions) {
-      radiosCollection.delete(radio.id);
-    }
+    await applySyncChanges({
+      additions: [],
+      deletions: changes.deletions,
+      updates: [],
+    });
     // Clear deletions from return since they're auto-applied
     changes.deletions = [];
   }
@@ -266,9 +392,9 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
  * Sync radios with default data (legacy - now uses getSyncChanges + applySyncChanges)
  * @deprecated Use getSyncChanges() and applySyncChanges() instead
  */
-export function syncRadios(): void {
+export function syncRadios(): Promise<void> {
   const changes = getSyncChanges();
-  applySyncChanges(changes);
+  return applySyncChanges(changes);
 }
 
 /**

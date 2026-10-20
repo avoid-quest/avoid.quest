@@ -8,7 +8,7 @@ import {
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Settings2Icon } from "lucide-react";
-import { Suspense, useId, useRef, useState } from "react";
+import { Suspense, useEffect, useId, useRef, useState } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 
 function preloadSettingsDrawer() {
@@ -40,6 +40,22 @@ export function SettingsButton({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerId = useId();
 
+  // Nothing handles Escape until the drawer chunk arrives, so a pending open
+  // is cancelled here. A mounted drawer prevents the default when it handles
+  // Escape itself, including while a keyboard reorder keeps it open.
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const cancelPendingOpen = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("keydown", cancelPendingOpen);
+    return () => document.removeEventListener("keydown", cancelPendingOpen);
+  }, [isOpen]);
+
   const triggerButton = (
     <Slot
       aria-controls={hasOpened ? drawerId : undefined}
@@ -51,7 +67,8 @@ export function SettingsButton({
           return;
         }
         setHasOpened(true);
-        setIsOpen(true);
+        // A second activation before the drawer arrives cancels the request.
+        setIsOpen((open) => !open);
       }}
       onFocus={prefetchSettingsDrawerOnIntent}
       onPointerEnter={prefetchSettingsDrawerOnIntent}

@@ -60,6 +60,56 @@ if (scenario === "drawer-fails") {
     expect(document.activeElement).toBe(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
+} else if (scenario === "drawer-pending") {
+  installTriggerTestDom();
+  // The drawer suspends until its chunk "arrives", so nothing else handles
+  // Escape or clicks while the open request is pending.
+  const chunk = Promise.withResolvers<undefined>();
+  let arrived = false;
+  chunk.promise.then(() => {
+    arrived = true;
+  });
+  mock.module("./settings-drawer", () => ({
+    SettingsDrawer: ({ open }: { open: boolean }) => {
+      if (!arrived) {
+        throw chunk.promise;
+      }
+      return open ? (
+        <div aria-label="Settings" role="dialog">
+          Settings
+        </div>
+      ) : null;
+    },
+  }));
+  const { act, cleanup, fireEvent, render } = await import(
+    "@testing-library/react"
+  );
+  const { SettingsButton } = await import("./settings-button");
+
+  afterEach(cleanup);
+
+  test("Escape or a second activation cancels a pending open", async () => {
+    const view = render(<SettingsButton />);
+    const trigger = view.getByRole("button", { name: "Open settings" });
+
+    fireEvent.click(trigger, { detail: 0 });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(trigger, { detail: 0 });
+    fireEvent.click(trigger, { detail: 0 });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    await act(async () => {
+      chunk.resolve(undefined);
+      await chunk.promise;
+    });
+    expect(view.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(trigger, { detail: 0 });
+    expect(await view.findByRole("dialog", { name: "Settings" })).toBeDefined();
+  });
 } else if (scenario) {
   installTriggerTestDom();
   mock.module("./settings-form", () => ({
@@ -128,7 +178,7 @@ if (scenario === "drawer-fails") {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 } else {
-  test.each(["1", "drawer-fails"])(
+  test.each(["1", "drawer-fails", "drawer-pending"])(
     "settings trigger regressions (isolated module mocks: %s)",
     async (scenarioName) => {
       const child = Bun.spawn([process.execPath, "test", import.meta.path], {

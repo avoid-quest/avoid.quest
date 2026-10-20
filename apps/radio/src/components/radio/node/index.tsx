@@ -7,9 +7,10 @@ import {
 } from "@avoid.quest/ui/components/resizable";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ClientOnly } from "@/components/client-only";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useNodeMidi } from "@/lib/hooks/use-node-midi";
@@ -47,7 +48,7 @@ import { useNodeRadioManagement } from "./use-node-radio-management";
  * React Flow stays in this lazy client chunk. The Worker build folds the
  * branch away, so no `@xyflow` code reaches the SSR bundle.
  */
-const NodeCanvas = lazy(() =>
+const NodeCanvas = lazyWithRetry(() =>
   import.meta.env.SSR
     ? Promise.resolve({ default: () => null })
     : import("./node-canvas")
@@ -189,18 +190,20 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     <div className="relative h-full min-h-0">
       {graph ? (
         <ClientOnly fallback={<NodeCanvasSkeleton />}>
-          <Suspense fallback={<NodeCanvasSkeleton />}>
-            <NodeCanvas
-              fitRequest={fitRequest}
-              isPhone={isPhone}
-              onFitHandled={() => setFitRequest(0)}
-              onOpenConnect={setConnectNodeId}
-              onOpenPalette={openPalette}
-              onPortDropHandled={() => setPortDrop(null)}
-              portDrop={portDrop}
-              reveal={reveal}
-            />
-          </Suspense>
+          <LazyBoundary className="h-full" label="the patch canvas">
+            <Suspense fallback={<NodeCanvasSkeleton />}>
+              <NodeCanvas
+                fitRequest={fitRequest}
+                isPhone={isPhone}
+                onFitHandled={() => setFitRequest(0)}
+                onOpenConnect={setConnectNodeId}
+                onOpenPalette={openPalette}
+                onPortDropHandled={() => setPortDrop(null)}
+                portDrop={portDrop}
+                reveal={reveal}
+              />
+            </Suspense>
+          </LazyBoundary>
         </ClientOnly>
       ) : (
         <NodeCanvasSkeleton />

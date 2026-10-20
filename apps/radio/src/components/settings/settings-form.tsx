@@ -37,20 +37,21 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
 import { LoadingFallback, RadioManagement } from "./radio-management";
 
-const ImportExport = lazy(() =>
+const ImportExport = lazyWithRetry(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
 );
-const AudioSettings = lazy(() =>
+const AudioSettings = lazyWithRetry(() =>
   import("./audio-settings").then((mod) => ({ default: mod.AudioSettings }))
 );
-const MidiSettings = lazy(() =>
+const MidiSettings = lazyWithRetry(() =>
   import("./midi-settings").then((mod) => ({ default: mod.MidiSettings }))
 );
 
@@ -242,16 +243,20 @@ function SectionContent({
   }
   if (section === "playback") {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <AudioSettings />
-      </Suspense>
+      <LazyBoundary key="playback" label="playback settings">
+        <Suspense fallback={<LoadingFallback />}>
+          <AudioSettings />
+        </Suspense>
+      </LazyBoundary>
     );
   }
   if (section === "midi") {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <MidiSettings />
-      </Suspense>
+      <LazyBoundary key="midi" label="MIDI settings">
+        <Suspense fallback={<LoadingFallback />}>
+          <MidiSettings />
+        </Suspense>
+      </LazyBoundary>
     );
   }
   const handleDataPanelChange = (value: string) => {
@@ -278,12 +283,14 @@ function SectionContent({
           {DATA_PANEL_GUIDANCE[dataPanel]}
         </p>
       ) : null}
-      <Suspense fallback={<LoadingFallback />}>
-        <ImportExport
-          activePanel={dataPanel}
-          resetContent={<ResetSettings {...props} />}
-        />
-      </Suspense>
+      <LazyBoundary label="data settings">
+        <Suspense fallback={<LoadingFallback />}>
+          <ImportExport
+            activePanel={dataPanel}
+            resetContent={<ResetSettings {...props} />}
+          />
+        </Suspense>
+      </LazyBoundary>
     </div>
   );
 }

@@ -12,23 +12,24 @@ import {
   TabsList,
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 
 function preloadRadioForm() {
   return import("./radio-form");
 }
-const RadioForm = lazy(() =>
+const RadioForm = lazyWithRetry(() =>
   preloadRadioForm().then((module) => ({ default: module.RadioForm }))
 );
 const preloadRadioFromUrl = () => import("./radio-from-url-tab");
-const RadioFromUrlTab = lazy(() =>
+const RadioFromUrlTab = lazyWithRetry(() =>
   preloadRadioFromUrl().then((module) => ({
     default: module.RadioFromUrlTab,
   }))
 );
 const preloadRadioGarden = () => import("./radio-garden-tab");
-const RadioGardenTab = lazy(() =>
+const RadioGardenTab = lazyWithRetry(() =>
   preloadRadioGarden().then((module) => ({
     default: module.RadioGardenTab,
   }))
@@ -95,14 +96,16 @@ export function RadioDialog({
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isEdit ? (
-            <Suspense fallback={<LoadingStationForm />}>
-              <RadioForm
-                mode="edit"
-                onCancel={handleClose}
-                onSuccess={handleClose}
-                radio={radio}
-              />
-            </Suspense>
+            <LazyBoundary label="station details">
+              <Suspense fallback={<LoadingStationForm />}>
+                <RadioForm
+                  mode="edit"
+                  onCancel={handleClose}
+                  onSuccess={handleClose}
+                  radio={radio}
+                />
+              </Suspense>
+            </LazyBoundary>
           ) : (
             <Tabs defaultValue="radiogarden">
               <TabsList className="w-full">
@@ -129,23 +132,29 @@ export function RadioDialog({
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="radiogarden">
-                <Suspense fallback={<LoadingStationForm />}>
-                  <RadioGardenTab onSuccess={handleClose} />
-                </Suspense>
+                <LazyBoundary label="Radio Garden search">
+                  <Suspense fallback={<LoadingStationForm />}>
+                    <RadioGardenTab onSuccess={handleClose} />
+                  </Suspense>
+                </LazyBoundary>
               </TabsContent>
               <TabsContent value="from-url">
-                <Suspense fallback={<LoadingStationForm />}>
-                  <RadioFromUrlTab onSuccess={handleClose} />
-                </Suspense>
+                <LazyBoundary label="the URL importer">
+                  <Suspense fallback={<LoadingStationForm />}>
+                    <RadioFromUrlTab onSuccess={handleClose} />
+                  </Suspense>
+                </LazyBoundary>
               </TabsContent>
               <TabsContent value="manual">
-                <Suspense fallback={<LoadingStationForm />}>
-                  <RadioForm
-                    mode="create"
-                    onCancel={handleClose}
-                    onSuccess={handleClose}
-                  />
-                </Suspense>
+                <LazyBoundary label="the station form">
+                  <Suspense fallback={<LoadingStationForm />}>
+                    <RadioForm
+                      mode="create"
+                      onCancel={handleClose}
+                      onSuccess={handleClose}
+                    />
+                  </Suspense>
+                </LazyBoundary>
               </TabsContent>
             </Tabs>
           )}

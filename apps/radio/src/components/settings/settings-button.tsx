@@ -15,9 +15,10 @@ import {
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Settings2Icon } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 
-const SettingsForm = lazy(() =>
+const SettingsForm = lazyWithRetry(() =>
   import("./settings-form").then((module) => ({ default: module.SettingsForm }))
 );
 
@@ -77,9 +78,11 @@ export function SettingsButton({
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-3 pb-3 sm:px-4 sm:pb-4">
-            <Suspense fallback={<Skeleton className="h-[70vh] w-full" />}>
-              <SettingsForm defaultTab={defaultTab} />
-            </Suspense>
+            <LazyBoundary className="h-[70vh]" label="settings">
+              <Suspense fallback={<Skeleton className="h-[70vh] w-full" />}>
+                <SettingsForm defaultTab={defaultTab} />
+              </Suspense>
+            </LazyBoundary>
           </div>
         </div>
       </DrawerContent>

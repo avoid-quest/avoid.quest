@@ -35,8 +35,9 @@ import type {
   FeedbackSubmitActionSlotProps,
 } from "git-feedback/react";
 import { MessageCircleMore } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import {
   type FEEDBACK_CATEGORIES,
   FEEDBACK_ENDPOINT,
@@ -63,7 +64,7 @@ const feedbackCopy = {
 };
 
 const loadFeedback = () => import("git-feedback/react");
-const FeedbackModal = lazy(() =>
+const FeedbackModal = lazyWithRetry(() =>
   loadFeedback().then((module) => ({ default: module.FeedbackModal }))
 );
 
@@ -256,38 +257,55 @@ export function AppFeedback() {
         </TooltipContent>
       </Tooltip>
       {hasOpened ? (
-        <Suspense
-          fallback={
+        <LazyBoundary
+          frame={(failed) => (
             <Dialog onOpenChange={setOpen} open={open}>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent
+                aria-describedby={undefined}
+                className="sm:max-w-md"
+              >
                 <DialogHeader>
                   <DialogTitle>{feedbackCopy.title}</DialogTitle>
-                  <DialogDescription>Loading feedback…</DialogDescription>
                 </DialogHeader>
+                {failed}
               </DialogContent>
             </Dialog>
-          }
+          )}
+          label="feedback"
         >
-          <FeedbackModal
-            components={{
-              Actions: FeedbackActions,
-              CancelAction: FeedbackCancelAction,
-              CategoryField: FeedbackCategoryField,
-              Dialog: FeedbackDialog,
-              Form: FeedbackForm,
-              Header: FeedbackHeader,
-              MessageField: FeedbackMessageField,
-              StatusOutput: FeedbackStatusOutput,
-              SubmitAction: FeedbackSubmitAction,
-            }}
-            copy={feedbackCopy}
-            endpoint={FEEDBACK_ENDPOINT}
-            onAfterSubmit={handleAfterSubmit}
-            onOpenChange={setOpen}
-            open={open}
-            untrustedMetadata={getUntrustedMetadata}
-          />
-        </Suspense>
+          <Suspense
+            fallback={
+              <Dialog onOpenChange={setOpen} open={open}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>{feedbackCopy.title}</DialogTitle>
+                    <DialogDescription>Loading feedback…</DialogDescription>
+                  </DialogHeader>
+                </DialogContent>
+              </Dialog>
+            }
+          >
+            <FeedbackModal
+              components={{
+                Actions: FeedbackActions,
+                CancelAction: FeedbackCancelAction,
+                CategoryField: FeedbackCategoryField,
+                Dialog: FeedbackDialog,
+                Form: FeedbackForm,
+                Header: FeedbackHeader,
+                MessageField: FeedbackMessageField,
+                StatusOutput: FeedbackStatusOutput,
+                SubmitAction: FeedbackSubmitAction,
+              }}
+              copy={feedbackCopy}
+              endpoint={FEEDBACK_ENDPOINT}
+              onAfterSubmit={handleAfterSubmit}
+              onOpenChange={setOpen}
+              open={open}
+              untrustedMetadata={getUntrustedMetadata}
+            />
+          </Suspense>
+        </LazyBoundary>
       ) : null}
     </>
   );

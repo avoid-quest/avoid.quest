@@ -1,24 +1,26 @@
 import AvoidLogo from "@avoid.quest/ui/components/avoid-logo";
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
-import { lazy, Suspense, useSyncExternalStore } from "react";
+import { Suspense, useSyncExternalStore } from "react";
 import { ClientOnly } from "../client-only";
+import { LazyBoundary, lazyWithRetry } from "../lazy-recovery";
 
-const AppFeedback = lazy(() =>
+// Each control loads and fails on its own, so a missing chunk costs one button.
+const AppFeedback = lazyWithRetry(() =>
   import("../feedback/app-feedback").then((module) => ({
     default: module.AppFeedback,
   }))
 );
-const ModeSelect = lazy(() =>
+const ModeSelect = lazyWithRetry(() =>
   import("../settings/mode-select").then((module) => ({
     default: module.ModeSelect,
   }))
 );
-const SettingsButton = lazy(() =>
+const SettingsButton = lazyWithRetry(() =>
   import("../settings/settings-button").then((module) => ({
     default: module.SettingsButton,
   }))
 );
-const WhatsNew = lazy(() =>
+const WhatsNew = lazyWithRetry(() =>
   import("../changelog/whats-new").then((module) => ({
     default: module.WhatsNew,
   }))
@@ -53,12 +55,16 @@ function DesktopWidgets() {
   }
   return (
     <>
-      <Suspense fallback={<Skeleton className="size-7" />}>
-        <AppFeedback />
-      </Suspense>
-      <Suspense fallback={<Skeleton className="size-7" />}>
-        <WhatsNew />
-      </Suspense>
+      <LazyBoundary label="feedback" variant="icon">
+        <Suspense fallback={<Skeleton className="size-7" />}>
+          <AppFeedback />
+        </Suspense>
+      </LazyBoundary>
+      <LazyBoundary label="what's new" variant="icon">
+        <Suspense fallback={<Skeleton className="size-7" />}>
+          <WhatsNew />
+        </Suspense>
+      </LazyBoundary>
     </>
   );
 }
@@ -77,9 +83,15 @@ export function Header() {
       </a>
 
       <ClientOnly fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
-        <Suspense fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
-          <ModeSelect className="max-sm:max-w-none" />
-        </Suspense>
+        <LazyBoundary
+          className="w-full max-w-xs max-sm:max-w-none"
+          label="modes"
+          variant="inline"
+        >
+          <Suspense fallback={<Skeleton className="h-7 w-full max-w-xs" />}>
+            <ModeSelect className="max-sm:max-w-none" />
+          </Suspense>
+        </LazyBoundary>
       </ClientOnly>
 
       {/* One look for every icon button: muted, lit on hover and while open. */}
@@ -90,9 +102,11 @@ export function Header() {
           </ClientOnly>
         </div>
         <ClientOnly fallback={<Skeleton className="size-7" />}>
-          <Suspense fallback={<Skeleton className="size-7" />}>
-            <SettingsButton />
-          </Suspense>
+          <LazyBoundary label="settings" variant="icon">
+            <Suspense fallback={<Skeleton className="size-7" />}>
+              <SettingsButton />
+            </Suspense>
+          </LazyBoundary>
         </ClientOnly>
       </div>
     </header>

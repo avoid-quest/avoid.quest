@@ -1,6 +1,13 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { lazy, Suspense, useEffect, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@avoid.quest/ui/components/dialog";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { isMediaVolumeLocked } from "@/lib/audio/playback/media-element-volume-control";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
@@ -19,7 +26,7 @@ import {
   RadioDialog,
 } from "../../settings/radio-dialog";
 
-const ConfirmDeleteDialog = lazy(() =>
+const ConfirmDeleteDialog = lazyWithRetry(() =>
   import("../confirm-delete-dialog").then((module) => ({
     default: module.ConfirmDeleteDialog,
   }))
@@ -240,13 +247,32 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
       />
 
       {deleteConfirm ? (
-        <Suspense fallback={null}>
-          <ConfirmDeleteDialog
-            onCancel={handleCancelDelete}
-            onConfirm={confirmDelete}
-            radio={deleteConfirm}
-          />
-        </Suspense>
+        <LazyBoundary
+          frame={(failed) => (
+            <Dialog onOpenChange={handleCancelDelete} open>
+              <DialogContent
+                aria-describedby={undefined}
+                className="sm:max-w-sm"
+              >
+                <DialogHeader>
+                  <DialogTitle>
+                    Delete &ldquo;{deleteConfirm.name}&rdquo;?
+                  </DialogTitle>
+                </DialogHeader>
+                {failed}
+              </DialogContent>
+            </Dialog>
+          )}
+          label="the delete confirmation"
+        >
+          <Suspense fallback={null}>
+            <ConfirmDeleteDialog
+              onCancel={handleCancelDelete}
+              onConfirm={confirmDelete}
+              radio={deleteConfirm}
+            />
+          </Suspense>
+        </LazyBoundary>
       ) : null}
     </>
   );

@@ -386,12 +386,12 @@ describe("shared root and nested controls", () => {
     fireEvent.click(addButtons[0] as HTMLElement);
     expect(view.getByRole("dialog")).toBeTruthy();
     expect(
-      view.queryByRole("button", {
+      view.queryByRole("option", {
         name: (name) => name.startsWith("Stereo Split"),
       })
     ).toBeNull();
     expect(
-      view.getByRole("button", {
+      view.getByRole("option", {
         name: (name) => name.startsWith("Compressor "),
       })
     ).toBeTruthy();

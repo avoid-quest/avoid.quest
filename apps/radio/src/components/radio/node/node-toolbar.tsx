@@ -29,7 +29,23 @@ import {
 } from "@/lib/node-graph/node-store";
 import { PALETTE_TEMPLATES } from "@/lib/node-graph/palette";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
-import { isShortcutIgnored } from "./node-palette";
+
+/** Patch shortcuts also work on non-text controls in the phone inspector. */
+function ignoresUndo(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (
+    target.isContentEditable ||
+    target.closest(
+      "input, textarea, select, [contenteditable=true], [role=menu], [role=listbox], [role=alertdialog]"
+    )
+  ) {
+    return true;
+  }
+  const dialog = target.closest('[role="dialog"]');
+  return dialog !== null && !dialog.hasAttribute("data-node-inspector");
+}
 
 /**
  * Cmd+Z undoes a patch edit and Shift+Cmd+Z redoes it (Ctrl elsewhere).
@@ -43,7 +59,7 @@ export function useUndoShortcuts(store: NodeStore = nodeStore) {
         !(event.metaKey || event.ctrlKey) ||
         event.altKey ||
         event.defaultPrevented ||
-        isShortcutIgnored(event.target)
+        ignoresUndo(event.target)
       ) {
         return;
       }

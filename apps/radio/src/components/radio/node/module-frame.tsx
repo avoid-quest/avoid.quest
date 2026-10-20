@@ -350,6 +350,8 @@ function ControlColumn({
 }
 
 export type ModuleKnobProps = {
+  /** Pattern editors own the shared throttle and flush on release. */
+  throttle?: boolean;
   label: string;
   /** Accessible name, e.g. "Compressor threshold". */
   name: string;
@@ -391,6 +393,7 @@ export function ModuleKnob({
   description,
   midiTargetId,
   onChange,
+  throttle = true,
 }: ModuleKnobProps) {
   const throttledOnChange = useThrottledParam(onChange);
   // The furthest values seen outside the range; none, while inside it.
@@ -411,7 +414,7 @@ export function ModuleKnob({
       format={format}
       max={Math.max(max, high)}
       min={Math.min(min, low)}
-      onChange={throttledOnChange}
+      onChange={throttle ? throttledOnChange : onChange}
       scale={scale}
       size={36}
       step={step}

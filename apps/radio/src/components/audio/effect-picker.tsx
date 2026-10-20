@@ -9,7 +9,14 @@ import {
 } from "@avoid.quest/ui/components/dialog";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { FilterIcon, type LucideIcon } from "lucide-react";
-import { type ChangeEvent, type KeyboardEvent, useState } from "react";
+import {
+  type ChangeEvent,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { SearchField } from "@/components/radio/search-field";
 import { AVAILABLE_EFFECTS, type EffectType } from "@/lib/audio";
 import { isEffectContainerType } from "@/lib/audio/dsp/routing/effect-tree";
@@ -35,26 +42,26 @@ export type PickerSection<TItem extends PickerItem> = {
 
 function PickerOption<TItem extends PickerItem>({
   item,
+  id,
+  active,
   onSelect,
 }: {
   item: TItem;
+  id: string;
+  active: boolean;
   onSelect: (item: TItem) => void;
 }) {
-  function selectItemWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelect(item);
-    }
-  }
   const Icon = item.icon;
 
   return (
     <Card
-      className="cursor-pointer flex-row items-start gap-3 rounded-md border-border/50 p-3 shadow-none outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      aria-selected={active}
+      className="cursor-pointer flex-row items-start gap-3 rounded-md border-border/50 p-3 shadow-none outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[active]:border-ring data-[active]:bg-muted/40"
+      data-active={active || undefined}
+      id={id}
       onClick={() => onSelect(item)}
-      onKeyDown={selectItemWithKeyboard}
-      role="button"
-      tabIndex={0}
+      role="option"
+      tabIndex={-1}
     >
       <div
         className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted"
@@ -98,7 +105,7 @@ function matches(item: PickerItem, query: string): boolean {
 
 /**
  * The picker body: a search field over sections of cards. Typing filters by
- * name and description, and Enter picks the first match.
+ * name and description; arrows choose the active match and Enter picks it.
  */
 export function PickerList<TItem extends PickerItem>({
   sections,
@@ -114,8 +121,12 @@ export function PickerList<TItem extends PickerItem>({
   className?: string;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listId = useId();
+  const list = useRef<HTMLDivElement>(null);
   function updateSearchQuery(event: ChangeEvent<HTMLInputElement>) {
     setSearchQuery(event.target.value);
+    setActiveIndex(0);
   }
 
   const filtered = sections
@@ -125,17 +136,55 @@ export function PickerList<TItem extends PickerItem>({
     }))
     .filter((section) => section.items.length > 0);
 
-  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    const first = filtered[0]?.items[0];
-    if (event.key === "Enter" && first) {
-      event.preventDefault();
-      onSelect(first);
+  const items = filtered.flatMap((section) => section.items);
+  const active = items[Math.min(activeIndex, items.length - 1)];
+  const optionId = (id: string) => `${listId}-${id}`;
+  const activeId = active ? optionId(active.id) : undefined;
+  useEffect(() => {
+    if (activeId) {
+      list.current?.ownerDocument.getElementById(activeId)?.scrollIntoView?.({
+        block: "nearest",
+      });
     }
+  }, [activeId]);
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (items.length === 0) {
+      return;
+    }
+    const index = Math.min(activeIndex, items.length - 1);
+    if (event.key === "Enter" && active) {
+      event.preventDefault();
+      onSelect(active);
+      return;
+    }
+    let next: number;
+    switch (event.key) {
+      case "ArrowDown":
+        next = (index + 1) % items.length;
+        break;
+      case "ArrowUp":
+        next = (index - 1 + items.length) % items.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = items.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    setActiveIndex(next);
   }
 
   return (
     <div className={cn("space-y-4", className)}>
       <SearchField
+        aria-activedescendant={activeId}
+        aria-controls={filtered.length > 0 ? listId : undefined}
+        aria-haspopup="listbox"
         autoFocus
         onChange={updateSearchQuery}
         onKeyDown={handleSearchKeyDown}
@@ -148,7 +197,13 @@ export function PickerList<TItem extends PickerItem>({
           {emptyText}
         </p>
       ) : (
-        <div className="max-h-128 space-y-4 overflow-y-auto pr-1">
+        <div
+          aria-label="Search results"
+          className="max-h-128 space-y-4 overflow-y-auto pr-1"
+          id={listId}
+          ref={list}
+          role="listbox"
+        >
           {filtered.map((section) => (
             <section
               aria-label={section.title}
@@ -162,7 +217,13 @@ export function PickerList<TItem extends PickerItem>({
               ) : null}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {section.items.map((item) => (
-                  <PickerOption item={item} key={item.id} onSelect={onSelect} />
+                  <PickerOption
+                    active={active?.id === item.id}
+                    id={optionId(item.id)}
+                    item={item}
+                    key={item.id}
+                    onSelect={onSelect}
+                  />
                 ))}
               </div>
             </section>
@@ -203,7 +264,7 @@ export function EffectPicker({
         <DialogHeader>
           <DialogTitle>Add effect</DialogTitle>
           <DialogDescription>
-            Type to search. Enter adds the first match.
+            Type to search. Use arrow keys to choose and Enter to add.
           </DialogDescription>
         </DialogHeader>
 

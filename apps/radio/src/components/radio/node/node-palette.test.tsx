@@ -240,7 +240,7 @@ describe("NodePalette", () => {
       view.queryByRole("region", { name: "Replace patch with a template" })
     ).toBeNull();
     const sources = view.getByRole("region", { name: "Sources" });
-    const names = [...sources.querySelectorAll("[role=button] h3")].map(
+    const names = [...sources.querySelectorAll("[role=option] h3")].map(
       (heading) => heading.textContent
     );
     expect(names).toEqual([
@@ -351,7 +351,7 @@ describe("NodePalette", () => {
 
     expect(view.getByRole("dialog", { name: "Swap effect" })).toBeTruthy();
     const fx = view.getByRole("region", { name: "FX" });
-    const names = [...fx.querySelectorAll("[role=button] h3")].map(
+    const names = [...fx.querySelectorAll("[role=option] h3")].map(
       (heading) => heading.textContent
     );
     expect(names).toContain("Compressor");
@@ -412,7 +412,7 @@ describe("NodePalette devices", () => {
     name: string
   ): string[] {
     const section = view.getByRole("region", { name });
-    return [...section.querySelectorAll("[role=button] h3")].map(
+    return [...section.querySelectorAll("[role=option] h3")].map(
       (heading) => heading.textContent ?? ""
     );
   }
@@ -598,4 +598,63 @@ describe("isCanvasKey", () => {
     );
     expect(merge?.position).toEqual({ x: -400 - MERGE_WIDTH_PX, y: 320 });
   });
+});
+
+test("palette arrows select the second result and changing the query resets it", () => {
+  const store = seededStore();
+  const view = render(<PaletteHarness initial={{}} store={store} />);
+  const search = view.getByRole("searchbox", {
+    name: "Search nodes and stations",
+  });
+  fireEvent.change(search, { target: { value: "station" } });
+  const matches = view.getAllByRole("option");
+  expect(matches.length).toBeGreaterThan(1);
+  fireEvent.keyDown(search, { key: "End" });
+  expect(search.getAttribute("aria-activedescendant")).toBe(
+    matches.at(-1)?.id ?? ""
+  );
+  fireEvent.keyDown(search, { key: "Home" });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(search.getAttribute("aria-activedescendant")).toBe(
+    matches[1]?.id ?? ""
+  );
+  expect(matches[1]?.getAttribute("aria-selected")).toBe("true");
+  expect(matches.every((item) => item.tabIndex === -1)).toBe(true);
+  fireEvent.change(search, { target: { value: "nts" } });
+  expect(search.getAttribute("aria-activedescendant")).toBe(
+    view.getAllByRole("option")[0]?.id ?? ""
+  );
+  fireEvent.change(search, { target: { value: "" } });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  const selected = view
+    .getAllByRole("option")[1]
+    ?.querySelector("h3")?.textContent;
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(view.queryByRole("dialog")).toBeNull();
+  expect(selected).toBe("Track");
+  expect(
+    store.state.graph?.nodes.some((node) => node.type === "platform")
+  ).toBe(true);
+});
+
+test("effect picker chooses the second match from the search field", async () => {
+  const { EffectPicker } = await import("@/components/audio/effect-picker");
+  const { AVAILABLE_EFFECTS } = await import("@/lib/audio");
+  const onSelect = mock(() => undefined);
+  const view = render(
+    <EffectPicker onClose={() => undefined} onSelect={onSelect} />
+  );
+  const search = view.getByRole("searchbox", { name: "Search effects" });
+  fireEvent.change(search, { target: { value: "a" } });
+  const results = view.getAllByRole("option");
+  expect(results.length).toBeGreaterThan(1);
+  const expected = AVAILABLE_EFFECTS.find(
+    (effect) => effect.name === results[1]?.querySelector("h3")?.textContent
+  );
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(search.getAttribute("aria-activedescendant")).toBe(
+    results[1]?.id ?? ""
+  );
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onSelect).toHaveBeenCalledWith(expected?.type);
 });

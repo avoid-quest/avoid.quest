@@ -186,6 +186,7 @@ export function StationNodeBody({
         <RadioItemActions
           onDelete={onDelete}
           onEdit={onEdit}
+          onRemoveNode={onRemove}
           onSave={onSave}
           onToggle={onToggle}
           radio={radio}

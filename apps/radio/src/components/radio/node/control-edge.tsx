@@ -5,12 +5,6 @@ import {
   PopoverTrigger,
 } from "@avoid.quest/ui/components/popover";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
-import {
-  controlDepth,
-  modulationParameters,
-} from "@/lib/node-graph/modulation-parameters";
-import { nodeStore } from "@/lib/node-graph/node-store";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -32,19 +26,7 @@ type ControlFlowEdge = FlowEdge<ControlEdgeData, "control">;
  */
 export function ControlEdge(props: FlowEdgeProps<ControlFlowEdge>) {
   const [path, labelX, labelY] = getBezierPath(props);
-  const graph = useStore(nodeStore, (state) => state.graph);
-  const edge = graph?.edges.find((entry) => entry.id === props.id);
-  const target = graph?.nodes.find((node) => node.id === props.target);
-  const parameters =
-    target && edge?.targetHandle === "in:control:parameter"
-      ? modulationParameters(target)
-      : [];
-  const parameter = parameters.find(
-    (entry) => entry.key === (edge?.parameter ?? parameters[0]?.key)
-  );
-  const label =
-    parameter?.label ??
-    (edge?.targetHandle.endsWith(":gate") ? "Gate" : "Control");
+  const { depth = 1, label = "Control", muted = false } = props.data ?? {};
   const unapplied = props.data?.unapplied ?? null;
   return (
     <>
@@ -54,7 +36,7 @@ export function ControlEdge(props: FlowEdgeProps<ControlFlowEdge>) {
         path={path}
         style={{
           ...props.style,
-          opacity: edge?.muted || (unapplied && !unapplied.partly) ? 0.35 : 0.8,
+          opacity: muted || (unapplied && !unapplied.partly) ? 0.35 : 0.8,
           stroke: "var(--primary)",
           strokeDasharray: "4 4",
         }}
@@ -79,7 +61,7 @@ export function ControlEdge(props: FlowEdgeProps<ControlFlowEdge>) {
                 title={unapplied?.why}
                 type="button"
               >
-                {label} · {Math.round((edge ? controlDepth(edge) : 1) * 100)}%
+                {label} · {Math.round(depth * 100)}%
                 {unapplied ? ` · ${unappliedTag(unapplied)}` : null}
               </button>
             </PopoverTrigger>

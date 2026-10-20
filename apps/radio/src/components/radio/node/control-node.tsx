@@ -36,27 +36,36 @@ import {
 } from "./module-frame";
 import { useNodeActions } from "./node-actions";
 import { nodeIcon } from "./node-icons";
+import { useNodeVisibility } from "./use-node-visibility";
 
 export const CONTROL_NODE_WIDTH = 320;
 type ControlFlowNode = FlowNode<ModulationSpec["data"], ModulationNodeType>;
 
 function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
-  const value = useStore(modulationReadouts, (state) => state.values[id] ?? 0);
-  const status = useStore(modulationReadouts, (state) => state.status);
-  const error = useStore(modulationReadouts, (state) =>
+  const { ref, visible } = useNodeVisibility<HTMLDivElement>();
+  const readouts = {
+    get: () => modulationReadouts.state,
+    subscribe: (listener: (value: typeof modulationReadouts.state) => void) =>
+      visible
+        ? modulationReadouts.subscribe(() => listener(modulationReadouts.state))
+        : { unsubscribe: () => undefined },
+  };
+  const value = useStore(readouts, (state) => state.values[id] ?? 0);
+  const status = useStore(readouts, (state) => state.status);
+  const error = useStore(readouts, (state) =>
     state.status === "running" ? null : state.error
   );
-  const backend = useStore(modulationReadouts, (state) => state.backends[id]);
-  const nativeWarning = useStore(
-    modulationReadouts,
-    (state) => state.nativeWarning
-  );
+  const backend = useStore(readouts, (state) => state.backends[id]);
+  const nativeWarning = useStore(readouts, (state) => state.nativeWarning);
   const needsRetry = Boolean(
     error || nativeWarning || backend === "unavailable"
   );
   const samples = useRef<number[]>([]);
   const line = useRef<SVGPolylineElement>(null);
   useEffect(() => {
+    if (!visible) {
+      return;
+    }
     samples.current.push(value);
     if (samples.current.length > 64) {
       samples.current.shift();
@@ -70,9 +79,9 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
         )
         .join(" ")
     );
-  }, [value, bipolar]);
+  }, [value, bipolar, visible]);
   return (
-    <div className="w-full px-2 pb-2">
+    <div className="w-full px-2 pb-2" ref={ref}>
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
         <span>
           Output{" "}

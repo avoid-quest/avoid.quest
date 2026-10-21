@@ -1,0 +1,29 @@
+apps/radio/src/lib/external-platform-search-workflow.test.ts
+  s_db2676bf9b5672::t_e83b027b25b164 101-102,124-133
+apps/radio/src/lib/hooks/use-external-search.test.ts
+  s_db2676bf9b5672::t_c707d4700a74c4 1-115
+apps/radio/src/lib/hooks/use-external-search.ts
+  s_db2676bf9b5672::t_8f912f3e25b7ad 34-35
+apps/radio/src/lib/platform-client.ts
+  s_db2676bf9b5672::t_b23a7c151cee86 444-445,448,456-457,460,523-524,527,535-536,539
+packages/platforms/src/search.test.ts
+  s_db2676bf9b5672::t_320cbf23e23a38 87-88,186-324
+packages/platforms/src/search.ts
+  s_db2676bf9b5672::t_af5335147de769 54,59-60,68-71,74-77,80-83,88-89,213-229,306,309-323,328-332,338-340,344,348,352-356,366-367,377-378,387,403-404,413-414,420-422,426,431-434,436,438,442-445,447-448,450-452,459,462,464-466
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "480c2f8a3ec5a63d5f9a37b70a51ab06c7ccfe08",
+  "prompts": {},
+  "sessions": {
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# Only Vite's content-hashed client output uses this prefix (vite.config.ts).
+# Stable /assets/@opendaw/*, /opendaw/* and /dsp-processor-bundle.js are excluded.
+# Workers Static Assets honors this file; Worker responses/routing are unchanged.
+/assets/immutable-*
+  Cache-Control: public, max-age=31536000, immutable

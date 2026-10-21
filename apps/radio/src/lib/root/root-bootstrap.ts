@@ -5,12 +5,12 @@ import { getSettings } from "@/lib/collections/settings";
 
 export { createRootQueryClient } from "./root-query-client";
 
-async function initializeRootCollections(): Promise<SyncChanges | null> {
-  const syncChanges = await initializeCriticalCollections();
-  preloadRadioMode(getSettings()?.player.mode ?? "single").catch((error) => {
-    console.error("[radio] Failed to preload radio mode:", error);
+function initializeRootCollections(): Promise<SyncChanges | null> {
+  return initializeCriticalCollections(() => {
+    preloadRadioMode(getSettings()?.player.mode ?? "single").catch((error) => {
+      console.error("[radio] Failed to preload radio mode:", error);
+    });
   });
-  return syncChanges;
 }
 
 export async function loadRootSyncChanges(

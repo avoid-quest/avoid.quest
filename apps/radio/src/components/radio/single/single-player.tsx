@@ -1,6 +1,13 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
-import { useEffect, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@avoid.quest/ui/components/dialog";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { isMediaVolumeLocked } from "@/lib/audio/playback/media-element-volume-control";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
@@ -14,8 +21,17 @@ import {
 } from "@/lib/hooks/use-session-radios";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { useSingleSession } from "@/lib/hooks/use-single-session";
-import { RadioDialog } from "../../settings/radio-dialog";
-import { ConfirmDeleteDialog } from "../confirm-delete-dialog";
+import {
+  prefetchStationDialogOnIntent,
+  RadioDialog,
+} from "../../settings/radio-dialog";
+
+const ConfirmDeleteDialog = lazyWithRetry(() =>
+  import("../confirm-delete-dialog").then((module) => ({
+    default: module.ConfirmDeleteDialog,
+  }))
+);
+
 import { RadioItemActions } from "../radio-item-actions";
 import { RadioSearchBar } from "../radio-search-bar";
 import {
@@ -162,7 +178,11 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
   return (
     <>
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row">
+      <div
+        className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row"
+        onFocusCapture={prefetchStationDialogOnIntent}
+        onPointerOverCapture={prefetchStationDialogOnIntent}
+      >
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
           <MobileNowPlayingPanel
             actions={currentRadioActions}
@@ -226,11 +246,34 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         radio={selectedRadio}
       />
 
-      <ConfirmDeleteDialog
-        onCancel={handleCancelDelete}
-        onConfirm={confirmDelete}
-        radio={deleteConfirm}
-      />
+      {deleteConfirm ? (
+        <LazyBoundary
+          frame={(failed) => (
+            <Dialog onOpenChange={handleCancelDelete} open>
+              <DialogContent
+                aria-describedby={undefined}
+                className="sm:max-w-sm"
+              >
+                <DialogHeader>
+                  <DialogTitle>
+                    Delete &ldquo;{deleteConfirm.name}&rdquo;?
+                  </DialogTitle>
+                </DialogHeader>
+                {failed}
+              </DialogContent>
+            </Dialog>
+          )}
+          label="the delete confirmation"
+        >
+          <Suspense fallback={null}>
+            <ConfirmDeleteDialog
+              onCancel={handleCancelDelete}
+              onConfirm={confirmDelete}
+              radio={deleteConfirm}
+            />
+          </Suspense>
+        </LazyBoundary>
+      ) : null}
     </>
   );
 }

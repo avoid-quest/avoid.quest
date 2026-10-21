@@ -2,11 +2,17 @@ import { initializeRadios, radiosCollection } from "./radios";
 import { initializeSettings, settingsCollection } from "./settings";
 
 /** Hydrates only the collections required to choose and render the radio mode. */
-export async function initializeCriticalCollections() {
-  await Promise.all([radiosCollection.preload(), settingsCollection.preload()]);
+export async function initializeCriticalCollections(
+  onSettingsReady?: () => void
+) {
   const [syncChanges] = await Promise.all([
-    initializeRadios(),
-    initializeSettings(),
+    radiosCollection.preload().then(() => initializeRadios()),
+    settingsCollection.preload().then(async () => {
+      await initializeSettings();
+      // Mode discovery need not wait for station defaults/migrations. Mounting
+      // still waits for this function and the mode's session preparation.
+      onSettingsReady?.();
+    }),
   ]);
   return syncChanges;
 }

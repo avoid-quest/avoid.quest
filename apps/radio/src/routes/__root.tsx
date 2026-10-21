@@ -5,15 +5,17 @@ import appleIcon from "@avoid.quest/ui/assets/favicon/apple-icon.png";
 import favicon from "@avoid.quest/ui/assets/favicon/favicon.ico";
 import icon0 from "@avoid.quest/ui/assets/favicon/icon0.svg";
 import icon1 from "@avoid.quest/ui/assets/favicon/icon1.png";
+import { Button } from "@avoid.quest/ui/components/button";
 import globalsCss from "@avoid.quest/ui/globals.css?url";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { RadioLoadingSkeleton } from "@/components/radio/radio-loading-skeleton";
 import { NotFoundView, RootErrorView } from "@/components/root/root-error-view";
 import { RootShell } from "@/components/root/root-shell";
 import type { SyncChanges } from "@/lib/collections/radios";
 
-const SyncDialog = lazy(() =>
+const SyncDialog = lazyWithRetry(() =>
   import("@/components/settings/sync-dialog").then((module) => ({
     default: module.SyncDialog,
   }))
@@ -143,14 +145,37 @@ function RootContent() {
     <>
       <Outlet />
       {syncChanges ? (
-        <Suspense fallback={null}>
-          <SyncDialog
-            changes={syncChanges}
-            onApply={handleApplySyncChanges}
-            onOpenChange={setShowSyncDialog}
-            open={showSyncDialog}
-          />
-        </Suspense>
+        <LazyBoundary
+          className="min-h-0"
+          frame={(failed) =>
+            showSyncDialog ? (
+              // The dialog chunk is what failed, so the notice stays inline.
+              <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm rounded-lg border bg-popover pb-3 text-popover-foreground shadow-lg">
+                {failed}
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => setShowSyncDialog(false)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Not now
+                  </Button>
+                </div>
+              </div>
+            ) : null
+          }
+          label="station updates"
+        >
+          <Suspense fallback={null}>
+            <SyncDialog
+              changes={syncChanges}
+              onApply={handleApplySyncChanges}
+              onOpenChange={setShowSyncDialog}
+              open={showSyncDialog}
+            />
+          </Suspense>
+        </LazyBoundary>
       ) : null}
     </>
   );

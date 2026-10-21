@@ -1,4 +1,5 @@
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/collections/session-radios";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import { PLATFORM_ITEMS } from "@/lib/dj-library-sources";
+import { getMidiControl } from "@/lib/midi";
 import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
@@ -60,6 +62,7 @@ Object.defineProperty(dom.window, "matchMedia", {
   }),
 });
 
+const previousGlobals = new Map<string, PropertyDescriptor | undefined>();
 for (const [key, value] of Object.entries({
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
@@ -73,6 +76,7 @@ for (const [key, value] of Object.entries({
   HTMLFormElement: dom.window.HTMLFormElement,
   HTMLInputElement: dom.window.HTMLInputElement,
   IntersectionObserver: ObserverStub,
+  IS_REACT_ACT_ENVIRONMENT: true,
   MutationObserver: dom.window.MutationObserver,
   Node: dom.window.Node,
   navigator: dom.window.navigator,
@@ -80,6 +84,7 @@ for (const [key, value] of Object.entries({
   requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
   window: dom.window,
 })) {
+  previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
   Object.defineProperty(globalThis, key, {
     configurable: true,
     value,
@@ -87,10 +92,18 @@ for (const [key, value] of Object.entries({
   });
 }
 
-Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
-  configurable: true,
-  value: true,
-  writable: true,
+afterAll(async () => {
+  // Let React finish queued passive work before restoring the browser globals.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  for (const [key, descriptor] of previousGlobals) {
+    if (descriptor) {
+      Object.defineProperty(globalThis, key, descriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, key);
+    }
+  }
+  getMidiControl().cleanup();
+  dom.window.close();
 });
 
 // Input change detection must initialize after the DOM is available.
@@ -216,6 +229,7 @@ describe("DeckPanel source picker", () => {
 
   afterEach(() => {
     cleanup();
+    getMidiControl().cleanup();
     restoreSessionHook();
     resetPlaybackChannelRuntime(DECK_A_CHANNEL_ID);
     setDeckRadio(DECK_A_CHANNEL_ID, null);

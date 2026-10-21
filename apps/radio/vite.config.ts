@@ -17,6 +17,7 @@ import { build, defineConfig, type Plugin } from "vite";
 import { gitChangelogPlugin } from "./git-changelog.ts";
 import { rewriteOpenDawEngineWorklet } from "./opendaw-assets.ts";
 
+const PRELOAD_HELPER_MODULE = /\0vite\/preload-helper\.js$/;
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
 const APP_VERSION = process.env.npm_package_version || "0.7.1";
@@ -116,9 +117,7 @@ const VENDOR_CHUNK_GROUPS: Array<{
     name: "vendor-popover",
   },
   {
-    match: (id) =>
-      id.includes("/node_modules/@dnd-kit/") ||
-      id.includes("/node_modules/lucide-react/"),
+    match: (id) => id.includes("/node_modules/lucide-react/"),
     name: "vendor-ui",
   },
 ];
@@ -133,7 +132,9 @@ function manualVendorChunks(id: string): string | undefined {
       return group.name;
     }
   }
-  return "vendor";
+  // Let importer boundaries split everything else. A catch-all here pulls
+  // parsers, archives and cloud integrations into the initial page graph.
+  return undefined;
 }
 
 /**
@@ -346,24 +347,66 @@ function openDawAssetsPlugin(): Plugin {
   };
 }
 
+/** Give content-hashed client output its own cache namespace. Stable audio
+ * artifacts emitted by the worklet/openDAW plugins keep their existing URLs.
+ */
+function clientChunkBoundariesPlugin(): Plugin {
+  return {
+    configEnvironment(name) {
+      const client = name === "client";
+      return {
+        build: {
+          rollupOptions: {
+            output: {
+              // SSR's CSS ?url imports must name the same client assets.
+              assetFileNames: "assets/immutable-[name]-[hash][extname]",
+              ...(client
+                ? {
+                    chunkFileNames: "assets/immutable-[name]-[hash].js",
+                    entryFileNames: "assets/immutable-[name]-[hash].js",
+                  }
+                : {}),
+              codeSplitting: {
+                groups: [
+                  // Capture the helper before a lazy vendor absorbs it.
+                  {
+                    name: "vite-preload-helper",
+                    priority: 20,
+                    test: PRELOAD_HELPER_MODULE,
+                  },
+                  {
+                    debugName: client ? "client-vendors" : "worker-vendors",
+                    // A client group must not absorb shared dependencies
+                    // (Zod/React), making eager consumers import lazy vendors.
+                    // The Worker's strict entry signatures require recursive
+                    // grouping; preserve its existing vendor/SSR boundaries.
+                    includeDependenciesRecursively: !client,
+                    name: client
+                      ? manualVendorChunks
+                      : manualWorkerVendorChunks,
+                    priority: 10,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+    },
+    name: "client-chunk-boundaries",
+  };
+}
+
+function manualWorkerVendorChunks(id: string): string | undefined {
+  return (
+    manualVendorChunks(id) ??
+    (id.includes("node_modules") ? "vendor" : undefined)
+  );
+}
+
 export default defineConfig({
   build: {
     minify: "esbuild",
-    rollupOptions: {
-      output: {
-        codeSplitting: {
-          groups: [
-            // Capture the shared preload helper before a lazy vendor absorbs its dependencies.
-            {
-              name: "vite-preload-helper",
-              priority: 20,
-              test: /\0vite\/preload-helper\.js$/,
-            },
-            { name: manualVendorChunks, priority: 10 },
-          ],
-        },
-      },
-    },
     // "hidden" generates source maps for Sentry upload but omits
     // sourceMappingURL from production bundles (unlike true/inline).
     sourcemap: "hidden",
@@ -376,6 +419,7 @@ export default defineConfig({
     audioWorkletPlugin(),
     openDawAssetsPlugin(),
     gitChangelogPlugin(),
+    clientChunkBoundariesPlugin(),
     cloudflare({
       viteEnvironment: { name: "ssr" },
     }),

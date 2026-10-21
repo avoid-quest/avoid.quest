@@ -43,7 +43,7 @@ const MAPPED_DEP = /["'](?:\/assets\/|assets\/)?([\w.-]+\.js)["']/g;
 const MANIFEST_ASSET = /\/assets\/([\w.-]+\.js)/g;
 const SCRIPT_FILE = /\.m?js$/;
 const HOME_FEATURE_CHUNK =
-  /^(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-)/;
+  /^(?:immutable-)?(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-)/;
 
 function listFiles(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
@@ -162,8 +162,9 @@ for (const [name, source] of flowChunks) {
 // The canvas is Node mode's only door to React Flow: the chunk that lazily
 // loads it also draws the Stage, Rack and inspector, which a phone opens
 // first, so it must not reach React Flow through static imports.
-const canvasChunks = [...chunks.keys()].filter((name) =>
-  name.startsWith("node-canvas-")
+const canvasChunks = [...chunks.keys()].filter(
+  (name) =>
+    name.startsWith("node-canvas-") || name.startsWith("immutable-node-canvas-")
 );
 if (canvasChunks.length === 0) {
   failures.push("No node-canvas client chunk found");

@@ -18,7 +18,7 @@ type ExternalSearchProps = {
   mode?: "dj" | "node";
   radios?: readonly Radio[];
   children?: React.ReactNode;
-  onLoad: (radio: Radio) => void;
+  onLoad: (radio: Radio) => void | Promise<void>;
   onPlatformChange?: (platform: SearchPlatform) => void;
   onSearchChange?: () => () => boolean;
   onCancel?: () => void;
@@ -206,7 +206,7 @@ function ExternalSearchContent({
     // Node callers own their source-slot request. DJ picks must enter the
     // session library before the deck loads them, just like pasted streams.
     if (mode === "node") {
-      onLoad(radio);
+      await onLoad(radio);
       return;
     }
     try {
@@ -220,7 +220,7 @@ function ExternalSearchContent({
       if ("error" in loaded) {
         setError(loaded.error);
       } else {
-        onLoad(loaded.radio);
+        await onLoad(loaded.radio);
       }
     } catch (cause: unknown) {
       if (isCurrent()) {

@@ -65,7 +65,7 @@ describe("DJ platform stream port", () => {
       streamFormat: "progressive",
       streamUrl: "https://media.example/audio.webm",
     });
-    expect(resolveStream).toHaveBeenCalledWith("abcdefghijk");
+    expect(resolveStream).toHaveBeenCalledWith("abcdefghijk", undefined);
   });
 
   test("preserves YouTube failures for the owning caller to report", async () => {
@@ -176,7 +176,7 @@ describe("DJ platform stream port", () => {
         { resolvePlatformItem }
       )
     ).resolves.toEqual({ streamFormat: "hls", streamUrl });
-    expect(resolvePlatformItem).toHaveBeenCalledWith(canonicalUrl);
+    expect(resolvePlatformItem).toHaveBeenCalledWith(canonicalUrl, undefined);
   });
 
   test("delegates canonical SoundCloud refreshes through the platform seam", async () => {
@@ -209,7 +209,10 @@ describe("DJ platform stream port", () => {
       streamFormat: "progressive",
       streamUrl: "https://soundcloud-media.example/fresh.mp3",
     });
-    expect(resolvePlatformItem).toHaveBeenCalledWith(input.canonicalUrl);
+    expect(resolvePlatformItem).toHaveBeenCalledWith(
+      input.canonicalUrl,
+      undefined
+    );
   });
 
   test("delegates canonical Bandcamp refreshes through the same platform seam", async () => {
@@ -242,7 +245,10 @@ describe("DJ platform stream port", () => {
       streamFormat: "progressive",
       streamUrl: "https://bandcamp-media.example/fresh.mp3",
     });
-    expect(resolvePlatformItem).toHaveBeenCalledWith(input.canonicalUrl);
+    expect(resolvePlatformItem).toHaveBeenCalledWith(
+      input.canonicalUrl,
+      undefined
+    );
   });
 
   test("fails canonical refresh closed when platform resolution fails", async () => {
@@ -364,4 +370,52 @@ describe("DJ platform stream port", () => {
     expect(inputRadio.streamFormat).toBe("progressive");
     expect(inputRadio.streamUrl).toBe("https://media.example/expired.mp3");
   });
+});
+
+test("deck stream resolution passes cancellation to the YouTube client", async () => {
+  const controller = new AbortController();
+  const resolveStream = mock(() =>
+    Promise.resolve("https://audio.example/video.mp3")
+  );
+  const client = youtubeClient(resolveStream);
+  await resolveDjPlatformStreamUrl(
+    {
+      platform: "youtube",
+      radio: { name: "Video", streamUrl: "yt:video" },
+      reason: "initial-load",
+      signal: controller.signal,
+      videoId: "video",
+    },
+    { getYouTubeClient: () => client }
+  );
+  expect(resolveStream).toHaveBeenCalledWith("video", controller.signal);
+});
+
+test("canonical platform renewal passes its cancellation signal to resolution", async () => {
+  const controller = new AbortController();
+  const resolvePlatformItem = mock(() =>
+    Promise.resolve({
+      metadata: {
+        itemType: "track" as const,
+        name: "Track",
+        platform: "soundcloud" as const,
+        url: "https://soundcloud.com/artist/track",
+      },
+      streamUrl: "https://audio.example/track.mp3",
+    })
+  );
+  await resolveDjPlatformStreamUrl(
+    {
+      canonicalUrl: "https://soundcloud.com/artist/track",
+      platform: "soundcloud",
+      radio: { name: "Track", streamUrl: "https://audio.example/old.mp3" },
+      reason: "stream-refresh",
+      signal: controller.signal,
+    },
+    { resolvePlatformItem }
+  );
+  expect(resolvePlatformItem).toHaveBeenCalledWith(
+    "https://soundcloud.com/artist/track",
+    controller.signal
+  );
 });

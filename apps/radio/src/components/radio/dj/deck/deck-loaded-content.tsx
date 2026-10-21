@@ -33,6 +33,7 @@ export function LoadedDeckContent({
     updateEffect,
     removeEffect,
     reorderEffects,
+    resetEffect,
     effectsTempo,
     setEffectsTempo,
   } = useDeckContext();
@@ -49,6 +50,7 @@ export function LoadedDeckContent({
       onAddEffect={addEffect}
       onRemoveEffect={removeEffect}
       onReorderEffects={reorderEffects}
+      onResetEffect={resetEffect}
       onTempoChange={setEffectsTempo}
       onUpdateEffect={updateEffect}
       tempo={effectsTempo}

@@ -13,6 +13,7 @@ import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { DjConsole } from "./dj-console";
 import { DjConsoleMobile } from "./dj-console-mobile";
+import { DjMidiEffects } from "./dj-midi-effects";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -56,6 +57,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
       className="flex h-full min-h-0 w-full flex-col px-2 py-2"
       style={{ touchAction: "manipulation" }}
     >
+      <DjMidiEffects />
       {isMobile ? (
         <DjConsoleMobile
           crossfadePosition={crossfadePosition}

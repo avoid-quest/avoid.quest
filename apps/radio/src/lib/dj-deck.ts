@@ -101,6 +101,7 @@ import {
   setPlaybackChannelSoundId,
 } from "@/lib/stores/playback-runtime-store";
 import { generateId } from "@/lib/types";
+import { refreshTrackProgress } from "./hooks/track-progress-state";
 
 /** Whether a device source captures on load; a stream was already acquired. */
 type CaptureOnLoad = boolean | MediaStream;
@@ -191,7 +192,7 @@ export type DjDeckAudioAdapter = {
 };
 
 export type DjDeckPlatformAdapter = {
-  loadItem: (url: string) => ReturnType<typeof loadPlatformItem>;
+  loadItem: typeof loadPlatformItem;
   resolveStream: (
     input: PlatformStreamResolutionInput
   ) => Promise<PlatformStreamResolution | null>;
@@ -212,6 +213,13 @@ export type DjDeckModule = {
   pendingSource: {
     cancel: (deckId: DeckId) => void;
     getSnapshot: () => DjDeckPendingSources;
+    subscribe: (listener: () => void) => () => void;
+  };
+};
+
+type DjDeckModuleWithPendingTrack = DjDeckModule & {
+  pendingTrack: {
+    getSnapshot: () => Readonly<Record<DeckId, string | null>>;
     subscribe: (listener: () => void) => () => void;
   };
 };
@@ -241,6 +249,7 @@ type DeckRuntime = {
   cueRegistration: ReturnType<OutputRouting["registerCueDeck"]> | null;
   generation: number;
   loadGeneration: number;
+  loadController: AbortController | null;
   playGeneration: number;
   stripRestored: boolean;
   streamRefresh: { generation: number; soundId: string } | null;
@@ -477,7 +486,9 @@ function keepLazyTrackStream(
   }
 }
 
-export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
+export function createDjDeckModule(
+  options: DjDeckModuleOptions
+): DjDeckModuleWithPendingTrack {
   const releasedFileUrls = new Set<string>();
   let outputErrorCleanup: (() => void) | null = null;
   const subscribeToOutputErrors = (): void => {
@@ -510,11 +521,33 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       return () => pendingSourceListeners.delete(listener);
     },
   };
+  let pendingTracks: Readonly<Record<DeckId, string | null>> = {
+    "deck-a": null,
+    "deck-b": null,
+  };
+  const pendingTrackListeners = new Set<() => void>();
+  const setPendingTrack = (deckId: DeckId, url: string | null) => {
+    if (pendingTracks[deckId] === url) {
+      return;
+    }
+    pendingTracks = { ...pendingTracks, [deckId]: url };
+    for (const listener of pendingTrackListeners) {
+      listener();
+    }
+  };
+  const pendingTrack: DjDeckModuleWithPendingTrack["pendingTrack"] = {
+    getSnapshot: () => pendingTracks,
+    subscribe(listener) {
+      pendingTrackListeners.add(listener);
+      return () => pendingTrackListeners.delete(listener);
+    },
+  };
   const runtimes: Record<DeckId, DeckRuntime> = {
     "deck-a": {
       bindingCleanup: null,
       cueRegistration: null,
       generation: 0,
+      loadController: null,
       loadGeneration: 0,
       playGeneration: 0,
       streamRefresh: null,
@@ -524,6 +557,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       bindingCleanup: null,
       cueRegistration: null,
       generation: 0,
+      loadController: null,
       loadGeneration: 0,
       playGeneration: 0,
       streamRefresh: null,
@@ -554,8 +588,10 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   const beginLoad = (deckId: DeckId): number => {
     const runtime = runtimes[deckId];
+    runtime.loadController?.abort();
+    runtime.loadController = new AbortController();
+    setPendingTrack(deckId, null);
     runtime.loadGeneration += 1;
-    runtime.playGeneration += 1;
     return runtime.loadGeneration;
   };
 
@@ -564,6 +600,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
 
   const beginSourceLoad = (deckId: DeckId): number => {
     const loadGeneration = beginLoad(deckId);
+    // Only a real source load supersedes playback and stream recovery; an
+    // opened placeholder form leaves the current source to keep recovering.
+    runtimes[deckId].playGeneration += 1;
     clearDjErrorSurface(deckId);
     return loadGeneration;
   };
@@ -967,7 +1006,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         return;
       }
       releaseReplacedFile(previous, radio);
-      setPendingSource(deckId, null);
+      if (isLoadCurrent(deckId, loadGeneration)) {
+        setPendingSource(deckId, null);
+      }
     } catch (error) {
       releaseCapture();
       if (!isCurrent(deckId, generation)) {
@@ -1001,6 +1042,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
         ...request,
         radio,
         reason: "initial-load",
+        signal: runtimes[deckId].loadController?.signal,
       });
     } catch (error) {
       if (isLoadCurrent(deckId, loadGeneration)) {
@@ -1231,6 +1273,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
   ): Promise<DjDeckLoadResult> {
     const intent = getDeckLibrarySourceIntent(radio);
     if (intent.type === "pending-platform") {
+      beginLoad(deckId);
       setPendingSource(deckId, intent.platform);
       return intent;
     }
@@ -1404,7 +1447,9 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     loadGeneration: number,
     url: string
   ): Promise<{ radio: Radio; type: "resolved" } | DjDeckSourceResult> {
-    const result = await options.platform.loadItem(url);
+    const result = await options.platform.loadItem(url, {
+      signal: runtimes[deckId].loadController?.signal,
+    });
     if (!isLoadCurrent(deckId, loadGeneration)) {
       return loaded();
     }
@@ -1475,6 +1520,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     }
     const sourceUrl =
       intent.type === "track-url" ? intent.streamUrl : intent.radio.streamUrl;
+    setPendingTrack(deckId, sourceUrl);
     const resolved = await resolveTrack(
       deckId,
       loadGeneration,
@@ -1500,30 +1546,36 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     intent: DeckSourceLoadIntent
   ): Promise<DjDeckSourceResult> {
     const loadGeneration = beginSourceLoad(deckId);
-    switch (intent.type) {
-      case "radio":
-        // Restored/library shares return paused: the picker needs a gesture.
-        await commitRadio(
-          deckId,
-          loadGeneration,
-          intent.radio,
-          "preserve",
-          !isDisplayCapture(intent.radio)
-        );
-        return loaded();
-      case "device-input":
-        return await loadDeviceIntent(deckId, loadGeneration, intent);
-      case "files":
-        return await loadFilesIntent(deckId, loadGeneration, intent.files);
-      case "file":
-        return await loadFileIntent(deckId, loadGeneration, intent.file);
-      case "static-audio-url":
-        return await loadStaticUrlIntent(deckId, loadGeneration, intent.url);
-      case "track":
-      case "track-url":
-        return await loadTrackIntent(deckId, loadGeneration, intent);
-      default:
-        return intent satisfies never;
+    try {
+      switch (intent.type) {
+        case "radio":
+          // Restored/library shares return paused: the picker needs a gesture.
+          await commitRadio(
+            deckId,
+            loadGeneration,
+            intent.radio,
+            "preserve",
+            !isDisplayCapture(intent.radio)
+          );
+          return loaded();
+        case "device-input":
+          return await loadDeviceIntent(deckId, loadGeneration, intent);
+        case "files":
+          return await loadFilesIntent(deckId, loadGeneration, intent.files);
+        case "file":
+          return await loadFileIntent(deckId, loadGeneration, intent.file);
+        case "static-audio-url":
+          return await loadStaticUrlIntent(deckId, loadGeneration, intent.url);
+        case "track":
+        case "track-url":
+          return await loadTrackIntent(deckId, loadGeneration, intent);
+        default:
+          return intent satisfies never;
+      }
+    } finally {
+      if (isLoadCurrent(deckId, loadGeneration)) {
+        setPendingTrack(deckId, null);
+      }
     }
   }
 
@@ -1559,6 +1611,7 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
       const { soundId } = getPlaybackChannelRuntime(deckId);
       if (soundId) {
         await options.audio.transport(soundId, intent);
+        refreshTrackProgress(soundId);
       }
       return;
     }
@@ -1792,14 +1845,18 @@ export function createDjDeckModule(options: DjDeckModuleOptions): DjDeckModule {
     },
     deck: (deckId) => handles[deckId],
     pendingSource,
+    pendingTrack,
   };
 }
 
-const instances = new WeakMap<PlaybackActionContext, DjDeckModule>();
+const instances = new WeakMap<
+  PlaybackActionContext,
+  DjDeckModuleWithPendingTrack
+>();
 
 export function getDjDeckModule(
   context = getDefaultPlaybackActionContext()
-): DjDeckModule {
+): DjDeckModuleWithPendingTrack {
   const existing = instances.get(context);
   if (existing) {
     return existing;

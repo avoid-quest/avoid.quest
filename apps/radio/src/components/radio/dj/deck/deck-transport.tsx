@@ -6,6 +6,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { ListMusicIcon, Music2Icon, Repeat1Icon } from "lucide-react";
 import { useState } from "react";
 import { RadioNowPlaying } from "@/components/radio/radio-now-playing";
+import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { formatTime } from "../shared/format-utils";
 import { useDeckContext } from "./deck-context";
@@ -141,11 +142,11 @@ export function DeckTransport({
     isPlaying,
     isLoading,
     isBuffering,
-    trackProgress,
+    soundId,
+    visible,
     repeat,
     autoplay,
     hasTracklist,
-    isSeekable,
     metadata,
     play,
     pause,
@@ -155,6 +156,15 @@ export function DeckTransport({
     deckId,
     reset,
   } = useDeckContext();
+
+  const trackProgress = useTrackProgress(
+    soundId,
+    isPlaying,
+    visible,
+    !isLoading
+  );
+  const isSeekable =
+    Number.isFinite(trackProgress.duration) && trackProgress.duration > 0;
 
   const handlePlayPause = isPlaying ? pause : play;
   if (!radio) {

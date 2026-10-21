@@ -1,4 +1,5 @@
 import type { EffectConfig } from "@/lib/audio/dsp/effects/types";
+import { isEffectContainer } from "@/lib/audio/dsp/routing/effect-tree";
 import type { ChannelEffects } from "@/lib/channel-effects";
 import type { DeckId } from "@/lib/dj-deck";
 import {
@@ -77,6 +78,11 @@ export type MidiControlSnapshot = {
     | "unsupported";
 };
 
+export type MidiTargetSnapshot = {
+  mapping: MidiMapping | undefined;
+  isLearning: boolean;
+};
+
 export type MidiControlChange =
   | {
       type: "update-transform";
@@ -104,6 +110,11 @@ export type MidiControlChange =
     }
   | {
       type: "clear-mappings";
+    }
+  | {
+      /** Brings back mappings an effect removal dropped, e.g. on Undo. */
+      type: "restore-mappings";
+      mappings: readonly MidiMapping[];
     };
 
 type CreateMidiControlOptions = {
@@ -121,6 +132,7 @@ type EffectBinding = {
   queuedContinuous: Map<MidiTargetId, QueuedEffectChange>;
   revision: number;
   tree: readonly EffectConfig[];
+  structureKey: string;
 };
 
 type QueuedEffectChange = {
@@ -156,6 +168,20 @@ const LEGACY_TARGET_IDS: Record<string, string> = {
   "headphone-volume": "mixer:headphone-volume",
   "master-volume": "mixer:master-volume",
 };
+
+function effectStructure(tree: readonly EffectConfig[]): unknown {
+  return tree.map((effect) => ({
+    chains: isEffectContainer(effect)
+      ? effect.chains.map((chain) => ({
+          effects: effectStructure(chain.effects),
+          id: chain.id,
+          name: chain.name,
+        }))
+      : undefined,
+    id: effect.id,
+    type: effect.type,
+  }));
+}
 
 function parseMidiMessage(data: Uint8Array): ParsedMidiMessage | null {
   if (data.length < 3) {
@@ -266,6 +292,23 @@ export function createMidiControl({
   );
   let mappingsByKey = indexMappingsByKey(mappings);
   const listeners = new Set<() => void>();
+  const targetSnapshots = new Map<MidiTargetId, MidiTargetSnapshot>();
+  const targetListeners = new Map<MidiTargetId, Set<() => void>>();
+  const getTargetSnapshot = (targetId: MidiTargetId): MidiTargetSnapshot => {
+    const current = targetSnapshots.get(targetId);
+    const mapping = mappingsByTarget.get(targetId);
+    const isLearning = learningTarget === targetId;
+    if (
+      current &&
+      current.mapping === mapping &&
+      current.isLearning === isLearning
+    ) {
+      return current;
+    }
+    const next = { isLearning, mapping };
+    targetSnapshots.set(targetId, next);
+    return next;
+  };
   const actions = new Map(
     staticActions.map((action) => [action.targetId, action] as const)
   );
@@ -312,6 +355,14 @@ export function createMidiControl({
   };
   const notify = () => {
     rebuildSnapshot();
+    for (const [targetId, subscribers] of targetListeners) {
+      const previous = targetSnapshots.get(targetId);
+      if (getTargetSnapshot(targetId) !== previous) {
+        for (const listener of subscribers) {
+          listener();
+        }
+      }
+    }
     for (const listener of listeners) {
       listener();
     }
@@ -357,10 +408,13 @@ export function createMidiControl({
         actions.set(action.targetId, action);
       }
     }
-    actionDescriptors = [...actions.values()].map(
+    const nextDescriptors = [...actions.values()].map(
       ({ dispatch: _, ...action }) => action
     );
-    notify();
+    if (JSON.stringify(nextDescriptors) !== JSON.stringify(actionDescriptors)) {
+      actionDescriptors = nextDescriptors;
+      notify();
+    }
   };
 
   const removeMappingsForEffects = (effectIds: ReadonlySet<string>) => {
@@ -663,6 +717,7 @@ export function createMidiControl({
         pending: Promise.resolve(),
         queuedContinuous: new Map(),
         revision: 0,
+        structureKey: "",
         tree: [],
       };
       effectBindings.set(deckId, binding);
@@ -680,12 +735,18 @@ export function createMidiControl({
             return;
           }
           binding.revision += 1;
-          const previousIds = collectEffectIds(binding.tree);
+          const previousTree = binding.tree;
+          binding.tree = tree;
+          const structureKey = JSON.stringify(effectStructure(tree));
+          if (structureKey === binding.structureKey) {
+            return;
+          }
+          binding.structureKey = structureKey;
+          const previousIds = collectEffectIds(previousTree);
           const nextIds = collectEffectIds(tree);
           removeMappingsForEffects(
             new Set([...previousIds].filter((id) => !nextIds.has(id)))
           );
-          binding.tree = tree;
           binding.actions = createEffectMidiActions({
             change: (next, key) => enqueueEffectChange(binding, next, key),
             deckId,
@@ -751,6 +812,27 @@ export function createMidiControl({
           persist();
           notify();
           return;
+        case "restore-mappings": {
+          // A target or control learned since the removal keeps its newer
+          // mapping.
+          const restored = change.mappings.filter(
+            (mapping) =>
+              !(
+                mappingsByTarget.has(mapping.targetId) ||
+                mappingsByKey.has(
+                  `${mappingScope(mapping.targetId)}:${mappingKey(mapping)}`
+                )
+              )
+          );
+          if (restored.length === 0) {
+            return;
+          }
+          mappings = [...mappings, ...restored];
+          rebuildMappings();
+          persist();
+          notify();
+          return;
+        }
         default:
           break;
       }
@@ -797,6 +879,7 @@ export function createMidiControl({
       actionSources.clear();
       status = browser.isSupported() ? "prompt" : "unsupported";
       rebuildActions();
+      notify();
       listeners.clear();
     },
     async connect(): Promise<MidiControlSnapshot> {
@@ -843,6 +926,7 @@ export function createMidiControl({
       return snapshot;
     },
     getSnapshot: () => snapshot,
+    getTargetSnapshot,
     start(): void {
       if (permissionCleanup || !browser.isSupported()) {
         return;
@@ -861,6 +945,19 @@ export function createMidiControl({
     subscribe(listener: () => void): () => void {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    subscribeTarget(targetId: MidiTargetId, listener: () => void): () => void {
+      getTargetSnapshot(targetId);
+      const subscribers =
+        targetListeners.get(targetId) ?? new Set<() => void>();
+      targetListeners.set(targetId, subscribers);
+      subscribers.add(listener);
+      return () => {
+        subscribers.delete(listener);
+        if (subscribers.size === 0) {
+          targetListeners.delete(targetId);
+        }
+      };
     },
   };
 }

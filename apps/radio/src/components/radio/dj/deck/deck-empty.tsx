@@ -11,6 +11,7 @@ type DeckEmptyProps = {
   updateEffect: (effectId: string, config: Partial<EffectConfig>) => void;
   removeEffect: (effectId: string) => void;
   reorderEffects: (effectIds: string[]) => void;
+  resetEffect: (effectId: string, patch: Partial<EffectConfig>) => void;
   className?: string;
 };
 
@@ -23,6 +24,7 @@ export function DeckEmpty({
   updateEffect,
   removeEffect,
   reorderEffects,
+  resetEffect,
   className,
 }: DeckEmptyProps) {
   return (
@@ -37,10 +39,12 @@ export function DeckEmpty({
       {effects.length > 0 && (
         <div className="shrink-0 border-border/50 border-t px-2 py-2">
           <EffectChain
+            deckId={deckId}
             effects={effects}
             onAddEffect={addEffect}
             onRemoveEffect={removeEffect}
             onReorderEffects={reorderEffects}
+            onResetEffect={resetEffect}
             onUpdateEffect={updateEffect}
             showAddButton={false}
           />

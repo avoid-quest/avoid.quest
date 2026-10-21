@@ -1,0 +1,21 @@
+apps/radio/src/components/settings/mode-load-recovery.test.tsx
+  s_db2676bf9b5672::t_4408fc3c371590 148-153
+apps/radio/src/components/settings/mode-select.tsx
+  s_db2676bf9b5672::t_e3a6494b66e804 82-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d0d0591b916620ce19949022795855a21d7e58f",
+  "prompts": {},
+  "sessions": {
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 FROM node:24-bookworm-slim AS prepare
 
-RUN npm i -g turbo@2.11.6
+RUN npm i -g turbo@2.11.10
 
 WORKDIR /app
 COPY . .

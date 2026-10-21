@@ -206,6 +206,46 @@ describe("saved radio sync", () => {
       [...radiosCollection.state.values()].map((radio) => radio.name).sort()
     ).toEqual(defaultRadios.map((radio) => radio.name).sort());
   });
+
+  test("offers that new default again while its update is deferred", async () => {
+    const [moved, added, other] = defaultRadios;
+    seedSavedRadios((radio) => {
+      if (radio.name === moved.name) {
+        radio.streamUrl = added.streamUrl;
+      }
+    });
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    for (const [key, entry] of Object.entries(saved)) {
+      const { name } = (entry as { data: RadioRecord }).data;
+      if (name === added.name || name === other.name) {
+        delete saved[key];
+      }
+    }
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    const {
+      applySyncChanges,
+      getAdditionDependencies,
+      getSyncChanges,
+      initializeRadios,
+    } = await reloadRadios();
+    const changes = await initializeRadios();
+    if (!changes) {
+      throw new Error("Expected the moved and added defaults");
+    }
+    expect(changes.additions).toEqual([added, other]);
+    expect(getAdditionDependencies(changes)).toEqual(
+      new Map([[added.name, changes.updates]])
+    );
+
+    // The dialog sends this when the moved station's update is deferred.
+    await applySyncChanges({ additions: [other], deletions: [], updates: [] });
+    const next = getSyncChanges();
+    expect(next.updates.map(({ incoming }) => incoming)).toEqual([moved]);
+    expect(next.additions).toEqual([added]);
+
+    await applySyncChanges(next);
+    expect(await initializeRadios()).toBeNull();
+  });
 });
 
 describe("a Spotify or Mixcloud tab saved before both became platforms", () => {

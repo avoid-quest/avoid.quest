@@ -205,6 +205,25 @@ export function getSyncChanges(): SyncChanges {
 }
 
 /**
+ * Map each addition to the updates that free its stream URL, keyed by name.
+ * applySyncChanges skips the addition unless those updates apply with it.
+ */
+export function getAdditionDependencies(
+  changes: SyncChanges
+): Map<string, SyncChanges["updates"]> {
+  const dependencies = new Map<string, SyncChanges["updates"]>();
+  for (const addition of changes.additions) {
+    const updates = changes.updates.filter(
+      ({ existing }) => existing.streamUrl === addition.streamUrl
+    );
+    if (updates.length > 0) {
+      dependencies.set(addition.name, updates);
+    }
+  }
+  return dependencies;
+}
+
+/**
  * Apply selected sync changes.
  * @param changes - The changes to apply (filtered by user selection)
  */

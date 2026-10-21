@@ -14,7 +14,11 @@ import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { addDismissedRadios, type SyncChanges } from "@/lib/collections/radios";
+import {
+  addDismissedRadios,
+  getAdditionDependencies,
+  type SyncChanges,
+} from "@/lib/collections/radios";
 
 type SyncDialogProps = {
   changes: SyncChanges;
@@ -73,10 +77,12 @@ type SyncAddition = SyncChanges["additions"][number];
 
 function SyncAdditionRow({
   radio,
+  requires,
   checked,
   onToggle,
 }: {
   radio: SyncAddition;
+  requires: SyncUpdate[];
   checked: boolean;
   onToggle: (name: string) => void;
 }) {
@@ -99,6 +105,12 @@ function SyncAdditionRow({
         {radio.description ? (
           <div className="line-clamp-2 text-muted-foreground text-xs">
             {radio.description}
+          </div>
+        ) : null}
+        {requires.length > 0 ? (
+          <div className="text-muted-foreground text-xs">
+            Needs the {requires.map(({ existing }) => existing.name).join(", ")}{" "}
+            update
           </div>
         ) : null}
       </Label>
@@ -150,28 +162,49 @@ export function SyncDialog({
     new Set(changes.additions.map((a) => a.name))
   );
 
+  // A new station that takes over another station's old stream can only be
+  // added with that station's update, so their selections move together.
+  const dependencies = getAdditionDependencies(changes);
+  const isWaiting = (name: string, updates: Set<string>) =>
+    dependencies.get(name)?.some(({ existing }) => !updates.has(existing.id)) ??
+    false;
+
   const toggleUpdate = (id: string) => {
-    setSelectedUpdates((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    const next = new Set(selectedUpdates);
+    if (next.has(id)) {
+      next.delete(id);
+      setSelectedAdditions(
+        new Set([...selectedAdditions].filter((name) => !isWaiting(name, next)))
+      );
+    } else {
+      next.add(id);
+    }
+    setSelectedUpdates(next);
   };
 
   const toggleAddition = (name: string) => {
-    setSelectedAdditions((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
+    const next = new Set(selectedAdditions);
+    if (next.has(name)) {
+      next.delete(name);
+    } else {
+      next.add(name);
+      const updates = new Set(selectedUpdates);
+      for (const { existing } of dependencies.get(name) ?? []) {
+        updates.add(existing.id);
       }
-      return next;
-    });
+      setSelectedUpdates(updates);
+    }
+    setSelectedAdditions(next);
+  };
+
+  // Skipped stations are remembered, except those waiting on a deferred
+  // update: they are offered again with it.
+  const dismissSkipped = (selected: Set<string>, updates: Set<string>) => {
+    dismissAdditions(
+      changes.additions
+        .filter((a) => !(selected.has(a.name) || isWaiting(a.name, updates)))
+        .map((a) => a.name)
+    );
   };
 
   const handleApply = async () => {
@@ -197,17 +230,13 @@ export function SyncDialog({
       setIsApplying(false);
     }
     // Only dismiss unselected additions after the library was saved.
-    dismissAdditions(
-      changes.additions
-        .filter((a) => !selectedAdditions.has(a.name))
-        .map((a) => a.name)
-    );
+    dismissSkipped(selectedAdditions, selectedUpdates);
     onOpenChange(false);
   };
 
   const handleSkip = () => {
-    // Track all additions as dismissed so they don't re-appear
-    dismissAdditions(changes.additions.map((a) => a.name));
+    // Updates come back on the next launch; additions are remembered as skipped.
+    dismissSkipped(new Set(), new Set());
     onOpenChange(false);
   };
 
@@ -262,6 +291,7 @@ export function SyncDialog({
                       key={radio.name}
                       onToggle={toggleAddition}
                       radio={radio}
+                      requires={dependencies.get(radio.name) ?? []}
                     />
                   ))}
                 </div>

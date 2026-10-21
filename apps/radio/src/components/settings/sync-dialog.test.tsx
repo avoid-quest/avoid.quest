@@ -202,3 +202,136 @@ test("Skip still closes when skipped stations can't be remembered", () => {
   expect(onOpenChange).toHaveBeenCalledWith(false);
   expect(warningToast).toHaveBeenCalledTimes(1);
 });
+
+const MOVED = {
+  enabled: true,
+  id: "moved",
+  isSystem: true,
+  name: "Moved station",
+  order: 0,
+  streamUrl: "https://example.com/old",
+};
+const dependentChanges: SyncChanges = {
+  additions: [
+    { name: "Adopting station", streamUrl: "https://example.com/old" },
+    { name: "New station", streamUrl: "https://example.com/live" },
+  ],
+  deletions: [],
+  updates: [
+    {
+      existing: MOVED,
+      incoming: { name: "Moved station", streamUrl: "https://example.com/new" },
+    },
+  ],
+};
+const MOVED_LABEL = /^Moved station/;
+const ADOPTING_LABEL = /^Adopting station/;
+
+function isChecked(view: ReturnType<typeof render>, label: RegExp) {
+  return view.getByLabelText(label).getAttribute("aria-checked") === "true";
+}
+
+test("deferring an update also defers the new station that needs its stream", async () => {
+  const onApply = mock(
+    (_selected: SyncChanges): Promise<void> => Promise.resolve()
+  );
+  const onOpenChange = mock((_open: boolean) => undefined);
+  const dismiss = spyOn(radios, "addDismissedRadios").mockImplementation(
+    () => undefined
+  );
+  const view = render(
+    <SyncDialog
+      changes={dependentChanges}
+      onApply={onApply}
+      onOpenChange={onOpenChange}
+      open
+    />
+  );
+  expect(view.getByText("Needs the Moved station update")).toBeDefined();
+
+  fireEvent.click(view.getByLabelText(MOVED_LABEL));
+  expect(isChecked(view, MOVED_LABEL)).toBe(false);
+  expect(isChecked(view, ADOPTING_LABEL)).toBe(false);
+  fireEvent.click(view.getByRole("button", { name: "Apply (1)" }));
+
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  expect(onApply).toHaveBeenCalledWith({
+    additions: [{ name: "New station", streamUrl: "https://example.com/live" }],
+    deletions: [],
+    updates: [],
+  });
+  // It is offered again with the update instead of being remembered as skipped.
+  expect(dismiss).not.toHaveBeenCalled();
+});
+
+test("choosing a new station also selects the update it needs", async () => {
+  const onApply = mock(
+    (_selected: SyncChanges): Promise<void> => Promise.resolve()
+  );
+  const onOpenChange = mock((_open: boolean) => undefined);
+  const view = render(
+    <SyncDialog
+      changes={dependentChanges}
+      onApply={onApply}
+      onOpenChange={onOpenChange}
+      open
+    />
+  );
+
+  fireEvent.click(view.getByLabelText(MOVED_LABEL));
+  fireEvent.click(view.getByLabelText(ADOPTING_LABEL));
+  expect(isChecked(view, MOVED_LABEL)).toBe(true);
+  expect(isChecked(view, ADOPTING_LABEL)).toBe(true);
+  fireEvent.click(view.getByRole("button", { name: "Apply (3)" }));
+
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  expect(onApply).toHaveBeenCalledWith(dependentChanges);
+});
+
+test("skipping a new station while keeping its update remembers it", async () => {
+  const onApply = mock(
+    (_selected: SyncChanges): Promise<void> => Promise.resolve()
+  );
+  const onOpenChange = mock((_open: boolean) => undefined);
+  const dismiss = spyOn(radios, "addDismissedRadios").mockImplementation(
+    () => undefined
+  );
+  const view = render(
+    <SyncDialog
+      changes={dependentChanges}
+      onApply={onApply}
+      onOpenChange={onOpenChange}
+      open
+    />
+  );
+
+  fireEvent.click(view.getByLabelText(ADOPTING_LABEL));
+  expect(isChecked(view, MOVED_LABEL)).toBe(true);
+  fireEvent.click(view.getByRole("button", { name: "Apply (2)" }));
+
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  expect(onApply).toHaveBeenCalledWith({
+    ...dependentChanges,
+    additions: [dependentChanges.additions[1]],
+  });
+  expect(dismiss).toHaveBeenCalledWith(["Adopting station"]);
+});
+
+test("Skip keeps a new station waiting on a deferred update", () => {
+  const onOpenChange = mock((_open: boolean) => undefined);
+  const dismiss = spyOn(radios, "addDismissedRadios").mockImplementation(
+    () => undefined
+  );
+  const view = render(
+    <SyncDialog
+      changes={dependentChanges}
+      onApply={mock(() => Promise.resolve())}
+      onOpenChange={onOpenChange}
+      open
+    />
+  );
+
+  fireEvent.click(view.getByRole("button", { name: "Skip" }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  expect(dismiss).toHaveBeenCalledWith(["New station"]);
+});

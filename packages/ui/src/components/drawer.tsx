@@ -4,6 +4,11 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import type { ComponentProps } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
+// Shorten CSS enter/exit animations while Vaul keeps its drag/snap transitions
+// and JS bookkeeping. Reduced motion uses the shared near-instant duration.
+const DRAWER_ANIMATION =
+  "motion-safe:[animation-duration:200ms]! motion-safe:data-[state=closed]:[animation-duration:140ms]!";
+
 /** Focus moves into the drawer on open (vaul defaults this off). */
 function Drawer({
   autoFocus = true,
@@ -45,6 +50,7 @@ function DrawerOverlay({
   return (
     <DrawerPrimitive.Overlay
       className={cn(
+        DRAWER_ANIMATION,
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 light:bg-black/20 data-[state=closed]:animate-out data-[state=open]:animate-in dark:bg-black/50",
         className
       )}
@@ -64,6 +70,7 @@ function DrawerContent({
       <DrawerOverlay />
       <DrawerPrimitive.Content
         className={cn(
+          DRAWER_ANIMATION,
           "group/drawer-content fixed z-50 flex h-auto flex-col light:border-border bg-background light:shadow-xl",
           "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[95vh] data-[vaul-drawer-direction=top]:rounded-b-lg data-[vaul-drawer-direction=top]:border-b",
           "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[95vh] data-[vaul-drawer-direction=bottom]:rounded-t-lg data-[vaul-drawer-direction=bottom]:border-t",

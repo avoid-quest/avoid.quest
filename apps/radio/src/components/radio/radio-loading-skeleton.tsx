@@ -47,8 +47,25 @@ function StationRowSkeleton() {
 function SingleRadioLoadingSkeleton() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl px-3 py-3">
-      <div className="flex h-full min-h-0 w-full overflow-hidden rounded-lg border border-border/50 bg-card/50">
-        <section className="flex min-h-0 w-full flex-col border-border/50 lg:w-80 lg:shrink-0 lg:border-r xl:w-96">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
+        <section className="relative shrink-0 border-border/50 border-b px-4 py-4 sm:px-5 sm:py-5 lg:hidden [@media(max-height:600px)]:py-3 sm:[@media(max-height:600px)]:w-1/2 sm:[@media(max-height:600px)]:overflow-y-auto sm:[@media(max-height:600px)]:border-r sm:[@media(max-height:600px)]:border-b-0">
+          <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-5">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <Skeleton className="size-20 shrink-0 rounded-xl sm:size-28" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+            <div className="flex items-center gap-3 border-border/50 border-t pt-3 sm:gap-4 sm:pt-4">
+              <Skeleton className="size-12 shrink-0 rounded-full" />
+              <Skeleton className="size-7 shrink-0" />
+              <Skeleton className="h-1.5 flex-1" />
+            </div>
+          </div>
+        </section>
+        <section className="flex min-h-0 w-full flex-1 flex-col border-border/50 lg:w-80 lg:flex-none lg:shrink-0 lg:border-r xl:w-96">
           <div className="px-3 py-2">
             <Skeleton className="h-8 w-full" />
           </div>

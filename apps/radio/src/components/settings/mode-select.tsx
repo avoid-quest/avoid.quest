@@ -1,5 +1,7 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
+
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
+import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -11,6 +13,7 @@ import {
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
@@ -30,11 +33,25 @@ export function ModeSelect({ className }: { className?: string }) {
     modeTransition.phase === "activating" ||
     modeTransition.phase === "deactivating";
 
+  const [requestedMode, setRequestedMode] = useState<string | null>(null);
+  const pendingMode =
+    requestedMode ?? (isTransitioning ? modeTransition.requestedMode : null);
+  const [spinnerMode, setSpinnerMode] = useState<string | null>(null);
+  useEffect(() => {
+    setSpinnerMode(null);
+    if (!pendingMode) {
+      return;
+    }
+    const timer = setTimeout(() => setSpinnerMode(pendingMode), 150);
+    return () => clearTimeout(timer);
+  }, [pendingMode]);
+
   const handleModeChange = async (value: string) => {
-    if (!settings) {
+    if (!(settings && value) || requestedMode || isTransitioning) {
       return;
     }
 
+    setRequestedMode(value);
     try {
       const { modeLifecycleRequests } = await import(
         "@/lib/mode-lifecycle-requests"
@@ -42,6 +59,8 @@ export function ModeSelect({ className }: { className?: string }) {
       await modeLifecycleRequests.requestMode(value);
     } catch {
       toast.error("Couldn't switch mode");
+    } finally {
+      setRequestedMode(null);
     }
   };
 
@@ -64,14 +83,19 @@ export function ModeSelect({ className }: { className?: string }) {
           <Tooltip key={mode.value}>
             {/* Item outside the tooltip, so its on/off data-state is kept. */}
             <ToggleGroupItem
+              aria-busy={pendingMode === mode.value || undefined}
               aria-label={mode.label}
               asChild
               className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
-              disabled={isTransitioning}
+              disabled={isTransitioning || requestedMode !== null}
               value={mode.value}
             >
               <TooltipTrigger>
-                <Icon className="size-3.5" />
+                {spinnerMode === mode.value && pendingMode === mode.value ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <Icon className="size-3.5" />
+                )}
                 <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
                   {mode.label}
                 </span>

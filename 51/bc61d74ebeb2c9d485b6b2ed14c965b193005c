@@ -1,0 +1,21 @@
+apps/radio/src/lib/dj-deck.test.ts
+  s_8559b774fb9b8a::t_e9d80a1ce7c80b 2009-2100
+apps/radio/src/lib/dj-deck.ts
+  s_8559b774fb9b8a::t_b9b36fc102c28b 603-605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51bc61d74ebeb2c9d485b6b2ed14c965b193005c",
+  "prompts": {},
+  "sessions": {
+    "s_8559b774fb9b8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_8559b774fb9b8a",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

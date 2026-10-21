@@ -20,6 +20,8 @@ class LazyLoadError extends Error {
   readonly reset: () => void;
   /** A retry failed too, so only a reload is likely to help. */
   readonly retried: boolean;
+  /** React rethrows a cached rejection on every mount; report it once. */
+  reported = false;
 
   constructor(cause: unknown, reset: () => void, retried: boolean) {
     super("A lazy chunk failed to load", { cause });
@@ -228,7 +230,8 @@ export class LazyBoundary extends Component<
   }
 
   componentDidCatch(error: unknown, _info: ErrorInfo) {
-    if (error instanceof LazyLoadError) {
+    if (error instanceof LazyLoadError && !error.reported) {
+      error.reported = true;
       captureError(error, {
         operation: "lazy-load",
         surface: "ui",

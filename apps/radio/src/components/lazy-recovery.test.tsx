@@ -143,6 +143,8 @@ describe("LazyBoundary", () => {
     expect(view.getByRole("alert").textContent).toBe(
       "Couldn't load the station form."
     );
+    // React renders again after the error; only Retry imports again.
+    expect(load).toHaveBeenCalledTimes(1);
 
     // React caches the rejection; a second failure stays contained too, and
     // points to Reload since the browser may keep the failed fetch.
@@ -164,6 +166,34 @@ describe("LazyBoundary", () => {
     expect(await view.findByText("Station form ready")).toBeDefined();
     expect(view.queryByRole("alert")).toBeNull();
     expect(load).toHaveBeenCalledTimes(4);
+  });
+
+  test("reports a failed import once across remounts, and again after Retry", async () => {
+    const { Feature } = flakyChunk();
+    const renderFeature = (key: string) => (
+      <LazyBoundary key={key} label="Node mode">
+        <Suspense fallback={<p>Loading…</p>}>
+          <Feature name="Node" />
+        </Suspense>
+      </LazyBoundary>
+    );
+    const view = render(renderFeature("node"));
+    await view.findByRole("alert");
+    expect(captureError).toHaveBeenCalledTimes(1);
+
+    // Switching modes away and back remounts the boundary on the same failure.
+    view.rerender(<p>DJ</p>);
+    view.rerender(renderFeature("node-again"));
+    await view.findByRole("alert");
+    expect(captureError).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(view.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toBe(
+        "Couldn't load Node mode, even after retrying."
+      )
+    );
+    expect(captureError).toHaveBeenCalledTimes(2);
   });
 
   test("the icon fallback names the failure and retries from its popover", async () => {

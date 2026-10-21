@@ -1,0 +1,4 @@
+@import "@avoid.quest/ui/globals.css";
+
+@source "../../";
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";

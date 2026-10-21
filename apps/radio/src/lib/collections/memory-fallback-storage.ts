@@ -1,4 +1,5 @@
 import type { StorageApi, StorageEventApi } from "@tanstack/react-db";
+import { getBrowserStorage } from "@/lib/browser-storage";
 
 type StorageListener = (event: StorageEvent) => void;
 
@@ -20,16 +21,13 @@ export type MemoryFallbackStorage = {
 
 /** localStorage for one collection, or memory when storage is unavailable. */
 export function createMemoryFallbackStorage(): MemoryFallbackStorage {
-  let keepInMemory = false;
   const memory = new Map<string, string>();
   // Resolved as TanStack DB does, so a page without a window keeps its default.
-  let browserStorage: StorageApi | undefined;
-  try {
-    browserStorage =
-      typeof window === "undefined" ? undefined : window.localStorage;
-  } catch {
-    keepInMemory = true;
-  }
+  const browserStorage =
+    typeof window === "undefined"
+      ? undefined
+      : getBrowserStorage("localStorage", window);
+  let keepInMemory = !browserStorage;
 
   const storage: StorageApi | undefined =
     typeof window === "undefined"

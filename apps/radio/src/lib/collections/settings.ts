@@ -130,18 +130,18 @@ function insertStartupSettings(rows: SettingsRecord[]): Promise<void> {
 }
 
 function recoverStoredSettings(): SettingsRecord[] {
-  const raw = settingsStorage.storage?.getItem(SETTINGS_STORAGE_KEY);
-  if (!raw) {
+  // The backup goes where the original came from: memory for this visit
+  // when the browser cannot keep it.
+  const { storage } = settingsStorage;
+  const raw = storage?.getItem(SETTINGS_STORAGE_KEY);
+  if (!(storage && raw)) {
     return [];
   }
   const backupKey = `${SETTINGS_STORAGE_KEY}:corrupt`;
-  const previous = localStorage.getItem(backupKey);
+  const previous = storage.getItem(backupKey);
   if (previous !== raw) {
     // Backup failures must stop initialization before it replaces the original.
-    localStorage.setItem(
-      previous ? `${backupKey}:${generateId()}` : backupKey,
-      raw
-    );
+    storage.setItem(previous ? `${backupKey}:${generateId()}` : backupKey, raw);
   }
   const recovered = new Map<string, SettingsRecord>();
   try {

@@ -16,13 +16,11 @@ const RADIOS_STORAGE_KEY = "radio-app-radios";
 const DISMISSED_RADIOS_KEY = "radio-app-dismissed-radios";
 
 /**
- * Get the set of radio names that have been dismissed by the user.
+ * Get the set of radio names that have been dismissed by the user. The list
+ * shares the stations' storage, so it stays in memory when they do.
  */
 export function getDismissedRadios(): Set<string> {
-  if (typeof localStorage === "undefined") {
-    return new Set();
-  }
-  const stored = localStorage.getItem(DISMISSED_RADIOS_KEY);
+  const stored = radiosStorage.storage?.getItem(DISMISSED_RADIOS_KEY);
   if (!stored) {
     return new Set();
   }
@@ -48,7 +46,10 @@ export function getDismissedRadios(): Set<string> {
 export function addDismissedRadio(name: string): void {
   const dismissed = getDismissedRadios();
   dismissed.add(name);
-  localStorage.setItem(DISMISSED_RADIOS_KEY, JSON.stringify([...dismissed]));
+  radiosStorage.storage?.setItem(
+    DISMISSED_RADIOS_KEY,
+    JSON.stringify([...dismissed])
+  );
 }
 
 /**
@@ -59,7 +60,10 @@ export function addDismissedRadios(names: string[]): void {
   for (const name of names) {
     dismissed.add(name);
   }
-  localStorage.setItem(DISMISSED_RADIOS_KEY, JSON.stringify([...dismissed]));
+  radiosStorage.storage?.setItem(
+    DISMISSED_RADIOS_KEY,
+    JSON.stringify([...dismissed])
+  );
 }
 
 /**
@@ -68,14 +72,17 @@ export function addDismissedRadios(names: string[]): void {
 export function removeDismissedRadio(name: string): void {
   const dismissed = getDismissedRadios();
   dismissed.delete(name);
-  localStorage.setItem(DISMISSED_RADIOS_KEY, JSON.stringify([...dismissed]));
+  radiosStorage.storage?.setItem(
+    DISMISSED_RADIOS_KEY,
+    JSON.stringify([...dismissed])
+  );
 }
 
 /**
  * Clear all dismissed radios (for "restore defaults" functionality).
  */
 export function clearDismissedRadios(): void {
-  localStorage.removeItem(DISMISSED_RADIOS_KEY);
+  radiosStorage.storage?.removeItem(DISMISSED_RADIOS_KEY);
 }
 
 const radioSchema = z.object({
@@ -346,16 +353,15 @@ export function reorderRadios(orderedIds: string[]): Promise<void> {
   });
 }
 
+/** Backs up `raw` beside it: in memory for this visit when storage is too. */
 function preserveCorruptData(key: string, raw: string): void {
+  const { storage } = radiosStorage;
   const backupKey = `${key}:corrupt`;
-  const previous = localStorage.getItem(backupKey);
+  const previous = storage?.getItem(backupKey);
   if (previous === raw) {
     return;
   }
-  localStorage.setItem(
-    previous ? `${backupKey}:${generateId()}` : backupKey,
-    raw
-  );
+  storage?.setItem(previous ? `${backupKey}:${generateId()}` : backupKey, raw);
 }
 
 function recoverStoredRadios(): RadioRecord[] {

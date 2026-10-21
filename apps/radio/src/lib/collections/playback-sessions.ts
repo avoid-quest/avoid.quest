@@ -21,6 +21,7 @@ import {
   visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import {
   getRetainedNodeGraphs,
@@ -37,6 +38,7 @@ import {
 import { nodeSessionRecord } from "@/lib/node-graph/session-record";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
+import { createMemoryFallbackStorage } from "./memory-fallback-storage";
 import {
   migrateMultipleSession,
   watchLegacyMultipleWrites,
@@ -552,11 +554,16 @@ function subscribeToOtherTabStorageEvents(
   hears: (key: string | null) => boolean,
   listener: () => void
 ): () => void {
-  if (typeof window === "undefined") {
+  // Without browser storage, no other tab's write can reach this one.
+  const storage =
+    typeof window === "undefined"
+      ? undefined
+      : getBrowserStorage("localStorage", window);
+  if (!storage) {
     return () => undefined;
   }
   const onStorage = (event: StorageEvent) => {
-    if (event.storageArea !== window.localStorage || !hears(event.key)) {
+    if (event.storageArea !== storage || !hears(event.key)) {
       return;
     }
     // The collection's own storage listener syncs the write first.
@@ -618,17 +625,29 @@ export function takeOtherTabNodeGraph(
   }
 }
 
+const playbackSessionsStorage = createMemoryFallbackStorage();
+
+const playbackSessionsCollectionOptions = localStorageCollectionOptions({
+  // Keep rows resident: the app reads `.state` outside live queries, and
+  // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+  gcTime: 0,
+  getKey: (item) => item.id,
+  id: "playback-sessions",
+  schema: playbackSessionSchema,
+  startSync: true,
+  storage: playbackSessionsStorage.storage,
+  storageEventApi: playbackSessionsStorage.storageEventApi,
+  storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
+});
+// TanStack's metadata callback reads window.localStorage again on every write.
+// This collection always uses our custom adapter, even when storage is blocked.
+playbackSessionsCollectionOptions.sync.getSyncMetadata = () => ({
+  storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
+  storageType: "custom",
+});
+
 export const playbackSessionsCollection = createCollection(
-  localStorageCollectionOptions({
-    // Keep rows resident: the app reads `.state` outside live queries, and
-    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
-    gcTime: 0,
-    getKey: (item) => item.id,
-    id: "playback-sessions",
-    schema: playbackSessionSchema,
-    startSync: true,
-    storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
-  })
+  playbackSessionsCollectionOptions
 );
 
 type PlaybackSessionUpdater = (draft: PlaybackSessionRecord) => void;

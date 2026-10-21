@@ -13,13 +13,18 @@ import { Label } from "@avoid.quest/ui/components/label";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
-import { addDismissedRadios, type SyncChanges } from "@/lib/collections/radios";
+import { toast } from "sonner";
+import {
+  addDismissedRadios,
+  getAdditionDependencies,
+  type SyncChanges,
+} from "@/lib/collections/radios";
 
 type SyncDialogProps = {
   changes: SyncChanges;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApply: (changes: SyncChanges) => void;
+  onApply: (changes: SyncChanges) => void | Promise<void>;
 };
 
 type SyncUpdate = SyncChanges["updates"][number];
@@ -72,10 +77,12 @@ type SyncAddition = SyncChanges["additions"][number];
 
 function SyncAdditionRow({
   radio,
+  requires,
   checked,
   onToggle,
 }: {
   radio: SyncAddition;
+  requires: SyncUpdate[];
   checked: boolean;
   onToggle: (name: string) => void;
 }) {
@@ -100,6 +107,12 @@ function SyncAdditionRow({
             {radio.description}
           </div>
         ) : null}
+        {requires.length > 0 ? (
+          <div className="text-muted-foreground text-xs">
+            Needs the {requires.map(({ existing }) => existing.name).join(", ")}{" "}
+            update
+          </div>
+        ) : null}
       </Label>
     </div>
   );
@@ -117,12 +130,30 @@ function getDescription(changes: SyncChanges) {
   return hasUpdates ? updated : added;
 }
 
+/**
+ * Remember skipped additions. The library change stands even if this write
+ * fails, so the dialog still closes; the stations may just be offered again.
+ */
+function dismissAdditions(names: string[]): void {
+  if (names.length === 0) {
+    return;
+  }
+  try {
+    addDismissedRadios(names);
+  } catch {
+    toast.warning(
+      "Couldn't save your skipped stations. They may be offered again."
+    );
+  }
+}
+
 export function SyncDialog({
   changes,
   open,
   onOpenChange,
   onApply,
 }: SyncDialogProps) {
+  const [isApplying, setIsApplying] = useState(false);
   // Track which items are selected for sync
   const [selectedUpdates, setSelectedUpdates] = useState<Set<string>>(
     new Set(changes.updates.map((u) => u.existing.id))
@@ -131,63 +162,95 @@ export function SyncDialog({
     new Set(changes.additions.map((a) => a.name))
   );
 
+  // A new station that takes over another station's old stream can only be
+  // added with that station's update, so their selections move together.
+  const dependencies = getAdditionDependencies(changes);
+  const isWaiting = (name: string, updates: Set<string>) =>
+    dependencies.get(name)?.some(({ existing }) => !updates.has(existing.id)) ??
+    false;
+
   const toggleUpdate = (id: string) => {
-    setSelectedUpdates((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    const next = new Set(selectedUpdates);
+    if (next.has(id)) {
+      next.delete(id);
+      setSelectedAdditions(
+        new Set([...selectedAdditions].filter((name) => !isWaiting(name, next)))
+      );
+    } else {
+      next.add(id);
+    }
+    setSelectedUpdates(next);
   };
 
   const toggleAddition = (name: string) => {
-    setSelectedAdditions((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
+    const next = new Set(selectedAdditions);
+    if (next.has(name)) {
+      next.delete(name);
+    } else {
+      next.add(name);
+      const updates = new Set(selectedUpdates);
+      for (const { existing } of dependencies.get(name) ?? []) {
+        updates.add(existing.id);
       }
-      return next;
-    });
+      setSelectedUpdates(updates);
+    }
+    setSelectedAdditions(next);
   };
 
-  const handleApply = () => {
-    // Track unselected additions as dismissed so they don't re-appear
-    const skippedAdditions = changes.additions
-      .filter((a) => !selectedAdditions.has(a.name))
-      .map((a) => a.name);
-    if (skippedAdditions.length > 0) {
-      addDismissedRadios(skippedAdditions);
-    }
+  // Skipped stations are remembered, except those waiting on a deferred
+  // update: they are offered again with it.
+  const dismissSkipped = (selected: Set<string>, updates: Set<string>) => {
+    dismissAdditions(
+      changes.additions
+        .filter((a) => !(selected.has(a.name) || isWaiting(a.name, updates)))
+        .map((a) => a.name)
+    );
+  };
 
-    const filteredChanges: SyncChanges = {
-      additions: changes.additions.filter((a) => selectedAdditions.has(a.name)),
-      deletions: [], // Deletions are auto-applied, not shown in dialog
-      updates: changes.updates.filter((u) =>
-        selectedUpdates.has(u.existing.id)
-      ),
-    };
-    onApply(filteredChanges);
+  const handleApply = async () => {
+    if (isApplying) {
+      return;
+    }
+    setIsApplying(true);
+    try {
+      const filteredChanges: SyncChanges = {
+        additions: changes.additions.filter((a) =>
+          selectedAdditions.has(a.name)
+        ),
+        deletions: [], // Deletions are auto-applied, not shown in dialog
+        updates: changes.updates.filter((u) =>
+          selectedUpdates.has(u.existing.id)
+        ),
+      };
+      await onApply(filteredChanges);
+    } catch {
+      toast.error("Couldn't update stations. Please try again.");
+      return;
+    } finally {
+      setIsApplying(false);
+    }
+    // Only dismiss unselected additions after the library was saved.
+    dismissSkipped(selectedAdditions, selectedUpdates);
     onOpenChange(false);
   };
 
   const handleSkip = () => {
-    // Track all additions as dismissed so they don't re-appear
-    const allAdditionNames = changes.additions.map((a) => a.name);
-    if (allAdditionNames.length > 0) {
-      addDismissedRadios(allAdditionNames);
-    }
+    // Updates come back on the next launch; additions are remembered as skipped.
+    dismissSkipped(new Set(), new Set());
     onOpenChange(false);
   };
 
   const totalSelected = selectedUpdates.size + selectedAdditions.size;
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        if (!isApplying) {
+          onOpenChange(nextOpen);
+        }
+      }}
+      open={open}
+    >
       <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-hidden p-4 sm:p-6">
         <DialogHeader className="shrink-0 pr-8 sm:pr-0">
           <DialogTitle>Station updates</DialogTitle>
@@ -228,6 +291,7 @@ export function SyncDialog({
                       key={radio.name}
                       onToggle={toggleAddition}
                       radio={radio}
+                      requires={dependencies.get(radio.name) ?? []}
                     />
                   ))}
                 </div>
@@ -237,15 +301,20 @@ export function SyncDialog({
         </ScrollArea>
 
         <DialogFooter className="shrink-0">
-          <Button onClick={handleSkip} size="sm" variant="outline">
+          <Button
+            disabled={isApplying}
+            onClick={handleSkip}
+            size="sm"
+            variant="outline"
+          >
             Skip
           </Button>
           <Button
-            disabled={totalSelected === 0}
+            disabled={isApplying || totalSelected === 0}
             onClick={handleApply}
             size="sm"
           >
-            Apply ({totalSelected})
+            {isApplying ? "Applying…" : `Apply (${totalSelected})`}
           </Button>
         </DialogFooter>
       </DialogContent>

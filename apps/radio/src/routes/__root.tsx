@@ -120,25 +120,24 @@ export const Route = createRootRoute({
 
 function RootContent() {
   const initialSyncChanges = Route.useLoaderData();
-  const [syncChanges, setSyncChanges] = useState<SyncChanges | null>(
-    initialSyncChanges
-  );
+  const [syncChanges] = useState<SyncChanges | null>(initialSyncChanges);
   const [showSyncDialog, setShowSyncDialog] = useState(
     Boolean(initialSyncChanges)
   );
 
-  const handleApplySyncChanges = (changes: SyncChanges) => {
-    import("@/lib/root/root-bootstrap")
-      .then(({ applyRootSyncChanges }) => {
-        applyRootSyncChanges(changes);
-        setSyncChanges(null);
-      })
-      .catch((error) => {
-        captureError(error, {
-          operation: "applyRadioSyncChanges",
-          surface: "ui",
-        });
+  const handleApplySyncChanges = async (changes: SyncChanges) => {
+    try {
+      const { applyRootSyncChanges } = await import(
+        "@/lib/root/root-bootstrap"
+      );
+      await applyRootSyncChanges(changes);
+    } catch (error) {
+      captureError(error, {
+        operation: "applyRadioSyncChanges",
+        surface: "ui",
       });
+      throw error;
+    }
   };
 
   return (

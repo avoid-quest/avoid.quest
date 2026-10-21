@@ -44,9 +44,9 @@ const MAPPED_DEP = /["'](?:\/assets\/|assets\/)?([\w.-]+\.js)["']/g;
 const MANIFEST_ASSET = /\/assets\/([\w.-]+\.js)/g;
 const SCRIPT_FILE = /\.m?js$/;
 const HOME_FEATURE_CHUNK =
-  /^(?:immutable-)?(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-)/;
+  /^(?:immutable-)?(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-|settings-button-)/;
 const SINGLE_FEATURE_CHUNK =
-  /^(?:immutable-)?(?:single-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-)/;
+  /^(?:immutable-)?(?:single-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-|settings-button-)/;
 
 function listFiles(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
@@ -133,6 +133,11 @@ if (manifest) {
     const source = chunks.get(name) ?? "";
     if (NODE_ENGINE_MARKERS.some((marker) => source.includes(marker))) {
       failures.push(`Node graph engine in ${name} loads with Single/DJ`);
+    }
+    // The header mounts its lazy settings trigger immediately. Only intent or
+    // an open request should load Vaul, including through Single/DJ imports.
+    if (source.includes("data-vaul-drawer")) {
+      failures.push(`Settings drawer in ${name} loads with Single/DJ`);
     }
     homeQueue.push(...matches(source, STATIC_IMPORT));
   }

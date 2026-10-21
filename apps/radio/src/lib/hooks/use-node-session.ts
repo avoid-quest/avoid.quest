@@ -1,13 +1,10 @@
-import { eq, useLiveQuery } from "@tanstack/react-db";
 import { shallow, useStore } from "@tanstack/react-store";
 import type { Radio } from "@/lib/audio";
-import {
-  type PlaybackSessionRecord,
-  playbackSessionsCollection,
-} from "@/lib/collections/playback-sessions";
+import type { PlaybackSessionRecord } from "@/lib/collections/playback-sessions";
 import { getNodePlayback } from "@/lib/node-playback";
 import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
+import { usePlaybackSessionSelector } from "./use-dj-session";
 
 /** A source lane as the Speakers, Stage and Rack views render it. */
 export type NodeSourceState = {
@@ -27,30 +24,29 @@ export type NodeSourceState = {
 const LANE_CHANNEL_PREFIX = "n:";
 
 function useNodeSessionRecord(): PlaybackSessionRecord | undefined {
-  const result = useLiveQuery((q) =>
-    q
-      .from({ session: playbackSessionsCollection })
-      .where(({ session }) => eq(session.id, "node"))
-  );
-  return result.data?.[0] as PlaybackSessionRecord | undefined;
+  return usePlaybackSessionSelector("node", (session) => session);
 }
 
 /**
- * The node session as persisted: its graph, its lanes (the derived channel
- * cache joined with runtime state) and the Speakers master, plus the
- * playback actions keyed by Station node id.
+ * Source summaries and playback actions, without graph or master subscriptions.
  */
-export function useNodeSession() {
+export function useNodeSources() {
   const playback = getNodePlayback();
-  const session = useNodeSessionRecord();
-  const masterVolume = session?.masterVolume ?? 1;
+  const channels = usePlaybackSessionSelector("node", (session) =>
+    (session?.channels ?? []).map((channel) => ({
+      id: channel.id,
+      muted: channel.muted,
+      radio: channel.radio,
+      volume: channel.volume,
+    }))
+  );
 
   // Only rendered source fields participate in equality, so meter ticks and
   // runtime updates outside this session leave the whole Node view alone.
   const sources: NodeSourceState[] = useStore(
     playbackRuntimeStore,
     (state) =>
-      (session?.channels ?? [])
+      channels
         .filter(
           (channel): channel is typeof channel & { radio: Radio } =>
             Boolean(channel.radio) && channel.id.startsWith(LANE_CHANNEL_PREFIX)
@@ -77,22 +73,60 @@ export function useNodeSession() {
   );
 
   return {
-    graph: session?.graph ?? null,
-    masterMuted: masterVolume === 0,
-    masterVolume,
     pauseAll: () => playback.pauseAll(),
     playAll: () => playback.playAll(),
     playingCount: sources.filter((source) => source.isPlaying).length,
-    session,
-    setMasterVolume: (volume: number) => playback.setMasterVolume(volume),
     setVolume: (nodeId: string, volume: number) =>
       playback.setVolume(nodeId, volume),
     sources,
-    toggleMasterMute: () => playback.toggleMasterMute(),
     toggleMute: (nodeId: string) => playback.toggleMute(nodeId),
     togglePlayPause: (nodeId: string) => {
       const source = sources.find((entry) => entry.id === nodeId);
       return playback.setPlaying(nodeId, !(source?.isPlaying ?? false));
     },
+  };
+}
+
+export function useNodeMaster() {
+  const masterVolume = usePlaybackSessionSelector(
+    "node",
+    (session) => session?.masterVolume ?? 1
+  );
+  const channelIds = usePlaybackSessionSelector("node", (session) =>
+    (session?.channels ?? [])
+      .filter(
+        (channel) => channel.radio && channel.id.startsWith(LANE_CHANNEL_PREFIX)
+      )
+      .map((channel) => channel.id)
+  );
+  const playingCount = useStore(
+    playbackRuntimeStore,
+    (state) => channelIds.filter((id) => state.channels[id]?.isPlaying).length
+  );
+  const playback = getNodePlayback();
+  return {
+    masterMuted: masterVolume === 0,
+    masterVolume,
+    playingCount,
+    setMasterVolume: (volume: number) => playback.setMasterVolume(volume),
+    toggleMasterMute: () => playback.toggleMasterMute(),
+  };
+}
+
+export function useNodeSessionGraph() {
+  return usePlaybackSessionSelector(
+    "node",
+    (session) => session?.graph ?? null
+  );
+}
+
+export function useNodeSession() {
+  const session = useNodeSessionRecord();
+  const sources = useNodeSources();
+  return {
+    ...sources,
+    ...useNodeMaster(),
+    graph: session?.graph ?? null,
+    session,
   };
 }

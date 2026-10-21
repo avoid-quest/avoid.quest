@@ -9,6 +9,7 @@ import {
   SINGLE_ACTIVE_CHANNEL_ID,
   SINGLE_STANDBY_CHANNEL_ID,
   setPlaybackSessionActiveChannel,
+  updatePlaybackChannel,
   upsertPlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
@@ -18,6 +19,7 @@ import {
   getPlaybackChannelRuntime,
   resetPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import { flushPlaybackSessionWrites } from "./collections/node-session-persistence";
 import {
   clearManagedPlaybackErrors,
   getChannelPlayVolume,
@@ -148,6 +150,7 @@ class SelectionCoordinator {
   private active: AbortController | null = null;
   private activeSelection: SelectionState | null = null;
   private readonly queue = new PQueue({ concurrency: 1 });
+  private readonly routing = new Set<AbortController>();
   private deactivationCount = 0;
 
   runSelection(
@@ -165,19 +168,48 @@ class SelectionCoordinator {
     }
   }
 
-  async runAfterCurrent(task: () => Promise<void>): Promise<void> {
+  async runAfterCurrent(
+    playbackIntent: boolean,
+    rollbackSoundId: string | null,
+    task: (signal: AbortSignal, state: SelectionState) => Promise<void>
+  ): Promise<void> {
     if (this.deactivationCount > 0) {
       return;
     }
-    await this.queue.add(async () => {
-      if (this.deactivationCount === 0) {
-        await task();
+    const state = this.activeSelection ?? { playbackIntent, rollbackSoundId };
+    const controller = new AbortController();
+    this.routing.add(controller);
+    try {
+      await this.queue.add(
+        () => {
+          this.active = controller;
+          this.activeSelection = state;
+          return task(controller.signal, state);
+        },
+        { signal: controller.signal }
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        throw error;
       }
-    });
+    } finally {
+      this.routing.delete(controller);
+      if (this.active === controller) {
+        this.active = null;
+        this.activeSelection = null;
+      }
+    }
+  }
+
+  private cancelRouting(): void {
+    for (const controller of this.routing) {
+      controller.abort();
+    }
   }
 
   async cancelAndRun(task: () => Promise<void>): Promise<void> {
     this.deactivationCount += 1;
+    this.cancelRouting();
     this.active?.abort();
     try {
       await this.queue.add(task);
@@ -194,6 +226,7 @@ class SelectionCoordinator {
       return Promise.resolve();
     }
 
+    this.cancelRouting();
     this.active?.abort();
     const controller = new AbortController();
     this.active = controller;
@@ -296,12 +329,14 @@ async function selectStation(
     }
   } catch (error) {
     cleanupManagedChannel(channel.id, ctx);
-    upsertPlaybackChannel("single", channel);
+    updatePlaybackChannel("single", channel.id, (draft) => {
+      draft.radio = channel.radio;
+    });
     if (signal.aborted) {
       throw abortReason(signal);
     }
     await fallBackFromFailedSwitch({
-      channel,
+      channelId: channel.id,
       ctx,
       error,
       onSwitchFailed,
@@ -378,7 +413,7 @@ async function reconnectEditedStation(
 
 /** Restores the previous Station after a failed switch and reports it. */
 async function fallBackFromFailedSwitch({
-  channel,
+  channelId,
   ctx,
   error,
   onSwitchFailed,
@@ -386,7 +421,7 @@ async function fallBackFromFailedSwitch({
   selection,
   station,
 }: {
-  channel: PlaybackChannelRecord;
+  channelId: string;
   ctx: PlaybackActionContext;
   error: unknown;
   onSwitchFailed?: (failure: SingleSelectionFailure) => void;
@@ -398,12 +433,17 @@ async function fallBackFromFailedSwitch({
     ? null
     : reportPlaybackActionError(ctx.reportError, {
         cause: error,
-        channelId: channel.id,
+        channelId,
         code: "PLAY_ERROR",
         mode: "single",
         radio: station,
       });
-  if (!(channel.radio && selection.rollbackSoundId)) {
+  if (
+    !(
+      getPlaybackChannel("single", channelId)?.radio &&
+      selection.rollbackSoundId
+    )
+  ) {
     if (reportedError) {
       throw reportedError;
     }
@@ -413,6 +453,10 @@ async function fallBackFromFailedSwitch({
   // that failed rather than inline under the one that resumes.
   if (reportedError) {
     onSwitchFailed?.({ message: reportedError.userMessage, station });
+  }
+  const channel = getPlaybackChannel("single", channelId);
+  if (!channel?.radio) {
+    return;
   }
   const restoredSoundId = createSingleSound(
     channel,
@@ -424,13 +468,18 @@ async function fallBackFromFailedSwitch({
     await playManagedSound(
       "single",
       restoredSoundId,
-      getChannelPlayVolume(channel),
+      getChannelPlayVolume(getPlaybackChannel("single", channelId) ?? channel),
       ctx
     );
   }
 }
 
-async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
+async function reconcileRouting(
+  ctx: PlaybackActionContext,
+  signal: AbortSignal,
+  selection: SelectionState
+): Promise<void> {
+  signal.throwIfAborted();
   const channel = getSelectionChannel();
   if (!channel?.radio) {
     return;
@@ -444,20 +493,25 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
     return;
   }
 
-  const { isPlaying: shouldResume, soundId } = runtime;
+  const { soundId } = runtime;
   cleanupManagedChannel(channel.id, ctx);
   createSingleSound(channel, channel.radio, soundId, ctx);
-  if (!shouldResume) {
+  if (!selection.playbackIntent) {
     return;
   }
+  // Dispose this reconnect synchronously on abort, before the queue starts
+  // its successor, which can reuse the same sound id. Late completion owns no cleanup.
+  const cleanup = () => cleanupManagedChannel(channel.id, ctx);
+  signal.addEventListener("abort", cleanup, { once: true });
   try {
-    await playManagedSound(
-      "single",
-      soundId,
-      getChannelPlayVolume(channel),
-      ctx
+    await waitForAbortable(
+      playManagedSound("single", soundId, getChannelPlayVolume(channel), ctx),
+      signal
     );
   } catch (error) {
+    if (signal.aborted) {
+      throw abortReason(signal);
+    }
     throw reportPlaybackActionError(ctx.reportError, {
       cause: error,
       channelId: channel.id,
@@ -465,6 +519,8 @@ async function reconcileRouting(ctx: PlaybackActionContext): Promise<void> {
       mode: "single",
       radio: channel.radio,
     });
+  } finally {
+    signal.removeEventListener("abort", cleanup);
   }
 }
 
@@ -532,6 +588,7 @@ function createSinglePlayback(
       applySessionMasterVolume("single", ctx);
     },
     async deactivate() {
+      flushPlaybackSessionWrites();
       playingRevision += 1;
       await selection.cancelAndRun(async () => {
         const channelIds = getSingleOwnedChannelIds();
@@ -577,7 +634,13 @@ function createSinglePlayback(
     },
     async reconcileRouting() {
       try {
-        await selection.runAfterCurrent(() => reconcileRouting(ctx));
+        const channel = getSelectionChannel();
+        const runtime = channel ? getPlaybackChannelRuntime(channel.id) : null;
+        await selection.runAfterCurrent(
+          runtime?.isPlaying ?? false,
+          runtime?.soundId ?? null,
+          (signal, state) => reconcileRouting(ctx, signal, state)
+        );
       } catch (error) {
         setManagedPlaybackError(
           getSelectionChannel()?.id ?? SINGLE_ACTIVE_CHANNEL_ID,

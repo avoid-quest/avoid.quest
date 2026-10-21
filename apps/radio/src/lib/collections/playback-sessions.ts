@@ -42,6 +42,7 @@ import {
   watchLegacyMultipleWrites,
 } from "./migrations/multiple-to-node";
 import { migrateNodeGraphSession } from "./migrations/node-graph-v2";
+import { flushPlaybackSessionWrites } from "./node-session-persistence";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import {
@@ -711,12 +712,23 @@ function collectReleasableNamModelIds(
   );
 }
 
+const graphNamModelIds = new WeakMap<NodeGraph, Set<string>>();
+
+function collectGraphNamModelIds(graph: NodeGraph): Set<string> {
+  let ids = graphNamModelIds.get(graph);
+  if (!ids) {
+    ids = collectLocalNamModelIds(collectGraphEffects(graph));
+    graphNamModelIds.set(graph, ids);
+  }
+  return ids;
+}
+
 function collectRetainedNamModelIds(
   state: NodeStoreState = nodeStore.state
 ): Set<string> {
   return new Set(
     [...getRetainedNodeGraphs(state)].flatMap((graph) => [
-      ...collectLocalNamModelIds(collectGraphEffects(graph)),
+      ...collectGraphNamModelIds(graph),
     ])
   );
 }
@@ -758,11 +770,11 @@ holdNodeNamModels(collectRetainedNamModelIds(observedNodeState));
 nodeStore.subscribe((state) => {
   const previous = observedNodeState;
   observedNodeState = state;
+  if (previous.graph === state.graph && previous.history === state.history) {
+    return;
+  }
   holdNodeNamModels(collectRetainedNamModelIds(state));
-  if (
-    releasingDroppedNodeHistory &&
-    (previous.graph !== state.graph || previous.history !== state.history)
-  ) {
+  if (releasingDroppedNodeHistory) {
     scheduleNamModelCleanup(collectRetainedNamModelIds(previous));
   }
 });
@@ -1003,8 +1015,12 @@ export function getNodeSessionReadOnlyVersion(): number | null {
 
 export function updatePlaybackSession(
   id: PlaybackSessionId,
-  updater: PlaybackSessionUpdater
+  updater: PlaybackSessionUpdater,
+  paced = false
 ): void {
+  if (!paced) {
+    flushPlaybackSessionWrites();
+  }
   const existing = getPlaybackSession(id);
   if (
     existing &&
@@ -1021,6 +1037,7 @@ export function updatePlaybackSession(
 }
 
 export function deletePlaybackSession(id: PlaybackSessionId): void {
+  flushPlaybackSessionWrites();
   const existing = getPlaybackSession(id);
   if (!existing) {
     return;

@@ -14,7 +14,7 @@ import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useNodeMidi } from "@/lib/hooks/use-node-midi";
-import { useNodeSession } from "@/lib/hooks/use-node-session";
+import { useNodeSources } from "@/lib/hooks/use-node-session";
 import { useAllRadios } from "@/lib/hooks/use-radios";
 import { removeNodesHealed } from "@/lib/node-graph/graph-edits";
 import {
@@ -62,7 +62,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const graph = useNodeGraph();
   const readOnlyVersion = useNodeReadOnlyVersion();
   const savedRadios = useAllRadios();
-  const { pauseAll, playAll, playingCount, sources } = useNodeSession();
+  const { pauseAll, playAll, playingCount, sources } = useNodeSources();
   const [reveal, setReveal] = useState<{ nodeId: string } | null>(null);
   const [palette, setPalette] = useState<PaletteRequest | null>(null);
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);

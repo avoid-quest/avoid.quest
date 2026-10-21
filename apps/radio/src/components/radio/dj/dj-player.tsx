@@ -7,7 +7,7 @@ import {
 } from "@/lib/dj-actions";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
-import { useDeckA, useDeckB, useMixer } from "@/lib/hooks/use-dj-state";
+import { useDjMediaDeck, useMixer } from "@/lib/hooks/use-dj-state";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
@@ -32,8 +32,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
   const mixer = useMixer();
   const audioSettings = useAudioSettings();
-  const deckA = useDeckA();
-  const deckB = useDeckB();
+  const deckA = useDjMediaDeck("deck-a");
+  const deckB = useDjMediaDeck("deck-b");
 
   const isPlaying = (deckA?.isPlaying ?? false) || (deckB?.isPlaying ?? false);
   useMediaSession({

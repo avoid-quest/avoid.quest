@@ -1,4 +1,7 @@
-import { useNodeSession } from "@/lib/hooks/use-node-session";
+import {
+  useNodeSessionGraph,
+  useNodeSources,
+} from "@/lib/hooks/use-node-session";
 import { getNodePlayback } from "@/lib/node-playback";
 import { EmptyHint } from "../empty-hint";
 import { inputFeedback } from "./flow-elements";
@@ -21,7 +24,8 @@ export function NodeStage({
 }: {
   controls?: NodeLaneControls;
 }) {
-  const { graph, sources } = useNodeSession();
+  const graph = useNodeSessionGraph();
+  const { sources } = useNodeSources();
   // A gone file has no lane; one still in a stale lane cache shows once.
   const repick = repickFiles(graph).filter(
     (file) => !sources.some((source) => source.id === file.id)

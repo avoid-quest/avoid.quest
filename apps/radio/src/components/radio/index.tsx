@@ -10,6 +10,7 @@ import type { Radio } from "@/lib/audio";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { usePlayerModeState } from "@/lib/hooks/use-settings";
 import type { PlayerMode } from "@/lib/normalize-player-mode";
+import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 import { RadioLoadingSkeleton } from "./radio-loading-skeleton";
 import {
   loadDjPlayer,
@@ -44,6 +45,12 @@ function RadioMode({ mode, radios }: { mode: PlayerMode; radios: Radio[] }) {
 export function Radios() {
   const radiosQuery = useEnabledRadios();
   const { mode, isReady, hasSettings } = usePlayerModeState();
+  const transition = useModeTransitionSnapshot();
+  // Another tab can change settings before this tab can load that mode. With
+  // no lifecycle active, e.g. after DJ failed to start, render the mode being
+  // started rather than the stored one.
+  const runningMode =
+    transition.currentMode ?? transition.requestedMode ?? mode;
 
   useEffect(() => {
     if (!hasSettings) {
@@ -73,11 +80,21 @@ export function Radios() {
     return <RadioLoadingSkeleton mode={mode} phase="database" />;
   }
 
+  if (transition.error && transition.currentMode === null) {
+    return (
+      <p className="p-4 text-center text-muted-foreground text-sm">
+        Choose another playback mode to keep listening.
+      </p>
+    );
+  }
+
   const enabledRadios = radiosQuery.data ?? [];
 
   return (
-    <Suspense fallback={<RadioLoadingSkeleton mode={mode} phase="mode" />}>
-      <RadioMode mode={mode} radios={enabledRadios} />
+    <Suspense
+      fallback={<RadioLoadingSkeleton mode={runningMode} phase="mode" />}
+    >
+      <RadioMode mode={runningMode} radios={enabledRadios} />
     </Suspense>
   );
 }

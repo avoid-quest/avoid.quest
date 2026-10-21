@@ -15,6 +15,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { DjWorkflowLoadError } from "@/lib/dj-workflow-load-error";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
 import { playerModes } from "@/lib/types";
@@ -57,8 +58,10 @@ export function ModeSelect({ className }: { className?: string }) {
         "@/lib/mode-lifecycle-requests"
       );
       await modeLifecycleRequests.requestMode(value);
-    } catch {
-      toast.error("Couldn't switch mode");
+    } catch (error) {
+      if (!(error instanceof DjWorkflowLoadError)) {
+        toast.error("Couldn't switch mode");
+      }
     } finally {
       setRequestedMode(null);
     }
@@ -74,7 +77,13 @@ export function ModeSelect({ className }: { className?: string }) {
       className={cn("w-full max-w-xs", className)}
       onValueChange={handleModeChange}
       type="single"
-      value={normalizePlayerMode(settings?.player.mode)}
+      value={
+        modeTransition.currentMode ??
+        // With no mode running, a mode that is starting is the selection,
+        // even though the settings still name the one that failed.
+        modeTransition.requestedMode ??
+        (modeTransition.error ? "" : normalizePlayerMode(settings?.player.mode))
+      }
       variant="outline"
     >
       {playerModes.map((mode) => {

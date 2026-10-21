@@ -10,7 +10,8 @@ import {
   getDefaultPlaybackActionContext,
   type PlaybackActionContext,
 } from "@/lib/playback-action-context";
-import { createDjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
+import type { DjModeLifecycleWorkflow } from "./dj-mode-lifecycle-workflow.js";
+import { DjWorkflowLoadError } from "./dj-workflow-load-error";
 import { isPlaybackActionError } from "./playback-action-errors";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
@@ -18,6 +19,8 @@ import { getSinglePlayback } from "./single-playback.js";
 export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
 export type ModeLifecycle = {
+  /** Load code before stopping the current mode; must not change playback. */
+  prepare?: () => Promise<void>;
   activate: () => Promise<void>;
   deactivate: () => Promise<void>;
   getPhase: () => ModePhase;
@@ -40,6 +43,9 @@ type CreateModeLifecycleRegistryOptions = {
   ctx?: PlaybackActionContext;
   fadeOutDurationMs?: number;
   fadeOutSound?: FadeOutSound;
+  loadDjWorkflow?: () => Promise<
+    typeof import("./dj-mode-lifecycle-workflow.js")
+  >;
 };
 
 type CreateModeManagerOptions = {
@@ -65,6 +71,8 @@ export type ModeManager = {
     nextMode: PlaybackSessionId,
     options?: SwitchModeOptions
   ) => Promise<void>;
+  /** Resolves, never rejects, once the transition in flight has finished. */
+  whenSettled: () => Promise<void>;
 };
 
 const MODE_FADE_OUT_DURATION_MS = 150;
@@ -146,15 +154,22 @@ export function createModeLifecycleRegistry({
   ctx = getDefaultPlaybackActionContext(),
   fadeOutDurationMs = MODE_FADE_OUT_DURATION_MS,
   fadeOutSound = fadeOut,
+  loadDjWorkflow = () => import("./dj-mode-lifecycle-workflow.js"),
 }: CreateModeLifecycleRegistryOptions = {}): Record<
   PlaybackSessionId,
   ModeLifecycle
 > {
-  const djWorkflow = createDjModeLifecycleWorkflow({
-    ctx,
-    fadeOutDurationMs,
-    fadeOutSound,
-  });
+  let djWorkflow: DjModeLifecycleWorkflow | undefined;
+  let djModule: ReturnType<typeof loadDjWorkflow> | undefined;
+  const loadDj = () => {
+    // Retain failures too: retrying a fixed URL cannot reliably recover the
+    // module graph across browsers or deployments. Only an explicit reload
+    // starts over. Vite's preload helper rethrows into this catch.
+    djModule ??= loadDjWorkflow().catch((error: unknown) => {
+      throw new DjWorkflowLoadError(error);
+    });
+    return djModule;
+  };
   const single = getSinglePlayback({
     ctx,
     fadeOutDurationMs,
@@ -167,10 +182,26 @@ export function createModeLifecycleRegistry({
       fadeOutSound,
     });
   return {
-    dj: createLifecycle(
-      () => djWorkflow.activate(),
-      () => djWorkflow.deactivate()
-    ),
+    dj: {
+      ...createLifecycle(
+        async () => {
+          const { createDjModeLifecycleWorkflow } = await loadDj();
+          djWorkflow ??= createDjModeLifecycleWorkflow({
+            ctx,
+            fadeOutDurationMs,
+            fadeOutSound,
+          });
+          await djWorkflow.activate();
+        },
+        async () => {
+          // Rollback must never fetch code for a workflow that never existed.
+          await djWorkflow?.deactivate();
+        }
+      ),
+      async prepare() {
+        await loadDj();
+      },
+    },
     node: createLifecycle(
       async () => (await loadNode()).activate(),
       async () => (await loadNode()).deactivate()
@@ -195,6 +226,15 @@ export function createModeManager({
     requestedMode: null,
   };
   const listeners = new Set<() => void>();
+  let settled: Promise<void> = Promise.resolve();
+
+  function track(transition: Promise<void>): Promise<void> {
+    settled = transition.then(
+      () => undefined,
+      () => undefined
+    );
+    return transition;
+  }
 
   function emit(nextSnapshot: Partial<ModeTransitionSnapshot>): void {
     snapshot = { ...snapshot, ...nextSnapshot };
@@ -263,9 +303,13 @@ export function createModeManager({
     const previousMode = snapshot.currentMode;
     let activatedNextMode = false;
     let nextModeActivationStarted = false;
-    emit({ error: null, phase: "deactivating", requestedMode: nextMode });
+    let preparationCompleted = false;
+    emit({ error: null, phase: "activating", requestedMode: nextMode });
 
     try {
+      await lifecycles[nextMode].prepare?.();
+      preparationCompleted = true;
+      emit({ phase: "deactivating" });
       if (previousMode) {
         await lifecycles[previousMode].deactivate();
       }
@@ -286,6 +330,14 @@ export function createModeManager({
       });
     } catch (error) {
       const message = getUserFacingErrorMessage(error);
+      if (!preparationCompleted) {
+        emit({
+          error: message,
+          phase: previousMode ? "active" : "inactive",
+          requestedMode: null,
+        });
+        throw error;
+      }
       await rollbackModeSwitch(
         previousMode,
         activatedNextMode || nextModeActivationStarted ? nextMode : null
@@ -301,23 +353,28 @@ export function createModeManager({
 
   return {
     activateInitialMode(mode: PlaybackSessionId): Promise<void> {
-      return (async () => {
-        if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
-          return;
-        }
-        emit({ error: null, phase: "activating", requestedMode: mode });
-        try {
-          await lifecycles[mode].activate();
-          emit({ currentMode: mode, phase: "active", requestedMode: null });
-        } catch (error) {
-          emit({
-            error: getUserFacingErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
-            phase: "inactive",
-            requestedMode: null,
-          });
-          throw error;
-        }
-      })();
+      if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
+        return Promise.resolve();
+      }
+      return track(
+        (async () => {
+          emit({ error: null, phase: "activating", requestedMode: mode });
+          try {
+            await lifecycles[mode].activate();
+            emit({ currentMode: mode, phase: "active", requestedMode: null });
+          } catch (error) {
+            emit({
+              error: getUserFacingErrorMessage(
+                error,
+                MODE_STARTUP_ERROR_MESSAGE
+              ),
+              phase: "inactive",
+              requestedMode: null,
+            });
+            throw error;
+          }
+        })()
+      );
     },
     getSnapshot() {
       return snapshot;
@@ -341,7 +398,10 @@ export function createModeManager({
           })
         );
       }
-      return switchMode(nextMode, options);
+      return track(switchMode(nextMode, options));
+    },
+    whenSettled() {
+      return settled;
     },
   };
 }

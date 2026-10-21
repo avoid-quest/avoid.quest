@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { toast } from "sonner";
 import type { AudioEngineFacade, AudioManager } from "@/lib/audio";
 import {
   createDefaultChannel,
@@ -6,6 +15,7 @@ import {
   DECK_B_CHANNEL_ID,
   type PlaybackSessionId,
   playbackSessionsCollection,
+  SINGLE_ACTIVE_CHANNEL_ID,
 } from "@/lib/collections/playback-sessions";
 import { settingsCollection } from "@/lib/collections/settings";
 import { nodeGraphSchema } from "@/lib/node-graph/schema";
@@ -22,6 +32,7 @@ import {
 } from "./mode-lifecycle-manager";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
 import { getNodePlayback } from "./node-playback";
+import type { OutputRouting } from "./output-routing";
 import type { PlaybackActionContext } from "./playback-action-context";
 
 async function resetPlaybackSessions() {
@@ -204,6 +215,371 @@ afterEach(async () => {
 });
 
 describe("mode lifecycle manager", () => {
+  test("Single and Node transitions and pagehide reset never load the DJ workflow", async () => {
+    insertPlaybackSession("single");
+    insertNodeSession();
+    const ctx = createModeLifecycleTestContext();
+    const createDjModeLifecycleWorkflow = mock(() => ({
+      activate: mock(async () => undefined),
+      deactivate: mock(async () => undefined),
+    }));
+    const loadDjWorkflow = mock(async () => ({
+      createDjModeLifecycleWorkflow,
+    }));
+    const manager = createModeManager({
+      commitMode: mock(() => undefined),
+      lifecycles: createModeLifecycleRegistry({ ctx, loadDjWorkflow }),
+    });
+
+    expect(loadDjWorkflow).not.toHaveBeenCalled();
+    await manager.activateInitialMode("single");
+    await manager.switchTo("node");
+    await manager.switchTo("single");
+    createModeLifecycleRequests({ manager }).resetPageLifecycleState(ctx);
+
+    expect(loadDjWorkflow).not.toHaveBeenCalled();
+    expect(createDjModeLifecycleWorkflow).not.toHaveBeenCalled();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+    });
+  });
+
+  test.each(["startup", "switch"] as const)(
+    "first DJ activation restores decks and mixer through the lazy workflow on %s",
+    async (entry) => {
+      const radio = {
+        id: "station-1",
+        name: "Station 1",
+        streamUrl: "https://radio.example/station.mp3",
+      };
+      playbackSessionsCollection.insert({
+        activeChannelId: null,
+        channels: [
+          { ...createDefaultChannel(DECK_A_CHANNEL_ID, "deck-a", 0), radio },
+          createDefaultChannel(DECK_B_CHANNEL_ID, "deck-b", 1),
+        ],
+        crossfadePosition: 0.25,
+        headphoneVolume: 0.65,
+        id: "dj",
+        masterVolume: 0.7,
+      });
+      insertPlaybackSession("single");
+      const ctx: PlaybackActionContext = createModeLifecycleTestContext();
+      const createSound = mock(() => undefined);
+      Object.assign(ctx.audio, {
+        createSound,
+        subscribe: mock(() => () => undefined),
+        subscribeMeter: mock(() => () => undefined),
+      });
+      const setHeadphoneVolume = mock((_volume: number) => undefined);
+      ctx.getMainOutputRouter = () =>
+        ({
+          releaseCue: mock(() => undefined),
+          setHeadphoneVolume,
+          subscribeErrors: mock(() => () => undefined),
+        }) as unknown as OutputRouting;
+      const commitMode = mock(() => undefined);
+      const manager = createModeManager({
+        commitMode,
+        initialMode: entry === "startup" ? null : "single",
+        lifecycles: createModeLifecycleRegistry({ ctx }),
+      });
+
+      if (entry === "startup") {
+        insertSettings("dj");
+        await createModeLifecycleRequests({ manager }).synchronizeMode("dj");
+        expect(commitMode).not.toHaveBeenCalled();
+      } else {
+        await manager.switchTo("dj");
+        expect(commitMode).toHaveBeenCalledWith("dj");
+      }
+
+      expect(createSound).toHaveBeenCalledWith(
+        radio,
+        expect.any(String),
+        "audio-graph"
+      );
+      expect(ctx.audioEngine.volume.setMasterVolume).toHaveBeenCalledWith(0.7);
+      expect(setHeadphoneVolume).toHaveBeenCalledWith(0.65);
+      expect(manager.getSnapshot()).toMatchObject({
+        currentMode: "dj",
+        phase: "active",
+        requestedMode: null,
+      });
+      await manager.switchTo("single");
+    }
+  );
+
+  test("shares DJ preparation and one workflow per registry without loading on deactivation", async () => {
+    const module =
+      Promise.withResolvers<typeof import("./dj-mode-lifecycle-workflow")>();
+    const workflow = {
+      activate: mock(async () => undefined),
+      deactivate: mock(async () => undefined),
+    };
+    const createDjModeLifecycleWorkflow = mock(() => workflow);
+    const loadDjWorkflow = mock(() => module.promise);
+    const ctx = createModeLifecycleTestContext();
+    const fadeOutSound = mock(async () => undefined);
+    const registry = createModeLifecycleRegistry({
+      ctx,
+      fadeOutDurationMs: 120,
+      fadeOutSound,
+      loadDjWorkflow,
+    });
+    await registry.dj.deactivate();
+    expect(loadDjWorkflow).not.toHaveBeenCalled();
+    const first = registry.dj.prepare?.();
+    const second = registry.dj.prepare?.();
+
+    expect(loadDjWorkflow).toHaveBeenCalledTimes(1);
+    expect(createDjModeLifecycleWorkflow).not.toHaveBeenCalled();
+    expect(registry.dj.getPhase()).toBe("inactive");
+    module.resolve({ createDjModeLifecycleWorkflow });
+    await Promise.all([first, second]);
+    await registry.dj.activate();
+    await registry.dj.deactivate();
+
+    expect(createDjModeLifecycleWorkflow).toHaveBeenCalledTimes(1);
+    expect(createDjModeLifecycleWorkflow).toHaveBeenCalledWith({
+      ctx,
+      fadeOutDurationMs: 120,
+      fadeOutSound,
+    });
+    expect(workflow.activate).toHaveBeenCalledTimes(1);
+    expect(workflow.deactivate).toHaveBeenCalledTimes(1);
+    expect(registry.dj.getPhase()).toBe("inactive");
+
+    await createModeLifecycleRegistry({ ctx, loadDjWorkflow }).dj.activate();
+    expect(createDjModeLifecycleWorkflow).toHaveBeenCalledTimes(2);
+  });
+
+  test("serializes transitions during the DJ load and rolls back a failed activation in order", async () => {
+    insertPlaybackSession("single");
+    const module =
+      Promise.withResolvers<typeof import("./dj-mode-lifecycle-workflow")>();
+    const loading = Promise.withResolvers<void>();
+    const order: string[] = [];
+    const workflow = {
+      activate: mock(() => {
+        order.push("dj:activate");
+        return Promise.reject(new Error("DJ activation interrupted"));
+      }),
+      deactivate: mock(() => {
+        order.push("dj:deactivate");
+        return Promise.resolve();
+      }),
+    };
+    const createDjModeLifecycleWorkflow = mock(() => {
+      order.push("dj:construct");
+      return workflow;
+    });
+    const loadDjWorkflow = mock(() => {
+      loading.resolve();
+      return module.promise;
+    });
+    const lifecycles = createModeLifecycleRegistry({
+      ctx: createModeLifecycleTestContext(),
+      loadDjWorkflow,
+    });
+    const { single } = lifecycles;
+    lifecycles.single = {
+      ...single,
+      activate: async () => {
+        order.push("single:activate");
+        await single.activate();
+      },
+      deactivate: async () => {
+        order.push("single:deactivate");
+        await single.deactivate();
+      },
+    };
+    const commitMode = mock(() => undefined);
+    const manager = createModeManager({
+      commitMode,
+      initialMode: "single",
+      lifecycles,
+    });
+    const transition = manager.switchTo("dj");
+    await loading.promise;
+
+    expect(manager.getSnapshot()).toMatchObject({
+      phase: "activating",
+      requestedMode: "dj",
+    });
+    expect(createDjModeLifecycleWorkflow).not.toHaveBeenCalled();
+    await expect(manager.switchTo("node")).rejects.toThrow(
+      "Mode transition in progress"
+    );
+    module.resolve({ createDjModeLifecycleWorkflow });
+    await expect(transition).rejects.toThrow("DJ activation interrupted");
+
+    expect(order).toEqual([
+      "single:deactivate",
+      "dj:construct",
+      "dj:activate",
+      "dj:deactivate",
+      "single:activate",
+    ]);
+    expect(loadDjWorkflow).toHaveBeenCalledTimes(1);
+    expect(createDjModeLifecycleWorkflow).toHaveBeenCalledTimes(1);
+    expect(commitMode).not.toHaveBeenCalled();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      error: "Mode could not be changed. Try again.",
+      phase: "active",
+      requestedMode: null,
+    });
+  });
+
+  test("a cached DJ import failure leaves playing Single untouched and surfaces recovery once", async () => {
+    insertPlaybackSession("single");
+    const ctx = createModeLifecycleTestContext();
+    const fadeOutSound = mock(async () => undefined);
+    const failure = new Error("DJ chunk unavailable");
+    // The same URL keeps rejecting, as in browsers that cache failed imports.
+    const loadDjWorkflow = mock(() => Promise.reject(failure));
+    const lifecycles = createModeLifecycleRegistry({
+      ctx,
+      fadeOutSound,
+      loadDjWorkflow,
+    });
+    const deactivateSingle = spyOn(lifecycles.single, "deactivate");
+    const activateSingle = spyOn(lifecycles.single, "activate");
+    const commitMode = mock(() => undefined);
+    const manager = createModeManager({
+      commitMode,
+      initialMode: "single",
+      lifecycles,
+    });
+    const requests = createModeLifecycleRequests({ manager });
+    const notice = spyOn(toast, "error").mockReturnValue("dj-mode-load");
+    setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+      isPlaying: true,
+      soundId: "playing-single",
+    }));
+    const playing = getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID);
+    try {
+      await expect(requests.requestMode("dj")).rejects.toThrow();
+      await lifecycles.dj.deactivate();
+      await expect(requests.requestMode("dj")).rejects.toThrow();
+
+      expect(loadDjWorkflow).toHaveBeenCalledTimes(1);
+      expect(deactivateSingle).not.toHaveBeenCalled();
+      expect(activateSingle).not.toHaveBeenCalled();
+      expect(fadeOutSound).not.toHaveBeenCalled();
+      expect(ctx.channels.deactivate).not.toHaveBeenCalled();
+      expect(ctx.audio.cleanupSound).not.toHaveBeenCalled();
+      expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toEqual(
+        playing
+      );
+      expect(lifecycles.dj.getPhase()).toBe("inactive");
+      expect(commitMode).not.toHaveBeenCalled();
+      expect(manager.getSnapshot()).toMatchObject({
+        currentMode: "single",
+        error: expect.stringContaining("DJ"),
+        phase: "active",
+        requestedMode: null,
+      });
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(notice).toHaveBeenCalledWith(
+        "Couldn't load DJ mode",
+        expect.objectContaining({
+          action: expect.objectContaining({
+            label: "Reload",
+            onClick: expect.any(Function),
+          }),
+          description: expect.stringContaining("Reloading stops playback"),
+          duration: Number.POSITIVE_INFINITY,
+        })
+      );
+      await requests.requestMode("single");
+      expect(manager.getSnapshot().currentMode).toBe("single");
+    } finally {
+      notice.mockRestore();
+      deactivateSingle.mockRestore();
+      activateSingle.mockRestore();
+    }
+  });
+
+  test("a pending then failed DJ preparation leaves the previous Node mode active", async () => {
+    insertPlaybackSession("single");
+    const module =
+      Promise.withResolvers<typeof import("./dj-mode-lifecycle-workflow")>();
+    const lifecycles = createModeLifecycleRegistry({
+      ctx: createModeLifecycleTestContext(),
+      loadDjWorkflow: () => module.promise,
+    });
+    const activate = mock(async () => undefined);
+    const deactivate = mock(async () => undefined);
+    lifecycles.node = { activate, deactivate, getPhase: () => "active" };
+    const manager = createModeManager({ initialMode: "node", lifecycles });
+    const transition = manager.switchTo("dj");
+    expect(deactivate).not.toHaveBeenCalled();
+    await expect(manager.switchTo("single")).rejects.toThrow(
+      "Mode transition in progress"
+    );
+    await lifecycles.dj.deactivate();
+    module.reject(new TypeError("Failed to fetch dynamically imported module"));
+    await expect(transition).rejects.toThrow("DJ mode could not load");
+    expect(deactivate).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+    expect(lifecycles.dj.getPhase()).toBe("inactive");
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "node",
+      phase: "active",
+      requestedMode: null,
+    });
+    await manager.switchTo("single");
+    expect(deactivate).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot().currentMode).toBe("single");
+  });
+
+  test("startup DJ import failures stay inactive and are reported only once across request paths", async () => {
+    insertPlaybackSession("dj");
+    const loadDjWorkflow = mock(() =>
+      Promise.reject(new Error("Missing deployment chunk"))
+    );
+    const lifecycles = createModeLifecycleRegistry({
+      ctx: createModeLifecycleTestContext(),
+      loadDjWorkflow,
+    });
+    const manager = createModeManager({ lifecycles });
+    const requests = createModeLifecycleRequests({ manager });
+    const notice = spyOn(toast, "error").mockReturnValue("dj-mode-load");
+    try {
+      await expect(requests.synchronizeMode("dj")).rejects.toThrow(
+        "DJ mode could not load"
+      );
+      await lifecycles.dj.deactivate();
+      await expect(requests.requestMode("dj")).rejects.toThrow(
+        "DJ mode could not load"
+      );
+      expect(manager.getSnapshot()).toMatchObject({
+        currentMode: null,
+        phase: "inactive",
+        requestedMode: null,
+      });
+      expect(lifecycles.dj.getPhase()).toBe("inactive");
+      expect(loadDjWorkflow).toHaveBeenCalledTimes(1);
+      expect(notice).toHaveBeenCalledTimes(1);
+    } finally {
+      notice.mockRestore();
+    }
+  });
+
+  test("deactivating DJ before any activation never imports its workflow", async () => {
+    const loadDjWorkflow = mock(() => Promise.reject(new Error("Not loaded")));
+    const registry = createModeLifecycleRegistry({
+      ctx: createModeLifecycleTestContext(),
+      loadDjWorkflow,
+    });
+    await registry.dj.deactivate();
+    expect(loadDjWorkflow).not.toHaveBeenCalled();
+    expect(registry.dj.getPhase()).toBe("inactive");
+  });
+
   test("routes startup mode activation through the lifecycle boundary", async () => {
     insertPlaybackSession("node");
     const activateInitialMode = mock(async (_mode: string) => undefined);
@@ -218,6 +594,7 @@ describe("mode lifecycle manager", () => {
       }),
       subscribe: mock((_listener: () => void) => () => undefined),
       switchTo,
+      whenSettled: mock(async () => undefined),
     };
 
     await createModeLifecycleRequests({ manager }).synchronizeMode("node");
@@ -412,6 +789,7 @@ describe("mode lifecycle manager", () => {
       getSnapshot,
       subscribe: mock((_listener: () => void) => () => undefined),
       switchTo,
+      whenSettled: mock(async () => undefined),
     };
 
     const activation = createModeLifecycleRequests({ manager }).synchronizeMode(
@@ -445,6 +823,7 @@ describe("mode lifecycle manager", () => {
       })),
       subscribe: mock((_listener: () => void) => () => undefined),
       switchTo,
+      whenSettled: mock(async () => undefined),
     };
 
     const synchronization = createModeLifecycleRequests({
@@ -710,6 +1089,26 @@ describe("mode lifecycle manager", () => {
       masterVolume: 0.5,
     });
     insertPlaybackSession("single");
+    const context: PlaybackActionContext = createModeLifecycleTestContext();
+    context.getMainOutputRouter = () =>
+      ({
+        releaseCue: mock(() => undefined),
+        setHeadphoneVolume: mock(() => undefined),
+        subscribeErrors: mock(() => () => undefined),
+      }) as unknown as OutputRouting;
+    const fadeOut = mock((_soundId: string, _durationMs: number) =>
+      Promise.resolve()
+    );
+    const manager = createModeManager({
+      commitMode: mock(() => undefined),
+      lifecycles: createModeLifecycleRegistry({
+        ctx: context,
+        fadeOutDurationMs: 120,
+        fadeOutSound: fadeOut,
+      }),
+    });
+
+    await manager.activateInitialMode("dj");
     setPlaybackChannelRuntime(DECK_A_CHANNEL_ID, () => ({
       isPlaying: true,
       soundId: "left_station-1",
@@ -718,19 +1117,6 @@ describe("mode lifecycle manager", () => {
       isPlaying: true,
       soundId: "right_station-2",
     }));
-    const context = createModeLifecycleTestContext();
-    const fadeOut = mock((_soundId: string, _durationMs: number) =>
-      Promise.resolve()
-    );
-    const manager = createModeManager({
-      commitMode: mock(() => undefined),
-      initialMode: "dj",
-      lifecycles: createModeLifecycleRegistry({
-        ctx: context,
-        fadeOutDurationMs: 120,
-        fadeOutSound: fadeOut,
-      }),
-    });
 
     await manager.switchTo("single");
 

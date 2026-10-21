@@ -1,0 +1,36 @@
+apps/radio/src/lib/collections/settings.test.ts
+  s_f077800c865479::t_45bba220745586 210-234
+apps/radio/src/lib/collections/radios.test.ts
+  s_f077800c865479::t_45bba220745586 547-569
+apps/radio/src/lib/collections/radios.ts
+  s_f077800c865479::t_7c02497ec7b6d1 103-112
+  s_f077800c865479::t_566497af1d9429 102
+  s_f077800c865479::t_9e7cfe424c63f4 113-121
+  s_f077800c865479::t_8d4ae5f4f9750d 362
+apps/radio/src/lib/collections/settings.ts
+  s_f077800c865479::t_7c02497ec7b6d1 62-71
+  s_f077800c865479::t_566497af1d9429 61,72-80
+  s_f077800c865479::t_8d4ae5f4f9750d 133
+apps/radio/src/lib/collections/memory-fallback-storage.ts
+  s_f077800c865479::t_d3ece2fce8c7ec 34-62
+  s_f077800c865479::t_7ca354494bf846 21,26-32
+apps/radio/src/lib/collections/memory-fallback-storage.test.ts
+  s_f077800c865479::t_cbc084bd47353d 5-7,14-18,29-32,88-91,94
+  s_f077800c865479::t_0f5d23a2902dd4 1-4,8-13,19-28,33-87,92-93,95-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7e8107caa93c9ea89a2ac2501f8f7bc81ae076f0",
+  "prompts": {},
+  "sessions": {
+    "s_f077800c865479": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15eb3-2ecf-7350-8f08-9a3b113378af",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -60,6 +60,51 @@ export function createModeLifecycleRequests({
       captureError(error, { operation, surface: "ui", tags: { mode } });
     }
   }
+  // The newest settings change seen while a transition was in flight.
+  let queuedSynchronization: object | null = null;
+  async function synchronize(mode: PlaybackSessionId): Promise<void> {
+    await waitForPlaybackSession(mode);
+
+    const settings = getCurrentSettings();
+    // The settings already name `mode`, so neither path writes them: a
+    // legacy mode the settings step could not rewrite ("multiple") is
+    // synchronized as its replacement.
+    if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
+      return;
+    }
+
+    const snapshot = manager.getSnapshot();
+    if (snapshot.requestedMode === mode) {
+      // Already on its way there; an older queued change is now stale.
+      queuedSynchronization = null;
+      return;
+    }
+
+    if (snapshot.phase === "activating" || snapshot.phase === "deactivating") {
+      // The manager rejects a concurrent switch, and the settings will not
+      // change again to retry it. Follow the newest change once the
+      // transition settles, rechecking the settings then.
+      const request = {};
+      queuedSynchronization = request;
+      await manager.whenSettled();
+      if (queuedSynchronization !== request) {
+        return;
+      }
+      queuedSynchronization = null;
+      return synchronize(mode);
+    }
+
+    if (snapshot.currentMode === mode) {
+      return;
+    }
+
+    if (snapshot.currentMode === null && snapshot.phase === "inactive") {
+      return manager.activateInitialMode(mode);
+    }
+
+    return manager.switchTo(mode, { commit: false });
+  }
+
   return {
     getTransitionSnapshot: manager.getSnapshot,
     async requestMode(value: string) {
@@ -83,26 +128,7 @@ export function createModeLifecycleRequests({
     subscribeTransitionSnapshot: manager.subscribe,
     async synchronizeMode(mode: PlaybackSessionId) {
       try {
-        await waitForPlaybackSession(mode);
-
-        const settings = getCurrentSettings();
-        // The settings already name `mode`, so neither path writes them: a
-        // legacy mode the settings step could not rewrite ("multiple") is
-        // synchronized as its replacement.
-        if (settings && normalizePlayerMode(settings.player.mode) !== mode) {
-          return;
-        }
-
-        const snapshot = manager.getSnapshot();
-        if (snapshot.currentMode === mode || snapshot.requestedMode === mode) {
-          return;
-        }
-
-        if (snapshot.currentMode === null && snapshot.phase === "inactive") {
-          return await manager.activateInitialMode(mode);
-        }
-
-        return await manager.switchTo(mode, { commit: false });
+        return await synchronize(mode);
       } catch (error) {
         reportFailure(error, mode, "synchronizeMode");
         throw error;

@@ -71,6 +71,8 @@ export type ModeManager = {
     nextMode: PlaybackSessionId,
     options?: SwitchModeOptions
   ) => Promise<void>;
+  /** Resolves, never rejects, once the transition in flight has finished. */
+  whenSettled: () => Promise<void>;
 };
 
 const MODE_FADE_OUT_DURATION_MS = 150;
@@ -224,6 +226,15 @@ export function createModeManager({
     requestedMode: null,
   };
   const listeners = new Set<() => void>();
+  let settled: Promise<void> = Promise.resolve();
+
+  function track(transition: Promise<void>): Promise<void> {
+    settled = transition.then(
+      () => undefined,
+      () => undefined
+    );
+    return transition;
+  }
 
   function emit(nextSnapshot: Partial<ModeTransitionSnapshot>): void {
     snapshot = { ...snapshot, ...nextSnapshot };
@@ -342,23 +353,28 @@ export function createModeManager({
 
   return {
     activateInitialMode(mode: PlaybackSessionId): Promise<void> {
-      return (async () => {
-        if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
-          return;
-        }
-        emit({ error: null, phase: "activating", requestedMode: mode });
-        try {
-          await lifecycles[mode].activate();
-          emit({ currentMode: mode, phase: "active", requestedMode: null });
-        } catch (error) {
-          emit({
-            error: getUserFacingErrorMessage(error, MODE_STARTUP_ERROR_MESSAGE),
-            phase: "inactive",
-            requestedMode: null,
-          });
-          throw error;
-        }
-      })();
+      if (snapshot.currentMode === mode || snapshot.phase !== "inactive") {
+        return Promise.resolve();
+      }
+      return track(
+        (async () => {
+          emit({ error: null, phase: "activating", requestedMode: mode });
+          try {
+            await lifecycles[mode].activate();
+            emit({ currentMode: mode, phase: "active", requestedMode: null });
+          } catch (error) {
+            emit({
+              error: getUserFacingErrorMessage(
+                error,
+                MODE_STARTUP_ERROR_MESSAGE
+              ),
+              phase: "inactive",
+              requestedMode: null,
+            });
+            throw error;
+          }
+        })()
+      );
     },
     getSnapshot() {
       return snapshot;
@@ -382,7 +398,10 @@ export function createModeManager({
           })
         );
       }
-      return switchMode(nextMode, options);
+      return track(switchMode(nextMode, options));
+    },
+    whenSettled() {
+      return settled;
     },
   };
 }

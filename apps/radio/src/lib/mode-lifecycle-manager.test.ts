@@ -594,6 +594,7 @@ describe("mode lifecycle manager", () => {
       }),
       subscribe: mock((_listener: () => void) => () => undefined),
       switchTo,
+      whenSettled: mock(async () => undefined),
     };
 
     await createModeLifecycleRequests({ manager }).synchronizeMode("node");
@@ -788,6 +789,7 @@ describe("mode lifecycle manager", () => {
       getSnapshot,
       subscribe: mock((_listener: () => void) => () => undefined),
       switchTo,
+      whenSettled: mock(async () => undefined),
     };
 
     const activation = createModeLifecycleRequests({ manager }).synchronizeMode(
@@ -821,6 +823,7 @@ describe("mode lifecycle manager", () => {
       })),
       subscribe: mock((_listener: () => void) => () => undefined),
       switchTo,
+      whenSettled: mock(async () => undefined),
     };
 
     const synchronization = createModeLifecycleRequests({

@@ -39,7 +39,11 @@ import {
   paletteEntries,
   trackChip,
 } from "@/lib/node-graph/palette";
-import { NATIVE_NODE_TYPES, type NodeType } from "@/lib/node-graph/schema";
+import {
+  NATIVE_NODE_TYPES,
+  type NodeGraph,
+  type NodeType,
+} from "@/lib/node-graph/schema";
 import type { NodeTemplateId } from "@/lib/node-graph/templates";
 import type { ValidateOptions } from "@/lib/node-graph/validate";
 import { platformSourceIcon } from "../platform-source-icon";
@@ -53,6 +57,8 @@ import { useNodeDevices } from "./use-node-devices";
 
 /** Where the palette was opened from, and so where its pick lands. */
 export type PaletteRequest = {
+  /** Cable-drop probes for this immutable graph; enrich with live devices/stations. */
+  available?: { graph: NodeGraph; entries: readonly PaletteEntry[] };
   /** Flow position for the new node's top-left; a free spot when absent. */
   position?: { x: number; y: number };
   /** A cable dropped on empty space: the palette narrows to what fits it. */
@@ -329,6 +335,10 @@ export function NodePalette({
       ? toSections(
           paletteEntries(graph, {
             ...validateOptions,
+            availableEntries:
+              request?.available?.graph === graph
+                ? request.available.entries
+                : undefined,
             devices: { inputs: devices.inputs, outputs: devices.outputs },
             from,
             into,

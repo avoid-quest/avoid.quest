@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { Radio } from "@/lib/audio/playback/types";
 import { createNodeEffectConfig } from "./catalogue";
 import { MODULATION_NODE_TYPES } from "./modulation-schema";
@@ -1252,4 +1252,37 @@ test("station search filters do not add duplicate station shortcuts to the palet
     "platform:soundcloud",
     "platform:youtube",
   ]);
+});
+
+test("insertion probes on a 40-node patch compile the unchanged baseline once", async () => {
+  const compiler = await import("./compile");
+  const graph = nodeGraphSchema.parse({
+    ...buildNodeGraphFromTemplate("starter"),
+    nodes: [
+      ...buildNodeGraphFromTemplate("starter").nodes,
+      ...Array.from({ length: 38 }, (_, index) => ({
+        data: {},
+        id: `loose-${index}`,
+        position: { x: 0, y: index * 100 },
+        type: "macro",
+      })),
+    ],
+  });
+  const compile = spyOn(compiler, "compile");
+  try {
+    const entries = paletteEntries(graph, { into: graph.edges[0].id });
+    expect(
+      entries.some((entry) => entry.kind === "node" && entry.type === "gain")
+    ).toBe(true);
+    // No per-type compilation of the original patch plus an isolated probe.
+    expect(
+      compile.mock.calls.filter(
+        ([candidate]) => candidate.edges.length === graph.edges.length
+      )
+    ).toHaveLength(1);
+    expect(compile.mock.calls[0][0]).toBe(graph);
+    expect(compile.mock.calls.length).toBeLessThan(40);
+  } finally {
+    compile.mockRestore();
+  }
 });

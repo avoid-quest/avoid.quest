@@ -16,10 +16,20 @@ import type { Radio } from "@/lib/audio";
 import { radiosCollection } from "@/lib/collections/radios";
 import { compile, laneChannelId } from "@/lib/node-graph/compile";
 import {
+  moveNodes,
+  removeNodes,
+  setSourceRadio,
+  setSourceStrip,
+} from "@/lib/node-graph/graph-edits";
+import {
   commitNodeGraph,
   createNodeStore,
+  loadNodeGraph,
   type NodeStore,
+  redoNodeGraph,
+  undoNodeGraph,
 } from "@/lib/node-graph/node-store";
+import { templatePatch } from "@/lib/node-graph/palette";
 import type { GraphNode } from "@/lib/node-graph/schema";
 import { DEFAULT_STATION_STRIP } from "@/lib/node-graph/schema";
 import {
@@ -76,12 +86,12 @@ mock.module("@/lib/hooks/use-discovered-station-actions", () => ({
 }));
 
 let useNodeRadioManagement: typeof import("./use-node-radio-management")["useNodeRadioManagement"];
+let invalidateSourceRequests: typeof import("./use-node-radio-management")["invalidateSourceRequests"];
 let beginSourceRequest: typeof import("./use-node-radio-management")["beginSourceRequest"];
 
 beforeAll(async () => {
-  ({ beginSourceRequest, useNodeRadioManagement } = await import(
-    "./use-node-radio-management"
-  ));
+  ({ beginSourceRequest, invalidateSourceRequests, useNodeRadioManagement } =
+    await import("./use-node-radio-management"));
 });
 
 type Management = ReturnType<typeof useNodeRadioManagement>;
@@ -530,7 +540,7 @@ describe("useNodeRadioManagement", () => {
     });
 
     // The patch's Track submits a link; the inspector's then picks a track.
-    const streamRequest = beginSourceRequest(slotId);
+    const streamRequest = beginSourceRequest(slotId, undefined, store);
     await act(async () => {
       const pasted = hook
         .current()
@@ -539,7 +549,7 @@ describe("useNodeRadioManagement", () => {
           "https://stream.example/live",
           streamRequest
         );
-      const pickRequest = beginSourceRequest(slotId);
+      const pickRequest = beginSourceRequest(slotId, undefined, store);
       await hook.current().fillSource(slotId, discovered, pickRequest);
       finishLoad();
       await pasted;
@@ -563,12 +573,197 @@ describe("useNodeRadioManagement", () => {
         .fillStationFromUrl(
           slotId,
           "https://stream.example/live",
-          beginSourceRequest(slotId, controller.signal)
+          beginSourceRequest(slotId, controller.signal, store)
         );
       controller.abort();
       await pasted;
     });
 
     expect(station(slotId)?.data.radio ?? null).toBeNull();
+  });
+});
+
+describe("source request patch ownership", () => {
+  test.each(["template", "import", "restore", "remove and undo", "mode exit"])(
+    "a deferred load cannot fill or play a source after %s",
+    async (replacement) => {
+      store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+      const hook = renderManagement();
+      const deferred = Promise.withResolvers<void>();
+      loaders.createSession.mockImplementationOnce(async () => {
+        await deferred.promise;
+        return { data: { radio: kexp }, ok: true as const };
+      });
+      await act(async () => {
+        const pending = hook
+          .current()
+          .fillStationFromUrl(
+            STARTER_STATION_ID,
+            "https://stream.example/live"
+          );
+        if (replacement === "mode exit") {
+          invalidateSourceRequests(store);
+        } else if (replacement === "restore") {
+          loadNodeGraph(buildNodeGraphFromTemplate("starter"), store);
+        } else if (replacement === "remove and undo") {
+          commitNodeGraph(
+            (graph) => removeNodes(graph, [STARTER_STATION_ID]),
+            store,
+            "snapshot"
+          );
+          undoNodeGraph(store);
+        } else {
+          const graph = buildNodeGraphFromTemplate("starter");
+          commitNodeGraph(
+            (current) =>
+              replacement === "import"
+                ? structuredClone(graph)
+                : templatePatch(current, "starter"),
+            store,
+            "snapshot"
+          );
+        }
+        const replaced = store.state.graph;
+        deferred.resolve();
+        await pending;
+        expect(store.state.graph).toBe(replaced);
+      });
+      expect(station(STARTER_STATION_ID)?.data.radio ?? null).toBeNull();
+      expect(playback.flush).not.toHaveBeenCalled();
+      expect(playback.setPlaying).not.toHaveBeenCalled();
+    }
+  );
+
+  /** Starts a pasted stream link on the starter Station that loads `kexp` once `edit` ran. */
+  async function loadAround(edit: () => void) {
+    const hook = renderManagement();
+    const deferred = Promise.withResolvers<void>();
+    loaders.createSession.mockImplementationOnce(async () => {
+      await deferred.promise;
+      return { data: { radio: kexp }, ok: true as const };
+    });
+    await act(async () => {
+      const pending = hook
+        .current()
+        .fillStationFromUrl(STARTER_STATION_ID, "https://stream.example/live");
+      edit();
+      deferred.resolve();
+      await pending;
+    });
+  }
+
+  test.each([
+    ["empties it", [] as Radio[]],
+    ["brings back an earlier station", [nts]],
+  ])(
+    "a load is ignored after Undo %s while other nodes survive",
+    async (_case, earlier) => {
+      store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+      for (const radio of [...earlier, discovered]) {
+        commitNodeGraph(
+          (graph) => setSourceRadio(graph, STARTER_STATION_ID, radio),
+          store,
+          "snapshot"
+        );
+      }
+      const speakers = store.state.graph?.nodes.find(
+        (node) => node.id === SPEAKERS_NODE_ID
+      );
+      let restored = store.state.graph;
+      await loadAround(() => {
+        undoNodeGraph(store);
+        restored = store.state.graph;
+      });
+      expect(store.state.graph).toBe(restored);
+      expect(
+        store.state.graph?.nodes.find((node) => node.id === SPEAKERS_NODE_ID)
+      ).toBe(speakers);
+      expect(station(STARTER_STATION_ID)?.data.radio?.id ?? null).toBe(
+        earlier[0]?.id ?? null
+      );
+      expect(playback.setPlaying).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    [
+      "a move, a trim and its Undo on the same Station",
+      () => {
+        commitNodeGraph(
+          (graph) =>
+            moveNodes(graph, new Map([[STARTER_STATION_ID, { x: 20, y: 30 }]])),
+          store,
+          "snapshot"
+        );
+        commitNodeGraph(
+          (graph) => setSourceStrip(graph, STARTER_STATION_ID, { trimDb: 3 }),
+          store,
+          "snapshot"
+        );
+        undoNodeGraph(store);
+      },
+    ],
+    [
+      "a move of another node and its Undo",
+      () => {
+        commitNodeGraph(
+          (graph) =>
+            moveNodes(graph, new Map([[SPEAKERS_NODE_ID, { x: 400, y: 0 }]])),
+          store,
+          "snapshot"
+        );
+        undoNodeGraph(store);
+      },
+    ],
+  ])("a load still applies after %s", async (_case, edit) => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    await loadAround(edit);
+    expect(station(STARTER_STATION_ID)?.data.radio?.id).toBe("kexp");
+    expect(playback.setPlaying).toHaveBeenCalledTimes(1);
+  });
+
+  test("a load is ignored after Redo removes its source and Undo restores it", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    commitNodeGraph(
+      (graph) => removeNodes(graph, [STARTER_STATION_ID]),
+      store,
+      "snapshot"
+    );
+    undoNodeGraph(store);
+    await loadAround(() => {
+      redoNodeGraph(store);
+      undoNodeGraph(store);
+    });
+    expect(station(STARTER_STATION_ID)?.data.radio ?? null).toBeNull();
+    expect(playback.setPlaying).not.toHaveBeenCalled();
+  });
+
+  test("parameter and position edits keep the shared request alive", async () => {
+    store = createNodeStore(buildNodeGraphFromTemplate("starter"));
+    const hook = renderManagement();
+    const current = beginSourceRequest(STARTER_STATION_ID, undefined, store);
+    await act(async () => {
+      commitNodeGraph(
+        (graph) => setSourceStrip(graph, STARTER_STATION_ID, { trimDb: 3 }),
+        store,
+        "rebase"
+      );
+      expect(current()).toBe(true);
+      commitNodeGraph(
+        (graph) =>
+          moveNodes(graph, new Map([[STARTER_STATION_ID, { x: 20, y: 30 }]])),
+        store,
+        "snapshot"
+      );
+      commitNodeGraph(
+        (graph) => setSourceStrip(graph, STARTER_STATION_ID, { pan: 0.25 }),
+        store,
+        "snapshot"
+      );
+      expect(current()).toBe(true);
+      await hook.current().fillSource(STARTER_STATION_ID, kexp, current);
+    });
+    expect(station(STARTER_STATION_ID)?.data.radio?.id).toBe("kexp");
+    expect(playback.setPlaying).toHaveBeenCalledTimes(1);
   });
 });

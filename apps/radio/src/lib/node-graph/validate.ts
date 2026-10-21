@@ -614,6 +614,8 @@ export type GraphAnalysis = {
   issues: Issue[];
   /** Cables that passed the port and cycle checks. */
   wired: WiredEdge[];
+  /** Original port checks; lowered compiler analyses need only wired/issues. */
+  checked?: CheckedEdges;
 };
 
 /** Validates a patch and keeps what the compiler builds on. */
@@ -628,8 +630,9 @@ export function analyseGraph(
     release,
   };
   checkNodes(context);
-  const wired = checkCycles(context, checkEdges(context));
-  return { issues: context.issues, wired };
+  const checked = checkEdges(context);
+  const wired = checkCycles(context, checked);
+  return { checked, issues: context.issues, wired };
 }
 
 /** Validates a whole patch. An empty list means the compiler may take it. */
@@ -661,11 +664,138 @@ function candidateEdgeId(graph: ValidatableGraph): string {
  * as not a new cable's doing. Take it once to check many cables against the
  * same patch, e.g. every port a drag faces, rather than once per cable.
  */
+export type ConnectionAnalysis = {
+  graph: ValidatableGraph;
+  baseline: ReadonlySet<string>;
+  nodes: Map<string, GraphNode>;
+  wired: readonly WiredEdge[];
+  cables: ReadonlySet<string>;
+  counts: ReadonlyMap<string, number>;
+};
+const connectionAnalyses = new WeakMap<
+  ValidatableGraph,
+  Map<string, ConnectionAnalysis>
+>();
+
+/** One immutable patch's port/validation baseline, shared by all candidates. */
+export function prepareConnectionAnalysis(
+  graph: ValidatableGraph,
+  options?: ValidateOptions
+): ConnectionAnalysis {
+  const release = options?.release ?? "v1";
+  const variants = connectionAnalyses.get(graph) ?? new Map();
+  const cached = variants.get(release);
+  if (cached) {
+    return cached;
+  }
+  const { checked, issues, wired } = analyseGraph(graph, options);
+  const portWires = checked?.wired ?? wired;
+  const counts = new Map<string, number>();
+  for (const { edge } of portWires) {
+    for (const key of [
+      `${edge.source}\u0000${edge.sourceHandle}`,
+      `${edge.target}\u0000${edge.targetHandle}`,
+    ]) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const prepared: ConnectionAnalysis = {
+    baseline: new Set(issues.map(issueKey)),
+    cables: new Set(portWires.map(({ edge }) => connectionKey(graph, edge))),
+    counts,
+    graph,
+    nodes: new Map(graph.nodes.map((node) => [node.id, node])),
+    wired,
+  };
+  variants.set(release, prepared);
+  connectionAnalyses.set(graph, variants);
+  return prepared;
+}
+
+/** Extends a baseline with an isolated palette probe, without revalidating cables. */
+export function withConnectionProbe(
+  analysis: ConnectionAnalysis,
+  graph: ValidatableGraph,
+  probe: GraphNode
+): ConnectionAnalysis {
+  const nodes = new Map(analysis.nodes);
+  nodes.set(probe.id, probe);
+  return { ...analysis, graph, nodes };
+}
+
 export function connectionBaseline(
   graph: ValidatableGraph,
   options?: ValidateOptions
 ): ReadonlySet<string> {
-  return new Set(validate(graph, options).map(issueKey));
+  return prepareConnectionAnalysis(graph, options).baseline;
+}
+
+/** Port refusals need no new whole-graph analysis. Full ports still prefer feedback. */
+function quickConnectionIssues(
+  analysis: ConnectionAnalysis,
+  candidate: GraphEdge,
+  options?: ValidateOptions
+): Issue[] | null {
+  const context: Context = {
+    graph: analysis.graph,
+    issues: [],
+    nodes: analysis.nodes,
+    release: options?.release ?? "v1",
+  };
+  const wire = wireEdge(context, candidate);
+  if (!wire) {
+    return context.issues;
+  }
+  if (analysis.cables.has(connectionKey(analysis.graph, candidate))) {
+    edgeIssue(
+      context,
+      candidate,
+      "duplicate-edge",
+      "These are already connected"
+    );
+    return context.issues;
+  }
+  const full = [
+    {
+      key: `${candidate.source}\u0000${candidate.sourceHandle}`,
+      port: wire.from,
+    },
+    {
+      key: `${candidate.target}\u0000${candidate.targetHandle}`,
+      port: wire.to,
+    },
+  ].find(({ key, port }) => (analysis.counts.get(key) ?? 0) >= port.max);
+  if (!full) {
+    return null;
+  }
+  const isLoop = (id: string) => analysis.nodes.get(id)?.type === "loop";
+  const inCycles = (kind: "audio" | "control") => (entry: WiredEdge) =>
+    entry.from.kind === kind &&
+    (entry.to.kind === kind ||
+      (kind === "audio" && entry.to.kind === "sidechain")) &&
+    !(
+      kind === "audio" &&
+      (isLoop(entry.edge.source) || isLoop(entry.edge.target))
+    );
+  const feedbackKind = (["audio", "control"] as const).find((entry) =>
+    inCycles(entry)(wire)
+  );
+  // A full candidate never joins the cycle search. The baseline already
+  // contains its kept cables, so reachability preserves feedback priority.
+  if (
+    feedbackKind &&
+    reaches(
+      analysis.wired.filter(inCycles(feedbackKind)),
+      candidate.source,
+      candidate.target
+    )
+  ) {
+    const [code, message] = FEEDBACK[feedbackKind];
+    edgeIssue(context, candidate, code, message);
+  } else {
+    edgeIssue(context, candidate, "port-max", fullMessage(full.port));
+  }
+  return context.issues;
 }
 
 /**
@@ -677,7 +807,7 @@ export function validateConnection(
   graph: ValidatableGraph,
   connection: Connection,
   options?: ValidateOptions,
-  baseline?: ReadonlySet<string>
+  baseline?: ReadonlySet<string> | ConnectionAnalysis
 ): Issue[] {
   if (
     connection.id !== undefined &&
@@ -702,7 +832,16 @@ export function validateConnection(
     target: connection.target,
     targetHandle: connection.targetHandle ?? "",
   };
-  const before = baseline ?? connectionBaseline(graph, options);
+  const analysis =
+    baseline && "graph" in baseline
+      ? baseline
+      : prepareConnectionAnalysis(graph, options);
+  const quick = quickConnectionIssues(analysis, candidate, options);
+  if (quick) {
+    return quick;
+  }
+  const before =
+    baseline && !("graph" in baseline) ? baseline : analysis.baseline;
   return validate(
     { ...graph, edges: [...graph.edges, candidate] },
     options
@@ -733,7 +872,7 @@ export function connectionVerdict(
   graph: ValidatableGraph,
   connection: Connection,
   options?: ValidateOptions,
-  baseline?: ReadonlySet<string>
+  baseline?: ReadonlySet<string> | ConnectionAnalysis
 ): Verdict {
   const source = parseHandleId(connection.sourceHandle);
   const target = parseHandleId(connection.targetHandle);

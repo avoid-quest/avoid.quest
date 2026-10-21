@@ -866,10 +866,10 @@ function Canvas({
       unplugInSpace(dropTarget);
       return;
     }
-    if (
-      !dropTarget?.closest(".react-flow__pane") ||
-      paletteEntries(graph, { from }).length === 0
-    ) {
+    const entries =
+      dropTarget?.closest(".react-flow__pane") &&
+      paletteEntries(graph, { from, sinkSelection: true });
+    if (!entries?.length) {
       return;
     }
     const drop = screenToFlowPosition(pointer);
@@ -877,6 +877,7 @@ function Canvas({
     // right of it, so its port lands where the cable was let go.
     // It lands a little above, then moves level once measured.
     onOpenPalette({
+      available: { entries, graph },
       drop,
       edge: from.type === "target" ? "right" : "left",
       from,

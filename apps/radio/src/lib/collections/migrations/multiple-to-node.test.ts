@@ -979,6 +979,17 @@ describe("from raw localStorage", () => {
     expect(result.backup).toBeNull();
   });
 
+  test("migrates against saved stations still being recovered", async () => {
+    const result = await runRawStorageScenario({
+      crossTab: false,
+      damagedRadios: true,
+      restoreStateOnLoad: true,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.nodeStations).toEqual(["src-kexp", "src-rg_live"]);
+  });
+
   test("settings that fail validation elsewhere do not stop init", async () => {
     const result = await runRawStorageScenario({
       crossTab: false,

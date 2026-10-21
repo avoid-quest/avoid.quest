@@ -5,8 +5,10 @@ import { initializeSettings, settingsCollection } from "./settings";
 export async function initializeCriticalCollections(
   onSettingsReady?: () => void
 ) {
+  const radios = radiosCollection.preload().then(() => initializeRadios());
+  radiosInitialization = radios;
   const [syncChanges] = await Promise.all([
-    radiosCollection.preload().then(() => initializeRadios()),
+    radios,
     settingsCollection.preload().then(async () => {
       await initializeSettings();
       // Mode discovery need not wait for station defaults/migrations. Mounting
@@ -17,12 +19,21 @@ export async function initializeCriticalCollections(
   return syncChanges;
 }
 
+/**
+ * The latest radio init. Playback preparation waits for it: migrating a
+ * Multiple session keeps only stations the library holds, and stations
+ * recovered from damaged storage arrive only once init inserts them.
+ */
+let radiosInitialization: Promise<unknown> | undefined;
 let playbackPreparation: Promise<void> | undefined;
 
 /** Apply page-load restoration once, shared by independently loaded views. */
 export function preparePlaybackSessions(): Promise<void> {
-  playbackPreparation ??= import("./playback-sessions")
-    .then(({ initializePlaybackSessions }) => initializePlaybackSessions())
+  playbackPreparation ??= Promise.all([
+    import("./playback-sessions"),
+    radiosInitialization,
+  ])
+    .then(([{ initializePlaybackSessions }]) => initializePlaybackSessions())
     .catch((error: unknown) => {
       playbackPreparation = undefined;
       throw error;

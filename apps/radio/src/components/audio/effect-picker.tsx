@@ -121,12 +121,13 @@ export function PickerList<TItem extends PickerItem>({
   className?: string;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
+  // By id, so entries arriving around it keep it active; gone, the first is.
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const listId = useId();
   const list = useRef<HTMLDivElement>(null);
   function updateSearchQuery(event: ChangeEvent<HTMLInputElement>) {
     setSearchQuery(event.target.value);
-    setActiveIndex(0);
+    setActiveItemId(null);
   }
 
   const filtered = sections
@@ -137,7 +138,11 @@ export function PickerList<TItem extends PickerItem>({
     .filter((section) => section.items.length > 0);
 
   const items = filtered.flatMap((section) => section.items);
-  const active = items[Math.min(activeIndex, items.length - 1)];
+  const activeIndex = Math.max(
+    0,
+    items.findIndex((item) => item.id === activeItemId)
+  );
+  const active = items[activeIndex];
   const optionId = (id: string) => `${listId}-${id}`;
   const activeId = active ? optionId(active.id) : undefined;
   useEffect(() => {
@@ -152,7 +157,6 @@ export function PickerList<TItem extends PickerItem>({
     if (items.length === 0) {
       return;
     }
-    const index = Math.min(activeIndex, items.length - 1);
     if (event.key === "Enter" && active) {
       event.preventDefault();
       onSelect(active);
@@ -161,10 +165,10 @@ export function PickerList<TItem extends PickerItem>({
     let next: number;
     switch (event.key) {
       case "ArrowDown":
-        next = (index + 1) % items.length;
+        next = (activeIndex + 1) % items.length;
         break;
       case "ArrowUp":
-        next = (index - 1 + items.length) % items.length;
+        next = (activeIndex - 1 + items.length) % items.length;
         break;
       case "Home":
         next = 0;
@@ -176,7 +180,7 @@ export function PickerList<TItem extends PickerItem>({
         return;
     }
     event.preventDefault();
-    setActiveIndex(next);
+    setActiveItemId(items[next]?.id ?? null);
   }
 
   return (

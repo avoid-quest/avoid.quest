@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { LayoutTemplateIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 
@@ -657,4 +658,43 @@ test("effect picker chooses the second match from the search field", async () =>
   );
   fireEvent.keyDown(search, { key: "Enter" });
   expect(onSelect).toHaveBeenCalledWith(expected?.type);
+});
+
+test("the active result stays on its item when entries arrive before it", async () => {
+  const { PickerList } = await import("@/components/audio/effect-picker");
+  type Item = import("@/components/audio/effect-picker").PickerItem;
+  const onSelect = mock((_item: Item) => undefined);
+  const item = (id: string, name: string): Item => ({
+    icon: LayoutTemplateIcon,
+    id,
+    name,
+  });
+  const blank = item("blank", "Blank");
+  const sections = (sources: Item[]) => [
+    { items: sources, title: "Sources" },
+    { items: [blank], title: "Templates" },
+  ];
+  const list = (sources: Item[]) => (
+    <PickerList
+      emptyText="None"
+      onSelect={onSelect}
+      placeholder="Search nodes"
+      sections={sections(sources)}
+    />
+  );
+  const view = render(list([item("station", "Station")]));
+  const search = view.getByRole("searchbox", { name: "Search nodes" });
+  fireEvent.keyDown(search, { key: "End" });
+  view.rerender(
+    list([
+      item("station", "Station"),
+      item("mic", "Mic"),
+      item("line", "Line in"),
+    ])
+  );
+  expect(search.getAttribute("aria-activedescendant")).toBe(
+    view.getAllByRole("option").at(-1)?.id ?? ""
+  );
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onSelect).toHaveBeenCalledWith(blank);
 });

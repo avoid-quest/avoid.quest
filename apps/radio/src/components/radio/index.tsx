@@ -1,11 +1,6 @@
 import { captureError } from "@avoid.quest/error";
-import {
-  type ComponentType,
-  type LazyExoticComponent,
-  lazy,
-  Suspense,
-  useEffect,
-} from "react";
+import { Suspense, useEffect } from "react";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { usePlayerModeState } from "@/lib/hooks/use-settings";
@@ -18,23 +13,18 @@ import {
   loadSingleRadio,
 } from "./radio-mode-loader";
 
-function createLazyMode(
-  mode: PlayerMode,
-  load: typeof loadSingleRadio
-): LazyExoticComponent<ComponentType<{ radios?: Radio[] }>> {
-  return lazy(() =>
-    load().catch((error: unknown) => {
-      // React.lazy caches rejections too. A boundary reset needs a fresh type.
-      radioModeComponents[mode] = createLazyMode(mode, load);
-      throw error;
-    })
-  );
-}
-
+// A failed mode stays failed until Retry. Swapping in a fresh lazy type on
+// rejection would import again on React's re-render after the error, in a loop.
 const radioModeComponents = {
-  dj: createLazyMode("dj", loadDjPlayer),
-  node: createLazyMode("node", loadNodeRadios),
-  single: createLazyMode("single", loadSingleRadio),
+  dj: lazyWithRetry(loadDjPlayer),
+  node: lazyWithRetry(loadNodeRadios),
+  single: lazyWithRetry(loadSingleRadio),
+};
+
+const radioModeLabels: Record<PlayerMode, string> = {
+  dj: "DJ mode",
+  node: "Node mode",
+  single: "Single mode",
 };
 
 function RadioMode({ mode, radios }: { mode: PlayerMode; radios: Radio[] }) {
@@ -90,11 +80,14 @@ export function Radios() {
 
   const enabledRadios = radiosQuery.data ?? [];
 
+  // Keyed so that choosing another mode leaves a failed one behind.
   return (
-    <Suspense
-      fallback={<RadioLoadingSkeleton mode={runningMode} phase="mode" />}
-    >
-      <RadioMode mode={runningMode} radios={enabledRadios} />
-    </Suspense>
+    <LazyBoundary key={runningMode} label={radioModeLabels[runningMode]}>
+      <Suspense
+        fallback={<RadioLoadingSkeleton mode={runningMode} phase="mode" />}
+      >
+        <RadioMode mode={runningMode} radios={enabledRadios} />
+      </Suspense>
+    </LazyBoundary>
   );
 }

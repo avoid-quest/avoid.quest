@@ -1,7 +1,8 @@
 import { expect, mock, spyOn, test } from "bun:test";
+// biome-ignore lint/performance/noNamespaceImport: a restored spy keeps the shared reporting module real for other tests
+import * as errorSdk from "@avoid.quest/error";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
-import { Component, type ReactNode } from "react";
 
 const mode = process.env.AVOID_QUEST_RENDER_RETRY_MODE;
 
@@ -53,55 +54,61 @@ if (mode) {
     loadSingleRadio: load,
   }));
 
-  // biome-ignore lint/style/useReactFunctionComponents: React error boundaries need class lifecycle methods.
-  class RetryBoundary extends Component<
-    { children: ReactNode },
-    { error: Error | null }
-  > {
-    state = { error: null as Error | null };
-
-    static getDerivedStateFromError(error: Error) {
-      return { error };
-    }
-
-    reset = () => this.setState({ error: null });
-
-    render() {
-      return this.state.error ? (
-        <button onClick={this.reset} type="button">
-          Try again
-        </button>
-      ) : (
-        this.props.children
-      );
-    }
-  }
-
-  const { cleanup, fireEvent, render } = await import("@testing-library/react");
+  const { act, cleanup, fireEvent, render, waitFor } = await import(
+    "@testing-library/react"
+  );
   const { Radios } = await import("./index");
+  const labels: Record<string, string> = {
+    dj: "DJ mode",
+    node: "Node mode",
+    single: "Single mode",
+  };
+  const label = labels[mode];
+  // Lets any import React would start on its own reach the loader.
+  const settle = () =>
+    act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 
-  test(`${mode} recovers after the error boundary is reset`, async () => {
+  test(`${mode} waits for Retry after its chunk fails to load`, async () => {
     const errors = spyOn(console, "error").mockImplementation(() => undefined);
+    const captureError = spyOn(errorSdk, "captureError").mockImplementation(
+      () => undefined
+    );
     try {
-      const view = render(
-        <RetryBoundary>
-          <Radios />
-        </RetryBoundary>
+      const view = render(<Radios />);
+      const retry = await view.findByRole("button", { name: "Retry" });
+      expect(view.getByRole("alert").textContent).toBe(
+        `Couldn't load ${label}.`
       );
-      const retry = await view.findByRole("button", { name: "Try again" });
-      const previousAttempts = load.mock.calls.length;
-      canLoad = true;
+      expect(view.getByRole("button", { name: "Reload" })).toBeDefined();
+      await settle();
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(captureError).toHaveBeenCalledTimes(1);
+
+      // Each press imports once, even while the chunk keeps failing.
       fireEvent.click(retry);
+      await waitFor(() =>
+        expect(view.getByRole("alert").textContent).toBe(
+          `Couldn't load ${label}, even after retrying.`
+        )
+      );
+      await settle();
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(captureError).toHaveBeenCalledTimes(2);
+
+      canLoad = true;
+      fireEvent.click(view.getByRole("button", { name: "Retry" }));
       expect(await view.findByText("Mode ready")).toBeDefined();
-      expect(load).toHaveBeenCalledTimes(previousAttempts + 1);
+      expect(view.queryByRole("alert")).toBeNull();
+      expect(load).toHaveBeenCalledTimes(3);
     } finally {
       cleanup();
+      captureError.mockRestore();
       errors.mockRestore();
     }
   });
 } else {
   for (const playerMode of ["single", "node", "dj"]) {
-    test(`${playerMode} can retry a rejected lazy component`, async () => {
+    test(`${playerMode} retries a failed chunk only when asked`, async () => {
       const child = Bun.spawn([process.execPath, "test", import.meta.path], {
         env: { ...process.env, AVOID_QUEST_RENDER_RETRY_MODE: playerMode },
         stderr: "pipe",

@@ -1,0 +1,23 @@
+apps/radio/src/components/radio/dj/deck/deck-transport.test.tsx
+  s_db2676bf9b5672::t_aeb8c880ae8097 121-129
+apps/radio/src/components/radio/radio-now-playing.test.tsx
+  s_db2676bf9b5672::t_702bdfa4c0498b 77,84-86,751,841-861,876,883,888-895
+apps/radio/src/components/radio/radio-now-playing.tsx
+  s_db2676bf9b5672::t_00f2bb74b07ce2 31-35,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8eca738cb8945afbb996b453a38539344187ccff",
+  "prompts": {},
+  "sessions": {
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -383,5 +383,4 @@ class VolumeController {
   }
 }
 
-export type { VolumeControllerOptions };
 export { VolumeController };

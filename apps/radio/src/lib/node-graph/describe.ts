@@ -39,7 +39,7 @@ export function nodeLabel(node: GraphNode | undefined): string {
 }
 
 /** The port a handle id names on `node`, if it has one. */
-export function portOf(
+function portOf(
   node: GraphNode | undefined,
   handle: string | null | undefined
 ): NodePort | undefined {
@@ -59,7 +59,7 @@ function sentence(label: string): string {
  * A port as the end of a cable: "audio" for a main output, "input" for a
  * main input, otherwise its own name, e.g. "key input" or "branch 1".
  */
-export function portPhrase(port: NodePort | undefined): string {
+function portPhrase(port: NodePort | undefined): string {
   if (!port) {
     return "port";
   }

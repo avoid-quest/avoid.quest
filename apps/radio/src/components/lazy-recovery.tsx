@@ -15,7 +15,7 @@ import {
 import { createPortal } from "react-dom";
 
 /** A lazy chunk that could not load: offline, or replaced by a deploy. */
-export class LazyLoadError extends Error {
+class LazyLoadError extends Error {
   /** Lets the next render import the chunk again. */
   readonly reset: () => void;
   /** A retry failed too, so only a reload is likely to help. */
@@ -89,7 +89,7 @@ type LoadFailedProps = {
 // A reload stops playback, so it is only ever the listener's choice.
 const reload = () => window.location.reload();
 
-export function LoadFailed({
+function LoadFailed({
   label,
   onRetry,
   retried = false,

@@ -47,7 +47,7 @@ export type ExternalStationResolutionAdapters = {
   };
 };
 
-export type StationFields = {
+type StationFields = {
   description?: string;
   logoUrl?: string;
   name: string;

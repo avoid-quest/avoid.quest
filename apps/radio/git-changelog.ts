@@ -25,7 +25,7 @@ const REVERTED_COMMIT = /This reverts commit ([0-9a-f]{40})/g;
 const SQUASHED_COMMITS = /^\* /m;
 const HIDDEN_VALUES = new Set(["-", "no", "none", "skip"]);
 
-export type GitChangelogOptions = {
+type GitChangelogOptions = {
   /** Conventional commit types listed without a `Changelog:` line. */
   types?: string[];
   limit?: number;

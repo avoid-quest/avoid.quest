@@ -5,15 +5,11 @@
  * and engine conversion helpers.
  */
 
-export { EFFECT_DEFINITIONS, EFFECT_SCHEMAS } from "./effect-definitions.js";
+export { EFFECT_DEFINITIONS } from "./effect-definitions.js";
 export {
   convertEffectConfigToEngine,
-  convertEffectParamValue,
   convertPartialEffectConfigToEngine,
 } from "./engine-conversion.js";
 export * from "./param-traversal.js";
 export * from "./param-types.js";
-export {
-  UNIVERSAL_EFFECT_PARAM_DEFS,
-  UNIVERSAL_EFFECT_PARAM_KEYS,
-} from "./universal-params.js";
+export { UNIVERSAL_EFFECT_PARAM_DEFS } from "./universal-params.js";

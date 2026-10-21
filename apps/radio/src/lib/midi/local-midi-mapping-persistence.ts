@@ -10,7 +10,7 @@ import {
   type MidiTransform,
 } from "./types";
 
-export const MIDI_MAPPING_STORAGE_KEY = "radio-midi-mappings";
+const MIDI_MAPPING_STORAGE_KEY = "radio-midi-mappings";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

@@ -1,9 +1,4 @@
-export type WerkstattParamMapping =
-  | "unipolar"
-  | "linear"
-  | "exp"
-  | "int"
-  | "bool";
+type WerkstattParamMapping = "unipolar" | "linear" | "exp" | "int" | "bool";
 
 export type WerkstattParamDeclaration = {
   label: string;
@@ -14,7 +9,7 @@ export type WerkstattParamDeclaration = {
   unit: string;
 };
 
-export type WerkstattDeclarationSection = {
+type WerkstattDeclarationSection = {
   group: { label: string; color: string } | null;
   params: WerkstattParamDeclaration[];
   samples: string[];

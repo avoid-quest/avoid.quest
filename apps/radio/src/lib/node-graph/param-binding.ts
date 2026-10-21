@@ -17,10 +17,7 @@ export type ParamBinding = {
   factor?: number;
 };
 
-export function parameterValue(
-  node: GraphNode,
-  key: string
-): number | undefined {
+function parameterValue(node: GraphNode, key: string): number | undefined {
   let owner: object = node.data;
   if (isStripSource(node)) {
     owner = node.data.strip;

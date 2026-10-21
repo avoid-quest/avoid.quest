@@ -112,103 +112,6 @@ export type StreamStatus =
   | "error";
 
 /**
- * Stream buffer configuration
- */
-export type StreamBufferConfig = {
-  /** Minimum bytes before attempting decode (default: 128KB) */
-  minBufferSize: number;
-  /** Maximum buffer size before forcing clear (default: 512KB) */
-  maxBufferSize: number;
-  /** Bytes to retain on decode error (default: 64KB) */
-  retainOnError: number;
-  /** Minimum decoded chunks before playback starts (default: 4 = ~800ms) */
-  minPreBufferChunks: number;
-  /** Low watermark - trigger buffering state when chunks drop below this (default: 2) */
-  lowWatermarkChunks: number;
-  /** High watermark - exit buffering state when chunks reach this (default: 4) */
-  highWatermarkChunks: number;
-};
-
-/**
- * Default stream buffer configuration
- *
- * Lower values = more frequent, smaller decodes = smoother streaming
- * Higher values = fewer decodes but risk of playback gaps
- *
- * Note: With SharedArrayBuffer mode, watermarks are handled in samples by the
- * processor. These chunk-based values are for legacy mode and initial buffering.
- */
-export const defaultStreamBufferConfig: StreamBufferConfig = {
-  highWatermarkChunks: 4, // Exit buffering state when reaching 4 chunks (~800ms)
-  lowWatermarkChunks: 2, // Enter buffering state when below 2 chunks (~400ms)
-  maxBufferSize: 512 * 1024, // 512KB - fewer partial decodes
-  minBufferSize: 48 * 1024, // 48KB (~3 sec at 128kbps) - balanced startup vs codec alignment
-  minPreBufferChunks: 4, // 4 chunks = ~800ms of audio before playback
-  retainOnError: 64 * 1024, // 64KB - less data loss on failure
-};
-
-/**
- * Worklet processor message types (main thread → worklet)
- */
-export type WorkletMessageType =
-  | "CREATE_SOURCE"
-  | "START_SOURCE"
-  | "STOP_SOURCE"
-  | "PAUSE_SOURCE"
-  | "RESUME_SOURCE"
-  | "SEEK_SOURCE"
-  | "SET_SOURCE_VOLUME"
-  | "SET_SOURCE_PAN"
-  | "ADD_STREAM_CHUNK"
-  | "ADD_EFFECT"
-  | "REMOVE_EFFECT"
-  | "UPDATE_EFFECT"
-  | "REORDER_EFFECTS";
-
-/**
- * Worklet event types (worklet → main thread)
- */
-export type WorkletEventType =
-  | "SOURCE_ENDED"
-  | "SOURCE_ERROR"
-  | "STREAM_READY"
-  | "STREAM_UNDERRUN";
-
-/**
- * Generic message structure for worklet communication
- */
-export type WorkletMessage<T = unknown> = {
-  type: WorkletMessageType;
-  payload: T;
-};
-
-/**
- * Generic event structure from worklet
- */
-export type WorkletEvent<T = unknown> = {
-  type: WorkletEventType;
-  payload: T;
-};
-
-/**
- * Payload for starting a source
- */
-export type StartSourcePayload = {
-  sourceId: string;
-  when?: number;
-  offset?: number;
-  duration?: number;
-};
-
-/**
- * Payload for adding a stream chunk
- */
-export type AddStreamChunkPayload = {
-  sourceId: string;
-  chunk: Float32Array[];
-};
-
-/**
  * Payload for stream ready event
  */
 export type StreamReadyPayload = {
@@ -225,7 +128,7 @@ export type SourceEndedPayload = {
 /**
  * Error codes specific to worklet/DSP errors
  */
-export type WorkletErrorCode =
+type WorkletErrorCode =
   | "EFFECT_INIT_FAILED"
   | "EFFECT_PROCESS_FAILED"
   | "SOURCE_NOT_FOUND"

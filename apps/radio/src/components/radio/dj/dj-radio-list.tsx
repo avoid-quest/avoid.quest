@@ -16,8 +16,6 @@ import {
   getPlatformSourceDefinition,
   isPlatformPlaceholderItem,
   PLATFORM_ITEMS,
-  SEARCH_ALL_PLATFORM_ID,
-  STATIC_AUDIO_PLATFORM_ID,
 } from "@/lib/dj-library-sources";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -37,23 +35,9 @@ import {
 } from "../station-row";
 import { ExternalSearch } from "./external-search";
 
-export {
-  AUDIO_INPUT_PLATFORM_ID,
-  BANDCAMP_PLATFORM_ID,
-  MIXCLOUD_PLATFORM_ID,
-  PLATFORM_ITEMS,
-  RADIO_GARDEN_PLATFORM_ID,
-  SEARCH_ALL_PLATFORM_ID,
-  SOUNDCLOUD_PLATFORM_ID,
-  STATIC_AUDIO_PLATFORM_ID,
-  YOUTUBE_PLATFORM_ID,
-} from "@/lib/dj-library-sources";
-export const LOCAL_FILE_PLATFORM_ID = STATIC_AUDIO_PLATFORM_ID;
-export const EXTERNAL_PLATFORM_ID = SEARCH_ALL_PLATFORM_ID;
-
 type DeckId = "deck-a" | "deck-b";
 
-export function isPlatformItem(radio: Radio): boolean {
+function isPlatformItem(radio: Radio): boolean {
   return isPlatformPlaceholderItem(radio);
 }
 

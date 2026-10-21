@@ -19,7 +19,7 @@ export type StationDiscoveryCandidate = {
   source: Exclude<StationDiscoverySource, "local">;
 };
 
-export type StationDiscoveryAction =
+type StationDiscoveryAction =
   | { radio: Radio; type: "local" }
   | { radio: Radio; type: "radio-browser" }
   | { radio: Radio; type: "radio-garden" };
@@ -49,7 +49,7 @@ export type StationDirectoryAdapter = {
   ) => Promise<StationDiscoveryCandidate[]>;
 };
 
-export type StationStreamProbeAdapter = {
+type StationStreamProbeAdapter = {
   prepare: (
     candidate: StationDiscoveryCandidate,
     signal: AbortSignal

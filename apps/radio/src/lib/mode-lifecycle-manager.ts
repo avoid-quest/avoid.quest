@@ -16,7 +16,7 @@ import { isPlaybackActionError } from "./playback-action-errors";
 import { resetManagedAudioState } from "./playback-actions-shared.js";
 import { getSinglePlayback } from "./single-playback.js";
 
-export type ModePhase = "inactive" | "activating" | "active" | "deactivating";
+type ModePhase = "inactive" | "activating" | "active" | "deactivating";
 
 export type ModeLifecycle = {
   /** Load code before stopping the current mode; must not change playback. */
@@ -54,7 +54,7 @@ type CreateModeManagerOptions = {
   commitMode?: (mode: PlaybackSessionId) => void;
 };
 
-export type SwitchModeOptions = {
+type SwitchModeOptions = {
   /**
    * Whether to write the mode to settings once it is active (the default).
    * False follows a mode the settings already name: a legacy record the

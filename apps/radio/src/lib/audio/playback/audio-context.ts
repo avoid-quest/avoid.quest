@@ -19,7 +19,7 @@ const MOBILE_LATENCY_HINT_SECONDS = 128 / 48_000;
 /**
  * Callback for context state changes
  */
-export type ContextStateCallback = (state: NormalizedContextState) => void;
+type ContextStateCallback = (state: NormalizedContextState) => void;
 
 /** Keep openDAW's 48 kHz profile and use the lowest measured-stable mobile hint. */
 export function getAudioContextOptions(): AudioContextOptions {
@@ -405,15 +405,6 @@ export function getAudioContext(): AudioContext {
  */
 export function resumeAudioContext(): Promise<void> {
   return getAudioContextManager().resume();
-}
-
-/**
- * Suspend the shared AudioContext
- *
- * Call this when audio is not needed to save resources.
- */
-export function suspendAudioContext(): Promise<void> {
-  return getAudioContextManager().suspend();
 }
 
 export { AudioContextManager };

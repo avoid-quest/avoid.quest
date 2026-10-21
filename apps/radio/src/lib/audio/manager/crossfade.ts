@@ -207,44 +207,6 @@ export function crossfade(
 }
 
 /**
- * Fade in a sound
- *
- * @param soundId - ID of the sound to fade in
- * @param duration - Duration in milliseconds
- * @param targetVolume - Target volume (default: 1)
- * @param curve - Fade curve (default: 'linear')
- */
-export function fadeIn(
-  soundId: string,
-  duration: number,
-  targetVolume = 1,
-  curve: CrossfadeCurve = "linear"
-): Promise<void> {
-  const manager = AudioManager.getInstance();
-  const clampedDuration = Math.max(0, duration);
-
-  return (async () => {
-    if (!manager.hasSound(soundId)) {
-      return;
-    }
-
-    manager.setVolume(soundId, 0);
-
-    if (clampedDuration === 0) {
-      manager.setVolume(soundId, targetVolume);
-      return;
-    }
-
-    manager.scheduleVolumeCurve(
-      soundId,
-      createVolumeCurve(0, targetVolume, curve, "in"),
-      clampedDuration
-    );
-    await wait(clampedDuration);
-  })();
-}
-
-/**
  * Fade out a sound
  *
  * @param soundId - ID of the sound to fade out
@@ -289,55 +251,4 @@ export function fadeOut(
       manager.stopSound(soundId);
     }
   })();
-}
-
-/**
- * Duck a sound (reduce volume temporarily)
- *
- * Useful for ducking background music when playing announcements.
- *
- * @param soundId - ID of the sound to duck
- * @param duckLevel - Volume level during duck (0-1, default: 0.3)
- * @param fadeDuration - Duration of fade in/out in milliseconds (default: 300)
- */
-export async function duckSound(
-  soundId: string,
-  duckLevel = 0.3,
-  fadeDuration = 300
-): Promise<() => Promise<void>> {
-  const manager = AudioManager.getInstance();
-  const startVolume = manager.getSoundVolume(soundId) ?? 1;
-  const clampedDuration = Math.max(0, fadeDuration);
-
-  if (manager.hasSound(soundId)) {
-    if (clampedDuration === 0) {
-      manager.setVolume(soundId, duckLevel);
-    } else {
-      manager.scheduleVolumeCurve(
-        soundId,
-        createVolumeCurve(startVolume, duckLevel, "linear", "out"),
-        clampedDuration
-      );
-      await wait(clampedDuration);
-    }
-  }
-
-  // Return function to restore volume
-  return async () => {
-    if (!manager.hasSound(soundId)) {
-      return;
-    }
-
-    if (clampedDuration === 0) {
-      manager.setVolume(soundId, startVolume);
-      return;
-    }
-
-    manager.scheduleVolumeCurve(
-      soundId,
-      createVolumeCurve(duckLevel, startVolume, "linear", "in"),
-      clampedDuration
-    );
-    await wait(clampedDuration);
-  };
 }

@@ -5,16 +5,16 @@ import {
 } from "@/lib/audio/playback/display-audio";
 import type { Platform } from "@/lib/platform-types";
 
-export const AUDIO_INPUT_PLATFORM_ID = -3;
+const AUDIO_INPUT_PLATFORM_ID = -3;
 export const STATIC_AUDIO_PLATFORM_ID = -4;
-export const SEARCH_ALL_PLATFORM_ID = -6;
-export const RADIO_GARDEN_PLATFORM_ID = -7;
+const SEARCH_ALL_PLATFORM_ID = -6;
+const RADIO_GARDEN_PLATFORM_ID = -7;
 export const BANDCAMP_PLATFORM_ID = -8;
-export const SOUNDCLOUD_PLATFORM_ID = -9;
-export const YOUTUBE_PLATFORM_ID = -10;
+const SOUNDCLOUD_PLATFORM_ID = -9;
+const YOUTUBE_PLATFORM_ID = -10;
 // -11 and -14 are the tab-sharing sources below. -12 and -13 were the
 // retired Spotify and Mixcloud tab-sharing tiles; they are not reused.
-export const MIXCLOUD_PLATFORM_ID = -15;
+const MIXCLOUD_PLATFORM_ID = -15;
 
 const TAB_SHARING_PLATFORM_IDS = {
   "browser-audio": -11,

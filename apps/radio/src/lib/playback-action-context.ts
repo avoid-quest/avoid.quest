@@ -26,13 +26,13 @@ import {
   type PlaybackActionErrorReporter,
 } from "./playback-action-errors.js";
 
-export type MainOutputRouter = OutputRouting | null;
+type MainOutputRouter = OutputRouting | null;
 
-export type PlaybackAudioRoutingLifecycle = {
+type PlaybackAudioRoutingLifecycle = {
   mainOutputSettingsApplied: boolean;
 };
 
-export type PlaybackActionChannelFacade = {
+type PlaybackActionChannelFacade = {
   activate: (
     sessionId: PlaybackSessionId,
     channelId: string,

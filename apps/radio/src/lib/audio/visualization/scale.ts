@@ -83,26 +83,3 @@ export function generateLogFrequencies(
 
   return frequencies;
 }
-
-/**
- * Generate frequency points normalized to sample rate (0-0.5).
- * This is the format used by biquad coefficient calculations.
- */
-export function generateNormalizedFrequencies(
-  minHz: number,
-  maxHz: number,
-  numPoints: number,
-  sampleRate: number
-): Float32Array {
-  const frequencies = new Float32Array(numPoints);
-  const logMin = Math.log10(minHz);
-  const logMax = Math.log10(Math.min(maxHz, sampleRate / 2));
-
-  for (let i = 0; i < numPoints; i += 1) {
-    const t = i / (numPoints - 1);
-    const logFreq = logMin + t * (logMax - logMin);
-    frequencies[i] = 10 ** logFreq / sampleRate;
-  }
-
-  return frequencies;
-}

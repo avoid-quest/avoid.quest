@@ -34,7 +34,7 @@ import { isCanvasKey, type PaletteRequest } from "./node-palette";
 const DELETE_KEYS = ["Backspace", "Delete"];
 
 /** Halfway between a cable's two nodes, where a node picked for it lands. */
-export function cableMidpoint(
+function cableMidpoint(
   graph: NodeGraph,
   edgeId: string
 ): { x: number; y: number } | undefined {

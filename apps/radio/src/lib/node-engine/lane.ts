@@ -75,8 +75,6 @@ import { createParameters, type OwnerParameters } from "./params";
 
 export type StartResult = "playing" | "failed" | "refused" | "cancelled";
 
-export type { EffectsBackend } from "./effects-slot";
-
 /** What a lane needs from the engine that holds it. */
 export type LaneHost = {
   readonly subscribeEffectsRuntimeOutcome: AudioManager["subscribeEffectsRuntimeOutcome"];

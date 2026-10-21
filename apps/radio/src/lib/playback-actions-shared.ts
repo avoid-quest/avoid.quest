@@ -64,7 +64,7 @@ export function resetManagedAudioState(
   resetDefaultPlaybackActionContext();
 }
 
-export function getSessionMasterVolume(sessionId: PlaybackSessionId): number {
+function getSessionMasterVolume(sessionId: PlaybackSessionId): number {
   return getPlaybackSession(sessionId)?.masterVolume ?? 1;
 }
 

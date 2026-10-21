@@ -31,9 +31,6 @@ import {
   toRuntimeAudioError,
 } from "./playback-action-errors.js";
 
-export type ChannelState = PlaybackChannelRecord &
-  ReturnType<typeof getPlaybackChannelRuntime>;
-
 export { selectChannelRuntimeView } from "@/lib/stores/playback-runtime-store";
 
 /** A channel as views render it: everything but its meter-rate peak level. */
@@ -91,19 +88,6 @@ function getAudioManager(): AudioManager {
   return AudioManager.getInstance();
 }
 
-function mergeChannelState(
-  persisted: PlaybackChannelRecord | undefined,
-  runtime: ReturnType<typeof getPlaybackChannelRuntime>
-): ChannelState | null {
-  if (!persisted) {
-    return null;
-  }
-  return {
-    ...persisted,
-    ...runtime,
-  };
-}
-
 function syncChannelAudioField(
   manager: AudioManager,
   soundId: string,
@@ -151,16 +135,6 @@ function syncChannelAudioFields(
       syncChannelAudioField(manager, soundId, channel, field);
     }
   }
-}
-
-export function getChannelState(
-  sessionId: PlaybackSessionId,
-  channelId: string
-): ChannelState | null {
-  return mergeChannelState(
-    getPlaybackChannel(sessionId, channelId),
-    getPlaybackChannelRuntime(channelId)
-  );
 }
 
 export function useChannelState(
@@ -230,22 +204,6 @@ export function setChannelSpeed(
   speed: number
 ): void {
   updateChannel(sessionId, channelId, { speed }, ["speed"]);
-}
-
-export function setChannelFilterValue(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  channelFilter: number
-): void {
-  updateChannel(sessionId, channelId, { channelFilter }, ["channelFilter"]);
-}
-
-export function updateChannelFilter(
-  sessionId: PlaybackSessionId,
-  channelId: string,
-  filter: FilterConfig
-): void {
-  updateChannel(sessionId, channelId, { filter }, ["filter"]);
 }
 
 function reportChannelEffectsError(error: unknown): void {

@@ -1,66 +1,23 @@
 import type {
-  BandcampItemError,
-  BandcampItemResult,
   BandcampMetadata,
   BandcampTrackInfo,
-  MixcloudItemError,
-  MixcloudItemResult,
   MixcloudMetadata,
-  RadioGardenItemError,
-  RadioGardenItemResult,
   RadioGardenMetadata,
-  SoundCloudItemError,
-  SoundCloudItemResult,
   SoundCloudMetadata,
   SoundCloudTrackInfo,
-  SpotifyItemError,
-  SpotifyItemResult,
   SpotifyMetadata,
   SpotifyTrackInfo,
-  YouTubeItemError,
-  YouTubeItemResult,
   YouTubeMetadata,
   YouTubeTrackInfo,
 } from "@avoid.quest/platforms";
 
 // Re-export platform types from @avoid.quest/platforms
 export type {
-  BandcampItemError,
-  BandcampItemResponse,
-  BandcampItemResult,
-  BandcampItemType,
   BandcampMetadata,
-  BandcampTrackInfo,
-  MixcloudItemError,
-  MixcloudItemResponse,
-  MixcloudItemResult,
-  MixcloudItemType,
-  MixcloudMetadata,
-  RadioGardenItemError,
-  RadioGardenItemResponse,
-  RadioGardenItemResult,
-  RadioGardenMetadata,
   RadioGardenSearchResult,
-  SoundCloudItemError,
-  SoundCloudItemResponse,
-  SoundCloudItemResult,
-  SoundCloudItemType,
   SoundCloudMetadata,
-  SoundCloudTrackInfo,
-  SpotifyItemError,
-  SpotifyItemResponse,
-  SpotifyItemResult,
-  SpotifyItemType,
   SpotifyMetadata,
-  SpotifyTrackInfo,
-  YouTubeItemError,
-  YouTubeItemResponse,
-  YouTubeItemResult,
-  YouTubeItemType,
   YouTubeMetadata,
-  YouTubeSearchResponse,
-  YouTubeSearchResult,
-  YouTubeTrackInfo,
 } from "@avoid.quest/platforms";
 
 import type { ChannelSelection } from "@/lib/audio";
@@ -143,12 +100,6 @@ export function isFileMetadata(
   return metadata?.platform === "local-file";
 }
 
-export function isRadioGardenMetadata(
-  metadata: PlatformMetadata | undefined | null
-): metadata is RadioGardenMetadata {
-  return metadata?.platform === "radiogarden";
-}
-
 export type RadioBrowserMetadata = {
   platform: "radio-browser";
   itemType: "station";
@@ -178,9 +129,6 @@ export function isSpotifyMetadata(
 ): metadata is SpotifyMetadata {
   return metadata?.platform === "spotify";
 }
-
-// Re-export for convenience
-export type { FileAudioMetadata } from "@/lib/audio/file-metadata";
 
 // Unified platform types (app-level, includes device-input/static-audio/local-file)
 export type Platform =
@@ -214,35 +162,6 @@ export type PlatformTrack =
   | SpotifyTrackInfo
   | YouTubeTrackInfo
   | StaticAudioTrack;
-export type StaticAudioItemResult = {
-  success: true;
-  metadata: StaticAudioMetadata;
-  streamUrl: string;
-};
-export type StaticAudioItemError = {
-  success: false;
-  error: string;
-};
-export type StaticAudioItemResponse =
-  | StaticAudioItemResult
-  | StaticAudioItemError;
-export type PlatformItemResult =
-  | BandcampItemResult
-  | MixcloudItemResult
-  | RadioGardenItemResult
-  | SoundCloudItemResult
-  | SpotifyItemResult
-  | YouTubeItemResult
-  | StaticAudioItemResult;
-export type PlatformItemError =
-  | BandcampItemError
-  | MixcloudItemError
-  | RadioGardenItemError
-  | SoundCloudItemError
-  | SpotifyItemError
-  | YouTubeItemError
-  | StaticAudioItemError;
-export type PlatformItemResponse = PlatformItemResult | PlatformItemError;
 
 export type ScrapedOption = {
   value: string;

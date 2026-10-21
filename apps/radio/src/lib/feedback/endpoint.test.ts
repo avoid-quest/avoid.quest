@@ -24,8 +24,6 @@ mock.module("git-feedback/server", () => ({
 mock.module("@/lib/logger", () => ({
   logAuthFailure: mock(() => undefined),
   logRateLimitViolation: mock(() => undefined),
-  logSecurityEvent: mock(() => undefined),
-  logSSRFAttempt: mock(() => undefined),
 }));
 
 const VALID_SESSION_ID =

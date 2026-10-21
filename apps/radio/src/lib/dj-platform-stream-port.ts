@@ -169,9 +169,4 @@ export async function resolveDjPlatformStreamUrl(
   }
 }
 
-export type {
-  CanonicalPlatformStreamResolutionInput,
-  PlatformStreamResolution,
-  PlatformStreamResolutionInput,
-  SpotifyStreamResolutionInput,
-};
+export type { PlatformStreamResolution, PlatformStreamResolutionInput };

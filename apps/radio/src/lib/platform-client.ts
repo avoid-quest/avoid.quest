@@ -464,17 +464,6 @@ export async function searchRadioGarden(
   return result.data.results;
 }
 
-export async function searchRadioBrowser(query: string, limit: number) {
-  const { radioBrowserSearch } = await import(
-    "@/utils/radio-browser.functions"
-  );
-  const result = await radioBrowserSearch({ data: { limit, query } });
-  if (!result.ok) {
-    throw fromProblemError(result.error);
-  }
-  return result.data.results;
-}
-
 export function prepareRadioGardenSearchCandidate(
   candidate: RadioGardenSearchCandidate,
   signal?: AbortSignal

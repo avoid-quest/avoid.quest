@@ -1,4 +1,4 @@
-import type { Platform, PlatformMetadata } from "@/lib/platform-types";
+import type { PlatformMetadata } from "@/lib/platform-types";
 
 const COLLECTION_ITEM_TYPES: Readonly<Record<string, readonly string[]>> = {
   bandcamp: ["album", "artist", "collection"],
@@ -76,30 +76,4 @@ export function getCurrentTrackIndex(
   }
 
   return index === -1 ? 0 : index;
-}
-
-/**
- * Get placeholder text for platform URL input
- */
-export function getUrlPlaceholder(platform: Platform): string {
-  if (platform === "bandcamp") {
-    return "https://artist.bandcamp.com/track/song-name";
-  }
-  if (platform === "youtube") {
-    return "https://youtube.com/watch?v=dQw4w9WgXcQ";
-  }
-  return "https://soundcloud.com/artist/track-name";
-}
-
-/**
- * Get example URL text for platform
- */
-export function getUrlExample(platform: Platform): string {
-  if (platform === "bandcamp") {
-    return "Example: https://artist.bandcamp.com/album/album-name";
-  }
-  if (platform === "youtube") {
-    return "Example: https://youtube.com/playlist?list=PLxxxxxxxx";
-  }
-  return "Example: https://soundcloud.com/artist/sets/playlist-name";
 }

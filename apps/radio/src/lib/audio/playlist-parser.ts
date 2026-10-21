@@ -4,7 +4,7 @@
  * Parses M3U, M3U8, and PLS playlist formats.
  */
 
-export type ParsedPlaylistTrack = {
+type ParsedPlaylistTrack = {
   title: string;
   url: string;
   duration?: number;

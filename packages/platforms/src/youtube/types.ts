@@ -1,10 +1,3 @@
-export type AudioFormat = {
-  type: string;
-  url: string;
-  itag: string;
-  bitrate: string;
-};
-
 export type YouTubeItemType = "video" | "playlist";
 
 export type YouTubeTrackInfo = {

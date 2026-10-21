@@ -65,7 +65,7 @@ export const DRAWN_NODE_TYPES: readonly NodeType[] = [
   ),
 ];
 
-export function isDrawn(node: GraphNode): boolean {
+function isDrawn(node: GraphNode): boolean {
   return DRAWN_NODE_TYPES.includes(node.type);
 }
 
@@ -403,7 +403,7 @@ function isSilent(
  * audible audio cables reach through FX, up to the outputs, or a closed
  * Split's dry signal reaches past its branches.
  */
-export function liveNodeIds(
+function liveNodeIds(
   graph: Pick<NodeGraph, "nodes" | "edges">,
   liveLanes: ReadonlySet<string>,
   mix: Mix = NO_MIX

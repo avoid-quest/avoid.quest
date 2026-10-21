@@ -22,7 +22,7 @@ type SpotifyEmbedImage = {
   width?: number | null;
 };
 
-export type SpotifyEmbedTrack = {
+type SpotifyEmbedTrack = {
   uri?: string | null;
   title?: string | null;
   subtitle?: string | null;
@@ -30,7 +30,7 @@ export type SpotifyEmbedTrack = {
   entityType?: string | null;
 };
 
-export type SpotifyEmbedEntity = {
+type SpotifyEmbedEntity = {
   type?: string | null;
   id?: string | null;
   name?: string | null;

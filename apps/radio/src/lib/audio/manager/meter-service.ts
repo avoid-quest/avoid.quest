@@ -270,12 +270,5 @@ class MeterService {
   }
 }
 
-export type {
-  FallbackMeter,
-  FallbackMeterFactory,
-  MeterLevel,
-  MeterListener,
-  MeterNodeFactory,
-  OpenDawMeterNode,
-};
+export type { FallbackMeterFactory, MeterNodeFactory, OpenDawMeterNode };
 export { MeterService };

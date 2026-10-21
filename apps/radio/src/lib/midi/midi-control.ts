@@ -18,7 +18,7 @@ import {
   type MidiTransform,
 } from "./types";
 
-export type PersistedMidiControlState = {
+type PersistedMidiControlState = {
   activePresetId: string | null;
   enabled: boolean;
   mappings: MidiMapping[];

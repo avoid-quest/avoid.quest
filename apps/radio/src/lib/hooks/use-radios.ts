@@ -7,7 +7,6 @@ import {
   type RadioRecord,
   radiosCollection,
 } from "@/lib/collections/radios";
-import { generateId } from "@/lib/types";
 
 /**
  * Get all enabled radios sorted by order.
@@ -36,30 +35,6 @@ export function useAllRadios() {
 }
 
 /**
- * Get a single radio by ID.
- * NOTE: Uses useLiveQuery which doesn't support SSR.
- */
-export function useRadio(id: string | null) {
-  return useLiveQuery(
-    (q) =>
-      q
-        .from({ radio: radiosCollection })
-        .where(({ radio }) => eq(radio.id, id ?? "")),
-    [id]
-  );
-}
-
-/**
- * Add a new radio
- */
-export function addRadio(radio: Omit<RadioRecord, "id">): void {
-  radiosCollection.insert({
-    id: generateId(),
-    ...radio,
-  });
-}
-
-/**
  * Update a radio
  */
 export function updateRadio(
@@ -81,15 +56,6 @@ export function deleteRadio(id: string): void {
     addDismissedRadio(radio.name);
   }
   radiosCollection.delete(id);
-}
-
-/**
- * Toggle radio enabled state
- */
-export function toggleRadioEnabled(id: string): void {
-  radiosCollection.update(id, (draft) => {
-    draft.enabled = !draft.enabled;
-  });
 }
 
 /**

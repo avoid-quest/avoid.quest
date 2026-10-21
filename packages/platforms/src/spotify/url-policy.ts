@@ -4,7 +4,7 @@ import {
   parseHttpUrl,
 } from "../url-policy/hostname.js";
 
-export const SPOTIFY_HOST = "spotify.com";
+const SPOTIFY_HOST = "spotify.com";
 export const SPOTIFY_OPEN_HOST = "open.spotify.com";
 
 // `play.spotify.com` is the legacy web player; it redirects to `open`.

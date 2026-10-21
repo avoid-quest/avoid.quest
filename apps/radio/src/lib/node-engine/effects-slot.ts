@@ -20,8 +20,6 @@ import type { EffectWriteResult } from "@/lib/audio/manager/effects-graph-runtim
 import type { EffectsRuntimeOutcome } from "@/lib/channel-effects";
 import type { LanePlan } from "@/lib/node-graph/compile";
 
-export type EffectsBackend = EffectsRuntimeOutcome["backend"];
-
 /**
  * What an FX node's badge says. None while its lane runs as planned or has
  * no effects runtime; `compat` on the compatibility worklet, with why when

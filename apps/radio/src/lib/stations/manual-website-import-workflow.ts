@@ -1,12 +1,12 @@
 import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
 import { parseRadioMetadataFromDocument } from "@/lib/radio-scraper";
 
-export type ManualWebsiteImportError = {
+type ManualWebsiteImportError = {
   code: ManualWebsiteImportErrorCode;
   message: string;
 };
 
-export type ManualWebsiteImportErrorCode =
+type ManualWebsiteImportErrorCode =
   | "INVALID_WEBSITE_URL"
   | "MISSING_WEBSITE_URL"
   | "WEBSITE_FETCH_FAILED"
@@ -21,7 +21,7 @@ export type ManualWebsiteImportDraft = {
   fields: ManualWebsiteImportFields;
 };
 
-export type ManualWebsiteImportFields = {
+type ManualWebsiteImportFields = {
   description: string;
   logoUrl: string;
   name: string;
@@ -41,7 +41,7 @@ export type ManualWebsiteImportDependencies = {
 const CORS_PROXY = "https://api.allorigins.win/raw?url=";
 const FETCH_TIMEOUT = 10_000;
 
-export function validateManualWebsiteImportUrl(
+function validateManualWebsiteImportUrl(
   websiteUrl: string
 ): ManualWebsiteImportResult<string> {
   const trimmedUrl = websiteUrl.trim();

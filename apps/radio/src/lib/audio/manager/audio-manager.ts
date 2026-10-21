@@ -70,18 +70,10 @@ import { VolumeController } from "./volume-controller.js";
 /**
  * Worklet processor URL - should be set before use
  */
-let workletProcessorUrl = "/dsp-processor-bundle.js";
-
-/**
- * Set the worklet processor URL
- */
-export function setWorkletProcessorUrl(url: string): void {
-  workletProcessorUrl = url;
-}
+const workletProcessorUrl = "/dsp-processor-bundle.js";
 
 export type {
   FilterConfig,
-  MainOutputConnect,
   SoundOutputConnector,
 } from "./audio-manager-types.js";
 

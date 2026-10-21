@@ -61,7 +61,7 @@ function useSoloedOut(nodeId: string, store: NodeStore): boolean {
 }
 
 /** The lane's runtime by source node id: its sound and play state. */
-export function useLaneRuntime(nodeId: string) {
+function useLaneRuntime(nodeId: string) {
   return usePlaybackChannelRuntimeView(laneChannelId(nodeId));
 }
 

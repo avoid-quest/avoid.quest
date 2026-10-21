@@ -1,0 +1,73 @@
+packages/ui/src/stories/overlays.stories.tsx
+  s_01b86d75c95cdd::t_ca7c5c8fbbd115 1-190
+packages/ui/package.json
+  s_dcf2d22d00816e::t_c9ceabcaeca0fd 15-16,18,53-58,62,64-65,67-69
+packages/ui/.storybook/main.ts
+  s_d32dfaa4964d8e::t_77513f359bf81a 1-26
+packages/ui/src/stories/sliders.stories.tsx
+  s_fc0ba1dee2af24::t_5f3500edd970b5 1-107
+packages/ui/vitest.shims.d.ts
+  s_d32dfaa4964d8e::t_2706fd14c31464 1
+packages/ui/src/stories/form-controls.stories.tsx
+  s_fc0ba1dee2af24::t_b4cbdaa6834bc0 1-116
+turbo.json
+  s_d32dfaa4964d8e::t_8de6d921aeb977 89-100
+packages/ui/src/stories/select.stories.tsx
+  s_dcf2d22d00816e::t_5e6f127c1fd649 1-67
+.gitignore
+  s_dcf2d22d00816e::t_f38a2a8281894e 58-60
+packages/ui/.storybook/preview.tsx
+  s_d32dfaa4964d8e::t_98e0c9470c2eb5 1-30
+packages/ui/src/stories/navigation.stories.tsx
+  s_dcf2d22d00816e::t_be18abef554743 1-84
+packages/ui/vitest.config.ts
+  s_d32dfaa4964d8e::t_0487f8aaea6623 1-29
+packages/ui/src/stories/button.stories.tsx
+  s_fc0ba1dee2af24::t_afc5830302486d 1-77
+bun.lock
+  s_dcf2d22d00816e::t_648c11f0cd7754 191-196,200,202-203,206-207,257-258,375-376,475,477,479,611-612,625-626,695,697,699,701,703,705,707,709,711,713,715,717,719,721,723,725,727,729,731-733,737-776,937-938,1083-1102,1189-1190,1193-1194,1211-1218,1221-1222,1235-1238,1247-1248,1257-1258,1269-1284,1303-1304,1345-1348,1351-1352,1405-1406,1415-1416,1421-1422,1479-1480,1509-1510,1513-1516,1519-1520,1543-1544,1583-1585,1591-1596,1603-1604,1629-1630,1641-1642,1655-1656,1689-1690,1719-1720,1727-1728,1737-1738,1749-1750,1843-1844,1881-1882,1887-1888,1953-1957,1983-1984,1991-1992,2003-2008,2041-2044,2063-2066,2079-2080,2101-2102,2135-2136,2159-2162,2173-2174,2177-2178,2183-2184,2205-2208,2215-2218,2225-2226,2237-2238,2243-2244,2293,2321-2322,2375-2376,2389-2390,2439-2442,2487-2488,2491-2498,2503-2504,2511-2512,2537-2538,2559-2574,2577-2590,2601-2602,2649-2650,2675-2676,2681-2686,2715-2720,2735-2736,2763-2808,2841-2848,2851-2856,2937-2938,2943-2944,2960-2963
+packages/ui/src/stories/feedback.stories.tsx
+  s_fc0ba1dee2af24::t_407dd7b01da085 1-115
+packages/ui/.storybook/storybook.css
+  s_dcf2d22d00816e::t_4abfa5b39cca97 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f44fbc888850bb961a019d6feedbc8127703431",
+  "prompts": {},
+  "sessions": {
+    "s_01b86d75c95cdd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a155b3-2933-7ba3-a0eb-ea4512622a70",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_d32dfaa4964d8e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a155b8-1ae0-7431-ac0b-b46433418bea",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_dcf2d22d00816e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_dcf2d22d00816e",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_fc0ba1dee2af24": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a155b8-836c-7a80-8f0d-d43e45bbbe68",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

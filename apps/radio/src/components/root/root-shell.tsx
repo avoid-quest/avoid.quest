@@ -39,7 +39,6 @@ export function RootShell({ children }: { children: React.ReactNode }) {
 
   return (
     <html lang="en" suppressHydrationWarning>
-      {/* biome-ignore lint/style/noHeadElement: TanStack Router requires <head> in shellComponent */}
       <head>
         <HeadContent />
         <script

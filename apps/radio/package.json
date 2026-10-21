@@ -51,8 +51,7 @@
     "react-dom": "catalog:",
     "react-hook-form": "^7.89.0",
     "sonner": "catalog:",
-    "zod": "catalog:",
-    "zustand": "^5.0.15"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.64.0",

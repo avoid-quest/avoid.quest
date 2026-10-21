@@ -3,29 +3,12 @@
   "files": {
     "ignoreUnknown": false,
     "includes": [
-      "!**/.next",
-      "!**/.astro",
       "!**/*.astro",
-      "!**/dist",
-      "!**/.turbo",
-      "!**/dev-dist",
       "!**/.zed",
       "!**/.vscode",
       "!**/routeTree.gen.ts",
-      "!**/src-tauri",
-      "!**/.nuxt",
-      "!bts.jsonc",
-      "!**/.expo",
-      "!**/.wrangler",
-      "!**/.svelte-kit",
       "!**/wrangler.jsonc",
-      "!**/.source",
-      "!**/cloudflare-env.d.ts",
-      "!**/*-bundle.js",
-      "!**/*-bundle.d.ts",
-      "!**/_generated/**/*.ts",
-      "!**/_generated/**/*.js",
-      "!**/packages/_archived"
+      "!**/cloudflare-env.d.ts"
     ]
   },
   "overrides": [
@@ -44,34 +27,14 @@
           }
         }
       }
-    },
-    {
-      "includes": ["**/_generated/**"],
-      "linter": {
-        "enabled": false
-      },
-      "formatter": {
-        "enabled": false
-      }
-    },
-    {
-      "includes": ["**/packages/_archived/**"],
-      "linter": {
-        "enabled": false
-      }
     }
   ],
   "javascript": {
     "globals": [
       "Bun",
       "AudioWorkletProcessor",
-      "AudioWorkletNodeOptions",
-      "AudioParam",
-      "MessagePort",
-      "AutomationRate",
       "registerProcessor",
       "sampleRate",
-      "BUFFER_SIZE",
       "__APP_VERSION__",
       "__SENTRY_RELEASE__",
       "__CHANGELOG_NEWEST_DATE__"
@@ -86,8 +49,7 @@
         }
       },
       "performance": {
-        "noBarrelFile": "off",
-        "noImgElement": "off"
+        "noBarrelFile": "off"
       },
       "suspicious": {
         "noConsole": "off"
@@ -113,7 +75,6 @@
   "extends": [
     "ultracite/biome/core",
     "ultracite/biome/react",
-    "ultracite/biome/remix",
-    "ultracite/biome/next"
+    "ultracite/biome/tanstack"
   ]
 }

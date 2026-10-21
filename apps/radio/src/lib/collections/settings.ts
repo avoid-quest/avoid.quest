@@ -58,20 +58,26 @@ let replacedPlayerMode: string | undefined;
 
 const settingsStorage = createMemoryFallbackStorage();
 
-export const settingsCollection = createCollection(
-  localStorageCollectionOptions({
-    // Keep rows resident: the app reads `.state` outside live queries, and
-    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
-    gcTime: 0,
-    getKey: (item) => item.id,
-    id: "settings",
-    schema: settingsSchema,
-    startSync: true,
-    storage: settingsStorage.storage,
-    storageEventApi: settingsStorage.storageEventApi,
-    storageKey: SETTINGS_STORAGE_KEY,
-  })
-);
+const settingsCollectionOptions = localStorageCollectionOptions({
+  // Keep rows resident: the app reads `.state` outside live queries, and
+  // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+  gcTime: 0,
+  getKey: (item) => item.id,
+  id: "settings",
+  schema: settingsSchema,
+  startSync: true,
+  storage: settingsStorage.storage,
+  storageEventApi: settingsStorage.storageEventApi,
+  storageKey: SETTINGS_STORAGE_KEY,
+});
+// TanStack's metadata callback reads window.localStorage again on every write.
+// This collection always uses our custom adapter, even when storage is blocked.
+settingsCollectionOptions.sync.getSyncMetadata = () => ({
+  storageKey: SETTINGS_STORAGE_KEY,
+  storageType: "custom",
+});
+
+export const settingsCollection = createCollection(settingsCollectionOptions);
 
 /** The newest What's new entry's date, set by the build; none in tests. */
 function getNewestChangelogDate(): string | undefined {
@@ -124,10 +130,7 @@ function insertStartupSettings(rows: SettingsRecord[]): Promise<void> {
 }
 
 function recoverStoredSettings(): SettingsRecord[] {
-  if (typeof localStorage === "undefined") {
-    return [];
-  }
-  const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+  const raw = settingsStorage.storage?.getItem(SETTINGS_STORAGE_KEY);
   if (!raw) {
     return [];
   }

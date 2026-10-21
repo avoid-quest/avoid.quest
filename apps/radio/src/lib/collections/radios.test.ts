@@ -544,6 +544,29 @@ describe("damaged local storage", () => {
 });
 
 describe("storage that refuses writes at startup", () => {
+  test.each(["acquisition", "read"])(
+    "opens with default stations when storage %s is blocked",
+    async (blocked) => {
+      if (blocked === "acquisition") {
+        const descriptor = {
+          configurable: true,
+          get: () => {
+            throw new DOMException("Storage blocked", "SecurityError");
+          },
+        };
+        Object.defineProperty(window, "localStorage", descriptor);
+        Object.defineProperty(globalThis, "localStorage", descriptor);
+      } else {
+        spyOn(storage, "getItem").mockImplementation(() => {
+          throw new DOMException("Storage blocked", "SecurityError");
+        });
+      }
+      const { initializeRadios, radiosCollection } = await reloadRadios();
+      await expect(initializeRadios()).resolves.toBeNull();
+      expect(radiosCollection.state.size).toBe(defaultRadios.length);
+    }
+  );
+
   test("opens with the default stations in memory for the visit", async () => {
     const { initializeRadios, radiosCollection, reorderRadios } =
       await reloadRadios();

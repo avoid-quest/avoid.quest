@@ -99,20 +99,26 @@ export type RadioRecord = z.infer<typeof radioSchema>;
 
 const radiosStorage = createMemoryFallbackStorage();
 
-export const radiosCollection = createCollection(
-  localStorageCollectionOptions({
-    // Keep rows resident: the app reads `.state` outside live queries, and
-    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
-    gcTime: 0,
-    getKey: (item) => item.id,
-    id: "radios",
-    schema: radioSchema,
-    startSync: true,
-    storage: radiosStorage.storage,
-    storageEventApi: radiosStorage.storageEventApi,
-    storageKey: RADIOS_STORAGE_KEY,
-  })
-);
+const radiosCollectionOptions = localStorageCollectionOptions({
+  // Keep rows resident: the app reads `.state` outside live queries, and
+  // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+  gcTime: 0,
+  getKey: (item) => item.id,
+  id: "radios",
+  schema: radioSchema,
+  startSync: true,
+  storage: radiosStorage.storage,
+  storageEventApi: radiosStorage.storageEventApi,
+  storageKey: RADIOS_STORAGE_KEY,
+});
+// TanStack's metadata callback reads window.localStorage again on every write.
+// This collection always uses our custom adapter, even when storage is blocked.
+radiosCollectionOptions.sync.getSyncMetadata = () => ({
+  storageKey: RADIOS_STORAGE_KEY,
+  storageType: "custom",
+});
+
+export const radiosCollection = createCollection(radiosCollectionOptions);
 
 /**
  * Sync changes detected between current radios and defaults
@@ -353,10 +359,7 @@ function preserveCorruptData(key: string, raw: string): void {
 }
 
 function recoverStoredRadios(): RadioRecord[] {
-  if (typeof localStorage === "undefined") {
-    return [];
-  }
-  const raw = localStorage.getItem(RADIOS_STORAGE_KEY);
+  const raw = radiosStorage.storage?.getItem(RADIOS_STORAGE_KEY);
   if (!raw) {
     return [];
   }

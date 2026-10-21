@@ -207,6 +207,31 @@ describe("damaged saved settings", () => {
     expect(recovered.settingsCollection.state.size).toBe(0);
   });
 
+  test.each(["acquisition", "read"])(
+    "opens with default settings when storage %s is blocked",
+    async (blocked) => {
+      if (blocked === "acquisition") {
+        const descriptor = {
+          configurable: true,
+          get: () => {
+            throw new DOMException("Storage blocked", "SecurityError");
+          },
+        };
+        Object.defineProperty(window, "localStorage", descriptor);
+        Object.defineProperty(globalThis, "localStorage", descriptor);
+      } else {
+        spyOn(storage, "getItem").mockImplementation(() => {
+          throw new DOMException("Storage blocked", "SecurityError");
+        });
+      }
+      const recovered = await reloadSettings();
+      await recovered.initializeSettings();
+      expect(recovered.getSettings()?.player.mode).toBe("single");
+      recovered.setPlayerMode("dj");
+      expect(recovered.getSettings()?.player.mode).toBe("dj");
+    }
+  );
+
   test("keeps defaults in memory for the visit if they cannot be saved", async () => {
     const { getSettings: read, initializeSettings: initialize } =
       await reloadSettings();

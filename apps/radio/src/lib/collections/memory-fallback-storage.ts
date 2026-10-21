@@ -18,32 +18,48 @@ export type MemoryFallbackStorage = {
   ) => Promise<void>;
 };
 
-/** localStorage for one collection, or memory once a startup write fails. */
+/** localStorage for one collection, or memory when storage is unavailable. */
 export function createMemoryFallbackStorage(): MemoryFallbackStorage {
   let keepInMemory = false;
   const memory = new Map<string, string>();
   // Resolved as TanStack DB does, so a page without a window keeps its default.
-  const browserStorage =
-    typeof window === "undefined" ? undefined : window.localStorage;
+  let browserStorage: StorageApi | undefined;
+  try {
+    browserStorage =
+      typeof window === "undefined" ? undefined : window.localStorage;
+  } catch {
+    keepInMemory = true;
+  }
 
-  const storage: StorageApi | undefined = browserStorage && {
-    getItem: (key) =>
-      keepInMemory ? (memory.get(key) ?? null) : browserStorage.getItem(key),
-    removeItem: (key) => {
-      if (keepInMemory) {
-        memory.delete(key);
-      } else {
-        browserStorage.removeItem(key);
-      }
-    },
-    setItem: (key, value) => {
-      if (keepInMemory) {
-        memory.set(key, value);
-      } else {
-        browserStorage.setItem(key, value);
-      }
-    },
-  };
+  const storage: StorageApi | undefined =
+    typeof window === "undefined"
+      ? undefined
+      : {
+          getItem: (key) => {
+            if (!keepInMemory && browserStorage) {
+              try {
+                return browserStorage.getItem(key);
+              } catch {
+                keepInMemory = true;
+              }
+            }
+            return memory.get(key) ?? null;
+          },
+          removeItem: (key) => {
+            if (keepInMemory || !browserStorage) {
+              memory.delete(key);
+            } else {
+              browserStorage.removeItem(key);
+            }
+          },
+          setItem: (key, value) => {
+            if (keepInMemory || !browserStorage) {
+              memory.set(key, value);
+            } else {
+              browserStorage.setItem(key, value);
+            }
+          },
+        };
 
   const forwarded = new WeakMap<StorageListener, StorageListener>();
 

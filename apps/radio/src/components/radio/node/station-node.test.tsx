@@ -225,3 +225,16 @@ describe("StationNodeBody", () => {
     expect(seen).toEqual(["Ctrl+z"]);
   });
 });
+
+test("a filled Station removes its own node separately from the station library action", () => {
+  const onRemove = mock(() => undefined);
+  const onDelete = mock(() => undefined);
+  const view = renderBody({ onDelete, onRemove, radio: kexp });
+  fireEvent.keyDown(view.getByRole("button", { name: "Options for KEXP" }), {
+    key: "Enter",
+  });
+  expect(view.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+  fireEvent.click(view.getByRole("menuitem", { name: "Remove node" }));
+  expect(onRemove).toHaveBeenCalledTimes(1);
+  expect(onDelete).not.toHaveBeenCalled();
+});

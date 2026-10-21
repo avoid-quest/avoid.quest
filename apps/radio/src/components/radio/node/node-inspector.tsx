@@ -444,7 +444,7 @@ export function NodeInspector({
         }}
         open={open && inspected !== undefined}
       >
-        <DrawerContent>
+        <DrawerContent data-node-inspector>
           <DrawerHeader className="sr-only">
             <DrawerTitle>{title} settings</DrawerTitle>
             <DrawerDescription>Every setting of this node.</DrawerDescription>

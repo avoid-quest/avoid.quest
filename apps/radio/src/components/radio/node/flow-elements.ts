@@ -23,6 +23,10 @@ import {
   type MergeRole,
 } from "@/lib/node-graph/compile";
 import { edgeLabel, nodeLabel } from "@/lib/node-graph/describe";
+import {
+  controlDepth,
+  modulationParameters,
+} from "@/lib/node-graph/modulation-parameters";
 import type { Unapplied } from "@/lib/node-graph/modulation-runtime";
 import { MODULATION_NODE_TYPES } from "@/lib/node-graph/modulation-schema";
 import type { NodeSelection } from "@/lib/node-graph/node-store";
@@ -228,7 +232,12 @@ export type KeyEdgeData = { idle: string | null };
  * What a modulation cable draws: why the runtime doesn't wholly apply it, or
  * null while it does.
  */
-export type ControlEdgeData = { unapplied: Unapplied | null };
+export type ControlEdgeData = {
+  depth: number;
+  label: string;
+  muted: boolean;
+  unapplied: Unapplied | null;
+};
 
 /** A cable's tag past its depth: what of it the runtime applies. */
 export const unappliedTag = (unapplied: Unapplied) =>
@@ -240,7 +249,8 @@ export const unappliedTag = (unapplied: Unapplied) =>
  * object, so one that comes out the same as last time is handed back as
  * it was: a knob tick or a drag move then re-renders only what it changed.
  */
-const drawnNodes = new WeakMap<GraphNode, FlowNode>();
+const drawnNodes = new WeakMap<FlowNode, FlowNode>();
+const baseNodes = new WeakMap<GraphNode, FlowNode>();
 const drawnEdges = new WeakMap<GraphEdge, FlowEdge>();
 
 /** `next`, or the element last drawn for `key` when it is the same. */
@@ -280,19 +290,44 @@ function sameDrawn(a: unknown, b: unknown): boolean {
   );
 }
 
-function mergeData(
-  graph: NodeGraph,
-  node: GraphNode,
-  roles: ReadonlyMap<string, MergeRole>
-): MergeNodeData {
+function mergeData(graph: NodeGraph, node: GraphNode): MergeNodeData {
   return {
     inputs: graph.edges.filter(
       (edge) =>
         edge.target === node.id &&
         parseHandleId(edge.targetHandle)?.kind === "audio"
     ).length,
-    role: roles.get(node.id) ?? null,
+    role: null,
   };
+}
+
+const NO_MERGE_ROLES: ReadonlyMap<string, MergeRole> = new Map();
+const nodePresentations = new WeakMap<NodeGraph, FlowNode[]>();
+
+function graphPresentation(graph: NodeGraph): FlowNode[] {
+  const cached = nodePresentations.get(graph);
+  if (cached) {
+    return cached;
+  }
+  const nodes = graph.nodes.filter(isDrawn).map((node): FlowNode => {
+    let data: FlowNode["data"] = node.data;
+    if (node.type === "merge") {
+      data = mergeData(graph, node);
+    } else if (node.type === "deviceIn") {
+      data = { ...node.data, feedsOutput: feedsOutput(graph, node.id) };
+    }
+    return reuseDrawn(baseNodes, node, {
+      ariaLabel: nodeLabel(node),
+      data,
+      deletable: node.type !== "speakers",
+      domAttributes: { "aria-roledescription": "audio module" },
+      id: node.id,
+      position: node.position,
+      type: node.type,
+    });
+  });
+  nodePresentations.set(graph, nodes);
+  return nodes;
 }
 
 export function toFlowNodes(
@@ -301,7 +336,7 @@ export function toFlowNodes(
     selection,
     positions,
     measured,
-    mergeRoles = new Map(),
+    mergeRoles = NO_MERGE_ROLES,
   }: {
     selection: NodeSelection;
     /** Positions mid-drag, not yet committed. */
@@ -311,31 +346,16 @@ export function toFlowNodes(
     mergeRoles?: ReadonlyMap<string, MergeRole>;
   }
 ): FlowNode[] {
-  const dataOf = (node: GraphNode) => {
-    if (node.type === "merge") {
-      return mergeData(graph, node, mergeRoles);
-    }
-    if (node.type === "deviceIn") {
-      const data: AudioInputNodeData = {
-        ...node.data,
-        feedsOutput: feedsOutput(graph, node.id),
-      };
-      return data;
-    }
-    return node.data;
-  };
-  return graph.nodes.filter(isDrawn).map((node) =>
+  return graphPresentation(graph).map((node) =>
     reuseDrawn(drawnNodes, node, {
-      // Named like its cables, so "KEXP, audio module" rather than a bare role.
-      ariaLabel: nodeLabel(node),
-      data: dataOf(node),
-      deletable: node.type !== "speakers",
-      domAttributes: { "aria-roledescription": "audio module" },
-      id: node.id,
+      ...node,
+      data:
+        node.type === "merge"
+          ? { ...node.data, role: mergeRoles.get(node.id) ?? null }
+          : node.data,
       measured: measured.get(node.id),
       position: positions.get(node.id) ?? node.position,
       selected: selection.nodes.includes(node.id),
-      type: node.type,
     })
   );
 }
@@ -493,11 +513,26 @@ function keyOf(
  */
 function controlOf(
   edge: GraphEdge,
+  target: GraphNode | undefined,
   label: string,
   unappliedModulation: Readonly<Record<string, Unapplied>>
 ): Pick<FlowEdge, "ariaLabel" | "className" | "data" | "type"> {
   const unapplied = unappliedModulation[edge.id] ?? null;
-  const data: ControlEdgeData = { unapplied };
+  const parameters =
+    target && edge.targetHandle === "in:control:parameter"
+      ? modulationParameters(target)
+      : [];
+  const parameter = parameters.find(
+    (entry) => entry.key === (edge.parameter ?? parameters[0]?.key)
+  );
+  const data: ControlEdgeData = {
+    depth: controlDepth(edge),
+    label:
+      parameter?.label ??
+      (edge.targetHandle.endsWith(":gate") ? "Gate" : "Control"),
+    muted: edge.muted,
+    unapplied,
+  };
   return {
     ariaLabel: unapplied
       ? `${label}, ${unappliedTag(unapplied)}: ${unapplied.why}`
@@ -564,7 +599,7 @@ export function toFlowEdges(
             )
           : undefined),
         ...(kind === "control"
-          ? controlOf(edge, label, unappliedModulation)
+          ? controlOf(edge, drawn.get(edge.target), label, unappliedModulation)
           : undefined),
         domAttributes: { "aria-roledescription": "cable" },
         id: edge.id,

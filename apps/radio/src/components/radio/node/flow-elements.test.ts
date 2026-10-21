@@ -1192,3 +1192,136 @@ describe("flow elements", () => {
     ]);
   });
 });
+
+test("50-node drag frames reuse input feedback and Merge presentation until the graph changes", () => {
+  const graph = nodeGraphSchema.parse({
+    edges: Array.from({ length: 24 }, (_, index) => [
+      {
+        id: `in-${index}`,
+        source: `input-${index}`,
+        sourceHandle: "out:audio:main",
+        target: `merge-${index}`,
+        targetHandle: "in:audio:main",
+      },
+      {
+        id: `out-${index}`,
+        source: `merge-${index}`,
+        sourceHandle: "out:audio:main",
+        target: "speakers",
+        targetHandle: "in:audio:main",
+      },
+    ]).flat(),
+    nodes: [
+      { id: "speakers", position: { x: 0, y: 0 }, type: "speakers" },
+      ...Array.from({ length: 25 }, (_, index) => ({
+        id: `input-${index}`,
+        position: { x: 0, y: index * 200 },
+        type: "deviceIn",
+      })),
+      ...Array.from({ length: 24 }, (_, index) => ({
+        id: `merge-${index}`,
+        position: { x: 400, y: index * 200 },
+        type: "merge",
+      })),
+    ],
+    version: 2,
+  });
+  const { edges } = graph;
+  let reads = 0;
+  Object.defineProperty(graph, "edges", {
+    get: () => {
+      reads += 1;
+      return edges;
+    },
+  });
+  const options = { measured: new Map(), positions: new Map(), selection };
+  const initial = toFlowNodes(graph, options);
+  expect(initial).toHaveLength(50);
+  expect(initial.find((node) => node.id === "input-0")?.data).toMatchObject({
+    feedsOutput: true,
+  });
+  expect(initial.find((node) => node.id === "merge-0")?.data).toMatchObject({
+    inputs: 1,
+  });
+  const initialReads = reads;
+  expect(initialReads).toBeGreaterThan(0);
+  for (let frame = 1; frame <= 60; frame += 1) {
+    const nodes = toFlowNodes(graph, {
+      ...options,
+      mergeRoles: new Map(),
+      positions: new Map([["input-0", { x: frame, y: frame }]]),
+      selection: { edges: [], nodes: ["input-0"] },
+    });
+    expect(nodes.find((node) => node.id === "input-0")).toMatchObject({
+      position: { x: frame, y: frame },
+      selected: true,
+    });
+  }
+  // Neither feedback traversal nor Merge edge filtering can run without reading edges.
+  expect(reads).toBe(initialReads);
+  expect(
+    toFlowNodes(graph, options).find((node) => node.id === "input-0")?.position
+  ).toEqual({ x: 0, y: 0 });
+  const disconnected = toFlowNodes({ ...graph, edges: [] }, options);
+  expect(
+    disconnected.find((node) => node.id === "input-0")?.data
+  ).toMatchObject({ feedsOutput: false });
+  expect(
+    disconnected.find((node) => node.id === "merge-0")?.data
+  ).toMatchObject({ inputs: 0 });
+});
+
+test("modulation cable display survives unrelated parameter edits and updates its own label and depth", () => {
+  const graph = nodeGraphSchema.parse({
+    edges: [
+      {
+        id: "control",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      },
+    ],
+    nodes: [
+      { id: "macro", position: { x: 0, y: 0 }, type: "macro" },
+      { data: {}, id: "filter", position: { x: 300, y: 0 }, type: "filter" },
+      { data: {}, id: "other", position: { x: 0, y: 300 }, type: "gain" },
+      { id: "speakers", position: { x: 600, y: 0 }, type: "speakers" },
+    ],
+    version: 2,
+  });
+  const options = { liveLanes: new Set<string>(), selection };
+  const [initial] = toFlowEdges(graph, options);
+  expect(initial?.data).toMatchObject({
+    depth: 0.25,
+    label: "Cutoff",
+    muted: false,
+  });
+  const changed = {
+    ...graph,
+    nodes: graph.nodes.map((node) =>
+      node.type === "gain"
+        ? { ...node, data: { ...node.data, gainDb: -12 } }
+        : node
+    ),
+  };
+  expect(toFlowEdges(changed, options)[0]).toBe(initial);
+  const [edited] = toFlowEdges(
+    {
+      ...changed,
+      edges: graph.edges.map((edge) => ({
+        ...edge,
+        depth: -0.75,
+        muted: true,
+        parameter: "Q",
+      })),
+    },
+    options
+  );
+  expect(edited).not.toBe(initial);
+  expect(edited?.data).toMatchObject({
+    depth: -0.75,
+    label: "Resonance",
+    muted: true,
+  });
+});

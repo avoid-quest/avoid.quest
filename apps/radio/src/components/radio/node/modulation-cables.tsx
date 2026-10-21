@@ -10,8 +10,8 @@ import {
 import { useStore } from "@tanstack/react-store";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
 import {
-  connectionKey,
   controlDepth,
+  type ModulationParameter,
   modulationParameters,
 } from "@/lib/node-graph/modulation-parameters";
 import { unappliedModulation } from "@/lib/node-graph/modulation-runtime";
@@ -32,17 +32,43 @@ export function ModulationCableControls({
   store?: NodeStore;
 }) {
   const unapplied = useStore(unappliedModulation, (state) => state[edgeId]);
-  const graph = useStore(store, (state) => state.graph);
-  const edge = graph?.edges.find((entry) => entry.id === edgeId);
-  const target = graph?.nodes.find((entry) => entry.id === edge?.target);
+  const edge = useStore(store, (state) =>
+    state.graph?.edges.find((entry) => entry.id === edgeId)
+  );
+  const parameters = useStore(
+    store,
+    (state) => {
+      const target = state.graph?.nodes.find(
+        (entry) => entry.id === edge?.target
+      );
+      if (!target) {
+        return null;
+      }
+      return edge?.targetHandle === "in:control:parameter"
+        ? modulationParameters(target)
+        : [];
+    },
+    sameParameters
+  );
+  const occupied = useStore(
+    store,
+    (state) =>
+      state.graph?.edges
+        .filter(
+          (entry) =>
+            entry.id !== edgeId &&
+            entry.source === edge?.source &&
+            entry.sourceHandle === edge?.sourceHandle &&
+            entry.target === edge?.target &&
+            entry.targetHandle === edge?.targetHandle
+        )
+        .map((entry) => entry.parameter ?? "") ?? [],
+    sameEntries
+  );
   const release = useReleaseStep(() => snapshotNodeGraph(store));
-  if (!(graph && edge && target)) {
+  if (!(edge && parameters)) {
     return null;
   }
-  const parameters =
-    edge.targetHandle === "in:control:parameter"
-      ? modulationParameters(target)
-      : [];
   const selected = edge.parameter ?? parameters[0]?.key;
   const commit = (patch: Partial<GraphEdge>, step = false) =>
     commitNodeGraph(
@@ -82,15 +108,11 @@ export function ModulationCableControls({
             <SelectContent>
               {parameters.map((parameter) => (
                 <SelectItem
-                  disabled={graph.edges.some(
-                    (entry) =>
-                      entry.id !== edgeId &&
-                      connectionKey(graph, entry) ===
-                        connectionKey(graph, {
-                          ...edge,
-                          parameter: parameter.key,
-                        })
-                  )}
+                  disabled={
+                    occupied.includes(parameter.key) ||
+                    (parameter.key === parameters[0]?.key &&
+                      occupied.includes(""))
+                  }
                   key={parameter.key}
                   value={parameter.key}
                 >
@@ -158,32 +180,71 @@ export function ModulationAssignments({
   nodeId: string;
   store: NodeStore;
 }) {
-  const graph = useStore(store, (state) => state.graph);
-  const edges =
-    graph?.edges.filter(
-      (edge) =>
-        (edge.target === nodeId || edge.source === nodeId) &&
-        edge.targetHandle.startsWith("in:control:")
-    ) ?? [];
-  if (!graph || edges.length === 0) {
+  const edges = useStore<NodeStore["state"], GraphEdge[]>(
+    store,
+    (state) =>
+      state.graph?.edges.filter(
+        (edge) =>
+          (edge.target === nodeId || edge.source === nodeId) &&
+          edge.targetHandle.startsWith("in:control:")
+      ) ?? [],
+    sameEntries
+  );
+  if (edges.length === 0) {
     return null;
   }
   return (
     <div className="mt-4 space-y-3 border-t pt-3">
       <p className="font-medium text-xs">Modulation cables</p>
-      {edges.map((edge) => {
-        const source = graph.nodes.find((node) => node.id === edge.source);
-        const target = graph.nodes.find((node) => node.id === edge.target);
-        return (
-          <div className="space-y-2 rounded border p-2" key={edge.id}>
-            <p className="text-xs">
-              {source ? getNodeDefinition(source.type).name : "Source"} →{" "}
-              {target ? getNodeDefinition(target.type).name : "Target"}
-            </p>
-            <ModulationCableControls edgeId={edge.id} store={store} />
-          </div>
-        );
-      })}
+      {edges.map((edge) => (
+        <div className="space-y-2 rounded border p-2" key={edge.id}>
+          <AssignmentName edge={edge} store={store} />
+          <ModulationCableControls edgeId={edge.id} store={store} />
+        </div>
+      ))}
     </div>
+  );
+}
+
+function sameEntries<T>(a: readonly T[], b: readonly T[]): boolean {
+  return a.length === b.length && a.every((entry, index) => entry === b[index]);
+}
+
+function AssignmentName({
+  edge,
+  store,
+}: {
+  edge: GraphEdge;
+  store: NodeStore;
+}) {
+  const name = useStore(store, (state) => {
+    const source = state.graph?.nodes.find((node) => node.id === edge.source);
+    const target = state.graph?.nodes.find((node) => node.id === edge.target);
+    return `${source ? getNodeDefinition(source.type).name : "Source"} → ${target ? getNodeDefinition(target.type).name : "Target"}`;
+  });
+  return <p className="text-xs">{name}</p>;
+}
+
+function sameParameters(
+  a: ModulationParameter[] | null,
+  b: ModulationParameter[] | null
+): boolean {
+  return (
+    a === b ||
+    (a !== null &&
+      b !== null &&
+      a.length === b.length &&
+      a.every((entry, index) => {
+        const other = b[index];
+        return (
+          other !== undefined &&
+          entry.key === other.key &&
+          entry.label === other.label &&
+          entry.min === other.min &&
+          entry.max === other.max &&
+          entry.step === other.step &&
+          entry.scale === other.scale
+        );
+      }))
   );
 }

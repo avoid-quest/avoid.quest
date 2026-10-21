@@ -46,6 +46,7 @@ type RadioItemActionsProps = {
   onDelete?: (radio: Radio) => void;
   onToggle?: (radio: Radio, enabled: boolean) => void;
   onSave?: (radio: Radio) => void;
+  onRemoveNode?: () => void;
   disabled?: boolean;
 };
 
@@ -55,6 +56,7 @@ export function RadioItemActions({
   onDelete,
   onToggle,
   onSave,
+  onRemoveNode,
   disabled = false,
 }: RadioItemActionsProps) {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -188,6 +190,18 @@ export function RadioItemActions({
 
         <DropdownMenuSeparator />
 
+        {onRemoveNode ? (
+          <DropdownMenuItem
+            onClick={(event) => {
+              event.stopPropagation();
+              onRemoveNode();
+            }}
+            variant="destructive"
+          >
+            <XIcon />
+            Remove node
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onClick={handleDelete} variant="destructive">
           {isSession ? (
             <>

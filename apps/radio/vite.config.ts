@@ -21,7 +21,7 @@ const PRELOAD_HELPER_MODULE = /\0vite\/preload-helper\.js$/;
 const SHARED_AUDIO_MODULE = /\/node_modules\/@opendaw\/lib-(?:std|dsp)\//;
 const WORKLET_OUT_DIR = ".worklet-build";
 const WORKLET_FILENAME = "dsp-processor-bundle.js";
-const APP_VERSION = process.env.npm_package_version || "0.7.1";
+const APP_VERSION = process.env.npm_package_version || "0.7.2";
 const moduleRequire = createRequire(import.meta.url);
 
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;

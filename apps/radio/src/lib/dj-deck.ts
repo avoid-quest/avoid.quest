@@ -592,7 +592,6 @@ export function createDjDeckModule(
     runtime.loadController = new AbortController();
     setPendingTrack(deckId, null);
     runtime.loadGeneration += 1;
-    runtime.playGeneration += 1;
     return runtime.loadGeneration;
   };
 
@@ -601,6 +600,9 @@ export function createDjDeckModule(
 
   const beginSourceLoad = (deckId: DeckId): number => {
     const loadGeneration = beginLoad(deckId);
+    // Only a real source load supersedes playback and stream recovery; an
+    // opened placeholder form leaves the current source to keep recovering.
+    runtimes[deckId].playGeneration += 1;
     clearDjErrorSurface(deckId);
     return loadGeneration;
   };

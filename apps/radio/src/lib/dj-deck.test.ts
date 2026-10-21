@@ -2006,6 +2006,98 @@ describe("DjDeckModule", () => {
     expect(getPlaybackChannelRuntime("deck-a").error).toBeNull();
   });
 
+  test("keeps recovering an interrupted stream while a placeholder form is open", async () => {
+    const audio = createAudioAdapter();
+    const renewals: ReturnType<
+      typeof Promise.withResolvers<PlatformStreamResolution | null>
+    >[] = [];
+    const platform = createPlatform();
+    platform.resolveStream = mock(() => {
+      const renewal = Promise.withResolvers<PlatformStreamResolution | null>();
+      renewals.push(renewal);
+      return renewal.promise;
+    });
+    const module = createDjDeckModule({
+      audio,
+      context: createContext(),
+      effects: createEffects(),
+      output: createOutput(),
+      platform,
+    });
+    const deck = module.deck("deck-a");
+    await deck.load({
+      radio: {
+        id: "yt-1",
+        name: "YouTube",
+        platformMetadata: {
+          itemType: "video",
+          platform: "youtube",
+          url: "https://youtube.com/watch?v=abc",
+          videoId: "abc",
+        },
+        streamUrl: "https://radio.example/old.mp3",
+      },
+      type: "radio",
+    });
+    const interrupt = () =>
+      audio.emit("left_yt-1:1", {
+        error: {
+          code: "STREAM_INTERRUPTED",
+          id: "error-1",
+          message: "expired",
+          position: 42,
+          timestamp: Date.now(),
+        },
+        hasEnded: false,
+        isBuffering: false,
+        isLoading: false,
+        isPlaying: false,
+        volume: 1,
+      });
+
+    interrupt();
+    const [pendingItem] = PLATFORM_ITEMS;
+    if (!pendingItem) {
+      throw new Error("Expected a platform picker library item");
+    }
+    expect(await deck.load({ radio: pendingItem, type: "library" })).toEqual({
+      platform: "external",
+      type: "pending-platform",
+    });
+    module.pendingSource.cancel("deck-a");
+    renewals[0]?.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://radio.example/refreshed.mp3",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(audio.refresh).toHaveBeenCalledWith(
+      "left_yt-1:1",
+      "https://radio.example/refreshed.mp3",
+      42,
+      "progressive"
+    );
+    expect(getPlaybackChannelRuntime("deck-a").error).toBeNull();
+
+    interrupt();
+    const replacement = deck.load({
+      radio: {
+        id: "station-2",
+        name: "Station 2",
+        streamUrl: "https://radio.example/two.mp3",
+      },
+      type: "radio",
+    });
+    renewals[1]?.resolve({
+      streamFormat: "progressive",
+      streamUrl: "https://radio.example/stale.mp3",
+    });
+    await replacement;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(audio.refresh).toHaveBeenCalledTimes(1);
+  });
+
   test("preserves browser audio error codes when reporting state failures", async () => {
     const audio = createAudioAdapter();
     const context = createContext();

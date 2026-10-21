@@ -1,0 +1,21 @@
+apps/radio/src/components/audio/effect-picker.tsx
+  s_237cacd66a717f::t_ae3573514f2f63 124-125,130,141-145,168,171,183
+apps/radio/src/components/radio/node/node-palette.test.tsx
+  s_237cacd66a717f::t_8754d860a580d5 5,662-700
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "391ee96ab3eb0668280bc48a5d4065fffeb98d1f",
+  "prompts": {},
+  "sessions": {
+    "s_237cacd66a717f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_237cacd66a717f",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

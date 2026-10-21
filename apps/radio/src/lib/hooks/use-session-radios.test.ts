@@ -143,6 +143,34 @@ describe("session radios", () => {
     expect(getSessionRadios()).toHaveLength(20);
   });
 
+  test("keeps Session stations in memory when sessionStorage reads throw", async () => {
+    const { getItem } = sessionStorage;
+    sessionStorage.getItem = () => {
+      throw new DOMException("Storage blocked", "SecurityError");
+    };
+
+    try {
+      // A fresh module: the failed read keeps this one in memory.
+      const freshModule = "../collections/session-radios.ts?reads-blocked";
+      const fresh: typeof import("../collections/session-radios") =
+        await import(freshModule);
+      await fresh.sessionRadiosCollection.stateWhenReady();
+      fresh.addSessionRadio({
+        id: "rg_blocked",
+        name: "Blocked",
+        streamUrl: "https://radio.example/blocked.mp3",
+      });
+      expect(fresh.getSessionRadios().map((radio) => radio.id)).toEqual([
+        "rg_blocked",
+      ]);
+    } finally {
+      sessionStorage.getItem = getItem;
+    }
+    expect(sessionStorage.getItem("radio-session-radios") ?? "").not.toContain(
+      "rg_blocked"
+    );
+  });
+
   test("refreshes a Radio Browser session record when its resolved stream changes", async () => {
     await sessionRadiosCollection.stateWhenReady();
 

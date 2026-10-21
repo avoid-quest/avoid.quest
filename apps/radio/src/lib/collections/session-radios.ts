@@ -22,17 +22,27 @@ const MAX_SESSION_RADIO_TOMBSTONES = 100;
 let lastAddedAt = 0;
 
 const memorySessionStorage = new Map<string, string>();
+// Set once a read throws, as the localStorage collections do.
+let keepSessionInMemory = false;
+
+function getSessionStorage(): Storage | undefined {
+  return keepSessionInMemory ? undefined : getBrowserStorage("sessionStorage");
+}
 
 const sessionStorageApi: Pick<Storage, "getItem" | "setItem" | "removeItem"> = {
   getItem(key) {
-    const storage = getBrowserStorage("sessionStorage");
+    const storage = getSessionStorage();
     if (storage) {
-      return storage.getItem(key);
+      try {
+        return storage.getItem(key);
+      } catch {
+        keepSessionInMemory = true;
+      }
     }
     return memorySessionStorage.get(key) ?? null;
   },
   removeItem(key) {
-    const storage = getBrowserStorage("sessionStorage");
+    const storage = getSessionStorage();
     if (storage) {
       storage.removeItem(key);
       return;
@@ -40,7 +50,7 @@ const sessionStorageApi: Pick<Storage, "getItem" | "setItem" | "removeItem"> = {
     memorySessionStorage.delete(key);
   },
   setItem(key, value) {
-    const storage = getBrowserStorage("sessionStorage");
+    const storage = getSessionStorage();
     if (storage) {
       storage.setItem(key, value);
       return;

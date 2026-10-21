@@ -1,17 +1,23 @@
 # Dependencies
 node_modules
-.pnp
-.pnp.js
 
 # Build outputs
 dist
 build
+.astro
+.tanstack
+.worklet-build
 *.tsbuildinfo
 
-# Environment variables
-.env
-.env*.local
-.dev.vars
+# Generated source and license distribution
+apps/*/public/legal/
+
+# Environment and secrets
+.env*
+!.env.example
+.dev.vars*
+*.local
+*.pem
 
 # IDEs and editors
 .vscode/*
@@ -28,30 +34,16 @@ build
 # Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
 
-# Turbo
+# Tool caches
 .turbo
-
-# Better-T-Stack
-.alchemy
-
-# Testing
+.wrangler
+.cache
 coverage
-.nyc_output
 
 # Misc
 *.tgz
-.cache
 tmp
 temp
 
 apps/openDAW
-.wrangler/
-
-# Generated source and license distribution
-apps/*/public/legal/

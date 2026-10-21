@@ -4,8 +4,7 @@
     "paths": {
       "*": ["./*"],
       "@avoid.quest/ui/*": ["./src/*"]
-    },
-    "strictNullChecks": true
+    }
   },
   "include": ["."],
   "exclude": ["node_modules", "dist"]

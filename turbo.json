@@ -12,21 +12,13 @@
         "SENTRY_RELEASE"
       ],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "out/**", "dist/**"]
-    },
-    "//#check": {},
-    "//#fix": {
-      "cache": false
+      "outputs": ["dist/**"]
     },
     "typecheck": {
       "cache": false,
       "dependsOn": ["^typecheck"]
     },
     "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "dev:setup": {
       "cache": false,
       "persistent": true
     },

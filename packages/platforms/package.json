@@ -34,8 +34,6 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "check": "bunx ultracite check",
-    "fix": "bunx ultracite fix",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json"
   },

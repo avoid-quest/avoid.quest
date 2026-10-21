@@ -1,0 +1,19 @@
+docs/ui-review/README.md
+  s_38d9e025b35df7::t_4712834d56f84c 248-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "101755e60696439b1f85823d3b4c45d3d4eefde1",
+  "prompts": {},
+  "sessions": {
+    "s_38d9e025b35df7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_38d9e025b35df7",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -505,6 +505,20 @@ describe("damaged local storage", () => {
     );
   });
 
+  test("offers defaults a damaged envelope lost beside the recovered ones", async () => {
+    seedSavedRadios();
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    const [lostKey] = Object.keys(saved);
+    const [lost] = defaultRadios;
+    saved[lostKey] = { invalid: true };
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    const { initializeRadios, radiosCollection } = await reloadRadios();
+    expect(radiosCollection.state.size).toBe(0);
+    const changes = await initializeRadios();
+    expect(radiosCollection.state.size).toBe(defaultRadios.length - 1);
+    expect(changes?.additions).toEqual([lost]);
+  });
+
   test.each(["{invalid", "[]", '{"bad":{"data":{"id":"invalid"}}}'])(
     "backs up unrecoverable data before seeding: %s",
     async (raw) => {
@@ -579,7 +593,8 @@ describe("storage that refuses writes at startup", () => {
       }
       setItem(key, value);
     });
-    await expect(initializeRadios()).resolves.toBeNull();
+    const changes = await initializeRadios();
+    expect(changes?.additions).toEqual(defaultRadios);
     expect(storage.getItem(`${STORAGE_KEY}:corrupt`)).toBe(raw);
     expect(storage.getItem(STORAGE_KEY)).toBe(raw);
     expect(radiosCollection.state.size).toBe(1);

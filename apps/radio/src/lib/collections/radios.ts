@@ -411,7 +411,10 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
       () => persistRadioChanges(() => radiosCollection.insert(radios)),
       "radios"
     );
-    return null;
+    if (recovered.length === 0) {
+      return null;
+    }
+    // Recovered rows may have lost defaults; sync them like a loaded library.
   }
 
   // Collection has data - check for sync changes

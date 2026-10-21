@@ -6,10 +6,7 @@ import {
 } from "../dsp/effects/schema.js";
 import type { EffectConfig, EffectType } from "../dsp/effects/types.js";
 
-export type {
-  EngineEffectConfig,
-  EngineEffectParamValue,
-} from "../dsp/effects/schema.js";
+export type { EngineEffectConfig } from "../dsp/effects/schema.js";
 
 function modelAvailable(config: Partial<EffectConfig>): number {
   const model = config as {

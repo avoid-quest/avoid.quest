@@ -18,7 +18,6 @@ import { ChannelStrip, EffectSource } from "./processor-source.js";
 
 export {
   MessageType,
-  type MessageTypeValue,
   type WorkletErrorCode,
 } from "./processor-protocol.js";
 

@@ -6,7 +6,7 @@
  * falls back to "single".
  */
 
-export const PLAYER_MODES = ["single", "node", "dj"] as const;
+const PLAYER_MODES = ["single", "node", "dj"] as const;
 export type PlayerMode = (typeof PLAYER_MODES)[number];
 
 export function isPlayerMode(mode: unknown): mode is PlayerMode {

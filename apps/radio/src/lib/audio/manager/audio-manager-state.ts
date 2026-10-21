@@ -81,4 +81,4 @@ function notifySoundError(
 }
 
 export type { NotifySoundListeners };
-export { buildSoundError, notifySoundError, notifySoundState };
+export { notifySoundError, notifySoundState };

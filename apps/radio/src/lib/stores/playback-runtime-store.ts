@@ -121,7 +121,7 @@ export function getPlaybackRuntimeChannelIds(): string[] {
   return Object.keys(playbackRuntimeStore.state.channels);
 }
 
-export function updatePlaybackChannelRuntime(
+export function setPlaybackChannelRuntime(
   channelId: string,
   updater: (state: ChannelRuntimeState) => Partial<ChannelRuntimeState>
 ): void {
@@ -144,13 +144,11 @@ export function updatePlaybackChannelRuntime(
   });
 }
 
-export const setPlaybackChannelRuntime = updatePlaybackChannelRuntime;
-
 export function setPlaybackChannelSoundId(
   channelId: string,
   soundId: string | null
 ): void {
-  updatePlaybackChannelRuntime(channelId, () => ({ soundId }));
+  setPlaybackChannelRuntime(channelId, () => ({ soundId }));
 }
 
 export function setPlaybackChannelPeakLevel(

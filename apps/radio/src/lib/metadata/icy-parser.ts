@@ -1,8 +1,8 @@
 import { isPublicHttpUrl } from "@/lib/proxy/url-policy";
 import { cleanMetadataText, parseRadioTitle } from "./title-parser";
 
-export const MAX_ICY_METAINT = 1024 * 1024;
-export const MAX_ICY_METADATA_LENGTH = 4080;
+const MAX_ICY_METAINT = 1024 * 1024;
+const MAX_ICY_METADATA_LENGTH = 4080;
 const MAX_ICY_METADATA_BLOCKS = 6;
 
 export type IcyMetadataFields = {

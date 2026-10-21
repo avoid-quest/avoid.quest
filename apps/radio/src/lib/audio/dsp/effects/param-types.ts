@@ -1,8 +1,6 @@
 import type { EffectConfig, EffectType } from "./types.js";
 
-export type ParamType = "slider" | "select" | "checkbox" | "text" | "group";
-
-export type VisualizationType = "eq-curve" | "compressor-curve" | "none";
+type VisualizationType = "eq-curve" | "compressor-curve" | "none";
 
 export type UniversalEffectParamKey =
   | "enabled"

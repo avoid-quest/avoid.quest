@@ -94,7 +94,6 @@ export function useDelaySettings(): {
 
 // Re-export mutation functions
 export {
-  setCueDelayMs,
   setMainDelayMs,
   setPlayerMode,
   setRestoreStateOnLoad,

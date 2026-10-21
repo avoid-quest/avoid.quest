@@ -21,7 +21,7 @@ export type SentryTunnelTarget = {
   projectId: string;
 };
 
-export function parseSentryDsn(raw: string): URL | null {
+function parseSentryDsn(raw: string): URL | null {
   try {
     return new URL(raw);
   } catch {

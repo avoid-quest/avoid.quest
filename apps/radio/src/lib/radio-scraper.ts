@@ -1,7 +1,5 @@
-import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types";
+import type { RadioMetadata, ScrapedOption } from "@/lib/platform-types"; // 10 seconds
 
-const CORS_PROXY = "https://api.allorigins.win/raw?url=";
-const FETCH_TIMEOUT = 10_000; // 10 seconds
 const LARGE_FAVICON_SIZE = 64;
 const SMALL_IMAGE_SIZE = 50;
 const FIRST_PARAGRAPH_MIN_LENGTH = 20;
@@ -17,34 +15,6 @@ const SHOUTCAST_PATTERN = /shoutcast/i;
 const AZURACAST_PATTERN = /azuracast/i;
 const RADIO_CO_PATTERN = /radio\.co/i;
 const RADIOKING_PATTERN = /radioking/i;
-
-export async function scrapeRadioMetadata(
-  websiteUrl: string
-): Promise<RadioMetadata> {
-  try {
-    const response = await fetchWithTimeout(
-      `${CORS_PROXY}${encodeURIComponent(websiteUrl)}`,
-      {
-        timeout: FETCH_TIMEOUT,
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.status}`);
-    }
-
-    return parseRadioMetadataFromDocument(
-      new DOMParser().parseFromString(await response.text(), "text/html"),
-      websiteUrl
-    );
-  } catch (error) {
-    console.error("Error scraping radio metadata:", error);
-    throw new Error(
-      `Failed to fetch website data: ${error instanceof Error ? error.message : "Unknown error"}`,
-      { cause: error }
-    );
-  }
-}
 
 export function parseRadioMetadataFromDocument(
   doc: Document,
@@ -89,26 +59,6 @@ export function parseRadioMetadataFromDocument(
   }
 
   return metadata;
-}
-
-function fetchWithTimeout(
-  url: string,
-  options: { timeout: number }
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout);
-
-    fetch(url, { signal: controller.signal })
-      .then((response) => {
-        clearTimeout(timeoutId);
-        resolve(response);
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      });
-  });
 }
 
 function extractNameOptions(doc: Document): ScrapedOption[] {

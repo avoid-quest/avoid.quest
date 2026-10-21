@@ -192,32 +192,6 @@ export function findEffectChain(
   }
 }
 
-export function findRootEffectContainer(
-  effects: readonly EffectConfig[],
-  effectId: string
-): EffectConfig | null {
-  return (
-    effects.find(
-      (effect) =>
-        isEffectContainer(effect) &&
-        effect.id !== effectId &&
-        findEffectInTree([effect], effectId)
-    ) ?? null
-  );
-}
-
-export function findRootEffectContainerForChain(
-  effects: readonly EffectConfig[],
-  chainId: string
-): EffectConfig | null {
-  return (
-    effects.find(
-      (effect) =>
-        isEffectContainer(effect) && findEffectChain([effect], chainId)
-    ) ?? null
-  );
-}
-
 export function updateEffectInTree(
   effects: readonly EffectConfig[],
   effectId: string,

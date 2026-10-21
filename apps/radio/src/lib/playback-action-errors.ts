@@ -3,7 +3,7 @@ import type { AudioError, AudioErrorCode, Radio } from "@/lib/audio";
 import { generateErrorId } from "@/lib/audio/playback";
 import { DisplayAudioError } from "@/lib/audio/playback/display-audio";
 
-export type PlaybackActionMode = "single" | "node" | "dj";
+type PlaybackActionMode = "single" | "node" | "dj";
 
 export type PlaybackActionError = {
   mode: PlaybackActionMode;
@@ -59,7 +59,7 @@ export function isPlaybackActionError(
   );
 }
 
-export function getFriendlyPlaybackErrorMessage(
+function getFriendlyPlaybackErrorMessage(
   error: unknown,
   fallback = DEFAULT_PLAYBACK_START_ERROR_MESSAGE
 ): string {

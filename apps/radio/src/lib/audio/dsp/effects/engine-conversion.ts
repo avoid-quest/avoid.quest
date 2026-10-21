@@ -21,7 +21,7 @@ function convertBoolean(value: unknown): number | undefined {
   }
 }
 
-export function convertEffectParamValue(
+function convertEffectParamValue(
   param: EffectParamDef,
   value: unknown
 ): EngineEffectParamValue | undefined {

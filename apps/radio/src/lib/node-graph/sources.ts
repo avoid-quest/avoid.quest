@@ -89,7 +89,7 @@ export function isTrackRadio(radio: RadioLike | null | undefined): boolean {
   return radio ? sourceTypeForRadio(radio) !== "station" : false;
 }
 
-export function isLocalFileRadio(radio: RadioLike | null | undefined): boolean {
+function isLocalFileRadio(radio: RadioLike | null | undefined): boolean {
   return localAudioUrls(radio as Radio | null).length > 0;
 }
 

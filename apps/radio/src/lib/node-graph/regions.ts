@@ -81,10 +81,7 @@ export type TrimPlacement = {
 
 export const UNITY: Trim = { gain: 1, muted: false };
 
-export function addTrim(
-  trim: Trim,
-  edge: Pick<GraphEdge, "gain" | "muted">
-): Trim {
+function addTrim(trim: Trim, edge: Pick<GraphEdge, "gain" | "muted">): Trim {
   return {
     ...trim,
     gain: trim.gain * edge.gain,

@@ -14,7 +14,7 @@ export type FileAudioMetadata = {
   objectUrl: string;
 };
 
-export const ACCEPTED_AUDIO_TYPES = new Set([
+const ACCEPTED_AUDIO_TYPES = new Set([
   "audio/mpeg",
   "audio/mp3",
   "audio/wav",
@@ -31,7 +31,7 @@ export const ACCEPTED_AUDIO_TYPES = new Set([
   "audio/opus",
 ]);
 
-export const ACCEPTED_AUDIO_EXTENSIONS = new Set([
+const ACCEPTED_AUDIO_EXTENSIONS = new Set([
   ".mp3",
   ".wav",
   ".ogg",

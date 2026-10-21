@@ -11,7 +11,7 @@ import type { RevampConfig } from "../dsp/effects/types.js";
 // Floor for silent bins, so the curve stays finite (-200 dB).
 const MIN_GAIN = 1e-10;
 
-export type EQBandResponse = {
+type EQBandResponse = {
   enabled: boolean;
   dbResponse: Float32Array;
 };

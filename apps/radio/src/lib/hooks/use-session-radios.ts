@@ -31,12 +31,6 @@ function buildSessionRadiosState(radios: Radio[]): SessionRadiosState {
   };
 }
 
-export const sessionRadioActions = {
-  addSessionRadio,
-  getSessionRadios,
-  removeSessionRadio,
-};
-
 let cachedState = buildSessionRadiosState([]);
 function getSnapshot(): SessionRadiosState {
   const radios = getSessionRadios();

@@ -10,7 +10,7 @@ type LogContext = {
 /**
  * Log security-related events
  */
-export function logSecurityEvent(
+function logSecurityEvent(
   level: LogLevel,
   message: string,
   context?: LogContext
@@ -49,21 +49,6 @@ export function logRateLimitViolation(
   endpoint: string
 ): void {
   logSecurityEvent("warn", "Rate limit exceeded", {
-    endpoint,
-    sessionId,
-  });
-}
-
-/**
- * Log SSRF attempt
- */
-export function logSSRFAttempt(
-  sessionId: string,
-  attemptedUrl: string,
-  endpoint: string
-): void {
-  logSecurityEvent("warn", "SSRF attempt detected", {
-    attemptedUrl,
     endpoint,
     sessionId,
   });

@@ -32,7 +32,7 @@ import {
   Sends,
 } from "./sends.js";
 
-export type LaneOutputHost = Pick<AudioManager, "setSoundOutputConnector">;
+type LaneOutputHost = Pick<AudioManager, "setSoundOutputConnector">;
 
 /**
  * Connects one send to its destination and returns its disconnect. A

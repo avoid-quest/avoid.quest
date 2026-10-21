@@ -44,7 +44,7 @@ import {
 } from "./official-opendaw-effect-adapter.js";
 import { ensureOpenDawAudioWorklets } from "./opendaw-audio-worklets.js";
 
-export const DEFAULT_OPENDAW_RUNTIME_URLS = {
+const DEFAULT_OPENDAW_RUNTIME_URLS = {
   offlineWorkerUrl: "/opendaw/wasm-offline-worker.js",
   processorUrl: "/opendaw/processors.js",
   wasmProcessorUrl: "/opendaw/wasm-processor.js",

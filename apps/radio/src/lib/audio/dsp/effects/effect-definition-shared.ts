@@ -46,7 +46,7 @@ export const panLawOptions: SelectOption[] = [
   { label: "Equal power", value: "equalPower" },
 ];
 
-export const waveshaperEquationLabels: Record<
+const waveshaperEquationLabels: Record<
   (typeof OPENDAW_WAVESHAPER_EQUATIONS)[number],
   string
 > = {
@@ -84,10 +84,7 @@ export const autotuneKeyOptions: SelectOption[] = AUTOTUNE_KEYS.map(
   })
 );
 
-export const autotuneScaleLabels: Record<
-  (typeof AUTOTUNE_SCALES)[number],
-  string
-> = {
+const autotuneScaleLabels: Record<(typeof AUTOTUNE_SCALES)[number], string> = {
   blues: "Blues",
   chromatic: "Chromatic",
   dorian: "Dorian",

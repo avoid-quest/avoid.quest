@@ -8,8 +8,6 @@ const logRateLimitViolationMock = mock(() => undefined);
 mock.module("@/lib/logger", () => ({
   logAuthFailure: logAuthFailureMock,
   logRateLimitViolation: logRateLimitViolationMock,
-  logSecurityEvent: mock(() => undefined),
-  logSSRFAttempt: mock(() => undefined),
 }));
 
 const VALID_SESSION_ID =

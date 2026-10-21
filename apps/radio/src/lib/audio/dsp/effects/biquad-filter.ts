@@ -17,13 +17,6 @@ export type BiquadFilterType =
   | "notch"
   | "allpass";
 
-export type BiquadFilterParams = {
-  type: BiquadFilterType;
-  frequency: number; // Hz
-  Q: number; // Quality factor
-  gain: number; // dB (for shelving/peaking filters)
-};
-
 /**
  * BiquadFilter implements a second-order IIR filter.
  *

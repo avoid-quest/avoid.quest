@@ -78,13 +78,6 @@ export function removeDismissedRadio(name: string): void {
   );
 }
 
-/**
- * Clear all dismissed radios (for "restore defaults" functionality).
- */
-export function clearDismissedRadios(): void {
-  radiosStorage.storage?.removeItem(DISMISSED_RADIOS_KEY);
-}
-
 const radioSchema = z.object({
   countryTitle: z.string().optional(),
   description: z.string().optional(),
@@ -392,18 +385,6 @@ function recoverStoredRadios(): RadioRecord[] {
 }
 
 /**
- * Check if there are any pending sync changes
- */
-export function hasSyncChanges(): boolean {
-  const changes = getSyncChanges();
-  return (
-    changes.updates.length > 0 ||
-    changes.additions.length > 0 ||
-    changes.deletions.length > 0
-  );
-}
-
-/**
  * Initialize the radios collection with default data if empty.
  * Returns sync changes if collection has data and changes are detected.
  */
@@ -453,25 +434,6 @@ export async function initializeRadios(): Promise<SyncChanges | null> {
   }
 
   return null;
-}
-
-/**
- * Sync radios with default data (legacy - now uses getSyncChanges + applySyncChanges)
- * @deprecated Use getSyncChanges() and applySyncChanges() instead
- */
-export function syncRadios(): Promise<void> {
-  const changes = getSyncChanges();
-  return applySyncChanges(changes);
-}
-
-/**
- * Get all enabled radios sorted by order
- */
-export function getEnabledRadios(): RadioRecord[] {
-  const radios = Array.from(radiosCollection.state.values());
-  return radios
-    .filter((r) => r.enabled)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 /**

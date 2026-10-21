@@ -49,7 +49,7 @@ export type InvidiousVideoResponse = {
   liveNow: boolean;
 };
 
-export type InvidiousPlaylistVideo = {
+type InvidiousPlaylistVideo = {
   title: string;
   videoId: string;
   author: string;

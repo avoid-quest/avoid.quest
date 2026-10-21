@@ -37,7 +37,7 @@ const SETTINGS_ID = "app-settings";
 type BackupStorage = Pick<Storage, "getItem">;
 
 /** A channel as Multiple stored it. */
-export type MultipleChannelRecord = Omit<PlaybackChannelRecord, "role"> & {
+type MultipleChannelRecord = Omit<PlaybackChannelRecord, "role"> & {
   role: "multiple";
 };
 

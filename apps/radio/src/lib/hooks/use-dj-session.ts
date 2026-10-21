@@ -7,7 +7,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 
 /** Collection drafts may clone untouched nested fields too. */
-export function equalSessionSelection(a: unknown, b: unknown): boolean {
+function equalSessionSelection(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) {
     return true;
   }
@@ -60,10 +60,6 @@ export function usePlaybackSessionSelector<T>(
     return serverCache.current.value;
   };
   return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-}
-
-export function useDjSession(): PlaybackSessionRecord | undefined {
-  return usePlaybackSessionSelector("dj", (session) => session);
 }
 
 export function useDjTempo(): number {

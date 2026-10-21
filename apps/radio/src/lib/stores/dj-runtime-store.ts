@@ -6,10 +6,7 @@ import {
 } from "@/lib/collections/playback-sessions";
 import {
   getPlaybackChannelRuntime,
-  type RuntimePeakLevel,
   resetAllPlaybackRuntime,
-  setPlaybackChannelPeakLevel,
-  usePlaybackChannelPeakLevel,
 } from "./playback-runtime-store";
 
 type DjUiState = {
@@ -24,36 +21,12 @@ const djUiStore = new Store<DjUiState>({
   errorChannelId: null,
 });
 
-export function useDeckAPeakLevel(): RuntimePeakLevel {
-  return usePlaybackChannelPeakLevel(DECK_A_CHANNEL_ID);
-}
-
-export function useDeckBPeakLevel(): RuntimePeakLevel {
-  return usePlaybackChannelPeakLevel(DECK_B_CHANNEL_ID);
-}
-
-export function useActiveDragRadio() {
-  return useStore(djUiStore, (state) => state.activeDragRadio);
-}
-
 export function useDjError() {
   return useStore(djUiStore, (state) => state.error);
 }
 
 export function getDjError() {
   return djUiStore.state.error;
-}
-
-export function setActiveDragRadio(radio: Radio | null) {
-  djUiStore.setState((state) => ({ ...state, activeDragRadio: radio }));
-}
-
-export function setDeckAPeakLevel(level: RuntimePeakLevel) {
-  setPlaybackChannelPeakLevel(DECK_A_CHANNEL_ID, level);
-}
-
-export function setDeckBPeakLevel(level: RuntimePeakLevel) {
-  setPlaybackChannelPeakLevel(DECK_B_CHANNEL_ID, level);
 }
 
 export function setDjError(

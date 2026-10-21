@@ -10,7 +10,7 @@ import type {
 } from "@/lib/stations/station-discovery";
 import {
   playbackRuntimeStore,
-  updatePlaybackChannelRuntime,
+  setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -99,18 +99,18 @@ test("buffering changes update the probe policy without restarting discovery", a
   await act(async () => Promise.resolve());
   expect(search).toHaveBeenCalledTimes(1);
   await act(() => {
-    updatePlaybackChannelRuntime("test-buffering", () => ({
+    setPlaybackChannelRuntime("test-buffering", () => ({
       isBuffering: true,
     }));
   });
   await act(() => {
-    updatePlaybackChannelRuntime("test-buffering", () => ({
+    setPlaybackChannelRuntime("test-buffering", () => ({
       isBuffering: false,
       isLoading: true,
     }));
   });
   await act(() => {
-    updatePlaybackChannelRuntime("test-buffering", () => ({
+    setPlaybackChannelRuntime("test-buffering", () => ({
       isLoading: false,
     }));
   });

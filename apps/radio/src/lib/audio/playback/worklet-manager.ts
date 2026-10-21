@@ -23,7 +23,7 @@ import {
   type WorkletPortMessage,
 } from "./worklet-manager-protocol.js";
 
-export type { EffectType, FilterType } from "../dsp/effects/types.js";
+export type { FilterType } from "../dsp/effects/types.js";
 export type { WorkletManagerEvents } from "./worklet-manager-protocol.js";
 
 export type WorkletEffectConfig = Record<string, unknown>;
@@ -641,19 +641,4 @@ export class WorkletManager {
       this.messageQueue.push(message);
     }
   }
-}
-
-/**
- * Create a WorkletManager instance
- *
- * Factory function for creating WorkletManager instances.
- *
- * @param context - AudioContext to use
- * @param processorUrl - URL to the worklet processor bundle
- */
-export function createWorkletManager(
-  context: AudioContext,
-  processorUrl: string
-): WorkletManager {
-  return new WorkletManager(context, processorUrl);
 }

@@ -65,18 +65,6 @@ function toMixerRecord(
   };
 }
 
-export function useDeckAPersisted(): DeckRecord | undefined {
-  return usePlaybackSessionSelector("dj", (session) =>
-    session?.channels.find((channel) => channel.id === DECK_A_CHANNEL_ID)
-  );
-}
-
-export function useDeckBPersisted(): DeckRecord | undefined {
-  return usePlaybackSessionSelector("dj", (session) =>
-    session?.channels.find((channel) => channel.id === DECK_B_CHANNEL_ID)
-  );
-}
-
 export function useMixer(): MixerRecord | undefined {
   return usePlaybackSessionSelector("dj", (session) =>
     session ? toMixerRecord(session) : undefined
@@ -106,18 +94,7 @@ export function useDeckB(): DeckState | null {
   return useChannelState("dj", DECK_B_CHANNEL_ID) as DeckState | null;
 }
 
-export function useDecks() {
-  const deckA = useDeckA();
-  const deckB = useDeckB();
-  return { deckA, deckB };
-}
-
-export {
-  setActiveDragRadio,
-  setDjError,
-  useActiveDragRadio,
-  useDjError,
-} from "@/lib/stores/dj-runtime-store";
+export { useDjError } from "@/lib/stores/dj-runtime-store";
 
 export function getDeckA(): DeckRecord | undefined {
   return getPlaybackChannel("dj", DECK_A_CHANNEL_ID);

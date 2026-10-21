@@ -1,7 +1,7 @@
 const SESSION_COOKIE_NAME = "radio_session_id";
 const SESSION_ID_PATTERN = /^[0-9a-f]{64}$/;
 
-export function isValidSessionId(
+function isValidSessionId(
   sessionId: string | null | undefined
 ): sessionId is string {
   return typeof sessionId === "string" && SESSION_ID_PATTERN.test(sessionId);

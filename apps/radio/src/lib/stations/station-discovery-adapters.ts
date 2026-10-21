@@ -76,7 +76,7 @@ function radioGardenSearchCandidate(
   };
 }
 
-export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
+const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
   radioBrowser: {
     search: async (query, { limit, signal }) => {
       signal.throwIfAborted();

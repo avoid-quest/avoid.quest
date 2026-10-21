@@ -10,5 +10,3 @@ export const EFFECT_DEFINITIONS = {
   ...TONE_EFFECT_DEFINITIONS,
   ...CONTAINER_EFFECT_DEFINITIONS,
 } as const satisfies EffectDefinitionMap;
-
-export const EFFECT_SCHEMAS = EFFECT_DEFINITIONS;

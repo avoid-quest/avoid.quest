@@ -50,7 +50,7 @@ export type NodeSourceLoaderDependencies = {
 const TRACK_UNPLAYABLE = "Couldn't play this track";
 
 /** A picked or pasted item made playable: its lazy track resolved. */
-export async function prepareSourceRadio(
+async function prepareSourceRadio(
   radio: Radio,
   {
     resolveStream = resolveDjPlatformStreamUrl,

@@ -37,8 +37,4 @@ function ensureOpenDawAudioWorklets<T>(
   return created;
 }
 
-export {
-  type AudioWorkletsFactory,
-  DEFAULT_OPENDAW_PROCESSOR_URL,
-  ensureOpenDawAudioWorklets,
-};
+export { ensureOpenDawAudioWorklets };

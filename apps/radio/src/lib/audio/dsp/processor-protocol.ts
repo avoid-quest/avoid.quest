@@ -30,8 +30,6 @@ export const MessageType = {
   UPDATE_EFFECT: "UPDATE_EFFECT",
 } as const;
 
-export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];
-
 /**
  * Error codes for worklet errors
  */

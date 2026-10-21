@@ -12,12 +12,6 @@ export type Settings = {
   };
 };
 
-export type SingleModeSettings = Settings & {
-  player: Settings["player"] & {
-    mode: "single";
-  };
-};
-
 export const playerModes = [
   { icon: "list-music", label: "Single", value: "single" },
   { icon: "cable", label: "Node", value: "node" },

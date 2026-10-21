@@ -169,7 +169,7 @@ function nativeActions(
  * The MIDI group for each node with params: its title, numbered when the
  * patch has more than one ("Compressor", "Compressor 2").
  */
-export function nodeMidiGroups(graph: NodeGraph): Map<string, string> {
+function nodeMidiGroups(graph: NodeGraph): Map<string, string> {
   const groups = new Map<string, string>();
   const seen = new Map<string, number>();
   for (const node of graph.nodes) {

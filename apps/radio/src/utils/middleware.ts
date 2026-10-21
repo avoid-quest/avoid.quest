@@ -75,35 +75,3 @@ export function rateLimitMiddleware(
     return result;
   });
 }
-
-export function authMiddleware(options?: { createSessionIfMissing?: boolean }) {
-  const createSessionIfMissing = options?.createSessionIfMissing ?? true;
-
-  return createMiddleware({ type: "function" }).server(async ({ next }) => {
-    const request = getRequest();
-    const ip = getClientIP(request);
-    const cookieHeader = request.headers.get("cookie");
-
-    const { sessionId, shouldSetCookie } = await getOrCreateSession(
-      cookieHeader,
-      createSessionIfMissing
-    );
-
-    if (!(sessionId || createSessionIfMissing)) {
-      logAuthFailure("auth");
-      throw new AppError({
-        category: "auth",
-        code: "UNAUTHORIZED",
-        safeMessage: "Unauthorized",
-      });
-    }
-
-    return next({
-      context: {
-        ip,
-        sessionId,
-        shouldSetCookie,
-      },
-    });
-  });
-}

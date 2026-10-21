@@ -3,6 +3,7 @@ import { isMixcloudUrl } from "./mixcloud/detect.js";
 import { isRadioGardenUrl } from "./radiogarden/detect.js";
 import { isSoundCloudUrl } from "./soundcloud/detect.js";
 import { isSpotifyUrl } from "./spotify/detect.js";
+import { isStaticAudioUrl } from "./static-audio/detect.js";
 import type { Platform } from "./types.js";
 import { isYouTubeUrl } from "./youtube/detect.js";
 
@@ -19,6 +20,7 @@ export {
   getMixcloudShowUrl,
   isMixcloudShowUrl,
   isMixcloudUrl,
+  MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
   normalizeMixcloudUrl,
   parseMixcloudShowUrl,
 } from "./mixcloud/detect.js";
@@ -84,3 +86,29 @@ export function detectPlatformFromUrl(url: string): Platform | null {
 
   return null;
 }
+
+export type PlayablePlatform = Platform | "static-audio";
+
+export function detectPlayablePlatformFromUrl(
+  url: string
+): PlayablePlatform | null {
+  const external = detectPlatformFromUrl(url);
+  if (external) {
+    return external;
+  }
+
+  if (url && isStaticAudioUrl(url)) {
+    return "static-audio";
+  }
+
+  return null;
+}
+
+export {
+  AUDIO_EXTENSIONS,
+  getFilenameFromUrl,
+  isAudioUrl,
+  isPlaylistUrl,
+  isStaticAudioUrl,
+  PLAYLIST_EXTENSIONS,
+} from "./static-audio/detect.js";

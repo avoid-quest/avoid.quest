@@ -1,9 +1,9 @@
 import { AppError } from "@avoid.quest/error";
-import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
 import {
+  detectPlayablePlatformFromUrl,
   isMixcloudShowUrl,
   MIXCLOUD_UNSUPPORTED_LINK_MESSAGE,
-} from "@avoid.quest/platforms/mixcloud";
+} from "@avoid.quest/platforms/detect";
 import {
   needsSpotifyResolution,
   parseSpotifyRef,

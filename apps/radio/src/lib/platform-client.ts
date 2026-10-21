@@ -1,10 +1,10 @@
 import { fromProblemError } from "@avoid.quest/error";
-import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms";
 import type {
   BandcampSearchFilter,
   BandcampSearchResult,
 } from "@avoid.quest/platforms/bandcamp";
 import { validateBandcampCdnUrl } from "@avoid.quest/platforms/bandcamp/url-policy";
+import { detectPlayablePlatformFromUrl } from "@avoid.quest/platforms/detect";
 import type { MixcloudSearchResult } from "@avoid.quest/platforms/mixcloud/search";
 import { validateMixcloudStreamUrl } from "@avoid.quest/platforms/mixcloud/url-policy";
 import type { RadioGardenSearchResult } from "@avoid.quest/platforms/radiogarden";

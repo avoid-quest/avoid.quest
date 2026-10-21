@@ -38,18 +38,25 @@ export function SettingsButton({
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const failureRef = useRef<HTMLDivElement>(null);
   const drawerId = useId();
 
   // Nothing handles Escape until the drawer chunk arrives, so a pending open
-  // is cancelled here. A mounted drawer prevents the default when it handles
-  // Escape itself, including while a keyboard reorder keeps it open.
+  // or a load failure is dismissed here; focus inside the failure notice
+  // returns to the trigger. A mounted drawer prevents the default when it
+  // handles Escape itself, including while a keyboard reorder keeps it open.
   useEffect(() => {
     if (!isOpen) {
       return;
     }
     const cancelPendingOpen = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) {
+        const focusInFailure =
+          failureRef.current?.contains(document.activeElement) ?? false;
         setIsOpen(false);
+        if (focusInFailure) {
+          triggerRef.current?.focus();
+        }
       }
     };
     document.addEventListener("keydown", cancelPendingOpen);
@@ -110,7 +117,10 @@ export function SettingsButton({
           frame={(failed) =>
             isOpen ? (
               // The drawer chunk is what failed, so the notice stays inline.
-              <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm rounded-lg border bg-popover pb-3 text-popover-foreground shadow-lg">
+              <div
+                className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm rounded-lg border bg-popover pb-3 text-popover-foreground shadow-lg"
+                ref={failureRef}
+              >
                 {failed}
                 <div className="flex justify-center">
                   <Button

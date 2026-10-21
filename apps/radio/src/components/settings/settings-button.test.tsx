@@ -60,6 +60,20 @@ if (scenario === "drawer-fails") {
     expect(document.activeElement).toBe(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
+
+  test("Escape on a failed drawer load returns focus to the trigger", async () => {
+    const view = render(<SettingsButton />);
+    const trigger = view.getByRole("button", { name: "Open settings" });
+    fireEvent.click(trigger, { detail: 0 });
+    const retry = await view.findByRole("button", { name: "Retry" });
+    retry.focus();
+    fireEvent.keyDown(retry, { key: "Escape" });
+    await waitFor(() =>
+      expect(view.queryByRole("button", { name: "Close" })).toBeNull()
+    );
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
 } else if (scenario === "drawer-pending") {
   installTriggerTestDom();
   // The drawer suspends until its chunk "arrives", so nothing else handles

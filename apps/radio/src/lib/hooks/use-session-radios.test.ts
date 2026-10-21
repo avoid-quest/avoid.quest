@@ -144,10 +144,19 @@ describe("session radios", () => {
   });
 
   test("keeps Session stations in memory when sessionStorage reads throw", async () => {
-    const { getItem } = sessionStorage;
-    sessionStorage.getItem = () => {
+    // A whole object: assigning getItem on a DOM Storage stores an item.
+    const blocked = createMemoryStorage();
+    blocked.getItem = () => {
       throw new DOMException("Storage blocked", "SecurityError");
     };
+    const original = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "sessionStorage"
+    );
+    Object.defineProperty(globalThis, "sessionStorage", {
+      configurable: true,
+      value: blocked,
+    });
 
     try {
       // A fresh module: the failed read keeps this one in memory.
@@ -163,12 +172,12 @@ describe("session radios", () => {
       expect(fresh.getSessionRadios().map((radio) => radio.id)).toEqual([
         "rg_blocked",
       ]);
+      expect(blocked.length).toBe(0);
     } finally {
-      sessionStorage.getItem = getItem;
+      if (original) {
+        Object.defineProperty(globalThis, "sessionStorage", original);
+      }
     }
-    expect(sessionStorage.getItem("radio-session-radios") ?? "").not.toContain(
-      "rg_blocked"
-    );
   });
 
   test("refreshes a Radio Browser session record when its resolved stream changes", async () => {

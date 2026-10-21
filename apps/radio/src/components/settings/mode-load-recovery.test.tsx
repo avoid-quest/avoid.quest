@@ -145,6 +145,12 @@ if (scenario) {
         );
         expect(await view.findByText("Single player")).toBeDefined();
         expect(view.queryByText("DJ player")).toBeNull();
+        // The toggle names the mode that is starting, not the stored DJ mode.
+        expect(
+          view
+            .getAllByRole("radio", { checked: true })
+            .map((radio) => radio.getAttribute("aria-label"))
+        ).toEqual(["Single"]);
         activation.resolve(undefined);
         await waitFor(() =>
           expect(manager.getSnapshot().currentMode).toBe("single")

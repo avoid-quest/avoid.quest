@@ -79,6 +79,9 @@ export function ModeSelect({ className }: { className?: string }) {
       type="single"
       value={
         modeTransition.currentMode ??
+        // With no mode running, a mode that is starting is the selection,
+        // even though the settings still name the one that failed.
+        modeTransition.requestedMode ??
         (modeTransition.error ? "" : normalizePlayerMode(settings?.player.mode))
       }
       variant="outline"

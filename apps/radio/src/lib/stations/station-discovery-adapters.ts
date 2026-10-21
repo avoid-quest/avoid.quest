@@ -1,10 +1,9 @@
+import { fromProblemError } from "@avoid.quest/error";
 import type { RadioBrowserStation } from "@avoid.quest/platforms/radiobrowser";
 import { probeBrowserReadableAudio } from "@/lib/audio/playback/browser-audio-probe";
 import {
   prepareRadioGardenSearchCandidate,
   type RadioGardenSearchCandidate,
-  searchRadioBrowser,
-  searchRadioGarden,
 } from "@/lib/platform-client";
 import { stationIntake } from "./external-station-workflow";
 import {
@@ -12,30 +11,6 @@ import {
   type StationDiscoveryAdapters,
   type StationDiscoveryCandidate,
 } from "./station-discovery";
-
-function stopWaitingOnAbort<T>(
-  promise: Promise<T>,
-  signal: AbortSignal
-): Promise<T> {
-  if (signal.aborted) {
-    return Promise.reject(signal.reason);
-  }
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(signal.reason);
-    const cleanup = () => signal.removeEventListener("abort", abort);
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(
-      (value) => {
-        cleanup();
-        resolve(value);
-      },
-      (error: unknown) => {
-        cleanup();
-        reject(error);
-      }
-    );
-  });
-}
 
 async function toRadioBrowserCandidate(
   station: RadioBrowserStation
@@ -104,10 +79,21 @@ function radioGardenSearchCandidate(
 export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
   radioBrowser: {
     search: async (query, { limit, signal }) => {
+      signal.throwIfAborted();
+      const { radioBrowserSearch } = await import(
+        "@/utils/radio-browser.functions"
+      );
+      signal.throwIfAborted();
+      const result = await radioBrowserSearch({
+        data: { limit, query },
+        signal,
+      });
+      signal.throwIfAborted();
+      if (!result.ok) {
+        throw fromProblemError(result.error);
+      }
       const candidates = await Promise.all(
-        (
-          await stopWaitingOnAbort(searchRadioBrowser(query, limit), signal)
-        ).map(toRadioBrowserCandidate)
+        result.data.results.map(toRadioBrowserCandidate)
       );
       return candidates.filter(
         (candidate): candidate is StationDiscoveryCandidate =>
@@ -117,10 +103,18 @@ export const productionStationDiscoveryAdapters: StationDiscoveryAdapters = {
   },
   radioGarden: {
     search: async (query, { limit, signal }) => {
+      signal.throwIfAborted();
+      const { radioGardenSearch } = await import(
+        "@/utils/radio-garden.functions"
+      );
+      signal.throwIfAborted();
+      const result = await radioGardenSearch({ data: { query }, signal });
+      signal.throwIfAborted();
+      if (!result.ok) {
+        throw fromProblemError(result.error);
+      }
       const candidates = await Promise.all(
-        (await stopWaitingOnAbort(searchRadioGarden(query), signal))
-          .slice(0, limit)
-          .map(toRadioGardenCandidate)
+        result.data.results.slice(0, limit).map(toRadioGardenCandidate)
       );
       return candidates.filter(
         (candidate): candidate is StationDiscoveryCandidate =>

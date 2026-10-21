@@ -31,8 +31,8 @@ const externalPlatformSearchWorkflow = createExternalPlatformSearchWorkflow({
       search: searchSoundCloud,
     },
     youtube: {
-      search: async (query, filter) =>
-        await getYouTubeClient().search(query, filter),
+      search: async (query, filter, signal) =>
+        await getYouTubeClient().search(query, filter, signal),
     },
   },
   reportProviderError: (provider, error) => {

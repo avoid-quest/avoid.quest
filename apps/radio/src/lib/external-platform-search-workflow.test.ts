@@ -98,8 +98,8 @@ describe("createExternalPlatformSearchWorkflow", () => {
       youtubeFilter: "videos",
     });
 
-    expect(bandcampSearch).toHaveBeenCalledWith("albums", "a");
-    expect(youtubeSearch).toHaveBeenCalledWith("videos", "videos");
+    expect(bandcampSearch).toHaveBeenCalledWith("albums", "a", undefined);
+    expect(youtubeSearch).toHaveBeenCalledWith("videos", "videos", undefined);
   });
 
   test("uses all-platform default filters for providers that support filters", async () => {
@@ -121,8 +121,16 @@ describe("createExternalPlatformSearchWorkflow", () => {
       youtubeFilter: "videos",
     });
 
-    expect(bandcampSearch).toHaveBeenCalledWith("all platforms", "t");
-    expect(youtubeSearch).toHaveBeenCalledWith("all platforms", "songs");
+    expect(bandcampSearch).toHaveBeenCalledWith(
+      "all platforms",
+      "t",
+      undefined
+    );
+    expect(youtubeSearch).toHaveBeenCalledWith(
+      "all platforms",
+      "songs",
+      undefined
+    );
   });
 
   test("interleaves all-platform results by provider and appends overflow", async () => {

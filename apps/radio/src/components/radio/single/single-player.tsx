@@ -17,7 +17,8 @@ import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
 import { deleteRadio } from "@/lib/hooks/use-radios";
 import {
   isSessionRadio,
-  useSessionRadios,
+  removeSessionRadio,
+  useSessionRadiosData,
 } from "@/lib/hooks/use-session-radios";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { useSingleSession } from "@/lib/hooks/use-single-session";
@@ -33,6 +34,7 @@ const ConfirmDeleteDialog = lazyWithRetry(() =>
 );
 
 import { RadioItemActions } from "../radio-item-actions";
+import { RadioNowPlayingAnnouncement } from "../radio-now-playing";
 import { RadioSearchBar } from "../radio-search-bar";
 import {
   MobileNowPlayingPanel,
@@ -58,6 +60,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     currentRadio,
     isPlaying,
     isLoading,
+    isBuffering,
     isMuted,
     error,
     volume,
@@ -84,8 +87,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
     radio: currentRadio,
   });
 
-  const sessionRadios = useSessionRadios((s) => s.radios);
-  const removeSessionRadio = useSessionRadios((s) => s.removeSessionRadio);
+  const sessionRadios = useSessionRadiosData();
   // A search pick means "listen to it", so it plays even when paused.
   const { saveDiscoveredStation, selectDiscoveredStation } =
     useDiscoveredStationActions(playRadio);
@@ -178,6 +180,9 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
   return (
     <>
+      {currentRadio ? (
+        <RadioNowPlayingAnnouncement metadata={metadata} radio={currentRadio} />
+      ) : null}
       <div
         className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 lg:flex-row"
         onFocusCapture={prefetchStationDialogOnIntent}
@@ -188,6 +193,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
             actions={currentRadioActions}
             deviceVolume={deviceVolume}
             error={error}
+            isBuffering={isBuffering}
             isLoading={isLoading}
             isMuted={isMuted}
             isPlaying={isPlaying}
@@ -201,7 +207,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
 
           <StationList
             currentRadioId={currentRadio?.id}
-            isPlaying={isPlaying && !isLoading}
+            isPlaying={isPlaying && !isLoading && !isBuffering}
             onDelete={handleDeleteRadio}
             onEdit={handleEditRadio}
             onSave={handleSaveSessionRadio}
@@ -225,6 +231,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
               actions={currentRadioActions}
               deviceVolume={deviceVolume}
               error={error}
+              isBuffering={isBuffering}
               isLoading={isLoading}
               isMuted={isMuted}
               isPlaying={isPlaying}

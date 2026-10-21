@@ -1,0 +1,25 @@
+apps/radio/src/lib/mode-lifecycle-manager.test.ts
+  s_db2676bf9b5672::t_4a1fd7968f9fa4 597,792,826
+apps/radio/src/lib/mode-lifecycle-manager.ts
+  s_db2676bf9b5672::t_3a9c310f6ae7df 74-75,229-237,356-377,401-404
+apps/radio/src/lib/mode-lifecycle-requests.test.ts
+  s_db2676bf9b5672::t_ff527b224103a2 4,13-17,61-116,194,221,245,274,309,341,351-550
+apps/radio/src/lib/mode-lifecycle-requests.ts
+  s_db2676bf9b5672::t_909c14e011953f 63-107,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3066014a537effa5259cc287d73ea55ac671c2d3",
+  "prompts": {},
+  "sessions": {
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

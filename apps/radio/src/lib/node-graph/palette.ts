@@ -30,6 +30,7 @@ import {
   type PortKind,
   portHandleId,
 } from "./catalogue";
+import { compiledPlan } from "./compiled-plan";
 import { endLabel, portName } from "./describe";
 import {
   connectNodes,
@@ -69,12 +70,15 @@ import {
 } from "./templates";
 import {
   type Connection,
+  type ConnectionAnalysis,
   connectionBaseline,
   connectionVerdict,
   kindsPatch,
   parseHandleId,
+  prepareConnectionAnalysis,
   type ValidateOptions,
   type Verdict,
+  withConnectionProbe,
 } from "./validate";
 
 type Position = GraphNode["position"];
@@ -370,7 +374,7 @@ function validCables(
   node: GraphNode,
   from: PaletteFrom,
   options?: ValidateOptions,
-  baseline?: ReadonlySet<string>,
+  baseline?: ReadonlySet<string> | ConnectionAnalysis,
   ports: readonly NodePort[] = nodePorts(node, graph.edges)
 ): Connection[] {
   if (node.id === from.node) {
@@ -477,6 +481,8 @@ function byStripThenName(left: NodeDefinition, right: NodeDefinition) {
 }
 
 export type PaletteOptions = ValidateOptions & {
+  /** Already probed node types; device/station entries are still filled from live lists. */
+  availableEntries?: readonly PaletteEntry[];
   /** Stations a Station entry can come filled with; hidden ones are left out. */
   radios?: readonly Radio[];
   /** Audio devices the browser lists; each gets an entry set to it. */
@@ -513,8 +519,14 @@ function canCaptureDisplayAudio(): boolean {
 function fits(
   graph: NodeGraph,
   type: NodeType,
-  { from, into, ...options }: PaletteOptions
+  { from, into, ...options }: PaletteOptions,
+  analysis: ConnectionAnalysis | undefined,
+  insertion?: NonNullable<Parameters<typeof insertNodeOnEdge>[4]>,
+  available?: ReadonlySet<NodeType>
 ): boolean {
+  if (available) {
+    return available.has(type);
+  }
   const connectionRequested = from || into;
   if (!connectionRequested) {
     return true;
@@ -525,8 +537,71 @@ function fits(
   }
   const probed = withNode(graph, probe);
   return from
-    ? validCables(probed, probe, from, options).length > 0
-    : insertNodeOnEdge(probed, PROBE_ID, into ?? "", options).ok;
+    ? validCables(
+        probed,
+        probe,
+        from,
+        options,
+        withConnectionProbe(
+          analysis ?? prepareConnectionAnalysis(graph, options),
+          probed,
+          probe
+        )
+      ).length > 0
+    : insertNodeOnEdge(
+        probed,
+        PROBE_ID,
+        into ?? "",
+        options,
+        insertion && {
+          ...insertion,
+          cut: withConnectionProbe(
+            insertion.cut,
+            { ...probed, edges: insertion.cut.graph.edges },
+            probe
+          ),
+          // Future modules can have their own standalone compiler refusals.
+          // Keep those in the baseline, as the unprepared insertion does.
+          plan:
+            options.release === "v2"
+              ? compiledPlan(probed, { crossOriginIsolated: false, ...options })
+              : insertion.plan,
+        }
+      ).ok;
+}
+
+/** Shared insertion baselines; each candidate adds only its isolated probe. */
+function paletteAnalysis(graph: NodeGraph, options: PaletteOptions) {
+  const { availableEntries, from, into } = options;
+  return {
+    analysis:
+      !availableEntries && (from || into)
+        ? prepareConnectionAnalysis(graph, options)
+        : undefined,
+    available:
+      availableEntries &&
+      new Set(
+        availableEntries.flatMap((entry) =>
+          entry.kind === "node" ? [entry.type] : []
+        )
+      ),
+    insertion:
+      into && !availableEntries
+        ? {
+            cut: prepareConnectionAnalysis(
+              {
+                ...graph,
+                edges: graph.edges.filter((edge) => edge.id !== into),
+              },
+              options
+            ),
+            plan: compiledPlan(graph, {
+              crossOriginIsolated: false,
+              ...options,
+            }),
+          }
+        : undefined,
+  };
 }
 
 /**
@@ -538,6 +613,7 @@ function fits(
 export function paletteEntries(
   graph: NodeGraph,
   {
+    availableEntries,
     radios = [],
     devices = { inputs: [], outputs: [] },
     sinkSelection = false,
@@ -552,12 +628,25 @@ export function paletteEntries(
     return swapEntries(graph, swap, options.release);
   }
   const entries: PaletteEntry[] = [];
+  const { analysis, available, insertion } = paletteAnalysis(graph, {
+    ...options,
+    availableEntries,
+    from,
+    into,
+  });
   for (const type of nodeTypesOnOffer(graph, options.release)) {
     const definition = getNodeDefinition(type);
     const section = SECTION_OF[definition.category as keyof typeof SECTION_OF];
     if (
       (type === "deviceOut" && !sinkSelection) ||
-      !fits(graph, type, { ...options, from, into })
+      !fits(
+        graph,
+        type,
+        { ...options, from, into },
+        analysis,
+        insertion,
+        available
+      )
     ) {
       continue;
     }

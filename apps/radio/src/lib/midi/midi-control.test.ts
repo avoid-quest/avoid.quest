@@ -1300,6 +1300,37 @@ describe("MidiControl", () => {
     expect(persistence.value?.state.mappings).toEqual([]);
   });
 
+  test("restores dropped mappings without taking targets or controls learned since", () => {
+    const kept = { ...mapping, control: 8, targetId: "deck-a:effect:fx:mix" };
+    const persistence = new MemoryPersistence({
+      state: { activePresetId: null, enabled: true, mappings: [kept] },
+      version: 2,
+    });
+    const control = createMidiControl({
+      browser: unsupportedBrowser,
+      persistence,
+      staticActions: [],
+    });
+    const restored: MidiMapping = {
+      ...mapping,
+      control: 9,
+      targetId: "deck-a:effect:fx:enabled",
+      transform: { curve: "exp", invert: true, max: 0.8, min: 0.2 },
+    };
+
+    control.change({
+      mappings: [
+        restored,
+        { ...mapping, control: 10, targetId: kept.targetId },
+        { ...mapping, control: 8, targetId: "deck-a:effect:fx:rate" },
+      ],
+      type: "restore-mappings",
+    });
+
+    expect(control.getSnapshot().mappings).toEqual([kept, restored]);
+    expect(persistence.value?.state.mappings).toEqual([kept, restored]);
+  });
+
   test("migrates version-one action IDs before exposing mappings", () => {
     const persistence = new MemoryPersistence({
       state: {
@@ -1400,4 +1431,39 @@ describe("MidiControl", () => {
     browser.flushFrame();
     expect(values).toEqual([32 / 127, 64 / 127]);
   });
+});
+
+test("parameter reconciliation keeps descriptors quiet and target subscribers isolated", () => {
+  const control = createMidiControl({
+    browser: unsupportedBrowser,
+    persistence: new MemoryPersistence({
+      state: { activePresetId: null, enabled: true, mappings: [mapping] },
+      version: 2,
+    }),
+    staticActions: [],
+  });
+  const binding = control.bindDeckEffects("deck-a");
+  const effect = createDefaultEffectConfig("limiter", "limiter", 0);
+  binding.reconcile([effect]);
+  const original = control.getSnapshot();
+  const global = mock(() => undefined);
+  const target = mock(() => undefined);
+  control.subscribe(global);
+  control.subscribeTarget("deck-a:volume", target);
+  const selected = control.getTargetSnapshot("deck-a:volume");
+  for (let i = 0; i < 60; i += 1) {
+    binding.reconcile([{ ...effect, threshold: -i }]);
+  }
+  expect(control.getSnapshot()).toBe(original);
+  expect(global).not.toHaveBeenCalled();
+  expect(target).not.toHaveBeenCalled();
+  control.change({ targetId: "deck-b:volume", type: "start-learn" });
+  expect(target).not.toHaveBeenCalled();
+  expect(control.getTargetSnapshot("deck-a:volume")).toBe(selected);
+  control.change({ targetId: "deck-a:volume", type: "start-learn" });
+  expect(target).toHaveBeenCalledTimes(1);
+  control.change({ targetId: "deck-a:volume", type: "remove-mapping" });
+  expect(target).toHaveBeenCalledTimes(2);
+  expect(control.getTargetSnapshot("deck-a:volume").mapping).toBeUndefined();
+  control.cleanup();
 });

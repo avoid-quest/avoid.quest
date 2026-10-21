@@ -37,17 +37,17 @@ type DeckContextValue = {
   addEffect: (type: EffectType) => void;
   updateEffect: (id: string, config: Partial<EffectConfig>) => void;
   removeEffect: (id: string) => void;
+  resetEffect: (id: string, config: Partial<EffectConfig>) => void;
   reorderEffects: (ids: string[]) => void;
   setEffectsTempo: (tempo: number) => void;
   // Derived data
-  trackProgress: { position: number; duration: number } | undefined;
   metadata: PlatformMetadata | undefined;
   currentTrackIndex: number;
   // Streaming helpers
   hasTracklist: boolean;
   tracks: PlatformTrack[] | undefined;
   isFileSource: boolean;
-  isSeekable: boolean;
+  visible: boolean;
 };
 
 const DeckContext = createContext<DeckContextValue | null>(null);

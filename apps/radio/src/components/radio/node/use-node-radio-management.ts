@@ -21,9 +21,11 @@ import {
 } from "@/lib/node-graph/graph-edits";
 import {
   commitNodeGraph,
+  getRetainedNodeGraphs,
   type NodeStore,
   nodeStore,
 } from "@/lib/node-graph/node-store";
+import { type GraphNode, isRadioSourceNode } from "@/lib/node-graph/schema";
 import { getNodePlayback, type NodePlayback } from "@/lib/node-playback";
 import {
   loadSourceUrl,
@@ -35,22 +37,101 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 
 type StationPlayback = Pick<NodePlayback, "flush" | "setPlaying">;
 
-/** The latest fill request per source node, shared by the patch and inspector. */
-const sourceRequests = new Map<string, number>();
+/** A request and what its source held, as of the last edit it survived. */
+type SourceRequest = { source: string };
+type SourceRequests = {
+  generation: number;
+  requests: Map<string, SourceRequest>;
+};
+const sourceRequests = new WeakMap<NodeStore, SourceRequests>();
+
+/** What a source plays; a cosmetic edit (position, strip, fader) keeps it. */
+function sourceOf(node: GraphNode | undefined): string {
+  if (!node) {
+    return "";
+  }
+  if (isRadioSourceNode(node)) {
+    const { radio } = node.data;
+    return JSON.stringify([node.type, radio?.id ?? null, radio?.streamUrl]);
+  }
+  if (node.type === "deviceIn") {
+    const { capture, deviceId, sourceUrl } = node.data;
+    return JSON.stringify([node.type, deviceId, capture, sourceUrl]);
+  }
+  return node.type;
+}
 
 /**
- * Starts filling a source node, superseding any earlier fill of it still
- * loading (a pick, pasted link or platform change, from either view).
- * Resolves the returned check after each await: false means a newer request
- * or an aborted `signal` owns the node, so this one must not commit.
+ * A replacement has no editor-node lineage; ordinary edits share node data.
+ * Undo and Redo bring back other instances of the same nodes, so a request
+ * outlives one only if its own source still plays what it did.
  */
+function requestsFor(store: NodeStore): SourceRequests {
+  const existing = sourceRequests.get(store);
+  if (existing) {
+    return existing;
+  }
+  const state: SourceRequests = { generation: 0, requests: new Map() };
+  sourceRequests.set(store, state);
+  let previous = store.state;
+  store.subscribe(() => {
+    const next = store.state;
+    if (next.graph !== previous.graph) {
+      const retained = new Set(
+        previous.graph?.nodes.flatMap((node) => [node, node.data]) ?? []
+      );
+      if (
+        next.graph?.nodes.some(
+          (node) => retained.has(node) || retained.has(node.data)
+        )
+      ) {
+        const restored = getRetainedNodeGraphs(previous).has(next.graph);
+        const nodes = new Map(next.graph.nodes.map((node) => [node.id, node]));
+        for (const [id, request] of state.requests) {
+          const node = nodes.get(id);
+          const source = sourceOf(node);
+          if (!node || (restored && source !== request.source)) {
+            state.requests.delete(id);
+          } else {
+            // A forward edit is the request's own fill or follows a record.
+            request.source = source;
+          }
+        }
+      } else {
+        state.generation += 1;
+        state.requests.clear();
+      }
+    }
+    previous = next;
+  });
+  return state;
+}
+
+/** Mode exit and explicit replacement invalidate requests from both views. */
+export function invalidateSourceRequests(store: NodeStore = nodeStore): void {
+  const state = requestsFor(store);
+  state.generation += 1;
+  state.requests.clear();
+}
+
+/** Latest request for this source in this patch lifecycle, shared by both views. */
 export function beginSourceRequest(
   nodeId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  store: NodeStore = nodeStore
 ): () => boolean {
-  const request = (sourceRequests.get(nodeId) ?? 0) + 1;
-  sourceRequests.set(nodeId, request);
-  return () => sourceRequests.get(nodeId) === request && !signal?.aborted;
+  const state = requestsFor(store);
+  const { generation } = state;
+  const request: SourceRequest = {
+    source: sourceOf(
+      store.state.graph?.nodes.find((node) => node.id === nodeId)
+    ),
+  };
+  state.requests.set(nodeId, request);
+  return () =>
+    state.generation === generation &&
+    state.requests.get(nodeId) === request &&
+    !signal?.aborted;
 }
 
 type UseNodeRadioManagementOptions = {
@@ -145,7 +226,7 @@ export function useNodeRadioManagement({
   const fillStation = async (
     nodeId: string,
     radio: Radio,
-    isCurrent = beginSourceRequest(nodeId)
+    isCurrent = beginSourceRequest(nodeId, undefined, store)
   ) => {
     if (!isCurrent()) {
       return;
@@ -168,7 +249,7 @@ export function useNodeRadioManagement({
   const fillSource = async (
     nodeId: string,
     radio: Radio,
-    isCurrent = beginSourceRequest(nodeId)
+    isCurrent = beginSourceRequest(nodeId, undefined, store)
   ) => {
     if (!isCurrent()) {
       return;
@@ -192,7 +273,7 @@ export function useNodeRadioManagement({
   const fillStationFromUrl = async (
     nodeId: string,
     url: string,
-    isCurrent = beginSourceRequest(nodeId)
+    isCurrent = beginSourceRequest(nodeId, undefined, store)
   ): Promise<string | null> => {
     const loaded = detectPlatformFromUrl(url)
       ? await loadSourceUrl(url, loaders)
@@ -213,7 +294,7 @@ export function useNodeRadioManagement({
     });
 
   const selectDiscoveredForStation = (nodeId: string, radio: Radio) => {
-    const isCurrent = beginSourceRequest(nodeId);
+    const isCurrent = beginSourceRequest(nodeId, undefined, store);
     selectDiscoveredStation(radio, (resolved) =>
       fillStation(nodeId, resolved, isCurrent)
     );

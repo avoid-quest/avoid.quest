@@ -32,6 +32,7 @@ type EffectItemProps = {
   effect: EffectConfig;
   onUpdate: (config: Partial<EffectConfig>) => void;
   onRemove: () => void;
+  onReset?: (config: Partial<EffectConfig>) => void;
   onExpand?: () => void;
   isExpanded?: boolean;
   isDragging?: boolean;
@@ -58,6 +59,7 @@ export function EffectItem({
   effect,
   onUpdate,
   onRemove,
+  onReset,
   onExpand,
   isExpanded = false,
   isDragging = false,
@@ -79,7 +81,8 @@ export function EffectItem({
     if (!metadata?.defaultConfig) {
       return;
     }
-    onUpdate(createEffectResetPatch(effect));
+    const patch = createEffectResetPatch(effect);
+    (onReset ?? onUpdate)(patch);
   }
 
   return (

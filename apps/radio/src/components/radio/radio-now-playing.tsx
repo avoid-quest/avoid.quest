@@ -16,7 +16,7 @@ import {
   InfoIcon,
   XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
 import { GenreBadges } from "./genre-badges";
@@ -27,6 +27,13 @@ type RadioNowPlayingProps = {
   radio: Radio;
   metadata?: RadioNowPlayingMetadata | null;
   isLoading?: boolean;
+  isBuffering?: boolean;
+  /**
+   * Adds a polite live region for this player. Off by default: Node and DJ
+   * mount several players at once, so only a single deliberate region
+   * (Single mode's `RadioNowPlayingAnnouncement`) should speak.
+   */
+  announce?: boolean;
   variant?: "featured" | "compact";
   className?: string;
 };
@@ -120,25 +127,63 @@ export function RadioNowPlayingDetailsButton({
   );
 }
 
+export function RadioNowPlayingAnnouncement({
+  radio,
+  metadata,
+}: Pick<RadioNowPlayingProps, "radio" | "metadata">) {
+  const identity = getIdentity(radio, metadata);
+  const message = [
+    radio.name,
+    identity.hasNowPlaying ? identity.title : null,
+    identity.hasNowPlaying ? identity.subtitle : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => setAnnouncement(message), [message]);
+  return (
+    <span aria-atomic="true" aria-live="polite" className="sr-only">
+      {announcement}
+    </span>
+  );
+}
+
+function ConnectionStatus({
+  isLoading,
+  isBuffering,
+}: {
+  isLoading: boolean;
+  isBuffering: boolean;
+}) {
+  if (!(isLoading || isBuffering)) {
+    return null;
+  }
+  return (
+    <p className="text-muted-foreground text-xs" role="status">
+      {isLoading ? "Connecting…" : "Buffering…"}
+    </p>
+  );
+}
+
 export function RadioNowPlaying({
   radio,
   metadata,
   isLoading = false,
+  isBuffering = false,
+  announce = false,
   variant = "compact",
   className,
 }: RadioNowPlayingProps) {
   const featured = variant === "featured";
   const identity = getIdentity(radio, metadata);
   const { hasNowPlaying, subtitle, title } = identity;
-  const connectionStatus = isLoading ? (
-    <p className="text-muted-foreground text-xs" role="status">
-      Connecting…
-    </p>
-  ) : null;
   const Heading = featured ? "h2" : "h3";
 
   return (
     <Dialog>
+      {announce ? (
+        <RadioNowPlayingAnnouncement metadata={metadata} radio={radio} />
+      ) : null}
       <section
         aria-label={`${radio.name} now playing`}
         className={cn("min-w-0", className)}
@@ -253,7 +298,7 @@ export function RadioNowPlaying({
               genre={metadata?.genre}
               limit={featured ? 3 : 1}
             />
-            {connectionStatus}
+            <ConnectionStatus isBuffering={isBuffering} isLoading={isLoading} />
           </div>
         </div>
       </section>

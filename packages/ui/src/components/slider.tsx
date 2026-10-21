@@ -290,7 +290,7 @@ function Slider({
   return (
     <Root
       className={cn(
-        "relative flex touch-none select-none items-center data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col data-[disabled]:opacity-50",
+        "relative flex touch-none select-none items-center data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col data-[disabled]:opacity-50 [@media(pointer:coarse)]:data-[orientation=horizontal]:min-h-11 [@media(pointer:coarse)]:data-[orientation=vertical]:min-w-11",
         className
       )}
       data-slot="slider"
@@ -362,7 +362,7 @@ function Slider({
           aria-label={ariaLabel}
           aria-valuetext={ariaValueText}
           className={cn(
-            "block shrink-0 border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white",
+            "block shrink-0 border border-primary light:border-primary/80 bg-white light:bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-white dark:focus-visible:ring-ring",
             thumbShapeClass
           )}
           data-index={index}

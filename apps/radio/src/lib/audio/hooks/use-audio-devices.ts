@@ -116,6 +116,9 @@ export function useAudioDevices(
     navigator.permissions
       .query({ name: "microphone" as PermissionName })
       .then((result) => {
+        if (cancelled) {
+          return;
+        }
         status = result;
         result.addEventListener("change", apply);
         apply();

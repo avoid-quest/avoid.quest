@@ -427,3 +427,92 @@ describe("CompactSourceStrip", () => {
     ).toBe("true");
   });
 });
+
+test("offscreen meters unsubscribe, cancel queued frames and resume when visible", async () => {
+  const { StripMeter } = await import("./source-strip");
+  const observers: {
+    callback: IntersectionObserverCallback;
+    target?: Element;
+    root: Element | Document | null;
+    disconnect: ReturnType<typeof mock>;
+  }[] = [];
+  class VisibilityObserver {
+    entry: (typeof observers)[number];
+    constructor(
+      callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit
+    ) {
+      this.entry = {
+        callback,
+        disconnect: mock(() => undefined),
+        root: options?.root ?? null,
+      };
+      observers.push(this.entry);
+    }
+    observe(target: Element) {
+      this.entry.target = target;
+    }
+    disconnect() {
+      this.entry.disconnect();
+    }
+  }
+  const previous = globalThis.IntersectionObserver;
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: VisibilityObserver,
+    writable: true,
+  });
+  try {
+    const rendered = mock(() => undefined);
+    const { Profiler } = await import("react");
+    const view = render(
+      <div className="react-flow">
+        <Profiler id="meter" onRender={rendered}>
+          <StripMeter soundId="sound" />
+        </Profiler>
+      </div>
+    );
+    // PeakMeter observes its own bars to pause animation; pick the strip's.
+    const observer = observers.find(
+      (entry) => entry.target?.getAttribute("data-slot") === "strip-meter"
+    );
+    if (!observer) {
+      throw new Error("Missing meter observer");
+    }
+    expect(observer.root).toBe(view.container.firstElementChild);
+    expect(subscribeMeter).toHaveBeenCalledTimes(1);
+    const listener = subscribeMeter.mock.calls[0]?.[1];
+    act(() => {
+      listener?.({ left: 0.5, right: 0.5 });
+      listener?.({ left: 0.9, right: 0.9 });
+    });
+    act(() =>
+      observer.callback(
+        [{ isIntersecting: false } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    );
+    expect(unsubscribeMeter).toHaveBeenCalledTimes(1);
+    const count = rendered.mock.calls.length;
+    await act(() => new Promise((resolve) => setTimeout(resolve, 65)));
+    expect(rendered).toHaveBeenCalledTimes(count);
+    expect(
+      view.container.querySelector('[data-slot="strip-meter"]')
+    ).toBeTruthy();
+    act(() =>
+      observer.callback(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    );
+    expect(subscribeMeter).toHaveBeenCalledTimes(2);
+    view.unmount();
+    expect(observer.disconnect).toHaveBeenCalledTimes(1);
+  } finally {
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      configurable: true,
+      value: previous,
+      writable: true,
+    });
+  }
+});

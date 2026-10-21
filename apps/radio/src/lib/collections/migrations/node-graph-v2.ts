@@ -14,6 +14,7 @@
  * update failing on it. When the copy can't be stored the graph stays.
  */
 
+import { getBrowserStorage } from "@/lib/browser-storage";
 import { migrateNodeGraph, NODE_GRAPH_VERSION } from "@/lib/node-graph/schema";
 import type { playbackSessionsCollection } from "../playback-sessions";
 
@@ -31,14 +32,7 @@ export type NodeGraphBackup = {
 type BackupStorage = Pick<Storage, "getItem" | "setItem">;
 
 function getBackupStorage(): BackupStorage | null {
-  try {
-    return typeof globalThis.localStorage === "undefined"
-      ? null
-      : globalThis.localStorage;
-  } catch {
-    // Storage access can throw when the browser blocks it.
-    return null;
-  }
+  return getBrowserStorage("localStorage") ?? null;
 }
 
 function storedVersion(graph: unknown): number | null {

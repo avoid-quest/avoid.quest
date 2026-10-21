@@ -1,6 +1,6 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { ImageIcon, Volume2Icon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RadioLogo } from "../radio/radio-logo";
 
 type RadioFieldPreviewProps = {
@@ -14,12 +14,18 @@ export function RadioFieldPreview({
   value,
   radioName,
 }: RadioFieldPreviewProps) {
-  const [audioError, setAudioError] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(value);
+  useEffect(() => {
+    const timeout = setTimeout(() => setPreviewUrl(value), 300);
+    return () => clearTimeout(timeout);
+  }, [value]);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const audioError = failedUrl === previewUrl;
   const handleAudioError = () => {
-    setAudioError(true);
+    setFailedUrl(previewUrl);
   };
 
-  if (!value) {
+  if (!(value && previewUrl)) {
     return null;
   }
 
@@ -32,7 +38,7 @@ export function RadioFieldPreview({
               fallbackIcon={
                 <ImageIcon className="size-4 text-muted-foreground" />
               }
-              logoUrl={value}
+              logoUrl={previewUrl}
               name={radioName}
               size="md"
             />
@@ -56,7 +62,7 @@ export function RadioFieldPreview({
                   controls
                   onError={handleAudioError}
                   preload="metadata"
-                  src={value}
+                  src={previewUrl}
                 >
                   <track kind="captions" />
                   Your browser does not support the audio element.

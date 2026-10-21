@@ -96,8 +96,20 @@ export function useSingleSession() {
   );
 
   const togglePlayPause = useCallback(
-    () => playback.setPlaying(!activeRuntime.isPlaying),
-    [activeRuntime.isPlaying, playback]
+    () =>
+      playback.setPlaying(
+        !(
+          activeRuntime.isPlaying ||
+          activeRuntime.isLoading ||
+          activeRuntime.isBuffering
+        )
+      ),
+    [
+      activeRuntime.isPlaying,
+      activeRuntime.isLoading,
+      activeRuntime.isBuffering,
+      playback,
+    ]
   );
 
   const play = useCallback(() => playback.setPlaying(true), [playback]);
@@ -117,6 +129,7 @@ export function useSingleSession() {
     () => ({
       currentRadio,
       error,
+      isBuffering: activeRuntime.isBuffering,
       isLoading: activeRuntime.isLoading,
       isMuted,
       isPlaying: activeRuntime.isPlaying,
@@ -132,6 +145,7 @@ export function useSingleSession() {
       volume,
     }),
     [
+      activeRuntime.isBuffering,
       activeRuntime.isLoading,
       activeRuntime.isPlaying,
       currentRadio,

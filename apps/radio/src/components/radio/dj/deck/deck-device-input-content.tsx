@@ -64,6 +64,7 @@ export function DeviceInputContent({
     updateEffect,
     removeEffect,
     reorderEffects,
+    resetEffect,
     setEffectsTempo,
     radio,
     reset,
@@ -177,6 +178,7 @@ export function DeviceInputContent({
           onAddEffect={addEffect}
           onRemoveEffect={removeEffect}
           onReorderEffects={reorderEffects}
+          onResetEffect={resetEffect}
           onTempoChange={setEffectsTempo}
           onUpdateEffect={updateEffect}
           tempo={effectsTempo}

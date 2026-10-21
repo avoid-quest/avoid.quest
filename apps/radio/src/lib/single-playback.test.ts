@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import type { AudioEngineFacade, AudioManager, Radio } from "@/lib/audio";
 import {
   createDefaultChannel,
@@ -15,9 +23,14 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelRuntime,
 } from "@/lib/stores/playback-runtime-store";
+import {
+  flushPlaybackSessionWrites,
+  getPlaybackSessionPersistence,
+} from "./collections/node-session-persistence";
 import type { PlaybackActionContext } from "./playback-action-context";
 import {
   getSinglePlayback,
+  type SinglePlayback,
   type SingleSelectionFailure,
 } from "./single-playback";
 
@@ -44,6 +57,7 @@ function createDeferred<T = void>(): {
 }
 
 async function resetPlaybackSessions(): Promise<void> {
+  flushPlaybackSessionWrites();
   await Promise.all([
     playbackSessionsCollection.stateWhenReady(),
     settingsCollection.stateWhenReady(),
@@ -172,6 +186,41 @@ function createTestContext(): PlaybackActionContext {
   };
 }
 
+function createPacedTestContext(): PlaybackActionContext {
+  const context = createTestContext();
+  context.channels.setVolume = mock((_sessionId, channelId, volume) => {
+    getPlaybackSessionPersistence("single").update((session) => {
+      const channel = session.channels.find((entry) => entry.id === channelId);
+      if (channel) {
+        channel.volume = volume;
+      }
+    });
+  });
+  context.channels.setMuted = mock((_sessionId, channelId, muted) => {
+    getPlaybackSessionPersistence("single").update((session) => {
+      const channel = session.channels.find((entry) => entry.id === channelId);
+      if (channel) {
+        channel.muted = muted;
+      }
+    });
+  });
+  return context;
+}
+
+function changePendingControls(playback: SinglePlayback, muted: boolean): void {
+  playback.setVolume(0.16);
+  const persist = spyOn(playbackSessionsCollection.utils, "acceptMutations");
+  try {
+    playback.setVolume(0.17);
+    if (muted) {
+      playback.toggleMute();
+    }
+    expect(persist).not.toHaveBeenCalled();
+  } finally {
+    persist.mockRestore();
+  }
+}
+
 beforeEach(async () => {
   await resetPlaybackSessions();
   resetAllPlaybackRuntime();
@@ -235,6 +284,99 @@ describe("Single Playback", () => {
       getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID).error
     ).toBeNull();
     expect(context.reportError).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([false, true])(
+    "a failed Station switch keeps pending controls (muted: %s) when resuming",
+    async (muted) => {
+      const current = station("current");
+      insertSingleSession(current, true);
+      const context = createPacedTestContext();
+      const started = createDeferred();
+      const pending = createDeferred();
+      let attempt = 0;
+      context.audio.playSound = mock(() => {
+        attempt += 1;
+        if (attempt === 1) {
+          started.resolve();
+          return pending.promise;
+        }
+        return Promise.resolve();
+      });
+      const playback = getSinglePlayback({ ctx: context });
+      const writer = getPlaybackSessionPersistence("single");
+      playback.setVolume(0.4);
+      await writer.whenSettled();
+      const switching = playback.selectStation(station("replacement"));
+      await started.promise;
+      changePendingControls(playback, muted);
+      writer.update((session) => {
+        const channel = session.channels.find(
+          (entry) => entry.id === SINGLE_ACTIVE_CHANNEL_ID
+        );
+        if (channel) {
+          channel.pan = 0.3;
+          channel.speed = 0.9;
+        }
+      });
+      expect(
+        getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)
+      ).toMatchObject({ muted, volume: 0.17 });
+      pending.reject(new Error("replacement failed"));
+      await switching;
+      expect(
+        getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)
+      ).toMatchObject({
+        muted,
+        pan: 0.3,
+        radio: current,
+        speed: 0.9,
+        volume: 0.17,
+      });
+      expect(context.audio.playSound).toHaveBeenNthCalledWith(
+        2,
+        "single:single-a",
+        muted ? 0 : 0.17
+      );
+      await writer.whenSettled();
+    }
+  );
+
+  test("a superseded Station switch keeps pending volume and mute for its replacement", async () => {
+    insertSingleSession(station("current"), true);
+    const context = createPacedTestContext();
+    const started = createDeferred();
+    const pending = createDeferred();
+    let attempt = 0;
+    context.audio.playSound = mock(() => {
+      attempt += 1;
+      if (attempt === 1) {
+        started.resolve();
+        return pending.promise;
+      }
+      return Promise.resolve();
+    });
+    const playback = getSinglePlayback({ ctx: context });
+    const writer = getPlaybackSessionPersistence("single");
+    playback.setVolume(0.4);
+    await writer.whenSettled();
+    const first = playback.selectStation(station("first"));
+    await started.promise;
+    changePendingControls(playback, true);
+    const replacement = station("latest");
+    await Promise.all([first, playback.selectStation(replacement)]);
+    pending.reject(new Error("stale failure"));
+    await Promise.resolve();
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)
+    ).toMatchObject({ muted: true, radio: replacement, volume: 0.17 });
+    expect(context.audio.playSound).toHaveBeenNthCalledWith(
+      2,
+      "single:single-a",
+      0
+    );
+    expect(context.reportError).not.toHaveBeenCalled();
+    await writer.whenSettled();
   });
 
   test("reports sound creation failures for an initially paused selection as a failed switch", async () => {
@@ -606,6 +748,173 @@ describe("Single Playback", () => {
     expect(
       getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
     ).toEqual(station("current"));
+  });
+
+  test.each(["resolve", "reject"] as const)(
+    "a newer Station supersedes a pending route reconnect before its late %s",
+    async (completion) => {
+      insertSingleSession(station("current"), true);
+      setMainDelayMs(120);
+      const context = createTestContext();
+      context.channels.getOutputMode = mock(() => "native" as const);
+      const started = createDeferred();
+      const pending = createDeferred();
+      let attempt = 0;
+      context.audio.playSound = mock(() => {
+        attempt += 1;
+        if (attempt === 1) {
+          started.resolve();
+          return pending.promise;
+        }
+        setPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID, () => ({
+          isPlaying: true,
+        }));
+        return Promise.resolve();
+      });
+      const playback = getSinglePlayback({ ctx: context });
+      const routing = playback.reconcileRouting();
+      await started.promise;
+      const replacement = station("latest");
+      const switching = playback.selectStation(replacement);
+      const winner = await Promise.race([
+        switching.then(() => "selection"),
+        Bun.sleep(0).then(() => "blocked"),
+      ]);
+      const beforeCompletion = getPlaybackChannelRuntime(
+        SINGLE_ACTIVE_CHANNEL_ID
+      );
+      if (completion === "resolve") {
+        pending.resolve();
+      } else {
+        pending.reject(new Error("stale route failure"));
+      }
+      await Promise.allSettled([routing, switching]);
+      expect(winner).toBe("selection");
+      expect(
+        getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+      ).toEqual(replacement);
+      expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject(
+        { error: null, isPlaying: true, soundId: "single:single-a" }
+      );
+      expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toBe(
+        beforeCompletion
+      );
+      expect(context.audio.playSound).toHaveBeenNthCalledWith(
+        2,
+        "single:single-a",
+        0.42
+      );
+      expect(context.reportError).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["resolve", "reject"] as const)(
+    "deactivation supersedes a pending route reconnect before its late %s",
+    async (completion) => {
+      insertSingleSession(station("current"), true);
+      setMainDelayMs(120);
+      const context = createTestContext();
+      context.channels.getOutputMode = mock(() => "native" as const);
+      const started = createDeferred();
+      const pending = createDeferred();
+      context.audio.playSound = mock(() => {
+        started.resolve();
+        return pending.promise;
+      });
+      const playback = getSinglePlayback({
+        ctx: context,
+        fadeOutSound: mock(async () => undefined),
+      });
+      const routing = playback.reconcileRouting();
+      await started.promise;
+      const deactivating = playback.deactivate();
+      const winner = await Promise.race([
+        deactivating.then(() => "deactivated"),
+        Bun.sleep(0).then(() => "blocked"),
+      ]);
+      if (completion === "resolve") {
+        pending.resolve();
+      } else {
+        pending.reject(new Error("stale route failure"));
+      }
+      await Promise.allSettled([routing, deactivating]);
+      expect(winner).toBe("deactivated");
+      expect(getPlaybackChannelRuntime(SINGLE_ACTIVE_CHANNEL_ID)).toMatchObject(
+        { error: null, isPlaying: false, soundId: null }
+      );
+      expect(context.reportError).not.toHaveBeenCalled();
+    }
+  );
+
+  test("routing waits for a Station switch without cancelling it", async () => {
+    insertSingleSession(station("current"), true);
+    setMainDelayMs(120);
+    const context = createTestContext();
+    context.channels.getOutputMode = mock(() => "native" as const);
+    const started = createDeferred();
+    const pending = createDeferred();
+    let attempt = 0;
+    context.audio.playSound = mock(() => {
+      attempt += 1;
+      if (attempt === 1) {
+        started.resolve();
+        return pending.promise;
+      }
+      return Promise.resolve();
+    });
+    const playback = getSinglePlayback({ ctx: context });
+    const switching = playback.selectStation(station("latest"));
+    await started.promise;
+    const routing = playback.reconcileRouting();
+    expect(context.audio.playSound).toHaveBeenCalledTimes(1);
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(station("latest"));
+    pending.resolve();
+    await Promise.all([switching, routing]);
+    expect(context.audio.playSound).toHaveBeenCalledTimes(2);
+    expect(context.channels.activate).toHaveBeenLastCalledWith(
+      "single",
+      SINGLE_ACTIVE_CHANNEL_ID,
+      station("latest"),
+      "single:single-a"
+    );
+    expect(context.reportError).not.toHaveBeenCalled();
+  });
+
+  test("a newer Station cancels queued routing as well as the pending switch", async () => {
+    insertSingleSession(station("current"), true);
+    setMainDelayMs(120);
+    const context = createTestContext();
+    context.channels.getOutputMode = mock(() => "native" as const);
+    const started = createDeferred();
+    const pending = createDeferred();
+    let attempt = 0;
+    context.audio.playSound = mock(() => {
+      attempt += 1;
+      if (attempt === 1) {
+        started.resolve();
+        return pending.promise;
+      }
+      return Promise.resolve();
+    });
+    const playback = getSinglePlayback({ ctx: context });
+    const first = playback.selectStation(station("first"));
+    await started.promise;
+    const routing = playback.reconcileRouting();
+    await Promise.all([
+      first,
+      routing,
+      playback.selectStation(station("latest")),
+    ]);
+    pending.reject(new Error("stale switch failure"));
+    await Promise.resolve();
+    expect(context.channels.activate).toHaveBeenCalledTimes(2);
+    expect(context.audio.playSound).toHaveBeenCalledTimes(2);
+    expect(
+      getPlaybackChannel("single", SINGLE_ACTIVE_CHANNEL_ID)?.radio
+    ).toEqual(station("latest"));
+    expect(context.reportError).not.toHaveBeenCalled();
   });
 
   test("reports routing errors on the active Single Channel", async () => {

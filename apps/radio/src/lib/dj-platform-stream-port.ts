@@ -19,6 +19,7 @@ type StreamResolutionReason =
 type YouTubeStreamResolutionInput = {
   platform: "youtube";
   reason: StreamResolutionReason;
+  signal?: AbortSignal;
   videoId: string;
   radio: Radio;
 };
@@ -27,6 +28,7 @@ type YouTubeStreamResolutionInput = {
 type SpotifyStreamResolutionInput = {
   platform: "spotify";
   reason: StreamResolutionReason;
+  signal?: AbortSignal;
   spotifyId: string;
   radio: Radio;
 };
@@ -35,6 +37,7 @@ type CanonicalPlatformStreamResolutionInput = {
   canonicalUrl: string;
   platform: "bandcamp" | "mixcloud" | "soundcloud";
   reason: "stream-refresh";
+  signal?: AbortSignal;
   radio: Radio;
 };
 
@@ -105,6 +108,7 @@ async function resolveSpotifyStream(
   }
   try {
     const stream = await resolveSpotifyTrackStream(toSpotifyMatchTrack(track), {
+      signal: input.signal,
       youtube: getClient(),
     });
     return stream.success
@@ -129,7 +133,7 @@ export async function resolveDjPlatformStreamUrl(
     case "youtube": {
       const streamUrl = await (
         dependencies.getYouTubeClient ?? getYouTubeClient
-      )().resolveStream(input.videoId);
+      )().resolveStream(input.videoId, input.signal);
       return resolvedStream(streamUrl);
     }
     case "spotify":
@@ -143,7 +147,7 @@ export async function resolveDjPlatformStreamUrl(
       try {
         const resolved = await (
           dependencies.resolvePlatformItem ?? resolvePlatformItem
-        )(input.canonicalUrl);
+        )(input.canonicalUrl, input.signal);
         const selected = selectRefreshedCollectionStream(
           input.radio,
           resolved.streamUrl,

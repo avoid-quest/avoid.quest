@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import { getAudioSettings } from "@/lib/collections";
 import { getDjDeckModule } from "@/lib/dj-deck";
 
+const SHORTCUT_INTERACTION_SELECTOR =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="menu"], [role="menuitem"], [role="listbox"], [role="option"], [role="combobox"]';
+
 /**
  * Keyboard shortcuts for DJ mode:
  * - Q: Toggle Deck A CUE (pre-fader listen)
@@ -12,18 +15,17 @@ import { getDjDeckModule } from "@/lib/dj-deck";
 export function useDjKeyboard() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input field
-      const target = e.target as HTMLElement;
+      const { target } = e;
       if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
+        e.defaultPrevented ||
+        !(target instanceof Element) ||
+        target.closest(SHORTCUT_INTERACTION_SELECTOR)
       ) {
         return;
       }
 
       // Ignore if modifier keys are pressed (except shift for uppercase)
-      if (e.ctrlKey || e.metaKey || e.altKey) {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) {
         return;
       }
 

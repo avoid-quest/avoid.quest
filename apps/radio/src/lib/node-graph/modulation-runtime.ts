@@ -14,13 +14,20 @@ import {
 } from "@/lib/node-engine/param-target";
 import type { EnginePlan } from "./compile";
 import type { ModulationMessage, ModulationProgram } from "./modulation-dsp";
-import {
-  createNativeModulationSession,
-  isNativeModulation,
-  type NativeDestination,
-  type NativeModulationSession,
-  type NativeModulationSpec,
+import { NATIVE_TYPES } from "./modulation-frequency";
+import type {
+  NativeDestination,
+  NativeModulationSession,
+  NativeModulationSpec,
 } from "./modulation-native";
+import type { ModulationSpec } from "./modulation-schema";
+
+function isNativeModulation(
+  spec: ModulationSpec
+): spec is NativeModulationSpec {
+  return NATIVE_TYPES.has(spec.type);
+}
+
 import {
   controlDepth,
   type ModulationParameter,
@@ -217,6 +224,9 @@ export function createModulationRuntime(options: Options) {
   let context: AudioContext | null = null;
   let pending: Promise<void> | null = null;
   let native: NativeModulationSession | null = null;
+  let createNative:
+    | typeof import("./modulation-native")["createNativeModulationSession"]
+    | null = null;
   let disposed = false;
   let taps: { source: AudioNode; input: number }[] = [];
   let nativeValues: Record<string, number> = {};
@@ -353,8 +363,8 @@ export function createModulationRuntime(options: Options) {
     resolveSources();
     if (specs.length === 0) {
       releaseNative();
-    } else if (host) {
-      native ??= createNativeModulationSession(host, (id, value) => {
+    } else if (host && createNative) {
+      native ??= createNative(host, (id, value) => {
         if (nativeIds.has(id)) {
           nativeValues[id] = value;
         }
@@ -484,13 +494,21 @@ export function createModulationRuntime(options: Options) {
     }
     try {
       if (needsHost()) {
-        hostRequest ??= getNativeHost().then((resolved) => {
-          host = resolved;
+        hostRequest ??= Promise.all([
+          getNativeHost(),
+          import("./modulation-native"),
+        ]).then(([resolved, module]) => {
+          if (!disposed) {
+            host = resolved;
+            createNative = module.createNativeModulationSession;
+          }
         });
         await hostRequest;
       }
     } catch (error) {
-      report(error, true);
+      if (!disposed) {
+        report(error, true);
+      }
     }
     if (disposed || program.nodes.length === 0) {
       releaseNative();

@@ -156,3 +156,51 @@ test("one failing platform preserves other platforms and stations", async () => 
     true
   );
 });
+
+test("passes the search abort signal to provider adapters", async () => {
+  const controller = new AbortController();
+  let received: AbortSignal | undefined;
+  const workflow = createSourceSearchWorkflow({
+    createDiscovery: () => ({ search: () => () => undefined }),
+    searchPlatform: (_params, signal) => {
+      received = signal;
+      return Promise.resolve([]);
+    },
+  });
+  await workflow.search(
+    { platform: "bandcamp", query: "test" },
+    controller.signal
+  );
+  expect(received).toBe(controller.signal);
+});
+
+test("directory failures are reported with available results and reject an otherwise empty search", async () => {
+  const failures: string[][] = [];
+  const workflow = createSourceSearchWorkflow({
+    createDiscovery: () =>
+      createStationDiscovery({
+        radioBrowser: {
+          search: () => Promise.reject(new Error("offline")),
+        },
+        radioGarden: { search: async () => [] },
+        streamProbe: { prepare: async () => null },
+      }),
+    searchPlatform: async () => [],
+  });
+  const params = {
+    onDirectoryFailure: (sources: string[]) => {
+      failures.push(sources);
+    },
+    platform: "all" as const,
+    query: "Ambient",
+  };
+  const available = await workflow.search(
+    { ...params, knownStations: [radio("Ambient saved")] },
+    new AbortController().signal
+  );
+  expect(available.map((result) => result.platform)).toEqual(["local"]);
+  expect(failures.at(-1)).toEqual(["radio-browser"]);
+  await expect(
+    workflow.search(params, new AbortController().signal)
+  ).rejects.toThrow("reach the station directory");
+});

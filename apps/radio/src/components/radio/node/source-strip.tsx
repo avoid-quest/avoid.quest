@@ -27,6 +27,7 @@ import { ChannelSlider } from "../dj/shared/channel-slider";
 import { formatPan, formatSpeed, formatTime } from "../dj/shared/format-utils";
 import { PeakMeter } from "../dj/shared/peak-meter";
 import { InputChannelSelect, InputLiveButton } from "./audio-input-controls";
+import { useNodeVisibility } from "./use-node-visibility";
 
 /**
  * Source Strip
@@ -121,13 +122,15 @@ export function StripMeter({
   /** Another source is soloed, so this one is silent past its meter. */
   soloedOut?: boolean;
 }) {
-  const level = usePeakLevel(soundId);
+  const { ref, visible } = useNodeVisibility<HTMLDivElement>();
+  const level = usePeakLevel(visible ? soundId : null);
   return (
     <div
       aria-hidden="true"
       className={cn("min-w-0", soloedOut && "opacity-40", className)}
       data-slot="strip-meter"
       data-soloed-out={soloedOut || undefined}
+      ref={ref}
       title={soloedOut ? SOLOED_OUT_HINT : title}
     >
       <PeakMeter

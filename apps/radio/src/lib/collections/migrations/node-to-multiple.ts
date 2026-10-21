@@ -12,6 +12,7 @@
 
 import { DEFAULT_EFFECT_TEMPO } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import { laneChannelId } from "@/lib/node-graph/identifiers";
 import {
   createDefaultChannel,
@@ -177,9 +178,7 @@ type NodeToMultipleOptions = {
 export function migrateNodeToMultiple({
   sessions,
   settings,
-  storage = typeof globalThis.localStorage === "undefined"
-    ? null
-    : globalThis.localStorage,
+  storage = getBrowserStorage("localStorage") ?? null,
 }: NodeToMultipleOptions): void {
   // The current schemas reject both records, so they are written unvalidated.
   if (!sessions.state.has(LEGACY_MULTIPLE_SESSION_ID)) {

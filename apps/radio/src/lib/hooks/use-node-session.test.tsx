@@ -9,6 +9,7 @@ import {
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { renderToString } from "react-dom/server";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://radio.test",
@@ -256,4 +257,126 @@ describe("useNodeSession", () => {
     expect(result.current.graph).toBeNull();
     expect(result.current.masterMuted).toBe(false);
   });
+});
+
+test("DJ selectors isolate channel strips, mixer fields, media, and tempo", async () => {
+  const { createDefaultChannel } = await import(
+    "@/lib/collections/playback-sessions"
+  );
+  const { useDeckA, useDeckB, useMixer, useDjMediaDeck } = await import(
+    "./use-dj-state"
+  );
+  const { useDjTempo } = await import("./use-dj-session");
+  await playbackSessionsCollection.insert({
+    activeChannelId: null,
+    channels: [
+      createDefaultChannel("deck-a", "deck-a", 0),
+      createDefaultChannel("deck-b", "deck-b", 1),
+    ],
+    crossfadePosition: 0.5,
+    headphoneVolume: 1,
+    id: "dj",
+    masterVolume: 1,
+    tempo: 120,
+  }).isPersisted.promise;
+  const renders = { a: 0, b: 0, media: 0, mixer: 0, tempo: 0 };
+  const a = renderHook(() => {
+    renders.a += 1;
+    return useDeckA();
+  });
+  renderHook(() => {
+    renders.b += 1;
+    return useDeckB();
+  });
+  renderHook(() => {
+    renders.mixer += 1;
+    return useMixer();
+  });
+  renderHook(() => {
+    renders.media += 1;
+    return useDjMediaDeck("deck-a");
+  });
+  renderHook(() => {
+    renders.tempo += 1;
+    return useDjTempo();
+  });
+  const before = { ...renders };
+  await act(async () => {
+    await playbackSessionsCollection.update("dj", (session) => {
+      const [channel] = session.channels;
+      if (channel) {
+        channel.volume = 0.3;
+        channel.pan = 0.4;
+      }
+    }).isPersisted.promise;
+  });
+  expect(a.result.current).toMatchObject({ pan: 0.4, volume: 0.3 });
+  expect(renders.a).toBeGreaterThan(before.a);
+  expect(renders.b).toBe(before.b);
+  expect(renders.mixer).toBe(before.mixer);
+  expect(renders.media).toBe(before.media);
+  expect(renders.tempo).toBe(before.tempo);
+  const afterStrip = { ...renders };
+  await act(async () => {
+    await playbackSessionsCollection.update("dj", (session) => {
+      session.crossfadePosition = 0.8;
+    }).isPersisted.promise;
+  });
+  expect(renders.a).toBe(afterStrip.a);
+  expect(renders.b).toBe(afterStrip.b);
+  expect(renders.mixer).toBeGreaterThan(afterStrip.mixer);
+  expect(renders.media).toBe(afterStrip.media);
+  expect(renders.tempo).toBe(afterStrip.tempo);
+});
+
+test("Node source summaries ignore graph-only edits and master volume", async () => {
+  const { useNodeSources, useNodeMaster } = await import("./use-node-session");
+  await playbackSessionsCollection.insert(
+    buildNodeSessionFromTemplate("starter")
+  ).isPersisted.promise;
+  let sourceRenders = 0;
+  let masterRenders = 0;
+  renderHook(() => {
+    sourceRenders += 1;
+    return useNodeSources();
+  });
+  const master = renderHook(() => {
+    masterRenders += 1;
+    return useNodeMaster();
+  });
+  const beforeSources = sourceRenders;
+  const beforeMaster = masterRenders;
+  await act(async () => {
+    await playbackSessionsCollection.update("node", (session) => {
+      const node = session.graph?.nodes.at(0);
+      if (node) {
+        node.position.x += 1;
+      }
+    }).isPersisted.promise;
+  });
+  expect(sourceRenders).toBe(beforeSources);
+  expect(masterRenders).toBe(beforeMaster);
+  await act(async () => {
+    await playbackSessionsCollection.update("node", (session) => {
+      session.masterVolume = 0.4;
+    }).isPersisted.promise;
+  });
+  expect(sourceRenders).toBe(beforeSources);
+  expect(master.result.current.masterVolume).toBe(0.4);
+  expect(masterRenders).toBeGreaterThan(beforeMaster);
+});
+
+test("session selectors keep server markup independent of local restored sessions", async () => {
+  const { useDjTempo } = await import("./use-dj-session");
+  await playbackSessionsCollection.insert({
+    ...buildNodeSessionFromTemplate("starter"),
+    id: "dj",
+    tempo: 145,
+  }).isPersisted.promise;
+  function Tempo() {
+    return <span>{useDjTempo()}</span>;
+  }
+  expect(renderToString(<Tempo />)).toBe("<span>120</span>");
+  const live = renderHook(() => useDjTempo());
+  expect(live.result.current).toBe(145);
 });

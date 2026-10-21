@@ -201,6 +201,8 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [scrapedData, setScrapedData] = useState<RadioMetadata | null>(null);
 
+  const [fetchedSource, setFetchedSource] = useState<string | null>(null);
+
   // Editable fields after scrape
   const [name, setName] = useState("");
   const [streamUrl, setStreamUrl] = useState("");
@@ -209,6 +211,8 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
   const [isAdding, setIsAdding] = useState(false);
 
   const handleFetch = async () => {
+    setScrapedData(null);
+    setFetchedSource(null);
     const workflow = createWorkflow();
     const validatedUrl = workflow.validateWebsiteUrl(url);
     if (!validatedUrl.ok) {
@@ -227,6 +231,7 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
         return;
       }
 
+      setFetchedSource(url);
       setScrapedData(result.data.metadata);
       setName(result.data.fields.name);
       setStreamUrl(result.data.fields.streamUrl);
@@ -240,6 +245,9 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
   };
 
   const handleAdd = async () => {
+    if (!scrapedData || fetchedSource !== url) {
+      return;
+    }
     if (!(name.trim() && streamUrl.trim())) {
       toast.error("Name and Stream URL are required");
       return;
@@ -278,6 +286,8 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
 
   const handleUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setUrl(event.target.value);
+    setScrapedData(null);
+    setFetchedSource(null);
     setError(null);
   };
   const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {

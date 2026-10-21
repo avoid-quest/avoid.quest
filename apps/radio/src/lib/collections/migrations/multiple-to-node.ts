@@ -14,6 +14,7 @@
  */
 
 import type { Radio } from "@/lib/audio/playback/types";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import { isSessionRadio } from "@/lib/collections/session-radios";
 import { laneChannelId } from "@/lib/node-graph/identifiers";
 import { isRadioSourceNode, type NodeGraph } from "@/lib/node-graph/schema";
@@ -67,14 +68,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getBackupStorage(): BackupStorage | null {
-  try {
-    return typeof globalThis.localStorage === "undefined"
-      ? null
-      : globalThis.localStorage;
-  } catch {
-    // Storage access can throw when the browser blocks it.
-    return null;
-  }
+  return getBrowserStorage("localStorage") ?? null;
 }
 
 function clampUnit(value: unknown, fallback: number): number {

@@ -21,6 +21,7 @@ import {
   visitEffectTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import type { Radio } from "@/lib/audio/playback/types";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import {
   getRetainedNodeGraphs,
@@ -37,11 +38,13 @@ import {
 import { nodeSessionRecord } from "@/lib/node-graph/session-record";
 import { buildNodeGraphFromTemplate } from "@/lib/node-graph/templates";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
+import { createMemoryFallbackStorage } from "./memory-fallback-storage";
 import {
   migrateMultipleSession,
   watchLegacyMultipleWrites,
 } from "./migrations/multiple-to-node";
 import { migrateNodeGraphSession } from "./migrations/node-graph-v2";
+import { flushPlaybackSessionWrites } from "./node-session-persistence";
 import { radiosCollection } from "./radios";
 import { platformMetadataSchema } from "./schemas";
 import {
@@ -551,11 +554,16 @@ function subscribeToOtherTabStorageEvents(
   hears: (key: string | null) => boolean,
   listener: () => void
 ): () => void {
-  if (typeof window === "undefined") {
+  // Without browser storage, no other tab's write can reach this one.
+  const storage =
+    typeof window === "undefined"
+      ? undefined
+      : getBrowserStorage("localStorage", window);
+  if (!storage) {
     return () => undefined;
   }
   const onStorage = (event: StorageEvent) => {
-    if (event.storageArea !== window.localStorage || !hears(event.key)) {
+    if (event.storageArea !== storage || !hears(event.key)) {
       return;
     }
     // The collection's own storage listener syncs the write first.
@@ -617,17 +625,29 @@ export function takeOtherTabNodeGraph(
   }
 }
 
+const playbackSessionsStorage = createMemoryFallbackStorage();
+
+const playbackSessionsCollectionOptions = localStorageCollectionOptions({
+  // Keep rows resident: the app reads `.state` outside live queries, and
+  // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+  gcTime: 0,
+  getKey: (item) => item.id,
+  id: "playback-sessions",
+  schema: playbackSessionSchema,
+  startSync: true,
+  storage: playbackSessionsStorage.storage,
+  storageEventApi: playbackSessionsStorage.storageEventApi,
+  storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
+});
+// TanStack's metadata callback reads window.localStorage again on every write.
+// This collection always uses our custom adapter, even when storage is blocked.
+playbackSessionsCollectionOptions.sync.getSyncMetadata = () => ({
+  storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
+  storageType: "custom",
+});
+
 export const playbackSessionsCollection = createCollection(
-  localStorageCollectionOptions({
-    // Keep rows resident: the app reads `.state` outside live queries, and
-    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
-    gcTime: 0,
-    getKey: (item) => item.id,
-    id: "playback-sessions",
-    schema: playbackSessionSchema,
-    startSync: true,
-    storageKey: PLAYBACK_SESSIONS_STORAGE_KEY,
-  })
+  playbackSessionsCollectionOptions
 );
 
 type PlaybackSessionUpdater = (draft: PlaybackSessionRecord) => void;
@@ -711,12 +731,23 @@ function collectReleasableNamModelIds(
   );
 }
 
+const graphNamModelIds = new WeakMap<NodeGraph, Set<string>>();
+
+function collectGraphNamModelIds(graph: NodeGraph): Set<string> {
+  let ids = graphNamModelIds.get(graph);
+  if (!ids) {
+    ids = collectLocalNamModelIds(collectGraphEffects(graph));
+    graphNamModelIds.set(graph, ids);
+  }
+  return ids;
+}
+
 function collectRetainedNamModelIds(
   state: NodeStoreState = nodeStore.state
 ): Set<string> {
   return new Set(
     [...getRetainedNodeGraphs(state)].flatMap((graph) => [
-      ...collectLocalNamModelIds(collectGraphEffects(graph)),
+      ...collectGraphNamModelIds(graph),
     ])
   );
 }
@@ -758,11 +789,11 @@ holdNodeNamModels(collectRetainedNamModelIds(observedNodeState));
 nodeStore.subscribe((state) => {
   const previous = observedNodeState;
   observedNodeState = state;
+  if (previous.graph === state.graph && previous.history === state.history) {
+    return;
+  }
   holdNodeNamModels(collectRetainedNamModelIds(state));
-  if (
-    releasingDroppedNodeHistory &&
-    (previous.graph !== state.graph || previous.history !== state.history)
-  ) {
+  if (releasingDroppedNodeHistory) {
     scheduleNamModelCleanup(collectRetainedNamModelIds(previous));
   }
 });
@@ -1003,8 +1034,12 @@ export function getNodeSessionReadOnlyVersion(): number | null {
 
 export function updatePlaybackSession(
   id: PlaybackSessionId,
-  updater: PlaybackSessionUpdater
+  updater: PlaybackSessionUpdater,
+  paced = false
 ): void {
+  if (!paced) {
+    flushPlaybackSessionWrites();
+  }
   const existing = getPlaybackSession(id);
   if (
     existing &&
@@ -1021,6 +1056,7 @@ export function updatePlaybackSession(
 }
 
 export function deletePlaybackSession(id: PlaybackSessionId): void {
+  flushPlaybackSessionWrites();
   const existing = getPlaybackSession(id);
   if (!existing) {
     return;

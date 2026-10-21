@@ -7,6 +7,7 @@ import type { Radio } from "@/lib/audio";
 import type {
   StationDiscovery,
   StationDiscoveryResult,
+  StationDiscoverySource,
 } from "@/lib/stations/station-discovery";
 
 export type SourceSearchPlatform = SearchPlatform | "radio-browser" | "local";
@@ -22,6 +23,9 @@ export type SourceSearchParams = Omit<
   platform: SourceSearchPlatform;
   knownStations?: readonly Radio[];
   onProgress?: (results: SourceSearchResult[]) => void;
+  onDirectoryFailure?: (
+    sources: Exclude<StationDiscoverySource, "local">[]
+  ) => void;
   playbackNeedsNetwork?: boolean;
 };
 const TRACK_PROVIDERS = [
@@ -53,7 +57,8 @@ export function createSourceSearchWorkflow({
   createDiscovery,
 }: {
   searchPlatform: (
-    params: ExternalPlatformSearchParams
+    params: ExternalPlatformSearchParams,
+    signal?: AbortSignal
   ) => Promise<UnifiedSearchResult[]>;
   createDiscovery: (platform: SourceSearchPlatform) => StationDiscovery;
 }) {
@@ -84,18 +89,25 @@ export function createSourceSearchWorkflow({
           ? TRACK_PROVIDERS
           : TRACK_PROVIDERS.filter((provider) => provider === params.platform);
       let failures = 0;
+      let directoryFailed = false;
       const pending = providers.map(async (platform) => {
         groups.set(platform, []);
         try {
           publish(
             platform,
-            await searchPlatform({
-              ...params,
-              bandcampFilter: params.bandcampFilter ?? "t",
-              platform,
-            })
+            await searchPlatform(
+              {
+                ...params,
+                bandcampFilter: params.bandcampFilter ?? "t",
+                platform,
+              },
+              signal
+            )
           );
         } catch (error) {
+          if (signal.aborted) {
+            return;
+          }
           failures += 1;
           if (params.platform !== "all") {
             throw error;
@@ -127,6 +139,13 @@ export function createSourceSearchWorkflow({
                 query: params.query,
               },
               (state) => {
+                if (signal.aborted) {
+                  return;
+                }
+                if (state.failedSources?.length) {
+                  directoryFailed = true;
+                  params.onDirectoryFailure?.(state.failedSources);
+                }
                 publish("stations", state.results.map(stationResult));
                 if (!state.isSearching) {
                   signal.removeEventListener("abort", abort);
@@ -139,6 +158,9 @@ export function createSourceSearchWorkflow({
       }
       await Promise.all(pending);
       signal.throwIfAborted();
+      if (directoryFailed && snapshot().length === 0) {
+        throw new Error("Couldn’t reach the station directory. Try again.");
+      }
       if (failures === TRACK_PROVIDERS.length && snapshot().length === 0) {
         throw new Error("Search is unavailable. Try again or paste a link.");
       }

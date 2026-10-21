@@ -23,21 +23,21 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  type FeedbackActionsSlotProps,
-  type FeedbackCancelActionSlotProps,
-  type FeedbackCategoryFieldSlotProps,
-  type FeedbackDialogSlotProps,
-  type FeedbackFormSlotProps,
-  type FeedbackHeaderSlotProps,
-  type FeedbackMessageFieldSlotProps,
-  type FeedbackStatusOutputSlotProps,
-  type FeedbackSubmitActionSlotProps,
-  type FeedbackTriggerSlotProps,
-  FeedbackWidget,
+import type {
+  FeedbackActionsSlotProps,
+  FeedbackCancelActionSlotProps,
+  FeedbackCategoryFieldSlotProps,
+  FeedbackDialogSlotProps,
+  FeedbackFormSlotProps,
+  FeedbackHeaderSlotProps,
+  FeedbackMessageFieldSlotProps,
+  FeedbackStatusOutputSlotProps,
+  FeedbackSubmitActionSlotProps,
 } from "git-feedback/react";
 import { MessageCircleMore } from "lucide-react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import {
   type FEEDBACK_CATEGORIES,
   FEEDBACK_ENDPOINT,
@@ -63,25 +63,15 @@ const feedbackCopy = {
   triggerLabel: "Feedback",
 };
 
-function FeedbackTrigger({ viewModel }: FeedbackTriggerSlotProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          aria-label={viewModel.copy.triggerLabel}
-          onClick={viewModel.show}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <MessageCircleMore className="size-3.5" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" sideOffset={6}>
-        {viewModel.copy.triggerLabel}
-      </TooltipContent>
-    </Tooltip>
-  );
+const loadFeedback = () => import("git-feedback/react");
+const FeedbackModal = lazyWithRetry(() =>
+  loadFeedback().then((module) => ({ default: module.FeedbackModal }))
+);
+
+function preloadFeedback() {
+  loadFeedback().catch(() => {
+    // Opening retries a failed intent preload.
+  });
 }
 
 function FeedbackDialog({ children, viewModel }: FeedbackDialogSlotProps) {
@@ -234,29 +224,89 @@ function FeedbackSubmitAction({ viewModel }: FeedbackSubmitActionSlotProps) {
 
 export function AppFeedback() {
   const mode = usePlayerMode();
+  const [open, setOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
+  const handleOpen = () => {
+    setHasOpened(true);
+    setOpen(true);
+  };
   const handleAfterSubmit = () => {
     toast.success(feedbackCopy.successMessage);
   };
   const getUntrustedMetadata = () => ({ mode });
 
   return (
-    <FeedbackWidget
-      components={{
-        Actions: FeedbackActions,
-        CancelAction: FeedbackCancelAction,
-        CategoryField: FeedbackCategoryField,
-        Dialog: FeedbackDialog,
-        Form: FeedbackForm,
-        Header: FeedbackHeader,
-        MessageField: FeedbackMessageField,
-        StatusOutput: FeedbackStatusOutput,
-        SubmitAction: FeedbackSubmitAction,
-        Trigger: FeedbackTrigger,
-      }}
-      copy={feedbackCopy}
-      endpoint={FEEDBACK_ENDPOINT}
-      onAfterSubmit={handleAfterSubmit}
-      untrustedMetadata={getUntrustedMetadata}
-    />
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-expanded={open}
+            aria-label={feedbackCopy.triggerLabel}
+            onClick={handleOpen}
+            onFocus={preloadFeedback}
+            onPointerEnter={preloadFeedback}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <MessageCircleMore className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {feedbackCopy.triggerLabel}
+        </TooltipContent>
+      </Tooltip>
+      {hasOpened ? (
+        <LazyBoundary
+          frame={(failed) => (
+            <Dialog onOpenChange={setOpen} open={open}>
+              <DialogContent
+                aria-describedby={undefined}
+                className="sm:max-w-md"
+              >
+                <DialogHeader>
+                  <DialogTitle>{feedbackCopy.title}</DialogTitle>
+                </DialogHeader>
+                {failed}
+              </DialogContent>
+            </Dialog>
+          )}
+          label="feedback"
+        >
+          <Suspense
+            fallback={
+              <Dialog onOpenChange={setOpen} open={open}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>{feedbackCopy.title}</DialogTitle>
+                    <DialogDescription>Loading feedback…</DialogDescription>
+                  </DialogHeader>
+                </DialogContent>
+              </Dialog>
+            }
+          >
+            <FeedbackModal
+              components={{
+                Actions: FeedbackActions,
+                CancelAction: FeedbackCancelAction,
+                CategoryField: FeedbackCategoryField,
+                Dialog: FeedbackDialog,
+                Form: FeedbackForm,
+                Header: FeedbackHeader,
+                MessageField: FeedbackMessageField,
+                StatusOutput: FeedbackStatusOutput,
+                SubmitAction: FeedbackSubmitAction,
+              }}
+              copy={feedbackCopy}
+              endpoint={FEEDBACK_ENDPOINT}
+              onAfterSubmit={handleAfterSubmit}
+              onOpenChange={setOpen}
+              open={open}
+              untrustedMetadata={getUntrustedMetadata}
+            />
+          </Suspense>
+        </LazyBoundary>
+      ) : null}
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import { captureError } from "@avoid.quest/error";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import type {
   MidiMappingPersistence,
   PersistedMidiControl,
@@ -84,11 +85,12 @@ function parsePersistedMidiControl(
 export function createLocalMidiMappingPersistence(): MidiMappingPersistence {
   return {
     read() {
-      if (typeof localStorage === "undefined") {
+      const storage = getBrowserStorage("localStorage");
+      if (!storage) {
         return null;
       }
       try {
-        const value = localStorage.getItem(MIDI_MAPPING_STORAGE_KEY);
+        const value = storage.getItem(MIDI_MAPPING_STORAGE_KEY);
         if (!value) {
           return null;
         }
@@ -100,9 +102,10 @@ export function createLocalMidiMappingPersistence(): MidiMappingPersistence {
     },
     write(value) {
       try {
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem(MIDI_MAPPING_STORAGE_KEY, JSON.stringify(value));
-        }
+        getBrowserStorage("localStorage")?.setItem(
+          MIDI_MAPPING_STORAGE_KEY,
+          JSON.stringify(value)
+        );
       } catch (error) {
         captureError(error, {
           operation: "persistMidiMappings",

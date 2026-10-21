@@ -27,10 +27,19 @@ if (mode) {
     useEnabledRadios: () => ({ data: [], isReady: true }),
   }));
   mock.module("@/lib/hooks/use-settings", () => ({
-    useSettings: () => ({ data: { player: { mode } }, isReady: true }),
+    usePlayerModeState: () => ({ hasSettings: true, isReady: true, mode }),
   }));
   mock.module("@/lib/mode-lifecycle-requests", () => ({
-    modeLifecycleRequests: { synchronizeMode: () => Promise.resolve() },
+    modeLifecycleRequests: {
+      getTransitionSnapshot: () => ({
+        currentMode: null,
+        error: null,
+        phase: "inactive",
+        requestedMode: null,
+      }),
+      subscribeTransitionSnapshot: () => () => undefined,
+      synchronizeMode: () => Promise.resolve(),
+    },
   }));
   let canLoad = false;
   const load = mock(() =>

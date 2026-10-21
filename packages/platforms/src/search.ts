@@ -51,11 +51,13 @@ export type ExternalPlatformSearchParams = {
   youtubeFilter?: YouTubeSearchFilter;
 };
 
+/** Adapters receive the search's abort signal so they can cancel their requests. */
 export type ExternalPlatformSearchAdapters = {
   bandcamp: {
     search: (
       query: string,
-      filter: BandcampSearchFilter
+      filter: BandcampSearchFilter,
+      signal?: AbortSignal
     ) => Promise<BandcampSearchResult[]>;
   };
   /**
@@ -63,18 +65,28 @@ export type ExternalPlatformSearchAdapters = {
    * Mixcloud and a Mixcloud-only search rejects.
    */
   mixcloud?: {
-    search: (query: string) => Promise<MixcloudSearchResult[]>;
+    search: (
+      query: string,
+      signal?: AbortSignal
+    ) => Promise<MixcloudSearchResult[]>;
   };
   radiogarden: {
-    search: (query: string) => Promise<RadioGardenSearchResult[]>;
+    search: (
+      query: string,
+      signal?: AbortSignal
+    ) => Promise<RadioGardenSearchResult[]>;
   };
   soundcloud: {
-    search: (query: string) => Promise<SoundCloudSearchResult[]>;
+    search: (
+      query: string,
+      signal?: AbortSignal
+    ) => Promise<SoundCloudSearchResult[]>;
   };
   youtube: {
     search: (
       query: string,
-      filter: YouTubeSearchFilter
+      filter: YouTubeSearchFilter,
+      signal?: AbortSignal
     ) => Promise<YouTubeSearchResult[]>;
   };
 };
@@ -198,6 +210,23 @@ export function transformRadioGardenResults(
   }));
 }
 
+/** Settles with the abort reason as soon as `signal` aborts, even if `operation` ignores it. */
+function untilAborted<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined
+): Promise<T> {
+  if (!signal) {
+    return operation;
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    operation.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+  });
+}
+
 function resolveAllProviderSearchParams(
   overrides?: Partial<Record<SearchablePlatform, ProviderSearchParams>>
 ): Record<SearchablePlatform, ProviderSearchParams> {
@@ -274,33 +303,57 @@ export function createExternalPlatformSearchWorkflow({
     (provider) => provider !== "mixcloud" || adapters.mixcloud
   );
 
-  async function searchProvider(
+  function searchProvider(
     provider: SearchablePlatform,
     query: string,
-    params: ProviderSearchParams
+    params: ProviderSearchParams,
+    signal: AbortSignal | undefined
+  ): Promise<UnifiedSearchResult[]> {
+    // Never start a provider request for a search that is already cancelled.
+    if (signal?.aborted) {
+      return Promise.reject(signal.reason);
+    }
+    return untilAborted(callProvider(provider, query, params, signal), signal);
+  }
+
+  async function callProvider(
+    provider: SearchablePlatform,
+    query: string,
+    params: ProviderSearchParams,
+    signal: AbortSignal | undefined
   ): Promise<UnifiedSearchResult[]> {
     switch (provider) {
       case "bandcamp":
         return transformBandcampResults(
-          await adapters.bandcamp.search(query, params.bandcampFilter ?? "")
+          await adapters.bandcamp.search(
+            query,
+            params.bandcampFilter ?? "",
+            signal
+          )
         );
       case "mixcloud": {
         if (!adapters.mixcloud) {
           throw new Error("Mixcloud search is not configured");
         }
-        return transformMixcloudResults(await adapters.mixcloud.search(query));
+        return transformMixcloudResults(
+          await adapters.mixcloud.search(query, signal)
+        );
       }
       case "radiogarden":
         return transformRadioGardenResults(
-          await adapters.radiogarden.search(query)
+          await adapters.radiogarden.search(query, signal)
         );
       case "soundcloud":
         return transformSoundCloudResults(
-          await adapters.soundcloud.search(query)
+          await adapters.soundcloud.search(query, signal)
         );
       case "youtube":
         return transformYouTubeResults(
-          await adapters.youtube.search(query, params.youtubeFilter ?? "songs")
+          await adapters.youtube.search(
+            query,
+            params.youtubeFilter ?? "songs",
+            signal
+          )
         );
       default: {
         const _exhaustive: never = provider;
@@ -310,7 +363,8 @@ export function createExternalPlatformSearchWorkflow({
   }
 
   async function searchAllInterleaved(
-    query: string
+    query: string,
+    signal: AbortSignal | undefined
   ): Promise<UnifiedSearchResult[]> {
     const providerResults = await Promise.all(
       allProviders.map(async (provider): Promise<ProviderSearchResult> => {
@@ -320,7 +374,8 @@ export function createExternalPlatformSearchWorkflow({
             results: await searchProvider(
               provider,
               query,
-              resolvedAllProviderSearchParams[provider]
+              resolvedAllProviderSearchParams[provider],
+              signal
             ),
             status: "fulfilled",
           };
@@ -329,6 +384,7 @@ export function createExternalPlatformSearchWorkflow({
         }
       })
     );
+    signal?.throwIfAborted();
 
     const resultsByProvider = createEmptyResultsByProvider();
 
@@ -344,7 +400,8 @@ export function createExternalPlatformSearchWorkflow({
   }
 
   async function searchAllByCompletion(
-    query: string
+    query: string,
+    signal: AbortSignal | undefined
   ): Promise<UnifiedSearchResult[]> {
     const results: UnifiedSearchResult[] = [];
 
@@ -353,42 +410,60 @@ export function createExternalPlatformSearchWorkflow({
         searchProvider(
           provider,
           query,
-          resolvedAllProviderSearchParams[provider]
+          resolvedAllProviderSearchParams[provider],
+          signal
         )
           .then((providerResults) => {
             results.push(...providerResults);
           })
           .catch((error) => {
-            reportProviderError?.(provider, error);
+            if (!signal?.aborted) {
+              reportProviderError?.(provider, error);
+            }
           })
       )
     );
+    signal?.throwIfAborted();
 
     return results;
   }
 
-  function searchAll(query: string): Promise<UnifiedSearchResult[]> {
+  function searchAll(
+    query: string,
+    signal: AbortSignal | undefined
+  ): Promise<UnifiedSearchResult[]> {
     if (allProviderResultsMode === "append-by-completion") {
-      return searchAllByCompletion(query);
+      return searchAllByCompletion(query, signal);
     }
-    return searchAllInterleaved(query);
+    return searchAllInterleaved(query, signal);
   }
 
   return {
+    /**
+     * Aborting `signal` rejects with its reason right away, cancels pending
+     * adapter requests, and is never reported as a provider failure.
+     */
     search(
-      params: ExternalPlatformSearchParams
+      params: ExternalPlatformSearchParams,
+      signal?: AbortSignal
     ): Promise<UnifiedSearchResult[]> {
+      if (signal?.aborted) {
+        return Promise.reject(signal.reason);
+      }
       const query = params.query.trim();
       if (!query) {
         return Promise.resolve([]);
       }
 
       if (params.platform === "all") {
-        return searchAll(query);
+        return searchAll(query, signal);
       }
 
-      return searchProvider(params.platform, query, params).catch(
+      return searchProvider(params.platform, query, params, signal).catch(
         (error: unknown) => {
+          if (signal?.aborted) {
+            throw signal.reason;
+          }
           reportProviderError?.(params.platform as SearchablePlatform, error);
           throw error;
         }

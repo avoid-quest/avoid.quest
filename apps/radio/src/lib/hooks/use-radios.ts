@@ -1,6 +1,9 @@
+import { captureError } from "@avoid.quest/error";
 import { eq, useLiveQuery } from "@tanstack/react-db";
+import { toast } from "sonner";
 import {
   addDismissedRadio,
+  reorderRadios as persistRadioOrder,
   type RadioRecord,
   radiosCollection,
 } from "@/lib/collections/radios";
@@ -93,9 +96,8 @@ export function toggleRadioEnabled(id: string): void {
  * Reorder radios
  */
 export function reorderRadios(orderedIds: string[]): void {
-  for (const [index, id] of orderedIds.entries()) {
-    radiosCollection.update(id, (draft) => {
-      draft.order = index;
-    });
-  }
+  persistRadioOrder(orderedIds).catch((error) => {
+    captureError(error, { operation: "reorderRadios", surface: "ui" });
+    toast.error("Couldn't reorder stations");
+  });
 }

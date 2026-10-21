@@ -7,12 +7,13 @@ import {
 } from "@/lib/dj-actions";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import { useDjKeyboard } from "@/lib/hooks/use-dj-keyboard";
-import { useDeckA, useDeckB, useMixer } from "@/lib/hooks/use-dj-state";
+import { useDjMediaDeck, useMixer } from "@/lib/hooks/use-dj-state";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useMidi } from "@/lib/hooks/use-midi";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { DjConsole } from "./dj-console";
 import { DjConsoleMobile } from "./dj-console-mobile";
+import { DjMidiEffects } from "./dj-midi-effects";
 
 type DjPlayerProps = {
   radios?: Radio[];
@@ -32,8 +33,8 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
 
   const mixer = useMixer();
   const audioSettings = useAudioSettings();
-  const deckA = useDeckA();
-  const deckB = useDeckB();
+  const deckA = useDjMediaDeck("deck-a");
+  const deckB = useDjMediaDeck("deck-b");
 
   const isPlaying = (deckA?.isPlaying ?? false) || (deckB?.isPlaying ?? false);
   useMediaSession({
@@ -56,6 +57,7 @@ export function DjPlayer({ radios = [] }: DjPlayerProps) {
       className="flex h-full min-h-0 w-full flex-col px-2 py-2"
       style={{ touchAction: "manipulation" }}
     >
+      <DjMidiEffects />
       {isMobile ? (
         <DjConsoleMobile
           crossfadePosition={crossfadePosition}

@@ -18,7 +18,12 @@ import {
 } from "@avoid.quest/ui/components/field";
 import GitHubIcon from "@avoid.quest/ui/components/github-icon";
 import { Switch } from "@avoid.quest/ui/components/switch";
-import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@avoid.quest/ui/components/tabs";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -37,20 +42,21 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { resetAllSettings } from "@/lib/settings";
 import { LoadingFallback, RadioManagement } from "./radio-management";
 
-const ImportExport = lazy(() =>
+const ImportExport = lazyWithRetry(() =>
   import("./import-export").then((mod) => ({ default: mod.ImportExport }))
 );
-const AudioSettings = lazy(() =>
+const AudioSettings = lazyWithRetry(() =>
   import("./audio-settings").then((mod) => ({ default: mod.AudioSettings }))
 );
-const MidiSettings = lazy(() =>
+const MidiSettings = lazyWithRetry(() =>
   import("./midi-settings").then((mod) => ({ default: mod.MidiSettings }))
 );
 
@@ -162,45 +168,56 @@ export function SettingsForm({
   }
 
   return (
-    <div className="flex h-[72vh] min-h-0 flex-col gap-3">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
+    <div className="flex h-[72vh] max-h-[calc(100dvh-10rem)] min-h-0 flex-col gap-3">
+      <Tabs
+        className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row"
+        onValueChange={handleSectionChange}
+        orientation={isMobile ? "horizontal" : "vertical"}
+        value={active}
+      >
         <div className="flex shrink-0 flex-col md:w-40">
-          <Tabs
-            onValueChange={handleSectionChange}
-            orientation={isMobile ? "horizontal" : "vertical"}
-            value={active}
-          >
-            <TabsList className="grid h-auto w-full grid-cols-5 md:flex md:flex-col md:items-stretch md:bg-transparent md:p-0">
-              {SETTINGS_SECTIONS.map((section) => {
-                const Icon = section.icon;
-                return (
-                  <TabsTrigger
-                    className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
-                    key={section.key}
-                    value={section.key}
-                  >
-                    <Icon className="hidden size-3.5 shrink-0 md:block" />
-                    <span className="truncate">{section.label}</span>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </Tabs>
+          <TabsList className="grid h-auto w-full grid-cols-5 md:flex md:flex-col md:items-stretch md:bg-transparent md:p-0">
+            {SETTINGS_SECTIONS.map((section) => {
+              const Icon = section.icon;
+              return (
+                <TabsTrigger
+                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
+                  key={section.key}
+                  value={section.key}
+                >
+                  <Icon className="hidden size-3.5 shrink-0 md:block" />
+                  <span className="truncate">{section.label}</span>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto border-t pt-3 md:border-t-0 md:border-l md:pt-0 md:pl-4">
-          <SectionContent
-            dataPanel={dataPanel}
-            isResetting={isResetting}
-            onDataPanelChange={setDataPanel}
-            onReset={handleReset}
-            onResetDialogChange={setShowResetDialog}
-            section={active}
-            settings={settings}
-            showResetDialog={showResetDialog}
-          />
+          {SETTINGS_SECTIONS.filter((section) => section.key !== active).map(
+            (section) => (
+              <TabsContent
+                forceMount
+                hidden
+                key={section.key}
+                value={section.key}
+              />
+            )
+          )}
+          <TabsContent className="mt-0" value={active}>
+            <SectionContent
+              dataPanel={dataPanel}
+              isResetting={isResetting}
+              onDataPanelChange={setDataPanel}
+              onReset={handleReset}
+              onResetDialogChange={setShowResetDialog}
+              section={active}
+              settings={settings}
+              showResetDialog={showResetDialog}
+            />
+          </TabsContent>
         </div>
-      </div>
+      </Tabs>
 
       <div className="flex items-center gap-3">
         <DrawerClose asChild>
@@ -242,16 +259,20 @@ function SectionContent({
   }
   if (section === "playback") {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <AudioSettings />
-      </Suspense>
+      <LazyBoundary key="playback" label="playback settings">
+        <Suspense fallback={<LoadingFallback />}>
+          <AudioSettings />
+        </Suspense>
+      </LazyBoundary>
     );
   }
   if (section === "midi") {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <MidiSettings />
-      </Suspense>
+      <LazyBoundary key="midi" label="MIDI settings">
+        <Suspense fallback={<LoadingFallback />}>
+          <MidiSettings />
+        </Suspense>
+      </LazyBoundary>
     );
   }
   const handleDataPanelChange = (value: string) => {
@@ -272,18 +293,32 @@ function SectionContent({
             </TabsTrigger>
           ))}
         </TabsList>
+        {DATA_PANELS.filter((panel) => panel.value !== dataPanel).map(
+          (panel) => (
+            <TabsContent
+              forceMount
+              hidden
+              key={panel.value}
+              value={panel.value}
+            />
+          )
+        )}
+        <TabsContent value={dataPanel}>
+          {DATA_PANEL_GUIDANCE[dataPanel] ? (
+            <p className="text-muted-foreground text-xs">
+              {DATA_PANEL_GUIDANCE[dataPanel]}
+            </p>
+          ) : null}
+          <LazyBoundary label="data settings">
+            <Suspense fallback={<LoadingFallback />}>
+              <ImportExport
+                activePanel={dataPanel}
+                resetContent={<ResetSettings {...props} />}
+              />
+            </Suspense>
+          </LazyBoundary>
+        </TabsContent>
       </Tabs>
-      {DATA_PANEL_GUIDANCE[dataPanel] ? (
-        <p className="text-muted-foreground text-xs">
-          {DATA_PANEL_GUIDANCE[dataPanel]}
-        </p>
-      ) : null}
-      <Suspense fallback={<LoadingFallback />}>
-        <ImportExport
-          activePanel={dataPanel}
-          resetContent={<ResetSettings {...props} />}
-        />
-      </Suspense>
     </div>
   );
 }

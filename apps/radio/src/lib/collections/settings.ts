@@ -9,6 +9,8 @@ import {
 import { z } from "zod";
 import { CHANGELOG_STORAGE_KEY, settings as defaultSettings } from "../const";
 import { normalizePlayerMode } from "../normalize-player-mode";
+import { generateId } from "../types";
+import { createMemoryFallbackStorage } from "./memory-fallback-storage";
 
 const playerModeSchema = z.enum(["node", "single", "dj"]);
 
@@ -54,18 +56,28 @@ export const SETTINGS_STORAGE_KEY = "radio-app-settings";
 /** The stored mode the settings migration replaced, if it replaced one. */
 let replacedPlayerMode: string | undefined;
 
-export const settingsCollection = createCollection(
-  localStorageCollectionOptions({
-    // Keep rows resident: the app reads `.state` outside live queries, and
-    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
-    gcTime: 0,
-    getKey: (item) => item.id,
-    id: "settings",
-    schema: settingsSchema,
-    startSync: true,
-    storageKey: SETTINGS_STORAGE_KEY,
-  })
-);
+const settingsStorage = createMemoryFallbackStorage();
+
+const settingsCollectionOptions = localStorageCollectionOptions({
+  // Keep rows resident: the app reads `.state` outside live queries, and
+  // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+  gcTime: 0,
+  getKey: (item) => item.id,
+  id: "settings",
+  schema: settingsSchema,
+  startSync: true,
+  storage: settingsStorage.storage,
+  storageEventApi: settingsStorage.storageEventApi,
+  storageKey: SETTINGS_STORAGE_KEY,
+});
+// TanStack's metadata callback reads window.localStorage again on every write.
+// This collection always uses our custom adapter, even when storage is blocked.
+settingsCollectionOptions.sync.getSyncMetadata = () => ({
+  storageKey: SETTINGS_STORAGE_KEY,
+  storageType: "custom",
+});
+
+export const settingsCollection = createCollection(settingsCollectionOptions);
 
 /** The newest What's new entry's date, set by the build; none in tests. */
 function getNewestChangelogDate(): string | undefined {
@@ -82,6 +94,12 @@ export async function initializeSettings(): Promise<void> {
   const existing = await settingsCollection.stateWhenReady();
 
   if (existing.size === 0) {
+    const recovered = recoverStoredSettings();
+    if (recovered.length > 0) {
+      await insertStartupSettings(recovered);
+      migrateLegacyPlayerMode();
+      return;
+    }
     // A first visit has nothing new to catch up on. Marked before the insert
     // so anything waiting for settings already sees the mark. A reset keeps
     // the mark it finds, so unread changes stay unread. The mark is the
@@ -89,16 +107,91 @@ export async function initializeSettings(): Promise<void> {
     if (getChangelogSeenAt(CHANGELOG_STORAGE_KEY) === null) {
       markChangelogSeen(CHANGELOG_STORAGE_KEY, getNewestChangelogDate());
     }
-    settingsCollection.insert({
-      id: SETTINGS_ID,
-      player: {
-        mode: defaultSettings.player.mode,
-        restoreStateOnLoad: defaultSettings.player.restoreStateOnLoad ?? true,
+    await insertStartupSettings([
+      {
+        id: SETTINGS_ID,
+        player: {
+          mode: defaultSettings.player.mode,
+          restoreStateOnLoad: defaultSettings.player.restoreStateOnLoad ?? true,
+        },
       },
-    });
+    ]);
   }
 
   migrateLegacyPlayerMode();
+}
+
+/** Insert the settings the app starts with, in memory if they cannot be saved. */
+function insertStartupSettings(rows: SettingsRecord[]): Promise<void> {
+  return settingsStorage.persistOrKeepInMemory(
+    () => settingsCollection.insert(rows).isPersisted.promise,
+    "settings"
+  );
+}
+
+function recoverStoredSettings(): SettingsRecord[] {
+  // The backup goes where the original came from: memory for this visit
+  // when the browser cannot keep it.
+  const { storage } = settingsStorage;
+  const raw = storage?.getItem(SETTINGS_STORAGE_KEY);
+  if (!(storage && raw)) {
+    return [];
+  }
+  const backupKey = `${SETTINGS_STORAGE_KEY}:corrupt`;
+  const previous = storage.getItem(backupKey);
+  if (previous !== raw) {
+    // Backup failures must stop initialization before it replaces the original.
+    storage.setItem(previous ? `${backupKey}:${generateId()}` : backupKey, raw);
+  }
+  const recovered = new Map<string, SettingsRecord>();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const entry of Object.values(parsed)) {
+        const settings = recoverSettingsEntry(entry);
+        // The app only reads the singleton; other rows stay in the backup, and
+        // without the singleton the defaults are inserted instead.
+        if (settings?.id === SETTINGS_ID) {
+          recovered.set(settings.id, settings);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[settings] Could not recover saved settings", error);
+  }
+  return [...recovered.values()];
+}
+
+function recoverSettingsEntry(entry: unknown): SettingsRecord | undefined {
+  const legacy = z
+    .object({
+      data: z
+        .object({
+          player: z.object({ mode: z.unknown().optional() }).passthrough(),
+        })
+        .passthrough(),
+    })
+    .safeParse(entry);
+  if (!legacy.success) {
+    return;
+  }
+  // Keep the existing legacy mode migration when recovering older data.
+  const { data } = legacy.data;
+  const { player } = data;
+  const settings = settingsSchema.safeParse({
+    ...data,
+    player: { ...player, mode: normalizePlayerMode(player.mode) },
+  });
+  if (!settings.success) {
+    return;
+  }
+  if (
+    typeof player.mode === "string" &&
+    player.mode !== settings.data.player.mode
+  ) {
+    replacedPlayerMode ??= player.mode;
+  }
+  return settings.data;
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   resumeAudioContext,
 } from "@/lib/audio/playback/audio-context";
 import { useMasterPeakLevel } from "@/lib/hooks/use-master-peak-level";
-import { useNodeSession } from "@/lib/hooks/use-node-session";
+import { useNodeMaster } from "@/lib/hooks/use-node-session";
 import { PeakMeter } from "../dj/shared/peak-meter";
 
 /** The raw context state; iOS reports "interrupted" after a call or Siri. */
@@ -55,7 +55,7 @@ export function NodeMasterControls({ className }: { className?: string }) {
     playingCount,
     setMasterVolume,
     toggleMasterMute,
-  } = useNodeSession();
+  } = useNodeMaster();
   const contextState = useAudioContextState();
   const isAnyPlaying = playingCount > 0;
   const needsResume =

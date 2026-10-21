@@ -37,6 +37,7 @@ export type StationDiscoveryResult = {
 
 export type StationDiscoverySnapshot = {
   duplicateCount: number;
+  failedSources?: Exclude<StationDiscoverySource, "local">[];
   isSearching: boolean;
   results: StationDiscoveryResult[];
 };
@@ -264,48 +265,73 @@ function normalizedStreamUrl(result: StationDiscoveryResult): string {
   }
 }
 
-function hasMatchingCrossProviderIdentity(
-  first: StationDiscoveryResult,
-  second: StationDiscoveryResult
-): boolean {
-  if (
-    first.action.type === "local" ||
-    second.action.type === "local" ||
-    first.action.type === second.action.type ||
-    normalizeSearchText(first.name) !== normalizeSearchText(second.name)
-  ) {
-    return false;
+function crossProviderIdentity(result: StationDiscoveryResult): string | null {
+  if (result.action.type === "local") {
+    return null;
   }
-  const firstCountry = normalizeSearchText(first.country);
-  const secondCountry = normalizeSearchText(second.country);
-  if (!(firstCountry && firstCountry === secondCountry)) {
-    return false;
+  const country = normalizeSearchText(result.country);
+  const location = normalizeSearchText(result.location);
+  return country && location
+    ? JSON.stringify([normalizeSearchText(result.name), country, location])
+    : null;
+}
+
+type MergeEntry = { index: number; result: StationDiscoveryResult };
+
+function earliestCrossProviderMatch(
+  candidate: StationDiscoveryResult,
+  entries: Map<StationDiscoveryAction["type"], MergeEntry> | undefined,
+  urlMatch: MergeEntry | undefined
+): MergeEntry | undefined {
+  let match = urlMatch;
+  for (const [source, entry] of entries ?? []) {
+    if (
+      source !== candidate.action.type &&
+      (!match || entry.index < match.index)
+    ) {
+      match = entry;
+    }
   }
-  const firstLocation = normalizeSearchText(first.location);
-  return (
-    !!firstLocation && firstLocation === normalizeSearchText(second.location)
-  );
+  return match;
 }
 
 function mergeResults(
   candidates: StationDiscoveryResult[]
 ): StationDiscoveryResult[] {
   const merged: StationDiscoveryResult[] = [];
+  const byUrl = new Map<string, MergeEntry>();
+  const byIdentity = new Map<
+    string,
+    Map<StationDiscoveryAction["type"], MergeEntry>
+  >();
   for (const candidate of candidates) {
     const streamUrl = normalizedStreamUrl(candidate);
-    const duplicate = merged.find((result) => {
-      const resultUrl = normalizedStreamUrl(result);
-      return (
-        (!!streamUrl && streamUrl === resultUrl) ||
-        hasMatchingCrossProviderIdentity(result, candidate)
-      );
-    });
+    const identity = crossProviderIdentity(candidate);
+    const urlMatch = streamUrl ? byUrl.get(streamUrl) : undefined;
+    const identities = identity ? byIdentity.get(identity) : undefined;
+    const duplicate = earliestCrossProviderMatch(
+      candidate,
+      identities,
+      urlMatch
+    );
     if (duplicate) {
-      duplicate.sources = [
-        ...new Set([...duplicate.sources, ...candidate.sources]),
+      duplicate.result.sources = [
+        ...new Set([...duplicate.result.sources, ...candidate.sources]),
       ];
-    } else {
-      merged.push({ ...candidate, sources: [...candidate.sources] });
+      continue;
+    }
+    const result = { ...candidate, sources: [...candidate.sources] };
+    const entry = { index: merged.length, result };
+    merged.push(result);
+    if (streamUrl && !byUrl.has(streamUrl)) {
+      byUrl.set(streamUrl, entry);
+    }
+    if (identity) {
+      const entries = identities ?? new Map();
+      if (!entries.has(candidate.action.type)) {
+        entries.set(candidate.action.type, entry);
+      }
+      byIdentity.set(identity, entries);
     }
   }
   return merged;
@@ -314,7 +340,8 @@ function mergeResults(
 function snapshot(
   results: StationDiscoveryResult[],
   isSearching: boolean,
-  query: string
+  query: string,
+  failedSources: Exclude<StationDiscoverySource, "local">[] = []
 ): StationDiscoverySnapshot {
   const mergedResults = mergeResults(results);
   const significantTerms = normalizeSearchText(query)
@@ -333,9 +360,17 @@ function snapshot(
   });
   return {
     duplicateCount: results.length - mergedResults.length,
+    ...(failedSources.length > 0 ? { failedSources: [...failedSources] } : {}),
     isSearching,
     results: relevantResults.slice(0, SEARCH_RESULT_LIMIT),
   };
+}
+
+export function setStationDiscoveryPlaybackNeedsNetwork(
+  needsNetwork: boolean
+): void {
+  audioProbeThrottled = needsNetwork;
+  drainAudioProbeQueue();
 }
 
 export function createStationDiscovery(
@@ -365,7 +400,9 @@ export function createStationDiscovery(
         publish(snapshot(localResults, false, query));
         return () => undefined;
       }
-      audioProbeThrottled = input.playbackNeedsNetwork === true;
+      setStationDiscoveryPlaybackNeedsNetwork(
+        input.playbackNeedsNetwork === true
+      );
 
       const staleRemoteResults = previousRemoteResults;
       publish(snapshot([...localResults, ...staleRemoteResults], true, query));
@@ -373,6 +410,7 @@ export function createStationDiscovery(
       activeController = controller;
       debounce = setTimeout(() => {
         let pendingProviderCount = 2;
+        const failedSources: Exclude<StationDiscoverySource, "local">[] = [];
         const providerResults: Record<
           Exclude<StationDiscoverySource, "local">,
           StationDiscoveryResult[]
@@ -396,7 +434,8 @@ export function createStationDiscovery(
                 ...(searching ? staleRemoteResults : []),
               ],
               searching,
-              query
+              query,
+              failedSources
             )
           );
         };
@@ -413,6 +452,7 @@ export function createStationDiscovery(
             });
           } catch (error) {
             if (isCurrent()) {
+              failedSources.push(source);
               captureError(error, {
                 operation: "searchStationDirectory",
                 surface: "ui",

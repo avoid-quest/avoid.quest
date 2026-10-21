@@ -9,6 +9,7 @@ import {
   connectPorts,
   dropOnNode,
   type PaletteFrom,
+  paletteEntries,
 } from "@/lib/node-graph/palette";
 import { nodeGraphSchema } from "@/lib/node-graph/schema";
 import {
@@ -251,8 +252,9 @@ describe("connectableHandles", () => {
         node: "kexp",
         type: "source",
       });
-      // Once with each of the 11 facing ports' cables, once without any.
-      expect(spy).toHaveBeenCalledTimes(11 + 1);
+      // Only the five compatible ports need a whole candidate validation.
+      // The immutable baseline is shared with previous connection queries.
+      expect(spy).toHaveBeenCalledTimes(5);
       expect(
         [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
       ).toEqual([
@@ -287,4 +289,58 @@ describe("connectableHandles", () => {
       spy.mockRestore();
     }
   });
+});
+
+test("a 40-node gesture shares its baseline and skips incompatible-port graph validation", () => {
+  const large = nodeGraphSchema.parse({
+    edges: [],
+    nodes: [
+      station("source"),
+      ...Array.from({ length: 38 }, (_, index) => ({
+        data: {},
+        id: `macro-${index}`,
+        position: at,
+        type: "macro",
+      })),
+      { data: {}, id: "speakers", position: at, type: "speakers" },
+    ],
+    version: 2,
+  });
+  const analyse = spyOn(validateModule, "analyseGraph");
+  const validate = spyOn(validateModule, "validate");
+  try {
+    const from = {
+      handle: "out:audio:main",
+      node: "source",
+      type: "source" as const,
+    };
+    const verdicts = connectableHandles(large, from);
+    expect(
+      [...verdicts].filter(([, verdict]) => verdict.ok).map(([key]) => key)
+    ).toEqual(["speakers in:audio:main"]);
+    expect(validate).toHaveBeenCalledTimes(1);
+    // One unchanged graph and one compatible cable, regardless of control-port count.
+    expect(analyse).toHaveBeenCalledTimes(2);
+    const entries = paletteEntries(large, { from, sinkSelection: true });
+    analyse.mockClear();
+    validate.mockClear();
+    const enriched = paletteEntries(large, {
+      availableEntries: entries,
+      devices: {
+        inputs: [],
+        outputs: [{ deviceId: "other", label: "Interface" }],
+      },
+      from,
+      radios: [
+        { id: "saved", name: "Saved", streamUrl: "https://r.test/saved" },
+      ],
+      sinkSelection: true,
+    });
+    expect(enriched.map((entry) => entry.id)).toContain("deviceOut:other");
+    expect(analyse).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+  } finally {
+    analyse.mockRestore();
+    validate.mockRestore();
+  }
 });

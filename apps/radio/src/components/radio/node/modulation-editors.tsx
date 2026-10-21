@@ -3,20 +3,83 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { useId, useRef, useState } from "react";
+import { useThrottler } from "@tanstack/react-pacer";
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { curveAt } from "@/lib/node-graph/modulation-curve";
 import type { ModulationPoint } from "@/lib/node-graph/modulation-schema";
 import { ModuleKnob, ModuleSelect } from "./module-frame";
 
+/** Local pattern feedback; expensive patch writes share the knob's 32 ms cadence. */
+function usePattern<T>(value: T, onChange: (next: T) => void) {
+  const [draft, setDraft] = useState({ source: value, value });
+  if (draft.source !== value) {
+    setDraft({ source: value, value });
+  }
+  const written = useRef(value);
+  const throttler = useThrottler(
+    (next: T) => {
+      written.current = next;
+      onChange(next);
+    },
+    {
+      leading: true,
+      onUnmount: (pending) => pending.flush(),
+      trailing: true,
+      wait: 32,
+    }
+  );
+  useEffect(() => {
+    // Schema validation clones arrays. Accept our own echo, cancel stale work
+    // when Undo, reset or another editor replaces the authored pattern.
+    if (JSON.stringify(value) !== JSON.stringify(written.current)) {
+      throttler.cancel();
+      written.current = value;
+    }
+  }, [value, throttler]);
+  const change = (next: T, immediate = false) => {
+    setDraft({ source: value, value: next });
+    if (immediate) {
+      throttler.cancel();
+      written.current = next;
+      onChange(next);
+    } else {
+      throttler.maybeExecute(next);
+    }
+  };
+  // Bubble before ModuleControls schedules its history snapshot.
+  const flush = () => throttler.flush();
+  return {
+    change,
+    release: {
+      onBlur: flush,
+      onKeyDownCapture: (event: KeyboardEvent) => {
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key.toLowerCase() === "z"
+        ) {
+          flush();
+        }
+      },
+      onKeyUp: flush,
+      onLostPointerCapture: flush,
+      onPointerCancel: flush,
+      onPointerUp: flush,
+    },
+    value: draft.source === value ? draft.value : value,
+  };
+}
+
 const FIELD = "w-14 rounded border bg-background px-1.5 py-1 text-xs";
 
 export function StepsEditor({
-  values,
+  values: authoredValues,
   onChange,
 }: {
   values: number[];
   onChange: (values: number[]) => void;
 }) {
+  const pattern = usePattern(authoredValues, onChange);
+  const values = pattern.value;
   const [pulses, setPulses] = useState(4);
   const [draftCount, setDraftCount] = useState<{
     values: number[];
@@ -37,12 +100,15 @@ export function StepsEditor({
     }
     const count = Math.max(1, Math.min(64, Math.trunc(enteredCount)));
     if (count !== values.length) {
-      onChange(Array.from({ length: count }, (_, index) => values[index] ?? 0));
+      pattern.change(
+        Array.from({ length: count }, (_, index) => values[index] ?? 0),
+        true
+      );
     }
   };
   const fieldId = useId();
   return (
-    <div className="w-full space-y-2 px-2 pb-2">
+    <div className="w-full space-y-2 px-2 pb-2" {...pattern.release}>
       <div className="flex items-center gap-2 text-xs">
         <label htmlFor={`${fieldId}-count`}>
           Steps{" "}
@@ -90,10 +156,11 @@ export function StepsEditor({
         <Button
           onClick={() => {
             const count = Math.min(values.length, pulses);
-            onChange(
+            pattern.change(
               values.map((_, index) =>
                 (index * count) % values.length < count ? 1 : 0
-              )
+              ),
+              true
             );
           }}
           size="sm"
@@ -115,7 +182,7 @@ export function StepsEditor({
               max={1}
               min={0}
               onValueChange={([next = 0]) =>
-                onChange(
+                pattern.change(
                   values.map((entry, position) =>
                     position === index ? next : entry
                   )
@@ -135,12 +202,14 @@ export function StepsEditor({
 
 /** Drag points; time and bend remain reachable from keyboard controls. */
 export function CurveEditor({
-  points,
+  points: authoredPoints,
   onChange,
 }: {
   points: ModulationPoint[];
   onChange: (points: ModulationPoint[]) => void;
 }) {
+  const pattern = usePattern(authoredPoints, onChange);
+  const points = pattern.value;
   const [selected, setSelected] = useState(0);
   const dragging = useRef<number | null>(null);
   const index = Math.min(selected, points.length - 1);
@@ -149,7 +218,7 @@ export function CurveEditor({
     return null;
   }
   const update = (point: Partial<ModulationPoint>) =>
-    onChange(
+    pattern.change(
       points.map((entry, position) =>
         position === index ? { ...entry, ...point } : entry
       )
@@ -163,7 +232,7 @@ export function CurveEditor({
       `${8 + (position / 128) * 272},${92 - curveAt(points, position / 128) * 84}`
   ).join(" ");
   return (
-    <div className="w-full space-y-2 px-2 pb-2">
+    <div className="w-full space-y-2 px-2 pb-2" {...pattern.release}>
       <svg
         aria-label="Envelope curve; edit point values below"
         className="w-full touch-none rounded border bg-muted/20 text-primary"
@@ -209,7 +278,7 @@ export function CurveEditor({
           } else if (active === points.length - 1) {
             time = 1;
           }
-          onChange(
+          pattern.change(
             points.map((entry, position) =>
               position === active ? { ...entry, time, value } : entry
             )
@@ -262,6 +331,7 @@ export function CurveEditor({
             name="Point time"
             onChange={(time) => update({ time })}
             step={0.001}
+            throttle={false}
             value={current.time}
           />
         ) : null}
@@ -273,6 +343,7 @@ export function CurveEditor({
           name="Point value"
           onChange={(value) => update({ value })}
           step={0.01}
+          throttle={false}
           value={current.value}
         />
         {index < points.length - 1 ? (
@@ -284,6 +355,7 @@ export function CurveEditor({
             name="Point bend"
             onChange={(bend) => update({ bend })}
             step={0.01}
+            throttle={false}
             value={current.bend}
           />
         ) : null}
@@ -303,11 +375,14 @@ export function CurveEditor({
             }
             const time =
               ((points[gap - 1]?.time ?? 0) + (points[gap]?.time ?? 1)) / 2;
-            onChange([
-              ...points.slice(0, gap),
-              { bend: 0, time, value: curveAt(points, time) },
-              ...points.slice(gap),
-            ]);
+            pattern.change(
+              [
+                ...points.slice(0, gap),
+                { bend: 0, time, value: curveAt(points, time) },
+                ...points.slice(gap),
+              ],
+              true
+            );
             setSelected(gap);
           }}
           size="sm"
@@ -318,7 +393,10 @@ export function CurveEditor({
         <Button
           disabled={index === 0 || index === points.length - 1}
           onClick={() => {
-            onChange(points.filter((_, position) => position !== index));
+            pattern.change(
+              points.filter((_, position) => position !== index),
+              true
+            );
             setSelected(Math.max(0, index - 1));
           }}
           size="sm"

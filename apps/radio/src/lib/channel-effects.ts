@@ -12,12 +12,12 @@ import {
   updateEffectInTree,
 } from "@/lib/audio/dsp/routing/effect-tree";
 import { AudioManager } from "@/lib/audio/manager/audio-manager";
+import { getPlaybackSessionPersistence } from "@/lib/collections/node-session-persistence";
 import {
   getPlaybackChannel,
   getPlaybackSession,
   type PlaybackSessionId,
   setPlaybackSessionTempo,
-  updatePlaybackChannel,
 } from "@/lib/collections/playback-sessions";
 
 export type ChannelEffectsRef = {
@@ -198,74 +198,97 @@ export function createChannelEffects({
       return result;
     },
     change(ref, change) {
-      updatePlaybackChannel(ref.sessionId, ref.channelId, (draft) => {
-        switch (change.type) {
-          case "add":
-            draft.effects = appendEffectToTree(
-              draft.effects,
-              change.effect,
-              change.chainId ?? null
-            );
-            break;
-          case "update":
-            if (findEffectInTree(draft.effects, change.effectId)) {
-              draft.effects = normalizeEffectTree(
-                updateEffectInTree(draft.effects, change.effectId, change.patch)
+      let reconciliation: Promise<ChannelEffectsResult> | undefined;
+      getPlaybackSessionPersistence(ref.sessionId).update(
+        (session) => {
+          const draft = session.channels.find(
+            (channel) => channel.id === ref.channelId
+          );
+          if (!draft) {
+            return;
+          }
+          switch (change.type) {
+            case "add":
+              draft.effects = appendEffectToTree(
+                draft.effects,
+                change.effect,
+                change.chainId ?? null
               );
-            }
-            break;
-          case "update-chain": {
-            const effect = findEffectInTree(draft.effects, change.effectId);
-            if (!(effect && isEffectContainer(effect))) {
+              break;
+            case "update":
+              if (findEffectInTree(draft.effects, change.effectId)) {
+                draft.effects = normalizeEffectTree(
+                  updateEffectInTree(
+                    draft.effects,
+                    change.effectId,
+                    change.patch
+                  )
+                );
+              }
+              break;
+            case "update-chain": {
+              const effect = findEffectInTree(draft.effects, change.effectId);
+              if (!(effect && isEffectContainer(effect))) {
+                break;
+              }
+              draft.effects = normalizeEffectTree(
+                updateEffectInTree(draft.effects, change.effectId, {
+                  chains: effect.chains.map((chain) =>
+                    chain.id === change.chainId
+                      ? {
+                          ...chain,
+                          gain:
+                            change.patch.gain === undefined
+                              ? chain.gain
+                              : Math.max(0, Math.min(4, change.patch.gain)),
+                          pan:
+                            change.patch.pan === undefined
+                              ? chain.pan
+                              : Math.max(-1, Math.min(1, change.patch.pan)),
+                        }
+                      : chain
+                  ),
+                } as Partial<EffectConfig>)
+              );
               break;
             }
-            draft.effects = normalizeEffectTree(
-              updateEffectInTree(draft.effects, change.effectId, {
-                chains: effect.chains.map((chain) =>
-                  chain.id === change.chainId
-                    ? {
-                        ...chain,
-                        gain:
-                          change.patch.gain === undefined
-                            ? chain.gain
-                            : Math.max(0, Math.min(4, change.patch.gain)),
-                        pan:
-                          change.patch.pan === undefined
-                            ? chain.pan
-                            : Math.max(-1, Math.min(1, change.patch.pan)),
-                      }
-                    : chain
-                ),
-              } as Partial<EffectConfig>)
-            );
-            break;
+            case "remove":
+              draft.effects = removeEffectFromTree(
+                draft.effects,
+                change.effectId
+              );
+              break;
+            case "reorder":
+              draft.effects = reorderEffectTreeChain(
+                draft.effects,
+                change.effectIds,
+                change.chainId ?? null
+              );
+              break;
+            case "replace":
+              draft.effects = normalizeEffectTree(change.tree);
+              break;
+            case "set-dry-wet":
+              draft.effectsDryWet = Math.max(0, Math.min(1, change.value));
+              break;
+            default: {
+              const exhaustive: never = change;
+              return exhaustive;
+            }
           }
-          case "remove":
-            draft.effects = removeEffectFromTree(
-              draft.effects,
-              change.effectId
-            );
-            break;
-          case "reorder":
-            draft.effects = reorderEffectTreeChain(
-              draft.effects,
-              change.effectIds,
-              change.chainId ?? null
-            );
-            break;
-          case "replace":
-            draft.effects = normalizeEffectTree(change.tree);
-            break;
-          case "set-dry-wet":
-            draft.effectsDryWet = Math.max(0, Math.min(1, change.value));
-            break;
-          default: {
-            const exhaustive: never = change;
-            return exhaustive;
-          }
+        },
+        () => {
+          reconciliation = reconcile(ref);
+          // A rollback also reconciles, without an action awaiting that retry.
+          reconciliation.catch((error: unknown) =>
+            captureError(error, {
+              operation: "reconcileChannelEffects",
+              surface: "ui",
+            })
+          );
         }
-      });
-      return reconcile(ref);
+      );
+      return reconciliation ?? reconcile(ref);
     },
     async setTempo(sessionId, bpm) {
       setPlaybackSessionTempo(sessionId, bpm);

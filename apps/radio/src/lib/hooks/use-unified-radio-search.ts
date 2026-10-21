@@ -1,9 +1,10 @@
 import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
-import type {
-  StationDiscoveryResult,
-  StationDiscoverySnapshot,
+import {
+  type StationDiscoveryResult,
+  type StationDiscoverySnapshot,
+  setStationDiscoveryPlaybackNeedsNetwork,
 } from "@/lib/stations/station-discovery";
 import { createProductionStationDiscovery } from "@/lib/stations/station-discovery-adapters";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
@@ -18,13 +19,17 @@ const INITIAL_SNAPSHOT: StationDiscoverySnapshot = {
   results: [],
 };
 
-export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
+export function useUnifiedRadioSearch(
+  query: string,
+  localRadios: Radio[],
+  enabled = true
+) {
   const playbackNeedsNetwork = useStore(playbackRuntimeStore, (state) =>
     Object.values(state.channels).some(
       (channel) => channel.isLoading || channel.isBuffering
     )
   );
-  const [discovery] = useState(createProductionStationDiscovery);
+  const [discovery, setDiscovery] = useState(createProductionStationDiscovery);
   const [snapshot, setSnapshot] =
     useState<StationDiscoverySnapshot>(INITIAL_SNAPSHOT);
   const localRadiosSignature = JSON.stringify(localRadios);
@@ -41,18 +46,33 @@ export function useUnifiedRadioSearch(query: string, localRadios: Radio[]) {
   }, [localRadios, localRadiosSignature]);
 
   useEffect(() => {
+    setStationDiscoveryPlaybackNeedsNetwork(playbackNeedsNetwork);
+  }, [playbackNeedsNetwork]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setSnapshot((current) =>
+        current.isSearching ? { ...current, isSearching: false } : current
+      );
+      return;
+    }
     if (latestLocalRadios.current.signature !== localRadiosSignature) {
       return;
     }
     return discovery.search(
       {
         knownStations: latestLocalRadios.current.value,
-        playbackNeedsNetwork,
+        playbackNeedsNetwork: Object.values(
+          playbackRuntimeStore.state.channels
+        ).some((channel) => channel.isLoading || channel.isBuffering),
         query,
       },
       setSnapshot
     );
-  }, [discovery, localRadiosSignature, playbackNeedsNetwork, query]);
+  }, [discovery, enabled, localRadiosSignature, query]);
 
-  return snapshot;
+  return {
+    ...snapshot,
+    retry: () => setDiscovery(createProductionStationDiscovery()),
+  };
 }

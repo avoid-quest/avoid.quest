@@ -9,7 +9,7 @@ import {
   type RuntimePeakLevel,
   resetAllPlaybackRuntime,
   setPlaybackChannelPeakLevel,
-  usePlaybackChannelRuntime,
+  usePlaybackChannelPeakLevel,
 } from "./playback-runtime-store";
 
 type DjUiState = {
@@ -25,11 +25,11 @@ const djUiStore = new Store<DjUiState>({
 });
 
 export function useDeckAPeakLevel(): RuntimePeakLevel {
-  return usePlaybackChannelRuntime(DECK_A_CHANNEL_ID).peakLevel;
+  return usePlaybackChannelPeakLevel(DECK_A_CHANNEL_ID);
 }
 
 export function useDeckBPeakLevel(): RuntimePeakLevel {
-  return usePlaybackChannelRuntime(DECK_B_CHANNEL_ID).peakLevel;
+  return usePlaybackChannelPeakLevel(DECK_B_CHANNEL_ID);
 }
 
 export function useActiveDragRadio() {

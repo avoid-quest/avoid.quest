@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-db";
 import { z } from "zod";
 import type { Radio } from "@/lib/audio";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import { radioMetadataConfigSchema } from "@/lib/metadata/schema";
 import { platformMetadataSchema } from "./schemas";
 
@@ -21,24 +22,37 @@ const MAX_SESSION_RADIO_TOMBSTONES = 100;
 let lastAddedAt = 0;
 
 const memorySessionStorage = new Map<string, string>();
+// Set once a read throws, as the localStorage collections do.
+let keepSessionInMemory = false;
+
+function getSessionStorage(): Storage | undefined {
+  return keepSessionInMemory ? undefined : getBrowserStorage("sessionStorage");
+}
 
 const sessionStorageApi: Pick<Storage, "getItem" | "setItem" | "removeItem"> = {
   getItem(key) {
-    if (typeof globalThis.sessionStorage !== "undefined") {
-      return globalThis.sessionStorage.getItem(key);
+    const storage = getSessionStorage();
+    if (storage) {
+      try {
+        return storage.getItem(key);
+      } catch {
+        keepSessionInMemory = true;
+      }
     }
     return memorySessionStorage.get(key) ?? null;
   },
   removeItem(key) {
-    if (typeof globalThis.sessionStorage !== "undefined") {
-      globalThis.sessionStorage.removeItem(key);
+    const storage = getSessionStorage();
+    if (storage) {
+      storage.removeItem(key);
       return;
     }
     memorySessionStorage.delete(key);
   },
   setItem(key, value) {
-    if (typeof globalThis.sessionStorage !== "undefined") {
-      globalThis.sessionStorage.setItem(key, value);
+    const storage = getSessionStorage();
+    if (storage) {
+      storage.setItem(key, value);
       return;
     }
     memorySessionStorage.set(key, value);
@@ -118,23 +132,31 @@ function parseSessionRadiosStorage(data: string): unknown {
   );
 }
 
+const sessionRadiosCollectionOptions = localStorageCollectionOptions({
+  // Keep rows resident: the app reads `.state` outside live queries, and
+  // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
+  gcTime: 0,
+  getKey: (item) => String(item.id),
+  id: "session-radios",
+  parser: {
+    parse: parseSessionRadiosStorage,
+    stringify: JSON.stringify,
+  },
+  schema: sessionRadioSchema,
+  startSync: true,
+  storage: sessionStorageApi,
+  storageEventApi: sessionStorageEventApi,
+  storageKey: SESSION_RADIOS_STORAGE_KEY,
+});
+// TanStack's metadata callback reads window.localStorage on every write,
+// which throws when storage is blocked. This storage is always custom.
+sessionRadiosCollectionOptions.sync.getSyncMetadata = () => ({
+  storageKey: SESSION_RADIOS_STORAGE_KEY,
+  storageType: "custom",
+});
+
 export const sessionRadiosCollection = createCollection(
-  localStorageCollectionOptions({
-    // Keep rows resident: the app reads `.state` outside live queries, and
-    // TanStack DB reclaims unsubscribed collections after `gcTime` otherwise.
-    gcTime: 0,
-    getKey: (item) => String(item.id),
-    id: "session-radios",
-    parser: {
-      parse: parseSessionRadiosStorage,
-      stringify: JSON.stringify,
-    },
-    schema: sessionRadioSchema,
-    startSync: true,
-    storage: sessionStorageApi,
-    storageEventApi: sessionStorageEventApi,
-    storageKey: SESSION_RADIOS_STORAGE_KEY,
-  })
+  sessionRadiosCollectionOptions
 );
 
 export function isSessionRadio(radio: Radio): boolean {
@@ -171,8 +193,15 @@ function toSessionRadioRecord(radio: Radio): SessionRadioRecord {
   };
 }
 
+const convertedRadios = new WeakMap<SessionRadioRecord, Radio>();
+
 export function toSessionRadio(record: SessionRadioRecord): Radio {
+  const cached = convertedRadios.get(record);
+  if (cached) {
+    return cached;
+  }
   const { addedAt: _addedAt, ...radio } = sessionRadioSchema.parse(record);
+  convertedRadios.set(record, radio);
   return radio;
 }
 

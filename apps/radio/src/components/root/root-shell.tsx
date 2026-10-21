@@ -2,19 +2,22 @@ import { Toaster } from "@avoid.quest/ui/components/sonner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HeadContent, Scripts } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ClientOnly } from "@/components/client-only";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
 import { Header } from "@/components/theme/header";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { createRootQueryClient } from "@/lib/root/root-query-client";
 
-const RootClientEffects = lazy(() =>
+const RootClientEffects = lazyWithRetry(() =>
   import("./root-client-effects").then((module) => ({
     default: module.RootClientEffects,
   }))
 );
+// Headless: a failed load is reported, and MIDI control stays off.
+const hideFailedEffects = () => null;
 
 export function RootShell({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(createRootQueryClient);
@@ -50,11 +53,13 @@ export function RootShell({ children }: { children: React.ReactNode }) {
           src="/u/script.js"
         />
       </head>
-      <body className={cn("min-h-screen bg-background antialiased")}>
+      <body className={cn("min-h-dvh bg-background antialiased")}>
         <ClientOnly>
-          <Suspense fallback={null}>
-            <RootClientEffects />
-          </Suspense>
+          <LazyBoundary frame={hideFailedEffects} label="MIDI controls">
+            <Suspense fallback={null}>
+              <RootClientEffects />
+            </Suspense>
+          </LazyBoundary>
         </ClientOnly>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider
@@ -65,7 +70,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
           >
             <SWRegister />
             <InstallPrompt />
-            <div className="relative flex h-screen flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
+            <div className="relative flex h-dvh flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
               <Header />
               <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden pt-12">
                 {children}

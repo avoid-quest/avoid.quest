@@ -36,6 +36,7 @@ const NODE_ENGINE_MARKERS = [
   "Sending a Split's branches to different places",
   '"replaceLaneEffects"',
 ];
+const DJ_WORKFLOW_MARKER = "DJ playback session is not ready";
 const STATIC_IMPORT =
   /(?:^|[;}\s])(?:import|export)\s*(?:[\w$*{}\s,]+?\s*from\s*)?["']\.\/([^"']+\.js)["']/g;
 const DYNAMIC_IMPORT = /import\(\s*["']\.\/([^"']+\.js)["']\s*\)/g;
@@ -43,7 +44,9 @@ const MAPPED_DEP = /["'](?:\/assets\/|assets\/)?([\w.-]+\.js)["']/g;
 const MANIFEST_ASSET = /\/assets\/([\w.-]+\.js)/g;
 const SCRIPT_FILE = /\.m?js$/;
 const HOME_FEATURE_CHUNK =
-  /^(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-)/;
+  /^(?:immutable-)?(?:single-|dj-player-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-|settings-button-)/;
+const SINGLE_FEATURE_CHUNK =
+  /^(?:immutable-)?(?:single-|root-client-effects-|root-bootstrap-|mode-lifecycle-requests-|settings-button-)/;
 
 function listFiles(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
@@ -131,7 +134,33 @@ if (manifest) {
     if (NODE_ENGINE_MARKERS.some((marker) => source.includes(marker))) {
       failures.push(`Node graph engine in ${name} loads with Single/DJ`);
     }
+    // The header mounts its lazy settings trigger immediately. Only intent or
+    // an open request should load Vaul, including through Single/DJ imports.
+    if (source.includes("data-vaul-drawer")) {
+      failures.push(`Settings drawer in ${name} loads with Single/DJ`);
+    }
     homeQueue.push(...matches(source, STATIC_IMPORT));
+  }
+
+  // A cold Single load must not fetch the DJ lifecycle, including via the
+  // mode manager and the preload helper's static dependencies.
+  const singleQueue = [
+    ...routes.__root__.preloads,
+    ...routes["/"].preloads,
+    ...[...chunks.keys()].filter((name) => SINGLE_FEATURE_CHUNK.test(name)),
+  ].map((name: string) => name.replace("/assets/", ""));
+  const single = new Set<string>();
+  while (singleQueue.length > 0) {
+    const name = singleQueue.pop() ?? "";
+    if (single.has(name) || !chunks.has(name)) {
+      continue;
+    }
+    single.add(name);
+    const source = chunks.get(name) ?? "";
+    if (source.includes(DJ_WORKFLOW_MARKER)) {
+      failures.push(`DJ lifecycle workflow in ${name} loads with Single`);
+    }
+    singleQueue.push(...matches(source, STATIC_IMPORT));
   }
 } else {
   failures.push("TanStack Start manifest not found in dist/server");
@@ -147,6 +176,17 @@ const lazyTargets = new Set(
       : []),
   ])
 );
+const djWorkflowChunks = [...chunks].filter(([, source]) =>
+  source.includes(DJ_WORKFLOW_MARKER)
+);
+if (djWorkflowChunks.length === 0) {
+  failures.push("No DJ lifecycle workflow client chunk found");
+}
+for (const [name] of djWorkflowChunks) {
+  if (!lazyTargets.has(name)) {
+    failures.push(`DJ lifecycle workflow chunk ${name} is not loaded lazily`);
+  }
+}
 for (const [name, source] of flowChunks) {
   const importers = [...chunks].filter(([, other]) =>
     matches(other, STATIC_IMPORT).includes(name)
@@ -162,8 +202,9 @@ for (const [name, source] of flowChunks) {
 // The canvas is Node mode's only door to React Flow: the chunk that lazily
 // loads it also draws the Stage, Rack and inspector, which a phone opens
 // first, so it must not reach React Flow through static imports.
-const canvasChunks = [...chunks.keys()].filter((name) =>
-  name.startsWith("node-canvas-")
+const canvasChunks = [...chunks.keys()].filter(
+  (name) =>
+    name.startsWith("node-canvas-") || name.startsWith("immutable-node-canvas-")
 );
 if (canvasChunks.length === 0) {
   failures.push("No node-canvas client chunk found");
@@ -206,3 +247,4 @@ console.log(
     .map(([name]) => name)
     .join(", ")}`
 );
+console.log("[check-node-chunk] DJ lifecycle workflow stays lazy on Single");

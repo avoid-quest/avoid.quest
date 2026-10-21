@@ -60,16 +60,20 @@ import {
 import { getSettings, settingsCollection } from "@/lib/collections/settings";
 import type { PlatformStreamResolution } from "@/lib/dj-platform-stream-port";
 import { resolveDjPlatformStreamUrl } from "@/lib/dj-platform-stream-port";
+// biome-ignore lint/performance/noNamespaceImport: observe cosmetic commit engine work
+import * as nodeEngineModule from "@/lib/node-engine/engine";
 import { setBandCount } from "@/lib/node-graph/branches";
 import { createNodeEffectConfig } from "@/lib/node-graph/catalogue";
 // biome-ignore lint/performance/noNamespaceImport: forbid compiler access during frame delivery
 import * as graphCompiler from "@/lib/node-graph/compile";
 import { compile } from "@/lib/node-graph/compile";
 import {
+  moveNodes,
   removeEdges,
   setEffectParams,
   setSourceRadio,
   setSourceStrip,
+  setViewport,
 } from "@/lib/node-graph/graph-edits";
 // biome-ignore lint/performance/noNamespaceImport: exercise the playback-owned modulation consumer
 import * as modulationRuntime from "@/lib/node-graph/modulation-runtime";
@@ -554,9 +558,10 @@ async function writeFromOtherTab(
 /** Commits an edit and waits for its ops, fades included. */
 async function commit(
   { playback, store }: Harness,
-  update: (graph: NodeGraph) => NodeGraph
+  update: (graph: NodeGraph) => NodeGraph,
+  history?: Parameters<typeof commitNodeGraph>[2]
 ): Promise<void> {
-  commitNodeGraph(update, store);
+  commitNodeGraph(update, store, history);
   await playback.whenSettled();
 }
 
@@ -6817,4 +6822,81 @@ describe("Node Playback: resolved modulation", () => {
       harness.runtime.mockRestore();
     }
   });
+});
+
+test("layout commits persist and undo without compile, engine apply or modulation sync", async () => {
+  insertNodeSession(patch([station("a")]));
+  const harness = createHarness();
+  const createEngine = nodeEngineModule.createNodeEngine;
+  const createModulation = modulationRuntime.createModulationRuntime;
+  let apply: ReturnType<typeof spyOn> | undefined;
+  let sync: ReturnType<typeof spyOn> | undefined;
+  const engineSpy = spyOn(
+    nodeEngineModule,
+    "createNodeEngine"
+  ).mockImplementation((options) => {
+    const engine = createEngine(options);
+    apply = spyOn(engine, "apply");
+    return engine;
+  });
+  const modulationSpy = spyOn(
+    modulationRuntime,
+    "createModulationRuntime"
+  ).mockImplementation((options) => {
+    const runtime = createModulation(options);
+    sync = spyOn(runtime, "sync");
+    return runtime;
+  });
+  const compileSpy = spyOn(graphCompiler, "compile");
+  try {
+    await harness.playback.activate();
+    apply?.mockClear();
+    sync?.mockClear();
+    compileSpy.mockClear();
+    const original = harness.store.state.graph;
+    await commit(
+      harness,
+      (graph) => moveNodes(graph, new Map([["a", { x: 20, y: 30 }]])),
+      "snapshot"
+    );
+    await commit(
+      harness,
+      (graph) => setViewport(graph, { x: 100, y: 200, zoom: 0.75 }),
+      "snapshot"
+    );
+    for (let step = 1; step <= 5; step += 1) {
+      // biome-ignore lint/performance/noAwaitInLoops: model separate held-key commits
+      await commit(
+        harness,
+        (graph) => moveNodes(graph, new Map([["a", { x: 20 + step, y: 30 }]])),
+        step === 1 ? "snapshot" : "amend"
+      );
+    }
+    expect(getPlaybackSession("node")?.graph).toEqual(
+      harness.store.state.graph ?? undefined
+    );
+    undoNodeGraph(harness.store);
+    await harness.playback.whenSettled();
+    expect(
+      harness.store.state.graph?.nodes.find((node) => node.id === "a")?.position
+    ).toEqual({ x: 20, y: 30 });
+    undoNodeGraph(harness.store);
+    undoNodeGraph(harness.store);
+    await harness.playback.whenSettled();
+    expect(harness.store.state.graph).toBe(original);
+    expect(compileSpy).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+    await commit(harness, (graph) => setSourceStrip(graph, "a", { pan: 0.5 }));
+    expect(compileSpy).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(sync).toHaveBeenCalledTimes(1);
+  } finally {
+    compileSpy.mockRestore();
+    apply?.mockRestore();
+    sync?.mockRestore();
+    engineSpy.mockRestore();
+    modulationSpy.mockRestore();
+    await harness.playback.deactivate();
+  }
 });

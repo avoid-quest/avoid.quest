@@ -1,10 +1,15 @@
 @import "@fontsource/geist-sans/400.css";
 @import "@fontsource/geist-sans/500.css";
 @import "@fontsource/geist-sans/600.css";
-@import "@fontsource/geist-sans/700.css";
 @import "@fontsource/geist-mono/400.css";
-@import "@fontsource/geist-mono/500.css";
 @import "@avoid.quest/ui/globals.css";
+
+@source "../";
+/* List each shared component the site renders: globbing packages/ui triples this CSS. */
+@source "../../../../packages/ui/src/components/avoid-logo.tsx";
+@source "../../../../packages/ui/src/components/button.tsx";
+@source "../../../../packages/ui/src/components/github-icon.tsx";
+@source "../../../../packages/ui/src/components/legal-page.tsx";
 
 :root {
   --font-geist-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;

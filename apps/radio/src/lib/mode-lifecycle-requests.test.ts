@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 // biome-ignore lint/performance/noNamespaceImport: observe production reporting without replacing the error module
 import * as Sentry from "@sentry/core";
+import { toast } from "sonner";
 import {
   type PlaybackSessionId,
   playbackSessionsCollection,
@@ -9,7 +10,11 @@ import {
   type SettingsRecord,
   settingsCollection,
 } from "@/lib/collections/settings";
-import { createModeManager } from "./mode-lifecycle-manager";
+import {
+  createModeLifecycleRegistry,
+  createModeManager,
+  type ModeLifecycle,
+} from "./mode-lifecycle-manager";
 import { createModeLifecycleRequests } from "./mode-lifecycle-requests";
 import {
   capturePlaybackActionError,
@@ -51,6 +56,62 @@ function insertSettings(mode: PlaybackSessionId) {
       restoreStateOnLoad: true,
     },
   });
+}
+
+// Another tab writing the mode, as the settings listener then sees it.
+function storeMode(mode: PlaybackSessionId) {
+  settingsCollection.update("app-settings", (draft) => {
+    draft.player.mode = mode;
+  });
+}
+
+// Let synchronization reach the manager while its transition is in flight.
+function flushTasks() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function fakeLifecycle(): ModeLifecycle {
+  return {
+    activate: mock(async () => undefined),
+    deactivate: mock(async () => undefined),
+    getPhase: () => "inactive",
+  };
+}
+
+function createCrossTabHarness() {
+  for (const mode of ["dj", "node", "single"] as const) {
+    insertPlaybackSession(mode);
+  }
+  const preparation = Promise.withResolvers<void>();
+  const preparing = Promise.withResolvers<void>();
+  const lifecycles = {
+    dj: {
+      ...fakeLifecycle(),
+      prepare: mock(() => {
+        preparing.resolve();
+        return preparation.promise;
+      }),
+    },
+    node: fakeLifecycle(),
+    single: fakeLifecycle(),
+  };
+  const commitMode = mock((_mode: PlaybackSessionId) => undefined);
+  const manager = createModeManager({
+    commitMode,
+    initialMode: "single",
+    lifecycles,
+  });
+  const switchTo = spyOn(manager, "switchTo");
+  const requests = createModeLifecycleRequests({ manager });
+  return {
+    commitMode,
+    lifecycles,
+    manager,
+    preparation,
+    preparing: preparing.promise,
+    requests,
+    switchTo,
+  };
 }
 
 beforeEach(async () => {
@@ -130,6 +191,7 @@ describe("mode lifecycle requests", () => {
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
+        whenSettled: mock(async () => undefined),
       },
     });
 
@@ -156,6 +218,7 @@ describe("mode lifecycle requests", () => {
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
+        whenSettled: mock(async () => undefined),
       },
     });
 
@@ -179,6 +242,7 @@ describe("mode lifecycle requests", () => {
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
+        whenSettled: mock(async () => undefined),
       },
     });
 
@@ -207,6 +271,7 @@ describe("mode lifecycle requests", () => {
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
+        whenSettled: mock(async () => undefined),
       },
     });
 
@@ -241,6 +306,7 @@ describe("mode lifecycle requests", () => {
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
+        whenSettled: mock(async () => undefined),
       },
     });
 
@@ -272,6 +338,7 @@ describe("mode lifecycle requests", () => {
         })),
         subscribe: mock((_listener: () => void) => () => undefined),
         switchTo,
+        whenSettled: mock(async () => undefined),
       },
     });
 
@@ -279,5 +346,205 @@ describe("mode lifecycle requests", () => {
 
     expect(activateInitialMode).toHaveBeenCalledWith("node");
     expect(switchTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("settings synchronization during a transition", () => {
+  test("follows a mode another tab picks while DJ is still loading", async () => {
+    insertSettings("dj");
+    const {
+      commitMode,
+      lifecycles,
+      manager,
+      preparation,
+      preparing,
+      requests,
+    } = createCrossTabHarness();
+
+    const toDj = requests.synchronizeMode("dj");
+    await preparing;
+    storeMode("node");
+    const toNode = requests.synchronizeMode("node");
+    await flushTasks();
+    preparation.resolve();
+    await toDj;
+    await toNode;
+
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "node",
+      error: null,
+      phase: "active",
+      requestedMode: null,
+    });
+    expect(lifecycles.dj.activate).toHaveBeenCalledTimes(1);
+    expect(lifecycles.dj.deactivate).toHaveBeenCalledTimes(1);
+    expect(lifecycles.node.activate).toHaveBeenCalledTimes(1);
+    expect(commitMode).not.toHaveBeenCalled();
+  });
+
+  test("replays only the newest of several changes made during one transition", async () => {
+    insertSettings("dj");
+    const { lifecycles, manager, preparation, preparing, requests, switchTo } =
+      createCrossTabHarness();
+
+    const toDj = requests.synchronizeMode("dj");
+    await preparing;
+    storeMode("node");
+    const toNode = requests.synchronizeMode("node");
+    // Back to the mode that was playing when DJ was requested.
+    storeMode("single");
+    const toSingle = requests.synchronizeMode("single");
+    await flushTasks();
+    preparation.resolve();
+    await Promise.all([toDj, toNode, toSingle]);
+
+    expect(lifecycles.node.activate).not.toHaveBeenCalled();
+    expect(switchTo.mock.calls).toEqual([
+      ["dj", { commit: false }],
+      ["single", { commit: false }],
+    ]);
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "single",
+      phase: "active",
+    });
+  });
+
+  test("a change back to the mode being started drops the queued change", async () => {
+    insertSettings("dj");
+    const { lifecycles, manager, preparation, preparing, requests, switchTo } =
+      createCrossTabHarness();
+
+    const toDj = requests.synchronizeMode("dj");
+    await preparing;
+    // The same mode again is already on its way.
+    await requests.synchronizeMode("dj");
+    storeMode("node");
+    const toNode = requests.synchronizeMode("node");
+    await flushTasks();
+    storeMode("dj");
+    await requests.synchronizeMode("dj");
+    preparation.resolve();
+    await Promise.all([toDj, toNode]);
+    // And the mode that is playing.
+    await requests.synchronizeMode("dj");
+
+    expect(switchTo).toHaveBeenCalledTimes(1);
+    expect(lifecycles.dj.prepare).toHaveBeenCalledTimes(1);
+    expect(lifecycles.node.activate).not.toHaveBeenCalled();
+    expect(manager.getSnapshot()).toMatchObject({
+      currentMode: "dj",
+      phase: "active",
+    });
+  });
+
+  test("replays a change made while a requested DJ load fails", async () => {
+    for (const mode of ["dj", "node", "single"] as const) {
+      insertPlaybackSession(mode);
+    }
+    insertSettings("single");
+    const module =
+      Promise.withResolvers<typeof import("./dj-mode-lifecycle-workflow")>();
+    const loading = Promise.withResolvers<void>();
+    const loadDjWorkflow = mock(() => {
+      loading.resolve();
+      return module.promise;
+    });
+    const lifecycles = createModeLifecycleRegistry({ loadDjWorkflow });
+    lifecycles.node = fakeLifecycle();
+    lifecycles.single = fakeLifecycle();
+    const commitMode = mock((_mode: PlaybackSessionId) => undefined);
+    const manager = createModeManager({
+      commitMode,
+      initialMode: "single",
+      lifecycles,
+    });
+    const requests = createModeLifecycleRequests({ manager });
+    const notice = spyOn(toast, "error").mockReturnValue("dj-mode-load");
+    try {
+      const toDj = requests.requestMode("dj");
+      await loading.promise;
+      // A user switch still waits its turn rather than queueing.
+      await expect(requests.requestMode("node")).rejects.toThrow(
+        "Mode transition in progress"
+      );
+      storeMode("node");
+      const toNode = requests.synchronizeMode("node");
+      await flushTasks();
+      module.reject(
+        new TypeError("Failed to fetch dynamically imported module")
+      );
+      await expect(toDj).rejects.toThrow("DJ mode could not load");
+      await toNode;
+
+      expect(lifecycles.single.deactivate).toHaveBeenCalledTimes(1);
+      expect(lifecycles.node.activate).toHaveBeenCalledTimes(1);
+      expect(commitMode).not.toHaveBeenCalled();
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(manager.getSnapshot()).toMatchObject({
+        currentMode: "node",
+        error: null,
+        phase: "active",
+      });
+    } finally {
+      notice.mockRestore();
+    }
+  });
+
+  test("a replayed DJ change after a failed DJ load fails once without another notice", async () => {
+    for (const mode of ["dj", "node", "single"] as const) {
+      insertPlaybackSession(mode);
+    }
+    insertSettings("single");
+    const loadDjWorkflow = mock(() =>
+      Promise.reject(new Error("Missing deployment chunk"))
+    );
+    const lifecycles = createModeLifecycleRegistry({ loadDjWorkflow });
+    const nodeStarting = Promise.withResolvers<void>();
+    const releaseNode = Promise.withResolvers<void>();
+    lifecycles.node = {
+      ...fakeLifecycle(),
+      activate: mock(() => {
+        nodeStarting.resolve();
+        return releaseNode.promise;
+      }),
+    };
+    lifecycles.single = fakeLifecycle();
+    const manager = createModeManager({
+      commitMode: () => undefined,
+      initialMode: "single",
+      lifecycles,
+    });
+    const switchTo = spyOn(manager, "switchTo");
+    const requests = createModeLifecycleRequests({ manager });
+    const notice = spyOn(toast, "error").mockReturnValue("dj-mode-load");
+    try {
+      await expect(requests.requestMode("dj")).rejects.toThrow(
+        "DJ mode could not load"
+      );
+      storeMode("node");
+      const toNode = requests.synchronizeMode("node");
+      await nodeStarting.promise;
+      storeMode("dj");
+      const toDj = requests.synchronizeMode("dj");
+      await flushTasks();
+      releaseNode.resolve();
+      await toNode;
+      await expect(toDj).rejects.toThrow("DJ mode could not load");
+
+      expect(loadDjWorkflow).toHaveBeenCalledTimes(1);
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(switchTo.mock.calls).toEqual([
+        ["dj"],
+        ["node", { commit: false }],
+        ["dj", { commit: false }],
+      ]);
+      expect(manager.getSnapshot()).toMatchObject({
+        currentMode: "node",
+        phase: "active",
+        requestedMode: null,
+      });
+    } finally {
+      notice.mockRestore();
+    }
   });
 });

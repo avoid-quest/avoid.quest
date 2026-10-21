@@ -5,4 +5,4 @@ export {
   isPlaylistUrl,
   isStaticAudioUrl,
   PLAYLIST_EXTENSIONS,
-} from "@avoid.quest/platforms/static-audio";
+} from "@avoid.quest/platforms/detect";

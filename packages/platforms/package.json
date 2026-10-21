@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./detect": "./src/detect.ts",
     "./bandcamp": "./src/bandcamp/index.ts",
     "./bandcamp/search": "./src/bandcamp/search.ts",
     "./bandcamp/url-policy": "./src/bandcamp/url-policy.ts",

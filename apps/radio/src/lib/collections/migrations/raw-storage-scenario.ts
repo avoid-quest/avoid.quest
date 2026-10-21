@@ -25,6 +25,12 @@ export type RawStorageScenarioOptions = {
    * this many more characters, as a store near its quota does.
    */
   quotaHeadroom?: number;
+  /**
+   * Store the saved stations beside an entry TanStack DB cannot read, so
+   * they load only once radio init recovers them, and boot as the page
+   * does: playback preparation starts as soon as settings are ready.
+   */
+  damagedRadios?: boolean;
 };
 
 export type RawStorageScenarioResult = {
@@ -198,6 +204,7 @@ async function settle(): Promise<void> {
 
 async function runScenario({
   crossTab,
+  damagedRadios = false,
   quotaHeadroom,
   restoreStateOnLoad,
   staleSettings = false,
@@ -226,11 +233,17 @@ async function runScenario({
       },
     ])
   );
+  const savedRadios = storedRecords([
+    { ...station("kexp"), enabled: true, isSystem: false, order: 0 },
+  ]);
   localStorage.setItem(
     "radio-app-radios",
-    storedRecords([
-      { ...station("kexp"), enabled: true, isSystem: false, order: 0 },
-    ])
+    damagedRadios
+      ? JSON.stringify({
+          ...JSON.parse(savedRadios),
+          "s:broken": { invalid: true },
+        })
+      : savedRadios
   );
   localStorage.setItem(
     SESSIONS_KEY,
@@ -255,11 +268,30 @@ async function runScenario({
 
   const collections = await import("../index");
   collections.addSessionRadio(station("rg_live"));
-  await collections.initializeCollections().catch((error: unknown) => {
+  const recordError = (error: unknown) => {
     errors.push(
       error instanceof Error ? `${error.name}: ${error.message}` : String(error)
     );
-  });
+  };
+  if (damagedRadios) {
+    const { initializeCriticalCollections, preparePlaybackSessions } =
+      await import("../initialize");
+    // Radio init is slower than settings, as on a large library.
+    const { radiosCollection } = collections;
+    const radiosReady = radiosCollection.stateWhenReady.bind(radiosCollection);
+    radiosCollection.stateWhenReady = async () => {
+      radiosCollection.stateWhenReady = radiosReady;
+      await settle();
+      return radiosReady();
+    };
+    let prepared: Promise<void> | undefined;
+    await initializeCriticalCollections(() => {
+      prepared = preparePlaybackSessions();
+    }).catch(recordError);
+    await prepared?.catch(recordError);
+  } else {
+    await collections.initializeCollections().catch(recordError);
+  }
   const { playbackSessionsCollection, getPlaybackSession } = collections;
 
   const node = getPlaybackSession("node");

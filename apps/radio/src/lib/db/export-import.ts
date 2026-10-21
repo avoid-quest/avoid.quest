@@ -3,6 +3,7 @@ import { createTransaction } from "@tanstack/react-db";
 import LZString from "lz-string";
 import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
+import { getBrowserStorage } from "@/lib/browser-storage";
 import {
   getSettings,
   type RadioRecord,
@@ -18,6 +19,7 @@ import {
   prepareNodeSessionGraph,
   writeNodeSessionGraph,
 } from "@/lib/collections/node-session-graph";
+import { flushPlaybackSessionWrites } from "@/lib/collections/node-session-persistence";
 import { playbackSessionsCollection } from "@/lib/collections/playback-sessions";
 import {
   commitNodeGraph,
@@ -413,6 +415,7 @@ function exportSessions(): DatabaseExport["sessions"] {
  * leaves the patch out.
  */
 export const createDatabaseExport = async (): Promise<DatabaseExport> => {
+  flushPlaybackSessionWrites();
   const radios = Array.from(radiosCollection.state.values());
   const settings = getSettings();
   const graph = playbackSessionsCollection.state.get("node")?.graph ?? null;
@@ -463,7 +466,10 @@ export const exportDatabase = async (): Promise<void> => {
     URL.revokeObjectURL(url);
 
     // Store export timestamp
-    localStorage.setItem(STORAGE_KEY_LAST_EXPORT, new Date().toISOString());
+    getBrowserStorage("localStorage")?.setItem(
+      STORAGE_KEY_LAST_EXPORT,
+      new Date().toISOString()
+    );
     const missing = backup.missingNamModels?.length ?? 0;
     if (missing > 0) {
       toast.warning(
@@ -950,13 +956,8 @@ const mergeImportedDataSync = (importData: DatabaseExport): void => {
 /**
  * Get the last export date from localStorage
  */
-export const getLastExportDate = (): string | null => {
-  // Check if we're in browser environment
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return localStorage.getItem(STORAGE_KEY_LAST_EXPORT);
-};
+export const getLastExportDate = (): string | null =>
+  getBrowserStorage("localStorage")?.getItem(STORAGE_KEY_LAST_EXPORT) ?? null;
 
 /**
  * Check if URL contains import data

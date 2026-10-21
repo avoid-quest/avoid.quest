@@ -13,12 +13,10 @@ import type { BrowserAudioSource } from "@/lib/audio/playback/display-audio";
 import { channelEffects } from "@/lib/channel-effects";
 import { createDjDeckEffectChange, getDjDeckModule } from "@/lib/dj-deck";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
-import { useDjSession } from "@/lib/hooks/use-dj-session";
-import { useMidiEffectRegistration } from "@/lib/hooks/use-midi-effect-registration";
+import { useDjTempo } from "@/lib/hooks/use-dj-session";
 import { usePlatformMetadata } from "@/lib/hooks/use-platform-metadata";
 import { useSessionRadios } from "@/lib/hooks/use-session-radios";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
-import { useTrackProgress } from "@/lib/hooks/use-track-progress";
 import {
   isDeviceInputMetadata,
   isFileMetadata,
@@ -33,6 +31,7 @@ import { FileForm } from "../file-form";
 import { describeFileLoadFailure } from "../file-load-failure";
 import { type DeckContextValue, DeckProvider } from "./deck-context";
 import { DeviceInputContent } from "./deck-device-input-content";
+import { changeDjEffectWithUndo } from "./deck-effect-undo";
 import { DeckEmpty } from "./deck-empty";
 import { DeckHeader } from "./deck-header";
 import { LoadedDeckContent } from "./deck-loaded-content";
@@ -51,21 +50,31 @@ type DeckPanelProps = {
   className?: string;
   deckId: "deck-a" | "deck-b";
   radios?: Radio[];
+  visible?: boolean;
 };
 
-export function DeckPanel({ className, deckId, radios = [] }: DeckPanelProps) {
+export function DeckPanel({
+  className,
+  deckId,
+  radios = [],
+  visible = true,
+}: DeckPanelProps) {
   if (deckId === "deck-a") {
-    return <DeckPanelA className={className} radios={radios} />;
+    return (
+      <DeckPanelA className={className} radios={radios} visible={visible} />
+    );
   }
-  return <DeckPanelB className={className} radios={radios} />;
+  return <DeckPanelB className={className} radios={radios} visible={visible} />;
 }
 
 function DeckPanelA({
   className,
   radios,
+  visible,
 }: {
   className?: string;
   radios: Radio[];
+  visible: boolean;
 }) {
   const deckState = useDeckAState();
   return (
@@ -74,6 +83,7 @@ function DeckPanelA({
       deckId="deck-a"
       deckState={deckState}
       radios={radios}
+      visible={visible}
     />
   );
 }
@@ -81,9 +91,11 @@ function DeckPanelA({
 function DeckPanelB({
   className,
   radios,
+  visible,
 }: {
   className?: string;
   radios: Radio[];
+  visible: boolean;
 }) {
   const deckState = useDeckBState();
   return (
@@ -92,6 +104,7 @@ function DeckPanelB({
       deckId="deck-b"
       deckState={deckState}
       radios={radios}
+      visible={visible}
     />
   );
 }
@@ -105,6 +118,7 @@ type DeckPanelInnerProps = {
   deckId: "deck-a" | "deck-b";
   deckState: ReturnType<typeof useDeckAState>;
   radios: Radio[];
+  visible: boolean;
 };
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: deck component handles multiple render states (empty, loading, device input, streaming, platform forms)
@@ -113,6 +127,7 @@ function DeckPanelInner({
   deckId,
   deckState,
   radios,
+  visible,
 }: DeckPanelInnerProps) {
   const {
     radio,
@@ -146,11 +161,9 @@ function DeckPanelInner({
   const sessionRadios = useSessionRadios((state) => state.radios);
   const searchRadios = [...radios, ...sessionRadios];
   const deck = getDjDeckModule().deck(deckId);
-  const djSession = useDjSession();
-  const effectsTempo = djSession?.tempo ?? 120;
+  const effectsTempo = useDjTempo();
 
   const { currentTrackIndex, metadata } = usePlatformMetadata(radio);
-  const trackProgress = useTrackProgress(soundId);
 
   // Throttle channel strip setters
   const throttledSetPan = useThrottledParam(setPan);
@@ -159,19 +172,21 @@ function DeckPanelInner({
   const throttledSetEffectsDryWet = useThrottledParam(setEffectsDryWet);
   const throttledSetVolume = useThrottledParam(setVolume);
 
-  // MIDI effect registration
-  useMidiEffectRegistration(deckId, effects);
-
   // Effect actions
   const addEffect = (type: EffectType) =>
     deck.change(createDjDeckEffectChange(type));
-  const updateEffect = (effectId: string, patch: Partial<EffectConfig>) =>
-    deck.change({
-      change: { effectId, patch, type: "update" },
-      type: "effect",
-    });
+  const updateEffect = (effectId: string, patch: Partial<EffectConfig>) => {
+    const change = { effectId, patch, type: "update" } as const;
+    if ("chains" in patch) {
+      changeDjEffectWithUndo(deckId, change);
+    } else {
+      deck.change({ change, type: "effect" });
+    }
+  };
+  const resetEffect = (effectId: string, patch: Partial<EffectConfig>) =>
+    changeDjEffectWithUndo(deckId, { effectId, patch, type: "update" }, true);
   const removeEffect = (effectId: string) =>
-    deck.change({ change: { effectId, type: "remove" }, type: "effect" });
+    changeDjEffectWithUndo(deckId, { effectId, type: "remove" });
   const reorderEffects = (effectIds: string[]) =>
     deck.change({
       change: { effectIds, type: "reorder" },
@@ -199,11 +214,6 @@ function DeckPanelInner({
     ? effectiveMetadata
     : null;
   const tracks = streamingMeta?.tracks;
-
-  const isSeekable =
-    trackProgress?.duration !== null &&
-    Number.isFinite(trackProgress.duration) &&
-    trackProgress.duration > 0;
 
   // File drag-and-drop
   const [isFileDragOver, setIsFileDragOver] = useState(false);
@@ -311,9 +321,9 @@ function DeckPanelInner({
     setIsChangingDevice(false);
   };
 
-  const handleUrlChanged = (newRadio: Radio) => {
+  const handleUrlChanged = async (newRadio: Radio) => {
+    await handleLoadPlatformItem(newRadio);
     setIsChangingUrl(false);
-    handleLoadPlatformItem(newRadio);
   };
   const handleTempoChange = (tempo: number) => {
     channelEffects
@@ -398,7 +408,6 @@ function DeckPanelInner({
     isFileSource,
     isLoading,
     isPlaying,
-    isSeekable,
     loadTrack: handleLoadTrack,
     metadata: effectiveMetadata,
     pan,
@@ -409,6 +418,7 @@ function DeckPanelInner({
     reorderEffects,
     repeat,
     reset,
+    resetEffect,
     seek,
     setAutoplay,
     setChannelFilter: throttledSetChannelFilter,
@@ -420,9 +430,9 @@ function DeckPanelInner({
     setVolume: throttledSetVolume,
     soundId,
     speed,
-    trackProgress,
     tracks,
     updateEffect,
+    visible,
     volume,
   };
 
@@ -569,6 +579,7 @@ function DeckPanelInner({
         radios={radios}
         removeEffect={removeEffect}
         reorderEffects={reorderEffects}
+        resetEffect={resetEffect}
         updateEffect={updateEffect}
       />
     );

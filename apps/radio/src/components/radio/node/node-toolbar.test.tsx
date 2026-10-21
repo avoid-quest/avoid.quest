@@ -200,3 +200,48 @@ describe("NodeToolbar templates", () => {
     }
   });
 });
+
+test("phone inspector controls undo and redo while text and unrelated dialogs keep their own shortcuts", async () => {
+  const { useUndoShortcuts } = await import("./node-toolbar");
+  const { createNodeStore, commitNodeGraph } = nodeStoreModule;
+  const before = templates.buildNodeGraphFromTemplate("blank");
+  const store = createNodeStore(before);
+  function Shortcuts() {
+    useUndoShortcuts(store);
+    return null;
+  }
+  const view = render(<Shortcuts />);
+  commitNodeGraph(
+    (graph) => ({ ...graph, viewport: { x: 10, y: 20, zoom: 1 } }),
+    store,
+    "snapshot"
+  );
+  const after = store.state.graph;
+  const inspector = document.createElement("div");
+  inspector.setAttribute("role", "dialog");
+  inspector.setAttribute("data-node-inspector", "");
+  const knob = document.createElement("button");
+  knob.setAttribute("role", "slider");
+  const text = document.createElement("input");
+  const editable = document.createElement("div");
+  editable.setAttribute("contenteditable", "true");
+  inspector.appendChild(knob);
+  inspector.appendChild(text);
+  inspector.appendChild(editable);
+  const otherDialog = document.createElement("div");
+  otherDialog.setAttribute("role", "dialog");
+  const otherButton = document.createElement("button");
+  otherDialog.appendChild(otherButton);
+  view.container.appendChild(inspector);
+  view.container.appendChild(otherDialog);
+  for (const target of [text, editable, otherButton]) {
+    expect(fireEvent.keyDown(target, { key: "z", metaKey: true })).toBe(true);
+    expect(store.state.graph).toBe(after);
+  }
+  expect(fireEvent.keyDown(knob, { key: "z", metaKey: true })).toBe(false);
+  expect(store.state.graph).toEqual(before);
+  expect(
+    fireEvent.keyDown(knob, { ctrlKey: true, key: "z", shiftKey: true })
+  ).toBe(false);
+  expect(store.state.graph).toBe(after);
+});

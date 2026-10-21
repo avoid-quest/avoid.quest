@@ -1,0 +1,52 @@
+Computed measurements from the live browser. See audit.md for definitions and limitations.
+
+| State | CSS viewport | Theme | Font sizes | Radii | Colors | BGs | Unnamed | data-state | <44px | Overflow | Elements |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| radio-single | 1440×900 | light | 6 | 8 | 8 | 9 | 0 | 30 | 42 | False | 406 |
+| radio-single | 1440×900 | dark | 6 | 8 | 6 | 9 | 0 | 30 | 42 | False | 406 |
+| radio-single | 390×844 | light | 6 | 8 | 8 | 9 | 0 | 30 | 40 | False | 406 |
+| radio-single | 390×844 | dark | 6 | 8 | 6 | 9 | 0 | 30 | 40 | False | 406 |
+| radio-node | 1440×900 | light | 4 | 8 | 9 | 11 | 0 | 9 | 22 | False | 226 |
+| radio-node | 1440×900 | dark | 4 | 8 | 8 | 11 | 0 | 9 | 22 | False | 226 |
+| radio-node | 390×844 | light | 4 | 8 | 9 | 10 | 0 | 9 | 15 | False | 189 |
+| radio-node | 390×844 | dark | 4 | 8 | 8 | 10 | 0 | 9 | 15 | False | 189 |
+| radio-dj | 1440×900 | light | 5 | 7 | 7 | 10 | 0 | 31 | 35 | False | 574 |
+| radio-dj | 1440×900 | dark | 5 | 7 | 5 | 10 | 0 | 31 | 35 | False | 574 |
+| radio-dj | 390×844 | light | 5 | 7 | 7 | 10 | 0 | 14 | 17 | False | 278 |
+| radio-dj | 390×844 | dark | 5 | 7 | 5 | 10 | 0 | 14 | 17 | False | 278 |
+| radio-settings | 1440×900 | light | 6 | 10 | 7 | 11 | 0 | 67 | 80 | False | 729 |
+| radio-settings | 1440×900 | dark | 6 | 10 | 7 | 12 | 0 | 67 | 80 | False | 729 |
+| radio-settings | 390×844 | light | 6 | 11 | 7 | 11 | 0 | 67 | 79 | False | 729 |
+| radio-settings | 390×844 | dark | 6 | 11 | 7 | 12 | 0 | 67 | 79 | False | 729 |
+| radio-settings-general | 1440×900 | light | 6 | 9 | 7 | 11 | 0 | 42 | 55 | False | 499 |
+| radio-settings-general | 1440×900 | dark | 6 | 9 | 7 | 13 | 0 | 42 | 55 | False | 499 |
+| radio-settings-general | 390×844 | light | 6 | 10 | 7 | 11 | 0 | 42 | 54 | False | 499 |
+| radio-settings-general | 390×844 | dark | 6 | 10 | 7 | 13 | 0 | 42 | 54 | False | 499 |
+| radio-feedback | 1440×900 | light | 7 | 9 | 8 | 10 | 0 | 32 | 45 | False | 428 |
+| radio-feedback | 1440×900 | dark | 7 | 9 | 8 | 10 | 0 | 32 | 45 | False | 428 |
+| radio-feedback | 390×844 | light | 6 | 9 | 7 | 10 | 0 | 32 | 43 | False | 428 |
+| radio-feedback | 390×844 | dark | 6 | 9 | 7 | 10 | 0 | 32 | 43 | False | 428 |
+| radio-changelog | 1440×900 | light | 6 | 8 | 7 | 10 | 0 | 31 | 42 | False | 462 |
+| radio-changelog | 1440×900 | dark | 6 | 8 | 7 | 11 | 0 | 31 | 42 | False | 462 |
+| radio-changelog | 390×844 | light | 6 | 8 | 7 | 10 | 0 | 31 | 40 | False | 462 |
+| radio-changelog | 390×844 | dark | 6 | 8 | 7 | 11 | 0 | 31 | 40 | False | 462 |
+| radio-node-add | 1440×900 | light | 5 | 10 | 14 | 18 | 0 | 11 | 24 | False | 862 |
+| radio-node-add | 1440×900 | dark | 5 | 10 | 12 | 17 | 0 | 11 | 24 | False | 862 |
+| radio-node-add | 390×844 | light | 4 | 11 | 13 | 17 | 0 | 11 | 16 | False | 823 |
+| radio-node-add | 390×844 | dark | 4 | 11 | 12 | 17 | 0 | 11 | 16 | False | 823 |
+| radio-import | 1440×900 | light | 5 | 4 | 6 | 5 | 0 | 6 | 9 | False | 95 |
+| radio-import | 1440×900 | dark | 5 | 4 | 6 | 6 | 0 | 6 | 9 | False | 95 |
+| radio-import | 390×844 | light | 5 | 4 | 6 | 5 | 0 | 6 | 7 | False | 95 |
+| radio-import | 390×844 | dark | 5 | 4 | 6 | 5 | 0 | 6 | 7 | False | 95 |
+| radio-legal | 1440×900 | light | 5 | 4 | 7 | 5 | 0 | 6 | 11 | False | 98 |
+| radio-legal | 1440×900 | dark | 5 | 4 | 5 | 6 | 0 | 6 | 11 | False | 98 |
+| radio-legal | 390×844 | light | 5 | 4 | 7 | 5 | 0 | 6 | 9 | False | 98 |
+| radio-legal | 390×844 | dark | 5 | 4 | 5 | 6 | 0 | 6 | 9 | False | 98 |
+| web-home | 1440×900 | light | 3 | 2 | 5 | 2 | 0 | 0 | 6 | False | 65 |
+| web-home | 1440×900 | dark | 3 | 2 | 4 | 2 | 0 | 0 | 6 | False | 65 |
+| web-home | 390×844 | light | 3 | 2 | 5 | 2 | 0 | 0 | 6 | False | 65 |
+| web-home | 390×844 | dark | 3 | 2 | 4 | 2 | 0 | 0 | 6 | False | 65 |
+| web-legal | 1440×900 | light | 3 | 2 | 4 | 2 | 0 | 0 | 9 | False | 62 |
+| web-legal | 1440×900 | dark | 3 | 2 | 4 | 2 | 0 | 0 | 9 | False | 62 |
+| web-legal | 390×844 | light | 3 | 2 | 4 | 3 | 0 | 0 | 9 | False | 62 |
+| web-legal | 390×844 | dark | 3 | 2 | 4 | 3 | 0 | 0 | 9 | False | 62 |

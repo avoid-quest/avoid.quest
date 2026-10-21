@@ -7,13 +7,14 @@ import {
 } from "@avoid.quest/ui/components/resizable";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ClientOnly } from "@/components/client-only";
+import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useNodeMidi } from "@/lib/hooks/use-node-midi";
-import { useNodeSession } from "@/lib/hooks/use-node-session";
+import { useNodeSources } from "@/lib/hooks/use-node-session";
 import { useAllRadios } from "@/lib/hooks/use-radios";
 import { removeNodesHealed } from "@/lib/node-graph/graph-edits";
 import {
@@ -41,13 +42,16 @@ import { NodeRack } from "./node-rack";
 import { NodeToolbar, useUndoShortcuts } from "./node-toolbar";
 import { RewireDialog } from "./rewire-dialog";
 import { SourceSearchPopover } from "./source-search-popover";
-import { useNodeRadioManagement } from "./use-node-radio-management";
+import {
+  invalidateSourceRequests,
+  useNodeRadioManagement,
+} from "./use-node-radio-management";
 
 /**
  * React Flow stays in this lazy client chunk. The Worker build folds the
  * branch away, so no `@xyflow` code reaches the SSR bundle.
  */
-const NodeCanvas = lazy(() =>
+const NodeCanvas = lazyWithRetry(() =>
   import.meta.env.SSR
     ? Promise.resolve({ default: () => null })
     : import("./node-canvas")
@@ -61,7 +65,7 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   const graph = useNodeGraph();
   const readOnlyVersion = useNodeReadOnlyVersion();
   const savedRadios = useAllRadios();
-  const { pauseAll, playAll, playingCount, sources } = useNodeSession();
+  const { pauseAll, playAll, playingCount, sources } = useNodeSources();
   const [reveal, setReveal] = useState<{ nodeId: string } | null>(null);
   const [palette, setPalette] = useState<PaletteRequest | null>(null);
   const [connectNodeId, setConnectNodeId] = useState<string | null>(null);
@@ -90,9 +94,12 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
   usePaletteShortcut(openPalette);
   useUndoShortcuts();
 
+  useEffect(() => () => invalidateSourceRequests(), []);
+
   /** Replaces the patch with a template, as one undo step, then fits it. */
   const loadTemplate = (template: NodeTemplateId) => {
     const saved = savedRadios.isReady ? savedRadios.data : [];
+    invalidateSourceRequests();
     commitNodeGraph(
       (current) =>
         templatePatch(current, template, {
@@ -189,18 +196,20 @@ export function NodeRadios({ radios }: { radios?: Radio[] }) {
     <div className="relative h-full min-h-0">
       {graph ? (
         <ClientOnly fallback={<NodeCanvasSkeleton />}>
-          <Suspense fallback={<NodeCanvasSkeleton />}>
-            <NodeCanvas
-              fitRequest={fitRequest}
-              isPhone={isPhone}
-              onFitHandled={() => setFitRequest(0)}
-              onOpenConnect={setConnectNodeId}
-              onOpenPalette={openPalette}
-              onPortDropHandled={() => setPortDrop(null)}
-              portDrop={portDrop}
-              reveal={reveal}
-            />
-          </Suspense>
+          <LazyBoundary className="h-full" label="the patch canvas">
+            <Suspense fallback={<NodeCanvasSkeleton />}>
+              <NodeCanvas
+                fitRequest={fitRequest}
+                isPhone={isPhone}
+                onFitHandled={() => setFitRequest(0)}
+                onOpenConnect={setConnectNodeId}
+                onOpenPalette={openPalette}
+                onPortDropHandled={() => setPortDrop(null)}
+                portDrop={portDrop}
+                reveal={reveal}
+              />
+            </Suspense>
+          </LazyBoundary>
         </ClientOnly>
       ) : (
         <NodeCanvasSkeleton />

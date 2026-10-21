@@ -8,8 +8,10 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { useStore } from "@tanstack/react-store";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { Profiler } from "react";
 import type { NodeStore } from "@/lib/node-graph/node-store";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -1038,6 +1040,7 @@ describe("NodeInspector", () => {
 
     const drawer = view.getByRole("dialog", { name: "Compressor settings" });
     expect(drawer.getAttribute("data-slot")).toBe("drawer-content");
+    expect(drawer.hasAttribute("data-node-inspector")).toBe(true);
     expect(midiTargets(drawer)).toContain("node:comp:threshold");
     expect(within(drawer).getByRole("switch", { name: "Compressor on" }));
 
@@ -1240,4 +1243,288 @@ test("a recovered modulation context hides its stale resume error and retry", as
   } finally {
     act(() => runtime.modulationReadouts.setState(() => initial));
   }
+});
+
+test.each(["curve", "steps"] as const)(
+  "rapid %s edits keep local feedback, flush the exact final pattern and make one undo step",
+  async (type) => {
+    const { ModulationControls } = await import("./control-node");
+    const { ModuleControls } = await import("./module-frame");
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        {
+          data:
+            type === "steps"
+              ? { values: [0.2, 0.5] }
+              : {
+                  points: [
+                    { bend: 0, time: 0, value: 0.2 },
+                    { bend: 0, time: 1, value: 0.5 },
+                  ],
+                },
+          id: "pattern",
+          position,
+          type,
+        },
+        { id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const store = nodeStoreModule.createNodeStore(graph);
+    function Pattern() {
+      const node = useStore(store, (state) => state.graph?.nodes[0]);
+      return node && (node.type === "steps" || node.type === "curve") ? (
+        <ModuleControls
+          onRelease={() => nodeStoreModule.snapshotNodeGraph(store)}
+        >
+          <ModulationControls node={node} store={store} />
+        </ModuleControls>
+      ) : null;
+    }
+    let commits = 0;
+    const subscription = store.subscribe(() => {
+      commits += 1;
+    });
+    const view = render(<Pattern />);
+    const clock = spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      if (type === "curve") {
+        const curve = view.getByRole("img", {
+          name: "Envelope curve; edit point values below",
+        });
+        Object.defineProperty(curve, "setPointerCapture", { value: noop });
+        Object.defineProperty(curve, "getBoundingClientRect", {
+          value: () => ({ height: 100, left: 0, top: 0, width: 288 }),
+        });
+        const point = curve.querySelector('[data-point="0"]');
+        if (!point) {
+          throw new Error("Missing curve point");
+        }
+        fireEvent.pointerDown(point, { pointerId: 1 });
+        for (let value = 1; value <= 20; value += 1) {
+          fireEvent(
+            curve,
+            new dom.window.MouseEvent("pointermove", {
+              bubbles: true,
+              clientX: 8,
+              clientY: 92 - value * 4,
+            })
+          );
+        }
+        expect(
+          curve.querySelector('[data-point="0"]')?.getAttribute("cy")
+        ).toBe("12");
+        expect(commits).toBe(1);
+        fireEvent.pointerUp(curve, { pointerId: 1 });
+        expect(store.state.graph?.nodes[0]?.data).toMatchObject({
+          points: [{ value: 80 / 84 }, { value: 0.5 }],
+        });
+      } else {
+        const slider = view.getByRole("slider", { name: "Step 1 value" });
+        for (let index = 0; index < 20; index += 1) {
+          fireEvent.keyDown(slider, { key: "ArrowUp" });
+        }
+        expect(Number(slider.getAttribute("aria-valuenow"))).toBeCloseTo(0.4);
+        expect(commits).toBe(1);
+        fireEvent.keyUp(slider, { key: "ArrowUp" });
+        const edited = store.state.graph?.nodes[0];
+        if (edited?.type !== "steps") {
+          throw new Error("Missing edited Steps");
+        }
+        expect(edited.data.values[0]).toBeCloseTo(0.4);
+      }
+      expect(commits).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+    await act(() => new Promise((resolve) => setTimeout(resolve, 65)));
+    expect(store.state.history.past).toHaveLength(1);
+    const final = store.state.graph;
+    act(() => {
+      nodeStoreModule.undoNodeGraph(store);
+    });
+    expect(store.state.graph).toEqual(graph);
+    act(() => {
+      nodeStoreModule.redoNodeGraph(store);
+    });
+    expect(store.state.graph).toEqual(final);
+    subscription.unsubscribe();
+  }
+);
+
+test("unrelated FX edits do not render modulation assignments or their controls", async () => {
+  const { ModulationAssignments } = await import("./modulation-cables");
+  const graph = nodeGraphSchema.parse({
+    edges: [
+      {
+        id: "control",
+        source: "macro",
+        sourceHandle: "out:control:main",
+        target: "filter",
+        targetHandle: "in:control:parameter",
+      },
+    ],
+    nodes: [
+      { id: "macro", position, type: "macro" },
+      { data: {}, id: "filter", position, type: "filter" },
+      { data: {}, id: "other", position, type: "gain" },
+      { id: "speakers", position, type: "speakers" },
+    ],
+    version: 2,
+  });
+  const store = nodeStoreModule.createNodeStore(graph);
+  const rendered = mock(() => undefined);
+  const view = render(
+    <Profiler id="cables" onRender={rendered}>
+      <ModulationAssignments nodeId="filter" store={store} />
+    </Profiler>
+  );
+  const count = rendered.mock.calls.length;
+  act(() =>
+    nodeStoreModule.commitNodeGraph(
+      (current) => ({
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.type === "gain"
+            ? { ...node, data: { ...node.data, gainDb: -12 } }
+            : node
+        ),
+      }),
+      store
+    )
+  );
+  expect(rendered).toHaveBeenCalledTimes(count);
+  // A base value on the target does not change the parameter definitions either.
+  act(() =>
+    nodeStoreModule.commitNodeGraph(
+      (current) => ({
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.type === "filter"
+            ? { ...node, data: { ...node.data, frequency: 500 } }
+            : node
+        ),
+      }),
+      store
+    )
+  );
+  expect(rendered).toHaveBeenCalledTimes(count);
+  act(() =>
+    nodeStoreModule.commitNodeGraph(
+      (current) => ({
+        ...current,
+        edges: current.edges.map((edge) => ({ ...edge, depth: -0.5 })),
+      }),
+      store
+    )
+  );
+  expect(
+    view
+      .getByRole("slider", { name: "Modulation depth" })
+      .getAttribute("aria-valuenow")
+  ).toBe("-0.5");
+  expect(rendered.mock.calls.length).toBeGreaterThan(count);
+});
+
+test("offscreen modulation traces stop live updates without unmounting controls", async () => {
+  const runtime = await import("@/lib/node-graph/modulation-runtime");
+  const { ModulationControls } = await import("./control-node");
+  const callbacks: IntersectionObserverCallback[] = [];
+  class VisibilityObserver {
+    constructor(callback: IntersectionObserverCallback) {
+      callbacks.push(callback);
+    }
+    observe() {
+      /* Layout is supplied by the test. */
+    }
+    disconnect() {
+      /* Nothing remains registered. */
+    }
+  }
+  const previous = globalThis.IntersectionObserver;
+  const initial = runtime.modulationReadouts.state;
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: VisibilityObserver,
+    writable: true,
+  });
+  try {
+    const graph = nodeGraphSchema.parse({
+      edges: [],
+      nodes: [
+        { id: "lfo-visible", position, type: "lfo" },
+        { id: "speakers", position, type: "speakers" },
+      ],
+      version: 2,
+    });
+    const [node] = graph.nodes;
+    if (node?.type !== "lfo") {
+      throw new Error("Missing LFO");
+    }
+    const rendered = mock(() => undefined);
+    const view = render(
+      <Profiler id="monitor" onRender={rendered}>
+        <ModulationControls node={node} />
+      </Profiler>
+    );
+    const [observer] = callbacks;
+    if (!observer) {
+      throw new Error("Missing trace observer");
+    }
+    const trace = view
+      .getByRole("img", { name: "Live modulation trace" })
+      .querySelector("polyline");
+    const points = trace?.getAttribute("points");
+    act(() =>
+      observer(
+        [{ isIntersecting: false } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    );
+    const count = rendered.mock.calls.length;
+    act(() =>
+      runtime.modulationReadouts.setState((state) => ({
+        ...state,
+        values: { [node.id]: 0.75 },
+      }))
+    );
+    expect(rendered).toHaveBeenCalledTimes(count);
+    expect(trace?.getAttribute("points")).toBe(points);
+    expect(view.getByRole("slider", { name: "LFO free hz" })).toBeTruthy();
+    act(() =>
+      observer(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    );
+    expect(view.getByLabelText("Modulation output").textContent).toBe("0.750");
+    expect(trace?.getAttribute("points")).not.toBe(points);
+  } finally {
+    cleanup();
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      configurable: true,
+      value: previous,
+      writable: true,
+    });
+    act(() => runtime.modulationReadouts.setState(() => initial));
+  }
+});
+
+test("an external pattern replacement cancels the editor's queued write", async () => {
+  const onChange = mock(() => undefined);
+  const view = render(<StepsEditor onChange={onChange} values={[0.2, 0.5]} />);
+  const slider = view.getByRole("slider", { name: "Step 1 value" });
+  const clock = spyOn(Date, "now").mockReturnValue(1000);
+  try {
+    fireEvent.keyDown(slider, { key: "ArrowUp" });
+    fireEvent.keyDown(slider, { key: "ArrowUp" });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    view.rerender(<StepsEditor onChange={onChange} values={[0.9, 0.1]} />);
+  } finally {
+    clock.mockRestore();
+  }
+  await act(() => new Promise((resolve) => setTimeout(resolve, 65)));
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(slider.getAttribute("aria-valuenow")).toBe("0.9");
 });

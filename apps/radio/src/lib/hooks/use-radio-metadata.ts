@@ -95,7 +95,8 @@ async function readJson(response: Response): Promise<unknown> {
 
 async function fetchRadioMetadata(
   streamUrl: string,
-  metadataConfig: Exclude<RadioMetadataConfig, { kind: "none" }>
+  metadataConfig: Exclude<RadioMetadataConfig, { kind: "none" }>,
+  signal: AbortSignal
 ): Promise<RadioMetadataResponse> {
   const params = new URLSearchParams({
     kind: metadataConfig.kind,
@@ -118,6 +119,7 @@ async function fetchRadioMetadata(
 
   const response = await fetch(`/api/radio-metadata?${params.toString()}`, {
     headers: { Accept: "application/json" },
+    signal,
   });
   const decoded = decodeRadioMetadataResponse(
     response,
@@ -149,10 +151,12 @@ export function useRadioMetadata({
   radio,
   poll,
   enabled: requested = true,
+  visible = true,
 }: {
   radio: Radio | null;
   poll: boolean;
   enabled?: boolean;
+  visible?: boolean;
 }): {
   metadata: RadioNowPlaying | null;
   isLoading: boolean;
@@ -167,17 +171,17 @@ export function useRadioMetadata({
     isMetadataEligibleStreamUrl(streamUrl);
 
   const query = useQuery({
-    enabled,
+    enabled: enabled && (poll || visible),
     gcTime: 60_000,
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!(metadataConfig && streamUrl)) {
         throw new Error("Missing radio metadata configuration");
       }
-      return fetchRadioMetadata(streamUrl, metadataConfig);
+      return fetchRadioMetadata(streamUrl, metadataConfig, signal);
     },
     queryKey: radioMetadataKeys.stream(streamUrl, metadataConfig ?? undefined),
     refetchInterval: (current) => {
-      if (!enabled) {
+      if (!(enabled && (poll || visible))) {
         return false;
       }
       return poll

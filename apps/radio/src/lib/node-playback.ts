@@ -83,7 +83,6 @@ import { getPlaybackChannelRuntime } from "@/lib/stores/playback-runtime-store";
 import {
   clearManagedPlaybackErrors,
   getReadyManagedPlaybackSession,
-  setManagedSessionMasterVolume,
 } from "./managed-playback-internals.js";
 import {
   createNodeEngine,
@@ -314,9 +313,11 @@ function createNodePlayback(
   );
 
   /** Writes `graph` with its derived channels in one session update. */
-  const storePatch = (graph: NodeGraph, next: EnginePlan) => {
+  const storePatch = (graph: NodeGraph, next: EnginePlan, cosmetic = false) => {
     const previousChannels = getPlaybackSession("node")?.channels ?? [];
-    const channels = deriveNodeChannels(next, previousChannels);
+    const channels = cosmetic
+      ? previousChannels
+      : deriveNodeChannels(next, previousChannels);
     if (graph !== adoptedGraph) {
       const write = (draft: PlaybackSessionRecord) => {
         draft.graph = graph;
@@ -353,7 +354,11 @@ function createNodePlayback(
       return;
     }
     const next = compiledPlan(graph, getEnv());
-    storePatch(graph, next);
+    const cosmetic = next === engine.plan;
+    storePatch(graph, next, cosmetic);
+    if (cosmetic) {
+      return;
+    }
     // Undo and template loads change volumes too; mute restores the latest.
     for (const [laneId, lane] of next.lanes) {
       if (lane.volume > 0) {
@@ -520,15 +525,20 @@ function createNodePlayback(
   };
 
   const setMasterVolume = (volume: number) => {
-    persistence.flush();
     if (isReadOnly()) {
       return;
     }
     if (volume > 0) {
       unmutedMasterVolume = volume;
     }
-    setManagedSessionMasterVolume("node", volume, ctx);
-    engine?.masterVolumeChanged();
+    persistence.update(
+      (draft) => {
+        draft.masterVolume = volume;
+      },
+      () => {
+        engine?.masterVolumeChanged();
+      }
+    );
   };
 
   /**

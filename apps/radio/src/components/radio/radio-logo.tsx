@@ -11,6 +11,7 @@ type RadioLogoProps = {
   fallbackIcon?: React.ReactNode;
   /** In rows that already show the name beside the logo: empty alt text. */
   decorative?: boolean;
+  loading?: "eager" | "lazy";
 };
 
 const sizeMap = {
@@ -57,19 +58,22 @@ export function RadioLogo({
   logoUrl,
   name,
   decorative = false,
+  loading = "eager",
   size = "md",
   className,
   fallbackIcon,
 }: RadioLogoProps) {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const imageError = failedUrl === logoUrl;
+  const imageLoaded = loadedUrl === logoUrl;
 
   const handleImageError = () => {
-    setImageError(true);
+    setFailedUrl(logoUrl ?? null);
   };
 
   const handleImageLoad = () => {
-    setImageLoaded(true);
+    setLoadedUrl(logoUrl ?? null);
   };
 
   // If no logo URL or image failed to load, show fallback
@@ -107,7 +111,9 @@ export function RadioLogo({
           imagePaddingMap[size],
           imageLoaded ? "opacity-100" : "opacity-0"
         )}
+        decoding="async"
         height={sizePixels[size]}
+        loading={loading}
         onError={handleImageError}
         onLoad={handleImageLoad}
         src={logoUrl}

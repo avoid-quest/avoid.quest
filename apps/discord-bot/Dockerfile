@@ -2,7 +2,7 @@
 
 FROM node:24-bookworm-slim AS prepare
 
-RUN npm i -g turbo@2.11.6
+RUN npm i -g turbo@2.11.10
 
 WORKDIR /app
 COPY . .
@@ -14,7 +14,7 @@ FROM node:24-bookworm-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.3"
 
 ENV PATH="/root/.bun/bin:$PATH"
 

@@ -1,3 +1,4 @@
+import { getBrowserStorage } from "./browser-storage";
 import {
   deletePlaybackSession,
   initializePlaybackSessions,
@@ -46,11 +47,10 @@ export const resetAllSettings = async (): Promise<void> => {
     deletePlaybackSession(sessionId);
   }
 
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem("radio-app-dj-decks");
-    window.localStorage.removeItem("radio-app-dj-mixer");
-    window.localStorage.removeItem("radio-app-single-state");
-  }
+  const storage = getBrowserStorage("localStorage");
+  storage?.removeItem("radio-app-dj-decks");
+  storage?.removeItem("radio-app-dj-mixer");
+  storage?.removeItem("radio-app-single-state");
 
   // Reinitialize with defaults
   initializeSettings();

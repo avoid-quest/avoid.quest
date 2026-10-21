@@ -1,5 +1,7 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
+import { keepOpenOnToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import type { ComponentProps } from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
@@ -63,6 +65,7 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  onInteractOutside,
   ...props
 }: ComponentProps<typeof DrawerPrimitive.Content>) {
   return (
@@ -79,6 +82,10 @@ function DrawerContent({
           className
         )}
         data-slot="drawer-content"
+        onInteractOutside={(event) => {
+          onInteractOutside?.(event);
+          keepOpenOnToastInteraction(event);
+        }}
         {...props}
       >
         <DrawerHandle className="mx-auto mt-4 hidden h-2 w-[100px]! shrink-0 cursor-grab rounded-full bg-muted group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />

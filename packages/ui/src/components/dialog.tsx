@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
+import { keepOpenOnToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Close,
@@ -75,6 +76,7 @@ function DialogContent({
   showCloseButton = true,
   onOpenAutoFocus,
   onCloseAutoFocus,
+  onInteractOutside,
   ...props
 }: React.ComponentProps<typeof Content> & {
   showCloseButton?: boolean;
@@ -104,6 +106,10 @@ function DialogContent({
         )}
         data-slot="dialog-content"
         onCloseAutoFocus={handleCloseAutoFocus}
+        onInteractOutside={(event) => {
+          onInteractOutside?.(event);
+          keepOpenOnToastInteraction(event);
+        }}
         onOpenAutoFocus={handleOpenAutoFocus}
         {...props}
       >

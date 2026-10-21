@@ -1,5 +1,7 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
+import { keepOpenOnToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   Anchor,
@@ -22,6 +24,7 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  onInteractOutside,
   ...props
 }: React.ComponentProps<typeof Content>) {
   return (
@@ -33,6 +36,10 @@ function PopoverContent({
           className
         )}
         data-slot="popover-content"
+        onInteractOutside={(event) => {
+          onInteractOutside?.(event);
+          keepOpenOnToastInteraction(event);
+        }}
         sideOffset={sideOffset}
         {...props}
       />

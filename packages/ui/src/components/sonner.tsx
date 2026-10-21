@@ -15,7 +15,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
   return (
     <Sonner
-      className="toaster group"
+      // Modal layers set `pointer-events: none` on <body>; toasts above them
+      // must stay pressable.
+      className="toaster group pointer-events-auto"
       icons={{
         error: <OctagonXIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

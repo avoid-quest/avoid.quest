@@ -421,7 +421,9 @@ function manualWorkerVendorChunks(id: string): string | undefined {
 
 export default defineConfig({
   build: {
-    minify: "esbuild",
+    // Vite's own minifier: the Cloudflare plugin targets syntax esbuild lacks.
+    // Set explicitly so the Worker (SSR) bundle is minified as well.
+    minify: true,
     // "hidden" generates source maps for Sentry upload but omits
     // sourceMappingURL from production bundles (unlike true/inline).
     sourcemap: "hidden",

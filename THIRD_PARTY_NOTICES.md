@@ -53,7 +53,7 @@ radio source archive and git history. No proprietary openDAW license is assumed.
 
 ### Build the shipped application
 
-Use Bun 1.4.2 (as pinned in `package.json`) and a current Node installation.
+Use Bun 1.4.3 (as pinned in `package.json`) and a current Node installation.
 Extract radio's `/legal/source.tar.gz`, then from its root:
 
 ```sh

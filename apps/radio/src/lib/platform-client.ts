@@ -441,10 +441,11 @@ export async function resolveSpotifyItem(
 
 export async function searchBandcamp(
   query: string,
-  filter: BandcampSearchFilter = ""
+  filter: BandcampSearchFilter = "",
+  signal?: AbortSignal
 ): Promise<BandcampSearchResult[]> {
   const { bandcampSearch } = await import("@/utils/search.functions");
-  const result = await bandcampSearch({ data: { filter, query } });
+  const result = await bandcampSearch({ data: { filter, query }, signal });
   if (!result.ok) {
     throw fromProblemError(result.error);
   }
@@ -452,10 +453,11 @@ export async function searchBandcamp(
 }
 
 export async function searchRadioGarden(
-  query: string
+  query: string,
+  signal?: AbortSignal
 ): Promise<RadioGardenSearchCandidate[]> {
   const { radioGardenSearch } = await import("@/utils/radio-garden.functions");
-  const result = await radioGardenSearch({ data: { query } });
+  const result = await radioGardenSearch({ data: { query }, signal });
   if (!result.ok) {
     throw fromProblemError(result.error);
   }
@@ -518,10 +520,11 @@ export async function resolveRadioGardenStream(
 }
 
 export async function searchSoundCloud(
-  query: string
+  query: string,
+  signal?: AbortSignal
 ): Promise<SoundCloudSearchResult[]> {
   const { soundcloudSearch } = await import("@/utils/search.functions");
-  const result = await soundcloudSearch({ data: { query } });
+  const result = await soundcloudSearch({ data: { query }, signal });
   if (!result.ok) {
     throw fromProblemError(result.error);
   }
@@ -529,10 +532,11 @@ export async function searchSoundCloud(
 }
 
 export async function searchMixcloud(
-  query: string
+  query: string,
+  signal?: AbortSignal
 ): Promise<MixcloudSearchResult[]> {
   const { mixcloudSearch } = await import("@/utils/search.functions");
-  const result = await mixcloudSearch({ data: { query } });
+  const result = await mixcloudSearch({ data: { query }, signal });
   if (!result.ok) {
     throw fromProblemError(result.error);
   }

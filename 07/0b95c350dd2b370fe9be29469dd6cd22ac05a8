@@ -1,0 +1,25 @@
+apps/radio/src/components/settings/sync-dialog.test.tsx
+  s_db2676bf9b5672::t_7ab085a3013179 205-337
+apps/radio/src/components/settings/sync-dialog.tsx
+  s_db2676bf9b5672::t_5d061c6e130d80 17-21,80,85,110-115,165-171,173-182,186-193,195-207,233,238-239,294
+apps/radio/src/lib/collections/radios.ts
+  s_db2676bf9b5672::t_e3e18ed6a7642c 207-225
+apps/radio/src/lib/collections/radios.test.ts
+  s_db2676bf9b5672::t_a2e702cc4c6370 209-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "070b95c350dd2b370fe9be29469dd6cd22ac05a8",
+  "prompts": {},
+  "sessions": {
+    "s_db2676bf9b5672": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c93b6ce-98c1-410b-8e92-1f83bb59b759",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

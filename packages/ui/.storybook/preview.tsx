@@ -19,6 +19,7 @@ const preview: Preview = {
       </ThemeProvider>
     ),
   ],
+  initialGlobals: { theme: "light" },
   parameters: {
     a11y: { test: "error" },
     backgrounds: { disable: true },

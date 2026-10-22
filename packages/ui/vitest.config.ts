@@ -6,24 +6,24 @@ import { defineConfig } from "vitest/config";
 /** Runs every story's render and play function in a real browser. Unit tests stay on `bun test`. */
 export default defineConfig({
   test: {
-    projects: [
-      {
-        extends: true,
-        plugins: [
-          storybookTest({
-            configDir: fileURLToPath(new URL("./.storybook", import.meta.url)),
-          }),
-        ],
-        test: {
-          browser: {
-            enabled: true,
-            headless: true,
-            instances: [{ browser: "chromium" }],
-            provider: playwright({}),
-          },
-          name: "storybook",
+    projects: ["light", "dark"].map((theme) => ({
+      extends: true,
+      plugins: [
+        storybookTest({
+          configDir: fileURLToPath(new URL("./.storybook", import.meta.url)),
+          initialGlobals: { theme },
+        }),
+      ],
+      test: {
+        browser: {
+          enabled: true,
+          headless: true,
+          instances: [{ browser: "chromium" }],
+          provider: playwright({}),
         },
+        name: `storybook-${theme}`,
+        setupFiles: ["./.storybook/vitest.setup.ts"],
       },
-    ],
+    })),
   },
 });

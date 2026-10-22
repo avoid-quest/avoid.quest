@@ -15,7 +15,7 @@
     "build-storybook": "storybook build -o storybook-static",
     "storybook": "storybook dev -p 6006",
     "test": "bun test",
-    "test:stories": "vitest run --project storybook",
+    "test:stories": "vitest run --project storybook-light --project storybook-dark",
     "typecheck": "tsc --noEmit",
     "ui": "bunx --bun shadcn@latest"
   },

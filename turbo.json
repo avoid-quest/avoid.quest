@@ -78,6 +78,18 @@
         "SOURCE_REVISION"
       ],
       "outputs": ["dist/**"]
+    },
+    "build-storybook": {
+      "dependsOn": ["^build"],
+      "outputs": ["storybook-static/**"]
+    },
+    "storybook": {
+      "cache": false,
+      "persistent": true
+    },
+    "test:stories": {
+      "cache": false,
+      "dependsOn": ["^build"]
     }
   },
   "globalDependencies": [

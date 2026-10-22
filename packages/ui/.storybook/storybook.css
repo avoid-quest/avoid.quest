@@ -1,0 +1,5 @@
+/* Storybook entry: the package stylesheet declares no sources (consumers list
+   their own), so register the package tree here. */
+@import "../src/styles/globals.css";
+
+@source "../src";

@@ -245,3 +245,23 @@ Steps once sections 1 to 4 are done:
 - No Base UI code was generated or compiled in this repo; the mapping tables come from Base UI 1.9 docs, the shadcn migration skill and registry JSON.
 - Live audit used a desktop browser at 390px width, not a touch device or screen reader. Audio playback, MIDI, permissions and feedback submission were not exercised.
 - Base UI + React Compiler + TanStack Start + Astro islands in combination is undocumented; treat it as a risk to test in step 4 of section 4.
+
+## 8. Rebase onto `dev-ui` (2026-10-21)
+
+Twelve performance and bug-fix PRs (#430 to #441) landed on `dev-ui` after this review. Steps 1 and 2 were rebased on top of them. What they change for the plan:
+
+| Area | What `dev-ui` did | Effect on the plan |
+|---|---|---|
+| Tailwind sources | `globals.css` now imports Tailwind with `source(none)` and declares no `@source`. Each consumer lists sources in its own entry: radio globs `packages/ui/src`, web lists the four components it renders to keep its CSS small. | Supersedes §4 step 1 and §5.4 item 4. The published package must not self-register sources. Ship a documented `@source` snippet per consumer instead. Storybook gets its own entry (`.storybook/storybook.css`) that adds `@source "../src"`. |
+| Dark focus ring | `dark:focus-visible:ring-ring` added to 13 components; dark `--ring` lightened to `oklch(0.705 0.015 286.067)`. | Lyra regeneration must carry this. Better: §5.1 declares one `--aq-sys-focus-ring` colour that differs per theme, so the per-component `dark:` override disappears. |
+| Tooltip | Provider context so nested `Tooltip` reuses the outer provider; defaults `delayDuration` and `skipDelayDuration` 300ms. | Map to Base UI `Tooltip.Provider delay` / `closeDelay`; keep the single-provider behaviour and the programmatic-focus guard. |
+| Drawer | Enter 200ms, exit 140ms via `animation-duration` overrides; reduced motion stays near-instant. | Base UI Drawer swap must keep these timings. |
+| Slider | Coarse-pointer `min-h-11` / `min-w-11` on the root. | First use of the 44px touch minimum; becomes `--aq-sys-touch-min` in §5.1. |
+| Knob | Shift toggles fine drag without a jump (drag origin re-anchors). | Behaviour to keep; `knob.test.tsx` now lives in the package and passes. |
+| PlayPauseButton | New `allowCancelWhileLoading` prop; loading label becomes "Cancel". | Add a story for the cancelable state in `feedback.stories.tsx`. |
+| Slot | New `components/slot.tsx` re-exports Radix `Slot`; used by radio `settings-button.tsx`. | One more `asChild`-style site for §3. Base UI has no Slot; replace with `render` / `useRender`. |
+| Web theme | Storage access is guarded; explicit toggles store `theme-preference`, system theme is followed otherwise. | Defect 7 is mostly fixed. `color-scheme` is still never set on web. |
+| Radio fonts | Still none on `dev-ui`. | Step 1 keeps the Geist entry in `apps/radio/src/styles/app.css`. |
+| Lazy loading | `lazyWithRetry` and `LazyBoundary` wrap the sync dialog and other chunks. | No UI-package impact. |
+
+Validation after the rebase: `bun run check`, `bun run typecheck` (6/6), ui tests 38 pass, radio tests 3455 pass, web and radio builds, Storybook static build, 29 story tests in Chromium.

@@ -7,6 +7,8 @@ import type { StreamFormat } from "./stream-format.js";
  */
 export type Radio = {
   id?: string | number;
+  /** Immutable public catalog identity; separate from the listener's local id. */
+  publicId?: string;
   name: string;
   streamUrl: string;
   streamFormat?: StreamFormat;

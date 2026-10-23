@@ -87,6 +87,23 @@ afterEach(async () => {
 });
 
 describe("saved radio sync", () => {
+  test("public catalog IDs do not migrate or duplicate existing library rows", async () => {
+    seedSavedRadios();
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    for (const row of Object.values(saved) as {
+      data: { publicId?: string };
+    }[]) {
+      row.data.publicId = undefined;
+    }
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    const before = storage.getItem(STORAGE_KEY);
+    const module = await reloadRadios();
+    expect(await module.initializeRadios()).toBeNull();
+    expect([...module.radiosCollection.state.keys()]).toEqual(
+      defaultRadios.map((_, index) => `saved-${index}`)
+    );
+    expect(storage.getItem(STORAGE_KEY)).toBe(before);
+  });
   test("does not prompt for older NTS property order on repeated reloads", async () => {
     seedSavedRadios();
     const originalData = storage.getItem(STORAGE_KEY);

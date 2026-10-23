@@ -298,8 +298,10 @@ Clients must match `streamUrl` to their playing catalog entry and discard
 expired snapshots. Keep the service's
 anonymous session cookie on the requesting client and honor HTTP 429 retries.
 The existing session, rate-limit, URL validation and origin policies apply.
-When renaming a default station, give it an explicit `id` retaining its previous
-exported identity, whose value follows the `avoid-radio-` prefix.
+Keep each default's `publicId` unchanged; its full value includes the
+`avoid-radio-` prefix. This exported identity is separate from the app's
+generated local-storage `id`, so display-name changes do not migrate saved
+stations or change external players' station references.
 
 The radio Worker stores expiring metadata in Cloudflare's Cache API. It no
 longer uses Workers KV. Live snapshots expire within 15 minutes; episode/show

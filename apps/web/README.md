@@ -44,22 +44,32 @@ bun run --filter @avoid.quest/web typecheck
 
 ## Cloudflare deployment
 
-Committed Wrangler config enables `workers_dev` and `preview_urls` for
-workers.dev and Workers Builds preview exposure. Custom production hostnames
-should be configured with Cloudflare account-level custom domains or routes
-outside this repository.
+Committed Wrangler config uses Worker Previews through `wrangler preview` and
+an explicit `previews` block with observability. Built assets and compatibility
+settings apply to both production and Previews. `workers_dev` and `preview_urls`
+stay enabled for production and Preview Workers URLs. Custom production
+hostnames remain in Cloudflare account settings.
 
-Workers Builds PR comments should include the branch preview URL after upload.
+Existing Workers Builds require the
+[one-time dashboard switch](../../DEVELOPMENT.md#switch-existing-workers-builds).
+That switch is irreversible. Afterward, branch builds should post the Preview
+URL in PR comments.
 
 Deployment scripts use the workspace-installed Wrangler version:
 
 ```bash
 bun run --filter @avoid.quest/web cf-build
 bun run --filter @avoid.quest/web cf-deploy
-bun run --filter @avoid.quest/web cf-upload
+bun run --filter @avoid.quest/web cf-preview
 ```
 
-Do not run deploy or upload commands unless deployment is explicitly requested.
+`cf-preview` builds and publishes a Preview named after the current Git branch;
+append `--name <preview-name>` to override it. `cf-upload` is a deprecated alias
+for `cf-preview`. The local `preview` command serves the built app locally.
+
+Do not run deploy or Cloudflare Preview commands unless deployment is explicitly
+requested. See [repository deployment setup](../../DEVELOPMENT.md#cloudflare-deployment)
+for compatibility dates, credentials, and dashboard settings.
 
 ## Connections
 

@@ -32,6 +32,7 @@
     "build": "turbo build",
     "cf-build": "turbo cf-build",
     "cf-deploy": "turbo cf-deploy",
+    "cf-preview": "turbo cf-preview",
     "cf-typegen": "turbo cf-typegen",
     "cf-upload": "turbo cf-upload",
     "check": "ultracite check",

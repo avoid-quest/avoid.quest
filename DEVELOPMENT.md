@@ -90,7 +90,7 @@ suppresses failures.
 
 Read-only inspection on 2026-10-05 found GitHub Actions enabled and successful
 `Workers Builds: avoid-quest` and `Workers Builds: radio` checks on PR #372.
-Workers Builds remain responsible for existing previews. Their dashboard-owned
+Workers Builds remain responsible for previews. Their dashboard-owned
 watch paths were not available in the repository or through the available
 credentials, so they are not assumed to cover shared-package changes. The
 repository workflow supplies that coverage without changing Workers settings.
@@ -125,26 +125,76 @@ verification, not a permanent failing test or a deployment.
 Deployable apps keep their Wrangler configuration under `apps/*/wrangler.jsonc`.
 Do not deploy from automation unless the task explicitly asks for deployment.
 
-Workers `workers.dev` exposure and preview URLs are enabled in committed
-Wrangler config:
+Both web (`avoid-quest`) and radio (`radio`) use
+[Worker Previews](https://developers.cloudflare.com/workers/previews/):
+`wrangler preview` creates or updates a Preview for the current Git branch.
+Each Preview has a stable branch URL and a URL for each deployment. Local
+`preview` scripts still serve a local build; `cf-preview` publishes to Cloudflare
+and requires deployment authorization and Cloudflare credentials.
 
-Non-production Workers Builds should publish preview URLs in PR comments.
+Each app declares a `previews` block in its Wrangler configuration. Compatibility
+settings and built assets stay at the top level. Preview variables, secrets,
+and bindings do not inherit production values. Both apps enable Preview
+observability; radio explicitly declares its `proxy-rate-limit` binding with
+the existing namespace `1` and policy of 100 requests per 10 seconds. That
+namespace shares rate-limit counters with production; separate counters require
+a separately agreed namespace ID in `previews.ratelimits`. This keeps the
+existing policy without guessing account resource IDs. See
+[Preview configuration](https://developers.cloudflare.com/workers/previews/configuration/)
+and [resource isolation](https://developers.cloudflare.com/workers/previews/resources/).
 
-| App | `workers_dev` | `preview_urls` | Production exposure |
-|-----|---------------|----------------|---------------------|
-| `@avoid.quest/web` | Enabled | Enabled | Use `workers.dev` plus Cloudflare account-level custom domains or routes as needed. |
-| `@avoid.quest/radio` | Enabled | Enabled | Use `workers.dev` plus Cloudflare account-level custom domains or routes as needed. |
-
-Custom production hostnames and any production-only overrides are intentionally
-kept out of the public repository. Configure them in Cloudflare before
-deploying.
+`workers_dev: true` enables the production Workers hostname; `preview_urls: true`
+enables Workers Preview URLs. Keep both flags enabled. Custom production
+hostnames stay in Cloudflare account settings. Both compatibility dates are
+`2026-10-19`, the newest date accepted by both locked runtimes. The Cloudflare
+Vite plugin bundles workerd `1.20261012.1`, whose compiled maximum is October 19;
+Wrangler's workerd `1.20261019.1` accepts later dates. See the
+[source research and runtime probes](docs/research/cloudflare-workers-previews-2026-10-23.md).
 
 ```bash
 bun run cf-build     # Build Cloudflare-targeted apps
 bun run cf-deploy    # Deploy Cloudflare-targeted apps
-bun run cf-upload    # Upload versions without promoting
+bun run cf-preview   # Build and publish branch Previews for both apps
 bun run cf-typegen   # Regenerate Cloudflare environment type bindings
 ```
+
+For one app, use `bun run --filter @avoid.quest/web cf-preview` or
+`bun run --filter @avoid.quest/radio cf-preview`. Append `--name <preview-name>`
+to choose a name instead of the current branch. `cf-upload` remains a deprecated
+alias for `cf-preview` so existing custom build commands still resolve; it now
+publishes a Worker Preview instead of uploading a production Worker version.
+Turbo passes `WORKERS_CI_BRANCH` through to both tasks for Workers Builds.
+
+### Switch existing Workers Builds
+
+Checked-in configuration prepares the apps; existing Workers Builds also need
+Cloudflare's [one-time switch](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/#existing-workers-connected-to-builds).
+For **each** Worker (`avoid-quest` and `radio`):
+
+1. Open **Workers & Pages > Worker > Settings > Builds**. In **Set up Worker
+   Previews**, select **Set up**.
+2. Configure any Preview-specific variables and secrets in **Previews Base**.
+   Secrets are entered separately and copied only when a Preview is created.
+   Radio's optional feedback/admin/Sentry integrations need their own Preview
+   credentials if they are to be exercised. Keep them out of version control.
+3. Review the Preview command. From the repository root, use
+   `bun run --filter @avoid.quest/web cf-preview` for `avoid-quest`, and
+   `bun run --filter @avoid.quest/radio cf-preview` for `radio`. If the configured
+   build root is the app directory, use `bun run cf-preview` instead. These
+   commands build the app before invoking the workspace-installed Wrangler.
+   Keep the production build/deploy commands and production branch unchanged.
+4. Select **Switch to Worker Previews**, then confirm **Enable Preview Builds**
+   under **Branch control**. Cloudflare documents the switch as **irreversible**;
+   reverting this repository change cannot restore the old Builds preview model.
+5. Confirm **Domains > Worker URL > Preview** is enabled, then trigger an
+   authorized branch build and verify the Workers Builds check and PR
+   comment include its Preview URL. For web, check `/`, `/legal`, and the `/u/*`
+   forwarding route. For radio, check playback, `/api/stations.json`, and a
+   rate-limited endpoint. Optional integrations require their Preview secrets.
+
+The dashboard switch, Preview secrets, live URLs, and account-owned build/watch
+settings cannot be verified by local builds. This migration does not run a
+deployment or modify Cloudflare account settings.
 
 ## UI components
 

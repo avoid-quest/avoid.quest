@@ -259,12 +259,25 @@ Replay, logs and metrics are disabled; error sampling is 100%.
 
 ## Cloudflare exposure
 
-Committed Wrangler config enables `workers_dev` and `preview_urls` for
-workers.dev and Workers Builds preview exposure. Custom production hostnames
-should be configured with Cloudflare account-level custom domains or routes
-outside this repository.
+Committed Wrangler config uses Worker Previews through `wrangler preview` and
+an explicit `previews` block with observability and the `proxy-rate-limit`
+binding. The Preview binding keeps namespace `1` and the existing policy, so
+rate-limit counters are shared with production. Preview secrets and variables
+are separate from production; optional feedback/admin/Sentry integrations need
+Preview credentials if they are to be tested. `workers_dev` and `preview_urls`
+stay enabled for production and Preview Workers URLs. Custom production hostnames
+remain in Cloudflare account settings.
 
-Workers Builds PR comments should include the branch preview URL after upload.
+From the repository root, `bun run --filter @avoid.quest/radio cf-preview` builds
+and publishes a Preview for the current Git branch; append `--name <preview-name>`
+to override it. `cf-upload` is a deprecated alias for `cf-preview`. The local
+`preview` command still serves a build locally. Do not publish a Preview unless
+deployment is explicitly requested.
+
+Existing Workers Builds require the
+[one-time dashboard switch](../../DEVELOPMENT.md#switch-existing-workers-builds).
+That switch is irreversible. Afterward, branch builds should post the Preview
+URL in PR comments. See the linked setup for compatibility dates and validation.
 
 ### Shared radio metadata
 

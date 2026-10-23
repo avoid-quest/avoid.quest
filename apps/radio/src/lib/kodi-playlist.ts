@@ -144,8 +144,13 @@ function renderExtinf(station: PublicStation): string {
   return `#EXTINF:-1 ${renderedAttributes},${cleanM3uText(station.name)}`;
 }
 
-export function renderKodiM3uPlaylist(stations: PublicStation[]): string {
-  const lines = ["#EXTM3U"];
+export function renderKodiM3uPlaylist(
+  stations: PublicStation[],
+  guideUrl?: string
+): string {
+  const lines = [
+    guideUrl ? `#EXTM3U x-tvg-url="${cleanM3uAttribute(guideUrl)}"` : "#EXTM3U",
+  ];
 
   for (const station of stations) {
     lines.push(renderExtinf(station), station.streamUrl);

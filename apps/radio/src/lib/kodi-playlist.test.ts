@@ -38,6 +38,19 @@ test("default public identities survive display and internal ID changes", () => 
   );
 });
 
+test("guide discovery changes only the M3U header", () => {
+  const stations = getPublicKodiStations(defaultRadios);
+  const plain = renderKodiM3uPlaylist(stations);
+  expect(
+    renderKodiM3uPlaylist(stations, "https://radio.avoid.quest/guide.xml")
+  ).toBe(
+    plain.replace(
+      "#EXTM3U",
+      '#EXTM3U x-tvg-url="https://radio.avoid.quest/guide.xml"'
+    )
+  );
+});
+
 describe("getPublicKodiStations", () => {
   test("keeps enabled public HTTP stations in stable order", () => {
     const radios: Radio[] = [

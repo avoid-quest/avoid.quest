@@ -2,10 +2,15 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "main": "@astrojs/cloudflare/entrypoints/server",
   "name": "avoid-quest",
-  "compatibility_date": "2026-02-06",
+  "compatibility_date": "2026-10-19",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "preview_urls": true,
+  "previews": {
+    "observability": {
+      "enabled": true
+    }
+  },
   "assets": {
     "binding": "ASSETS",
     "directory": "./dist"

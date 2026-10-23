@@ -4,6 +4,7 @@ import {
   type MetadataCache,
 } from "./cache";
 import {
+  PROGRAMME_HORIZON_MS,
   type ProgrammePublisher,
   programmeTimestamp,
   publishProgrammes,
@@ -178,12 +179,16 @@ function selectCurrentEntry(
   return episodes.length === 1 ? (episodes[0] ?? null) : null;
 }
 
-function calendarRange(sampledAt: number): { from: string; to: string } {
-  const from = new Date(sampledAt);
+function calendarRange(input: LylProviderInput): { from: string; to: string } {
+  const from = new Date(input.sampledAt);
   from.setUTCHours(0, 0, 0, 0);
   return {
     from: from.toISOString(),
-    to: new Date(from.getTime() + DAY_MS).toISOString(),
+    to: new Date(
+      input.onProgrammes
+        ? input.sampledAt + PROGRAMME_HORIZON_MS
+        : from.getTime() + DAY_MS
+    ).toISOString(),
   };
 }
 
@@ -273,7 +278,7 @@ async function getShow(
   }
 }
 
-function publishUpcoming(input: LylProviderInput, calendar: unknown): void {
+function publishCalendar(input: LylProviderInput, calendar: unknown): void {
   if (Array.isArray(calendar)) {
     publishProgrammes(input, () =>
       calendar
@@ -282,7 +287,7 @@ function publishUpcoming(input: LylProviderInput, calendar: unknown): void {
           (slot) =>
             slot &&
             (slot.type === "EPISODE" || slot.type === "SHOW") &&
-            (programmeTimestamp(slot.start) ?? 0) > input.sampledAt
+            (programmeTimestamp(slot.end) ?? 0) > input.sampledAt
         )
         .map((slot) => ({
           end: programmeTimestamp(slot.end) ?? undefined,
@@ -318,7 +323,7 @@ export async function tryLylApi(
     result = await postGraphql(
       input.fetchImpl,
       CALENDAR_QUERY,
-      calendarRange(input.sampledAt)
+      calendarRange(input)
     );
   } catch (error) {
     if (shouldPropagate(error)) {
@@ -331,7 +336,7 @@ export async function tryLylApi(
   const onAirTitle = asString(response?.data?.onair?.title);
   const onAirHls = asPublicUrl(response?.data?.onair?.hls);
   const calendar = response?.data?.calendar;
-  publishUpcoming(input, calendar);
+  publishCalendar(input, calendar);
   if (!(onAirTitle && onAirHls && Array.isArray(calendar))) {
     return null;
   }

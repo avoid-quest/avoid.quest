@@ -284,6 +284,107 @@ test("LYL publishes trusted current details and upcoming calendar slots", async 
   expect(programmes()[1]?.description).toBeNull();
 });
 
+test.each([
+  { name: "missing", onair: undefined },
+  { name: "malformed", onair: { title: 42, hls: false } },
+  {
+    name: "disagreeing",
+    onair: { title: "Different show", hls: "https://lyl.live/live.m3u8" },
+  },
+])(
+  "LYL keeps active calendar slots with $name on-air data",
+  async ({ onair }) => {
+    const { input, programmes } = fixture(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            onair,
+            calendar: [
+              {
+                start: "2026-10-23T11:00:00Z",
+                end: "2026-10-23T12:30:00Z",
+                title: "Ended",
+                type: "EPISODE",
+              },
+              {
+                start: "2026-10-23T12:00:00Z",
+                end: "2026-10-23T13:00:00Z",
+                title: "Current",
+                slug: "current",
+                type: "EPISODE",
+              },
+              {
+                start: "2026-10-23T13:00:00Z",
+                end: "2026-10-23T14:00:00Z",
+                title: "Next",
+                type: "SHOW",
+              },
+            ],
+          },
+        })
+      )
+    );
+
+    expect(await tryLylApi(input)).toBeNull();
+    expect(programmes().map((entry) => entry.title)).toEqual([
+      "Current",
+      "Next",
+    ]);
+    expect(programmes()[0]).toMatchObject({
+      start: Date.parse("2026-10-23T12:00:00Z"),
+      end: Date.parse("2026-10-23T13:00:00Z"),
+      description: null,
+      artworkUrl: null,
+    });
+  }
+);
+
+test.each(["2026-10-23T23:30:00Z", "2026-12-31T23:30:00Z"])(
+  "LYL retrieves tomorrow's guide through the rolling horizon at %s",
+  async (timestamp) => {
+    const sampledAt = Date.parse(timestamp);
+    const horizon = sampledAt + 24 * 60 * 60_000;
+    const next = {
+      start: new Date(sampledAt + 60 * 60_000).toISOString(),
+      end: new Date(sampledAt + 2 * 60 * 60_000).toISOString(),
+      title: "After midnight",
+      type: "SHOW",
+    };
+    const last = {
+      start: new Date(horizon - 30 * 60_000).toISOString(),
+      end: new Date(horizon).toISOString(),
+      title: "Before horizon",
+      type: "EPISODE",
+    };
+    const requests: { from: string; to: string }[] = [];
+    const { input, programmes } = fixture((_url, init) => {
+      const { variables } = JSON.parse(String(init?.body));
+      requests.push(variables);
+      return Promise.resolve(
+        Response.json({
+          data: {
+            calendar: [next, last].filter(
+              (slot) => Date.parse(slot.start) < Date.parse(variables.to)
+            ),
+          },
+        })
+      );
+    }, sampledAt);
+
+    await tryLylApi(input);
+    expect(programmes().map((entry) => entry.title)).toEqual([
+      "After midnight",
+      "Before horizon",
+    ]);
+    expect(requests).toEqual([
+      {
+        from: `${timestamp.slice(0, 10)}T00:00:00.000Z`,
+        to: new Date(horizon).toISOString(),
+      },
+    ]);
+  }
+);
+
 test("HKCR replay windows retain actual dates without changing JSON expiry", async () => {
   const { input, programmes } = fixture((url) =>
     Promise.resolve(

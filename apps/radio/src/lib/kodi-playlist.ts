@@ -36,6 +36,9 @@ function toKodiTvgName(name: string): string {
 }
 
 function toStableStationId(radio: Radio): string {
+  if (radio.publicId) {
+    return radio.publicId;
+  }
   if (radio.id !== undefined && radio.id !== null) {
     return `avoid-radio-${String(radio.id).toLowerCase()}`;
   }

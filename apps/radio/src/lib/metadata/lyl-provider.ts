@@ -3,6 +3,11 @@ import {
   EPISODE_METADATA_TTL,
   type MetadataCache,
 } from "./cache";
+import {
+  type ProgrammePublisher,
+  programmeTimestamp,
+  publishProgrammes,
+} from "./programmes";
 import { parseRadioTitle } from "./title-parser";
 import type { RadioNowPlaying } from "./types";
 import { RadioMetadataValidationError } from "./upstream-fetch";
@@ -90,7 +95,7 @@ type LylEpisode = NonNullable<
 >;
 type LylShow = NonNullable<NonNullable<LylShowResponse["data"]>["showBySlug"]>;
 
-export type LylProviderInput = {
+export type LylProviderInput = ProgrammePublisher & {
   cache?: MetadataCache;
   now?: () => number;
   expiresAt: number;
@@ -151,7 +156,9 @@ function selectCurrentEntry(
   onAirTitle: string,
   sampledAt: number
 ): LylCalendarEntry | null {
-  const current = calendar.filter((entry) => isCurrent(entry, sampledAt));
+  const current = calendar.filter(
+    (entry) => entry && typeof entry === "object" && isCurrent(entry, sampledAt)
+  );
   const parsedOnAirTitle = parseRadioTitle(onAirTitle).title;
   const matchingTitles = new Set(
     [onAirTitle, parsedOnAirTitle].map(comparableTitle).filter(Boolean)
@@ -266,6 +273,43 @@ async function getShow(
   }
 }
 
+function publishUpcoming(input: LylProviderInput, calendar: unknown): void {
+  if (Array.isArray(calendar)) {
+    publishProgrammes(input, () =>
+      calendar
+        .slice(0, 512)
+        .filter(
+          (slot) =>
+            slot &&
+            (slot.type === "EPISODE" || slot.type === "SHOW") &&
+            (programmeTimestamp(slot.start) ?? 0) > input.sampledAt
+        )
+        .map((slot) => ({
+          end: programmeTimestamp(slot.end) ?? undefined,
+          start: programmeTimestamp(slot.start) ?? undefined,
+          title: asString(slot.title) ?? undefined,
+        }))
+    );
+  }
+}
+
+function publishLylProgramme(
+  input: LylProviderInput,
+  entry: LylCalendarEntry,
+  details?: RadioNowPlaying
+): void {
+  publishProgrammes(input, () => [
+    {
+      artworkUrl: details?.artworkUrl,
+      categories: details?.genre?.split(", ") ?? [],
+      description: details?.stationDescription,
+      end: programmeTimestamp(entry.end) ?? undefined,
+      start: programmeTimestamp(entry.start) ?? undefined,
+      title: asString(entry.title) ?? undefined,
+    },
+  ]);
+}
+
 export async function tryLylApi(
   input: LylProviderInput
 ): Promise<RadioNowPlaying | null> {
@@ -287,6 +331,7 @@ export async function tryLylApi(
   const onAirTitle = asString(response?.data?.onair?.title);
   const onAirHls = asPublicUrl(response?.data?.onair?.hls);
   const calendar = response?.data?.calendar;
+  publishUpcoming(input, calendar);
   if (!(onAirTitle && onAirHls && Array.isArray(calendar))) {
     return null;
   }
@@ -303,6 +348,7 @@ export async function tryLylApi(
     return null;
   }
 
+  publishLylProgramme(input, entry);
   const episode =
     type === "EPISODE"
       ? await cacheMetadata({
@@ -339,7 +385,7 @@ export async function tryLylApi(
       ? `${artist} - ${title}`
       : title;
 
-  return {
+  const nowPlaying: RadioNowPlaying = {
     album:
       episodeShowTitle &&
       comparableTitle(episodeShowTitle) !== comparableTitle(title)
@@ -363,4 +409,6 @@ export async function tryLylApi(
     streamUrl: input.streamUrl,
     title,
   };
+  publishLylProgramme(input, entry, nowPlaying);
+  return nowPlaying;
 }

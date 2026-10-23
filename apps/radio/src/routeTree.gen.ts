@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GuideDotxmlRouteImport } from './routes/guide[.]xml'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LegalRouteImport } from './routes/legal'
 import { Route as ManifestRouteImport } from './routes/manifest'
@@ -24,6 +25,11 @@ import { Route as USplatRouteImport } from './routes/u/$'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GuideDotxmlRoute = GuideDotxmlRouteImport.update({
+  id: '/guide.xml',
+  path: '/guide.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -79,6 +85,7 @@ const USplatRoute = USplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/guide.xml': typeof GuideDotxmlRoute
   '/import': typeof ImportRoute
   '/legal': typeof LegalRoute
   '/manifest': typeof ManifestRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/guide.xml': typeof GuideDotxmlRoute
   '/import': typeof ImportRoute
   '/legal': typeof LegalRoute
   '/manifest': typeof ManifestRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/guide.xml': typeof GuideDotxmlRoute
   '/import': typeof ImportRoute
   '/legal': typeof LegalRoute
   '/manifest': typeof ManifestRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/guide.xml'
     | '/import'
     | '/legal'
     | '/manifest'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/guide.xml'
     | '/import'
     | '/legal'
     | '/manifest'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/guide.xml'
     | '/import'
     | '/legal'
     | '/manifest'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GuideDotxmlRoute: typeof GuideDotxmlRoute
   ImportRoute: typeof ImportRoute
   LegalRoute: typeof LegalRoute
   ManifestRoute: typeof ManifestRoute
@@ -180,6 +193,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/guide.xml': {
+      id: '/guide.xml'
+      path: '/guide.xml'
+      fullPath: '/guide.xml'
+      preLoaderRoute: typeof GuideDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -257,6 +277,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GuideDotxmlRoute: GuideDotxmlRoute,
   ImportRoute: ImportRoute,
   LegalRoute: LegalRoute,
   ManifestRoute: ManifestRoute,

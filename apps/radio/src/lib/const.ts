@@ -128,7 +128,7 @@ export const radios: Radio[] = [
     name: "Radio Alhara",
     publicId: "avoid-radio-radio-alhara",
     order: 11,
-    streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
+    streamUrl: "https://stream.radioalhara.net/ra",
     websiteUrl: "https://www.radioalhara.net/",
   },
 ];

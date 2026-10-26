@@ -85,7 +85,7 @@ export const presets: PresetRadio[] = [
     description: "Radio AlHara",
     logoUrl: "https://www.radioalhara.net/img/radio-alhara-logo.svg",
     name: "Radio Alhara",
-    streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
+    streamUrl: "https://stream.radioalhara.net/ra",
     websiteUrl: "https://www.radioalhara.net/",
   },
   {

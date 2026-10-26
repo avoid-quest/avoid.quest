@@ -49,6 +49,25 @@ describe("toPlaybackInput", () => {
     ).toMatchObject({ src: "https://radio.syg.ma/audio.mp3" });
   });
 
+  test("upgrades persisted Radio Alhara URLs to its first-party stream", () => {
+    expect(
+      toPlaybackInput({
+        name: "Radio Alhara",
+        streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
+      })
+    ).toMatchObject({
+      format: "progressive",
+      live: true,
+      src: "https://stream.radioalhara.net/ra",
+    });
+    expect(
+      toPlaybackInput({
+        name: "Lookalike",
+        streamUrl: "https://example.com/78cxy6wkxtzuv",
+      })
+    ).toMatchObject({ src: "https://example.com/78cxy6wkxtzuv" });
+  });
+
   test("upgrades persisted NTS relay URLs to Web Audio compatible sources", () => {
     expect(
       toPlaybackInput({

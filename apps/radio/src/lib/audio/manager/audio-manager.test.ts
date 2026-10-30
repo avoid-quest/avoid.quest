@@ -637,7 +637,7 @@ describe("AudioManager", () => {
   });
 
   test.each(["audio-graph", "native"] as const)(
-    "a paused %s start ignores a later load abort through production callbacks",
+    "a paused %s start ignores a queued media abort and stays paused when ready",
     async (mode) => {
       const harness = createMediaPlaybackHarness();
       try {
@@ -652,7 +652,9 @@ describe("AudioManager", () => {
         manager.pauseSound(soundId);
         const stateCount = states.length;
         browser.audio().emit("abort");
-        await starting;
+        browser.audio().emit("canplay");
+        expect(await starting).toBeUndefined();
+        expect(browser.audio().paused).toBe(true);
 
         expect(states.slice(stateCount).some((state) => state.error)).toBe(
           false
@@ -695,7 +697,7 @@ describe("AudioManager", () => {
     }
   );
 
-  test("a paused URL renewal ignores its late abort through production callbacks", async () => {
+  test("a paused URL renewal ignores a queued media abort and stays paused when ready", async () => {
     const harness = createMediaPlaybackHarness();
     try {
       const { manager, browser } = harness;
@@ -706,6 +708,11 @@ describe("AudioManager", () => {
       await starting;
       const states: AudioState[] = [];
       manager.subscribe(soundId, (state) => states.push(state));
+      const audio = browser.audio();
+      const emptyReadyState = HTMLMediaElement.HAVE_NOTHING;
+      audio.load = () => {
+        audio.readyState = emptyReadyState;
+      };
 
       const refreshing = manager
         .refreshStreamUrl(soundId, "https://media.example/renewed.webm", 42)
@@ -714,7 +721,9 @@ describe("AudioManager", () => {
       manager.pauseSound(soundId);
       const stateCount = states.length;
       browser.audio().emit("abort");
-      await refreshing;
+      browser.audio().emit("canplay");
+      expect(await refreshing).toBeUndefined();
+      expect(browser.audio().paused).toBe(true);
 
       expect(states.slice(stateCount).some((state) => state.error)).toBe(false);
       expect(states.at(-1)).toMatchObject({

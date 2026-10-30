@@ -127,6 +127,184 @@ afterEach(() => {
 });
 
 describe("MediaElementPlaybackSource native playback", () => {
+  test("a queued abort from the previous resource does not fail its replacement", async () => {
+    const browser = installBrowser();
+    const onError = mock(() => undefined);
+    const source = new MediaElementPlaybackSource(null, "native", { onError });
+    try {
+      const audio = browser.audio();
+      await startNativeStream(source, audio, "https://radio.example/first.mp3");
+      audio.load = () => {
+        audio.readyState = HTMLMediaElement.HAVE_NOTHING;
+      };
+      const loading = source.load({
+        format: "progressive",
+        src: "https://radio.example/second.mp3",
+      });
+      const result = loading.catch((error: unknown) => error);
+      const playing = source.play();
+      const playResult = playing.catch((error: unknown) => error);
+      await flushMicrotasks();
+      // load() queues an abort task for the old resource. It can arrive after
+      // the replacement has attached its readiness listeners.
+      audio.emit("abort");
+      audio.emit("canplay");
+      expect(await result).toBeUndefined();
+      expect(await playResult).toBeUndefined();
+      expect(onError).not.toHaveBeenCalled();
+      expect(audio.src).toBe("https://radio.example/second.mp3");
+      expect(audio.paused).toBe(false);
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
+  test.each(["pause", "stop", "cleanup", "load"] as const)(
+    "a pending play interrupted by %s does not reject the superseded action",
+    async (action) => {
+      const browser = installBrowser();
+      const source = new MediaElementPlaybackSource(null, "native");
+      try {
+        const audio = browser.audio();
+        await startNativeStream(
+          source,
+          audio,
+          "https://radio.example/first.mp3"
+        );
+        source.pause();
+        const pending = Promise.withResolvers<void>();
+        audio.play = () => {
+          audio.paused = false;
+          return pending.promise;
+        };
+        const result = source.play().catch((error: unknown) => error);
+        let replacement: Promise<void> | undefined;
+        if (action === "load") {
+          replacement = source.load({
+            format: "progressive",
+            src: "https://radio.example/second.mp3",
+          });
+        } else {
+          source[action]();
+        }
+        pending.reject(new DOMException("Playback superseded", "AbortError"));
+        if (replacement) {
+          await flushMicrotasks();
+          audio.emit("canplay");
+          await replacement;
+        }
+        expect(await result).toBeUndefined();
+        expect(audio.paused).toBe(true);
+        expect(audio.autoplay).toBe(false);
+      } finally {
+        source.cleanup();
+        browser.restore();
+      }
+    }
+  );
+
+  test("canceling the retry after readiness settles the obsolete play", async () => {
+    const browser = installBrowser();
+    const source = new MediaElementPlaybackSource(null, "native");
+    try {
+      const audio = browser.audio();
+      const retry = Promise.withResolvers<void>();
+      const play = mock()
+        .mockRejectedValueOnce(
+          new DOMException("Source attaching", "AbortError")
+        )
+        .mockImplementationOnce(() => {
+          audio.paused = false;
+          return retry.promise;
+        });
+      audio.play = play;
+      const loading = source.load({
+        format: "progressive",
+        src: "https://radio.example/stream.mp3",
+      });
+      const result = source.play().catch((error: unknown) => error);
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await loading;
+      await flushMicrotasks();
+      expect(play).toHaveBeenCalledTimes(2);
+      source.stop();
+      retry.reject(new DOMException("Playback superseded", "AbortError"));
+      expect(await result).toBeUndefined();
+      expect(audio.paused).toBe(true);
+      expect(audio.autoplay).toBe(false);
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
+  test.each(["AbortError", "NotAllowedError", "NotSupportedError"])(
+    "an active play still reports %s",
+    async (name) => {
+      const browser = installBrowser();
+      const source = new MediaElementPlaybackSource(null, "native");
+      try {
+        const audio = browser.audio();
+        await startNativeStream(
+          source,
+          audio,
+          "https://radio.example/stream.mp3"
+        );
+        source.pause();
+        const error = new DOMException("Current playback failed", name);
+        audio.play = () => Promise.reject(error);
+        await expect(source.play()).rejects.toBe(error);
+      } finally {
+        source.cleanup();
+        browser.restore();
+      }
+    }
+  );
+
+  test.each(["error", "timeout"] as const)(
+    "a media abort does not hide a subsequent load %s",
+    async (failure) => {
+      jest.useFakeTimers();
+      const browser = installBrowser();
+      const onError = mock(() => undefined);
+      const source = new MediaElementPlaybackSource(null, "native", {
+        onError,
+      });
+      try {
+        const audio = browser.audio();
+        const result = source
+          .load({
+            format: "progressive",
+            src: "https://radio.example/stream.mp3",
+          })
+          .catch((error: unknown) => error);
+        await flushMicrotasks();
+        audio.emit("abort");
+        if (failure === "error") {
+          audio.error = {
+            code: MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED,
+          } as MediaError;
+          audio.emit("error");
+        } else {
+          jest.advanceTimersByTime(20_000);
+        }
+        expect(await result).toHaveProperty(
+          "message",
+          failure === "error"
+            ? "Audio stream format is not supported"
+            : "Audio stream timed out after 20000ms"
+        );
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(source.status).toBe("error");
+      } finally {
+        source.cleanup();
+        browser.restore();
+      }
+    }
+  );
+
   test("a failed start stays stopped when late media events arrive", async () => {
     const browser = installBrowser();
     const onPlaying = mock(() => undefined);

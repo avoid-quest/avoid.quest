@@ -250,7 +250,6 @@ export class MediaElementAttachment {
       const cleanup = () => {
         this.audio.removeEventListener("canplay", handleReady);
         this.audio.removeEventListener("error", handleError);
-        this.audio.removeEventListener("abort", handleAbort);
         controller.signal.removeEventListener("abort", handleAbort);
         if (timeoutId !== null) {
           clearTimeout(timeoutId);
@@ -296,7 +295,9 @@ export class MediaElementAttachment {
 
       this.audio.addEventListener("canplay", handleReady, { once: true });
       this.audio.addEventListener("error", handleError, { once: true });
-      this.audio.addEventListener("abort", handleAbort, { once: true });
+      // Media abort events are queued by load() for the previous resource and
+      // carry no generation. Only our controller can cancel this attachment;
+      // current-resource failures still arrive through error or the timeout.
       controller.signal.addEventListener("abort", handleAbort, { once: true });
 
       this.attachSource(input, isCurrent, (event) => {

@@ -263,6 +263,43 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   );
 
+  test("an active retry rejection reaches the play caller", async () => {
+    const browser = installBrowser();
+    const source = new MediaElementPlaybackSource(null, "native");
+    try {
+      const audio = browser.audio();
+      const retry = Promise.withResolvers<void>();
+      const retryError = new DOMException(
+        "Playback blocked",
+        "NotAllowedError"
+      );
+      const play = mock()
+        .mockRejectedValueOnce(
+          new DOMException("Source attaching", "AbortError")
+        )
+        .mockImplementationOnce(() => {
+          audio.paused = false;
+          return retry.promise;
+        });
+      audio.play = play;
+      const loading = source.load({
+        format: "progressive",
+        src: "https://radio.example/stream.mp3",
+      });
+      const result = source.play().catch((error: unknown) => error);
+      await flushMicrotasks();
+      audio.emit("canplay");
+      await loading;
+      await flushMicrotasks();
+      expect(play).toHaveBeenCalledTimes(2);
+      retry.reject(retryError);
+      expect(await result).toBe(retryError);
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
   test.each(["error", "timeout"] as const)(
     "a media abort does not hide a subsequent load %s",
     async (failure) => {

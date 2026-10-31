@@ -125,7 +125,7 @@ let graphEdits: typeof import("@/lib/node-graph/graph-edits");
 let nodeStoreModule: typeof import("@/lib/node-graph/node-store");
 let templates: typeof import("@/lib/node-graph/templates");
 let validateModule: typeof import("@/lib/node-graph/validate");
-let sonner: typeof import("sonner");
+let sonner: typeof import("@avoid.quest/ui/components/sonner");
 let catalogue: typeof import("@/lib/node-graph/catalogue");
 let schema: typeof import("@/lib/node-graph/schema");
 let nodeBackendBadges: typeof import("@/lib/node-playback")["nodeBackendBadges"];
@@ -144,7 +144,7 @@ beforeAll(async () => {
   nodeStoreModule = await import("@/lib/node-graph/node-store");
   templates = await import("@/lib/node-graph/templates");
   validateModule = await import("@/lib/node-graph/validate");
-  sonner = await import("sonner");
+  sonner = await import("@avoid.quest/ui/components/sonner");
   catalogue = await import("@/lib/node-graph/catalogue");
   schema = await import("@/lib/node-graph/schema");
   ({ nodeBackendBadges } = await import("@/lib/node-playback"));

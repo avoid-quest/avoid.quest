@@ -5,6 +5,7 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Field, FieldLabel } from "@avoid.quest/ui/components/field";
 import { Input } from "@avoid.quest/ui/components/input";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
   ExternalLinkIcon,
@@ -13,7 +14,6 @@ import {
   RadioIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
 import { createBrowserStationIntake } from "@/lib/stations/external-station-workflow";

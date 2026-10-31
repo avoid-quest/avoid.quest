@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import {
   BookmarkPlusIcon,
   CopyIcon,
@@ -19,7 +20,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";

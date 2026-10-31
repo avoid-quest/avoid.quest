@@ -8,11 +8,11 @@ import {
   test,
 } from "bun:test";
 import { makeSentryOptions } from "@avoid.quest/error";
+import { toast } from "@avoid.quest/ui/components/sonner";
 // biome-ignore lint/performance/noNamespaceImport: observe the production reporter
 import * as Sentry from "@sentry/core";
 import { close, flush, init } from "@sentry/tanstackstart-react";
 import { Store } from "@tanstack/react-store";
-import { toast } from "sonner";
 import {
   type AudioEngineFacade,
   AudioManager,

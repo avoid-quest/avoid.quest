@@ -7,7 +7,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import type { AudioEngineFacade, AudioManager } from "@/lib/audio";
 import {
   createDefaultChannel,

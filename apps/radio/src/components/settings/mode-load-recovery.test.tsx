@@ -37,7 +37,7 @@ if (scenario) {
   const { act, cleanup, fireEvent, render, waitFor } = await import(
     "@testing-library/react"
   );
-  const { toast, Toaster } = await import("sonner");
+  const { toast, Toaster } = await import("@avoid.quest/ui/components/sonner");
   const { createModeLifecycleRegistry, createModeManager } = await import(
     "@/lib/mode-lifecycle-manager"
   );

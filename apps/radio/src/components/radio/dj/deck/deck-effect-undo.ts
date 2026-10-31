@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { type EffectConfig, getEffectMetadata } from "@/lib/audio";
 import {
   appendEffectToTree,

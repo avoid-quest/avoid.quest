@@ -22,7 +22,7 @@ if (scenario) {
   const { act, cleanup, fireEvent, render, waitFor } = await import(
     "@testing-library/react"
   );
-  const { toast } = await import("sonner");
+  const { toast } = await import("@avoid.quest/ui/components/sonner");
   const { Toaster } = await import("@avoid.quest/ui/components/sonner");
   const { Dialog, DialogContent, DialogTitle } = await import(
     "@avoid.quest/ui/components/dialog"

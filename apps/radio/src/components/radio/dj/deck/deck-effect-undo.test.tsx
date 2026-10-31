@@ -6,8 +6,8 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { toast } from "sonner";
 import { installAnimationTestEnvironment } from "../shared/animation-test-utils";
 
 let EffectChain: typeof import("@/components/audio/effect-chain")["EffectChain"];

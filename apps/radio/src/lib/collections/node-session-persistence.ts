@@ -1,7 +1,7 @@
 import { captureError } from "@avoid.quest/error";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { createPacedMutations, type Transaction } from "@tanstack/react-db";
 import { Throttler } from "@tanstack/react-pacer";
-import { toast } from "sonner";
 import {
   type PlaybackSessionId,
   playbackSessionsCollection,

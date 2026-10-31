@@ -1,0 +1,67 @@
+packages/ui/package.json
+  s_675cbcd8905ad4::t_1999c9c73882ba 23
+packages/ui/README.md
+  s_675cbcd8905ad4::t_3cec19c16afba3 22-33,54-56
+packages/ui/src/components/alert.tsx
+  s_675cbcd8905ad4::t_9f7be615edd8f3 14
+docs/ui-review/README.md
+  s_675cbcd8905ad4::t_3cec19c16afba3 113-117
+THIRD_PARTY_NOTICES.md
+  s_675cbcd8905ad4::t_a21199d6c505ce 128-131
+packages/ui/src/styles/globals.css
+  s_675cbcd8905ad4::t_0d648686863be8 10-12,57-58,60,62-71,79-94,122-127,143
+  s_675cbcd8905ad4::t_4ee9d410d4e626 3
+  s_675cbcd8905ad4::t_09be52ab318323 144-146
+  s_675cbcd8905ad4::t_30344635ab055d 147
+packages/ui/src/stories/theme.stories.tsx
+  s_675cbcd8905ad4::t_c6b30add125946 50-55
+  s_675cbcd8905ad4::t_761ed32c5fe5be 38
+apps/radio/src/components/root/root-shell.tsx
+  s_675cbcd8905ad4::t_1dc487581a0317 72
+bun.lock
+  s_675cbcd8905ad4::t_b6cce1f796afff 153,534
+packages/ui/components.json
+  s_675cbcd8905ad4::t_9223a16676659d 9
+packages/ui/src/components/accordion.tsx
+  s_675cbcd8905ad4::t_97588a5c7f6678 40
+packages/ui/src/components/badge.tsx
+  s_675cbcd8905ad4::t_a99175d0b5fa35 7
+packages/ui/src/components/button.tsx
+  s_675cbcd8905ad4::t_027e663fdc5931 7
+packages/ui/src/components/checkbox.tsx
+  s_675cbcd8905ad4::t_058799c2a7fd0d 12
+packages/ui/src/components/input.tsx
+  s_675cbcd8905ad4::t_b0ee73f9472eed 9
+packages/ui/src/components/radio-group.tsx
+  s_675cbcd8905ad4::t_bb50b935bb925c 28
+packages/ui/src/components/scroll-area.tsx
+  s_675cbcd8905ad4::t_168290a0af3928 25
+packages/ui/src/components/select.tsx
+  s_675cbcd8905ad4::t_89897213fa3c8a 48
+packages/ui/src/components/slider.tsx
+  s_675cbcd8905ad4::t_c9bed08ee858df 365
+packages/ui/src/components/switch.tsx
+  s_675cbcd8905ad4::t_3f7ed4ea8cfa24 11
+packages/ui/src/components/tabs.tsx
+  s_675cbcd8905ad4::t_6a5e3e8ed51ced 37
+packages/ui/src/components/textarea.tsx
+  s_675cbcd8905ad4::t_40ffd8006d8126 8
+packages/ui/src/components/toggle.tsx
+  s_675cbcd8905ad4::t_dc25e1cc90254e 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b43443a64df02b449a96d5ca094c21a87c090a6d",
+  "prompts": {},
+  "sessions": {
+    "s_675cbcd8905ad4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19339-f9b3-7a40-9ea7-ba752db0406a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

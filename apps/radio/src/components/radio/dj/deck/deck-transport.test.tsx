@@ -1,75 +1,78 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RadioNowPlaying } from "@/lib/metadata/types";
-import type { PlatformMetadata } from "@/lib/platform-types";
+import { type DeckContextValue, DeckProvider } from "./deck-context";
+import { DeckTransport } from "./deck-transport";
 
 const LONG_TITLE =
   "ARSIDER VIDEOCHAT #2 original super long station title with no predictable length";
 
-const deckContextMock = {
+const radio = {
+  name: LONG_TITLE,
+  streamUrl: "https://example.com/stream",
+};
+
+const deckContext: DeckContextValue = {
   addEffect: () => undefined,
   autoplay: false,
   channelFilter: 0,
   currentTrackIndex: 0,
-  deckId: "deck-a" as const,
-  deckSide: "left" as "left" | "right",
+  deckId: "deck-a",
+  deckSide: "left",
   effects: [],
   effectsDryWet: 0,
+  effectsTempo: 120,
   hasTracklist: false,
   isBuffering: false,
   isFileSource: false,
   isLoading: false,
   isPlaying: false,
-  isSeekable: false,
   loadTrack: async (_streamUrl: string) => undefined,
-  metadata: undefined as PlatformMetadata | undefined,
+  metadata: undefined,
   pan: 0,
   pause: () => undefined,
   play: async () => undefined,
-  radio: {
-    name: LONG_TITLE,
-    streamUrl: "https://example.com/stream",
-  },
+  radio,
   removeEffect: () => undefined,
   reorderEffects: () => undefined,
   repeat: false,
   reset: async () => undefined,
+  resetEffect: () => undefined,
   seek: () => undefined,
   setAutoplay: () => undefined,
   setChannelFilter: () => undefined,
   setEffectsDryWet: () => undefined,
+  setEffectsTempo: () => undefined,
   setPan: () => undefined,
   setRepeat: () => undefined,
   setSpeed: () => undefined,
   setVolume: () => undefined,
   soundId: null,
   speed: 1,
-  trackProgress: undefined,
   tracks: undefined,
   updateEffect: () => undefined,
+  visible: true,
   volume: 1,
 };
 
-mock.module("./deck-context", () => ({
-  useDeckContext: () => deckContextMock,
-}));
-
-let DeckTransport: typeof import("./deck-transport")["DeckTransport"];
-
-beforeAll(async () => {
-  ({ DeckTransport } = await import("./deck-transport"));
-});
+function renderTransport(nowPlaying?: RadioNowPlaying) {
+  return renderToStaticMarkup(
+    <DeckProvider value={deckContext}>
+      <DeckTransport nowPlaying={nowPlaying} />
+    </DeckProvider>
+  );
+}
 
 describe("DeckTransport", () => {
   beforeEach(() => {
-    deckContextMock.metadata = undefined;
-    deckContextMock.deckSide = "left";
-    deckContextMock.isPlaying = false;
-    deckContextMock.isLoading = false;
+    deckContext.metadata = undefined;
+    deckContext.deckSide = "left";
+    deckContext.isPlaying = false;
+    deckContext.isLoading = false;
   });
 
   test("keeps long station titles constrained and offers full details", () => {
-    const html = renderToStaticMarkup(<DeckTransport />);
+    const html = renderTransport();
 
     expect(html.includes("block truncate")).toBeTrue();
     expect(html.includes(`title="${LONG_TITLE}"`)).toBeTrue();
@@ -77,7 +80,7 @@ describe("DeckTransport", () => {
   });
 
   test("preserves the existing file transport and progress layout", () => {
-    deckContextMock.metadata = {
+    deckContext.metadata = {
       displayName: LONG_TITLE,
       duration: 100,
       fileName: "track.mp3",
@@ -89,7 +92,7 @@ describe("DeckTransport", () => {
       streamUrl: "blob:track",
       url: "",
     };
-    const html = renderToStaticMarkup(<DeckTransport />);
+    const html = renderTransport();
 
     expect(
       html.includes("flex-1 flex-col justify-center gap-0.5 overflow-hidden")
@@ -100,36 +103,36 @@ describe("DeckTransport", () => {
   });
 
   test("marks active radio transports with a border, not a playback badge", () => {
-    deckContextMock.isPlaying = true;
-    const playing = renderToStaticMarkup(<DeckTransport />);
+    deckContext.isPlaying = true;
+    const playing = renderTransport();
     expect(playing.includes("border-foreground/40")).toBeTrue();
     expect(playing.includes(">Now playing<")).toBeFalse();
     expect(playing.includes(">Ready<")).toBeFalse();
 
-    deckContextMock.isLoading = true;
-    const connecting = renderToStaticMarkup(<DeckTransport />);
+    deckContext.isLoading = true;
+    const connecting = renderTransport();
     expect(connecting.includes("border-foreground/40")).toBeFalse();
     expect(connecting.includes("Connecting…")).toBeTrue();
 
-    deckContextMock.isPlaying = false;
-    deckContextMock.isLoading = false;
-    const paused = renderToStaticMarkup(<DeckTransport />);
+    deckContext.isPlaying = false;
+    deckContext.isLoading = false;
+    const paused = renderTransport();
     expect(paused.includes("border-foreground/40")).toBeFalse();
     expect(paused.includes("Connecting…")).toBeFalse();
   });
 
   test("keeps both playing decks out of live announcements", () => {
-    deckContextMock.isPlaying = true;
+    deckContext.isPlaying = true;
     const decks = (["left", "right"] as const).map((side) => {
-      deckContextMock.deckSide = side;
-      return renderToStaticMarkup(<DeckTransport />);
+      deckContext.deckSide = side;
+      return renderTransport();
     });
     expect(decks.join("").includes("aria-live")).toBeFalse();
   });
 
   for (const side of ["left", "right"] as const) {
     test(`shows current radio metadata inside the ${side} transport`, () => {
-      deckContextMock.deckSide = side;
+      deckContext.deckSide = side;
       const nowPlaying: RadioNowPlaying = {
         album: null,
         artist: "Current Host",
@@ -143,12 +146,10 @@ describe("DeckTransport", () => {
         source: "icy",
         stationDescription: "Current description",
         stationName: LONG_TITLE,
-        streamUrl: deckContextMock.radio.streamUrl,
+        streamUrl: radio.streamUrl,
         title: "Current Show",
       };
-      const html = renderToStaticMarkup(
-        <DeckTransport nowPlaying={nowPlaying} />
-      );
+      const html = renderTransport(nowPlaying);
       expect(html.includes("Current Host")).toBeTrue();
       expect(html.includes("Details for Current Show")).toBeTrue();
       expect(html.includes('src="https://example.com/show.jpg"')).toBeTrue();

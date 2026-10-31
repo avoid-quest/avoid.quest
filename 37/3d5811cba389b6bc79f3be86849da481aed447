@@ -1,0 +1,23 @@
+apps/radio/src/components/settings/audio-settings.tsx
+  s_4af26cced585d7::t_fa738d123444a6 220-224,298,304-310
+  s_4af26cced585d7::t_877a098918aa2a 169-182,214
+apps/radio/src/components/settings/audio-settings.test.tsx
+  s_4af26cced585d7::t_2d04349267f3cc 15,17
+  s_4af26cced585d7::t_1967bf82cd54e9 1-14,16,18-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "373d5811cba389b6bc79f3be86849da481aed447",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

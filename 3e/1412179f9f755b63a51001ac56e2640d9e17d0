@@ -1,0 +1,23 @@
+apps/radio/src/components/root/toast-layers.test.tsx
+  s_4af26cced585d7::t_2d04349267f3cc 92-100
+  s_4af26cced585d7::t_72a2650ba2a979 55-58,89-91,101-102
+packages/ui/src/lib/toast-layer.ts
+  s_4af26cced585d7::t_fa738d123444a6 13-15
+  s_4af26cced585d7::t_b6cce348a670c0 8-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e1412179f9f755b63a51001ac56e2640d9e17d0",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

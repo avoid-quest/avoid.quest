@@ -1,0 +1,19 @@
+apps/radio/src/lib/node-playback.test.ts
+  s_0030d6a0bc2380::t_f4aa78828d0990 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "077860cf1f0232b53f05a378dd5fd95f6a9d6592",
+  "prompts": {},
+  "sessions": {
+    "s_0030d6a0bc2380": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19104-bdbc-7423-8fbe-a375433c1a03",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

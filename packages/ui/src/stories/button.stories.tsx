@@ -20,7 +20,7 @@ const meta = {
     },
   },
   component: Button,
-  title: "Primitives/Button",
+  title: "Components/Button",
 } satisfies Meta<typeof Button>;
 
 export default meta;

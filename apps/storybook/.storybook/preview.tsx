@@ -24,6 +24,17 @@ const preview: Preview = {
     a11y: { test: "error" },
     backgrounds: { disable: true },
     controls: { matchers: { color: /(background|color)$/i, date: /Date$/i } },
+    options: {
+      storySort: {
+        method: "alphabetical",
+        order: [
+          "Foundations",
+          "Components",
+          "Radio",
+          ["Features", "Shell", "Views"],
+        ],
+      },
+    },
   },
   tags: ["autodocs"],
 };

@@ -111,7 +111,7 @@ export function Changelog({
           What's new
         </TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="w-80 p-0">
+      <PopoverContent align="end" aria-label="What's new" className="w-80 p-0">
         <p className="px-3 pt-2.5 pb-1 font-medium text-xs">What's new</p>
         {entries.length > 0 ? (
           <ul className="max-h-80 overflow-y-auto px-3 pb-2">

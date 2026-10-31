@@ -1,0 +1,19 @@
+apps/radio/src/components/radio/node/node-toolbar.test.tsx
+  s_4af26cced585d7::t_720fe042e4515c 88-89,93,95,99,122-123,127,129,134,137,150,154,159,182,192-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b33026bcb9f87fd914a21140bb6e9b1042272f7",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

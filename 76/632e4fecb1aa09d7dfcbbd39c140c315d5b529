@@ -1,0 +1,21 @@
+packages/ui/src/components/context-menu.tsx
+  s_4af26cced585d7::t_ecb3a846efc52b 78
+packages/ui/src/stories/context-menu.stories.tsx
+  s_4af26cced585d7::t_ecb3a846efc52b 118-119,121-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76632e4fecb1aa09d7dfcbbd39c140c315d5b529",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

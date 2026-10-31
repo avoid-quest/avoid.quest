@@ -181,7 +181,7 @@ export function SettingsForm({
               const Icon = section.icon;
               return (
                 <TabsTrigger
-                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
+                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-active:bg-muted md:data-active:shadow-none"
                   key={section.key}
                   value={section.key}
                 >
@@ -197,8 +197,8 @@ export function SettingsForm({
           {SETTINGS_SECTIONS.filter((section) => section.key !== active).map(
             (section) => (
               <TabsContent
-                forceMount
                 hidden
+                keepMounted
                 key={section.key}
                 value={section.key}
               />
@@ -296,8 +296,8 @@ function SectionContent({
         {DATA_PANELS.filter((panel) => panel.value !== dataPanel).map(
           (panel) => (
             <TabsContent
-              forceMount
               hidden
+              keepMounted
               key={panel.value}
               value={panel.value}
             />
@@ -326,7 +326,7 @@ function SectionContent({
 function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
   const { theme, setTheme } = useTheme();
   const handleThemeChange = (values: string[]) => {
-    const value = values[0];
+    const [value] = values;
     // Pressing the selected item again would otherwise clear the choice.
     if (value) {
       setTheme(value);
@@ -461,11 +461,13 @@ function ResetSettings({
         Reset stations and playback settings to defaults
       </span>
       <Dialog onOpenChange={onResetDialogChange} open={showResetDialog}>
-        <DialogTrigger asChild>
-          <Button size="sm" variant="destructive">
-            <RotateCcwIcon /> Reset
-          </Button>
-        </DialogTrigger>
+        <DialogTrigger
+          render={
+            <Button size="sm" variant="destructive">
+              <RotateCcwIcon /> Reset
+            </Button>
+          }
+        />
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Reset stations and playback?</DialogTitle>

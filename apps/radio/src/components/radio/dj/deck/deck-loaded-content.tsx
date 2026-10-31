@@ -69,7 +69,7 @@ export function LoadedDeckContent({
             <Accordion
               className="space-y-1"
               defaultValue={effects.length > 0 ? ["effects"] : []}
-              type="multiple"
+              multiple
             >
               {hasTracklist && tracks ? (
                 <AccordionSection
@@ -104,7 +104,7 @@ export function LoadedDeckContent({
         <Accordion
           className="w-full min-w-0 space-y-1"
           defaultValue={["effects"]}
-          type="multiple"
+          multiple
         >
           {hasTracklist && tracks ? (
             <AccordionSection

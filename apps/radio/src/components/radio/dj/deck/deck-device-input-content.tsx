@@ -166,7 +166,7 @@ export function DeviceInputContent({
     <Accordion
       className="w-full min-w-0"
       defaultValue={["effects"]}
-      type="multiple"
+      multiple
     >
       <AccordionSection
         title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}

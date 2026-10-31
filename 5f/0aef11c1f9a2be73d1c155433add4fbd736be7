@@ -1,0 +1,45 @@
+packages/ui/src/hooks/use-fine-wheel.ts
+  s_4af26cced585d7::t_20ae4197f61662 48-49,72-75,89,125-127
+  s_4af26cced585d7::t_50ade1b054239e 47
+packages/ui/src/components/slider.tsx
+  s_4af26cced585d7::t_20ae4197f61662 7,16-17,127-147,149-151,184,187,205-207,210-217,221-228,236,240,242,248,252-256,258,266-267,269,281,296-298,322,333,335-337,341,354-357,361-363,365-403,405-406,408-412,414-416
+apps/radio/src/components/radio/dj/deck/deck-transport.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 327
+packages/ui/src/components/scroll-area.tsx
+  s_4af26cced585d7::t_20ae4197f61662 4,11-13,15,20,24-25,27-28,36-39,41,43,45,47,54-55,58
+apps/radio/src/components/audio/volume-control.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 70
+apps/radio/src/components/audio/control-wheel.test.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 126,187
+  s_4af26cced585d7::t_96999f11e70697 103-106,149-152,168-171,222-228,243-246,270-273,294-297,322-325,359-362,390-393,427-430,462-465,515-518,546-549
+  s_4af26cced585d7::t_b0f872e9ce0385 140
+packages/ui/src/components/control-reset.test.tsx
+  s_4af26cced585d7::t_20ae4197f61662 73,107,125-132,134-136,172-175,311,320-323,338,394,398
+  s_4af26cced585d7::t_2662d8d9018cee 8,25-26,28,42
+  s_4af26cced585d7::t_ad1286dd3584af 43-66,385-393,395-397,399-405
+packages/ui/src/stories/scroll-area.stories.tsx
+  s_4af26cced585d7::t_96999f11e70697 17-19
+  s_4af26cced585d7::t_53f092efcf70ad 3,15-16,20-26
+apps/radio/vite.config.ts
+  s_4af26cced585d7::t_0cc3a4eac1ad99 115,117
+packages/ui/README.md
+  s_4af26cced585d7::t_c99fce207a0c28 30-34
+packages/ui/src/stories/slider.stories.tsx
+  s_4af26cced585d7::t_f453388bad242c 31-42,86-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f0aef11c1f9a2be73d1c155433add4fbd736be7",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

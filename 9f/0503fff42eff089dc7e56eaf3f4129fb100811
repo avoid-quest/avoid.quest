@@ -1,0 +1,22 @@
+apps/radio/src/components/settings/settings-form.tsx
+  s_4af26cced585d7::t_fff5fedc6387a2 329
+  s_4af26cced585d7::t_96999f11e70697 201,300,464-470
+apps/radio/src/components/radio/dj/dj-console-mobile.test.tsx
+  s_4af26cced585d7::t_1745ba7f474104 15-21,100,111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f0503fff42eff089dc7e56eaf3f4129fb100811",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

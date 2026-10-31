@@ -1,0 +1,28 @@
+packages/ui/src/stories/accordion.stories.tsx
+  s_4af26cced585d7::t_352b2b7ba56f33 47-51,60-61
+  s_4af26cced585d7::t_d9e04346b01496 53-58
+  s_4af26cced585d7::t_82c4d124b17719 52,59
+packages/ui/src/stories/collapsible.stories.tsx
+  s_4af26cced585d7::t_fa738d123444a6 8,28-33,40-43,45-48
+  s_4af26cced585d7::t_352b2b7ba56f33 9,27
+packages/ui/src/components/accordion.tsx
+  s_4af26cced585d7::t_fa738d123444a6 45
+apps/radio/src/components/settings/audio-settings.tsx
+  s_4af26cced585d7::t_b294a66870c6b0 358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13a1ff0f02ca6e84519288a749116979c576c60e",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

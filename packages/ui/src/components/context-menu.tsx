@@ -75,7 +75,7 @@ function ContextMenuSubTrigger({
     <ContextMenuPrimitive.SubmenuTrigger
       className={(state) =>
         cn(
-          "flex cursor-default select-none items-center rounded-none px-3 py-2 font-medium text-xs uppercase tracking-wider outline-hidden focus:bg-accent focus:text-accent-foreground data-open:bg-accent data-inset:pl-9.5 data-open:text-accent-foreground [&_svg:not([class*='size-'])]:size-3.5 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+          "flex cursor-default select-none items-center rounded-none px-3 py-2 font-medium text-xs uppercase tracking-wider outline-hidden focus:bg-accent focus:text-accent-foreground data-popup-open:bg-accent data-inset:pl-9.5 data-popup-open:text-accent-foreground [&_svg:not([class*='size-'])]:size-3.5 [&_svg]:pointer-events-none [&_svg]:shrink-0",
           typeof className === "function" ? className(state) : className
         )
       }

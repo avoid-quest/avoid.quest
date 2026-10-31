@@ -115,7 +115,16 @@ export const CheckboxAndSubmenu: Story = {
     await userEvent.pointer({ keys: "[MouseRight]", target: trigger });
     const submenu = await body.findByRole("menuitem", { name: "Player mode" });
     submenu.focus();
+    const highlightedBackground = getComputedStyle(submenu).backgroundColor;
+    const highlightedColor = getComputedStyle(submenu).color;
     await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => {
+      expect(submenu).not.toHaveFocus();
+      expect(getComputedStyle(submenu).backgroundColor).toBe(
+        highlightedBackground
+      );
+      expect(getComputedStyle(submenu).color).toBe(highlightedColor);
+    });
     await userEvent.click(
       await body.findByRole("menuitemradio", { name: "DJ" })
     );

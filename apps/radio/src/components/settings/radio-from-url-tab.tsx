@@ -103,7 +103,18 @@ function ScrapedStationEditor({
             ) : null}
           </FieldLabel>
           {hasMultipleStreams ? (
-            <Select onValueChange={setStreamUrl} value={streamUrl}>
+            <Select
+              items={streamOptions.map((option) => ({
+                value: option.value,
+                label: option.label || option.value,
+              }))}
+              onValueChange={(nextValue) => {
+                if (nextValue !== null) {
+                  setStreamUrl(nextValue);
+                }
+              }}
+              value={streamUrl || null}
+            >
               <SelectTrigger id="url-stream">
                 <SelectValue placeholder="Select a stream URL" />
               </SelectTrigger>

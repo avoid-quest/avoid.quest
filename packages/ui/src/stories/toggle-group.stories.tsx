@@ -6,9 +6,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, within } from "storybook/test";
 
 const meta = {
-  args: { "aria-label": "Player mode", defaultValue: "single", type: "single" },
+  args: {
+    "aria-label": "Player mode",
+    defaultValue: ["single"],
+    multiple: false,
+  },
   component: ToggleGroup,
-  parameters: { controls: { exclude: ["defaultValue", "type"] } },
+  parameters: { controls: { exclude: ["defaultValue", "multiple"] } },
   subcomponents: { ToggleGroupItem },
   title: "Components/ToggleGroup",
 } satisfies Meta<typeof ToggleGroup>;
@@ -18,15 +22,14 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("radio", { name: "DJ" }));
-    await expect(canvas.getByRole("radio", { name: "DJ" })).toHaveAttribute(
-      "aria-checked",
+    await userEvent.click(canvas.getByRole("button", { name: "DJ" }));
+    await expect(canvas.getByRole("button", { name: "DJ" })).toHaveAttribute(
+      "aria-pressed",
       "true"
     );
-    await expect(canvas.getByRole("radio", { name: "Single" })).toHaveAttribute(
-      "aria-checked",
-      "false"
-    );
+    await expect(
+      canvas.getByRole("button", { name: "Single" })
+    ).toHaveAttribute("aria-pressed", "false");
   },
   render: (args) => (
     <ToggleGroup {...args}>

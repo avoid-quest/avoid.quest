@@ -105,24 +105,28 @@ export function WhatsNew() {
     <Popover onOpenChange={handleOpenChange} open={isOpen}>
       {/* The hint stays out of the way of the open list. */}
       <Tooltip onOpenChange={handleHintOpenChange} open={isHintOpen && !isOpen}>
-        {/* Popover outside the tooltip, so its data-state is the one kept. */}
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              aria-label={hasUnseen ? "What's new (unread)" : "What's new"}
-              className="relative size-7"
-              onFocus={loadEntries}
-              onPointerEnter={loadEntries}
-              size="icon"
-              variant="ghost"
-            >
-              <CircleQuestionMarkIcon className="size-3.5" />
-              {hasUnseen ? (
-                <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
-              ) : null}
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
+        {/* The popover and tooltip share one trigger element. */}
+        <PopoverTrigger
+          render={
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label={hasUnseen ? "What's new (unread)" : "What's new"}
+                  className="relative size-7"
+                  onFocus={loadEntries}
+                  onPointerEnter={loadEntries}
+                  size="icon"
+                  variant="ghost"
+                >
+                  <CircleQuestionMarkIcon className="size-3.5" />
+                  {hasUnseen ? (
+                    <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+              }
+            />
+          }
+        />
         <TooltipContent side="bottom" sideOffset={6}>
           What's new
         </TooltipContent>

@@ -76,27 +76,29 @@ export function BranchEdge({
           }}
         >
           <Popover>
-            <PopoverTrigger asChild>
-              <button
-                aria-label={`${described}: branch settings`}
-                className={cn(
-                  "flex h-4 items-center gap-1 rounded-sm border border-border/50 bg-card px-1 text-muted-foreground text-xs tabular-nums leading-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  data.muted && "opacity-60",
-                  data.solo && "border-primary/40 text-primary"
-                )}
-                title={`${described}. Level is base + cable trim. Click for cable trim, pan, mute and solo`}
-                type="button"
-              >
-                <span className={cn(data.muted && "line-through")}>
-                  {data.tag}
-                </span>
-                {summary.length > 0 ? (
-                  <span className="text-muted-foreground">
-                    {summary.join(" · ")}
+            <PopoverTrigger
+              render={
+                <button
+                  aria-label={`${described}: branch settings`}
+                  className={cn(
+                    "flex h-4 items-center gap-1 rounded-sm border border-border/50 bg-card px-1 text-muted-foreground text-xs tabular-nums leading-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    data.muted && "opacity-60",
+                    data.solo && "border-primary/40 text-primary"
+                  )}
+                  title={`${described}. Level is base + cable trim. Click for cable trim, pan, mute and solo`}
+                  type="button"
+                >
+                  <span className={cn(data.muted && "line-through")}>
+                    {data.tag}
                   </span>
-                ) : null}
-              </button>
-            </PopoverTrigger>
+                  {summary.length > 0 ? (
+                    <span className="text-muted-foreground">
+                      {summary.join(" · ")}
+                    </span>
+                  ) : null}
+                </button>
+              }
+            />
             <PopoverContent
               align="center"
               className="w-auto p-2"

@@ -27,7 +27,7 @@ type SettingsButtonProps = {
   defaultTab?: string;
   className?: string;
   /** Custom trigger instead of the gear icon. */
-  trigger?: React.ReactNode;
+  trigger?: React.ReactElement;
 };
 
 export function SettingsButton({
@@ -80,21 +80,20 @@ export function SettingsButton({
       onFocus={prefetchSettingsDrawerOnIntent}
       onPointerEnter={prefetchSettingsDrawerOnIntent}
       ref={triggerRef}
-    >
-      {trigger ? (
-        trigger
-      ) : (
-        <Button
-          aria-label="Open settings"
-          className={cn("size-7", className)}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Settings2Icon className="size-3.5" />
-        </Button>
-      )}
-    </Slot>
+      render={
+        trigger ?? (
+          <Button
+            aria-label="Open settings"
+            className={cn("size-7", className)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Settings2Icon className="size-3.5" />
+          </Button>
+        )
+      }
+    />
   );
 
   return (
@@ -103,7 +102,7 @@ export function SettingsButton({
         triggerButton
       ) : (
         <Tooltip>
-          <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
+          <TooltipTrigger render={triggerButton} />
           <TooltipContent side="bottom" sideOffset={6}>
             Settings
           </TooltipContent>

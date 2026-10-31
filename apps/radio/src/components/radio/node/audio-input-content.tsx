@@ -267,16 +267,18 @@ export function AudioInputNodeBody({
         {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
         <div className={INTERACTIVE} onKeyDown={keepControlKeys}>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label={`Options for ${title}`}
-                className="size-6 text-muted-foreground"
-                size="icon"
-                variant="ghost"
-              >
-                <MoreHorizontalIcon />
-              </Button>
-            </DropdownMenuTrigger>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  aria-label={`Options for ${title}`}
+                  className="size-6 text-muted-foreground"
+                  size="icon"
+                  variant="ghost"
+                >
+                  <MoreHorizontalIcon />
+                </Button>
+              }
+            />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRemove} variant="destructive">
                 <Trash2Icon />

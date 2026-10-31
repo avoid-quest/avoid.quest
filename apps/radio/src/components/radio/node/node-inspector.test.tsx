@@ -13,6 +13,7 @@ import { useStore } from "@tanstack/react-store";
 import { JSDOM } from "jsdom";
 import { Profiler } from "react";
 import type { NodeStore } from "@/lib/node-graph/node-store";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -60,6 +61,7 @@ Object.defineProperty(dom.window.HTMLCanvasElement.prototype, "getContext", {
 });
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   AudioContext: dom.window.AudioContext,
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
@@ -104,7 +106,7 @@ const { QueryClient, QueryClientProvider } = await import(
   "@tanstack/react-query"
 );
 
-// Radix Select measures and scrolls, which JSDOM does not do.
+// Select measures and scrolls, which JSDOM does not do.
 Object.defineProperty(dom.window.HTMLElement.prototype, "scrollIntoView", {
   configurable: true,
   value: () => undefined,
@@ -220,6 +222,7 @@ describe("modulation cable availability", () => {
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     const freed = await view.findByRole("option", { name: "Cutoff" });
     expect(freed.getAttribute("aria-disabled")).not.toBe("true");
+    fireEvent.pointerDown(freed, { button: 0, pointerType: "mouse" });
     fireEvent.click(freed);
     expect(store.state.graph?.edges[0]?.parameter).toBe("frequency");
     expect(

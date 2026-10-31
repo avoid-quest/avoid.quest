@@ -8,10 +8,16 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { installAnimationTestEnvironment } from "./shared/animation-test-utils";
+
+// React DOM detects input support once, so initialize it with a browser window.
+const initialEnvironment = installAnimationTestEnvironment();
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
+initialEnvironment.restore();
 
 const renderedDeckIds: string[] = [];
 const DECK_A_TAB = /^A/;
@@ -91,7 +97,7 @@ describe("DjConsoleMobile", () => {
     const draft = view.getByLabelText("deck-a draft") as HTMLTextAreaElement;
     fireEvent.input(query, { target: { value: "ambient" } });
     fireEvent.input(draft, { target: { value: "unapplied processor" } });
-    fireEvent.mouseDown(view.getByRole("tab", { name: DECK_B_TAB }), {
+    fireEvent.click(view.getByRole("tab", { name: DECK_B_TAB }), {
       button: 0,
       ctrlKey: false,
     });
@@ -102,7 +108,7 @@ describe("DjConsoleMobile", () => {
     fireEvent.input(view.getByLabelText("deck-b query"), {
       target: { value: "jazz" },
     });
-    fireEvent.mouseDown(view.getByRole("tab", { name: DECK_A_TAB }), {
+    fireEvent.click(view.getByRole("tab", { name: DECK_A_TAB }), {
       button: 0,
       ctrlKey: false,
     });

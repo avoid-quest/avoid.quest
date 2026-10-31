@@ -22,6 +22,7 @@ import {
   radioMetadataRefreshInterval,
 } from "@/lib/hooks/use-radio-metadata";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -43,6 +44,7 @@ class ResizeObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,

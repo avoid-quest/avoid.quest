@@ -95,7 +95,15 @@ export function ModulationCableControls({
         <div className="space-y-1 text-xs">
           <p>Target parameter</p>
           <Select
-            onValueChange={(parameter) => commit({ parameter }, true)}
+            items={parameters.map((parameter) => ({
+              value: parameter.key,
+              label: parameter.label,
+            }))}
+            onValueChange={(parameter) => {
+              if (parameter !== null) {
+                commit({ parameter }, true);
+              }
+            }}
             value={selected}
           >
             <SelectTrigger

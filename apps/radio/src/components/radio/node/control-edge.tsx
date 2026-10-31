@@ -49,22 +49,24 @@ export function ControlEdge(props: FlowEdgeProps<ControlFlowEdge>) {
           }}
         >
           <Popover>
-            <PopoverTrigger asChild>
-              <button
-                aria-label={`Edit ${label} modulation${unapplied ? `, ${unappliedTag(unapplied)}: ${unapplied.why}` : ""}`}
-                className={cn(
-                  "rounded border bg-background px-1.5 py-0.5 text-xs shadow-sm",
-                  unapplied
-                    ? "border-border text-muted-foreground"
-                    : "border-primary/30 text-primary"
-                )}
-                title={unapplied?.why}
-                type="button"
-              >
-                {label} · {Math.round(depth * 100)}%
-                {unapplied ? ` · ${unappliedTag(unapplied)}` : null}
-              </button>
-            </PopoverTrigger>
+            <PopoverTrigger
+              render={
+                <button
+                  aria-label={`Edit ${label} modulation${unapplied ? `, ${unappliedTag(unapplied)}: ${unapplied.why}` : ""}`}
+                  className={cn(
+                    "rounded border bg-background px-1.5 py-0.5 text-xs shadow-sm",
+                    unapplied
+                      ? "border-border text-muted-foreground"
+                      : "border-primary/30 text-primary"
+                  )}
+                  title={unapplied?.why}
+                  type="button"
+                >
+                  {label} · {Math.round(depth * 100)}%
+                  {unapplied ? ` · ${unappliedTag(unapplied)}` : null}
+                </button>
+              }
+            />
             <PopoverContent
               className="w-64 p-3"
               onKeyDown={keepControlKeys}

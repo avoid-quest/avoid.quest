@@ -30,6 +30,8 @@ import {
   resetPlaybackChannelRuntime,
   setPlaybackChannelSoundId,
 } from "@/lib/stores/playback-runtime-store";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
+import { chooseSelectOption } from "@/test-utils/select-option";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -64,6 +66,7 @@ Object.defineProperty(dom.window, "matchMedia", {
 
 const previousGlobals = new Map<string, PropertyDescriptor | undefined>();
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DocumentFragment: dom.window.DocumentFragment,
@@ -318,11 +321,7 @@ describe("DeckPanel source picker", () => {
       if (surface === "change loaded source") {
         fireEvent.click(view.getByRole("button", { name: CHANGE_SOURCE }));
       }
-      const provider = view.container.querySelector("select");
-      if (!provider) {
-        throw new Error("Missing provider selector");
-      }
-      fireEvent.change(provider, { target: { value: "local" } });
+      await chooseSelectOption(view.container, "Station library");
       const input = view.getByRole("searchbox", {
         name: "Search or paste a link",
       });

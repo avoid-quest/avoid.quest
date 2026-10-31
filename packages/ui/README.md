@@ -27,9 +27,11 @@ heading, and mono text. `globals.css` loads the font, so apps and Storybook shar
 the same typography without separate font imports. Buttons use pointer cursors.
 Success, warning, info, and destructive each have a foreground pair in both themes.
 
-Only the preset's theme and font are applied here. The existing Radix components
-and Lucide icons remain until the separate Base UI migration; the preset's Sera
-component styling and Tabler icons belong to that migration.
+Components use Base UI primitives with the preset's Sera styling and Tabler icons.
+Button variants, the rotary knob, and the audio slider's fader styles keep their
+local behavior and styling. The settings drawer continues to use Vaul.
+Use `render={<Component />}` for composition. Select roots supply `items` for
+labels before the popup opens, and single-select callbacks handle `null`.
 
 ## Adding components
 

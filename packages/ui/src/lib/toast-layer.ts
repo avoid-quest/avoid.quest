@@ -1,13 +1,23 @@
 /**
  * Toasts float above every dialog, drawer and popover, so pressing one (its
  * Undo, say) is not an outside interaction that should dismiss the layer
- * underneath. Call from a Radix `onInteractOutside` handler.
+ * underneath. Base UI roots cancel the corresponding onOpenChange event.
+ * Vaul continues to use the DOM event guard below.
  */
+export function isToastInteraction(event: Event): boolean {
+  const focusTarget =
+    event.type === "focusout" && "relatedTarget" in event
+      ? event.relatedTarget
+      : null;
+  return [event.target, focusTarget].some(
+    (target) =>
+      target instanceof Element &&
+      target.closest("[data-sonner-toaster]") !== null
+  );
+}
+
 export function keepOpenOnToastInteraction(event: Event) {
-  if (
-    event.target instanceof Element &&
-    event.target.closest("[data-sonner-toaster]")
-  ) {
+  if (isToastInteraction(event)) {
     event.preventDefault();
   }
 }

@@ -108,9 +108,9 @@ export function DeviceInputContent({
           Channel
           {channelCount <= 2 && (
             <Tooltip>
-              <TooltipTrigger asChild>
-                <InfoIcon className="size-3 cursor-help" />
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={<InfoIcon className="size-3 cursor-help" />}
+              />
               <TooltipContent className="max-w-56" side="top">
                 Browsers limit audio input to 2 channels per device. To route
                 other channels, create an Aggregate Device in macOS Audio MIDI
@@ -120,7 +120,15 @@ export function DeviceInputContent({
           )}
         </span>
         <Select
-          onValueChange={handleChannelSelectionChange}
+          items={channelOptions.map((option) => ({
+            value: option.key,
+            label: option.label,
+          }))}
+          onValueChange={(nextValue) => {
+            if (nextValue !== null) {
+              handleChannelSelectionChange(nextValue);
+            }
+          }}
           value={selectedKey}
         >
           <SelectTrigger
@@ -163,11 +171,7 @@ export function DeviceInputContent({
 
   // Same effects section as a loaded deck.
   const effectsPanel = (
-    <Accordion
-      className="w-full min-w-0"
-      defaultValue={["effects"]}
-      type="multiple"
-    >
+    <Accordion className="w-full min-w-0" defaultValue={["effects"]} multiple>
       <AccordionSection
         title={`Effects${effects.length > 0 ? ` (${effects.length})` : ""}`}
         value="effects"

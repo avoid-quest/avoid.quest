@@ -181,7 +181,7 @@ export function SettingsForm({
               const Icon = section.icon;
               return (
                 <TabsTrigger
-                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
+                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-active:bg-muted md:data-active:shadow-none"
                   key={section.key}
                   value={section.key}
                 >
@@ -197,8 +197,8 @@ export function SettingsForm({
           {SETTINGS_SECTIONS.filter((section) => section.key !== active).map(
             (section) => (
               <TabsContent
-                forceMount
                 hidden
+                keepMounted
                 key={section.key}
                 value={section.key}
               />
@@ -296,8 +296,8 @@ function SectionContent({
         {DATA_PANELS.filter((panel) => panel.value !== dataPanel).map(
           (panel) => (
             <TabsContent
-              forceMount
               hidden
+              keepMounted
               key={panel.value}
               value={panel.value}
             />
@@ -325,7 +325,8 @@ function SectionContent({
 
 function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
   const { theme, setTheme } = useTheme();
-  const handleThemeChange = (value: string) => {
+  const handleThemeChange = (values: string[]) => {
+    const [value] = values;
     // Pressing the selected item again would otherwise clear the choice.
     if (value) {
       setTheme(value);
@@ -345,9 +346,9 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         control={
           <ToggleGroup
             aria-label="Theme"
+            multiple={false}
             onValueChange={handleThemeChange}
-            type="single"
-            value={theme ?? "system"}
+            value={[theme ?? "system"]}
             variant="outline"
           >
             {THEMES.map(({ icon: Icon, label, value }) => (
@@ -384,14 +385,18 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         title="Version"
       />
       <div className="flex flex-wrap items-center gap-3 py-3 text-muted-foreground text-xs">
-        <Button asChild size="icon" variant="ghost">
-          <a
-            aria-label="avoid.quest on GitHub"
-            href="https://github.com/avoid-quest/avoid.quest"
-            title="GitHub"
-          >
-            <GitHubIcon className="size-4" />
-          </a>
+        <Button
+          render={
+            <a
+              aria-label="avoid.quest on GitHub"
+              href="https://github.com/avoid-quest/avoid.quest"
+              title="GitHub"
+            />
+          }
+          size="icon"
+          variant="ghost"
+        >
+          <GitHubIcon className="size-4" />
         </Button>
         <a
           className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -456,11 +461,13 @@ function ResetSettings({
         Reset stations and playback settings to defaults
       </span>
       <Dialog onOpenChange={onResetDialogChange} open={showResetDialog}>
-        <DialogTrigger asChild>
-          <Button size="sm" variant="destructive">
-            <RotateCcwIcon /> Reset
-          </Button>
-        </DialogTrigger>
+        <DialogTrigger
+          render={
+            <Button size="sm" variant="destructive">
+              <RotateCcwIcon /> Reset
+            </Button>
+          }
+        />
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Reset stations and playback?</DialogTitle>

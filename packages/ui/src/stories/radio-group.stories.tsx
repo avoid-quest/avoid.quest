@@ -17,7 +17,7 @@ export const Default: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     canvas.getByRole("radio", { name: "system" }).focus();
-    // Radix moves focus on a timer; keep the key held until selection follows it.
+    // Arrow keys move focus and selection together.
     await userEvent.keyboard("{ArrowDown>}");
     await waitFor(() =>
       expect(canvas.getByRole("radio", { name: "light" })).toBeChecked()

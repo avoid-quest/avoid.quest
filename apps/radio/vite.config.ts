@@ -112,9 +112,9 @@ const VENDOR_CHUNK_GROUPS: Array<{
     name: "vendor-resizable",
   },
   {
-    match: (id) => id.includes("/node_modules/@radix-ui/react-popover/"),
+    match: (id) => id.includes("/node_modules/@base-ui/react/popover/"),
     // Node mode's branch edges and the What's new popover only, both lazy.
-    // The popper and dismissable layer it uses stay shared with the menus.
+    // Base UI positioning and dismissal utilities stay shared with the menus.
     name: "vendor-popover",
   },
   {

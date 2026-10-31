@@ -146,13 +146,21 @@ export function DeviceSelect({
     <div className="flex min-w-0 items-center gap-1.5">
       <Select
         disabled={isLoading || devices.length === 0}
+        items={devices.map((device) => ({
+          value: device.deviceId,
+          label: device.label,
+        }))}
         onValueChange={(deviceId) => {
+          if (deviceId === null) {
+            return;
+          }
+
           const device = devices.find((entry) => entry.deviceId === deviceId);
           if (device) {
             onChange(device);
           }
         }}
-        value={known && value ? value : ""}
+        value={known && value ? value : null}
       >
         <SelectTrigger aria-label={label} className="min-w-0 flex-1" size="xs">
           <SelectValue placeholder={placeholder} />
@@ -200,7 +208,15 @@ export function InputChannelSelect({
         Channel
       </label>
       <Select
-        onValueChange={(key) => onChange(deserializeSelection(key))}
+        items={options.map((option) => ({
+          value: option.key,
+          label: option.label,
+        }))}
+        onValueChange={(key) => {
+          if (key !== null) {
+            onChange(deserializeSelection(key));
+          }
+        }}
         value={serializeSelection(value)}
       >
         <SelectTrigger

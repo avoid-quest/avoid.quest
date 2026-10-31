@@ -75,7 +75,9 @@ function Knob({
       disabled,
       max,
       min,
-      onChange: ([next]) => onChange(next ?? min),
+      onChange: ([next]) => {
+        onChange(next ?? min);
+      },
       values: [value],
       wheelStep,
     });

@@ -67,7 +67,7 @@ play. See the [Mixcloud](../../packages/platforms/src/mixcloud/RESEARCH.md) and
 - **Throttling**: `@tanstack/react-pacer` (`useThrottledCallback`)
 - **DSP**: official openDAW Rust/WASM engine for supported active effect trees; radio AudioWorklet with `@opendaw/lib-dsp` primitives for compatibility
 - **Audio**: Web Audio API, AudioWorklet, HLS.js, HTML5 Audio
-- **UI**: React 19, Tailwind CSS v4, shadcn/ui, Radix UI, dnd-kit
+- **UI**: React 19, Tailwind CSS v4, shadcn/ui, Base UI, Vaul, dnd-kit
 - **Deploy**: Cloudflare Workers (Wrangler)
 - **Monitoring**: Sentry (browser via `/tunnel`, Worker via its SDK)
 

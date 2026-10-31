@@ -406,8 +406,23 @@ export function MidiSettings() {
         <Field className={SETTING_ROW_CLASS} orientation="horizontal">
           <FieldLabel htmlFor="midi-preset">Preset</FieldLabel>
           <Select
-            onValueChange={handlePresetChange}
-            value={activePresetId ?? undefined}
+            items={MIDI_PRESETS.map((preset) => ({
+              value: preset.id,
+              label: (
+                <>
+                  {preset.name}
+                  <span className="ml-1 text-muted-foreground text-xs">
+                    ({preset.vendor})
+                  </span>
+                </>
+              ),
+            }))}
+            onValueChange={(nextValue) => {
+              if (nextValue !== null) {
+                handlePresetChange(nextValue);
+              }
+            }}
+            value={activePresetId ?? null}
           >
             <SelectTrigger className="w-full" id="midi-preset">
               <SelectValue placeholder="Select a preset…" />

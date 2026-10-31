@@ -84,8 +84,16 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
         <div className="flex items-center gap-2">
           <Select
             disabled={isLoading}
-            onValueChange={setSelectedDeviceId}
-            value={selectedDeviceId ?? ""}
+            items={validDevices.map((device) => ({
+              value: device.deviceId,
+              label: device.label,
+            }))}
+            onValueChange={(nextValue) => {
+              if (nextValue !== null) {
+                setSelectedDeviceId(nextValue);
+              }
+            }}
+            value={selectedDeviceId}
           >
             <SelectTrigger
               aria-label="Audio input"

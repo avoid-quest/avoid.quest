@@ -180,7 +180,26 @@ export function SearchInput({
       <span className="truncate">{PLATFORM_LABELS[platform]}</span>
     </div>
   ) : (
-    <Select onValueChange={handlePlatformChange} value={platform}>
+    <Select
+      items={[
+        { value: "all", label: "All sources" },
+        ...PLATFORM_OPTIONS.map((option) => ({
+          value: option,
+          label: (
+            <span className="flex items-center gap-1.5">
+              <PlatformDot platform={option} />
+              {PLATFORM_LABELS[option]}
+            </span>
+          ),
+        })),
+      ]}
+      onValueChange={(nextValue) => {
+        if (nextValue !== null) {
+          handlePlatformChange(nextValue);
+        }
+      }}
+      value={platform}
+    >
       <SelectTrigger
         aria-label="Platform"
         className="w-full shrink-0 text-xs"
@@ -234,7 +253,12 @@ export function SearchInput({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">Type</span>
           <Select
-            onValueChange={handleBandcampFilterChange}
+            items={{ t: "Tracks", a: "Albums", all: "All" }}
+            onValueChange={(nextValue) => {
+              if (nextValue !== null) {
+                handleBandcampFilterChange(nextValue);
+              }
+            }}
             value={bandcampFilter === "" ? "all" : bandcampFilter}
           >
             <SelectTrigger
@@ -257,7 +281,12 @@ export function SearchInput({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">Type</span>
           <Select
-            onValueChange={handleYoutubeFilterChange}
+            items={{ songs: "Songs", videos: "Videos" }}
+            onValueChange={(nextValue) => {
+              if (nextValue !== null) {
+                handleYoutubeFilterChange(nextValue);
+              }
+            }}
             value={youtubeFilter}
           >
             <SelectTrigger

@@ -72,17 +72,15 @@ export function MidiControlWrapper({
     openingDialogRef.current = true;
     setTransformOpen(true);
   }
-  function closeMenu(event: Event) {
+  function closeMenu() {
     if (openingDialogRef.current) {
-      event.preventDefault();
       openingDialogRef.current = false;
+      return false;
     }
+    return returnFocusRef.current ?? true;
   }
-  function returnToControl(event: Event) {
-    event.preventDefault();
-    if (returnFocusRef.current?.isConnected) {
-      returnFocusRef.current.focus();
-    }
+  function returnToControl() {
+    return returnFocusRef.current?.isConnected ? returnFocusRef.current : false;
   }
   function stopLearning() {
     control.change({ type: "stop-learn" });
@@ -99,21 +97,23 @@ export function MidiControlWrapper({
   return (
     <Dialog onOpenChange={setTransformOpen} open={transformOpen}>
       <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div
-            className="relative"
-            data-midi-target={targetId}
-            onContextMenuCapture={rememberControl}
-            tabIndex={-1}
-          >
-            {hasMidi && <MidiBadge />}
-            {!!isThisLearning && (
-              <span className="pointer-events-none absolute inset-0 z-10 animate-pulse rounded border-2 border-primary border-dashed" />
-            )}
-            {children}
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-52" onCloseAutoFocus={closeMenu}>
+        <ContextMenuTrigger
+          render={
+            <div
+              className="relative"
+              data-midi-target={targetId}
+              onContextMenuCapture={rememberControl}
+              tabIndex={-1}
+            >
+              {hasMidi && <MidiBadge />}
+              {!!isThisLearning && (
+                <span className="pointer-events-none absolute inset-0 z-10 animate-pulse rounded border-2 border-primary border-dashed" />
+              )}
+              {children}
+            </div>
+          }
+        />
+        <ContextMenuContent className="w-52" finalFocus={closeMenu}>
           {isThisLearning ? (
             <ContextMenuItem onClick={stopLearning}>
               Cancel learn
@@ -126,7 +126,7 @@ export function MidiControlWrapper({
 
           {hasMidi && (
             <>
-              <ContextMenuItem onSelect={openTransform}>
+              <ContextMenuItem onClick={openTransform}>
                 Edit transform
               </ContextMenuItem>
 
@@ -142,7 +142,7 @@ export function MidiControlWrapper({
           )}
         </ContextMenuContent>
       </ContextMenu>
-      <DialogContent className="sm:max-w-sm" onCloseAutoFocus={returnToControl}>
+      <DialogContent className="sm:max-w-sm" finalFocus={returnToControl}>
         <DialogHeader>
           <DialogTitle>Edit MIDI transform</DialogTitle>
           <DialogDescription>

@@ -12,6 +12,7 @@ import {
 import { JSDOM } from "jsdom";
 import type { EffectConfig } from "@/lib/audio";
 import type { NodeBackendBadges } from "@/lib/node-playback";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -33,6 +34,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DocumentFragment: dom.window.DocumentFragment,
@@ -74,7 +76,7 @@ const { act, cleanup, fireEvent, render } = await import(
 
 afterEach(cleanup);
 
-// Radix Select measures and scrolls, which JSDOM does not do.
+// Select measures and scrolls, which JSDOM does not do.
 for (const [key, value] of Object.entries({
   hasPointerCapture: (): boolean => false,
   releasePointerCapture: (): void => undefined,
@@ -211,9 +213,13 @@ describe("EffectNodeBody", () => {
 
     fireEvent.keyDown(
       view.getByRole("combobox", { name: endsWith("Oversample") }),
-      { key: "Enter" }
+      { key: "ArrowDown" }
     );
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    fireEvent.pointerDown(view.getByRole("option", { name: "8x" }), {
+      pointerType: "mouse",
+      button: 0,
+    });
     fireEvent.click(view.getByRole("option", { name: "8x" }));
 
     expect(onStep).toHaveBeenCalledWith({ oversample: 8 });
@@ -227,7 +233,7 @@ describe("EffectNodeBody", () => {
 
     act(() => {
       fireEvent.keyDown(view.getByRole("button", { name: OPTIONS_BUTTON }), {
-        key: "Enter",
+        key: "ArrowDown",
       });
     });
     act(() => {
@@ -240,7 +246,7 @@ describe("EffectNodeBody", () => {
     const plain = renderBody(createDefaultEffectConfig("delay", "d1", 0));
     act(() => {
       fireEvent.keyDown(plain.getByRole("button", { name: OPTIONS_BUTTON }), {
-        key: "Enter",
+        key: "ArrowDown",
       });
     });
     expect(plain.queryByRole("menuitem", { name: "Swap effect…" })).toBeNull();
@@ -508,7 +514,7 @@ describe("EffectNode on the canvas", () => {
     // The menu portals out of the node, but its keys bubble through React.
     const trigger = byLabel('[aria-label="Options for Compressor"]');
     act(() => {
-      fireEvent.keyDown(trigger, { key: "Enter" });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
     });
     const menu = document.querySelector('[role="menu"]') as HTMLElement | null;
     expect(menu).toBeTruthy();

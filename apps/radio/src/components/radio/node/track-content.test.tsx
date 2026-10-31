@@ -14,6 +14,8 @@ import { useStore } from "@tanstack/react-store";
 import { JSDOM } from "jsdom";
 import { createNodeStore } from "@/lib/node-graph/node-store";
 import { DEFAULT_MEDIA_STRIP, nodeGraphSchema } from "@/lib/node-graph/schema";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
+import { chooseSelectOption } from "@/test-utils/select-option";
 import type { NodeActions } from "./node-actions";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -36,6 +38,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
@@ -81,7 +84,7 @@ mock.module("@/lib/stations/station-discovery-adapters", () => ({
 }));
 
 // React DOM checks for input events when it loads, so it loads after the DOM.
-const { act, cleanup, fireEvent, render } = await import(
+const { act, cleanup, fireEvent, render, within } = await import(
   "@testing-library/react"
 );
 
@@ -202,11 +205,7 @@ describe("TrackNodeContent", () => {
     expect(stream?.isCurrent()).toBe(true);
 
     // Choosing a platform in the inspector supersedes the patch's request.
-    const select = inspector.querySelector("select") as HTMLElement | null;
-    if (!select) {
-      throw new Error("missing source selector");
-    }
-    fireEvent.change(select, { target: { value: "soundcloud" } });
+    await chooseSelectOption(inspector, "SoundCloud");
     expect(stream?.isCurrent()).toBe(false);
 
     await act(async () => {
@@ -273,35 +272,36 @@ test("a platform link pending in one view cannot report a stale failure after th
 });
 
 for (const provider of ["radio-browser", "radiogarden", "local"]) {
-  test(`Track ${provider} filter syncs both views and survives stored remount`, () => {
+  test(`Track ${provider} filter syncs both views and survives stored remount`, async () => {
     const { patch, inspector, store, view, client, actions } =
       renderBothViews();
-    const select = inspector.querySelector("select") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: provider } });
+    const label =
+      {
+        local: "Station library",
+        radiogarden: "Radio Garden",
+        "radio-browser": "Radio Browser",
+      }[provider] ?? provider;
+    await chooseSelectOption(inspector, label);
     expect(store.state.graph?.nodes[0]?.data).toMatchObject({
       searchPlatform: provider,
     });
-    expect((patch.querySelector("select") as HTMLSelectElement).value).toBe(
-      provider
-    );
-    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
-      provider
-    );
-    fireEvent.change(patch.querySelector("select") as HTMLSelectElement, {
-      target: { value: "all" },
-    });
-    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
-      "all"
-    );
+    expect(
+      within(patch).getByRole("combobox", { name: "Platform" }).textContent
+    ).toContain(label);
+    expect(
+      within(inspector).getByRole("combobox", { name: "Platform" }).textContent
+    ).toContain(label);
+    await chooseSelectOption(patch, "All sources");
+    expect(
+      within(inspector).getByRole("combobox", { name: "Platform" }).textContent
+    ).toContain("All sources");
     expect(store.state.graph?.nodes[0]?.data).toMatchObject({
       searchPlatform: undefined,
     });
-    fireEvent.change(patch.querySelector("select") as HTMLSelectElement, {
-      target: { value: provider },
-    });
-    expect((inspector.querySelector("select") as HTMLSelectElement).value).toBe(
-      provider
-    );
+    await chooseSelectOption(patch, label);
+    expect(
+      within(inspector).getByRole("combobox", { name: "Platform" }).textContent
+    ).toContain(label);
     const saved = nodeGraphSchema.parse(
       JSON.parse(JSON.stringify(store.state.graph))
     );
@@ -322,7 +322,8 @@ for (const provider of ["radio-browser", "radiogarden", "local"]) {
       </QueryClientProvider>
     );
     expect(
-      (reopened.container.querySelector("select") as HTMLSelectElement).value
-    ).toBe(provider);
+      within(reopened.container).getByRole("combobox", { name: "Platform" })
+        .textContent
+    ).toContain(label);
   });
 }

@@ -47,7 +47,8 @@ export function ModeSelect({ className }: { className?: string }) {
     return () => clearTimeout(timer);
   }, [pendingMode]);
 
-  const handleModeChange = async (value: string) => {
+  const handleModeChange = async (values: string[]) => {
+    const [value] = values;
     if (!(settings && value) || requestedMode || isTransitioning) {
       return;
     }
@@ -75,40 +76,40 @@ export function ModeSelect({ className }: { className?: string }) {
     <ToggleGroup
       aria-label="Playback mode"
       className={cn("w-full max-w-xs", className)}
+      multiple={false}
       onValueChange={handleModeChange}
-      type="single"
-      value={
+      value={[
         modeTransition.currentMode ??
-        // With no mode running, a mode that is starting is the selection,
-        // even though the settings still name the one that failed.
-        modeTransition.requestedMode ??
-        (modeTransition.error ? "" : normalizePlayerMode(settings?.player.mode))
-      }
+          // With no mode running, a mode that is starting is the selection,
+          // even though the settings still name the one that failed.
+          modeTransition.requestedMode ??
+          (modeTransition.error
+            ? ""
+            : normalizePlayerMode(settings?.player.mode)),
+      ]}
       variant="outline"
     >
       {playerModes.map((mode) => {
         const Icon = modeIcons[mode.value];
         return (
           <Tooltip key={mode.value}>
-            {/* Item outside the tooltip, so its on/off data-state is kept. */}
+            {/* Item outside the tooltip, so its pressed state is kept. */}
             <ToggleGroupItem
               aria-busy={pendingMode === mode.value || undefined}
               aria-label={mode.label}
-              asChild
               className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
               disabled={isTransitioning || requestedMode !== null}
+              render={<TooltipTrigger />}
               value={mode.value}
             >
-              <TooltipTrigger>
-                {spinnerMode === mode.value && pendingMode === mode.value ? (
-                  <Spinner className="size-3.5" />
-                ) : (
-                  <Icon className="size-3.5" />
-                )}
-                <span className="hidden font-mono text-xs uppercase tracking-wider sm:block">
-                  {mode.label}
-                </span>
-              </TooltipTrigger>
+              {spinnerMode === mode.value && pendingMode === mode.value ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                <Icon className="size-3.5" />
+              )}
+              <span className="hidden font-mono text-xs uppercase tracking-wider sm:block">
+                {mode.label}
+              </span>
             </ToggleGroupItem>
             {/* Names the icon only while the label is hidden. */}
             <TooltipContent className="sm:hidden" side="bottom" sideOffset={6}>

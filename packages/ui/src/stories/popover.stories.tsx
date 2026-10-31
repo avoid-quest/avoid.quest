@@ -28,8 +28,8 @@ export const Default: Story = {
   },
   render: (args) => (
     <Popover {...args}>
-      <PopoverTrigger asChild>
-        <Button variant="outline">Station details</Button>
+      <PopoverTrigger render={<Button variant="outline" />}>
+        Station details
       </PopoverTrigger>
       <PopoverContent aria-label="Station details">
         Independent radio from London.

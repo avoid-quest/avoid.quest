@@ -1,5 +1,6 @@
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, waitFor } from "storybook/test";
 
 const meta = {
   component: ScrollArea,
@@ -11,14 +12,18 @@ type Story = StoryObj<typeof meta>;
 const STATIONS = Array.from({ length: 30 }, (_, i) => `Station ${i + 1}`);
 
 export const Default: Story = {
-  parameters: {
-    a11y: {
-      config: {
-        // Radix ScrollArea's viewport is not focusable, so keyboard users cannot scroll it.
-        // Known gap, tracked for the Base UI migration; do not copy this exemption elsewhere.
-        rules: [{ enabled: false, id: "scrollable-region-focusable" }],
-      },
-    },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const thumb = canvasElement.querySelector(
+        '[data-slot="scroll-area-thumb"]'
+      );
+      if (!thumb) {
+        throw new Error("Missing scroll thumb");
+      }
+      const bounds = thumb.getBoundingClientRect();
+      expect(bounds.width).toBeGreaterThan(0);
+      expect(bounds.height).toBeGreaterThan(0);
+    });
   },
   render: () => (
     <ScrollArea className="h-40 w-64 rounded-md border">
@@ -31,4 +36,28 @@ export const Default: Story = {
       </ul>
     </ScrollArea>
   ),
+};
+
+export const ConstrainedContent: Story = {
+  render: () => (
+    <ScrollArea className="h-40 w-64 border [&_[data-slot=scroll-area-content]]:min-w-0!">
+      <p className="truncate p-3">{"Long station metadata ".repeat(30)}</p>
+    </ScrollArea>
+  ),
+  play: async ({ canvasElement }) => {
+    const viewport = canvasElement.querySelector(
+      '[data-slot="scroll-area-viewport"]'
+    );
+    const content = canvasElement.querySelector(
+      '[data-slot="scroll-area-content"]'
+    );
+    if (!(viewport && content)) {
+      throw new Error("Missing scroll area structure");
+    }
+    await waitFor(() =>
+      expect(content.getBoundingClientRect().width).toBeLessThanOrEqual(
+        viewport.getBoundingClientRect().width
+      )
+    );
+  },
 };

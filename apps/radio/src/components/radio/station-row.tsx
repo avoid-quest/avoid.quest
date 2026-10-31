@@ -6,7 +6,7 @@ import type { Radio } from "@/lib/audio";
  * picker all compose these pieces so a station looks the same everywhere.
  */
 export const stationRowClassName =
-  "group flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/40 has-[[data-state=open]]:bg-muted/40";
+  "group flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/40 has-[[data-popup-open]]:bg-muted/40";
 
 export const stationRowButtonClassName =
   "flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";

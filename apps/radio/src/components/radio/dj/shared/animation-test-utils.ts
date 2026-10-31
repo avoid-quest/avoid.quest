@@ -1,6 +1,7 @@
 import { spyOn } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 /** Deterministic DOM and animation clock for transport and meter regressions. */
 export function installAnimationTestEnvironment() {
@@ -38,6 +39,7 @@ export function installAnimationTestEnvironment() {
   const frames = new Map<number, FrameRequestCallback>();
   const originalGlobals = new Map<string, PropertyDescriptor | undefined>();
   for (const [key, value] of Object.entries({
+    ...browserTestGlobals(dom.window),
     CSS: { escape: (identifier: string) => identifier.replaceAll(":", "\\:") },
     CustomEvent: dom.window.CustomEvent,
     cancelAnimationFrame: (id: number) => frames.delete(id),

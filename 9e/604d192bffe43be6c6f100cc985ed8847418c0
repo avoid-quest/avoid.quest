@@ -1,0 +1,46 @@
+packages/ui/src/components/toggle-group.tsx
+  s_4af26cced585d7::t_c3d68c89b7dc66 15,21
+  s_4af26cced585d7::t_70abd991501553 5-6,22-23,25,38,48-50,54,69
+packages/ui/src/components/label.tsx
+  s_4af26cced585d7::t_c3d68c89b7dc66 6,8-9
+apps/radio/src/components/radio/node/source-strip.tsx
+  s_4af26cced585d7::t_80d0af20cd7a69 147,174,187
+apps/radio/src/components/settings/mode-select.tsx
+  s_4af26cced585d7::t_8a15b20aa568a4 50-51,79,81,83-89,96,102,105-112
+apps/radio/src/components/settings/settings-form.tsx
+  s_4af26cced585d7::t_08d58c1a4abe3e 328-329,349,351
+packages/ui/src/components/checkbox.tsx
+  s_4af26cced585d7::t_c902c39916d092 4,8-13,15,17,21-22,25,30-31
+packages/ui/src/components/radio-group.tsx
+  s_4af26cced585d7::t_386ea9e03d1712 4-5,9,12-14,16,27-29,31,37-38,41,46-47
+packages/ui/src/components/separator.tsx
+  s_4af26cced585d7::t_49c339cf5eafc4 4,12-15,17-18,25
+packages/ui/src/components/switch.tsx
+  s_4af26cced585d7::t_062ee7050c53ea 4,7-12,14,16,20-21,24,26,30
+packages/ui/src/components/toggle.tsx
+  s_4af26cced585d7::t_d2a0914cd9a56e 4,9,35-37,39
+packages/ui/src/stories/checkbox.stories.tsx
+  s_4af26cced585d7::t_fddbba46c54174 20-21,34
+packages/ui/src/stories/radio-group.stories.tsx
+  s_4af26cced585d7::t_aed9a970021565 20
+packages/ui/src/stories/switch.stories.tsx
+  s_4af26cced585d7::t_4e7b474d776a51 20-23
+packages/ui/src/stories/toggle-group.stories.tsx
+  s_4af26cced585d7::t_c3f9f31971735b 9-13,15,25-27,30-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e604d192bffe43be6c6f100cc985ed8847418c0",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+apps/radio/scripts/check-node-chunk.ts
+  s_4af26cced585d7::t_ba021f3dd101b0 31
+apps/radio/src/components/radio/dj/deck/deck-loaded-content.tsx
+  s_4af26cced585d7::t_f88ff1e7eb8992 103
+apps/storybook/README.md
+  s_4af26cced585d7::t_2d30f4688b704e 64
+packages/ui/src/components/scroll-area.tsx
+  s_4af26cced585d7::t_abb988e7729f7a 24-26
+packages/ui/src/stories/scroll-area.stories.tsx
+  s_4af26cced585d7::t_1b0400f4e08f3c 40-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10e4eba3d94654cce7c2aebb0bf6b543bc9a6f63",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

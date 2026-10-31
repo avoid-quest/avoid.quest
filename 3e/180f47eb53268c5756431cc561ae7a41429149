@@ -1,0 +1,83 @@
+packages/ui/src/components/dropdown-menu.tsx
+  s_4af26cced585d7::t_d34090005f43a0 13-19,21-23,27-29,49-53,55-65,71-73,88-93,111-117,134-139,149-154,178-183,197-202,216,225-227,241-246,267-283
+  s_4af26cced585d7::t_e79a0df079daa1 1,5,20,24,30,35-36,41-43,46,48,66-67,74,82,87,107,109,122,124,127,133,146,148,155,159-160,162,165,173,177,194,196,228,236,240,253,259-262,264,266,284-285
+  s_4af26cced585d7::t_d9af986d8a7118 7-10,121
+apps/radio/src/components/radio/dj/external-search/search-input.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 183-202,257-261,285-289
+  s_4af26cced585d7::t_967af3286cb6a1 256,284
+apps/radio/src/components/settings/radio-from-url-tab.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 106-117
+apps/radio/src/components/radio/dj/deck/deck-header.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 65,78
+packages/ui/src/components/select.tsx
+  s_4af26cced585d7::t_d34090005f43a0 1,5,7-10,13-16,19-22,25-28,36,41-47,53-56,60-65,70-75,77,79-80,82-86,88-96,98-109,116,118-124,135,137-143,147-148,150,152-153,160,162-168,178,180-186,191,198,200-206,211
+apps/radio/src/components/radio/node/node-toolbar.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 115,129
+  s_4af26cced585d7::t_cda555cefc018c 8,134,140,146,153-154,162,170
+apps/radio/src/components/radio/node/track-content.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 129,136
+apps/radio/src/components/radio/node/audio-input-controls.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 149-152,154-156,211-219
+  s_4af26cced585d7::t_967af3286cb6a1 157,163
+packages/ui/src/stories/dialog.stories.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 35
+apps/radio/src/components/radio/dj/deck/deck-device-input-content.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 112-113,123-131
+  s_4af26cced585d7::t_5081fab240399f 111,174
+apps/radio/src/components/audio/midi-transform-editor.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 115-123
+packages/ui/src/stories/context-menu.stories.tsx
+  s_4af26cced585d7::t_d34090005f43a0 6,33-64
+apps/radio/src/components/feedback/app-feedback.tsx
+  s_4af26cced585d7::t_967af3286cb6a1 148
+  s_4af26cced585d7::t_3928a2aeded7b0 149-153,246-261
+apps/radio/src/components/audio/effect-params/param-select.tsx
+  s_4af26cced585d7::t_93cf09f6dba3d5 34-38,47
+  s_4af26cced585d7::t_3928a2aeded7b0 44-46,48-49
+  s_4af26cced585d7::t_2f4255c1615a47 1
+apps/radio/src/components/radio/node/module-frame.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 259-270,456-464
+apps/radio/src/components/radio/node/modulation-cables.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 98-106
+packages/ui/src/components/context-menu.tsx
+  s_4af26cced585d7::t_d34090005f43a0 13-19,46,71,75-81,88,102-118,134-150,167-172,190-196,217-222,246-251,265-270
+  s_4af26cced585d7::t_e79a0df079daa1 1,5,20,24,51-52,94-97,99,101,119-120,126-129,131,151,201,203,223,227-228,230,241,245
+  s_4af26cced585d7::t_06632b9a78e459 6-10,200,284
+apps/radio/src/components/radio/node/audio-input-content.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 270,277
+apps/radio/src/components/radio/node/connect-dialog.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 107-118,140-151
+apps/radio/src/components/settings/midi-settings.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 409-424
+  s_4af26cced585d7::t_967af3286cb6a1 425
+apps/radio/src/components/radio/node/output-device-content.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 192,199
+apps/radio/src/components/radio/radio-item-actions.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 129,138
+packages/ui/src/stories/select.stories.tsx
+  s_4af26cced585d7::t_d34090005f43a0 19
+  s_4af26cced585d7::t_7669889427e48f 68-90
+apps/radio/src/components/settings/audio-settings.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 200-216,291-307
+packages/ui/src/stories/dropdown-menu.stories.tsx
+  s_4af26cced585d7::t_d34090005f43a0 39-40,56
+  s_4af26cced585d7::t_e72ae8884143eb 1,5,11,50-55,57-101
+apps/radio/src/components/audio/midi-control-wrapper.tsx
+  s_4af26cced585d7::t_5c4e6b92a84d68 102,113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e180f47eb53268c5756431cc561ae7a41429149",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

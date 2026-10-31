@@ -1,0 +1,47 @@
+apps/radio/src/components/radio/radio-now-playing.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 449-462
+apps/radio/src/components/radio/browser-audio-form.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 48-62,66-67
+apps/radio/src/components/root/root-error-view.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 31-33,49-51
+apps/radio/src/components/settings/settings-button.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 30,83-96
+packages/ui/src/components/badge.tsx
+  s_4af26cced585d7::t_5b9615c3fdc35f 1-2,4,31,33-42
+packages/ui/package.json
+  s_4af26cced585d7::t_d9896e997abd96 20
+packages/ui/src/components/legal-page.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 11-12,14-25,43-48,52-57,60,81,84
+apps/radio/src/components/settings/settings-form.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 387-398
+packages/ui/src/stories/button.stories.tsx
+  s_4af26cced585d7::t_a065cf1e47bc6d 78
+  s_4af26cced585d7::t_4a9e3756222e1d 9-12
+  s_4af26cced585d7::t_5b9615c3fdc35f 50,54-56,77,79-80
+packages/ui/src/stories/github-icon.stories.tsx
+  s_4af26cced585d7::t_4a9e3756222e1d 15-20,22-32
+packages/ui/src/components/button.tsx
+  s_4af26cced585d7::t_5b9615c3fdc35f 1-2,4,18-19,44,46-55
+bun.lock
+  s_4af26cced585d7::t_4decaff203926a 185,370-373,558,560,562,564,2096-2097,2490-2497,2536-2537,2832-2833,2982-2985
+packages/ui/src/components/slot.tsx
+  s_4af26cced585d7::t_96aa062688b441 3-10
+packages/ui/src/stories/slot.stories.tsx
+  s_4af26cced585d7::t_21d5087c72151d 24-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3df099b116cfb5f2daba9ae84d56f32b7ff86079",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

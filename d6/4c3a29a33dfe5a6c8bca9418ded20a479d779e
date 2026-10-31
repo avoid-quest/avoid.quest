@@ -1,0 +1,20 @@
+apps/radio/src/components/radio/dj/deck/deck-transport.test.tsx
+  s_2a46bf06dce7b0::t_388a700e03a55a 1,4-5,15,20-21,24,31,40,45,54,58-64,68-71,75,83,95,106-107,112-113,117-119,125,127-128,135,152
+  s_2a46bf06dce7b0::t_7864c2e406fa64 10-14,35,149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d64c3a29a33dfe5a6c8bca9418ded20a479d779e",
+  "prompts": {},
+  "sessions": {
+    "s_2a46bf06dce7b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192a5-f584-7491-a8e4-12fefdf1826b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

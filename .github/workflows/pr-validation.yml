@@ -68,12 +68,12 @@ jobs:
 
       - name: Install Storybook test browser
         if: steps.changes.outputs.code == 'true'
-        working-directory: packages/ui
+        working-directory: apps/storybook
         run: bunx --no-install playwright install --with-deps chromium
 
       - name: Test stories in light and dark themes
         if: steps.changes.outputs.code == 'true'
-        run: bun run --filter @avoid.quest/ui test:stories
+        run: bun run --filter @avoid.quest/storybook test:stories
 
       - name: Build apps and shared consumers
         if: steps.changes.outputs.code == 'true'

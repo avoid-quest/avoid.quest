@@ -30,7 +30,7 @@ function DeviceSelect({ size }: { size?: "xs" | "sm" | "default" }) {
 
 const meta = {
   component: DeviceSelect,
-  title: "Primitives/Select",
+  title: "Components/Select",
 } satisfies Meta<typeof DeviceSelect>;
 
 export default meta;
@@ -48,7 +48,7 @@ export const Sizes: Story = {
   ),
 };
 
-export const OpensAndSelects: Story = {
+export const Selected: Story = {
   play: async ({ canvasElement }) => {
     const trigger = within(canvasElement).getByRole("combobox", {
       name: "Output device",

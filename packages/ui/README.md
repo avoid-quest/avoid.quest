@@ -4,9 +4,9 @@ Shared React UI component library for the main avoid.quest workspace.
 
 ## Features
 
-- **Components**: button, card, input, textarea, select, dialog, dropdown, tabs, carousel, accordion, avatar, badge, skeleton, tooltip, slider, switch, separator, popover, and more.
+- **Components**: forms, layout, navigation, overlays, and feedback primitives, each with a component entry in Storybook.
 - **Theme**: dark/light mode via `next-themes`, CSS variables, and OKLCH color space.
-- **Custom components**: avoid logo, site logo, mode toggle, rotary knob, play/pause button, user avatar, and changelog ("What's new" popover with an unread dot).
+- **Custom components**: avoid logo, GitHub icon, rotary knob, play/pause button, legal page, and changelog ("What's new" popover with an unread dot).
 - **Utilities**: `cn()` for Tailwind class merging.
 - **Assets**: favicons and icons exported from the package.
 
@@ -38,27 +38,33 @@ component styling and Tabler icons belong to that migration.
 bun run ui add <component-name>
 ```
 
-## Story tests
+## Storybook
 
-From the repository root, run `bun run --filter @avoid.quest/ui test:stories`.
-This runs every story and its interaction tests in headless Chromium twice:
-`storybook-light` and `storybook-dark`. Each project pins `initialGlobals.theme`
-and loads `.storybook/vitest.setup.ts`, which applies the preview stylesheet,
-theme decorators, and accessibility addon hooks. The preview's `a11y.test: "error"`
-makes axe violations fail the run in either theme.
+The shared catalog lives in [`apps/storybook`](../../apps/storybook/README.md),
+which owns the Storybook config, its dependencies and the story tests. This
+package keeps only its story sources. All 38 component modules have a matching
+`src/stories/<component>.stories.tsx`, listed flat and alphabetically under
+`Components/<ComponentName>`; `Foundations/Theme` covers the theme itself.
 
-PR validation installs Chromium and runs this same command after the workspace
-unit tests, so interaction and accessibility failures in either theme block CI.
+Each entry has generated Autodocs. Name a story `Default` for the normal
+baseline, and name others after a specific state or variant (`Disabled`,
+`Vertical`, `OpenedFromMenu`). Put interaction checks in `play` functions.
+Toast stories dismiss their notifications on cleanup, and changelog stories
+restore their own storage key.
+
+`storybook` and `@storybook/react-vite` stay dev dependencies here, through the
+root catalog, so this package typechecks its stories on its own. The package
+never imports `apps/storybook` or `apps/radio`, and nothing exports a story.
 
 `Foundations/Theme` checks that the theme global, next-themes provider, document
 class, preset background, loaded font, and accessibility policy are applied during
-these tests. Its State Colours story shows all four semantic states and their
+story tests. Its State Colours story shows all four semantic states and their
 foreground pairs in each theme.
 
-`Primitives/Feedback/Cancelable Loading` checks the "Cancel Cashmere Radio"
+`Components/PlayPauseButton/Cancelable Loading` checks the "Cancel Cashmere Radio"
 accessible name, keyboard focus, and clicking to return to the play state.
 
 ## Connections
 
-- Used by **apps/web** for branding, buttons, and theme controls.
+- Used by **apps/web** for branding, buttons, and the legal page.
 - Used by **apps/radio** for forms, dialogs, sliders, and settings UI.

@@ -1,4 +1,3 @@
-import { Toaster } from "@avoid.quest/ui/components/sonner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HeadContent, Scripts } from "@tanstack/react-router";
@@ -7,7 +6,7 @@ import { ClientOnly } from "@/components/client-only";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SWRegister } from "@/components/pwa/sw-register";
-import { Header } from "@/components/theme/header";
+import { AppFrame } from "@/components/root/app-frame";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { createRootQueryClient } from "@/lib/root/root-query-client";
 
@@ -69,13 +68,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
           >
             <SWRegister />
             <InstallPrompt />
-            <div className="relative flex h-dvh flex-col bg-background">
-              <Header />
-              <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden pt-12">
-                {children}
-              </main>
-              <Toaster />
-            </div>
+            <AppFrame>{children}</AppFrame>
           </ThemeProvider>
         </QueryClientProvider>
         <Scripts />

@@ -1,0 +1,25 @@
+apps/radio/src/components/changelog/whats-new.tsx
+  s_4af26cced585d7::t_727154e47ceae7 108
+apps/radio/src/components/root/toast-layers.test.tsx
+  s_4af26cced585d7::t_8ce6457d41e212 83
+packages/ui/src/components/changelog.test.tsx
+  s_4af26cced585d7::t_7b89222212d545 54,66
+packages/ui/src/components/changelog.tsx
+  s_4af26cced585d7::t_e3f983746b25f1 94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1cad502ae506b6432d73cae4a83072fd27a63d7",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+apps/radio/src/components/radio/dj/deck/deck-device-input-content.tsx
+  s_4af26cced585d7::t_058a5e061937d7 169
+apps/radio/src/components/radio/dj/deck/deck-loaded-content.tsx
+  s_4af26cced585d7::t_18c1aa6473bd5f 72,107
+apps/radio/src/components/settings/audio-settings.tsx
+  s_4af26cced585d7::t_99958f5f0d7c42 326
+apps/radio/src/components/settings/settings-form.tsx
+  s_4af26cced585d7::t_d720d3e7a83796 184
+packages/ui/src/components/accordion.tsx
+  s_4af26cced585d7::t_fa8b8bdc3fc46d 4,8-9,36,56
+packages/ui/src/components/collapsible.tsx
+  s_4af26cced585d7::t_89210af6029762 4-6,25
+packages/ui/src/components/tabs.tsx
+  s_4af26cced585d7::t_65679a1c412a6e 4-5,8-9,23,41
+packages/ui/src/stories/accordion.stories.tsx
+  s_4af26cced585d7::t_c4fab417d17051 8,11,20-33
+packages/ui/src/stories/collapsible.stories.tsx
+  s_4af26cced585d7::t_b12debdb0e8109 32-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10857ca11bfd8f15d392303254756210f38bb4aa",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+apps/radio/src/components/radio/dj/shared/peak-meter.tsx
+  s_675cbcd8905ad4::t_e48cb4bf6d10e2 33,35,38,40,62,122,124-125,141
+  s_675cbcd8905ad4::t_180593db27ff02 123
+apps/radio/src/components/radio/node/docs/design-history.md
+  s_675cbcd8905ad4::t_60d8ab00a87933 548-551
+apps/radio/src/styles/node-mode.css
+  s_675cbcd8905ad4::t_12c9ef219a237c 3-5,13,16,38,57,61,65-66,86,110,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "102749c9339c18936312b143e26426bfb482a670",
+  "prompts": {},
+  "sessions": {
+    "s_675cbcd8905ad4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a19339-f9b3-7a40-9ea7-ba752db0406a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

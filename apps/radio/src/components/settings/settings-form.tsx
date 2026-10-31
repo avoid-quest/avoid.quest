@@ -17,6 +17,7 @@ import {
   FieldTitle,
 } from "@avoid.quest/ui/components/field";
 import GitHubIcon from "@avoid.quest/ui/components/github-icon";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import {
   Tabs,
@@ -43,7 +44,6 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";

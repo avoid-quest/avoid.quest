@@ -5,8 +5,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Suspense, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { isMediaVolumeLocked } from "@/lib/audio/playback/media-element-volume-control";

@@ -12,8 +12,8 @@
  * Flow imports, so it is testable without them.
  */
 
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { type RefObject, useEffect } from "react";
-import { toast } from "sonner";
 import {
   duplicateNodes,
   insertNodeOnEdge,

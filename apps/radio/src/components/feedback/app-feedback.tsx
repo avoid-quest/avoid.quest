@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
 import {
   Tooltip,
@@ -36,7 +37,6 @@ import type {
 } from "git-feedback/react";
 import { MessageCircleMore } from "lucide-react";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import {
   type FEEDBACK_CATEGORIES,

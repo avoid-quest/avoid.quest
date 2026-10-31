@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import LZString from "lz-string";
-import { toast } from "sonner";
 import { AudioManager, type Radio } from "@/lib/audio";
 import {
   createLocalNamModelId,

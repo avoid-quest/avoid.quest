@@ -13,9 +13,9 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@avoid.quest/ui/components/drawer";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { LayoutTemplateIcon } from "lucide-react";
 import { useEffect } from "react";
-import { toast } from "sonner";
 import {
   type PickerItem,
   PickerList,

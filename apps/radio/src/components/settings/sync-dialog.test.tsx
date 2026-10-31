@@ -1,4 +1,5 @@
 import { afterAll, afterEach, expect, mock, spyOn, test } from "bun:test";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import {
   act,
   cleanup,
@@ -8,7 +9,6 @@ import {
 } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
-import { toast } from "sonner";
 import type { SyncChanges } from "@/lib/collections/radios";
 // biome-ignore lint/performance/noNamespaceImport: spy on the dismissal write and restore it.
 import * as radios from "@/lib/collections/radios";

@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import type { Radio } from "@/lib/audio";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
 import { notifyStationSave } from "@/lib/stations/station-save-notification";

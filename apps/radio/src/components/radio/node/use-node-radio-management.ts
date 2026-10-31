@@ -1,6 +1,6 @@
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { useStore } from "@tanstack/react-store";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";

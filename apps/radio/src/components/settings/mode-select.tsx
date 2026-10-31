@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
   ToggleGroup,
@@ -14,7 +15,6 @@ import {
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { DjWorkflowLoadError } from "@/lib/dj-workflow-load-error";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";

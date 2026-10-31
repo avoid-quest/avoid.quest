@@ -7,6 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
   CopyIcon,
@@ -14,7 +15,6 @@ import {
   MoreHorizontalIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { copyStreamUrl, openStationWebsite } from "../../radio-item-actions";
 

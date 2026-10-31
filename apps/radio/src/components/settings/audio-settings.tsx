@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import {
   ChevronDownIcon,
   ClockIcon,
@@ -32,7 +33,6 @@ import {
   Volume2Icon,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { toast } from "sonner";
 import { captureMobileAudioDiagnostic, useAudioDevices } from "@/lib/audio";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {

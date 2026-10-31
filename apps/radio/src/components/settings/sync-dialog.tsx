@@ -11,9 +11,9 @@ import {
 } from "@avoid.quest/ui/components/dialog";
 import { Label } from "@avoid.quest/ui/components/label";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import {
   addDismissedRadios,
   getAdditionDependencies,

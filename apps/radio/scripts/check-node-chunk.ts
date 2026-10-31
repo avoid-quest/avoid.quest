@@ -28,7 +28,7 @@ const LAZY_VENDORS = [
   // Node mode's resizable shell.
   { markers: ['"data-separator"'], name: "react-resizable-panels" },
   // Node mode's branch edges and the What's new popover.
-  { markers: ["PopoverTrigger"], name: "Radix Popover" },
+  { markers: ["PopoverTrigger"], name: "Base UI Popover" },
   // Audio effects load the Studio runtime on demand.
   { markers: ["WasmEngine.ensureReady must succeed"], name: "openDAW Studio" },
 ];

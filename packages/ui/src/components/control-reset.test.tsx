@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { useState } from "react";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
   url: "https://radio.test",
 });
 
@@ -21,7 +22,10 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+  requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
   document: dom.window.document,
+  Element: dom.window.Element,
   HTMLElement: dom.window.HTMLElement,
   HTMLFormElement: dom.window.HTMLFormElement,
   navigator: dom.window.navigator,
@@ -35,13 +39,38 @@ for (const [key, value] of Object.entries({
   });
 }
 
+// Base UI measures the separate Control and thumb during pointer gestures.
+Object.defineProperty(
+  dom.window.HTMLElement.prototype,
+  "getBoundingClientRect",
+  {
+    configurable: true,
+    value() {
+      const size = this.dataset.slot === "slider-thumb" ? 16 : 100;
+      return {
+        bottom: size,
+        height: size,
+        left: 0,
+        right: size,
+        top: 0,
+        width: size,
+        x: 0,
+        y: 0,
+        toJSON() {
+          return {};
+        },
+      };
+    },
+  }
+);
+
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
   value: true,
   writable: true,
 });
 
-// Radix picks its layout effect when it loads, so it loads after the DOM.
+// Base UI picks its layout effect when it loads, so it loads after the DOM.
 const { cleanup, fireEvent, render } = await import("@testing-library/react");
 const { Knob } = await import("@avoid.quest/ui/components/knob");
 const { Slider } = await import("@avoid.quest/ui/components/slider");
@@ -75,7 +104,7 @@ function renderControl(kind: "knob" | "slider", disabled = false) {
         max={1}
         min={0}
         onValueChange={([next]) => handleChange(next ?? 0)}
-        onValueCommit={onCommit}
+        onValueCommitted={onCommit}
         step={0.01}
         value={[value]}
       />
@@ -93,15 +122,18 @@ function renderControl(kind: "knob" | "slider", disabled = false) {
   const setPointerCapture = mock((id: number) => {
     captured = id;
   });
-  Object.defineProperties(control, {
-    hasPointerCapture: { value: (id: number) => captured === id },
-    releasePointerCapture: {
-      value: () => {
-        captured = null;
+  Object.defineProperties(
+    root?.querySelector('[data-slot="slider-control"]') ?? control,
+    {
+      hasPointerCapture: { value: (id: number) => captured === id },
+      releasePointerCapture: {
+        value: () => {
+          captured = null;
+        },
       },
-    },
-    setPointerCapture: { value: setPointerCapture },
-  });
+      setPointerCapture: { value: setPointerCapture },
+    }
+  );
   return { control, onChange, onCommit, setPointerCapture };
 }
 
@@ -137,7 +169,10 @@ describe.each(["knob", "slider"] as const)("%s reset gestures", (kind) => {
     expect(control.getAttribute("aria-valuenow")).toBe("0.5");
     expect(onChange).toHaveBeenCalledWith(0.5);
     if (kind === "slider") {
-      expect(onCommit).toHaveBeenCalledWith([0.5]);
+      expect(onCommit).toHaveBeenCalledWith(
+        [0.5],
+        expect.objectContaining({ reason: "none" })
+      );
     }
   });
 
@@ -273,7 +308,7 @@ test("Slider uses an explicit reset target and supports uncontrolled resets", ()
       defaultValue={[30]}
       max={100}
       min={0}
-      onValueCommit={onCommit}
+      onValueCommitted={onCommit}
       resetValue={[0]}
     />
   );
@@ -282,7 +317,10 @@ test("Slider uses an explicit reset target and supports uncontrolled resets", ()
   expect(control.getAttribute("aria-valuenow")).toBe("31");
   fireEvent.doubleClick(control);
   expect(control.getAttribute("aria-valuenow")).toBe("0");
-  expect(onCommit).toHaveBeenLastCalledWith([0]);
+  expect(onCommit).toHaveBeenLastCalledWith(
+    [0],
+    expect.objectContaining({ reason: "none" })
+  );
 });
 
 test.each([
@@ -297,7 +335,7 @@ test.each([
         aria-label="Range"
         max={100}
         min={0}
-        minStepsBetweenThumbs={5}
+        minStepsBetweenValues={5}
         onValueChange={(next) => {
           changes.push(next);
           setValue(next);
@@ -343,4 +381,89 @@ test("Slider resets only the thumb a gesture lands on", () => {
   expect(changes.at(-1)).toEqual([20, 100]);
   pointer(low, "pointerdown", { ctrlKey: true });
   expect(changes.at(-1)).toEqual([0, 100]);
+});
+
+test("Slider cancellation keeps reset and wheel values unchanged", () => {
+  const onCommit = mock((_values: number[]) => undefined);
+  const view = render(
+    <Slider
+      aria-label="Cancelable"
+      defaultValue={[0.7]}
+      max={1}
+      onValueChange={(_next, details) => details.cancel()}
+      onValueCommitted={onCommit}
+      resetValue={[0.5]}
+      step={0.01}
+    />
+  );
+  const control = view.getByRole("slider", { name: "Cancelable" });
+  fireEvent.doubleClick(control);
+  fireEvent.wheel(control, { deltaY: -1 });
+  fireEvent.keyDown(control, { key: "ArrowRight" });
+  expect(control.getAttribute("aria-valuenow")).toBe("0.7");
+  expect(onCommit).not.toHaveBeenCalled();
+});
+
+test("Slider double-tap reset survives compatibility touch events", () => {
+  const { control, onCommit } = renderControl("slider");
+  const finger = { clientX: 80, clientY: 50, identifier: 1, target: control };
+  function touch(type: "touchstart" | "touchend") {
+    fireEvent(
+      control,
+      new dom.window.TouchEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        changedTouches: [finger],
+        touches: type === "touchend" ? [] : [finger],
+      })
+    );
+  }
+  pointer(control, "pointerdown", {
+    pointerType: "touch",
+    clientX: 80,
+    clientY: 50,
+    time: 100,
+  });
+  touch("touchstart");
+  pointer(control, "pointerup", {
+    pointerType: "touch",
+    clientX: 80,
+    clientY: 50,
+    time: 120,
+  });
+  touch("touchend");
+  pointer(control, "pointerdown", {
+    pointerType: "touch",
+    clientX: 80,
+    clientY: 50,
+    time: 200,
+  });
+  expect(control.getAttribute("aria-valuenow")).toBe("0.5");
+  touch("touchstart");
+  pointer(control, "pointerup", {
+    pointerType: "touch",
+    clientX: 80,
+    clientY: 50,
+    time: 220,
+  });
+  touch("touchend");
+  expect(control.getAttribute("aria-valuenow")).toBe("0.5");
+  expect(onCommit.mock.calls.at(-1)?.[0]).toEqual([0.5]);
+});
+
+test("Knob treats its change callback's return value as void", () => {
+  const onChange = mock((_value: number) => false);
+  const view = render(
+    <Knob
+      label="Void callback"
+      max={1}
+      min={0}
+      onChange={onChange}
+      value={0.7}
+    />
+  );
+  const control = view.getByRole("slider", { name: "Void callback" });
+  fireEvent.wheel(control, { deltaY: -1 });
+  expect(onChange).toHaveBeenCalledWith(0.71);
+  expect(control.getAttribute("aria-valuenow")).toBe("0.71");
 });

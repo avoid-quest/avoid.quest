@@ -100,7 +100,7 @@ export function LoadedDeckContent({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <DeckTransport nowPlaying={metadata} />
-      <ScrollArea className="[&_[data-radix-scroll-area-viewport]>div]:block! min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-content]]:min-w-0!">
         <Accordion
           className="w-full min-w-0 space-y-1"
           defaultValue={["effects"]}

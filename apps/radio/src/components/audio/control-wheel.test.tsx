@@ -100,7 +100,10 @@ describe("fine control wheel changes", () => {
       />
     );
     const view = render(control(1));
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
 
     expect(wheel(knob, -120).defaultPrevented).toBe(true);
     wheel(knob, -120);
@@ -120,7 +123,7 @@ describe("fine control wheel changes", () => {
         max={10}
         min={0}
         onValueChange={(next) => changes.push(next)}
-        onValueCommit={(next) => commits.push(next)}
+        onValueCommitted={(next) => commits.push(next)}
         step={1}
         value={[5]}
       />
@@ -134,7 +137,7 @@ describe("fine control wheel changes", () => {
   });
 
   test("uncontrolled slider displays repeated fine wheel changes", () => {
-    const ref = createRef<HTMLSpanElement>();
+    const ref = createRef<HTMLDivElement>();
     const view = render(
       <Slider defaultValue={[0.5]} max={1} min={0} ref={ref} step={0.1} />
     );
@@ -143,9 +146,10 @@ describe("fine control wheel changes", () => {
     wheel(slider, -1);
     wheel(slider, -1);
     expect(
-      requireElement(view.container, '[role="slider"]').getAttribute(
-        "aria-valuenow"
-      )
+      requireElement(
+        view.container,
+        ':is([role="slider"], input[type="range"])'
+      ).getAttribute("aria-valuenow")
     ).toBe("0.52");
   });
 
@@ -161,7 +165,10 @@ describe("fine control wheel changes", () => {
       />
     );
     const view = render(renderKnob());
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     wheel(knob, -1);
     expect(changes).toEqual([1]);
     expect(wheel(knob, -1).defaultPrevented).toBe(false);
@@ -177,7 +184,7 @@ describe("fine control wheel changes", () => {
       <Slider
         max={16}
         min={1}
-        minStepsBetweenThumbs={1}
+        minStepsBetweenValues={1}
         onValueChange={(next) => changes.push(next)}
         step={1}
         value={[8, 10]}
@@ -212,7 +219,13 @@ describe("fine control wheel changes", () => {
         wheelStep={1}
       />
     );
-    wheel(requireElement(view.container, '[role="slider"]'), -1);
+    wheel(
+      requireElement(
+        view.container,
+        ':is([role="slider"], input[type="range"])'
+      ),
+      -1
+    );
     expect(changes).toEqual([9]);
   });
 
@@ -227,7 +240,10 @@ describe("fine control wheel changes", () => {
         value={0.5}
       />
     );
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     wheel(knob, -1);
     act(() =>
       knob.dispatchEvent(
@@ -251,7 +267,10 @@ describe("fine control wheel changes", () => {
         value={[1]}
       />
     );
-    const thumb = requireElement(view.container, '[role="slider"]');
+    const thumb = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     wheel(thumb, -1);
     expect(changes).toEqual([[1.01]]);
   });
@@ -272,7 +291,10 @@ describe("fine control wheel changes", () => {
       );
     }
     const view = render(<Fader />);
-    const thumb = requireElement(view.container, '[role="slider"]');
+    const thumb = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     pressKey(thumb, "ArrowUp");
     pressKey(thumb, "ArrowUp");
     expect(thumb.getAttribute("aria-valuenow")).toBe("1.02");
@@ -297,7 +319,10 @@ describe("fine control wheel changes", () => {
       );
     }
     const view = render(<Crossfader />);
-    const thumb = requireElement(view.container, '[role="slider"]');
+    const thumb = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     pressKey(thumb, "ArrowRight");
     pressKey(thumb, "ArrowRight");
     expect(changes).toEqual([0.51, 0.52]);
@@ -331,7 +356,10 @@ describe("fine control wheel changes", () => {
         value={0}
       />
     );
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     wheel(knob, -1);
     wheel(knob, -1);
     wheel(knob, -1);
@@ -359,7 +387,10 @@ describe("immediate control input with throttled audio updates", () => {
       );
     }
     const view = render(<Harness />);
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     act(() => {
       for (let index = 0; index < 5; index += 1) {
         knob.dispatchEvent(
@@ -393,7 +424,10 @@ describe("immediate control input with throttled audio updates", () => {
       />
     );
     const view = render(control(0));
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     pressKey(knob, "ArrowUp");
     pressKey(knob, "ArrowRight");
     pressKey(knob, "ArrowUp");
@@ -425,7 +459,10 @@ describe("immediate control input with throttled audio updates", () => {
       />
     );
     const view = render(control(0.5));
-    const knob = requireElement(view.container, '[role="slider"]');
+    const knob = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     Object.defineProperty(knob, "setPointerCapture", {
       value: () => undefined,
     });
@@ -475,7 +512,10 @@ describe("immediate control input with throttled audio updates", () => {
         />
       );
       const view = render(control(0.51));
-      const knob = requireElement(view.container, '[role="slider"]');
+      const knob = requireElement(
+        view.container,
+        ':is([role="slider"], input[type="range"])'
+      );
       wheel(knob, -1);
       wheel(knob, 1); // Back to 0.51, so the parent skips both renders.
       act(() => {
@@ -503,7 +543,10 @@ describe("immediate control input with throttled audio updates", () => {
       />
     );
     const view = render(control(0.5));
-    const thumb = requireElement(view.container, '[role="slider"]');
+    const thumb = requireElement(
+      view.container,
+      ':is([role="slider"], input[type="range"])'
+    );
     pressKey(thumb, "ArrowUp");
     pressKey(thumb, "ArrowUp");
     pressKey(thumb, "ArrowUp");

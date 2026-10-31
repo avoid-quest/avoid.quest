@@ -4,18 +4,17 @@
 import { useControlReset } from "@avoid.quest/ui/hooks/use-control-reset";
 import { useFineWheel } from "@avoid.quest/ui/hooks/use-fine-wheel";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Range, Root, Thumb, Track } from "@radix-ui/react-slider";
+import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import {
-  type ComponentProps,
   type CSSProperties,
-  type KeyboardEvent,
   type SyntheticEvent,
   useImperativeHandle,
   useRef,
   useState,
 } from "react";
 
-type SliderProps = ComponentProps<typeof Root> & {
+type SliderProps = Omit<SliderPrimitive.Root.Props<number[]>, "className"> & {
+  className?: string;
   /** "fader" draws a thicker track with a bar thumb, for mixer-style level controls. */
   variant?: "default" | "fader";
   /** "lg" makes a fader cap bigger, for the one control you grab while performing. */
@@ -125,8 +124,31 @@ function getThumbShapeClass(
   return `${dims} rounded-sm ${grip} after:inset-y-1.5 after:left-1/2 after:w-px after:-translate-x-1/2`;
 }
 
+/** Custom wheel/reset gestures use Base UI's neutral reason and cancellation contract. */
+function createGestureDetails(
+  event: Event
+): SliderPrimitive.Root.ChangeEventDetails {
+  const details: SliderPrimitive.Root.ChangeEventDetails = {
+    activeThumbIndex: getGestureThumbIndex(event) ?? 0,
+    allowPropagation: () => {
+      details.isPropagationAllowed = true;
+    },
+    cancel: () => {
+      details.isCanceled = true;
+    },
+    event,
+    isCanceled: false,
+    isPropagationAllowed: false,
+    reason: "none",
+    trigger: undefined,
+  };
+  return details;
+}
+
 /** The thumb a reset gesture landed on, or null for the track. */
-function getGestureThumbIndex(event: SyntheticEvent): number | null {
+function getGestureThumbIndex(event: {
+  target: EventTarget | null;
+}): number | null {
   const { target } = event;
   const thumb =
     target && "closest" in target
@@ -159,10 +181,10 @@ function Slider({
   max = 100,
   step = 1,
   wheelStep,
-  minStepsBetweenThumbs = 0,
+  minStepsBetweenValues = 0,
   ref: forwardedRef,
   onValueChange,
-  onValueCommit,
+  onValueCommitted,
   disabled = false,
   orientation = "horizontal",
   rangeOriginValue,
@@ -180,13 +202,31 @@ function Slider({
     getSliderValues({ defaultValue, min, value })
   );
   const values = value ?? internalValue;
+  const changeDetails = useRef<
+    SliderPrimitive.Root.ChangeEventDetails | undefined
+  >(undefined);
   const resetValues = resetValue ?? defaultValue;
+  const suppressTouchStart = useRef<boolean>(false);
 
-  function applyValueChange(next: number[]) {
+  function applyValueChange(next: number[], event?: Event) {
+    const details =
+      changeDetails.current ??
+      createGestureDetails(event ?? new Event("change"));
+    onValueChange?.(next, details);
+    if (details.isCanceled) {
+      return false;
+    }
     if (value === undefined) {
       setInternalValue(next);
     }
-    onValueChange?.(next);
+    return true;
+  }
+
+  function commitGesture(next: number[], event?: Event) {
+    onValueCommitted?.(next, {
+      reason: "none",
+      event: event ?? new Event("change"),
+    });
   }
 
   const {
@@ -194,40 +234,29 @@ function Slider({
     elementRef,
     getRequestedValues,
     inputValues,
-  } = useFineWheel<HTMLSpanElement>({
+  } = useFineWheel<HTMLDivElement>({
     disabled,
     max,
     min,
-    minDistance: minStepsBetweenThumbs * step,
+    minDistance: minStepsBetweenValues * step,
     onChange: applyValueChange,
-    onCommit: onValueCommit,
+    onCommit: commitGesture,
     values,
     wheelStep,
   });
   useImperativeHandle(
     forwardedRef,
-    () => elementRef.current as HTMLSpanElement,
+    () => elementRef.current as HTMLDivElement,
     [elementRef]
   );
 
-  // Radix recomputes each key press from the controlled value, so snapping a
-  // keyboard step back to the reset target would leave the thumb stuck there.
-  const keyboardChange = useRef(false);
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    props.onKeyDown?.(event);
-    if (event.defaultPrevented) {
-      return;
-    }
-    keyboardChange.current = true;
-    // Radix handles this key synchronously after this handler returns.
-    queueMicrotask(() => {
-      keyboardChange.current = false;
-    });
-  }
-
-  function handleSliderValueChange(next: number[]) {
+  function handleSliderValueChange(
+    next: number[],
+    details: SliderPrimitive.Root.ChangeEventDetails
+  ) {
+    changeDetails.current = details;
     handleValueChange(
-      snapToDefault && resetValues && !keyboardChange.current
+      snapToDefault && resetValues && details.reason !== "keyboard"
         ? next.map((entry, index) => {
             const target = resetValues[index];
             return target !== undefined &&
@@ -235,8 +264,10 @@ function Slider({
               ? target
               : entry;
           })
-        : next
+        : next,
+      details.event
     );
+    changeDetails.current = undefined;
   }
 
   const reset = useControlReset(
@@ -248,7 +279,7 @@ function Slider({
           // its neighbours as a drag would; the track resets all.
           const thumbIndex = getGestureThumbIndex(event);
           const current = getRequestedValues();
-          const distance = minStepsBetweenThumbs * step;
+          const distance = minStepsBetweenValues * step;
           const next =
             thumbIndex === null
               ? resetValues.map(clamp)
@@ -263,8 +294,9 @@ function Slider({
                   const target = resetValues[index] ?? resetValues[0] ?? entry;
                   return clamp(Math.min(upper, Math.max(lower, target)));
                 });
-          handleValueChange(next);
-          onValueCommit?.(next);
+          if (handleValueChange(next, event.nativeEvent)) {
+            commitGesture(next, event.nativeEvent);
+          }
         }
   );
 
@@ -288,7 +320,7 @@ function Slider({
   });
 
   return (
-    <Root
+    <SliderPrimitive.Root
       className={cn(
         "relative flex touch-none select-none items-center data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col data-[disabled]:opacity-50 [@media(pointer:coarse)]:data-[orientation=horizontal]:min-h-11 [@media(pointer:coarse)]:data-[orientation=vertical]:min-w-11",
         className
@@ -299,17 +331,19 @@ function Slider({
       disabled={disabled}
       max={max}
       min={min}
-      minStepsBetweenThumbs={minStepsBetweenThumbs}
+      minStepsBetweenValues={minStepsBetweenValues}
       onValueChange={handleSliderValueChange}
-      onValueCommit={onValueCommit}
+      onValueCommitted={(_next, details) => {
+        onValueCommitted?.(getRequestedValues(), details);
+      }}
       orientation={orientation}
       ref={elementRef}
       step={step}
+      thumbCollisionBehavior="none"
       value={inputValues}
       {...props}
       onContextMenu={composeHandlers(props.onContextMenu, reset.onContextMenu)}
       onDoubleClick={composeHandlers(props.onDoubleClick, reset.onDoubleClick)}
-      onKeyDown={handleKeyDown}
       onLostPointerCapture={composeHandlers(
         props.onLostPointerCapture,
         reset.onPointerCancel
@@ -318,60 +352,79 @@ function Slider({
         props.onPointerCancel,
         reset.onPointerCancel
       )}
-      onPointerDown={composeHandlers(props.onPointerDown, reset.onPointerDown)}
+      onPointerDownCapture={(event) => {
+        composeHandlers(props.onPointerDownCapture, reset.onPointerDown)(event);
+        // A consumed pointer reset must also consume the compatibility touch
+        // event, otherwise Base UI starts a second drag at the finger position.
+        suppressTouchStart.current =
+          event.pointerType === "touch" && event.defaultPrevented;
+      }}
       onPointerMove={composeHandlers(props.onPointerMove, reset.onPointerMove)}
       onPointerUp={composeHandlers(props.onPointerUp, reset.onPointerUp)}
+      onTouchStartCapture={(event) => {
+        props.onTouchStartCapture?.(event);
+        if (suppressTouchStart.current) {
+          suppressTouchStart.current = false;
+          event.stopPropagation();
+        }
+      }}
     >
-      <Track
-        className={cn(
-          "relative grow overflow-hidden rounded-full bg-muted data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full",
-          isFader && size === "lg" && "data-[orientation=horizontal]:h-3",
-          isFader && size !== "lg" && "data-[orientation=horizontal]:h-2",
-          isFader && "data-[orientation=vertical]:w-2",
-          !isFader &&
-            "data-[orientation=horizontal]:h-1.5 data-[orientation=vertical]:w-1.5"
-        )}
-        data-slot="slider-track"
+      <SliderPrimitive.Control
+        className="relative flex min-h-[inherit] min-w-[inherit] grow items-center data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full data-[orientation=vertical]:flex-col"
+        data-slot="slider-control"
       >
-        {rangeStyle ? (
-          <div
-            className="absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
-            data-orientation={orientation}
-            data-slot="slider-default-origin-range"
-            style={rangeStyle}
-          />
-        ) : (
-          <Range
-            className={cn(
-              "absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
-            )}
-            data-slot="slider-range"
-          />
-        )}
-        {markerStyle && (
-          <span
-            className="pointer-events-none absolute z-10 bg-foreground/60 data-[orientation=horizontal]:h-full data-[orientation=vertical]:h-px data-[orientation=horizontal]:w-px data-[orientation=vertical]:w-full"
-            data-orientation={orientation}
-            data-slot="slider-default-marker"
-            style={markerStyle}
-          />
-        )}
-      </Track>
-      {Array.from({ length: inputValues.length }, (_, index) => (
-        <Thumb
-          aria-label={ariaLabel}
-          aria-valuetext={ariaValueText}
+        <SliderPrimitive.Track
           className={cn(
-            "block shrink-0 border border-primary bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:outline-hidden focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 dark:bg-primary",
-            thumbShapeClass
+            "relative grow overflow-hidden rounded-full bg-muted data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full",
+            isFader && size === "lg" && "data-[orientation=horizontal]:h-3",
+            isFader && size !== "lg" && "data-[orientation=horizontal]:h-2",
+            isFader && "data-[orientation=vertical]:w-2",
+            !isFader &&
+              "data-[orientation=horizontal]:h-1.5 data-[orientation=vertical]:w-1.5"
           )}
-          data-index={index}
-          data-slot="slider-thumb"
-          // biome-ignore lint/suspicious/noArrayIndexKey: shadcn
-          key={index}
-        />
-      ))}
-    </Root>
+          data-slot="slider-track"
+        >
+          {rangeStyle ? (
+            <div
+              className="absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
+              data-orientation={orientation}
+              data-slot="slider-default-origin-range"
+              style={rangeStyle}
+            />
+          ) : (
+            <SliderPrimitive.Indicator
+              className={cn(
+                "absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"
+              )}
+              data-slot="slider-range"
+            />
+          )}
+          {markerStyle && (
+            <span
+              className="pointer-events-none absolute z-10 bg-foreground/60 data-[orientation=horizontal]:h-full data-[orientation=vertical]:h-px data-[orientation=horizontal]:w-px data-[orientation=vertical]:w-full"
+              data-orientation={orientation}
+              data-slot="slider-default-marker"
+              style={markerStyle}
+            />
+          )}
+        </SliderPrimitive.Track>
+        {Array.from({ length: inputValues.length }, (_, index) => (
+          <SliderPrimitive.Thumb
+            aria-label={ariaLabel}
+            aria-valuetext={ariaValueText}
+            className={cn(
+              "block shrink-0 border border-primary bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 has-[:focus-visible]:outline-hidden has-[:focus-visible]:ring-4 data-disabled:pointer-events-none dark:bg-primary",
+              thumbShapeClass
+            )}
+            data-index={index}
+            data-slot="slider-thumb"
+            index={index}
+            // biome-ignore lint/suspicious/noArrayIndexKey: shadcn
+            key={index}
+          />
+        ))}
+      </SliderPrimitive.Control>
+    </SliderPrimitive.Root>
   );
 }
 

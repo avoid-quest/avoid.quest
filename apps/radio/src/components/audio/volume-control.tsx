@@ -67,7 +67,7 @@ export function VolumeControl({
           max={1}
           min={0}
           onValueChange={handleValueChange}
-          onValueCommit={onVolumeCommit}
+          onValueCommitted={onVolumeCommit}
           step={0.01}
           value={[isMuted ? 0 : volume]}
         />

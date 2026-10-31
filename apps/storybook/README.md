@@ -61,8 +61,7 @@ trees for Tailwind. Radio adds utilities only; it changes no shared base styles.
 
 `test:stories` runs every story and its `play` function in headless Chromium
 twice, as `storybook-light` and `storybook-dark`. The preview's
-`a11y.test: "error"` fails either run on an axe violation. The only exemption
-is the known Radix viewport rule on `Components/ScrollArea`; do not add more.
+`a11y.test: "error"` fails either run on an axe violation. There are no component-specific exemptions.
 
 Install the browser once with `bunx playwright install chromium` from this
 directory. PR validation installs it and runs the same command.

@@ -1,0 +1,39 @@
+packages/ui/src/stories/field.stories.tsx
+  s_4af26cced585d7::t_96999f11e70697 62-64
+  s_4af26cced585d7::t_0f599de9b4c6cb 54-57
+apps/radio/src/test-utils/browser-globals.ts
+  s_4af26cced585d7::t_fa51c95a4d9c8f 1-7,43,48-52
+  s_4af26cced585d7::t_74aee63f7180b8 12-42
+  s_4af26cced585d7::t_fb82c668667f2c 44-47
+  s_4af26cced585d7::t_4cff58aad29658 8-11
+apps/radio/src/components/settings/mode-select.test.tsx
+  s_4af26cced585d7::t_5a5b4fdfccc0fc 4,7,12,35-36,73,79,81,90
+apps/radio/src/components/settings/mode-load-recovery.test.tsx
+  s_4af26cced585d7::t_fb82c668667f2c 15,170-172,208-210
+  s_4af26cced585d7::t_fa51c95a4d9c8f 154
+  s_4af26cced585d7::t_524db4d6f0341e 4,11,40,126-128,142,165
+apps/radio/src/components/radio/node/device-nodes.test.tsx
+  s_4af26cced585d7::t_fb82c668667f2c 15
+  s_4af26cced585d7::t_524db4d6f0341e 37
+  s_4af26cced585d7::t_5a5b4fdfccc0fc 414
+apps/radio/src/components/settings/mode-select.tsx
+  s_4af26cced585d7::t_fff5fedc6387a2 51
+apps/radio/src/components/radio/dj/shared/animation-test-utils.ts
+  s_4af26cced585d7::t_bded2c46352071 4,42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "791939fe71154b7d4b964c103229d56deee9c539",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

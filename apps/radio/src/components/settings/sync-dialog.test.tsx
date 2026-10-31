@@ -1,24 +1,21 @@
 import { afterAll, afterEach, expect, mock, spyOn, test } from "bun:test";
 import { toast } from "@avoid.quest/ui/components/sonner";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { SyncChanges } from "@/lib/collections/radios";
 // biome-ignore lint/performance/noNamespaceImport: spy on the dismissal write and restore it.
 import * as radios from "@/lib/collections/radios";
 import { applyRootSyncChanges } from "@/lib/root/root-bootstrap";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
   url: "https://radio.test",
 });
 
 const globals = {
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
@@ -51,6 +48,10 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   writable: true,
 });
 
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
+
 const { SyncDialog } = await import("./sync-dialog");
 const OTHER_STATION = /Other station/;
 const changes: SyncChanges = {
@@ -61,7 +62,7 @@ const changes: SyncChanges = {
 
 afterEach(async () => {
   cleanup();
-  // Flush Radix's deferred focus cleanup before restoring this DOM's globals.
+  // Flush the dialog's deferred focus cleanup before restoring this DOM's globals.
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   mock.restore();
 });

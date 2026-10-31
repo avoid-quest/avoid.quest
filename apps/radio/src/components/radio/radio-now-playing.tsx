@@ -107,17 +107,19 @@ export function RadioNowPlayingDetailsButton({
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          aria-label={`Details for ${identity.title}`}
-          className={cn("size-7 text-muted-foreground", className)}
-          size="icon"
-          title={`View details for ${identity.title}`}
-          variant="ghost"
-        >
-          <InfoIcon aria-hidden="true" className="size-3.5" />
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button
+            aria-label={`Details for ${identity.title}`}
+            className={cn("size-7 text-muted-foreground", className)}
+            size="icon"
+            title={`View details for ${identity.title}`}
+            variant="ghost"
+          >
+            <InfoIcon aria-hidden="true" className="size-3.5" />
+          </Button>
+        }
+      />
       <NowPlayingDetails
         identity={identity}
         metadata={metadata}
@@ -195,27 +197,29 @@ export function RadioNowPlaying({
           )}
         >
           <div className="relative shrink-0">
-            <DialogTrigger asChild>
-              <button
-                aria-label={`Details for ${title}`}
-                className={cn(
-                  "block shrink-0 cursor-pointer rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  featured && "rounded-xl lg:rounded-2xl"
-                )}
-                title={`View details for ${title}`}
-                type="button"
-              >
-                <Artwork
-                  className={
-                    featured
-                      ? "size-20 rounded-xl sm:size-28 lg:size-[clamp(15rem,36vh,22rem)] lg:rounded-2xl"
-                      : "size-16 rounded-lg"
-                  }
-                  metadata={metadata}
-                  radio={radio}
-                />
-              </button>
-            </DialogTrigger>
+            <DialogTrigger
+              render={
+                <button
+                  aria-label={`Details for ${title}`}
+                  className={cn(
+                    "block shrink-0 cursor-pointer rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    featured && "rounded-xl lg:rounded-2xl"
+                  )}
+                  title={`View details for ${title}`}
+                  type="button"
+                >
+                  <Artwork
+                    className={
+                      featured
+                        ? "size-20 rounded-xl sm:size-28 lg:size-[clamp(15rem,36vh,22rem)] lg:rounded-2xl"
+                        : "size-16 rounded-lg"
+                    }
+                    metadata={metadata}
+                    radio={radio}
+                  />
+                </button>
+              }
+            />
           </div>
           <div
             className={cn(
@@ -395,16 +399,18 @@ function NowPlayingDetails({
         <DialogDescription className="font-medium text-xs">
           {hasNowPlaying ? "Show & station" : "Station details"}
         </DialogDescription>
-        <DialogClose asChild>
-          <Button
-            aria-label="Close"
-            className="size-7 text-muted-foreground"
-            size="icon"
-            variant="ghost"
-          >
-            <XIcon aria-hidden="true" className="size-4" />
-          </Button>
-        </DialogClose>
+        <DialogClose
+          render={
+            <Button
+              aria-label="Close"
+              className="size-7 text-muted-foreground"
+              size="icon"
+              variant="ghost"
+            >
+              <XIcon aria-hidden="true" className="size-4" />
+            </Button>
+          }
+        />
       </div>
       <div className="min-h-0 space-y-6 overflow-y-auto overscroll-contain p-5 sm:space-y-8 sm:p-8">
         <div className="grid min-w-0 items-center gap-6 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-8">

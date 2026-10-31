@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
 const meta = {
@@ -29,19 +29,22 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 function MenuToDialog() {
   const [open, setOpen] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger  render={<Button variant="outline">Station options</Button>} />
+        <DropdownMenuTrigger
+          render={<Button variant="outline">Station options</Button>}
+        />
         <DropdownMenuContent>
-          <DropdownMenuItem onSelect={() => setOpen(true)}>
+          <DropdownMenuItem onClick={() => setOpen(true)}>
             Rename…
           </DropdownMenuItem>
           <DropdownMenuItem>Move up</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog onOpenChange={setOpen} open={open}>
-        <DialogContent>
+        <DialogContent ref={popupRef}>
           <DialogHeader>
             <DialogTitle>Rename station</DialogTitle>
             <DialogDescription>
@@ -67,9 +70,7 @@ export const Default: Story = {
   },
   render: () => (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline">Open dialog</Button>
-      </DialogTrigger>
+      <DialogTrigger render={<Button variant="outline">Open dialog</Button>} />
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete station?</DialogTitle>
@@ -100,6 +101,66 @@ export const OpenedFromMenu: Story = {
     await waitFor(() => expect(trigger).toHaveFocus());
     // The dialog unmounts after its exit animation; axe runs once it is gone.
     await waitFor(() => expect(body.queryByRole("dialog")).toBeNull());
+    // Repeat with keyboard activation; closing with the close control returns focus too.
+    await userEvent.keyboard("{Enter}");
+    const keyboardItem = await body.findByRole("menuitem", { name: "Rename…" });
+    keyboardItem.focus();
+    await userEvent.keyboard("{Enter}");
+    const reopened = await body.findByRole("dialog");
+    await userEvent.click(
+      within(reopened).getByRole("button", { name: "Close" })
+    );
+    await waitFor(() => expect(trigger).toHaveFocus());
+    await waitFor(() => expect(body.queryByRole("dialog")).toBeNull());
   },
   render: () => <MenuToDialog />,
+};
+
+function NonFocusingTriggerDialog() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input aria-label="Unrelated field" ref={inputRef} />
+      <Dialog>
+        <DialogTrigger
+          render={
+            <Button
+              onMouseDown={(event) => {
+                event.preventDefault();
+                inputRef.current?.blur();
+              }}
+            />
+          }
+        >
+          Open without focusing trigger
+        </DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Non-focusing opener</DialogTitle>
+          <DialogDescription>
+            Closing returns to the dialog trigger.
+          </DialogDescription>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export const NonFocusingTrigger: Story = {
+  render: () => <NonFocusingTriggerDialog />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const field = canvas.getByRole("textbox", { name: "Unrelated field" });
+    await userEvent.click(field);
+    await expect(field).toHaveFocus();
+    const trigger = canvas.getByRole("button", {
+      name: "Open without focusing trigger",
+    });
+    await userEvent.click(trigger);
+    await within(document.body).findByRole("dialog");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+    await waitFor(() =>
+      expect(within(document.body).queryByRole("dialog")).toBeNull()
+    );
+  },
 };

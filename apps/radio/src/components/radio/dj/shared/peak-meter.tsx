@@ -2,17 +2,12 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { useEffect, useRef } from "react";
 import type { PeakLevelSource } from "@/lib/stores/playback-runtime-store";
 
-const SUCCESS_COLOR = "var(--success)";
-const WARNING_COLOR = "var(--warning)";
-const DESTRUCTIVE_COLOR = "var(--destructive)";
 const AMBER_AT = 0.7;
 const RED_AT = 0.9;
 const FRAME_MS = 1000 / 60;
 const PEAK_HOLD_MS = 12 * FRAME_MS;
 const PEAK_DECAY_PER_MS = 0.02 / FRAME_MS;
 const SAMPLE_TIMEOUT_MS = 100;
-const ZONED_V = `linear-gradient(to top, ${SUCCESS_COLOR} 70%, ${WARNING_COLOR} 70%, ${WARNING_COLOR} 90%, ${DESTRUCTIVE_COLOR} 90%)`;
-const ZONED_H = `linear-gradient(to right, ${SUCCESS_COLOR} 70%, ${WARNING_COLOR} 70%, ${WARNING_COLOR} 90%, ${DESTRUCTIVE_COLOR} 90%)`;
 
 function amplify(level: number) {
   return Number.isFinite(level)
@@ -35,14 +30,14 @@ type MeterElements = {
   clip: HTMLElement | undefined;
 };
 
-function peakColor(peak: number): string {
+function peakState(peak: number): string {
   if (peak > RED_AT) {
-    return DESTRUCTIVE_COLOR;
+    return "destructive";
   }
   if (peak > AMBER_AT) {
-    return WARNING_COLOR;
+    return "warning";
   }
-  return SUCCESS_COLOR;
+  return "success";
 }
 
 function paintChannel(
@@ -64,7 +59,7 @@ function paintChannel(
     peak.style.opacity = channel.peak > 0.02 ? "1" : "0";
   }
   if (line) {
-    line.style.background = peakColor(channel.peak);
+    line.dataset.state = peakState(channel.peak);
   }
   if (clip) {
     clip.style.opacity = channel.level > RED_AT ? "1" : "0";
@@ -124,10 +119,12 @@ function MeterBar({
         }}
       >
         <div
-          className="absolute inset-0"
+          className={cn(
+            "absolute inset-0 from-70% from-success via-[percentage:70%_90%] via-warning to-90% to-destructive",
+            isVertical ? "bg-linear-to-t" : "bg-linear-to-r"
+          )}
           data-meter-gradient=""
           style={{
-            background: isVertical ? ZONED_V : ZONED_H,
             transformOrigin: isVertical ? "bottom" : "left",
           }}
         />
@@ -141,7 +138,7 @@ function MeterBar({
           >
             <div
               className={cn(
-                "absolute",
+                "absolute bg-success data-[state=destructive]:bg-destructive data-[state=warning]:bg-warning",
                 isVertical ? "inset-x-0 bottom-0 h-px" : "inset-y-0 left-0 w-px"
               )}
               data-meter-peak-line=""

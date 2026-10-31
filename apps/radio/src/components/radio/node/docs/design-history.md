@@ -545,9 +545,10 @@ Play state, error and now-playing come from `playbackRuntimeStore`
 
 ### Colour
 
-NWS-2784 resets the state palette and caption sizes described here: Mod now aliases
-`--info`, Key aliases `--warning`, and Live aliases `--success` from the shared theme.
-The hex values below record the original design; the shared theme owns current values.
+NWS-2784 resets the state palette and caption sizes described here: Mod uses
+`--info`, Key uses `--warning`, Live uses `--success`, and idle wires use
+`--muted-foreground` directly from the shared theme, without per-node aliases.
+The token names and hex values below record the original design.
 
 Five named values, all borrowed from existing semantics. No new brand hue and no new theme
 token beyond these aliases. They are defined once as CSS variables in a new

@@ -1,0 +1,27 @@
+packages/ui/README.md
+  s_2a46bf06dce7b0::t_f78efcad366c94 38-40,44-45
+  s_2a46bf06dce7b0::t_13b7846ebd3c6d 46
+.github/workflows/pr-validation.yml
+  s_2a46bf06dce7b0::t_a8bed196a38077 71-72
+  s_2a46bf06dce7b0::t_f78efcad366c94 69-70,73-77
+packages/ui/src/stories/feedback.stories.tsx
+  s_2a46bf06dce7b0::t_c841db24602a67 118-120
+  s_2a46bf06dce7b0::t_b1ab0e41798edc 23,101-117,121-131
+  s_2a46bf06dce7b0::t_a018783722c59a 132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89d6abba66b7d2789be2635e8a4b69554cdc8247",
+  "prompts": {},
+  "sessions": {
+    "s_2a46bf06dce7b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a192a5-f584-7491-a8e4-12fefdf1826b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

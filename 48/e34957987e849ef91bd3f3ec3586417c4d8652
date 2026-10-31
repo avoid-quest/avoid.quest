@@ -1,0 +1,38 @@
+packages/ui/src/components/toggle-group.tsx
+  s_4af26cced585d7::t_b54500a5e37d75 8,10-15,18-19,26-27,29,31,33-37,41,44,47,49-50
+  s_4af26cced585d7::t_cdc08e03a8c07b 53-55,65-66,68,76,79,85
+apps/radio/src/components/root/app-frame.stories.tsx
+  s_4af26cced585d7::t_9e39fc9b4344b5 41,45,65
+packages/ui/src/components/checkbox.tsx
+  s_4af26cced585d7::t_930a902ffa0420 5,17,26,29
+packages/ui/src/components/field.tsx
+  s_4af26cced585d7::t_e8b4207d3d77f1 121
+packages/ui/src/components/label.tsx
+  s_4af26cced585d7::t_515c0816ddf6f0 11
+packages/ui/src/components/radio-group.tsx
+  s_4af26cced585d7::t_7dcb729c23b7d8 16,32,41,44
+packages/ui/src/components/separator.tsx
+  s_4af26cced585d7::t_2c006f4bc1d109 20
+packages/ui/src/components/switch.tsx
+  s_4af26cced585d7::t_3a08d764888511 9,13,18,21,29
+packages/ui/src/components/toggle.tsx
+  s_4af26cced585d7::t_e75a66d22d4549 8,13,15-24,31-32,34,39
+packages/ui/src/stories/field.stories.tsx
+  s_4af26cced585d7::t_ebfec28964d21b 1,12,42-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "48e34957987e849ef91bd3f3ec3586417c4d8652",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

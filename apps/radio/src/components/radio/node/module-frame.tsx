@@ -339,7 +339,7 @@ function ControlColumn({
   return (
     <div className="flex w-16 shrink-0 flex-col items-center gap-1">
       <span
-        className="w-full truncate text-center text-[10px] text-muted-foreground leading-none"
+        className="w-full truncate text-center text-muted-foreground text-xs leading-none"
         title={label}
       >
         {label}
@@ -454,7 +454,7 @@ export function ModuleSelect({
       <Select onValueChange={onChange} value={value}>
         <SelectTrigger
           aria-label={name}
-          className="w-full gap-1 px-1.5 text-[10px] data-[size=xs]:px-1.5 data-[size=xs]:text-[10px] [&_svg:not([class*='size-'])]:size-3"
+          className="w-full gap-1 px-1.5 text-xs data-[size=xs]:px-1.5 data-[size=xs]:text-xs [&_svg:not([class*='size-'])]:size-3"
           size="xs"
           title={selected?.label}
         >

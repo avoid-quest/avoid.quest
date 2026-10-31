@@ -207,7 +207,7 @@ export function useNodeInspector({
  * chrome is sans (§12 q7 option c), so here they read as sans labels.
  */
 const INSPECTOR_BODY =
-  "space-y-4 [&_.uppercase]:font-sans [&_.uppercase]:text-[10px] [&_.uppercase]:normal-case [&_.uppercase]:tracking-normal";
+  "space-y-4 [&_.uppercase]:font-sans [&_.uppercase]:text-xs [&_.uppercase]:normal-case [&_.uppercase]:tracking-normal";
 
 /** Loaded sources show their settings; empty sources keep their picker. */
 function SourceInspectorParams({

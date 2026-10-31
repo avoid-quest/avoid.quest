@@ -545,6 +545,10 @@ Play state, error and now-playing come from `playbackRuntimeStore`
 
 ### Colour
 
+NWS-2784 resets the state palette and caption sizes described here: Mod now aliases
+`--info`, Key aliases `--warning`, and Live aliases `--success` from the shared theme.
+The hex values below record the original design; the shared theme owns current values.
+
 Five named values, all borrowed from existing semantics. No new brand hue and no new theme
 token beyond these aliases. They are defined once as CSS variables in a new
 `apps/radio/src/styles/node-mode.css`, following the `:root`/`.dark` pattern of
@@ -564,23 +568,23 @@ muted-foreground Wire, and emerald appears only on live cables.
 Light Live is darkened from the meter's `#34d399` for contrast on `#fbfcfd`. Blue, amber and
 neutral stay separable for deuteranopia and protanopia, and every kind differs by dash
 pattern, so hue is never the only cue; Live also thickens the stroke. The "on" state keeps
-the canon `border-primary/20 bg-primary/5`. Session stations keep `border-l-[#00d084]/40`.
+the canon `border-primary/20 bg-primary/5`. Session stations keep `border-l-success/40`.
 Chart tokens stay unused. React Flow's `--xy-*` variables map to `--background`, `--border`
 and `--ring`, with `--xy-edge-stroke-default` → `--node-wire`.
 
 ### Type
 
 Reuse the app's families as they actually render. Node chrome is `font-sans`: titles
-`text-xs font-medium`, subtitles `text-xs text-muted-foreground`, port labels `text-[10px]`
-sentence case, values `text-[10px] tabular-nums`. Near faders and knobs, hints use native
+`text-xs font-medium`, subtitles `text-xs text-muted-foreground`, port labels `text-xs`
+sentence case, values `text-xs tabular-nums`. Near faders and knobs, hints use native
 `title=`, not Tooltip.
 
 **Node chrome carries no mono caps.** They stay in the header wordmark and the ModeSelect
 "NODE" label only. Node titles, palette, inspector, badges and ports are all sans; the
-`compat`/`bypassed` badges are lowercase sans `text-[10px]`.
+`compat`/`bypassed` badges are lowercase sans `text-xs`.
 
 One case needs the owner's call, not an assertion of canon. The shared Knob renders its
-caption as `font-mono text-[9px] uppercase tracking-wider`
+caption as `font-mono text-xs uppercase tracking-wider`
 (`packages/ui/src/components/knob.tsx:207-209`), so reusing `EffectParams` in node bodies and
 the inspector would put mono caps outside the wordmark, the mode toggle and DJ hardware
 labels. The options are in §12 question 7; the wireframes below show sentence-case captions

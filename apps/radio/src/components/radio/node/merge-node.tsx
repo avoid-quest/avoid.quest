@@ -30,7 +30,7 @@ const ROLE_HINTS: Record<MergeRole, string> = {
 export function MergeRoleBadge({ role }: { role: MergeRole }) {
   return (
     <span
-      className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 font-medium text-[10px] text-muted-foreground leading-none"
+      className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 font-medium text-muted-foreground text-xs leading-none"
       title={ROLE_HINTS[role]}
     >
       {role}
@@ -57,7 +57,7 @@ export function MergeNodeBody({
         onRemove={onRemove}
         title={title}
       />
-      <p className="rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-1.5 text-[10px] text-muted-foreground tabular-nums">
+      <p className="rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-1.5 text-muted-foreground text-xs tabular-nums">
         {data.inputs === 0
           ? "Cable a split's branches here"
           : `${data.inputs} ${data.inputs === 1 ? "input" : "inputs"}`}

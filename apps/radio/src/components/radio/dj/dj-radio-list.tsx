@@ -118,7 +118,7 @@ function StationRow({
         isActive && "bg-muted/40",
         showSessionMarker &&
           isSessionRadio(radio) &&
-          "border-l-2 border-l-[#00d084]/40"
+          "border-l-2 border-l-success/40"
       )}
       onClick={handleLoad}
       ref={elementRef}

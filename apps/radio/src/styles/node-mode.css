@@ -8,16 +8,10 @@
 
 :root {
   --node-wire: var(--muted-foreground);
-  --node-mod: #2563eb;
-  --node-key: #b45309;
-  --node-live: #047857;
+  --node-mod: var(--info);
+  --node-key: var(--warning);
+  --node-live: var(--success);
   --node-clip: var(--destructive);
-}
-
-.dark {
-  --node-mod: #3b82f6;
-  --node-key: #fbbf24;
-  --node-live: #34d399;
 }
 
 .react-flow {

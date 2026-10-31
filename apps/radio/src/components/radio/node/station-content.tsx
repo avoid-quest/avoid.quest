@@ -163,7 +163,7 @@ export function StationNodeBody({
         "relative border-border/50",
         isLive && "border-foreground/40",
         selected && "border-ring",
-        isSession && "border-l-2 border-l-[#00d084]/40",
+        isSession && "border-l-2 border-l-success/40",
         disabled && "opacity-60"
       )}
       data-radio-id={String(radio.id ?? radio.name)}

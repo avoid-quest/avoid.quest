@@ -142,8 +142,9 @@ function ResultItem({
           </div>
         )}
         <div
-          className="absolute bottom-0 left-0 px-1 font-bold font-mono text-[9px] text-white"
+          className="absolute bottom-0 left-0 max-w-full truncate px-1 font-bold font-mono text-white text-xs"
           style={{ backgroundColor: platformColor }}
+          title={platformLabel}
         >
           {platformLabel}
         </div>

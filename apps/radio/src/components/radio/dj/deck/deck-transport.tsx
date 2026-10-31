@@ -213,7 +213,7 @@ export function DeckTransport({
 
         <div className="flex shrink-0 flex-col-reverse items-center gap-1 lg:flex-row lg:gap-2.5">
           {liveTime === null ? null : (
-            <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+            <span className="font-mono text-muted-foreground text-xs tabular-nums">
               {formatTime(liveTime)}
             </span>
           )}
@@ -279,7 +279,7 @@ function TransportProgress({
 
   if (isLiveStream) {
     return (
-      <div className="font-mono text-[10px] text-muted-foreground tabular-nums">
+      <div className="font-mono text-muted-foreground text-xs tabular-nums">
         {formatTime(trackProgress.position)}
       </div>
     );
@@ -329,7 +329,7 @@ export function SeekableProgress({
         step={1}
         value={[shownPosition]}
       />
-      <div className="flex justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
+      <div className="flex justify-between font-mono text-muted-foreground text-xs tabular-nums">
         <span>{formatTime(shownPosition)}</span>
         <span>{formatTime(duration)}</span>
       </div>

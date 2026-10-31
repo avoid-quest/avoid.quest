@@ -53,7 +53,7 @@ export function ControlEdge(props: FlowEdgeProps<ControlFlowEdge>) {
               <button
                 aria-label={`Edit ${label} modulation${unapplied ? `, ${unappliedTag(unapplied)}: ${unapplied.why}` : ""}`}
                 className={cn(
-                  "rounded border bg-background px-1.5 py-0.5 text-[10px] shadow-sm",
+                  "rounded border bg-background px-1.5 py-0.5 text-xs shadow-sm",
                   unapplied
                     ? "border-border text-muted-foreground"
                     : "border-primary/30 text-primary"

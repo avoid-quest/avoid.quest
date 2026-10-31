@@ -112,7 +112,7 @@ export function DjConsoleMobile({
               aria-label="Cue deck A"
               aria-pressed={deckACueEnabled}
               className={cn(
-                "shrink-0 gap-1 font-mono text-[10px] uppercase tracking-wider",
+                "shrink-0 gap-1 font-mono text-xs uppercase tracking-wider",
                 deckACueEnabled &&
                   "ring-2 ring-foreground/30 ring-offset-1 ring-offset-background"
               )}
@@ -140,7 +140,7 @@ export function DjConsoleMobile({
               value={[masterVolume * 100]}
               variant="fader"
             />
-            <span className="w-9 shrink-0 text-right font-mono text-[10px] tabular-nums">
+            <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums">
               {Math.round(masterVolume * 100)}%
             </span>
           </div>
@@ -149,7 +149,7 @@ export function DjConsoleMobile({
               aria-label="Cue deck B"
               aria-pressed={deckBCueEnabled}
               className={cn(
-                "shrink-0 gap-1 font-mono text-[10px] uppercase tracking-wider",
+                "shrink-0 gap-1 font-mono text-xs uppercase tracking-wider",
                 deckBCueEnabled &&
                   "ring-2 ring-foreground/30 ring-offset-1 ring-offset-background"
               )}

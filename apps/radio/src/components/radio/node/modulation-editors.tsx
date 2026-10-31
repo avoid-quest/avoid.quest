@@ -172,7 +172,7 @@ export function StepsEditor({
       <div className="grid grid-cols-8 gap-1">
         {values.map((value, index) => (
           <div
-            className="flex flex-col gap-0.5 text-center text-[10px] text-muted-foreground"
+            className="flex flex-col gap-0.5 text-center text-muted-foreground text-xs"
             key={`step-${index + 1}`}
           >
             {index + 1}

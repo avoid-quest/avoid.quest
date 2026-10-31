@@ -2,17 +2,17 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { useEffect, useRef } from "react";
 import type { PeakLevelSource } from "@/lib/stores/playback-runtime-store";
 
-const COLOR_GREEN = "#34d399";
-const COLOR_AMBER = "#fbbf24";
-const COLOR_RED = "#ef4444";
+const SUCCESS_COLOR = "var(--success)";
+const WARNING_COLOR = "var(--warning)";
+const DESTRUCTIVE_COLOR = "var(--destructive)";
 const AMBER_AT = 0.7;
 const RED_AT = 0.9;
 const FRAME_MS = 1000 / 60;
 const PEAK_HOLD_MS = 12 * FRAME_MS;
 const PEAK_DECAY_PER_MS = 0.02 / FRAME_MS;
 const SAMPLE_TIMEOUT_MS = 100;
-const ZONED_V = `linear-gradient(to top, ${COLOR_GREEN} 70%, ${COLOR_AMBER} 70%, ${COLOR_AMBER} 90%, ${COLOR_RED} 90%)`;
-const ZONED_H = `linear-gradient(to right, ${COLOR_GREEN} 70%, ${COLOR_AMBER} 70%, ${COLOR_AMBER} 90%, ${COLOR_RED} 90%)`;
+const ZONED_V = `linear-gradient(to top, ${SUCCESS_COLOR} 70%, ${WARNING_COLOR} 70%, ${WARNING_COLOR} 90%, ${DESTRUCTIVE_COLOR} 90%)`;
+const ZONED_H = `linear-gradient(to right, ${SUCCESS_COLOR} 70%, ${WARNING_COLOR} 70%, ${WARNING_COLOR} 90%, ${DESTRUCTIVE_COLOR} 90%)`;
 
 function amplify(level: number) {
   return Number.isFinite(level)
@@ -37,12 +37,12 @@ type MeterElements = {
 
 function peakColor(peak: number): string {
   if (peak > RED_AT) {
-    return COLOR_RED;
+    return DESTRUCTIVE_COLOR;
   }
   if (peak > AMBER_AT) {
-    return COLOR_AMBER;
+    return WARNING_COLOR;
   }
-  return COLOR_GREEN;
+  return SUCCESS_COLOR;
 }
 
 function paintChannel(
@@ -148,7 +148,7 @@ function MeterBar({
             />
           </div>
           <div
-            className="absolute rounded-full bg-red-500"
+            className="absolute rounded-full bg-destructive"
             data-meter-clip=""
             style={
               isVertical

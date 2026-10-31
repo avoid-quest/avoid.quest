@@ -18,7 +18,7 @@ type ParamGroupProps = {
 };
 
 const titleClassName =
-  "font-mono text-[10px] text-muted-foreground uppercase tracking-wider";
+  "font-mono text-xs text-muted-foreground uppercase tracking-wider";
 const rowClassName = "flex flex-wrap items-start gap-x-2 gap-y-3";
 
 export function ParamGroup({

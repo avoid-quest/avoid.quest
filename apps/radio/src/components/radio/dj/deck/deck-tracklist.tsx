@@ -217,7 +217,7 @@ function TrackRow({
           <PlayIcon aria-label="Current track" className="size-2.5" />
         )}
         {!(isPending || isCurrent) && (
-          <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+          <span className="font-mono text-muted-foreground text-xs tabular-nums">
             {index + 1}
           </span>
         )}
@@ -228,7 +228,7 @@ function TrackRow({
         </div>
       </div>
       {track.duration ? (
-        <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+        <span className="shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
           {formatPlatformDuration(track.duration)}
         </span>
       ) : null}

@@ -1,0 +1,27 @@
+apps/radio/README.md
+  s_4af26cced585d7::t_9e256d6203d26a 70
+apps/radio/src/components/audio/effect-params/sidechain-params.tsx
+  s_4af26cced585d7::t_a9cf814035fb70 11
+apps/radio/src/components/radio/single/single-player-station-list.stories.tsx
+  s_4af26cced585d7::t_004bceaa1eba81 2,78-105
+apps/radio/src/components/radio/single/single-player-station-list.tsx
+  s_4af26cced585d7::t_484b31b97de8d3 111
+apps/radio/src/components/radio/station-row.tsx
+  s_4af26cced585d7::t_fe603ab74ab7a5 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e6a57786edef50d2e60555b5cc3a1c0799eb514",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

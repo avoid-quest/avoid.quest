@@ -35,8 +35,14 @@ and loads `.storybook/vitest.setup.ts`, which applies the preview stylesheet,
 theme decorators, and accessibility addon hooks. The preview's `a11y.test: "error"`
 makes axe violations fail the run in either theme.
 
+PR validation installs Chromium and runs this same command after the workspace
+unit tests, so interaction and accessibility failures in either theme block CI.
+
 `Foundations/Theme` checks that the theme global, next-themes provider, document
 class, stylesheet, and accessibility policy are applied during these tests.
+
+`Primitives/Feedback/Cancelable Loading` checks the "Cancel Cashmere Radio"
+accessible name, keyboard focus, and clicking to return to the play state.
 
 ## Connections
 

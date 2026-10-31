@@ -20,6 +20,7 @@ import { Spinner } from "@avoid.quest/ui/components/spinner";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { RadioIcon, TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 
 const meta = {
   title: "Primitives/Feedback",
@@ -96,6 +97,38 @@ function Transport() {
 }
 
 export const PlayPause: Story = { render: () => <Transport /> };
+
+function CancelableTransport() {
+  const [loading, setLoading] = useState(true);
+  return (
+    <PlayPauseButton
+      allowCancelWhileLoading
+      isLoading={loading}
+      isPlaying={false}
+      label="Cashmere Radio"
+      onClick={() => setLoading(false)}
+      size="sm"
+    />
+  );
+}
+
+export const CancelableLoading: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const cancel = canvas.getByRole("button", {
+      name: "Cancel Cashmere Radio",
+    });
+    await expect(cancel).toBeEnabled();
+    await expect(cancel).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.tab();
+    await expect(cancel).toHaveFocus();
+    await userEvent.click(cancel);
+    await expect(
+      canvas.getByRole("button", { name: "Play Cashmere Radio" })
+    ).toHaveFocus();
+  },
+  render: () => <CancelableTransport />,
+};
 
 export const EmptyState: Story = {
   render: () => (

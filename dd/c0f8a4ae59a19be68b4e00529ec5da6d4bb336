@@ -1,0 +1,23 @@
+packages/ui/src/components/accordion.tsx
+  s_4af26cced585d7::t_2a3d8261225219 6,8-18,24,26-27,38-40,42-43,45,52-61,69,71-72,76-84
+packages/ui/src/components/collapsible.tsx
+  s_4af26cced585d7::t_6665d1d1dcd8ba 25
+packages/ui/src/components/tabs.tsx
+  s_4af26cced585d7::t_85a688a3569af2 5,7-11,13-18,20,26-47,49,51,53,62,64,66-69,81,83-84,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ddc0f8a4ae59a19be68b4e00529ec5da6d4bb336",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

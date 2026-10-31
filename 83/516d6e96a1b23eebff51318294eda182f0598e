@@ -1,0 +1,72 @@
+packages/ui/src/components/dropdown-menu.tsx
+  s_4af26cced585d7::t_d34090005f43a0 13-19,21-23,27-29,49-53,55-65,71-73,88-93,111-117,134-139,149-154,178-183,197-202,216,225-227,241-246
+  s_4af26cced585d7::t_e79a0df079daa1 1,5,20,24,30,35-36,41-43,46,48,66-67,74,82,87,107,109,122,124,127,133,146,148,155,159-160,162,165,173,177,194,196,228,236,240,253,264
+  s_4af26cced585d7::t_d9af986d8a7118 7-10,121
+apps/radio/src/components/radio/dj/external-search/search-input.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 183-202,257-261,285-289
+  s_4af26cced585d7::t_967af3286cb6a1 256,284
+apps/radio/src/components/settings/radio-from-url-tab.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 106-117
+packages/ui/src/components/select.tsx
+  s_4af26cced585d7::t_d34090005f43a0 1,5,7-10,13-16,19-22,25-28,36,41-43,45-47,53-56,60-65,70-75,77,79-80,82-86,88-96,98-109,116,118-124,135,137-143,147-148,150,152-153,160,162-168,178,180-186,191,198,200-206,211
+apps/radio/src/components/radio/node/node-toolbar.tsx
+  s_4af26cced585d7::t_cda555cefc018c 138,144,150,157,174
+apps/radio/src/components/radio/node/audio-input-controls.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 149-152,154-156,211-219
+  s_4af26cced585d7::t_967af3286cb6a1 157,163
+packages/ui/src/stories/dialog.stories.tsx
+  s_4af26cced585d7::t_2bd08061d2c234 35
+apps/radio/src/components/radio/dj/deck/deck-device-input-content.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 112-113,123-131
+  s_4af26cced585d7::t_5081fab240399f 111,174
+apps/radio/src/components/audio/midi-transform-editor.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 115-123
+packages/ui/src/stories/context-menu.stories.tsx
+  s_4af26cced585d7::t_d34090005f43a0 6,33-64
+apps/radio/src/components/feedback/app-feedback.tsx
+  s_4af26cced585d7::t_967af3286cb6a1 148
+  s_4af26cced585d7::t_3928a2aeded7b0 149-153,246-261
+apps/radio/src/components/audio/effect-params/param-select.tsx
+  s_4af26cced585d7::t_93cf09f6dba3d5 34-38,47
+  s_4af26cced585d7::t_3928a2aeded7b0 44-46,48-49
+  s_4af26cced585d7::t_2f4255c1615a47 1
+apps/radio/src/components/radio/node/module-frame.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 259-270,456-464
+apps/radio/src/components/radio/node/modulation-cables.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 98-106
+packages/ui/src/components/context-menu.tsx
+  s_4af26cced585d7::t_d34090005f43a0 13-19,46,71,75-81,88,115-131,148-153,171-177,198-203,227-232,246-251
+  s_4af26cced585d7::t_e79a0df079daa1 1,5,20,24,51-52,95,107-110,112,132,182,184,204,208-209,211,222,226
+  s_4af26cced585d7::t_06632b9a78e459 6-10,181,265
+apps/radio/src/components/radio/node/connect-dialog.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 107-118,140-151
+apps/radio/src/components/settings/midi-settings.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 409-424
+  s_4af26cced585d7::t_967af3286cb6a1 425
+packages/ui/src/stories/select.stories.tsx
+  s_4af26cced585d7::t_d34090005f43a0 19
+  s_4af26cced585d7::t_7669889427e48f 74-96
+apps/radio/src/components/settings/audio-settings.tsx
+  s_4af26cced585d7::t_3928a2aeded7b0 200-216,291-307
+packages/ui/src/stories/dropdown-menu.stories.tsx
+  s_4af26cced585d7::t_d34090005f43a0 42-43,59
+  s_4af26cced585d7::t_e72ae8884143eb 1,5,14,53-58,60-104
+apps/radio/src/components/audio/midi-control-wrapper.tsx
+  s_4af26cced585d7::t_5c4e6b92a84d68 102,113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83516d6e96a1b23eebff51318294eda182f0598e",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

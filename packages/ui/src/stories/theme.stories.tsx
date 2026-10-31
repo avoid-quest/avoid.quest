@@ -14,6 +14,12 @@ function ThemeStatus() {
   return <output>Theme: {forcedTheme}</output>;
 }
 
+function normalizeColor(color: string) {
+  const { style } = document.createElement("div");
+  style.color = color;
+  return style.color;
+}
+
 export const Applied: Story = {
   play: async ({ canvasElement, globals, parameters }) => {
     await expect(["light", "dark"]).toContain(globals.theme);
@@ -26,12 +32,18 @@ export const Applied: Story = {
         globals.theme === "dark"
       )
     );
-    // These are supplied by the preview stylesheet, not browser defaults.
+    const expectedBackground =
+      globals.theme === "dark"
+        ? "oklch(0.141 0.005 285.823)"
+        : "oklch(0.99 0.002 285.823)";
+    // Normalize equivalent CSS color serializations, including minified values.
     await expect(
-      getComputedStyle(document.documentElement)
-        .getPropertyValue("--background")
-        .trim()
-    ).not.toBe("");
+      normalizeColor(
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--background")
+          .trim()
+      )
+    ).toBe(normalizeColor(expectedBackground));
     await expect(getComputedStyle(document.body).backgroundColor).not.toBe(
       "rgba(0, 0, 0, 0)"
     );

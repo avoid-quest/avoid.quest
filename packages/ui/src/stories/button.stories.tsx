@@ -58,7 +58,13 @@ export const Sizes: Story = {
   ),
 };
 
-export const Disabled: Story = { args: { disabled: true } };
+export const Disabled: Story = {
+  args: { disabled: true },
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole("button");
+    await expect(button).toHaveAttribute("disabled");
+  },
+};
 
 export const AsLink: Story = {
   args: { asChild: true, children: <a href="#top">Rendered as an anchor</a> },

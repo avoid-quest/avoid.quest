@@ -35,9 +35,7 @@ export const Applied: Story = {
       )
     );
     const expectedBackground =
-      globals.theme === "dark"
-        ? "oklch(0.141 0.005 285.823)"
-        : "oklch(0.99 0.002 285.823)";
+      globals.theme === "dark" ? "oklch(0.141 0.005 285.823)" : "oklch(1 0 0)";
     // Normalize equivalent CSS color serializations, including minified values.
     await expect(
       normalizeColor(
@@ -49,6 +47,12 @@ export const Applied: Story = {
     await expect(getComputedStyle(document.body).backgroundColor).not.toBe(
       "rgba(0, 0, 0, 0)"
     );
+    await expect(getComputedStyle(document.body).fontFamily).toContain(
+      "Geist Mono Variable"
+    );
+    await expect(
+      await document.fonts.load('400 16px "Geist Mono Variable"')
+    ).not.toHaveLength(0);
   },
   render: () => <ThemeStatus />,
 };

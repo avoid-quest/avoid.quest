@@ -21,10 +21,13 @@ export const Default: Story = {
     await expect(args.onClick).toHaveBeenCalledOnce();
   },
   render: (args) => (
-    <Slot {...args} className="font-medium" data-station="nts">
-      <button className="underline" type="button">
-        Play station
-      </button>
+    <Slot
+      {...args}
+      className="font-medium"
+      data-station="nts"
+      render={<button className="underline" type="button" />}
+    >
+      Play station
     </Slot>
   ),
 };

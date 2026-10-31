@@ -6,7 +6,10 @@ import { expect, userEvent, within } from "storybook/test";
 const meta = {
   args: { children: "Button" },
   argTypes: {
-    size: { control: "select", options: ["sm", "default", "lg", "icon"] },
+    size: {
+      control: "select",
+      options: ["xs", "sm", "default", "lg", "icon-sm", "icon"],
+    },
     variant: {
       control: "select",
       options: [
@@ -44,9 +47,13 @@ export const Variants: Story = {
 export const Sizes: Story = {
   render: () => (
     <div className="flex flex-wrap items-center gap-3">
+      <Button size="xs">Extra small</Button>
       <Button size="sm">Small</Button>
       <Button>Default</Button>
       <Button size="lg">Large</Button>
+      <Button aria-label="Compact settings" size="icon-sm" variant="outline">
+        <SettingsIcon />
+      </Button>
       <Button aria-label="Settings" size="icon" variant="outline">
         <SettingsIcon />
       </Button>
@@ -67,7 +74,10 @@ export const Disabled: Story = {
 };
 
 export const AsLink: Story = {
-  args: { asChild: true, children: <a href="#top">Rendered as an anchor</a> },
+  args: {
+    render: <a href="#top">Rendered as an anchor</a>,
+    children: "Rendered as an anchor",
+  },
   play: async ({ canvasElement }) => {
     const link = within(canvasElement).getByRole("link");
     await expect(link).toHaveAttribute("data-slot", "button");

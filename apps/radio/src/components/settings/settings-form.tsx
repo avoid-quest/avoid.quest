@@ -384,14 +384,18 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         title="Version"
       />
       <div className="flex flex-wrap items-center gap-3 py-3 text-muted-foreground text-xs">
-        <Button asChild size="icon" variant="ghost">
-          <a
-            aria-label="avoid.quest on GitHub"
-            href="https://github.com/avoid-quest/avoid.quest"
-            title="GitHub"
-          >
-            <GitHubIcon className="size-4" />
-          </a>
+        <Button
+          render={
+            <a
+              aria-label="avoid.quest on GitHub"
+              href="https://github.com/avoid-quest/avoid.quest"
+              title="GitHub"
+            />
+          }
+          size="icon"
+          variant="ghost"
+        >
+          <GitHubIcon className="size-4" />
         </Button>
         <a
           className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"

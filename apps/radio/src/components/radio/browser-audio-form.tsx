@@ -44,27 +44,27 @@ export function BrowserAudioHelp({
         value={link}
       />
       <Button
-        asChild
         className="h-7 w-full text-xs"
+        render={
+          <a
+            aria-disabled={!valid}
+            href={valid ? link.trim() : undefined}
+            onClick={(event) => {
+              if (!valid) {
+                event.preventDefault();
+                return;
+              }
+              onUrlChange?.(link.trim());
+            }}
+            rel="noopener noreferrer"
+            target="_blank"
+          />
+        }
         size="sm"
         variant="outline"
       >
-        <a
-          aria-disabled={!valid}
-          href={valid ? link.trim() : undefined}
-          onClick={(event) => {
-            if (!valid) {
-              event.preventDefault();
-              return;
-            }
-            onUrlChange?.(link.trim());
-          }}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <ExternalLinkIcon />
-          Open source tab
-        </a>
+        <ExternalLinkIcon />
+        Open source tab
       </Button>
       {showRadios ? (
         <details>

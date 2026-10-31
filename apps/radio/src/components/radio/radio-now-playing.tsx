@@ -446,15 +446,20 @@ function NowPlayingDetails({
               genre={metadata?.genre}
             />
             {metadata?.itemUrl ? (
-              <Button asChild className="text-xs" size="sm" variant="outline">
-                <a
-                  href={metadata.itemUrl}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  Open source page
-                  <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
-                </a>
+              <Button
+                className="text-xs"
+                render={
+                  <a
+                    href={metadata.itemUrl}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  />
+                }
+                size="sm"
+                variant="outline"
+              >
+                Open source page
+                <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
               </Button>
             ) : null}
           </div>

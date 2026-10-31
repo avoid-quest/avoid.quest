@@ -12,19 +12,24 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   render: () => (
     <div className="flex items-center gap-4">
-      <Button asChild variant="outline">
-        <a href="https://github.com/avoid-quest/avoid.quest">
-          <GitHubIcon />
-          View source
-        </a>
+      <Button
+        render={<a href="https://github.com/avoid-quest/avoid.quest" />}
+        variant="outline"
+      >
+        <GitHubIcon />
+        View source
       </Button>
-      <Button asChild size="icon" variant="ghost">
-        <a
-          aria-label="avoid.quest on GitHub"
-          href="https://github.com/avoid-quest/avoid.quest"
-        >
-          <GitHubIcon />
-        </a>
+      <Button
+        render={
+          <a
+            aria-label="avoid.quest on GitHub"
+            href="https://github.com/avoid-quest/avoid.quest"
+          />
+        }
+        size="icon"
+        variant="ghost"
+      >
+        <GitHubIcon />
       </Button>
     </div>
   ),

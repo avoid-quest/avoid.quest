@@ -230,31 +230,31 @@ function LaneChain({
         const keyedBy = keyers.get(node.id);
         return (
           <Badge
-            asChild
             className="cursor-pointer font-normal text-xs hover:bg-accent hover:text-accent-foreground"
             key={node.id}
+            render={
+              <button
+                aria-label={
+                  keyedBy
+                    ? `${name} settings, keyed by ${keyedBy}`
+                    : `${name} settings`
+                }
+                data-inspect-node={node.id}
+                onClick={() => actions.inspectNode(node.id)}
+                title={keyedBy ? `Keyed by ${keyedBy}` : undefined}
+                type="button"
+              >
+                {name}
+                {keyedBy ? (
+                  <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
+                    <KeyRoundIcon aria-hidden className="size-2.5" />
+                    <span className="max-w-24 truncate">{keyedBy}</span>
+                  </span>
+                ) : null}
+              </button>
+            }
             variant="outline"
-          >
-            <button
-              aria-label={
-                keyedBy
-                  ? `${name} settings, keyed by ${keyedBy}`
-                  : `${name} settings`
-              }
-              data-inspect-node={node.id}
-              onClick={() => actions.inspectNode(node.id)}
-              title={keyedBy ? `Keyed by ${keyedBy}` : undefined}
-              type="button"
-            >
-              {name}
-              {keyedBy ? (
-                <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
-                  <KeyRoundIcon aria-hidden className="size-2.5" />
-                  <span className="max-w-24 truncate">{keyedBy}</span>
-                </span>
-              ) : null}
-            </button>
-          </Badge>
+          />
         );
       })}
       <BackendBadge nodeId={lane.id} />

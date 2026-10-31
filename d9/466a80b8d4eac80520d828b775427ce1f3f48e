@@ -1,0 +1,33 @@
+apps/radio/src/components/settings/settings-regressions.test.tsx
+  s_4af26cced585d7::t_df492594e00963 346-347
+  s_4af26cced585d7::t_2405d72c17ff8c 205,209,226-227,286-287,291,299-301,303-305,307,312-314,330-338
+  s_4af26cced585d7::t_ce4aebe1920637 177,184,344-345
+packages/ui/src/lib/toast-layer.ts
+  s_4af26cced585d7::t_94e5ba3d58243c 4-5,7,17-18,20
+apps/radio/src/components/root/toast-layers.test.tsx
+  s_4af26cced585d7::t_2405d72c17ff8c 33,54,109-111
+packages/ui/src/components/popover.tsx
+  s_4af26cced585d7::t_af67761ae4c3fd 4,6,9-21,24-27,30-42,46-47,49-52,54,56-57,59-64,66-77,81
+packages/ui/src/components/tooltip.tsx
+  s_4af26cced585d7::t_6b16723b9a8680 5,7,10-13,16-18,20,23-26,33,35-52,54,59,61-62,64-79,83-94,97,99-103,106-107,109-116,118,120-134
+packages/ui/src/stories/popover.stories.tsx
+  s_4af26cced585d7::t_66896ab0a3c538 31-32
+packages/ui/src/stories/tooltip.stories.tsx
+  s_4af26cced585d7::t_2a2a81debe8475 29,31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9466a80b8d4eac80520d828b775427ce1f3f48e",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

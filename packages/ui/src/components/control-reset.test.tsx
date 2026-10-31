@@ -1,8 +1,5 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: Controlled gesture harness updates state and records callbacks */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { Knob } from "@avoid.quest/ui/components/knob";
-import { Slider } from "@avoid.quest/ui/components/slider";
-import { cleanup, fireEvent, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { useState } from "react";
@@ -43,6 +40,11 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   value: true,
   writable: true,
 });
+
+// Radix picks its layout effect when it loads, so it loads after the DOM.
+const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { Knob } = await import("@avoid.quest/ui/components/knob");
+const { Slider } = await import("@avoid.quest/ui/components/slider");
 
 afterEach(cleanup);
 

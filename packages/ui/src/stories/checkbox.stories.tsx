@@ -17,6 +17,8 @@ export const States: Story = {
     });
     await userEvent.click(checkbox);
     await expect(checkbox).toBeChecked();
+    await userEvent.click(within(canvasElement).getByText("Show in DJ mode"));
+    await expect(checkbox).not.toBeChecked();
   },
   render: () => (
     <div className="space-y-3">
@@ -29,7 +31,7 @@ export const States: Story = {
         <Label htmlFor="cb-dj">Show in DJ mode</Label>
       </div>
       <div className="flex items-center gap-2">
-        <Checkbox checked="indeterminate" id="cb-mixed" />
+        <Checkbox id="cb-mixed" indeterminate />
         <Label htmlFor="cb-mixed">Some stations selected</Label>
       </div>
       <div className="flex items-center gap-2">

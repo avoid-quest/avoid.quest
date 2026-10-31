@@ -17,6 +17,10 @@ export const Default: Story = {
     const toggle = canvas.getByRole("switch", { name: "Disabled state off" });
     await userEvent.click(toggle);
     await expect(toggle).toBeChecked();
+    await userEvent.click(
+      within(canvasElement).getByText("Disabled state off")
+    );
+    await expect(toggle).not.toBeChecked();
   },
   render: () => (
     <div className="flex flex-col gap-4">

@@ -1,27 +1,34 @@
 "use client";
 
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Indicator, Root } from "@radix-ui/react-checkbox";
-import { CheckIcon } from "lucide-react";
+import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import { IconCheck } from "@tabler/icons-react";
 import type * as React from "react";
 
-function Checkbox({ className, ...props }: React.ComponentProps<typeof Root>) {
+function Checkbox({
+  className,
+  ...props
+}: Omit<React.ComponentProps<typeof CheckboxPrimitive.Root>, "className"> & {
+  className?: string;
+}) {
   return (
-    <Root
+    <CheckboxPrimitive.Root
       className={cn(
-        "peer size-4 shrink-0 rounded-[4px] border border-input shadow-xs outline-none transition-shadow focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:data-[state=checked]:bg-primary dark:aria-invalid:ring-destructive/40",
+        "peer relative flex size-4.5 shrink-0 items-center justify-center rounded-none border border-input bg-transparent outline-none transition-shadow after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 group-has-[:focus-visible]/field-label:not-data-checked:border-input group-has-disabled/field:opacity-50 group-has-[:focus-visible]/field-label:ring-0 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground group-has-[:focus-visible]/field-label:data-checked:border-primary dark:data-checked:bg-primary dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
         className
       )}
       data-slot="checkbox"
+      nativeButton
+      render={<button type="button" />}
       {...props}
     >
-      <Indicator
-        className="grid place-content-center text-current transition-none"
+      <CheckboxPrimitive.Indicator
+        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
         data-slot="checkbox-indicator"
       >
-        <CheckIcon className="size-3.5" />
-      </Indicator>
-    </Root>
+        <IconCheck />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
   );
 }
 

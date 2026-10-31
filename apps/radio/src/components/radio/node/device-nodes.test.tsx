@@ -12,6 +12,7 @@ import {
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import { DEFAULT_INPUT_STRIP } from "@/lib/node-graph/schema";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -33,6 +34,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
@@ -409,7 +411,7 @@ describe("Audio input node", () => {
     ).toBeTruthy();
     expect(view.getByText("Live")).toBeTruthy();
     fireEvent.click(view.getByRole("switch", { name: "Echo cancellation" }));
-    expect(onEchoCancellationChange).toHaveBeenCalledWith(true);
+    expect(onEchoCancellationChange.mock.calls[0]?.[0]).toBe(true);
   });
 
   test("the Stage row pauses a live input whose device is unplugged", async () => {

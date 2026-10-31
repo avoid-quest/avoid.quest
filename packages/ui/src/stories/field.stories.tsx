@@ -1,3 +1,4 @@
+import { Checkbox } from "@avoid.quest/ui/components/checkbox";
 import {
   Field,
   FieldDescription,
@@ -8,6 +9,7 @@ import {
 import { Input } from "@avoid.quest/ui/components/input";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 const meta = {
   component: Field,
@@ -36,4 +38,30 @@ export const Default: Story = {
       </Field>
     </FieldGroup>
   ),
+};
+
+export const SelectableCard: Story = {
+  render: () => (
+    <FieldLabel className="max-w-sm">
+      <Field orientation="horizontal">
+        <Checkbox aria-label="Enable normalization" />
+        Normalize station volume
+      </Field>
+    </FieldLabel>
+  ),
+  play: async ({ canvasElement }) => {
+    const checkbox = within(canvasElement).getByRole("checkbox");
+    const card = checkbox.closest("label");
+    if (!card) {
+      throw new Error("Missing field card label");
+    }
+    const initialBackground = getComputedStyle(card).backgroundColor;
+    await userEvent.click(checkbox);
+    await waitFor(() => {
+      expect(checkbox).toBeChecked();
+      expect(getComputedStyle(card).backgroundColor).not.toBe(
+        initialBackground
+      );
+    });
+  },
 };

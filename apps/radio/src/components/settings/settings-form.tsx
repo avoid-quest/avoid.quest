@@ -325,7 +325,8 @@ function SectionContent({
 
 function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
   const { theme, setTheme } = useTheme();
-  const handleThemeChange = (value: string) => {
+  const handleThemeChange = (values: string[]) => {
+    const value = values[0];
     // Pressing the selected item again would otherwise clear the choice.
     if (value) {
       setTheme(value);
@@ -345,9 +346,9 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         control={
           <ToggleGroup
             aria-label="Theme"
+            multiple={false}
             onValueChange={handleThemeChange}
-            type="single"
-            value={theme ?? "system"}
+            value={[theme ?? "system"]}
             variant="outline"
           >
             {THEMES.map(({ icon: Icon, label, value }) => (

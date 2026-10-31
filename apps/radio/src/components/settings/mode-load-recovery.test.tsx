@@ -1,15 +1,18 @@
 import { expect, mock, spyOn, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const NOTIFICATIONS = /Notifications/;
 
 const scenario = process.env.AVOID_QUEST_DJ_RECOVERY_TEST;
 if (scenario) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+    pretendToBeVisual: true,
     url: "https://radio.test",
   });
   for (const [key, value] of Object.entries({
+    ...browserTestGlobals(dom.window),
     document: dom.window.document,
     Element: dom.window.Element,
     getComputedStyle: dom.window.getComputedStyle,
@@ -34,7 +37,7 @@ if (scenario) {
   dom.window.matchMedia = globalThis.matchMedia;
   dom.window.scrollTo = () => undefined;
 
-  const { act, cleanup, fireEvent, render, waitFor } = await import(
+  const { act, cleanup, fireEvent, render, waitFor, within } = await import(
     "@testing-library/react"
   );
   const { toast, Toaster } = await import("@avoid.quest/ui/components/sonner");
@@ -120,9 +123,9 @@ if (scenario) {
           )
         ).toBeDefined();
         expect(
-          view
-            .getAllByRole("radio")
-            .every((radio) => radio.getAttribute("aria-checked") === "false")
+          within(view.getByRole("group", { name: "Playback mode" }))
+            .getAllByRole("button")
+            .every((radio) => radio.getAttribute("aria-pressed") === "false")
         ).toBe(true);
         expect(view.queryByText("DJ player")).toBeNull();
         expect(manager.getSnapshot()).toMatchObject({
@@ -136,7 +139,7 @@ if (scenario) {
         // stored DJ renderer whose lifecycle failed.
         const activation = Promise.withResolvers<undefined>();
         single.activate.mockImplementation(() => activation.promise);
-        fireEvent.click(view.getByRole("radio", { name: "Single" }));
+        fireEvent.click(view.getByRole("button", { name: "Single" }));
         await waitFor(() =>
           expect(manager.getSnapshot()).toMatchObject({
             currentMode: null,
@@ -148,7 +151,7 @@ if (scenario) {
         // The toggle names the mode that is starting, not the stored DJ mode.
         expect(
           view
-            .getAllByRole("radio", { checked: true })
+            .getAllByRole("button", { pressed: true })
             .map((radio) => radio.getAttribute("aria-label"))
         ).toEqual(["Single"]);
         activation.resolve(undefined);
@@ -159,12 +162,14 @@ if (scenario) {
         return;
       }
       const player = await view.findByText("Single player");
-      const dj = view.getByRole("radio", { name: "DJ" });
+      const dj = view.getByRole("button", { name: "DJ" });
       fireEvent.click(dj);
       await view.findByText("Couldn't load DJ mode");
       await waitFor(() => expect(dj.hasAttribute("disabled")).toBe(false));
       expect(
-        view.getByRole("radio", { name: "Single" }).getAttribute("aria-checked")
+        view
+          .getByRole("button", { name: "Single" })
+          .getAttribute("aria-pressed")
       ).toBe("true");
       expect(view.getByText("Single player")).toBe(player);
       expect(
@@ -200,7 +205,9 @@ if (scenario) {
         await Promise.resolve();
       });
       expect(
-        view.getByRole("radio", { name: "Single" }).getAttribute("aria-checked")
+        view
+          .getByRole("button", { name: "Single" })
+          .getAttribute("aria-pressed")
       ).toBe("true");
       expect(view.getByText("Single player")).toBe(player);
       expect(notices).toHaveBeenCalledTimes(1);

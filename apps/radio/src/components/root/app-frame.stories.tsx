@@ -38,11 +38,11 @@ export const Default: Story = {
     await expect(canvas.getByRole("banner")).toBeVisible();
     await expect(canvas.getByRole("main")).toHaveTextContent("Nothing playing");
     const single = await canvas.findByRole(
-      "radio",
+      "button",
       { name: "Single" },
       LAZY_TIMEOUT
     );
-    await expect(single).toHaveAttribute("aria-checked", "true");
+    await expect(single).toHaveAttribute("aria-pressed", "true");
     await expect(
       await canvas.findByRole("button", { name: "Feedback" }, LAZY_TIMEOUT)
     ).toBeVisible();
@@ -62,7 +62,7 @@ export const Mobile: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(window.innerWidth).toBeLessThan(640));
     await expect(
-      await canvas.findByRole("radio", { name: "DJ" }, LAZY_TIMEOUT)
+      await canvas.findByRole("button", { name: "DJ" }, LAZY_TIMEOUT)
     ).toBeVisible();
     await expect(canvas.getByText("DJ")).not.toBeVisible();
     await expect(

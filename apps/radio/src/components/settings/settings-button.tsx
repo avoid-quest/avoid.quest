@@ -102,7 +102,7 @@ export function SettingsButton({
         triggerButton
       ) : (
         <Tooltip>
-          <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
+          <TooltipTrigger render={triggerButton} />
           <TooltipContent side="bottom" sideOffset={6}>
             Settings
           </TooltipContent>

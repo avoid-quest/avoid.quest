@@ -30,7 +30,7 @@ if (scenario) {
   const { Drawer, DrawerContent, DrawerTitle } = await import(
     "@avoid.quest/ui/components/drawer"
   );
-  const { Popover, PopoverAnchor, PopoverContent } = await import(
+  const { Popover, PopoverTrigger, PopoverContent } = await import(
     "@avoid.quest/ui/components/popover"
   );
 
@@ -51,8 +51,11 @@ if (scenario) {
     ),
     popover: (onOpenChange: (open: boolean) => void) => (
       <Popover onOpenChange={onOpenChange} open={true}>
-        <PopoverAnchor />
-        <PopoverContent>Layer</PopoverContent>
+        <PopoverTrigger>Open layer</PopoverTrigger>
+        <PopoverContent>
+          <span>Layer</span>
+          <input aria-label="Layer input" />
+        </PopoverContent>
       </Popover>
     ),
   };
@@ -80,18 +83,32 @@ if (scenario) {
           .closest("[data-sonner-toaster]")
           ?.classList.contains("pointer-events-auto")
       ).toBe(true);
-      // Radix starts listening for outside presses a tick after opening.
+      // Let the layer finish installing its outside-interaction listeners.
       await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
-      fireEvent.pointerDown(action);
-      fireEvent.focus(action);
+      if (scenario === "popover") {
+        const input = view.getByRole("textbox", { name: "Layer input" });
+        act(() => input.focus());
+        fireEvent.pointerDown(action);
+        // Native focus() dispatches focusout on the old target with the toast
+        // action as relatedTarget, just as keyboard focus navigation does.
+        act(() => action.focus());
+        await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+        expect(onOpenChange).not.toHaveBeenCalled();
+      } else {
+        fireEvent.pointerDown(action);
+        fireEvent.focus(action);
+      }
+
       fireEvent.click(action);
       expect(undo).toHaveBeenCalledTimes(1);
       expect(onOpenChange).not.toHaveBeenCalled();
 
       fireEvent.pointerDown(document.body);
       fireEvent.click(document.body);
-      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+      await waitFor(() =>
+        expect(onOpenChange.mock.calls.at(-1)?.[0]).toBe(false)
+      );
     } finally {
       cleanup();
     }

@@ -108,9 +108,7 @@ export function DeviceInputContent({
           Channel
           {channelCount <= 2 && (
             <Tooltip>
-              <TooltipTrigger asChild>
-                <InfoIcon className="size-3 cursor-help" />
-              </TooltipTrigger>
+              <TooltipTrigger  render={<InfoIcon className="size-3 cursor-help" />} />
               <TooltipContent className="max-w-56" side="top">
                 Browsers limit audio input to 2 channels per device. To route
                 other channels, create an Aggregate Device in macOS Audio MIDI

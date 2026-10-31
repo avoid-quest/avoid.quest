@@ -51,7 +51,7 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   writable: true,
 });
 
-// Radix picks its layout effect when it loads, so it loads after the DOM.
+// Base UI picks its layout effect when it loads, so it loads after the DOM.
 const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
@@ -63,7 +63,7 @@ const ENTRIES: ChangelogEntry[] = [
   { date: "2026-09-07T12:00:00Z", id: "a", text: "Metadata preview" },
 ];
 
-/** Lets Radix's zero-delay tooltip timers run. */
+/** Lets tooltip scheduling and focus effects settle. */
 function settle() {
   return act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 }

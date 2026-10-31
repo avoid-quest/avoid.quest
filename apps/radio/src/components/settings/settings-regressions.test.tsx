@@ -174,14 +174,14 @@ if (process.env.AVOID_QUEST_SETTINGS_REGRESSION) {
       expect(panel?.getAttribute("aria-labelledby")).toBe(tab.id);
     }
     fireEvent.click(draft);
-    fireEvent.mouseDown(view.getByRole("tab", { name: "Export" }), {
+    fireEvent.click(view.getByRole("tab", { name: "Export" }), {
       button: 0,
       ctrlKey: false,
     });
     expect(
       await view.findByRole("button", { name: "export draft 1" })
     ).toBeTruthy();
-    fireEvent.mouseDown(view.getByRole("tab", { name: "Import" }), {
+    fireEvent.click(view.getByRole("tab", { name: "Import" }), {
       button: 0,
       ctrlKey: false,
     });
@@ -202,11 +202,11 @@ if (process.env.AVOID_QUEST_SETTINGS_REGRESSION) {
   for (const result of ["commit", "rollback"]) {
     test(`mode request is busy immediately, delays its spinner, and ${result}s selection`, async () => {
       const view = render(<ModeSelect />);
-      const dj = view.getByRole("radio", { name: "DJ" });
+      const dj = view.getByRole("button", { name: "DJ" });
       fireEvent.click(dj);
       expect(dj.getAttribute("aria-busy")).toBe("true");
       expect(
-        view.getByRole("radio", { name: "Node" }).getAttribute("aria-checked")
+        view.getByRole("button", { name: "Node" }).getAttribute("aria-pressed")
       ).toBe("true");
       expect(view.queryByRole("status")).toBeNull();
       await view.findByRole("status", { name: "Loading" });
@@ -223,8 +223,8 @@ if (process.env.AVOID_QUEST_SETTINGS_REGRESSION) {
       expect(dj.hasAttribute("aria-busy")).toBe(false);
       expect(
         view
-          .getByRole("radio", { name: result === "commit" ? "DJ" : "Node" })
-          .getAttribute("aria-checked")
+          .getByRole("button", { name: result === "commit" ? "DJ" : "Node" })
+          .getAttribute("aria-pressed")
       ).toBe("true");
     });
   }
@@ -283,12 +283,12 @@ if (process.env.AVOID_QUEST_SETTINGS_REGRESSION) {
     const { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } =
       await import("@avoid.quest/ui/components/tooltip");
     const view = render(
-      <TooltipProvider disableHoverableContent>
-        <Tooltip>
+      <TooltipProvider>
+        <Tooltip disableHoverablePopup>
           <TooltipTrigger>First</TooltipTrigger>
           <TooltipContent>First description</TooltipContent>
         </Tooltip>
-        <Tooltip>
+        <Tooltip disableHoverablePopup>
           <TooltipTrigger>Second</TooltipTrigger>
           <TooltipContent>Second description</TooltipContent>
         </Tooltip>
@@ -296,16 +296,22 @@ if (process.env.AVOID_QUEST_SETTINGS_REGRESSION) {
     );
     const first = view.getByRole("button", { name: "First" });
     const second = view.getByRole("button", { name: "Second" });
-    fireEvent.pointerMove(first, { pointerType: "mouse" });
+    fireEvent.pointerEnter(first, { pointerType: "mouse" });
+    fireEvent.mouseEnter(first);
+    fireEvent.mouseMove(first);
     expect(view.queryByRole("tooltip")).toBeNull();
-    expect(await view.findByRole("tooltip")).toBeTruthy();
+    const firstDescription = await view.findByRole("tooltip");
+    expect(first.getAttribute("aria-describedby")).toBe(firstDescription.id);
+    fireEvent.mouseLeave(first);
     fireEvent.pointerLeave(first, { pointerType: "mouse" });
-    fireEvent.pointerMove(document.body, {
+    fireEvent.mouseMove(document.body, {
       clientX: 100,
       clientY: 100,
       pointerType: "mouse",
     });
-    fireEvent.pointerMove(second, { pointerType: "mouse" });
+    fireEvent.pointerEnter(second, { pointerType: "mouse" });
+    fireEvent.mouseEnter(second);
+    fireEvent.mouseMove(second);
     await waitFor(
       () =>
         expect(view.getByRole("tooltip").textContent).toBe(
@@ -321,15 +327,24 @@ if (process.env.AVOID_QUEST_SETTINGS_REGRESSION) {
       </Tooltip>
     );
     const trigger = fallback.getByRole("button", { name: "Outside provider" });
-    // JSDOM does not track keyboard modality after the hover gestures above.
-    const matches = spyOn(trigger, "matches").mockReturnValue(true);
+    // JSDOM does not track input modality; simulate pointer focus before keyboard focus.
+    const matches = spyOn(trigger, "matches").mockReturnValue(false);
+    await act(async () => {
+      trigger.focus();
+      await Promise.resolve();
+    });
+    expect(fallback.queryByRole("tooltip")).toBeNull();
+    await act(async () => trigger.blur());
+    matches.mockReturnValue(true);
     await act(async () => {
       trigger.focus();
       await Promise.resolve();
     });
     matches.mockRestore();
-    expect(fallback.getByRole("tooltip").textContent).toBe(
-      "Keyboard description"
+    const keyboardDescription = fallback.getByRole("tooltip");
+    expect(keyboardDescription.textContent).toBe("Keyboard description");
+    expect(trigger.getAttribute("aria-describedby")).toBe(
+      keyboardDescription.id
     );
   });
 

@@ -26,12 +26,10 @@ export const Default: Story = {
     await waitFor(() => expect(tooltip).toHaveTextContent("Mute"));
   },
   render: (args) => (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delay={0}>
       <Tooltip {...args}>
-        <TooltipTrigger asChild>
-          <Button aria-label="Mute" variant="ghost">
-            M
-          </Button>
+        <TooltipTrigger render={<Button aria-label="Mute" variant="ghost" />}>
+          M
         </TooltipTrigger>
         <TooltipContent>Mute</TooltipContent>
       </Tooltip>

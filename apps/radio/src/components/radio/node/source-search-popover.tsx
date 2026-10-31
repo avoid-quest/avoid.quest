@@ -66,16 +66,18 @@ export function SourceSearchPopover({
   };
   return (
     <Popover onOpenChange={handleOpenChange} open={open}>
-      <PopoverTrigger asChild>
-        <Button
-          className="min-w-0 max-w-md flex-1 justify-start text-muted-foreground"
-          size="sm"
-          variant="outline"
-        >
-          <SearchIcon className="size-3.5" />
-          Search sources
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger
+        render={
+          <Button
+            className="min-w-0 max-w-md flex-1 justify-start text-muted-foreground"
+            size="sm"
+            variant="outline"
+          >
+            <SearchIcon className="size-3.5" />
+            Search sources
+          </Button>
+        }
+      />
       <PopoverContent
         align="start"
         className="flex h-[min(70vh,22rem)] w-96 max-w-[calc(100vw-24px)] flex-col"

@@ -238,8 +238,7 @@ export function AppFeedback() {
   return (
     <>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
+        <TooltipTrigger  render={<Button
             aria-expanded={open}
             aria-label={feedbackCopy.triggerLabel}
             onClick={handleOpen}
@@ -250,8 +249,7 @@ export function AppFeedback() {
             variant="ghost"
           >
             <MessageCircleMore className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
+          </Button>} />
         <TooltipContent side="bottom" sideOffset={6}>
           {feedbackCopy.triggerLabel}
         </TooltipContent>

@@ -53,7 +53,7 @@ export function DeviceNote({
       className={cn(
         "rounded-md px-2.5 py-1.5 text-xs",
         tone === "warning"
-          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+          ? "bg-warning/10 text-warning"
           : "bg-muted/50 text-muted-foreground",
         className
       )}
@@ -76,7 +76,7 @@ export function InputLiveBadge({
   const label = isLoading ? "Starting" : settled;
   return (
     <Badge
-      className="shrink-0 px-1.5 py-0 text-[10px]"
+      className="shrink-0 px-1.5 py-0 text-xs"
       variant={isLive ? "default" : "secondary"}
     >
       {label}
@@ -236,7 +236,7 @@ export function FeedbackGuard({
 }) {
   const id = useId();
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-amber-700 text-xs dark:text-amber-400">
+    <div className="flex flex-col gap-1.5 rounded-md bg-warning/10 px-2.5 py-1.5 text-warning text-xs">
       <p className="flex items-center gap-1.5" role="status">
         <HeadphonesIcon aria-hidden="true" className="size-3.5 shrink-0" />
         Use headphones: a mic into speakers can howl

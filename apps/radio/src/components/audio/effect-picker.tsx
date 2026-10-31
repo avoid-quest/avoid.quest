@@ -81,7 +81,7 @@ function PickerOption<TItem extends PickerItem>({
           {item.name}
         </h3>
         {item.badge ? (
-          <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+          <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs">
             {item.badge}
           </span>
         ) : null}

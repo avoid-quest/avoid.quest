@@ -219,7 +219,7 @@ function LaneChain({
         if (!isInspectable(node)) {
           return (
             <Badge
-              className="font-normal text-[10px]"
+              className="font-normal text-xs"
               key={node.id}
               variant="outline"
             >
@@ -231,7 +231,7 @@ function LaneChain({
         return (
           <Badge
             asChild
-            className="cursor-pointer font-normal text-[10px] hover:bg-accent hover:text-accent-foreground"
+            className="cursor-pointer font-normal text-xs hover:bg-accent hover:text-accent-foreground"
             key={node.id}
             variant="outline"
           >
@@ -288,7 +288,7 @@ function HiddenStationRow({ radio, nodeId }: { radio: Radio; nodeId: string }) {
       className={cn(
         stationRowClassName,
         "opacity-60",
-        isSessionRadio(radio) && "border-l-2 border-l-[#00d084]/40"
+        isSessionRadio(radio) && "border-l-2 border-l-success/40"
       )}
     >
       <StationRowText title={radio.name}>

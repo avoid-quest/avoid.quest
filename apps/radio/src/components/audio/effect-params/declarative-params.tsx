@@ -177,7 +177,7 @@ function TextControl({
   return (
     <div className="basis-full space-y-1">
       <Label
-        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
+        className="font-mono text-muted-foreground text-xs uppercase tracking-wider"
         htmlFor={id}
       >
         {param.label}

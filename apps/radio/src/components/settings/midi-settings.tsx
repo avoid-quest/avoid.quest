@@ -372,7 +372,7 @@ export function MidiSettings() {
                     className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0"
                     key={device.id}
                   >
-                    <CircleIcon className="size-2 shrink-0 fill-emerald-500 text-emerald-500" />
+                    <CircleIcon className="size-2 shrink-0 fill-success text-success" />
                     <span className="min-w-0 truncate text-sm">
                       {device.name}
                       {device.manufacturer ? (

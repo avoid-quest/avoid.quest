@@ -125,10 +125,10 @@ preserved. The mark identifies the repository link; it does not imply endorsemen
 
 ## Fonts and assets
 
-Marketing bundles `@fontsource/geist-sans` and `@fontsource/geist-mono` **5.3.0**,
-under **SIL OFL-1.1**. Their complete copyright and license files are copied into
-its generated dependency notices. Font authors include Vercel, basement.studio
-and the Geist Project Authors, as specified in those files.
+Radio and marketing bundle `@fontsource-variable/geist-mono` **5.3.0** through
+the shared UI theme, under **SIL OFL-1.1**. Its complete copyright and license file
+is copied into each app's generated dependency notices. Copyright 2024 The Geist
+Project Authors, as specified in that file.
 
 Original avoid.quest logos, favicons and application screenshots are under MIT.
 Third-party artwork or trademarks visible in screenshots remain their owners'

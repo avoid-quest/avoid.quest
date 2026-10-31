@@ -1,7 +1,3 @@
-@import "@fontsource/geist-sans/400.css";
-@import "@fontsource/geist-sans/500.css";
-@import "@fontsource/geist-sans/600.css";
-@import "@fontsource/geist-mono/400.css";
 @import "@avoid.quest/ui/globals.css";
 
 @source "../";
@@ -10,14 +6,3 @@
 @source "../../../../packages/ui/src/components/button.tsx";
 @source "../../../../packages/ui/src/components/github-icon.tsx";
 @source "../../../../packages/ui/src/components/legal-page.tsx";
-
-:root {
-  --font-geist-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-geist-mono: "Geist Mono", ui-monospace, monospace;
-}
-
-@layer base {
-  .dark body {
-    @apply bg-linear-to-br from-darkest via-darker to-dark;
-  }
-}

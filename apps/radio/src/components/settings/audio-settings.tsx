@@ -251,7 +251,7 @@ export function AudioSettings() {
               step={1}
               value={[mainDelayMs]}
             />
-            <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+            <span className="w-10 text-right font-mono text-muted-foreground text-xs tabular-nums">
               {mainDelayMs} ms
             </span>
             <Button
@@ -313,7 +313,7 @@ export function AudioSettings() {
                 step={1}
                 value={[cueDelayMs]}
               />
-              <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+              <span className="w-10 text-right font-mono text-muted-foreground text-xs tabular-nums">
                 {cueDelayMs} ms
               </span>
             </div>

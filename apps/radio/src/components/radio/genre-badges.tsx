@@ -24,7 +24,7 @@ export function splitGenres(genre?: string | null): string[] {
 }
 
 const badgeClassName =
-  "h-4 max-w-full border-foreground/15 bg-transparent px-1.5 py-0 font-normal text-[9px] text-muted-foreground leading-none";
+  "h-4 max-w-full border-foreground/15 bg-transparent px-1.5 py-0 font-normal text-xs text-muted-foreground leading-none";
 
 /**
  * The one way genres are shown anywhere in the app: small outline pills.

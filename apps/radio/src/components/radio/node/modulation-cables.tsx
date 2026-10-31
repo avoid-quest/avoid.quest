@@ -149,7 +149,7 @@ export function ModulationCableControls({
           onChange={(enabled) => commit({ muted: !enabled }, true)}
         />
       </div>
-      <p className="max-w-56 text-[10px] text-muted-foreground">
+      <p className="max-w-56 text-muted-foreground text-xs">
         Depth adds a fraction of the parameter range to its saved value.
         Negative depth reverses it; multiple cables add together.
       </p>

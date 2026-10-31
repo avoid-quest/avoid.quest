@@ -63,7 +63,7 @@ function StationRow({
         stationRowClassName,
         "[contain-intrinsic-size:auto_40px] [content-visibility:auto] focus-within:[content-visibility:visible]",
         isCurrent && "bg-muted/40",
-        isSession && "border-l-2 border-l-[#00d084]/40"
+        isSession && "border-l-2 border-l-success/40"
       )}
       ref={elementRef}
     >

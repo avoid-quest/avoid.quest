@@ -110,6 +110,11 @@ Do not start with the Base UI swap. The swap is the riskiest step and currently 
 
 ### 5.1 Tokens (Tailwind v4 as the token source)
 
+Superseded by [NWS-2784](https://linear.app/nws2/issue/NWS-2784): standard Tailwind
+sizes and semantic state colours replace the three-tier proposal below. The selected
+theme and font source is shadcn preset `beXRToEi`; see the current
+[UI theme documentation](../../packages/ui/README.md#theme).
+
 Three tiers, all CSS variables, all in `packages/ui/src/styles/`. Split `globals.css` into `theme.css` (tokens) and `globals.css` (imports + base layer) so consumers can import tokens without Preflight if needed.
 
 ```css

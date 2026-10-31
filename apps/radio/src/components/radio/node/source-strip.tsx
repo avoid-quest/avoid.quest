@@ -144,7 +144,7 @@ export function StripMeter({
 }
 
 const STRIP_TOGGLE =
-  "h-6 min-w-6 px-0 font-medium text-[11px] text-muted-foreground data-[state=on]:text-foreground";
+  "h-6 min-w-6 px-0 font-medium text-xs text-muted-foreground data-[state=on]:text-foreground";
 
 /** M and S: the source's mute, and its solo on the lane. */
 export function StripMuteSolo({
@@ -184,8 +184,8 @@ export function StripMuteSolo({
         aria-label={`Solo ${target}`}
         className={cn(
           STRIP_TOGGLE,
-          "data-[state=on]:bg-amber-500/20",
-          soloedOut && "ring-1 ring-amber-500/40 ring-inset"
+          "data-[state=on]:bg-warning/20",
+          soloedOut && "ring-1 ring-warning/40 ring-inset"
         )}
         data-soloed-out={soloedOut || undefined}
         onPressedChange={onToggleSolo}
@@ -613,7 +613,7 @@ export function SourceStrip({
             />
             <Toggle
               aria-label={`Key lock ${target}`}
-              className="h-6 px-1.5 text-[10px]"
+              className="h-6 px-1.5 text-xs"
               onPressedChange={(keyLock) => onStripChange({ keyLock })}
               pressed={speed.keyLock}
               size="sm"

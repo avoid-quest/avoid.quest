@@ -171,7 +171,7 @@ export function WhatsNew() {
           </p>
         ) : null}
         {footer ? (
-          <div className="border-t px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+          <div className="border-t px-3 py-1.5 font-mono text-muted-foreground text-xs">
             {footer}
           </div>
         ) : null}

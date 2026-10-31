@@ -137,7 +137,7 @@ export function RevampParams({
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         {BANDS.map((band) => {
           const enabledKey = `${band.prefix}Enabled`;
           const enabled =
@@ -145,13 +145,13 @@ export function RevampParams({
           return (
             <div
               className={cn(
-                "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-md border border-border/50 px-1 py-1.5",
+                "flex min-w-20 flex-1 flex-col items-center gap-1 rounded-md border border-border/50 px-1 py-1.5",
                 !enabled && "opacity-50"
               )}
               key={band.prefix}
             >
               <span
-                className="whitespace-nowrap font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
+                className="whitespace-nowrap font-mono text-muted-foreground text-xs uppercase tracking-wider"
                 title={BAND_TITLES[band.name]}
               >
                 {band.name}
@@ -188,9 +188,8 @@ export function RevampParams({
                 : null}
               {band.hasOrder ? (
                 <ParamSelect
-                  // A band column is 31-43px wide: fill it, drop the chevron and
-                  // size the value like the knob values so "24 dB" still fits.
-                  className="w-full [&_button]:w-full [&_button]:justify-center [&_button]:px-0! [&_button]:text-[10px]! [&_button_svg]:hidden"
+                  // Keep the slope readable at text-xs as narrow racks wrap bands.
+                  className="w-full [&_button]:w-full [&_button]:justify-center [&_button]:px-0! [&_button]:text-xs! [&_button_svg]:hidden"
                   label="Slope"
                   onChange={(next) =>
                     onUpdate({

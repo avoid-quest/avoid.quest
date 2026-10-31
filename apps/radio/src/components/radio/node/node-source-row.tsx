@@ -227,7 +227,7 @@ function StationSourceRow({
         stationRowClassName,
         "flex-col items-stretch gap-1.5",
         isLive && "bg-muted/40",
-        isSessionRadio(radio) && "border-l-2 border-l-[#00d084]/40"
+        isSessionRadio(radio) && "border-l-2 border-l-success/40"
       )}
       data-node-id={nodeId}
       ref={elementRef}

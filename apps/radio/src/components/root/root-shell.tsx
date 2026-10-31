@@ -69,7 +69,7 @@ export function RootShell({ children }: { children: React.ReactNode }) {
           >
             <SWRegister />
             <InstallPrompt />
-            <div className="relative flex h-dvh flex-col bg-background dark:bg-linear-to-br dark:from-darkest dark:via-darker dark:to-dark">
+            <div className="relative flex h-dvh flex-col bg-background">
               <Header />
               <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden pt-12">
                 {children}

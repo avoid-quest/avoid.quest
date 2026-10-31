@@ -141,7 +141,7 @@ function ChannelBody({
             style={{ touchAction: "none" }}
             title="Volume. Double-click the handle for 100%."
           >
-            <span className="w-8 shrink-0 text-center font-mono text-[10px] tabular-nums">
+            <span className="w-8 shrink-0 text-center font-mono text-xs tabular-nums">
               {formatPercent(deck.volume)}
             </span>
             <Slider
@@ -158,7 +158,7 @@ function ChannelBody({
               value={[deck.volume]}
               variant="fader"
             />
-            <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+            <span className="font-mono text-muted-foreground text-xs uppercase tracking-wider">
               vol
             </span>
           </div>
@@ -170,7 +170,7 @@ function ChannelBody({
       <Button
         aria-pressed={cueEnabled}
         className={cn(
-          "h-8 w-full gap-1.5 self-end font-mono text-[10px] uppercase tracking-wider",
+          "h-8 w-full gap-1.5 self-end font-mono text-xs uppercase tracking-wider",
           cueEnabled &&
             "ring-2 ring-foreground/30 ring-offset-1 ring-offset-background"
         )}

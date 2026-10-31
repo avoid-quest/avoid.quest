@@ -32,7 +32,7 @@ export function ParamSelect({
 }: ParamSelectProps) {
   return (
     <div className={cn("w-40 space-y-1", className)}>
-      <Label className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+      <Label className="font-mono text-muted-foreground text-xs uppercase tracking-wider">
         {label}
       </Label>
       <Select disabled={disabled} onValueChange={onChange} value={value}>

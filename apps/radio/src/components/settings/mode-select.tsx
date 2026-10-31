@@ -105,7 +105,7 @@ export function ModeSelect({ className }: { className?: string }) {
                 ) : (
                   <Icon className="size-3.5" />
                 )}
-                <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
+                <span className="hidden font-mono text-xs uppercase tracking-wider sm:block">
                   {mode.label}
                 </span>
               </TooltipTrigger>

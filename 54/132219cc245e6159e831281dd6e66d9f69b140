@@ -1,0 +1,29 @@
+packages/ui/src/components/control-reset.test.tsx
+  s_4af26cced585d7::t_fa738d123444a6 411-419,421-426,428-433,435-440,443-448,456-464
+  s_4af26cced585d7::t_352b2b7ba56f33 406-410,420,427,434,441-442,449-455,465-469
+packages/ui/src/components/slider.tsx
+  s_4af26cced585d7::t_6df10c9813da03 209
+  s_4af26cced585d7::t_fa738d123444a6 359-361,364-370,416
+  s_4af26cced585d7::t_154acf4fe06906 355-358
+packages/ui/src/stories/slider.stories.tsx
+  s_4af26cced585d7::t_fa738d123444a6 115-117,119-121,123-125,130-132,134-136,141-148,150-152,155-157
+  s_4af26cced585d7::t_352b2b7ba56f33 3,113-114,118,122,126-129,133,137-140,149,153-154,158-162
+packages/ui/src/components/knob.tsx
+  s_4af26cced585d7::t_592b5d2a6ce64b 78-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54132219cc245e6159e831281dd6e66d9f69b140",
+  "prompts": {},
+  "sessions": {
+    "s_4af26cced585d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a193ad-1e82-72e3-a1aa-d9f9849688c9",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

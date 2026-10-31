@@ -26,6 +26,24 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 bun run ui add <component-name>
 ```
 
+## Story tests
+
+From the repository root, run `bun run --filter @avoid.quest/ui test:stories`.
+This runs every story and its interaction tests in headless Chromium twice:
+`storybook-light` and `storybook-dark`. Each project pins `initialGlobals.theme`
+and loads `.storybook/vitest.setup.ts`, which applies the preview stylesheet,
+theme decorators, and accessibility addon hooks. The preview's `a11y.test: "error"`
+makes axe violations fail the run in either theme.
+
+PR validation installs Chromium and runs this same command after the workspace
+unit tests, so interaction and accessibility failures in either theme block CI.
+
+`Foundations/Theme` checks that the theme global, next-themes provider, document
+class, stylesheet, and accessibility policy are applied during these tests.
+
+`Primitives/Feedback/Cancelable Loading` checks the "Cancel Cashmere Radio"
+accessible name, keyboard focus, and clicking to return to the play state.
+
 ## Connections
 
 - Used by **apps/web** for branding, buttons, and theme controls.

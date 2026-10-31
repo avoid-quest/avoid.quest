@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { JSDOM } from "jsdom";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -26,6 +27,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
@@ -231,7 +233,7 @@ test("a filled Station removes its own node separately from the station library 
   const onDelete = mock(() => undefined);
   const view = renderBody({ onDelete, onRemove, radio: kexp });
   fireEvent.keyDown(view.getByRole("button", { name: "Options for KEXP" }), {
-    key: "Enter",
+    key: "ArrowDown",
   });
   expect(view.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
   fireEvent.click(view.getByRole("menuitem", { name: "Remove node" }));

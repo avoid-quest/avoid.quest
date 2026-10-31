@@ -256,16 +256,18 @@ export function ModuleHeader({
           />
         ) : null}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`Options for ${title}`}
-              className="size-6 text-muted-foreground"
-              size="icon"
-              variant="ghost"
-            >
-              <MoreHorizontalIcon />
-            </Button>
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                aria-label={`Options for ${title}`}
+                className="size-6 text-muted-foreground"
+                size="icon"
+                variant="ghost"
+              >
+                <MoreHorizontalIcon />
+              </Button>
+            }
+          />
           <DropdownMenuContent align="end">
             {onInspect ? (
               <DropdownMenuItem onClick={onInspect}>
@@ -451,7 +453,15 @@ export function ModuleSelect({
   const selected = options.find((option) => option.value === value);
   return (
     <ControlColumn label={label}>
-      <Select onValueChange={onChange} value={value}>
+      <Select
+        items={options}
+        onValueChange={(nextValue) => {
+          if (nextValue !== null) {
+            onChange(nextValue);
+          }
+        }}
+        value={value}
+      >
         <SelectTrigger
           aria-label={name}
           className="w-full gap-1 px-1.5 text-xs data-[size=xs]:px-1.5 data-[size=xs]:text-xs [&_svg:not([class*='size-'])]:size-3"

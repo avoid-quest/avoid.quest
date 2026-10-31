@@ -112,7 +112,15 @@ export function MidiTransformEditor({
       {/* Curve */}
       <div className="space-y-0.5">
         <span className="text-muted-foreground text-xs">Curve</span>
-        <Select onValueChange={updateCurve} value={transform.curve}>
+        <Select
+          items={{ linear: "Linear", log: "Logarithmic", exp: "Exponential" }}
+          onValueChange={(nextValue) => {
+            if (nextValue !== null) {
+              updateCurve(nextValue);
+            }
+          }}
+          value={transform.curve}
+        >
           <SelectTrigger aria-label="Curve" size="xs">
             <SelectValue />
           </SelectTrigger>

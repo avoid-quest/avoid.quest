@@ -3,6 +3,7 @@ import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuRadioGroup,
@@ -29,36 +30,38 @@ function StationMenu() {
           Right-click NTS Radio
         </ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuLabel>NTS Radio</ContextMenuLabel>
-          <ContextMenuItem onSelect={() => setAction("Play")}>
-            Play<ContextMenuShortcut>↵</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuItem disabled>Record (unavailable)</ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuCheckboxItem
-            checked={favorite}
-            onCheckedChange={setFavorite}
-          >
-            Favorite
-          </ContextMenuCheckboxItem>
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>Player mode</ContextMenuSubTrigger>
-            <ContextMenuSubContent>
-              <ContextMenuRadioGroup onValueChange={setMode} value={mode}>
-                <ContextMenuRadioItem value="single">
-                  Single
-                </ContextMenuRadioItem>
-                <ContextMenuRadioItem value="dj">DJ</ContextMenuRadioItem>
-              </ContextMenuRadioGroup>
-            </ContextMenuSubContent>
-          </ContextMenuSub>
-          <ContextMenuSeparator />
-          <ContextMenuItem
-            onSelect={() => setAction("Remove")}
-            variant="destructive"
-          >
-            Remove station
-          </ContextMenuItem>
+          <ContextMenuGroup>
+            <ContextMenuLabel>NTS Radio</ContextMenuLabel>
+            <ContextMenuItem onClick={() => setAction("Play")}>
+              Play<ContextMenuShortcut>↵</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem disabled>Record (unavailable)</ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuCheckboxItem
+              checked={favorite}
+              onCheckedChange={setFavorite}
+            >
+              Favorite
+            </ContextMenuCheckboxItem>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>Player mode</ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                <ContextMenuRadioGroup onValueChange={setMode} value={mode}>
+                  <ContextMenuRadioItem value="single">
+                    Single
+                  </ContextMenuRadioItem>
+                  <ContextMenuRadioItem value="dj">DJ</ContextMenuRadioItem>
+                </ContextMenuRadioGroup>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => setAction("Remove")}
+              variant="destructive"
+            >
+              Remove station
+            </ContextMenuItem>
+          </ContextMenuGroup>
         </ContextMenuContent>
       </ContextMenu>
       <output className="block text-sm">

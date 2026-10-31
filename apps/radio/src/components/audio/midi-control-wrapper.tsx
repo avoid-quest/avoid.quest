@@ -99,8 +99,7 @@ export function MidiControlWrapper({
   return (
     <Dialog onOpenChange={setTransformOpen} open={transformOpen}>
       <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div
+        <ContextMenuTrigger  render={<div
             className="relative"
             data-midi-target={targetId}
             onContextMenuCapture={rememberControl}
@@ -111,8 +110,7 @@ export function MidiControlWrapper({
               <span className="pointer-events-none absolute inset-0 z-10 animate-pulse rounded border-2 border-primary border-dashed" />
             )}
             {children}
-          </div>
-        </ContextMenuTrigger>
+          </div>} />
         <ContextMenuContent className="w-52" onCloseAutoFocus={closeMenu}>
           {isThisLearning ? (
             <ContextMenuItem onClick={stopLearning}>

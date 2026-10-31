@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { SearchField } from "@/components/radio/search-field";
 import { StationList } from "@/components/radio/single/single-player-station-list";
 import { withRadioQueryClient } from "@/storybook/decorators";
@@ -73,5 +73,33 @@ export const Empty: Story = {
     await expect(
       within(canvasElement).getByText("Search to add a station")
     ).toBeVisible();
+  },
+};
+
+export const OpenMenuKeepsActionsVisible: Story = {
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", {
+      name: `Options for ${FIXTURE_STATION.name}`,
+    });
+    const actions = trigger.parentElement;
+    const row = trigger.closest(".group");
+    if (!(actions && row)) {
+      throw new Error("Missing station row actions");
+    }
+    await userEvent.hover(row);
+    await userEvent.click(trigger);
+    const menu = await within(document.body).findByRole("menu");
+    await userEvent.unhover(row);
+    await userEvent.hover(menu);
+    await waitFor(() => {
+      expect(getComputedStyle(actions).opacity).toBe("1");
+      expect(getComputedStyle(row).backgroundColor).not.toBe(
+        "rgba(0, 0, 0, 0)"
+      );
+    });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(within(document.body).queryByRole("menu")).toBeNull()
+    );
   },
 };

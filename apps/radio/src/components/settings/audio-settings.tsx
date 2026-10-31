@@ -166,6 +166,20 @@ export function AudioSettings() {
     diagnosticLabel = "Copy audio diagnostic";
   }
 
+  const mainOutputItems = [
+    { value: "default", label: "System default" },
+    ...outputDevices
+      .filter((device) => device.deviceId && device.deviceId !== "default")
+      .map((device) => ({ value: device.deviceId, label: device.label })),
+  ];
+  const cueOutputItems = [
+    { value: "none", label: "Off" },
+    ...outputDevices
+      .filter((device) => device.deviceId && device.deviceId !== mainOutputId)
+      .map((device) => ({ value: device.deviceId, label: device.label })),
+  ];
+  const selectedCueOutputId = cueOutputId ?? "none";
+
   return (
     <div className="space-y-4">
       {/* Permission request */}
@@ -197,8 +211,17 @@ export function AudioSettings() {
           {sinkIdSupported ? (
             <div className="flex min-w-0 gap-2">
               <Select
-                onValueChange={handleMainOutputChange}
-                value={mainOutputId}
+                items={mainOutputItems}
+                onValueChange={(nextValue) => {
+                  if (nextValue !== null) {
+                    handleMainOutputChange(nextValue);
+                  }
+                }}
+                value={
+                  mainOutputItems.some((item) => item.value === mainOutputId)
+                    ? mainOutputId
+                    : null
+                }
               >
                 <SelectTrigger className="min-w-0 flex-1" id="main-output">
                   <SelectValue placeholder="Select output device" />
@@ -272,8 +295,19 @@ export function AudioSettings() {
         >
           {sinkIdSupported ? (
             <Select
-              onValueChange={handleCueOutputChange}
-              value={cueOutputId ?? "none"}
+              items={cueOutputItems}
+              onValueChange={(nextValue) => {
+                if (nextValue !== null) {
+                  handleCueOutputChange(nextValue);
+                }
+              }}
+              value={
+                cueOutputItems.some(
+                  (item) => item.value === selectedCueOutputId
+                )
+                  ? selectedCueOutputId
+                  : null
+              }
             >
               <SelectTrigger className="min-w-0 flex-1" id="cue-output">
                 <SelectValue placeholder="Select CUE output" />

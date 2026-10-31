@@ -16,7 +16,7 @@ function DeviceSelect({ size }: { size?: "xs" | "sm" | "default" }) {
       <SelectTrigger aria-label="Output device" className="w-56" size={size}>
         <SelectValue placeholder="Choose an output" />
       </SelectTrigger>
-      {/* Radix gives the listbox no accessible name of its own; Base UI's Select.List inherits it from the trigger. */}
+      {/* The list has a distinct accessible name from its trigger. */}
       <SelectContent aria-label="Output devices">
         {DEVICES.map((device) => (
           <SelectItem key={device} value={device}>
@@ -39,6 +39,12 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {};
 
 export const Sizes: Story = {
+  play: async ({ canvasElement }) => {
+    const triggers = within(canvasElement).getAllByRole("combobox");
+    await expect(
+      triggers.map((trigger) => getComputedStyle(trigger).height)
+    ).toEqual(["28px", "36px", "40px"]);
+  },
   render: () => (
     <div className="flex flex-col gap-3">
       <DeviceSelect size="xs" />
@@ -63,5 +69,28 @@ export const Selected: Story = {
     await waitFor(() =>
       expect(within(document.body).queryByRole("listbox")).toBeNull()
     );
+  },
+};
+
+export const InitialSelectionLabel: Story = {
+  render: () => (
+    <Select
+      defaultValue="usb-interface"
+      items={{ "usb-interface": "USB interface" }}
+    >
+      <SelectTrigger aria-label="Initial output device" size="xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="usb-interface">USB interface</SelectItem>
+      </SelectContent>
+    </Select>
+  ),
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByRole("combobox", {
+        name: "Initial output device",
+      })
+    ).toHaveTextContent("USB interface");
   },
 };

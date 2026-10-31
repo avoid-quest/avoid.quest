@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Label } from "@avoid.quest/ui/components/label";
 import {
   Select,
@@ -30,12 +31,22 @@ export function ParamSelect({
   onChange,
   className,
 }: ParamSelectProps) {
+  const handleValueChange = (nextValue: string | null) => {
+    if (nextValue !== null) {
+      onChange(nextValue);
+    }
+  };
   return (
     <div className={cn("w-40 space-y-1", className)}>
       <Label className="font-mono text-muted-foreground text-xs uppercase tracking-wider">
         {label}
       </Label>
-      <Select disabled={disabled} onValueChange={onChange} value={value}>
+      <Select
+        disabled={disabled}
+        items={options}
+        onValueChange={handleValueChange}
+        value={value}
+      >
         <SelectTrigger aria-label={label} size="xs">
           <SelectValue />
         </SelectTrigger>

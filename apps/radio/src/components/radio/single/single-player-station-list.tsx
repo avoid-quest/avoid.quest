@@ -108,7 +108,7 @@ function StationRow({
         className={cn(
           "flex shrink-0 items-center gap-0.5",
           !isSession &&
-            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 [@media(pointer:coarse)]:opacity-60"
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(pointer:coarse)]:opacity-60"
         )}
       >
         <RadioNowPlayingDetailsButton metadata={metadata} radio={radio} />

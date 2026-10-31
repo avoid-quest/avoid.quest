@@ -3,6 +3,7 @@ import { Button } from "@avoid.quest/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -111,62 +112,66 @@ export function NodeToolbar({
         <span className="max-sm:sr-only">Add</span>
       </Button>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={isPhone ? "Patch actions" : undefined}
-            size="sm"
-            variant="ghost"
-          >
-            {isPhone ? (
-              <EllipsisIcon />
-            ) : (
-              <>
-                <LayoutTemplateIcon className="sm:hidden" />
-                <span className="max-sm:sr-only">Templates</span>
-                <ChevronDownIcon className="max-sm:hidden" />
-              </>
-            )}
-          </Button>
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              aria-label={isPhone ? "Patch actions" : undefined}
+              size="sm"
+              variant="ghost"
+            >
+              {isPhone ? (
+                <EllipsisIcon />
+              ) : (
+                <>
+                  <LayoutTemplateIcon className="sm:hidden" />
+                  <span className="max-sm:sr-only">Templates</span>
+                  <ChevronDownIcon className="max-sm:hidden" />
+                </>
+              )}
+            </Button>
+          }
+        />
         <DropdownMenuContent align={isPhone ? "end" : "start"} className="w-64">
           {isPhone ? (
             <>
               {onFitView ? (
-                <DropdownMenuItem onSelect={onFitView}>
+                <DropdownMenuItem onClick={onFitView}>
                   <MaximizeIcon /> Fit view
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
                 disabled={!canUndo}
-                onSelect={() => undoNodeGraph(store)}
+                onClick={() => undoNodeGraph(store)}
               >
                 <Undo2Icon /> Undo
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!canRedo}
-                onSelect={() => redoNodeGraph(store)}
+                onClick={() => redoNodeGraph(store)}
               >
                 <Redo2Icon /> Redo
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Templates</DropdownMenuLabel>
             </>
           ) : null}
-          <p className="px-2 py-1.5 text-muted-foreground text-xs">
-            Replaces this patch. Undo restores it.
-          </p>
-          {PALETTE_TEMPLATES.map((template) => (
-            <DropdownMenuItem
-              className="flex-col items-start gap-0.5"
-              key={template.id}
-              onSelect={() => onLoadTemplate(template.template)}
-            >
-              <span className="text-sm">{template.name}</span>
-              <span className="text-muted-foreground text-xs">
-                {template.description}
-              </span>
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuGroup>
+            {isPhone ? <DropdownMenuLabel>Templates</DropdownMenuLabel> : null}
+            <p className="px-2 py-1.5 text-muted-foreground text-xs">
+              Replaces this patch. Undo restores it.
+            </p>
+            {PALETTE_TEMPLATES.map((template) => (
+              <DropdownMenuItem
+                className="flex-col items-start gap-0.5"
+                key={template.id}
+                onClick={() => onLoadTemplate(template.template)}
+              >
+                <span className="text-sm">{template.name}</span>
+                <span className="text-muted-foreground text-xs">
+                  {template.description}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       {edgeId && onRewire ? (

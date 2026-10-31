@@ -32,9 +32,7 @@ function MenuToDialog() {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline">Station options</Button>
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger  render={<Button variant="outline">Station options</Button>} />
         <DropdownMenuContent>
           <DropdownMenuItem onSelect={() => setOpen(true)}>
             Rename…

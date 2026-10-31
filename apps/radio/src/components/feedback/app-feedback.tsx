@@ -145,7 +145,12 @@ function FeedbackCategoryField({ viewModel }: FeedbackCategoryFieldSlotProps) {
       </Label>
       <Select
         disabled={viewModel.isSubmitting}
-        onValueChange={viewModel.setCategory}
+        items={feedbackCategoryLabels}
+        onValueChange={(nextValue) => {
+          if (nextValue !== null) {
+            viewModel.setCategory(nextValue);
+          }
+        }}
         value={viewModel.category}
       >
         <SelectTrigger className="w-full" id={viewModel.categoryId}>
@@ -238,18 +243,22 @@ export function AppFeedback() {
   return (
     <>
       <Tooltip>
-        <TooltipTrigger  render={<Button
-            aria-expanded={open}
-            aria-label={feedbackCopy.triggerLabel}
-            onClick={handleOpen}
-            onFocus={preloadFeedback}
-            onPointerEnter={preloadFeedback}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <MessageCircleMore className="size-3.5" />
-          </Button>} />
+        <TooltipTrigger
+          render={
+            <Button
+              aria-expanded={open}
+              aria-label={feedbackCopy.triggerLabel}
+              onClick={handleOpen}
+              onFocus={preloadFeedback}
+              onPointerEnter={preloadFeedback}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <MessageCircleMore className="size-3.5" />
+            </Button>
+          }
+        />
         <TooltipContent side="bottom" sideOffset={6}>
           {feedbackCopy.triggerLabel}
         </TooltipContent>

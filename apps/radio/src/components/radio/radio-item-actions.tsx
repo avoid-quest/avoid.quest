@@ -126,18 +126,20 @@ export function RadioItemActions({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          aria-label={`Options for ${radio.name}`}
-          className="size-7"
-          disabled={disabled || isUpdating}
-          onClick={handleStopPropagation}
-          size="icon"
-          variant="ghost"
-        >
-          <MoreHorizontalIcon />
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={`Options for ${radio.name}`}
+            className="size-7"
+            disabled={disabled || isUpdating}
+            onClick={handleStopPropagation}
+            size="icon"
+            variant="ghost"
+          >
+            <MoreHorizontalIcon />
+          </Button>
+        }
+      />
       <DropdownMenuContent align="end">
         {isSession && onSave ? (
           <>

@@ -126,16 +126,18 @@ export function TrackCard({
             onKeyDown={keepControlKeys}
           >
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  aria-label={`Options for ${radio.name}`}
-                  className="size-7 text-muted-foreground"
-                  size="icon"
-                  variant="ghost"
-                >
-                  <MoreHorizontalIcon />
-                </Button>
-              </DropdownMenuTrigger>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    aria-label={`Options for ${radio.name}`}
+                    className="size-7 text-muted-foreground"
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <MoreHorizontalIcon />
+                  </Button>
+                }
+              />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={onRemove} variant="destructive">
                   <Trash2Icon />

@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -41,6 +42,7 @@ Object.defineProperty(dom.window, "matchMedia", {
 });
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DOMRect: dom.window.DOMRect,
   document: dom.window.document,

@@ -186,7 +186,7 @@ function NestedEffect({
   }
 
   return (
-    <div className="rounded-md border bg-background/70">
+    <div className="border bg-background/70">
       <div className="flex items-center gap-2 p-2">
         <Button
           aria-expanded={expanded}
@@ -423,7 +423,7 @@ function ChainEditor({
   );
 
   return (
-    <div className="space-y-3 rounded-lg border p-3">
+    <div className="space-y-3 border p-3">
       <div className="flex items-center gap-2">
         <Input
           aria-label="Chain name"

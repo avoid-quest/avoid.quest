@@ -76,7 +76,7 @@ export function DjConsoleMobile({
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
       {/* Mini Mixer Bar */}
-      <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-border/50 bg-card/50 p-2">
+      <div className="flex shrink-0 flex-col gap-2 border border-border/50 bg-card/50 p-2">
         {/* Meters line up over the crossfader track, A left, B right */}
         <MiniMixerMeters />
 

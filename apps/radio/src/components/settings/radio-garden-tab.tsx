@@ -157,13 +157,13 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
             {results.map((result) => (
               <div key={result.channelId}>
                 <button
-                  className="flex w-full items-center gap-3 rounded-md p-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[selected=true]:bg-accent"
+                  className="flex w-full items-center gap-3 p-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 data-[selected=true]:bg-accent"
                   data-channel-id={result.channelId}
                   data-selected={selectedId === result.channelId}
                   onClick={handleSelect}
                   type="button"
                 >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <div className="flex size-9 shrink-0 items-center justify-center bg-muted">
                     <RadioIcon className="size-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -178,7 +178,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                 </button>
 
                 {selectedId === result.channelId && selected ? (
-                  <div className="mx-2 mb-2 space-y-3 rounded-md border bg-muted/30 p-3">
+                  <div className="mx-2 mb-2 space-y-3 border bg-muted/30 p-3">
                     <Field className="gap-1.5">
                       <FieldLabel htmlFor="rg-station-name">Name</FieldLabel>
                       <Input
@@ -189,7 +189,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                     </Field>
                     {result.website ? (
                       <a
-                        className="flex items-center gap-1 rounded-sm text-primary text-xs outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        className="flex items-center gap-1 text-primary text-xs outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
                         href={result.website}
                         rel="noopener noreferrer"
                         target="_blank"

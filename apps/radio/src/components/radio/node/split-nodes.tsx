@@ -235,7 +235,7 @@ export function SplitInspectorParams({
               const name = branchName(node, edge.sourceHandle);
               return (
                 <li
-                  className="space-y-1.5 rounded-md border border-border/50 p-2"
+                  className="space-y-1.5 border border-border/50 p-2"
                   key={edge.id}
                 >
                   <p className="truncate text-xs">

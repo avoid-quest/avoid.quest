@@ -234,7 +234,7 @@ export function AudioInputNodeBody({
   return (
     <div
       className={cn(
-        "w-60 rounded-md border bg-card text-card-foreground",
+        "w-60 border bg-card text-card-foreground",
         isLive ? "border-foreground/40" : "border-border/50",
         selected && "border-ring",
         embedded && "w-full border-0 bg-transparent"
@@ -248,7 +248,7 @@ export function AudioInputNodeBody({
       >
         <span
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-sm",
+            "flex size-6 shrink-0 items-center justify-center",
             isLive
               ? "bg-primary/10 text-primary"
               : "bg-muted text-muted-foreground"
@@ -300,7 +300,7 @@ export function AudioInputNodeBody({
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
       <div
         className={cn(
-          "flex flex-col gap-1 rounded-b-[inherit] border-border/50 border-t px-2 py-1.5",
+          "flex flex-col gap-1 border-border/50 border-t px-2 py-1.5",
           INTERACTIVE
         )}
         onKeyDown={keepControlKeys}

@@ -29,12 +29,12 @@ export function SpeakersNode({ selected }: FlowNodeProps<SpeakersFlowNode>) {
       ) : null}
       <div
         className={cn(
-          "w-50 rounded-md border bg-card text-card-foreground",
+          "w-50 border bg-card text-card-foreground",
           selected ? "border-ring" : "border-border/50"
         )}
       >
         <div className="flex h-8 items-center gap-2 px-2">
-          <span className="flex size-6 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+          <span className="flex size-6 items-center justify-center bg-muted text-muted-foreground">
             <SpeakerIcon aria-hidden="true" className="size-3.5" />
           </span>
           <span className="font-medium text-xs">Speakers</span>

@@ -37,7 +37,7 @@ export function ParamGroup({
         onOpenChange={setOpen}
         open={open}
       >
-        <CollapsibleTrigger className="flex w-full items-center justify-between rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <CollapsibleTrigger className="flex w-full items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className={titleClassName}>{title}</span>
           <ChevronDownIcon
             className={cn(

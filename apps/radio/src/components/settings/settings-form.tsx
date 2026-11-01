@@ -399,7 +399,7 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
           <GitHubIcon className="size-4" />
         </Button>
         <a
-          className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
           href="/legal/"
         >
           Source and licenses

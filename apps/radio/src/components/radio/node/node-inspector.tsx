@@ -373,7 +373,7 @@ function InspectorTitle({
     <>
       <span
         className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-sm",
+          "flex size-6 shrink-0 items-center justify-center",
           on ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
         )}
       >

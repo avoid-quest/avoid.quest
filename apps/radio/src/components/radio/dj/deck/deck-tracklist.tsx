@@ -120,7 +120,7 @@ export function TracklistView({
         onPlay={playUrl}
         tracks={tracks}
       />
-      <ScrollArea className="h-40 rounded-md border border-border/50">
+      <ScrollArea className="h-40 border border-border/50">
         <div className="space-y-0.5 p-1">
           {tracks.map((track, index) => (
             <TrackRow
@@ -203,7 +203,7 @@ function TrackRow({
     <button
       aria-busy={isPending}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex w-full items-center gap-2 px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isCurrent && "bg-muted/40 font-medium"
       )}
       onClick={handlePlay}

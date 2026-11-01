@@ -51,7 +51,7 @@ export function DeviceNote({
   return (
     <p
       className={cn(
-        "rounded-md px-2.5 py-1.5 text-xs",
+        "px-2.5 py-1.5 text-xs",
         tone === "warning"
           ? "bg-warning/10 text-warning"
           : "bg-muted/50 text-muted-foreground",
@@ -252,7 +252,7 @@ export function FeedbackGuard({
 }) {
   const id = useId();
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-warning/10 px-2.5 py-1.5 text-warning text-xs">
+    <div className="flex flex-col gap-1.5 bg-warning/10 px-2.5 py-1.5 text-warning text-xs">
       <p className="flex items-center gap-1.5" role="status">
         <HeadphonesIcon aria-hidden="true" className="size-3.5 shrink-0" />
         Use headphones: a mic into speakers can howl

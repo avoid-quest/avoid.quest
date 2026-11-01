@@ -32,7 +32,7 @@ export function DjConsole({
   onDeckBCueChange,
 }: DjConsoleProps) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-border/50 bg-card/50">
       {/* Deck A | VU A | Mixer | VU B | Deck B */}
       <div className="grid min-h-0 flex-1 grid-cols-[1fr_21rem_1fr]">
         {/* Deck A */}

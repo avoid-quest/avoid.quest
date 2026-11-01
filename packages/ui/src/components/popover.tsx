@@ -9,61 +9,44 @@ import type * as React from "react";
 function Popover({ onOpenChange, ...props }: PopoverPrimitive.Root.Props) {
   return (
     <PopoverPrimitive.Root
-      onOpenChange={(open, eventDetails) => {
-        if (!open && isToastInteraction(eventDetails.event)) {
-          eventDetails.cancel();
+      data-slot="popover"
+      onOpenChange={(open, details) => {
+        // A toast press must not dismiss the popover underneath it.
+        if (!open && isToastInteraction(details.event)) {
+          details.cancel();
           return;
         }
-        onOpenChange?.(open, eventDetails);
+        onOpenChange?.(open, details);
       }}
       {...props}
     />
   );
 }
 
-function PopoverTrigger({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
+function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
-
-type PopoverContentProps = Omit<PopoverPrimitive.Popup.Props, "className"> &
-  Pick<
-    PopoverPrimitive.Positioner.Props,
-    | "align"
-    | "alignOffset"
-    | "side"
-    | "sideOffset"
-    | "collisionBoundary"
-    | "collisionPadding"
-    | "sticky"
-    | "anchor"
-  > & { className?: string };
 
 function PopoverContent({
   className,
   align = "center",
-  alignOffset,
+  alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
-  collisionBoundary,
-  collisionPadding,
-  sticky,
-  anchor,
   ...props
-}: PopoverContentProps) {
+}: PopoverPrimitive.Popup.Props &
+  Pick<
+    PopoverPrimitive.Positioner.Props,
+    "align" | "alignOffset" | "side" | "sideOffset"
+  >) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
-        anchor={anchor}
         className="isolate z-50"
-        collisionBoundary={collisionBoundary}
-        collisionPadding={collisionPadding}
         side={side}
         sideOffset={sideOffset}
-        sticky={sticky}
       >
         <PopoverPrimitive.Popup
           className={cn(
@@ -78,4 +61,47 @@ function PopoverContent({
   );
 }
 
-export { Popover, PopoverContent, PopoverTrigger };
+function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("flex flex-col gap-1 text-sm", className)}
+      data-slot="popover-header"
+      {...props}
+    />
+  );
+}
+
+function PopoverTitle({ className, ...props }: PopoverPrimitive.Title.Props) {
+  return (
+    <PopoverPrimitive.Title
+      className={cn("font-semibold text-xs uppercase", className)}
+      data-slot="popover-title"
+      {...props}
+    />
+  );
+}
+
+function PopoverDescription({
+  className,
+  ...props
+}: PopoverPrimitive.Description.Props) {
+  return (
+    <PopoverPrimitive.Description
+      className={cn(
+        "mt-0.5 text-muted-foreground text-sm leading-relaxed",
+        className
+      )}
+      data-slot="popover-description"
+      {...props}
+    />
+  );
+}
+
+export {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+};

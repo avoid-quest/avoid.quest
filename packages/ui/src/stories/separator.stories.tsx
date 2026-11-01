@@ -12,7 +12,7 @@ export const Horizontal: Story = {
   render: () => (
     <div className="w-64 space-y-3 text-sm">
       <p>Now playing</p>
-      <Separator decorative={false} />
+      <Separator />
       <p>NTS Radio</p>
     </div>
   ),

@@ -73,7 +73,7 @@ export function Header() {
   return (
     <header className="fixed top-0 right-0 left-0 z-50 flex h-12 items-center justify-between gap-3 border-border/50 border-b bg-background/80 px-3 backdrop-blur-xl backdrop-saturate-150 supports-backdrop-filter:bg-background/60 dark:bg-background/80">
       <a
-        className="flex shrink-0 items-center gap-1.5 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="flex shrink-0 items-center gap-1.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         href="/"
       >
         <AvoidLogo className="size-7" />

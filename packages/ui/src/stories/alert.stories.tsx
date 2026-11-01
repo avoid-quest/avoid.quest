@@ -4,7 +4,7 @@ import {
   AlertTitle,
 } from "@avoid.quest/ui/components/alert";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { RadioIcon, TriangleAlertIcon } from "lucide-react";
+import { IconAlertTriangle, IconRadio } from "@tabler/icons-react";
 
 const meta = {
   args: { className: "max-w-md" },
@@ -20,7 +20,7 @@ export const Default: Story = {
   args: {
     children: (
       <>
-        <RadioIcon />
+        <IconRadio />
         <AlertTitle>Stream reconnected</AlertTitle>
         <AlertDescription>
           Playback resumed from the live edge.
@@ -34,7 +34,7 @@ export const Destructive: Story = {
   args: {
     children: (
       <>
-        <TriangleAlertIcon />
+        <IconAlertTriangle />
         <AlertTitle>Microphone blocked</AlertTitle>
         <AlertDescription>
           Allow access in the browser settings.

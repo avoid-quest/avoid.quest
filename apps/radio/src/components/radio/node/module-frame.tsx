@@ -181,7 +181,7 @@ export function ModuleFrame({
   return (
     <div
       className={cn(
-        "rounded-md border bg-card text-card-foreground",
+        "border bg-card text-card-foreground",
         on ? "border-primary/20" : "border-border/50",
         selected && "border-ring"
       )}
@@ -226,7 +226,7 @@ export function ModuleHeader({
     <div className="flex h-8 items-center gap-1.5 pr-1 pl-2">
       <span
         className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-sm",
+          "flex size-6 shrink-0 items-center justify-center",
           on ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
         )}
       >
@@ -319,7 +319,7 @@ export function ModuleControls({
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
     <div
       className={cn(
-        "flex items-start gap-x-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
+        "flex items-start gap-x-2 border-border/50 border-t bg-muted/30 px-2 py-2",
         INTERACTIVE
       )}
       onKeyDown={keepControlKeys}

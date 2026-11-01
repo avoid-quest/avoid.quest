@@ -147,9 +147,7 @@ export function OutputDeviceNodeBody({
   return (
     <div
       className={cn(
-        embedded
-          ? "w-full"
-          : "w-56 rounded-md border bg-card text-card-foreground",
+        embedded ? "w-full" : "w-56 border bg-card text-card-foreground",
         selected ? "border-ring" : "border-border/50"
       )}
     >
@@ -159,7 +157,7 @@ export function OutputDeviceNodeBody({
           embedded && "hidden"
         )}
       >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+        <span className="flex size-6 shrink-0 items-center justify-center bg-muted text-muted-foreground">
           <MonitorSpeakerIcon aria-hidden="true" className="size-3.5" />
         </span>
         <span
@@ -216,7 +214,7 @@ export function OutputDeviceNodeBody({
         className={cn(
           embedded
             ? "flex flex-col gap-2"
-            : "flex flex-col gap-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
+            : "flex flex-col gap-2 border-border/50 border-t bg-muted/30 px-2 py-2",
           INTERACTIVE
         )}
         onKeyDown={keepControlKeys}

@@ -171,7 +171,7 @@ export function ImportPage() {
 
           <RadioGroup onValueChange={handleImportModeChange} value={importMode}>
             <div className="space-y-3">
-              <div className="flex items-start space-x-3 rounded-lg border p-3">
+              <div className="flex items-start space-x-3 border p-3">
                 <RadioGroupItem className="mt-1" id="merge" value="merge" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="merge">
@@ -183,7 +183,7 @@ export function ImportPage() {
                 </div>
               </div>
 
-              <div className="flex items-start space-x-3 rounded-lg border p-3">
+              <div className="flex items-start space-x-3 border p-3">
                 <RadioGroupItem className="mt-1" id="replace" value="replace" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="replace">

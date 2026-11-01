@@ -53,7 +53,7 @@ export function MixerRouting() {
       defaultTab="audio"
       trigger={
         <button
-          className="flex w-full items-center gap-3 rounded-sm text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full items-center gap-3 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           title={`${delays}. Click to change outputs.`}
           type="button"
         >

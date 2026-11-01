@@ -67,7 +67,7 @@ function LinkRow({
           onClick={onSelect}
           type="button"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+          <span className="flex size-8 shrink-0 items-center justify-center bg-muted text-muted-foreground">
             <LinkIcon className="size-3.5" />
           </span>
           <StationRowText
@@ -565,7 +565,7 @@ export function RadioSearchBar({
       {showDropdown ? (
         <div
           className={cn(
-            "absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg",
+            "absolute right-0 left-0 z-50 mt-1 overflow-hidden border border-border/50 bg-popover shadow-lg",
             dropdownClassName
           )}
         >

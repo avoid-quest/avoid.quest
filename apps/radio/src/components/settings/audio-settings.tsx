@@ -356,7 +356,7 @@ export function AudioSettings() {
       </div>
 
       <Collapsible>
-        <CollapsibleTrigger className="group flex items-center gap-1.5 rounded text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <CollapsibleTrigger className="group flex items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronDownIcon className="size-3.5 transition-transform group-aria-expanded:rotate-180" />
           Troubleshooting
         </CollapsibleTrigger>

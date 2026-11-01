@@ -33,7 +33,7 @@ export function NodeStage({
 
   return (
     <div className="flex flex-col gap-2">
-      <NodeMasterControls className="rounded-lg border border-border/50 bg-card/50 p-2" />
+      <NodeMasterControls className="border border-border/50 bg-card/50 p-2" />
       {sources.length > 0 || repick.length > 0 ? (
         <ul aria-label="Sources" className="flex flex-col gap-1">
           {sources.map((source) => (

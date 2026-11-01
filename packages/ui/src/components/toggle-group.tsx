@@ -19,26 +19,23 @@ const ToggleGroupContext = createContext<
   orientation: "horizontal",
 });
 
-function ToggleGroup<Value extends string = string>({
+function ToggleGroup({
   className,
   variant,
   size,
   spacing = 2,
   orientation = "horizontal",
   children,
-  style,
   ...props
-}: Omit<ToggleGroupPrimitive.Props<Value>, "className" | "style"> & {
-  className?: string;
-  style?: CSSProperties;
-} & VariantProps<typeof toggleVariants> & {
+}: ToggleGroupPrimitive.Props &
+  VariantProps<typeof toggleVariants> & {
     spacing?: number;
     orientation?: "horizontal" | "vertical";
   }) {
   return (
     <ToggleGroupPrimitive
       className={cn(
-        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] data-[spacing=0]:data-[variant=outline]:rounded-none data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch",
+        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] data-[spacing=0]:data-[variant=outline]:rounded-none data-vertical:flex-col data-vertical:items-stretch",
         className
       )}
       data-orientation={orientation}
@@ -46,8 +43,7 @@ function ToggleGroup<Value extends string = string>({
       data-slot="toggle-group"
       data-spacing={spacing}
       data-variant={variant}
-      orientation={orientation}
-      style={{ "--gap": spacing, ...style } as CSSProperties}
+      style={{ "--gap": spacing } as CSSProperties}
       {...props}
     >
       <ToggleGroupContext.Provider
@@ -65,15 +61,13 @@ function ToggleGroupItem({
   variant = "default",
   size = "default",
   ...props
-}: Omit<TogglePrimitive.Props, "className"> & {
-  className?: string;
-} & VariantProps<typeof toggleVariants>) {
+}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
   const context = useContext(ToggleGroupContext);
 
   return (
     <TogglePrimitive
       className={cn(
-        "shrink-0 focus:z-10 focus-visible:z-10 data-pressed:bg-muted data-pressed:text-foreground group-data-[spacing=0]/toggle-group:rounded-none group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:data-[variant=outline]:border-t-0 group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:data-[variant=outline]:border-l-0 group-data-[spacing=0]/toggle-group:px-6 group-data-[spacing=0]/toggle-group:shadow-none group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-4 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-4 group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:last:rounded-none group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:last:rounded-none group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-t group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-l group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:first:rounded-none group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:first:rounded-none",
+        "shrink-0 focus:z-10 focus-visible:z-10 data-[state=on]:bg-muted data-[state=on]:text-foreground group-data-[spacing=0]/toggle-group:rounded-none group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:border-t-0 group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:border-l-0 group-data-[spacing=0]/toggle-group:px-6 group-data-[spacing=0]/toggle-group:shadow-none group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-4 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-4 group-data-horizontal/toggle-group:data-[spacing=0]:last:rounded-none group-data-vertical/toggle-group:data-[spacing=0]:last:rounded-none group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-t group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-l group-data-horizontal/toggle-group:data-[spacing=0]:first:rounded-none group-data-vertical/toggle-group:data-[spacing=0]:first:rounded-none",
         toggleVariants({
           variant: context.variant || variant,
           size: context.size || size,

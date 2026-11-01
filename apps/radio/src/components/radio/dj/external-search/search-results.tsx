@@ -125,7 +125,7 @@ function ResultItem({
       onClick={handleClick}
       type="button"
     >
-      <div className="relative size-10 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
+      <div className="relative size-10 shrink-0 overflow-hidden border border-border/70 bg-muted">
         {result.thumbnail ? (
           <img
             alt=""

@@ -69,7 +69,7 @@ function ScrapedStationEditor({
   const streamOptions = data.streamUrl ?? [];
 
   return (
-    <div className="space-y-4 rounded-md border p-4">
+    <div className="space-y-4 border p-4">
       <div className="space-y-3">
         <Field className="gap-1.5">
           <FieldLabel htmlFor="url-name">

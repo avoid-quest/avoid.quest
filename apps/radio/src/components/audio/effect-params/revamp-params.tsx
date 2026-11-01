@@ -145,7 +145,7 @@ export function RevampParams({
           return (
             <div
               className={cn(
-                "flex min-w-20 flex-1 flex-col items-center gap-1 rounded-md border border-border/50 px-1 py-1.5",
+                "flex min-w-20 flex-1 flex-col items-center gap-1 border border-border/50 px-1 py-1.5",
                 !enabled && "opacity-50"
               )}
               key={band.prefix}

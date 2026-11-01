@@ -88,7 +88,7 @@ export function EffectItem({
   return (
     <Card
       className={cn(
-        "w-full gap-0 rounded-md border-border/50 py-0 shadow-none transition-all duration-200",
+        "w-full gap-0 border-border/50 py-0 shadow-none transition-all duration-200",
         isDragging && "scale-[0.98] opacity-50 shadow-lg",
         effect.enabled && "border-primary/20 bg-primary/5"
       )}
@@ -99,7 +99,7 @@ export function EffectItem({
           <button
             aria-label={`Reorder ${effectName}`}
             className={cn(
-              "cursor-grab touch-manipulation rounded-md p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
+              "cursor-grab touch-manipulation p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
               isDragging && "bg-primary/20 text-primary"
             )}
             ref={dragHandleRef}
@@ -119,7 +119,7 @@ export function EffectItem({
           {/* Icon */}
           <div
             className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+              "flex size-6 shrink-0 items-center justify-center transition-colors",
               effect.enabled
                 ? "bg-primary/10 text-primary"
                 : "bg-muted text-muted-foreground"

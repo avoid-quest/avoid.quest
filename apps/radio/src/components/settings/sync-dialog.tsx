@@ -43,7 +43,7 @@ function SyncUpdateRow({
   };
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
+    <div className="flex items-start gap-3 border p-3">
       <Checkbox
         checked={checked}
         id={`update-${existing.id}`}
@@ -91,7 +91,7 @@ function SyncAdditionRow({
   };
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
+    <div className="flex items-start gap-3 border p-3">
       <Checkbox
         checked={checked}
         id={`add-${radio.name}`}

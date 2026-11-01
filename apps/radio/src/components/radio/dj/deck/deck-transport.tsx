@@ -24,7 +24,7 @@ function TransportArtwork({
   isPlaying: boolean;
 }) {
   return (
-    <div className="relative size-11 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
+    <div className="relative size-11 shrink-0 overflow-hidden border border-border/70 bg-muted">
       {artworkUrl ? (
         <img
           alt={title}
@@ -191,7 +191,7 @@ export function DeckTransport({
     <div className={cn("flex w-full min-w-0 flex-col gap-1.5", className)}>
       <div
         className={cn(
-          "flex w-full min-w-0 items-center gap-2.5 rounded-md border border-border/50 bg-muted/30 p-2 transition-colors",
+          "flex w-full min-w-0 items-center gap-2.5 border border-border/50 bg-muted/30 p-2 transition-colors",
           isRadioSource && isPlaying && !isLoading && "border-foreground/40"
         )}
       >

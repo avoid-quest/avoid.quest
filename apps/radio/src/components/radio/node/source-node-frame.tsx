@@ -21,8 +21,7 @@ import { INTERACTIVE, keepControlKeys } from "./module-frame";
  * pasted into a Track) keeps the patch's shape.
  */
 
-export const SOURCE_NODE_FRAME =
-  "w-60 rounded-md border bg-card text-card-foreground";
+export const SOURCE_NODE_FRAME = "w-60 border bg-card text-card-foreground";
 
 /** An empty slot: a dashed frame titled by its type, holding its body. */
 export function EmptySourceFrame({

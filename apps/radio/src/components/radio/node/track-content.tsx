@@ -110,7 +110,7 @@ export function TrackCard({
     >
       <div className="flex items-center gap-2 py-2.5 pr-1.5 pl-3">
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-sm border border-border/70"
+          className="flex size-10 shrink-0 items-center justify-center border border-border/70"
           style={{ backgroundColor: `${color}1a` }}
         >
           <Icon aria-hidden="true" className="size-5" style={{ color }} />

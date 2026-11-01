@@ -81,7 +81,7 @@ export function RadioLogo({
     return (
       <div
         className={cn(
-          "flex items-center justify-center rounded-sm border border-border/70 bg-muted",
+          "flex items-center justify-center border border-border/70 bg-muted",
           sizeMap[size],
           className
         )}
@@ -98,7 +98,7 @@ export function RadioLogo({
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center overflow-hidden rounded-sm border border-border/70 bg-muted",
+        "relative flex items-center justify-center overflow-hidden border border-border/70 bg-muted",
         sizeMap[size],
         className
       )}
@@ -107,7 +107,7 @@ export function RadioLogo({
       <img
         alt={decorative ? "" : `${name} logo`}
         className={cn(
-          "size-full rounded-sm object-contain transition-opacity",
+          "size-full object-contain transition-opacity",
           imagePaddingMap[size],
           imageLoaded ? "opacity-100" : "opacity-0"
         )}
@@ -121,7 +121,7 @@ export function RadioLogo({
       />
       {/* Loading state */}
       {!(imageLoaded || imageError) && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-muted">
+        <div className="absolute inset-0 flex items-center justify-center bg-muted">
           <RadioIcon
             className={cn(
               iconSizeMap[size],

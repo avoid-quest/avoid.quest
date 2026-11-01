@@ -4,7 +4,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { PauseIcon, PlayIcon } from "lucide-react";
+import { IconPlayerPause, IconPlayerPlay } from "@tabler/icons-react";
 
 type PlayPauseButtonProps = {
   isPlaying: boolean;
@@ -75,10 +75,10 @@ export function PlayPauseButton({
     }
 
     if (isPlaying) {
-      return <PauseIcon className={cn("size-8", iconClassName)} />;
+      return <IconPlayerPause className={cn("size-8", iconClassName)} />;
     }
 
-    return <PlayIcon className={cn("size-8", iconClassName)} />;
+    return <IconPlayerPlay className={cn("size-8", iconClassName)} />;
   };
 
   const loadingLabel = allowCancelWhileLoading ? "Cancel" : "Loading";

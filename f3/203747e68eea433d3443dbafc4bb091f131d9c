@@ -1,0 +1,19 @@
+docs/ui-review/2026-11-01-radio-structure-proposal.md
+  s_511adadb60dc2d::t_0e42abd0160569 260,262,267-268,270-274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3203747e68eea433d3443dbafc4bb091f131d9c",
+  "prompts": {},
+  "sessions": {
+    "s_511adadb60dc2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9da35b5a-5146-41bd-bc21-0f442433bb06",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

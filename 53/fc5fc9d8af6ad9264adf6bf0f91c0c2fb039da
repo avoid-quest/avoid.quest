@@ -1,0 +1,23 @@
+apps/radio/src/components/radio/dj/deck/deck-transport.tsx
+  s_afcf306502ca83::t_22da4bbd8251cc 62,64,75
+apps/radio/src/components/radio/radio-loading-skeleton.tsx
+  s_afcf306502ca83::t_6580f29a0bd33f 62,86,112,176-177
+apps/radio/src/components/settings/import-export.tsx
+  s_afcf306502ca83::t_45411291078f1c 257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53fc5fc9d8af6ad9264adf6bf0f91c0c2fb039da",
+  "prompts": {},
+  "sessions": {
+    "s_afcf306502ca83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_afcf306502ca83",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

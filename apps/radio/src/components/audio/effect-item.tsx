@@ -13,11 +13,11 @@ import type {
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import {
-  FilterIcon,
-  GripVerticalIcon,
-  RotateCcwIcon,
-  XIcon,
-} from "lucide-react";
+  IconFilter,
+  IconGripVertical,
+  IconRotate,
+  IconX,
+} from "@tabler/icons-react";
 import type { SyntheticEvent } from "react";
 import {
   createDefaultEffectConfig,
@@ -71,7 +71,7 @@ export function EffectItem({
   const metadata = getEffectMetadata(effect.type);
   const effectName = metadata?.name ?? effect.type;
 
-  const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
+  const Icon = EFFECT_ICONS[effect.type] ?? IconFilter;
 
   function handleEnabledChange(enabled: boolean) {
     onUpdate({ enabled });
@@ -88,7 +88,7 @@ export function EffectItem({
   return (
     <Card
       className={cn(
-        "w-full gap-0 rounded-md border-border/50 py-0 shadow-none transition-all duration-200",
+        "w-full gap-0 border-border/50 py-0 shadow-none transition-all duration-200",
         isDragging && "scale-[0.98] opacity-50 shadow-lg",
         effect.enabled && "border-primary/20 bg-primary/5"
       )}
@@ -99,7 +99,7 @@ export function EffectItem({
           <button
             aria-label={`Reorder ${effectName}`}
             className={cn(
-              "cursor-grab touch-manipulation rounded-md p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
+              "cursor-grab touch-manipulation p-1.5 text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
               isDragging && "bg-primary/20 text-primary"
             )}
             ref={dragHandleRef}
@@ -113,13 +113,13 @@ export function EffectItem({
             {...dragHandleAttributes}
             {...dragHandleListeners}
           >
-            <GripVerticalIcon className="size-3.5" />
+            <IconGripVertical className="size-3.5" />
           </button>
 
           {/* Icon */}
           <div
             className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+              "flex size-6 shrink-0 items-center justify-center transition-colors",
               effect.enabled
                 ? "bg-primary/10 text-primary"
                 : "bg-muted text-muted-foreground"
@@ -167,7 +167,7 @@ export function EffectItem({
             title="Reset to defaults"
             variant="ghost"
           >
-            <RotateCcwIcon className="size-3.5" />
+            <IconRotate className="size-3.5" />
           </Button>
           <Button
             aria-label={`Remove ${effectName}`}
@@ -176,7 +176,7 @@ export function EffectItem({
             size="icon"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <IconX className="size-3.5" />
           </Button>
         </div>
       </CardHeader>

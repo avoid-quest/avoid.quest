@@ -2,7 +2,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { HeadphonesIcon } from "lucide-react";
+import { IconHeadphones } from "@tabler/icons-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { useDeckAState, useDeckBState } from "@/lib/hooks/use-deck-state";
 import { useThrottledParam } from "@/lib/hooks/use-throttled-param";
@@ -184,7 +184,7 @@ function ChannelBody({
         }
         variant={cueEnabled ? "default" : "outline"}
       >
-        <HeadphonesIcon className="size-3.5" />
+        <IconHeadphones className="size-3.5" />
         cue
       </Button>
     </div>

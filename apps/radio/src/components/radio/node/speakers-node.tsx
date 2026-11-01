@@ -1,5 +1,5 @@
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { SpeakerIcon } from "lucide-react";
+import { IconSpeakerphone } from "@tabler/icons-react";
 import { findPort } from "@/lib/node-graph/catalogue";
 import type { GraphNode } from "@/lib/node-graph/schema";
 import { type FlowNode, type FlowNodeProps, Position } from "./flow-adapter";
@@ -29,13 +29,13 @@ export function SpeakersNode({ selected }: FlowNodeProps<SpeakersFlowNode>) {
       ) : null}
       <div
         className={cn(
-          "w-50 rounded-md border bg-card text-card-foreground",
+          "w-50 border bg-card text-card-foreground",
           selected ? "border-ring" : "border-border/50"
         )}
       >
         <div className="flex h-8 items-center gap-2 px-2">
-          <span className="flex size-6 items-center justify-center rounded-sm bg-muted text-muted-foreground">
-            <SpeakerIcon aria-hidden="true" className="size-3.5" />
+          <span className="flex size-6 items-center justify-center bg-muted text-muted-foreground">
+            <IconSpeakerphone aria-hidden="true" className="size-3.5" />
           </span>
           <span className="font-medium text-xs">Speakers</span>
         </div>

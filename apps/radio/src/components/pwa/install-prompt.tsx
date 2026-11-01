@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
-import { DownloadIcon } from "lucide-react";
+import { IconDownload } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -125,10 +125,10 @@ export function InstallPrompt() {
 
   return (
     <div className="slide-in-from-bottom-4 fade-in-0 fixed right-4 bottom-4 left-4 z-50 mx-auto max-w-md animate-in md:left-auto">
-      <div className="rounded-lg border border-border/50 bg-card/95 p-3 shadow-lg backdrop-blur-xl">
+      <div className="border border-border/50 bg-card/95 p-3 shadow-lg backdrop-blur-xl">
         <div className="flex items-start gap-2">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <DownloadIcon className="h-5 w-5 text-primary" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-primary/10">
+            <IconDownload className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 space-y-3">
             <div>
@@ -146,7 +146,7 @@ export function InstallPrompt() {
                 onClick={handleInstallClick}
                 size="sm"
               >
-                <DownloadIcon className="h-3.5 w-3.5" />
+                <IconDownload className="h-3.5 w-3.5" />
                 {isInstalling ? "Installing…" : "Install"}
               </Button>
               <Button

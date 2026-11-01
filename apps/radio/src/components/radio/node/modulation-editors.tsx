@@ -69,7 +69,7 @@ function usePattern<T>(value: T, onChange: (next: T) => void) {
   };
 }
 
-const FIELD = "w-14 rounded border bg-background px-1.5 py-1 text-xs";
+const FIELD = "w-14 border bg-background px-1.5 py-1 text-xs";
 
 export function StepsEditor({
   values: authoredValues,
@@ -235,7 +235,7 @@ export function CurveEditor({
     <div className="w-full space-y-2 px-2 pb-2" {...pattern.release}>
       <svg
         aria-label="Envelope curve; edit point values below"
-        className="w-full touch-none rounded border bg-muted/20 text-primary"
+        className="w-full touch-none border bg-muted/20 text-primary"
         onLostPointerCapture={() => {
           dragging.current = null;
         }}

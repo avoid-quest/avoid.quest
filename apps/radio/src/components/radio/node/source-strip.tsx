@@ -5,11 +5,11 @@ import { Switch } from "@avoid.quest/ui/components/switch";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  HeadphonesIcon,
-  MapPinIcon,
-  Repeat1Icon,
-  SkipBackIcon,
-} from "lucide-react";
+  IconHeadphones,
+  IconMapPin,
+  IconPlayerSkipBack,
+  IconRepeatOnce,
+} from "@tabler/icons-react";
 import { useId, useRef } from "react";
 import type { ChannelSelection } from "@/lib/audio";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
@@ -398,7 +398,7 @@ function MediaTransport({
           title="Loop: repeat the whole track at its end"
           variant="outline"
         >
-          <Repeat1Icon className="size-3.5" />
+          <IconRepeatOnce className="size-3.5" />
           Loop
         </Toggle>
         <Button
@@ -409,7 +409,7 @@ function MediaTransport({
           title="Set the cue point here"
           variant="outline"
         >
-          <MapPinIcon className="size-3.5" />
+          <IconMapPin className="size-3.5" />
           Set cue
         </Button>
         <Button
@@ -423,7 +423,7 @@ function MediaTransport({
           title={strip.cue === null ? "Set a cue first" : "Jump to the cue"}
           variant="outline"
         >
-          <SkipBackIcon className="size-3.5" />
+          <IconPlayerSkipBack className="size-3.5" />
           Cue
           {strip.cue === null ? null : (
             <span className="text-muted-foreground tabular-nums">
@@ -441,7 +441,7 @@ function MediaTransport({
             title="Hear it pre-fader on the cue output"
             variant="outline"
           >
-            <HeadphonesIcon className="size-3.5" />
+            <IconHeadphones className="size-3.5" />
             Cue listen
           </Toggle>
         ) : null}

@@ -3,8 +3,8 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconKey, IconPlaylist } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
-import { KeyRoundIcon, ListMusicIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
@@ -247,7 +247,7 @@ function LaneChain({
                 {name}
                 {keyedBy ? (
                   <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
-                    <KeyRoundIcon aria-hidden className="size-2.5" />
+                    <IconKey aria-hidden className="size-2.5" />
                     <span className="max-w-24 truncate">{keyedBy}</span>
                   </span>
                 ) : null}
@@ -275,7 +275,7 @@ function TracksButton({ nodeId, name }: { nodeId: string; name: string }) {
       title="Tracks"
       variant="ghost"
     >
-      <ListMusicIcon className="size-3.5" />
+      <IconPlaylist className="size-3.5" />
     </Button>
   );
 }

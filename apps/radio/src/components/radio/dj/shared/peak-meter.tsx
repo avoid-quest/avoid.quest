@@ -103,7 +103,7 @@ function MeterBar({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-sm bg-muted",
+        "relative overflow-hidden bg-muted",
         isVertical
           ? "h-full min-h-0 min-w-0 flex-1"
           : `${compact ? "h-1" : "h-1.5"} w-full`

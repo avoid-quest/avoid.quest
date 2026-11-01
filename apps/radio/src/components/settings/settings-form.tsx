@@ -31,17 +31,16 @@ import {
 } from "@avoid.quest/ui/components/toggle-group";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import {
-  DatabaseIcon,
-  type LucideIcon,
-  MonitorIcon,
-  MoonIcon,
-  RadioIcon,
-  RotateCcwIcon,
-  Settings2Icon,
-  SettingsIcon,
-  SlidersHorizontalIcon,
-  SunIcon,
-} from "lucide-react";
+  IconAdjustmentsHorizontal,
+  IconDatabase,
+  IconDeviceDesktop,
+  IconMoon,
+  IconRadio,
+  IconRotate,
+  IconSettings,
+  IconSun,
+  type TablerIcon,
+} from "@tabler/icons-react";
 import { useTheme } from "next-themes";
 import { Suspense, useState } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
@@ -70,10 +69,10 @@ const DATA_PANELS: { label: string; value: DataPanel }[] = [
   { label: "Reset", value: "reset" },
 ];
 
-const THEMES: { icon: LucideIcon; label: string; value: string }[] = [
-  { icon: SunIcon, label: "Light", value: "light" },
-  { icon: MoonIcon, label: "Dark", value: "dark" },
-  { icon: MonitorIcon, label: "System", value: "system" },
+const THEMES: { icon: TablerIcon; label: string; value: string }[] = [
+  { icon: IconSun, label: "Light", value: "light" },
+  { icon: IconMoon, label: "Dark", value: "dark" },
+  { icon: IconDeviceDesktop, label: "System", value: "system" },
 ];
 
 const DATA_PANEL_GUIDANCE: Record<DataPanel, string> = {
@@ -87,15 +86,15 @@ const DATA_PANEL_GUIDANCE: Record<DataPanel, string> = {
 type SectionDefinition = {
   key: SettingsSection;
   label: string;
-  icon: LucideIcon;
+  icon: TablerIcon;
 };
 
 const SETTINGS_SECTIONS: SectionDefinition[] = [
-  { icon: SettingsIcon, key: "general", label: "General" },
-  { icon: RadioIcon, key: "radios", label: "Radios" },
-  { icon: Settings2Icon, key: "playback", label: "Playback" },
-  { icon: SlidersHorizontalIcon, key: "midi", label: "MIDI" },
-  { icon: DatabaseIcon, key: "data", label: "Data" },
+  { icon: IconSettings, key: "general", label: "General" },
+  { icon: IconRadio, key: "radios", label: "Radios" },
+  { icon: IconAdjustmentsHorizontal, key: "playback", label: "Playback" },
+  { icon: IconAdjustmentsHorizontal, key: "midi", label: "MIDI" },
+  { icon: IconDatabase, key: "data", label: "Data" },
 ];
 
 function getInitialSection(defaultTab?: string): SettingsSection {
@@ -399,7 +398,7 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
           <GitHubIcon className="size-4" />
         </Button>
         <a
-          className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
           href="/legal/"
         >
           Source and licenses
@@ -420,7 +419,7 @@ function SettingRow({
   /** The control's id, so the title is its accessible name. Without one the
    * control must name itself. */
   controlId?: string;
-  icon?: LucideIcon;
+  icon?: TablerIcon;
 }) {
   const content = (
     <>
@@ -464,7 +463,7 @@ function ResetSettings({
         <DialogTrigger
           render={
             <Button size="sm" variant="destructive">
-              <RotateCcwIcon /> Reset
+              <IconRotate /> Reset
             </Button>
           }
         />

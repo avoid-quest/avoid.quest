@@ -107,7 +107,7 @@ export function MidiControlWrapper({
             >
               {hasMidi && <MidiBadge />}
               {!!isThisLearning && (
-                <span className="pointer-events-none absolute inset-0 z-10 animate-pulse rounded border-2 border-primary border-dashed" />
+                <span className="pointer-events-none absolute inset-0 z-10 animate-pulse border-2 border-primary border-dashed" />
               )}
               {children}
             </div>

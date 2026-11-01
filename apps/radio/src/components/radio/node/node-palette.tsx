@@ -14,7 +14,7 @@ import {
   DrawerTitle,
 } from "@avoid.quest/ui/components/drawer";
 import { toast } from "@avoid.quest/ui/components/sonner";
-import { LayoutTemplateIcon } from "lucide-react";
+import { IconLayoutBoard } from "@tabler/icons-react";
 import { useEffect } from "react";
 import {
   type PickerItem,
@@ -195,7 +195,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
     return {
       description: entry.description,
       entry,
-      icon: LayoutTemplateIcon,
+      icon: IconLayoutBoard,
       id: entry.id,
       name: entry.name,
     };

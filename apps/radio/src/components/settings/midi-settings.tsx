@@ -26,12 +26,12 @@ import {
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  CircleIcon,
-  InfoIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-  XIcon,
-} from "lucide-react";
+  IconCircle,
+  IconInfoCircle,
+  IconRefresh,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { useMidiControlSnapshot } from "@/lib/hooks/use-midi";
 import { usePlayerMode } from "@/lib/hooks/use-settings";
@@ -139,7 +139,7 @@ function MappingRow({
         size="icon"
         variant="ghost"
       >
-        <XIcon className="size-3.5" />
+        <IconX className="size-3.5" />
       </Button>
     </div>
   );
@@ -306,7 +306,7 @@ export function MidiSettings() {
   if (!isSupported) {
     return (
       <Alert className="py-2.5">
-        <InfoIcon />
+        <IconInfoCircle />
         <AlertTitle>Web MIDI not supported</AlertTitle>
         <AlertDescription className="text-xs">
           MIDI controller support requires a Chromium-based browser (Chrome,
@@ -322,7 +322,7 @@ export function MidiSettings() {
     <div className="space-y-5">
       {playerMode === "single" && (
         <Alert className="py-2.5">
-          <InfoIcon />
+          <IconInfoCircle />
           <AlertDescription className="text-xs">
             MIDI mappings are applied in DJ and Node modes.
           </AlertDescription>
@@ -331,7 +331,7 @@ export function MidiSettings() {
 
       {!permissionGranted && (
         <Alert className="py-2.5">
-          <InfoIcon />
+          <IconInfoCircle />
           <AlertDescription className="text-xs">
             Grant MIDI permission to detect controllers and receive MIDI
             messages.
@@ -372,7 +372,7 @@ export function MidiSettings() {
                     className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0"
                     key={device.id}
                   >
-                    <CircleIcon className="size-2 shrink-0 fill-success text-success" />
+                    <IconCircle className="size-2 shrink-0 fill-success text-success" />
                     <span className="min-w-0 truncate text-sm">
                       {device.name}
                       {device.manufacturer ? (
@@ -395,7 +395,7 @@ export function MidiSettings() {
                 title="Refresh MIDI devices"
                 variant="outline"
               >
-                <RefreshCwIcon
+                <IconRefresh
                   className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}
                 />
               </Button>
@@ -452,7 +452,7 @@ export function MidiSettings() {
             size="sm"
             variant={confirmClear ? "destructive" : "ghost"}
           >
-            <Trash2Icon className="size-3" />
+            <IconTrash className="size-3" />
             {confirmClear ? "Clear all mappings?" : "Clear all"}
           </Button>
         </div>

@@ -149,7 +149,7 @@ function RootContent() {
           frame={(failed) =>
             showSyncDialog ? (
               // The dialog chunk is what failed, so the notice stays inline.
-              <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm rounded-lg border bg-popover pb-3 text-popover-foreground shadow-lg">
+              <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm border bg-popover pb-3 text-popover-foreground shadow-lg">
                 {failed}
                 <div className="flex justify-center">
                   <Button

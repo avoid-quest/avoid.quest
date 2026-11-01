@@ -118,7 +118,7 @@ const VENDOR_CHUNK_GROUPS: Array<{
     name: "vendor-popover",
   },
   {
-    match: (id) => id.includes("/node_modules/lucide-react/"),
+    match: (id) => id.includes("/node_modules/@tabler/icons-react/"),
     name: "vendor-ui",
   },
 ];

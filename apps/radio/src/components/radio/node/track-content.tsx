@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { IconDots, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -110,7 +110,7 @@ export function TrackCard({
     >
       <div className="flex items-center gap-2 py-2.5 pr-1.5 pl-3">
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-sm border border-border/70"
+          className="flex size-10 shrink-0 items-center justify-center border border-border/70"
           style={{ backgroundColor: `${color}1a` }}
         >
           <Icon aria-hidden="true" className="size-5" style={{ color }} />
@@ -134,13 +134,13 @@ export function TrackCard({
                     size="icon"
                     variant="ghost"
                   >
-                    <MoreHorizontalIcon />
+                    <IconDots />
                   </Button>
                 }
               />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={onRemove} variant="destructive">
-                  <Trash2Icon />
+                  <IconTrash />
                   Remove {typeName}
                 </DropdownMenuItem>
               </DropdownMenuContent>

@@ -3,7 +3,11 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconPlayerPlay,
+} from "@tabler/icons-react";
 import { useSyncExternalStore } from "react";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import { getDjDeckModule } from "@/lib/dj-deck";
@@ -120,7 +124,7 @@ export function TracklistView({
         onPlay={playUrl}
         tracks={tracks}
       />
-      <ScrollArea className="h-40 rounded-md border border-border/50">
+      <ScrollArea className="h-40 border border-border/50">
         <div className="space-y-0.5 p-1">
           {tracks.map((track, index) => (
             <TrackRow
@@ -168,7 +172,7 @@ function TracklistNavigation({
         size="icon"
         variant="ghost"
       >
-        <ChevronLeftIcon className="size-3.5" />
+        <IconChevronLeft className="size-3.5" />
       </Button>
       <Button
         aria-label="Next track"
@@ -178,7 +182,7 @@ function TracklistNavigation({
         size="icon"
         variant="ghost"
       >
-        <ChevronRightIcon className="size-3.5" />
+        <IconChevronRight className="size-3.5" />
       </Button>
     </div>
   );
@@ -203,7 +207,7 @@ function TrackRow({
     <button
       aria-busy={isPending}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex w-full items-center gap-2 px-2 py-1 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isCurrent && "bg-muted/40 font-medium"
       )}
       onClick={handlePlay}
@@ -214,7 +218,7 @@ function TrackRow({
           <Spinner aria-label="Loading track" className="size-2.5" />
         )}
         {!isPending && !!isCurrent && (
-          <PlayIcon aria-label="Current track" className="size-2.5" />
+          <IconPlayerPlay aria-label="Current track" className="size-2.5" />
         )}
         {!(isPending || isCurrent) && (
           <span className="font-mono text-muted-foreground text-xs tabular-nums">

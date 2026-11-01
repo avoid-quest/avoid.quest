@@ -55,7 +55,7 @@ export function KeyEdge({
         <EdgeLabelRenderer>
           <span
             aria-hidden
-            className="nodrag nopan absolute rounded-sm border border-border/50 bg-card px-1 text-muted-foreground text-xs leading-4"
+            className="nodrag nopan absolute border border-border/50 bg-card px-1 text-muted-foreground text-xs leading-4"
             style={{
               pointerEvents: "all",
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,

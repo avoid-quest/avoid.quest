@@ -3,7 +3,7 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { Tabs, TabsList, TabsTrigger } from "@avoid.quest/ui/components/tabs";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { AudioLinesIcon, HeadphonesIcon, Volume2Icon } from "lucide-react";
+import { IconHeadphones, IconVolume, IconWaveSine } from "@tabler/icons-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { useDeckA, useDeckB, useDjError } from "@/lib/hooks/use-dj-state";
@@ -76,7 +76,7 @@ export function DjConsoleMobile({
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 sm:gap-2">
       {/* Mini Mixer Bar */}
-      <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-border/50 bg-card/50 p-2">
+      <div className="flex shrink-0 flex-col gap-2 border border-border/50 bg-card/50 p-2">
         {/* Meters line up over the crossfader track, A left, B right */}
         <MiniMixerMeters />
 
@@ -120,14 +120,14 @@ export function DjConsoleMobile({
               size="sm"
               variant={deckACueEnabled ? "default" : "outline"}
             >
-              <HeadphonesIcon className="size-3.5" />A
+              <IconHeadphones className="size-3.5" />A
             </Button>
           ) : null}
           <div
             className="flex min-w-0 flex-1 items-center gap-2"
             style={{ touchAction: "none" }}
           >
-            <Volume2Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            <IconVolume className="size-3.5 shrink-0 text-muted-foreground" />
             <Slider
               aria-label="Master volume"
               className="py-2.5"
@@ -157,7 +157,7 @@ export function DjConsoleMobile({
               size="sm"
               variant={deckBCueEnabled ? "default" : "outline"}
             >
-              <HeadphonesIcon className="size-3.5" />B
+              <IconHeadphones className="size-3.5" />B
             </Button>
           ) : null}
         </div>
@@ -177,7 +177,7 @@ export function DjConsoleMobile({
             <span className="font-bold font-mono">A</span>
             <span className="truncate">{deckA?.radio?.name ?? "Empty"}</span>
             {deckA?.isPlaying && !deckA.isLoading ? (
-              <AudioLinesIcon
+              <IconWaveSine
                 aria-label="Playing"
                 className="ml-auto size-3 shrink-0"
               />
@@ -190,7 +190,7 @@ export function DjConsoleMobile({
             <span className="font-bold font-mono">B</span>
             <span className="truncate">{deckB?.radio?.name ?? "Empty"}</span>
             {deckB?.isPlaying && !deckB.isLoading ? (
-              <AudioLinesIcon
+              <IconWaveSine
                 aria-label="Playing"
                 className="ml-auto size-3 shrink-0"
               />

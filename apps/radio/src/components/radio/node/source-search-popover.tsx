@@ -5,7 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@avoid.quest/ui/components/popover";
-import { SearchIcon } from "lucide-react";
+import { IconSearch } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { loadSearchSource } from "@/lib/node-source-loaders";
@@ -73,7 +73,7 @@ export function SourceSearchPopover({
             size="sm"
             variant="outline"
           >
-            <SearchIcon className="size-3.5" />
+            <IconSearch className="size-3.5" />
             Search sources
           </Button>
         }

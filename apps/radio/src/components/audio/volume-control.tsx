@@ -2,7 +2,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Volume1Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { IconVolume, IconVolume2, IconVolume3 } from "@tabler/icons-react";
 
 const QUIET_VOLUME = 0.5;
 
@@ -23,9 +23,9 @@ export type VolumeControlProps = {
 
 function getVolumeIcon(volume: number, isMuted: boolean) {
   if (isMuted || volume === 0) {
-    return VolumeXIcon;
+    return IconVolume3;
   }
-  return volume < QUIET_VOLUME ? Volume1Icon : Volume2Icon;
+  return volume < QUIET_VOLUME ? IconVolume2 : IconVolume;
 }
 
 /** The one mute button + volume slider pair outside the DJ mixer. */

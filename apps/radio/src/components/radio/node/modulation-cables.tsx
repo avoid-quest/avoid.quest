@@ -205,7 +205,7 @@ export function ModulationAssignments({
     <div className="mt-4 space-y-3 border-t pt-3">
       <p className="font-medium text-xs">Modulation cables</p>
       {edges.map((edge) => (
-        <div className="space-y-2 rounded border p-2" key={edge.id}>
+        <div className="space-y-2 border p-2" key={edge.id}>
           <AssignmentName edge={edge} store={store} />
           <ModulationCableControls edgeId={edge.id} store={store} />
         </div>

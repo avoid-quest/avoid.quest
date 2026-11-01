@@ -21,7 +21,7 @@ import {
   subscribeChangelogSeen,
 } from "@avoid.quest/ui/lib/changelog";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { CircleQuestionMarkIcon } from "lucide-react";
+import { IconHelpCircle } from "@tabler/icons-react";
 import { type ReactNode, useState, useSyncExternalStore } from "react";
 
 type ChangelogProps = {
@@ -102,7 +102,7 @@ export function Changelog({
                   size="icon"
                   variant="ghost"
                 >
-                  <CircleQuestionMarkIcon className="size-3.5" />
+                  <IconHelpCircle className="size-3.5" />
                   {hasUnseen ? (
                     <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
                   ) : null}

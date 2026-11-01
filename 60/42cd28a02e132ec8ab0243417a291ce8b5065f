@@ -1,0 +1,16 @@
+docs/ui-review/2026-11-01-radio-structure-proposal.md
+  h_75f73f9fd69b93 1-287
+docs/ui-review/README.md
+  h_75f73f9fd69b93 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6042cd28a02e132ec8ab0243417a291ce8b5065f",
+  "prompts": {},
+  "humans": {
+    "h_75f73f9fd69b93": {
+      "author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

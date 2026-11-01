@@ -233,7 +233,7 @@ Mobile <640px (fit to be measured)
 ```
 
 **Stations.**
-- "Add station" is reachable from the player: a `+` in the Single list header and in every mode's empty state, opening the same add dialog.
+- "Add station" is reachable from the player: a `+` in the Single list header and in every mode's empty state, opening the Settings modal on its My stations › Add station page.
 - Every station search accepts a pasted link. Station searches (Single, Node slot) say "Search stations or paste a link"; source searches (Node "Search sources", DJ) say "Search or paste a link".
 - Station row actions show at full opacity on coarse pointers, like temporary rows; hover-reveal stays for fine pointers only.
 - Hide gets an inline "Hidden (n)" group in My stations; the hide toast keeps Undo.

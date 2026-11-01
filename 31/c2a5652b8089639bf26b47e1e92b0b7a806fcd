@@ -1,0 +1,45 @@
+apps/radio/src/components/settings/SETTINGS_UX_DECISION.md
+  s_35d0e6211bfc9b::t_8c8c658e760788 3-44
+apps/radio/src/components/settings/import-export.test.tsx
+  s_35d0e6211bfc9b::t_ad01c9e6368c7e 48,100,122,135,172,188
+apps/radio/src/components/settings/import-export.tsx
+  s_35d0e6211bfc9b::t_ec2228dd1353ff 9,25,59-116,195-206,209-218,220-229,233-253,256-273,277,279-290,292-296,298-299,301-317,319
+apps/radio/src/components/settings/radio-dialog.tsx
+  s_35d0e6211bfc9b::t_e11b732447654a 10-14,37,52-54,56,60
+apps/radio/src/components/settings/radio-management.tsx
+  s_35d0e6211bfc9b::t_cdc60ec2cfa808 141-147,277,305-306
+apps/radio/src/components/settings/settings-button.test.tsx
+  s_35d0e6211bfc9b::t_e8e11aa6c428ea 19,37-38,49,64,77,79,86-87,151,155,157,159,195
+apps/radio/src/components/settings/settings-button.tsx
+  s_35d0e6211bfc9b::t_d473de2d8e3e01 14-15,18-19,22-23,42,44,46,68,77,80-81,119,129,146,148
+apps/radio/src/components/settings/settings-dialog.tsx
+  s_35d0e6211bfc9b::t_8dab5e43fdab60 3-7,9,11,17,26,34-38,44-48,50-52,58-64,66-78
+apps/radio/src/components/settings/settings-form.tsx
+  s_35d0e6211bfc9b::t_ae73a3ac47a11b 4-6,8-9,11,16-17,19-31,33,35,37-48,57,59-63,65-66,71-77,80-105,109-116,120-134,136-145,147-154,156-182,184-192,194-245,251-255,257-263,266-309,311-334,336-342,347-351,353-355,359,361-363,366-369,371-395,397-399,401-410,414-446,448-456,458-471,474-604
+apps/radio/src/components/settings/settings-groups.tsx
+  s_35d0e6211bfc9b::t_4514f2bd1f77d6 1-295
+apps/radio/src/components/settings/settings-regressions.test.tsx
+  s_35d0e6211bfc9b::t_e55c3ebae9d91c 5-7,24-25,69-71,85-86,90,169-177,179-182,184-204,206-230,232-264
+apps/radio/src/components/settings/settings-search.test.ts
+  s_35d0e6211bfc9b::t_2b6c40b913072b 1-29
+apps/radio/src/components/settings/settings-search.ts
+  s_35d0e6211bfc9b::t_a36503c6695317 1-128
+apps/radio/src/components/settings/station-editor.tsx
+  s_35d0e6211bfc9b::t_fcb5338b53f9cc 1-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "31c2a5652b8089639bf26b47e1e92b0b7a806fcd",
+  "prompts": {},
+  "sessions": {
+    "s_35d0e6211bfc9b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_35d0e6211bfc9b",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

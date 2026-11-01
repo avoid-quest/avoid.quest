@@ -10,6 +10,7 @@ Source reports in this folder:
 | `2026-10-19-inventory-radix-surface-and-style-drift.md` | GPT-6-Sol, `rg` inventory | Counts: Radix API surface, import blast radius, style histograms, theme and font plumbing, export probe |
 | `2026-10-19-live-audit.md` and `-measurements.md` | GPT-6.1-Sol driving both dev apps in a browser | Per-route findings at 1440×900 and 390×844, light and dark, with 83 screenshots (14 kept in `images/`) |
 | `2026-10-19-research-base-ui-tokens-storybook-extraction.md` | GPT-6-Astra, web research against primary sources | Base UI via shadcn, API mapping tables, token tooling, Storybook 10 setup, repo-extraction options |
+| `2026-11-01-radio-structure-proposal.md` | Claude Opus 5.5, code inventory via subagents | Radio app screen inventory, task map per mode, and proposed naming, grouping, navigation and implementation slices (NWS-2788). Its line refs were checked by the writer and a separate review agent, not by the cross-check described below |
 
 Everything below was cross-checked against the repository by the orchestrating agent (Claude Fable 5.1); claims that could not be verified are marked as such.
 

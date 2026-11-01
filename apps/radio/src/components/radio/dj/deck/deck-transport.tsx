@@ -59,9 +59,9 @@ function TransportPlayButton({
   onPlayPause: () => void;
 }) {
   return (
-    <span className="relative shrink-0 rounded-full">
+    <span className="relative shrink-0">
       <PlayPauseButton
-        className="size-9 rounded-full"
+        className="size-9"
         iconClassName="size-3.5"
         inline
         isLoading={isLoading}
@@ -72,7 +72,7 @@ function TransportPlayButton({
         variant={isPlaying && !isLoading ? "outline" : "default"}
       />
       {isBuffering && isPlaying ? (
-        <span className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-muted-foreground/40" />
+        <span className="pointer-events-none absolute inset-0 animate-pulse ring-2 ring-muted-foreground/40" />
       ) : null}
     </span>
   );

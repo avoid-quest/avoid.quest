@@ -59,7 +59,7 @@ function SingleRadioLoadingSkeleton() {
               </div>
             </div>
             <div className="flex items-center gap-3 border-border/50 border-t pt-3 sm:gap-4 sm:pt-4">
-              <Skeleton className="size-12 shrink-0 rounded-full" />
+              <Skeleton className="size-12 shrink-0" />
               <Skeleton className="size-7 shrink-0" />
               <Skeleton className="h-1.5 flex-1" />
             </div>
@@ -83,7 +83,7 @@ function SingleRadioLoadingSkeleton() {
               <Skeleton className="h-7 w-56" />
             </div>
             <div className="flex w-full items-center gap-4 border-border/50 border-t pt-4">
-              <Skeleton className="size-12 shrink-0 rounded-full" />
+              <Skeleton className="size-12 shrink-0" />
               <Skeleton className="size-7 shrink-0" />
               <Skeleton className="h-1.5 flex-1" />
             </div>
@@ -109,7 +109,7 @@ export function NodeCanvasSkeleton() {
               </div>
             </div>
             <div className="flex items-center gap-2 border-border/50 border-t px-3 py-1.5">
-              <Skeleton className="size-7 shrink-0 rounded-full" />
+              <Skeleton className="size-7 shrink-0" />
               <Skeleton className="size-7 shrink-0" />
               <Skeleton className="h-1.5 flex-1" />
             </div>
@@ -173,8 +173,8 @@ function DjRadioLoadingSkeleton() {
           <div className="grid flex-1 grid-cols-3 gap-3 border-border/50 border-t pt-3">
             {["a", "master", "b"].map((column) => (
               <div className="flex flex-col items-center gap-2" key={column}>
-                <Skeleton className="size-9 rounded-full" />
-                <Skeleton className="size-9 rounded-full" />
+                <Skeleton className="size-9" />
+                <Skeleton className="size-9" />
                 <Skeleton className="w-2 flex-1" />
                 <Skeleton className="h-8 w-full" />
               </div>

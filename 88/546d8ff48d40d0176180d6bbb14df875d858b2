@@ -1,0 +1,248 @@
+packages/ui/src/components/input.tsx
+  s_46d046223ebe5c::t_4bada145d870e9 2,7,9
+apps/radio/src/components/audio/effect-picker.tsx
+  s_46d046223ebe5c::t_2fc6a8758442c3 59
+  s_952d9447b9a3ff::t_e1759cec15cb86 67,84
+packages/ui/src/components/dropdown-menu.tsx
+  s_46d046223ebe5c::t_ad0f02bce2052c 5,8-9,12-13,16,21-23,25,27-31,37,42-45,54,58-77,83,89-92,101-152,157,159-161,165-169,173-176,178,186,198,200-202,205-209,213-216,218,229,232
+packages/ui/src/components/button.tsx
+  s_46d046223ebe5c::t_17ab3ab353c9d6 2,6,10,12,14-30,33-36,42-43,45-52
+packages/ui/src/components/badge.tsx
+  s_46d046223ebe5c::t_d589851e433d39 2,7,28,34-39,41-43
+packages/ui/src/components/sonner.tsx
+  s_46d046223ebe5c::t_9854fc591cda96 4-9,22-26,32-33,37-41
+packages/ui/src/components/accordion.tsx
+  s_46d046223ebe5c::t_c323eed99aa526 5,15,29,34,58,61,67
+packages/ui/src/components/skeleton.tsx
+  s_46d046223ebe5c::t_aabda394a02fa4 6
+packages/ui/src/components/textarea.tsx
+  s_46d046223ebe5c::t_d3ead3c519deef 8
+apps/radio/src/components/settings/radio-garden-tab.tsx
+  s_46d046223ebe5c::t_ebb2660734a8dc 160,166,181,192
+packages/ui/src/components/field.tsx
+  s_46d046223ebe5c::t_280bc492acf869 15,32,46,60-64,67-69,93,109-110,123,136-137,206
+packages/ui/src/components/scroll-area.tsx
+  s_46d046223ebe5c::t_14a1e24cb21e76 10,13,18,21,24,33,37,40
+packages/ui/src/components/popover.tsx
+  s_46d046223ebe5c::t_497923aee1becb 12-16,19,26,33,37-41,64-107
+packages/ui/src/components/alert.tsx
+  s_46d046223ebe5c::t_c4d07089bd31da 3,6,10,12,15-17,40,56,65-75
+packages/ui/src/components/drawer.tsx
+  s_46d046223ebe5c::t_a01e5c02d22270 91
+  s_a4d2b5fde4d410::t_bb6ca515539f25 56,77-79,102,114,127-130,143-146
+packages/ui/src/styles/globals.css
+  s_46d046223ebe5c::t_d9069a84e63131 3,50-53,55-58
+bun.lock
+  s_46d046223ebe5c::t_3e91c296c62e46 204,327-328,331-332,335-336,341-348,357-367,485-488,653-656,969-970,1143-1144,1211-1212,1273-1274,1279-1280,1309-1310,1345,1359,1371,1377-1378,1403-1404,1411-1414,1423-1424,1441-1442,1453-1454,1479-1480,1485-1486,1515,1533-1534,1541,1555-1556,1559-1560,1621-1622,1637-1638,1645-1646,1657-1658,1709-1710,1719-1720,1733-1734,1737-1738,1741-1742,1747-1748,1759-1760,1777-1778,1785-1786,1845-1846,1853-1854,1879-1880,1895-1896,1941,1957-1958,1967,1975-1976,1983-1984,1989-1990,2005-2006,2031-2032,2043-2046,2061-2062,2165-2166,2169-2172,2183-2184,2187-2188,2207-2208,2219-2220,2237-2238,2295-2296,2309-2310,2349-2350,2355,2367-2368,2431-2432,2485-2486,2513-2514,2519-2520,2523-2526,2531-2538,2541-2548,2551-2553,2557-2558,2591-2596,2603-2606,2625-2628,2727-2728,2751-2754,2761-2764,2795-2796,2799-2800,2815-2818,2821-2822,2829-2830,2837-2838,2841-2848,2913-2924,2927-2938,2941-2956,2973-2990,3107-3108,3131-3132,3151-3158
+packages/ui/src/components/dialog.tsx
+  s_46d046223ebe5c::t_a7beb8d29c3036 4,8,14-15,17,29-30,33-34,37-38,44,46,86,106,108,110,157,159-165,167,169,171,186-193,202-209,213,215,217,229,231
+apps/radio/src/components/theme/header.tsx
+  s_46d046223ebe5c::t_487bd22f55315c 76
+packages/ui/package.json
+  s_46d046223ebe5c::t_5e0faf92c9d284 39
+apps/radio/src/components/settings/radio-field-preview.tsx
+  s_46d046223ebe5c::t_beb875e25b637f 80
+  s_952d9447b9a3ff::t_e947faddf9fe7c 36,52,59,78
+apps/radio/src/components/settings/settings-form.tsx
+  s_46d046223ebe5c::t_10e5dd8e7a575c 402
+packages/ui/src/components/tabs.tsx
+  s_46d046223ebe5c::t_cdca6871bcb4e5 11,15,26,44,55,59,62,71
+packages/ui/src/components/toggle.tsx
+  s_46d046223ebe5c::t_9ea2bf9ead4cac 8
+packages/ui/src/components/collapsible.tsx
+  s_46d046223ebe5c::t_01bf341f65e4cf 5-6,9-12,15,17
+packages/ui/src/components/context-menu.tsx
+  s_46d046223ebe5c::t_b55ce016746ff1 5,8-10,12-15,19,21,23-27,31-36,38-42,44-61,65-68,71-73,75-88,91-94,96-99,101-108,114-119,125,130-133,139,146,149,151,161,163-165,169-173,179,187-197,201,203-205,208-212,218,229,232
+packages/ui/src/components/spinner.tsx
+  s_46d046223ebe5c::t_75d31f5146d319 2,6,9
+packages/ui/src/components/resizable.tsx
+  s_46d046223ebe5c::t_67e8a846f837fb 5-6,8-10,13,15,17,26,34,38,40,47,49
+packages/ui/src/stories/separator.stories.tsx
+  s_46d046223ebe5c::t_b51e80d5adae5e 15
+packages/ui/src/components/toggle-group.tsx
+  s_46d046223ebe5c::t_91433450a406e2 22,30-31,38,46,64,70
+packages/ui/src/components/empty.tsx
+  s_46d046223ebe5c::t_b71483d00955c2 8,20,33,36-38,49,60-63,74
+packages/ui/src/components/separator.tsx
+  s_46d046223ebe5c::t_24527f79b648e2 10,14
+packages/ui/src/components/card.tsx
+  s_46d046223ebe5c::t_5e45f182c2e100 4-8,12,15,26,38-41,51,74,84-87
+packages/ui/src/components/select.tsx
+  s_46d046223ebe5c::t_a5f3cb50f4bd95 6-9,13,15-22,25-32,40,45-48,55-57,66,68-70,72-76,83,88-92,97,108,111-114,125,128-131,135-144,152,155-158,171-174,178,189-192,196
+apps/radio/src/components/audio/effect-chain.tsx
+  s_952d9447b9a3ff::t_c94935b4f6f5a2 260,385
+apps/radio/src/components/audio/effect-item.tsx
+  s_952d9447b9a3ff::t_b64267bf0ae6a1 91,102,122
+apps/radio/src/components/audio/effect-params/container-params.tsx
+  s_952d9447b9a3ff::t_774d0ca6068afc 189,426
+apps/radio/src/components/audio/effect-params/param-group.tsx
+  s_952d9447b9a3ff::t_5011e864f0e7f9 40
+apps/radio/src/components/audio/effect-params/revamp-params.tsx
+  s_952d9447b9a3ff::t_1c18aff12a4cea 148
+apps/radio/src/components/audio/effect-params/tone3000-model-params.tsx
+  s_952d9447b9a3ff::t_23bc83576caec5 117
+apps/radio/src/components/audio/effect-params/werkstatt-params.tsx
+  s_952d9447b9a3ff::t_e2563f25beb94a 278,283
+apps/radio/src/components/audio/midi-control-wrapper.tsx
+  s_952d9447b9a3ff::t_18e209703a534c 110
+apps/radio/src/components/audio/visualizations/compressor-canvas.tsx
+  s_952d9447b9a3ff::t_47abc3cb34980c 141
+apps/radio/src/components/audio/visualizations/eq-canvas.tsx
+  s_952d9447b9a3ff::t_53cd21a9bcbd20 221
+apps/radio/src/components/import-page.tsx
+  s_952d9447b9a3ff::t_4be2b317dfc326 174,186
+apps/radio/src/components/lazy-recovery.tsx
+  s_952d9447b9a3ff::t_52961ebb80cdd0 130
+apps/radio/src/components/pwa/install-prompt.tsx
+  s_952d9447b9a3ff::t_4fbb4e7e2d4ed8 128,130
+apps/radio/src/components/radio/dj/deck/deck-device-input-content.tsx
+  s_952d9447b9a3ff::t_4f58e3d9cb446b 84,201
+apps/radio/src/components/radio/dj/deck/deck-loaded-content.tsx
+  s_952d9447b9a3ff::t_93353542a3953d 66
+apps/radio/src/components/radio/dj/deck/deck-panel-sections.tsx
+  s_952d9447b9a3ff::t_d7244c37a31b1b 19
+apps/radio/src/components/radio/dj/deck/deck-tracklist.tsx
+  s_952d9447b9a3ff::t_a7f044b35fcced 123,206
+apps/radio/src/components/radio/dj/deck/deck-transport.tsx
+  s_952d9447b9a3ff::t_fc0d6286dd1df1 27,194
+apps/radio/src/components/radio/dj/dj-console-mobile.tsx
+  s_952d9447b9a3ff::t_0418ac93209b51 79
+apps/radio/src/components/radio/dj/dj-console.tsx
+  s_952d9447b9a3ff::t_f8904d97820bfb 35
+apps/radio/src/components/radio/dj/dj-radio-list.tsx
+  s_952d9447b9a3ff::t_d1a190b5755246 59
+apps/radio/src/components/radio/dj/external-search/search-input.tsx
+  s_952d9447b9a3ff::t_6eecbd04d56049 178
+apps/radio/src/components/radio/dj/external-search/search-results.tsx
+  s_952d9447b9a3ff::t_5558de2d0f7d01 128
+apps/radio/src/components/radio/dj/mixer/mixer-routing.tsx
+  s_952d9447b9a3ff::t_e8ca930b34d4c0 56
+apps/radio/src/components/radio/dj/shared/peak-meter.tsx
+  s_952d9447b9a3ff::t_693feab5d69d6a 106
+apps/radio/src/components/radio/inline-error.tsx
+  s_952d9447b9a3ff::t_99c56927749727 17
+apps/radio/src/components/radio/node/audio-input-content.tsx
+  s_952d9447b9a3ff::t_556dc7de3d4d97 237,251,303
+apps/radio/src/components/radio/node/audio-input-controls.tsx
+  s_952d9447b9a3ff::t_2b31cb9a0dbe0f 54,255
+apps/radio/src/components/radio/node/backend-badge.tsx
+  s_952d9447b9a3ff::t_39fe7daa756651 21
+apps/radio/src/components/radio/node/branch-edge.tsx
+  s_952d9447b9a3ff::t_f7752d75b798f0 84
+apps/radio/src/components/radio/node/control-edge.tsx
+  s_952d9447b9a3ff::t_879ae2d82f1691 57
+apps/radio/src/components/radio/node/control-node.tsx
+  s_952d9447b9a3ff::t_6a04750e9f2620 106,280
+apps/radio/src/components/radio/node/key-edge.tsx
+  s_952d9447b9a3ff::t_fd2c390714659b 58
+apps/radio/src/components/radio/node/merge-node.tsx
+  s_952d9447b9a3ff::t_c2cc6ccff841c0 33,60
+apps/radio/src/components/radio/node/modulation-cables.tsx
+  s_952d9447b9a3ff::t_34cf57feb901ba 208
+apps/radio/src/components/radio/node/modulation-editors.tsx
+  s_952d9447b9a3ff::t_fc3459ff5b2507 72,238
+apps/radio/src/components/radio/node/module-frame.tsx
+  s_952d9447b9a3ff::t_8128369f46b378 184,229,322
+apps/radio/src/components/radio/node/node-inspector.tsx
+  s_952d9447b9a3ff::t_e959679f3de21c 376
+apps/radio/src/components/radio/node/node-stage.tsx
+  s_952d9447b9a3ff::t_67481e87cc5b52 36
+apps/radio/src/components/radio/node/output-device-content.tsx
+  s_952d9447b9a3ff::t_56ec623598b2ec 150,160,217
+apps/radio/src/components/radio/node/source-node-frame.tsx
+  s_952d9447b9a3ff::t_bd33baf01cba72 24
+apps/radio/src/components/radio/node/speakers-node.tsx
+  s_952d9447b9a3ff::t_9b3911c63bae1d 32,37
+apps/radio/src/components/radio/node/split-nodes.tsx
+  s_952d9447b9a3ff::t_cf0c9ff983c523 238
+apps/radio/src/components/radio/node/track-content.tsx
+  s_952d9447b9a3ff::t_af9243342dd307 113
+apps/radio/src/components/radio/radio-loading-skeleton.tsx
+  s_952d9447b9a3ff::t_9ef0f3ee49b809 38,50,54,80,103,105,119,121,151,166,169
+apps/radio/src/components/radio/radio-logo.tsx
+  s_952d9447b9a3ff::t_1ca78c090794a4 84,101,110,124
+apps/radio/src/components/radio/radio-now-playing.tsx
+  s_952d9447b9a3ff::t_3068d14b329f64 204,211-212,248,342,415,487
+apps/radio/src/components/radio/radio-search-bar.tsx
+  s_952d9447b9a3ff::t_0a8677fbbdccfd 70,568
+apps/radio/src/components/radio/single/single-player.tsx
+  s_952d9447b9a3ff::t_788d893081d0ba 191
+apps/radio/src/components/radio/station-row.tsx
+  s_952d9447b9a3ff::t_52a2c421f2f308 9,12
+apps/radio/src/components/settings/audio-settings.tsx
+  s_952d9447b9a3ff::t_3729574a728bb8 359
+apps/radio/src/components/settings/radio-from-url-tab.tsx
+  s_952d9447b9a3ff::t_eb720523523934 72
+apps/radio/src/components/settings/radio-management.tsx
+  s_952d9447b9a3ff::t_51d8e78d7c0c10 89
+apps/radio/src/components/settings/settings-button.tsx
+  s_952d9447b9a3ff::t_9972c35c02dd03 120
+apps/radio/src/components/settings/sync-dialog.tsx
+  s_952d9447b9a3ff::t_2fc4d507b7560d 46,94
+apps/radio/src/routes/__root.tsx
+  s_952d9447b9a3ff::t_4b400a2c80aad9 152
+apps/web/src/components/ThemeToggle.astro
+  s_19bd0b60087cb1::t_0152aeb6de5cad 8
+apps/web/src/pages/index.astro
+  s_19bd0b60087cb1::t_cf3fbe708ffd9d 66
+packages/ui/src/components/changelog.tsx
+  s_19bd0b60087cb1::t_ba6219086664a6 24,105
+packages/ui/src/components/play-pause-button.tsx
+  s_19bd0b60087cb1::t_9d783d80aacf32 7,78,81
+packages/ui/src/components/slider.tsx
+  s_6ab5b07a6c6c98::t_e983d23913a22e 115,121,124,378,383,416
+packages/ui/src/stories/alert.stories.tsx
+  s_19bd0b60087cb1::t_a10dadb8d664c4 7,23,37
+packages/ui/src/stories/button.stories.tsx
+  s_19bd0b60087cb1::t_caeea4f39f7291 3,55,58,61
+packages/ui/src/stories/empty.stories.tsx
+  s_19bd0b60087cb1::t_ab14be845aff14 10,25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88546d8ff48d40d0176180d6bbb14df875d858b2",
+  "prompts": {},
+  "sessions": {
+    "s_19bd0b60087cb1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a196f3-3896-7301-8ebf-c1258a20dc1e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_46d046223ebe5c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_46d046223ebe5c",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_6ab5b07a6c6c98": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f5ef25a-a192-48dd-8b36-56007e5a9cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_952d9447b9a3ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1965e-5c1b-7f83-b980-e7ffa67e7ad8",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    },
+    "s_a4d2b5fde4d410": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7fda778-ff70-444f-a539-d30668882dbe",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

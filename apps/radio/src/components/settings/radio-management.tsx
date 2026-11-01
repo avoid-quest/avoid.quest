@@ -23,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVerticalIcon, PlusIcon } from "lucide-react";
+import { IconGripVertical, IconPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -91,7 +91,7 @@ function SortableRadioItem({
         {...attributes}
         {...listeners}
       >
-        <GripVerticalIcon className="size-3.5" />
+        <IconGripVertical className="size-3.5" />
       </button>
       <RadioLogo
         decorative
@@ -290,7 +290,7 @@ export function RadioManagement() {
           value={filter}
         />
         <Button onClick={handleAddRadio} size="sm" variant="outline">
-          <PlusIcon />
+          <IconPlus />
           Add station
         </Button>
       </div>

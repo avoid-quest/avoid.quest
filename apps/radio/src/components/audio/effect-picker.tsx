@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { FilterIcon, type LucideIcon } from "lucide-react";
+import { IconFilter, type TablerIcon } from "@tabler/icons-react";
 import {
   type ChangeEvent,
   type KeyboardEvent,
@@ -29,7 +29,7 @@ export type PickerItem = {
   description?: string;
   /** A small sans tag under the name, e.g. the effect family. */
   badge?: string;
-  icon: LucideIcon;
+  icon: TablerIcon;
   /** Tints the icon tile, e.g. a platform's colour. */
   iconColor?: string;
 };
@@ -256,7 +256,7 @@ export function EffectPicker({
   ).map((effect) => ({
     badge: effect.family,
     description: effect.description,
-    icon: EFFECT_ICONS[effect.type] ?? FilterIcon,
+    icon: EFFECT_ICONS[effect.type] ?? IconFilter,
     id: effect.type,
     name: effect.name,
     type: effect.type,

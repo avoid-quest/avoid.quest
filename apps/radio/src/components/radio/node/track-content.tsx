@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { IconDots, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -134,13 +134,13 @@ export function TrackCard({
                     size="icon"
                     variant="ghost"
                   >
-                    <MoreHorizontalIcon />
+                    <IconDots />
                   </Button>
                 }
               />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={onRemove} variant="destructive">
-                  <Trash2Icon />
+                  <IconTrash />
                   Remove {typeName}
                 </DropdownMenuItem>
               </DropdownMenuContent>

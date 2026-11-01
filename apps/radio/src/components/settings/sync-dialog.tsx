@@ -12,7 +12,7 @@ import {
 import { Label } from "@avoid.quest/ui/components/label";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { toast } from "@avoid.quest/ui/components/sonner";
-import { PlusIcon, RefreshCwIcon } from "lucide-react";
+import { IconPlus, IconRefresh } from "@tabler/icons-react";
 import { useState } from "react";
 import {
   addDismissedRadios,
@@ -262,7 +262,7 @@ export function SyncDialog({
             {changes.updates.length > 0 && (
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
-                  <RefreshCwIcon className="size-4" />
+                  <IconRefresh className="size-4" />
                   Updated stations
                 </h4>
                 <div className="space-y-2">
@@ -281,7 +281,7 @@ export function SyncDialog({
             {changes.additions.length > 0 && (
               <div className="space-y-2">
                 <h4 className="flex items-center gap-2 font-medium text-sm">
-                  <PlusIcon className="size-4" />
+                  <IconPlus className="size-4" />
                   New stations
                 </h4>
                 <div className="space-y-2">

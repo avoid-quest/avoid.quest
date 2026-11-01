@@ -8,7 +8,7 @@ import {
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MicIcon, MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { IconDots, IconMicrophone, IconTrash } from "@tabler/icons-react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { ChannelSelection } from "@/lib/audio";
 import { laneChannelId } from "@/lib/node-graph/compile";
@@ -103,7 +103,7 @@ function InputState({
         size="sm"
         variant="outline"
       >
-        {devices.isLoading ? <Spinner /> : <MicIcon />}
+        {devices.isLoading ? <Spinner /> : <IconMicrophone />}
         Allow microphone
       </Button>
     );
@@ -254,7 +254,7 @@ export function AudioInputNodeBody({
               : "bg-muted text-muted-foreground"
           )}
         >
-          <MicIcon aria-hidden="true" className="size-3.5" />
+          <IconMicrophone aria-hidden="true" className="size-3.5" />
         </span>
         <span
           className="min-w-0 flex-1 truncate font-medium text-xs"
@@ -275,13 +275,13 @@ export function AudioInputNodeBody({
                   size="icon"
                   variant="ghost"
                 >
-                  <MoreHorizontalIcon />
+                  <IconDots />
                 </Button>
               }
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRemove} variant="destructive">
-                <Trash2Icon />
+                <IconTrash />
                 Remove
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -333,7 +333,7 @@ export function AudioInputNodeBody({
           size="sm"
           variant="ghost"
         >
-          <Trash2Icon />
+          <IconTrash />
           Remove audio input
         </Button>
       ) : null}

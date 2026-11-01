@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { PlusIcon } from "lucide-react";
+import { IconPlus } from "@tabler/icons-react";
 import {
   type Dispatch,
   type FocusEvent,
@@ -279,7 +279,7 @@ export function EffectChain({
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="size-3.5" />
+            <IconPlus className="size-3.5" />
             Add effect
           </Button>
 

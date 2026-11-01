@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: test harnesses pass inline handlers */
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { IconLayoutBoard } from "@tabler/icons-react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
-import { LayoutTemplateIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 
@@ -665,7 +665,7 @@ test("the active result stays on its item when entries arrive before it", async 
   type Item = import("@/components/audio/effect-picker").PickerItem;
   const onSelect = mock((_item: Item) => undefined);
   const item = (id: string, name: string): Item => ({
-    icon: LayoutTemplateIcon,
+    icon: IconLayoutBoard,
     id,
     name,
   });

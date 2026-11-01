@@ -13,11 +13,11 @@ import type {
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 import {
-  FilterIcon,
-  GripVerticalIcon,
-  RotateCcwIcon,
-  XIcon,
-} from "lucide-react";
+  IconFilter,
+  IconGripVertical,
+  IconRotate,
+  IconX,
+} from "@tabler/icons-react";
 import type { SyntheticEvent } from "react";
 import {
   createDefaultEffectConfig,
@@ -71,7 +71,7 @@ export function EffectItem({
   const metadata = getEffectMetadata(effect.type);
   const effectName = metadata?.name ?? effect.type;
 
-  const Icon = EFFECT_ICONS[effect.type] ?? FilterIcon;
+  const Icon = EFFECT_ICONS[effect.type] ?? IconFilter;
 
   function handleEnabledChange(enabled: boolean) {
     onUpdate({ enabled });
@@ -113,7 +113,7 @@ export function EffectItem({
             {...dragHandleAttributes}
             {...dragHandleListeners}
           >
-            <GripVerticalIcon className="size-3.5" />
+            <IconGripVertical className="size-3.5" />
           </button>
 
           {/* Icon */}
@@ -167,7 +167,7 @@ export function EffectItem({
             title="Reset to defaults"
             variant="ghost"
           >
-            <RotateCcwIcon className="size-3.5" />
+            <IconRotate className="size-3.5" />
           </Button>
           <Button
             aria-label={`Remove ${effectName}`}
@@ -176,7 +176,7 @@ export function EffectItem({
             size="icon"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <IconX className="size-3.5" />
           </Button>
         </div>
       </CardHeader>

@@ -2,7 +2,12 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { BookmarkPlusIcon, CheckIcon, LinkIcon, PlayIcon } from "lucide-react";
+import {
+  IconBookmarkPlus,
+  IconCheck,
+  IconLink,
+  IconPlayerPlay,
+} from "@tabler/icons-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -68,7 +73,7 @@ function LinkRow({
           type="button"
         >
           <span className="flex size-8 shrink-0 items-center justify-center bg-muted text-muted-foreground">
-            <LinkIcon className="size-3.5" />
+            <IconLink className="size-3.5" />
           </span>
           <StationRowText
             title={isLoading ? "Loading link…" : "Play this link"}
@@ -128,7 +133,7 @@ function SearchResultRow({
         className="flex size-7 shrink-0 items-center justify-center text-muted-foreground"
         role="img"
       >
-        <CheckIcon className="size-3.5" />
+        <IconCheck className="size-3.5" />
       </span>
     );
   } else if (canSave) {
@@ -140,7 +145,7 @@ function SearchResultRow({
         size="icon"
         variant="ghost"
       >
-        <BookmarkPlusIcon className="size-3.5" />
+        <IconBookmarkPlus className="size-3.5" />
       </Button>
     );
   }
@@ -170,7 +175,7 @@ function SearchResultRow({
           <StationRowText title={result.name}>
             <StationRowSubtitle>{details}</StationRowSubtitle>
           </StationRowText>
-          <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
+          <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
         </button>
       </td>
       {action ? <td>{action}</td> : null}

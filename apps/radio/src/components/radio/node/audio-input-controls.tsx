@@ -12,11 +12,11 @@ import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  HeadphonesIcon,
-  MicIcon,
-  PauseIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+  IconHeadphones,
+  IconMicrophone,
+  IconPlayerPause,
+  IconRefresh,
+} from "@tabler/icons-react";
 import { type ReactNode, useEffect, useId } from "react";
 import {
   buildChannelOptions,
@@ -103,7 +103,7 @@ export function InputLiveButton({
   onToggle: () => void;
 }) {
   const label = isPlaying ? "Pause input" : "Go live";
-  const Icon = isPlaying ? PauseIcon : MicIcon;
+  const Icon = isPlaying ? IconPlayerPause : IconMicrophone;
   // Pausing changes playback state; volume mute leaves playback running.
   const name = isPlaying ? `Pause input ${target}` : `Go live ${target}`;
   return (
@@ -182,7 +182,7 @@ export function DeviceSelect({
         title="Refresh devices"
         variant="ghost"
       >
-        <RefreshCwIcon className={isLoading ? "animate-spin" : undefined} />
+        <IconRefresh className={isLoading ? "animate-spin" : undefined} />
       </Button>
     </div>
   );
@@ -254,7 +254,7 @@ export function FeedbackGuard({
   return (
     <div className="flex flex-col gap-1.5 bg-warning/10 px-2.5 py-1.5 text-warning text-xs">
       <p className="flex items-center gap-1.5" role="status">
-        <HeadphonesIcon aria-hidden="true" className="size-3.5 shrink-0" />
+        <IconHeadphones aria-hidden="true" className="size-3.5 shrink-0" />
         Use headphones: a mic into speakers can howl
       </p>
       {onEchoCancellationChange ? (

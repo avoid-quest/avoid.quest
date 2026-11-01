@@ -1,7 +1,7 @@
 import { captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { TriangleAlertIcon } from "lucide-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import {
   Component,
   type ComponentProps,
@@ -123,7 +123,7 @@ function LoadFailed({
           type="button"
           variant="ghost"
         >
-          <TriangleAlertIcon className="size-3.5" />
+          <IconAlertTriangle className="size-3.5" />
         </Button>
         {createPortal(
           <div

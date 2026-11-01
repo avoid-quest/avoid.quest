@@ -3,7 +3,11 @@ import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconPlayerPlay,
+} from "@tabler/icons-react";
 import { useSyncExternalStore } from "react";
 import { validatePlaybackStreamUrl } from "@/lib/audio/playback/url-validation";
 import { getDjDeckModule } from "@/lib/dj-deck";
@@ -168,7 +172,7 @@ function TracklistNavigation({
         size="icon"
         variant="ghost"
       >
-        <ChevronLeftIcon className="size-3.5" />
+        <IconChevronLeft className="size-3.5" />
       </Button>
       <Button
         aria-label="Next track"
@@ -178,7 +182,7 @@ function TracklistNavigation({
         size="icon"
         variant="ghost"
       >
-        <ChevronRightIcon className="size-3.5" />
+        <IconChevronRight className="size-3.5" />
       </Button>
     </div>
   );
@@ -214,7 +218,7 @@ function TrackRow({
           <Spinner aria-label="Loading track" className="size-2.5" />
         )}
         {!isPending && !!isCurrent && (
-          <PlayIcon aria-label="Current track" className="size-2.5" />
+          <IconPlayerPlay aria-label="Current track" className="size-2.5" />
         )}
         {!(isPending || isCurrent) && (
           <span className="font-mono text-muted-foreground text-xs tabular-nums">

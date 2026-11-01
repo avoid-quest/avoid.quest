@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { RadioIcon } from "lucide-react";
+import { IconRadio } from "@tabler/icons-react";
 import { useState } from "react";
 
 type RadioLogoProps = {
@@ -87,7 +87,7 @@ export function RadioLogo({
         )}
       >
         {fallbackIcon || (
-          <RadioIcon
+          <IconRadio
             className={cn(iconSizeMap[size], "text-muted-foreground")}
           />
         )}
@@ -122,7 +122,7 @@ export function RadioLogo({
       {/* Loading state */}
       {!(imageLoaded || imageError) && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted">
-          <RadioIcon
+          <IconRadio
             className={cn(
               iconSizeMap[size],
               "animate-pulse text-muted-foreground"

@@ -9,8 +9,8 @@ import {
 } from "@avoid.quest/ui/components/drawer";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconX } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
-import { XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { EffectParams } from "@/components/audio/effect-params/effect-params";
@@ -521,7 +521,7 @@ function InspectorPanel({
           title="Back to the Rack"
           variant="ghost"
         >
-          <XIcon />
+          <IconX />
         </Button>
       </div>
       <div className="px-2.5">

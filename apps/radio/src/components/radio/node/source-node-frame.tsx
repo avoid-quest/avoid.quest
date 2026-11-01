@@ -2,7 +2,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { XIcon } from "lucide-react";
+import { IconX } from "@tabler/icons-react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import { laneChannelId } from "@/lib/node-graph/compile";
 import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
@@ -67,7 +67,7 @@ export function EmptySourceFrame({
             size="icon"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <IconX className="size-3.5" />
           </Button>
         ) : null}
       </div>

@@ -8,11 +8,11 @@ import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
-  ExternalLinkIcon,
-  MapPinIcon,
-  PlusIcon,
-  RadioIcon,
-} from "lucide-react";
+  IconExternalLink,
+  IconMapPin,
+  IconPlus,
+  IconRadio,
+} from "@tabler/icons-react";
 import { useState } from "react";
 import { searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
@@ -164,14 +164,14 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                   type="button"
                 >
                   <div className="flex size-9 shrink-0 items-center justify-center bg-muted">
-                    <RadioIcon className="size-4 text-muted-foreground" />
+                    <IconRadio className="size-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-sm">
                       {result.title}
                     </p>
                     <p className="flex items-center gap-1 truncate text-muted-foreground text-xs">
-                      <MapPinIcon className="size-3 shrink-0" />
+                      <IconMapPin className="size-3 shrink-0" />
                       {result.placeTitle}, {result.countryTitle}
                     </p>
                   </div>
@@ -194,7 +194,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                         rel="noopener noreferrer"
                         target="_blank"
                       >
-                        <ExternalLinkIcon className="size-3" />
+                        <IconExternalLink className="size-3" />
                         {result.website}
                       </a>
                     ) : null}
@@ -207,7 +207,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                       {isAdding ? (
                         <Spinner className="size-3" />
                       ) : (
-                        <PlusIcon className="size-3" />
+                        <IconPlus className="size-3" />
                       )}
                       {isAdding ? "Adding…" : "Add station"}
                     </Button>

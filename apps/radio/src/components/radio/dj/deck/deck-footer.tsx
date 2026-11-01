@@ -1,5 +1,5 @@
 import { Button } from "@avoid.quest/ui/components/button";
-import { FileAudioIcon, Link2Icon, XIcon } from "lucide-react";
+import { IconFileMusic, IconLink, IconX } from "@tabler/icons-react";
 
 type DeckFooterProps = {
   isFileSource?: boolean;
@@ -23,7 +23,7 @@ export function DeckFooter({
   } else if (isFileSource) {
     changeLabel = "Change file";
   }
-  const ChangeIcon = isFileSource ? FileAudioIcon : Link2Icon;
+  const ChangeIcon = isFileSource ? IconFileMusic : IconLink;
 
   return (
     <div className="flex gap-1 border-border/50 border-t pt-1.5">
@@ -45,7 +45,7 @@ export function DeckFooter({
         title="Remove the source. Effects and channel settings stay."
         variant="ghost"
       >
-        <XIcon className="size-3.5" />
+        <IconX className="size-3.5" />
         Eject
       </Button>
     </div>

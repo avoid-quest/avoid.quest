@@ -3,7 +3,7 @@ import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ListMusicIcon, Music2Icon, Repeat1Icon } from "lucide-react";
+import { IconMusic, IconPlaylist, IconRepeatOnce } from "@tabler/icons-react";
 import { useState } from "react";
 import { RadioNowPlaying } from "@/components/radio/radio-now-playing";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
@@ -35,7 +35,7 @@ function TransportArtwork({
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <Music2Icon className="size-4 text-muted-foreground/40" />
+          <IconMusic className="size-4 text-muted-foreground/40" />
         </div>
       )}
       {isBuffering && isPlaying ? (
@@ -111,7 +111,7 @@ function TransportToggles({
           size="sm"
           title="Repeat"
         >
-          <Repeat1Icon className="size-3.5" />
+          <IconRepeatOnce className="size-3.5" />
         </Toggle>
       ) : null}
       {hasTracklist ? (
@@ -123,7 +123,7 @@ function TransportToggles({
           size="sm"
           title="Autoplay next track"
         >
-          <ListMusicIcon className="size-3.5" />
+          <IconPlaylist className="size-3.5" />
         </Toggle>
       ) : null}
     </div>

@@ -7,14 +7,14 @@ import {
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { useStore } from "@tanstack/react-store";
 import {
-  MonitorSpeakerIcon,
-  MoreHorizontalIcon,
-  Trash2Icon,
-  Volume2Icon,
-  VolumeXIcon,
-} from "lucide-react";
+  IconDeviceSpeaker,
+  IconDots,
+  IconTrash,
+  IconVolume,
+  IconVolume3,
+} from "@tabler/icons-react";
+import { useStore } from "@tanstack/react-store";
 import type { DeviceSinkStatus } from "@/lib/audio/routing/node-device-sinks";
 import { isMediaElementSinkIdSupported } from "@/lib/audio/utils";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
@@ -138,7 +138,7 @@ export function OutputDeviceNodeBody({
   onRetry,
 }: OutputDeviceBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || OUTPUT_DEVICE_NAME;
-  const MuteIcon = data.muted ? VolumeXIcon : Volume2Icon;
+  const MuteIcon = data.muted ? IconVolume3 : IconVolume;
   const muteAction = data.muted ? "Unmute" : "Mute";
   const choices = devices.outputs.filter(
     (device) => device.deviceId !== DEFAULT_OUTPUT_ID
@@ -158,7 +158,7 @@ export function OutputDeviceNodeBody({
         )}
       >
         <span className="flex size-6 shrink-0 items-center justify-center bg-muted text-muted-foreground">
-          <MonitorSpeakerIcon aria-hidden="true" className="size-3.5" />
+          <IconDeviceSpeaker aria-hidden="true" className="size-3.5" />
         </span>
         <span
           className={cn(
@@ -195,13 +195,13 @@ export function OutputDeviceNodeBody({
                   size="icon"
                   variant="ghost"
                 >
-                  <MoreHorizontalIcon />
+                  <IconDots />
                 </Button>
               }
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRemove} variant="destructive">
-                <Trash2Icon />
+                <IconTrash />
                 Remove
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -280,7 +280,7 @@ export function OutputDeviceNodeBody({
           size="sm"
           variant="ghost"
         >
-          <Trash2Icon />
+          <IconTrash />
           Remove output device
         </Button>
       ) : null}

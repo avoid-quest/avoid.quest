@@ -4,11 +4,11 @@ import { Input } from "@avoid.quest/ui/components/input";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  PlusIcon,
-  XIcon,
-} from "lucide-react";
+  IconChevronDown,
+  IconChevronRight,
+  IconPlus,
+  IconX,
+} from "@tabler/icons-react";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -196,9 +196,9 @@ function NestedEffect({
           variant="ghost"
         >
           {expanded ? (
-            <ChevronDownIcon className="size-3.5" />
+            <IconChevronDown className="size-3.5" />
           ) : (
-            <ChevronRightIcon className="size-3.5" />
+            <IconChevronRight className="size-3.5" />
           )}
           {effectName}
         </Button>
@@ -214,7 +214,7 @@ function NestedEffect({
           size="icon"
           variant="ghost"
         >
-          <XIcon className="size-3.5" />
+          <IconX className="size-3.5" />
         </Button>
       </div>
       {expanded && schema ? (
@@ -440,7 +440,7 @@ function ChainEditor({
             size="icon"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <IconX className="size-3.5" />
           </Button>
         ) : null}
       </div>
@@ -493,7 +493,7 @@ function ChainEditor({
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="size-3.5" />
+            <IconPlus className="size-3.5" />
             Add nested effect
           </Button>
         ) : null}
@@ -614,7 +614,7 @@ export function ContainerParams({
           size="sm"
           variant="outline"
         >
-          <PlusIcon className="size-3.5" />
+          <IconPlus className="size-3.5" />
           Add parallel chain
         </Button>
       )}

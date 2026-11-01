@@ -9,8 +9,8 @@ import {
 import { Separator } from "@avoid.quest/ui/components/separator";
 import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { IconHome } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
-import { HomeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
@@ -108,7 +108,7 @@ export function ImportPage() {
             This link doesn't contain stations to import.
           </p>
           <Button onClick={handleCancel} size="sm">
-            <HomeIcon className="size-3.5" />
+            <IconHome className="size-3.5" />
             Go home
           </Button>
         </div>

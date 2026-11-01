@@ -11,11 +11,11 @@ import {
 } from "@avoid.quest/ui/components/dialog";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  ArrowUpRightIcon,
-  ChevronDownIcon,
-  InfoIcon,
-  XIcon,
-} from "lucide-react";
+  IconArrowUpRight,
+  IconChevronDown,
+  IconInfoCircle,
+  IconX,
+} from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/types";
@@ -116,7 +116,7 @@ export function RadioNowPlayingDetailsButton({
             title={`View details for ${identity.title}`}
             variant="ghost"
           >
-            <InfoIcon aria-hidden="true" className="size-3.5" />
+            <IconInfoCircle aria-hidden="true" className="size-3.5" />
           </Button>
         }
       />
@@ -263,7 +263,7 @@ export function RadioNowPlaying({
                   >
                     {title}
                   </span>
-                  <ArrowUpRightIcon
+                  <IconArrowUpRight
                     aria-hidden="true"
                     className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
                   />
@@ -345,7 +345,7 @@ function StationInformation({
             target="_blank"
           >
             Station website
-            <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+            <IconArrowUpRight aria-hidden="true" className="size-3.5" />
           </a>
         ) : null}
       </div>
@@ -404,7 +404,7 @@ function NowPlayingDetails({
               size="icon"
               variant="ghost"
             >
-              <XIcon aria-hidden="true" className="size-4" />
+              <IconX aria-hidden="true" className="size-4" />
             </Button>
           }
         />
@@ -462,7 +462,7 @@ function NowPlayingDetails({
                 variant="outline"
               >
                 Open source page
-                <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+                <IconArrowUpRight aria-hidden="true" className="size-3.5" />
               </Button>
             ) : null}
           </div>
@@ -486,7 +486,7 @@ function NowPlayingDetails({
         <details className="group border-border/50 border-t pt-5">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             Stream information
-            <ChevronDownIcon
+            <IconChevronDown
               aria-hidden="true"
               className="size-4 transition-transform group-open:rotate-180"
             />

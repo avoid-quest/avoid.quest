@@ -18,13 +18,13 @@ import {
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  type LucideIcon,
-  MoreHorizontalIcon,
-  ReplaceIcon,
-  RotateCcwIcon,
-  SlidersHorizontalIcon,
-  Trash2Icon,
-} from "lucide-react";
+  IconAdjustmentsHorizontal,
+  IconDots,
+  IconReplace,
+  IconRotate,
+  IconTrash,
+  type TablerIcon,
+} from "@tabler/icons-react";
 import {
   type ComponentType,
   type CSSProperties,
@@ -207,7 +207,7 @@ export function ModuleHeader({
   onSwap,
   onRemove,
 }: {
-  icon: LucideIcon;
+  icon: TablerIcon;
   title: string;
   on: boolean;
   badge?: ReactNode;
@@ -264,32 +264,32 @@ export function ModuleHeader({
                 size="icon"
                 variant="ghost"
               >
-                <MoreHorizontalIcon />
+                <IconDots />
               </Button>
             }
           />
           <DropdownMenuContent align="end">
             {onInspect ? (
               <DropdownMenuItem onClick={onInspect}>
-                <SlidersHorizontalIcon />
+                <IconAdjustmentsHorizontal />
                 All settings
               </DropdownMenuItem>
             ) : null}
             {onSwap ? (
               <DropdownMenuItem onClick={onSwap}>
-                <ReplaceIcon />
+                <IconReplace />
                 Swap effect…
               </DropdownMenuItem>
             ) : null}
             {onReset ? (
               <DropdownMenuItem onClick={onReset}>
-                <RotateCcwIcon />
+                <IconRotate />
                 Reset to defaults
               </DropdownMenuItem>
             ) : null}
             {onInspect || onSwap || onReset ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onClick={onRemove} variant="destructive">
-              <Trash2Icon />
+              <IconTrash />
               Remove
             </DropdownMenuItem>
           </DropdownMenuContent>

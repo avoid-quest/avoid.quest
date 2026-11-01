@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Music2Icon } from "lucide-react";
+import { IconMusic } from "@tabler/icons-react";
 import { expect, waitFor, within } from "storybook/test";
 import { EmptyHint } from "@/components/radio/empty-hint";
 import { AppFrame } from "@/components/root/app-frame";
@@ -13,7 +13,7 @@ const LAZY_TIMEOUT = { timeout: 10_000 };
 const meta = {
   args: {
     children: (
-      <EmptyHint className="m-auto" icon={<Music2Icon />}>
+      <EmptyHint className="m-auto" icon={<IconMusic />}>
         Nothing playing
       </EmptyHint>
     ),

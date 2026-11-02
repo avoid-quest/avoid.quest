@@ -10,18 +10,20 @@ function ScrollArea({
 }: ScrollAreaPrimitive.Root.Props) {
   return (
     <ScrollAreaPrimitive.Root
-      className={cn("relative", className)}
+      className={cn("relative overflow-hidden", className)}
       data-slot="scroll-area"
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
-        className="size-full rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="size-full max-h-[inherit] rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-3 focus-visible:ring-ring/50"
         data-slot="scroll-area-viewport"
       >
-        {children}
+        <ScrollAreaPrimitive.Content data-slot="scroll-area-content">
+          {children}
+        </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar />
-      <ScrollAreaPrimitive.Corner />
+      <ScrollAreaPrimitive.Corner className="absolute right-0 bottom-0" />
     </ScrollAreaPrimitive.Root>
   );
 }
@@ -34,7 +36,11 @@ function ScrollBar({
   return (
     <ScrollAreaPrimitive.Scrollbar
       className={cn(
-        "flex touch-none select-none p-px transition-colors data-horizontal:h-2.5 data-vertical:h-full data-vertical:w-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:border-l data-vertical:border-l-transparent",
+        "absolute flex touch-none select-none p-px transition-colors data-hovering:opacity-100 data-scrolling:opacity-100",
+        orientation === "vertical" &&
+          "inset-y-0 right-0 w-2.5 border-l border-l-transparent",
+        orientation === "horizontal" &&
+          "inset-x-0 bottom-0 h-2.5 flex-col border-t border-t-transparent",
         className
       )}
       data-orientation={orientation}

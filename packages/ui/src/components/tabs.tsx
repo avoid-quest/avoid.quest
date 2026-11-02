@@ -17,6 +17,7 @@ function Tabs({
       )}
       data-orientation={orientation}
       data-slot="tabs"
+      orientation={orientation}
       {...props}
     />
   );
@@ -44,6 +45,7 @@ function TabsList({
 }: TabsPrimitive.List.Props & VariantProps<typeof tabsListVariants>) {
   return (
     <TabsPrimitive.List
+      activateOnFocus
       className={cn(tabsListVariants({ variant }), className)}
       data-slot="tabs-list"
       data-variant={variant}

@@ -12,7 +12,7 @@ import {
   IconDots,
   IconTrash,
   IconVolume,
-  IconVolume3,
+  IconVolumeOff,
 } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
 import type { DeviceSinkStatus } from "@/lib/audio/routing/node-device-sinks";
@@ -138,7 +138,7 @@ export function OutputDeviceNodeBody({
   onRetry,
 }: OutputDeviceBodyProps) {
   const title = (data.deviceId && data.deviceLabel) || OUTPUT_DEVICE_NAME;
-  const MuteIcon = data.muted ? IconVolume3 : IconVolume;
+  const MuteIcon = data.muted ? IconVolumeOff : IconVolume;
   const muteAction = data.muted ? "Unmute" : "Mute";
   const choices = devices.outputs.filter(
     (device) => device.deviceId !== DEFAULT_OUTPUT_ID

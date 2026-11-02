@@ -35,6 +35,7 @@ import {
   IconDatabase,
   IconDeviceDesktop,
   IconMoon,
+  IconPiano,
   IconRadio,
   IconRotate,
   IconSettings,
@@ -93,7 +94,7 @@ const SETTINGS_SECTIONS: SectionDefinition[] = [
   { icon: IconSettings, key: "general", label: "General" },
   { icon: IconRadio, key: "radios", label: "Radios" },
   { icon: IconAdjustmentsHorizontal, key: "playback", label: "Playback" },
-  { icon: IconAdjustmentsHorizontal, key: "midi", label: "MIDI" },
+  { icon: IconPiano, key: "midi", label: "MIDI" },
   { icon: IconDatabase, key: "data", label: "Data" },
 ];
 

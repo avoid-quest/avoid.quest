@@ -1,0 +1,57 @@
+apps/radio/src/components/audio/volume-control.tsx
+  s_b2fb0c8591c711::t_bc7b4f65a1d7b2 5,26
+apps/radio/src/components/radio/node/node-icons.ts
+  s_b2fb0c8591c711::t_ca6149998f3445 9,42
+apps/radio/src/components/radio/node/output-device-content.tsx
+  s_b2fb0c8591c711::t_3f6c54d789b8cd 15,141
+apps/radio/src/components/settings/settings-form.tsx
+  s_b2fb0c8591c711::t_1ca5344d89ed1c 38,97
+bun.lock
+  s_b2fb0c8591c711::t_05734848332252 191
+packages/ui/package.json
+  s_b2fb0c8591c711::t_476e995d2c0228 17,26
+packages/ui/src/components/accordion.tsx
+  s_b2fb0c8591c711::t_d4ece02de5bd92 61,67
+packages/ui/src/components/badge.tsx
+  s_b2fb0c8591c711::t_e95bd5ff46efe6 1-2
+packages/ui/src/components/changelog.test.tsx
+  s_b2fb0c8591c711::t_a2b463d8b88ea2 7,39-40
+packages/ui/src/components/collapsible.tsx
+  s_b2fb0c8591c711::t_b8b39c17a508ee 3,16-19,21-28
+packages/ui/src/components/dialog.tsx
+  s_b2fb0c8591c711::t_bc3a1250657ab9 110
+packages/ui/src/components/dropdown-menu.tsx
+  s_b2fb0c8591c711::t_f1dd9a13736dad 169,210
+packages/ui/src/components/empty.tsx
+  s_b2fb0c8591c711::t_0a1d23685e7126 20-23
+packages/ui/src/components/field.tsx
+  s_b2fb0c8591c711::t_07f2e7de21b283 206
+packages/ui/src/components/popover.tsx
+  s_b2fb0c8591c711::t_2637ad69ce9f56 36-39,44-51,58,60-61,64
+packages/ui/src/components/scroll-area.tsx
+  s_b2fb0c8591c711::t_96fbcb3dd7709b 13,18,21-23,26,39-43
+packages/ui/src/components/select.tsx
+  s_b2fb0c8591c711::t_9db7418c8bacfb 71-72,99-104,142
+packages/ui/src/components/separator.tsx
+  s_b2fb0c8591c711::t_c88a4330e794ac 9,11,14,21
+packages/ui/src/components/tabs.tsx
+  s_b2fb0c8591c711::t_1975f6e90c0374 20,48
+packages/ui/src/components/toggle-group.tsx
+  s_b2fb0c8591c711::t_d417e32848b97e 29,31,33,48-49,73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0078bb2612f99547661428e54eb663a43f3cfa28",
+  "prompts": {},
+  "sessions": {
+    "s_b2fb0c8591c711": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_b2fb0c8591c711",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

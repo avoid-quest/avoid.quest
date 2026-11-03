@@ -1,0 +1,100 @@
+package.json
+  s_e0f12e89438e45::t_6b9be227a8ba53 36
+apps/radio/src/lib/const.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 14,27,42,53,64,76,88,105,117,129,131
+apps/radio/src/routes/guide[.]xml.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-9
+apps/radio/wrangler.jsonc
+  s_e0f12e89438e45::t_6b9be227a8ba53 8,13-31
+apps/radio/src/lib/metadata/lyl-provider.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 6-11,99,160-162,182-183,187-191,281-317,326,339,356,393,417-418
+apps/radio/src/lib/xmltv.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-62
+apps/radio/src/components/radio/dj/deck/deck-transport.test.tsx
+  s_e0f12e89438e45::t_a24f827f5942ba 68-71,83,125,135
+  s_e0f12e89438e45::t_6b9be227a8ba53 9,11,31-34,57-58,60,106,112,117-118,127,149
+apps/radio/src/lib/audio/playback/playback-input.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 20
+apps/radio/README.md
+  s_e0f12e89438e45::t_6b9be227a8ba53 85,263-338,359-362
+apps/radio/src/lib/metadata/external-providers.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 9-13,91,124-127,129,133-135,240,279,498-552,803,1552,1741-1742,1748-1774,1858-1860,1920-1937,1956-1966,1973,2004,2015-2016,2125-2126,2132-2139,2223-2239
+  s_e0f12e89438e45::t_ab0ecc53fd3c88 8
+apps/radio/src/routes/playlist[.]m3u.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 14,16-19
+apps/radio/src/lib/kodi-playlist.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 2,11-52
+  s_e0f12e89438e45::t_1272dc2e16214f 53
+apps/radio/src/lib/audio/playback/media-element-playback-source.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 238,247,441-450
+  s_e0f12e89438e45::t_b7e4ec20fb3d9c 451-452
+apps/radio/src/lib/audio/playback/playback-input.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 52-70
+apps/radio/src/lib/metadata/retrieval.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 70,86
+apps/web/wrangler.jsonc
+  s_e0f12e89438e45::t_6b9be227a8ba53 5,9-13
+DEVELOPMENT.md
+  s_e0f12e89438e45::t_6b9be227a8ba53 93,128-152,157,161-197
+  s_e0f12e89438e45::t_94864c9a599732 198
+apps/web/README.md
+  s_e0f12e89438e45::t_6b9be227a8ba53 47-51,53-56,63,66-72
+apps/discord-bot/src/lib/presets.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 88
+docs/research/cloudflare-workers-previews-2026-10-23.md
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-192
+apps/radio/src/lib/audio/playback/media-element-playback-source.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 130-344
+apps/radio/src/lib/collections/radios.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 90-106
+apps/radio/src/lib/audio/manager/audio-manager.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 640,655-657,700,711-715,724-726
+apps/radio/src/lib/metadata/metadata-workflow.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 19-76
+turbo.json
+  s_e0f12e89438e45::t_6b9be227a8ba53 46-60,70-74
+apps/radio/cloudflare-env.d.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 3
+apps/radio/src/lib/audio/playback/media-element-attachment.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 298-300
+apps/radio/src/lib/metadata/programmes.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-487
+docs/research/kodi-couch-metadata-audit-2026-10-23.md
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-321
+apps/radio/src/lib/metadata/lyl-provider.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 46-62
+apps/radio/src/routeTree.gen.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 13,30-34,88,102,117,133,147,161,176,198-204,280
+apps/radio/src/lib/xmltv.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-56
+apps/web/package.json
+  s_e0f12e89438e45::t_6b9be227a8ba53 11-12
+apps/radio/src/lib/audio/playback/types.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 10-11
+apps/radio/src/lib/metadata/guide.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-266
+apps/radio/package.json
+  s_e0f12e89438e45::t_6b9be227a8ba53 11,13
+apps/radio/src/lib/kodi-playlist.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 39-41,147-153
+apps/radio/src/lib/metadata/guide.test.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-166
+apps/radio/src/lib/metadata/programmes.ts
+  s_e0f12e89438e45::t_6b9be227a8ba53 1-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d957216ad9d172ed39f610114ec0ef92396388f3",
+  "prompts": {},
+  "sessions": {
+    "s_e0f12e89438e45": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a279-a98a-7611-832e-d780364bc1d3",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

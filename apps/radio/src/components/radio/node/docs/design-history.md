@@ -64,8 +64,7 @@ Pressing `/`, double-clicking the canvas, or dropping a cable on empty space ope
 palette, and a station picked there is wired in ahead of time. Pressing play makes the
 cables carrying signal brighten with their live level.
 
-On a phone the same patch opens on the **Stage** tab: each source with play and volume, and
-the master. Rack and Patch are one tap away (§6).
+On a phone the same patch opens on the canvas alone; settings open in a bottom drawer (§6).
 
 **The one memorable thing: the Dial.** Drop a Dial node between your stations and Speakers
 and you get one big knob. Turning it tunes across the connected stations like an analogue
@@ -87,7 +86,7 @@ carries the four universal wrapper params: enabled, dryWet, inputGain and output
 | Category | Name | Inputs | Outputs | Params | For | Ship |
 |---|---|---|---|---|---|---|
 | Source | Station | control: volume, pan, station | audio; control: song-change (pulse), title-hash (v2) | radio ref (snapshot), volume, muted, play | A saved or session station as a lane: one managed sound through `createManagedSound` (`apps/radio/src/lib/playback-actions-shared.ts:85-104`). **Its empty state is the search**: with no station, the body is an inline `SearchField`, and the chosen result fills the slot. A pasted radio stream link becomes a session station; a pasted platform link loads and hands off to a Track (a session radio keeps the green `#00d084/40` stripe; session radios are tab-scoped, `apps/radio/src/lib/collections/session-radios.ts:14-37`). There is no separate Search node | v1 |
-| Source | File | control: volume (v2) | audio | radio (like a Station's), volume, muted, play | One of the Source family with Station and Track: same data, frame and strip slot (`components/radio/node/source-node-frame.tsx`). A local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`) or a static audio URL (MP3, M3U, PLS) resolved in the browser (`lib/audio/client-static-audio-resolver.ts`). Its empty body is DJ's `FileForm`. Restore skips local files (`isRestorableRadio`), and a local file's lane is live only for object URLs picked in this page (`lib/node-graph/sources.ts`), so after a reload the File keeps its name, has no lane and says "Pick the file again"; its Rack row under Pick again, and a row for it on the Stage, show the File on the Patch. A URL survives the reload. Albums and M3U playlists advance to the next track at the end of one | v1 |
+| Source | File | control: volume (v2) | audio | radio (like a Station's), volume, muted, play | One of the Source family with Station and Track: same data, frame and strip slot (`components/radio/node/source-node-frame.tsx`). A local file through a `blob:` URL (`apps/radio/src/lib/audio/file-metadata.ts:74-76`) or a static audio URL (MP3, M3U, PLS) resolved in the browser (`lib/audio/client-static-audio-resolver.ts`). Its empty body is DJ's `FileForm`. Restore skips local files (`isRestorableRadio`), and a local file's lane is live only for object URLs picked in this page (`lib/node-graph/sources.ts`), so after a reload the File keeps its name, has no lane and says "Pick the file again"; its Rack row under Pick again shows the File. A URL survives the reload. Albums and M3U playlists advance to the next track at the end of one | v1 |
 | Source | Audio input (`deviceIn`, DJ's word) | none | audio | device, channel pair of the first 2 channels, echo cancellation, volume, mute, Go live | `createDeviceSource` (`apps/radio/src/lib/audio/playback/device-source.ts:581`) via `AudioManager.playDeviceSound`, getUserMedia → splitter/merger. The start is DJ's own, shared as `apps/radio/src/lib/device-input-playback.ts` (`startDeviceInput`: `playDeviceSound(soundId, deviceId, { echoCancellation })`, then `setDeviceChannelSelection`). An input with no device has no lane, like an empty Station. Its channel carries DJ's device-input radio (`dj-library-sources.ts`), and restore skips it (`isRestorableRadio`), so a reload never opens the mic: only Go live does. Realtime path, so it skips the main delay (`apps/radio/src/lib/audio/routing/browser-output-adapter.ts:39-42`). Not a stream, so the playing budget ignores it. Its body: Allow microphone (a gesture), "Microphone blocked…", the device select with Refresh, the channel select, "Unplugged: plug it back in or pick another" (the lane pauses), Off / Live with Go live and Mute, and while it reaches an output an amber "Use headphones: a mic into speakers can howl" with an Echo cancellation switch. It is never wired on its own when added | v1 |
 | Source | Track (`platform`) | control: volume (v2) | audio | radio (like a Station's), search chip, volume, muted, play | A YouTube, SoundCloud or Bandcamp track, album or playlist. Its empty body is DJ's `ExternalSearch`, unlocked ("Search all") or locked by a platform chip taken from `PLATFORM_SOURCE_DEFINITIONS`; a pick or a pasted link loads through `useDjTrackLoad`, and a `yt:` track is resolved first. A radio link hands off: filling any Source with another kind of radio turns it into the one that plays it, in place (`setSourceRadio`). `validateRadioForMode` allows platform radios in `"node"` (Single stays refused). An expired stream is renewed through DJ's refresh, shared as `lib/platform-stream-refresh.ts`, and resumes at its position. At the end of a track in an album or playlist the lane loads `findNextTrack`; the inspector lists the tracklist (DJ's `TracklistView`) | v1 |
 | Source | Static | control: level | audio | colour (white or pink), bandwidth | Looping noise `AudioBufferSourceNode` → Biquad bandpass. Native and cheap on Safari. Used by the Dial and the roulette bridge | v2 |
@@ -636,10 +635,8 @@ same edit (`withFxColumn`). The gaps stay short because a phone fit stops at 0.6
 three-column patch already overflows a phone, and its left edge shows first. An output goes in the Speakers column, below the lowest node there,
 so a cable into it runs beside Speakers' rather than through it, and the patch stays as wide
 as it was. A reveal after an add waits for the new node's measured
-size and keeps it clear of the canvas hint. On a phone, anything but a filled source added
-from the Stage or Rack (an empty slot, an Audio input, an FX, a routing node or an output)
-opens the Patch on it, as neither lists it; one added on the Patch stays where it was put. Selecting an
-empty slot keeps the Rack: it has no strip to inspect until it holds something.
+size and keeps it clear of the canvas hint. A phone has no other view, so the reveal is
+always on the canvas.
 
 ```
         ┌──────────────────────────────────────┐
@@ -653,28 +650,19 @@ empty slot keeps the Rack: it has no strip to inspect until it holds something.
  label on hover/focus; the "on" state = border-primary/20 bg-primary/5
 ```
 
-**Phone** (< 768 px). Tabs choose between Stage, Rack and Patch, following the DJ mobile
-pattern of tabs plus stacking plus accordion:
+**Phone** (< 768 px). The canvas is the only view; there are no tabs. The search bar, a
++ button and a ⋯ menu (Fit view, Templates, Undo and Redo) sit above it, and the inspector
+and palette open as vaul bottom Drawers:
 
 ```
 ┌ header ───────────────────────┐
-│ [ Stage | Rack | Patch ]      │
+│ [search sources…]  [+]   ⋯    │
 ├───────────────────────────────┤
-│ Stage (default)               │   performance surface:
-│ ▶ Play all (3)  master ━━●━   │   master, pinned macros as big
-│ ◔ Dial   ◔ Macro 1            │   knobs (PR 6), every source with
-│ ▸ KEXP   ▶  ━━●━━   ▂▃        │   play and volume
-│ ▸ NTS 1  ▶  ━━━●━   ▂▅        │
-├───────────────────────────────┤
-│ Rack                          │   the compiled EnginePlan, listed
-│ ▸ Bus: Dial (3 in)            │   by bus → lanes; each lane shows
-│   ┌ StationRow  ▶  vol ─────┐ │   its FX as chips that open the
-│   │ [Comp] [Delay] [+]      │ │   inspector in a bottom Drawer
-│   └─────────────────────────┘ │
-│ ▸ Direct to Speakers          │
+│ canvas                        │
+│ pinch zoom,                   │
+│ tap-port-then-tap-port        │
+│ to connect                    │
 └───────────────────────────────┘
- Patch tab = canvas, pinch zoom, tap-port-then-tap-port to connect,
- add-node palette and inspector as vaul bottom Drawers.
 ```
 
 ### Review against defaults
@@ -694,7 +682,7 @@ What this design does instead:
 
 - No grid, or at most an optional `border/30` 24 px dot at zoom ≥ 1.
 - Category comes from the lucide icon tile and the port shape, not header colour.
-- No minimap in v1; fit-view is on `F`, and on a phone on tapping the open Patch tab again.
+- No minimap in v1; fit-view is on `F`, and on a phone in the ⋯ menu.
   A phone fit stops at zoom 0.6, where text reads and ports take a tap, and the patch pans
   instead of shrinking past it; a patch still too tall opens on its top (Speakers and the
   first sources), not its middle.
@@ -777,8 +765,8 @@ What this design does instead:
   - **MIDI in** (PR 6) makes those mappings visible: its CC cables are the mappings, and
     deleting a cable clears one. **Macro** cables carry a `MidiTransform` and reuse
     `applyTransform` and the existing transform editor, so there is no new curve UI.
-- **Phone.** Stage is the default tab; Rack is the full accessible path. Patch uses 20-28 px
-  handles, pinch zoom and tap-tap connect. The inspector and palette open as bottom Drawers.
+- **Phone.** The canvas is the only view. It uses 20-28 px handles, pinch zoom and tap-tap
+  connect. The inspector and palette open as bottom Drawers.
   Budgets drop to 4 playing streams, with a clear message on the fifth play.
 
 ## 8. Persistence and migration
@@ -906,8 +894,8 @@ runs **before** any mutation of either collection. It is idempotent.
 
 | Touch point | Action / replacement |
 |---|---|
-| `apps/radio/src/components/radio/multiple/index.tsx` (17-219) | Delete. Replaced by `components/radio/node/index.tsx` (canvas + Stage + Rack + Speakers bar, ClientOnly + `React.lazy`). Space and search-add behaviours move there |
-| `apps/radio/src/components/radio/multiple/multiple-global-controls.tsx` | Delete. Play all (N), master VolumeControl and mute move into `node/speakers-node.tsx` and the Stage tab |
+| `apps/radio/src/components/radio/multiple/index.tsx` (17-219) | Delete. Replaced by `components/radio/node/index.tsx` (canvas + Rack + Speakers bar, ClientOnly + `React.lazy`). Space and search-add behaviours move there |
+| `apps/radio/src/components/radio/multiple/multiple-global-controls.tsx` | Delete. Play all (N), master VolumeControl and mute move into `node/speakers-node.tsx` |
 | `apps/radio/src/components/radio/multiple/multiple-radio-card.tsx` | Delete. The body is repurposed as `node/station-node.tsx` (RadioNowPlaying with viewport-gated polling, RadioItemActions, InlineError, PlayPauseButton, VolumeControl, session stripe; SearchField when empty) |
 | `apps/radio/src/components/radio/multiple/use-multiple-radio-management.ts` | Delete. Edit, delete, save-discovered and hide-restore move to `node/use-node-radio-management.ts`. Hiding a saved station **disables its Station node** (greyed, lane released) instead of removing it, because membership is now user-curated |
 | `apps/radio/src/components/radio/multiple/use-multiple-radio-management.test.tsx` | Delete; new tests for the node management hook |
@@ -973,8 +961,8 @@ isolation).
      listeners.
    - Add `node-store.ts` (TanStack Store), `node-playback.ts` (lanes go straight to
      `connectMain`, so no engine change yet), `use-node-session`, and the canvas with Station
-     (including its empty search state) and Speakers, plus the Stage (sources and master) and
-     Rack tabs.
+     (including its empty search state) and Speakers, plus the Rack (the Stage view this step first
+     added was later removed).
    - Add the "Start from Multiple" template, undo, the Connect… dialog, media session and
      skeleton.
    - ModeSelect shows Node instead of Multiple.
@@ -1039,7 +1027,7 @@ isolation).
 | Bespoke Synth | Signal shown on the cable, target highlighting, level→control bridge | Full oscilloscope cables (too costly at 6 streams on mobile); an empty start | n/a |
 | Pure Data | Keyboard surgery: insert, bypass, swap, all undoable | Fan-out ordering ambiguity (audio sums are order-free; control fan-out is evaluated in edge order and shown) | n/a |
 | VCV Rack | Thicker stereo cables, per-cable colour override | Clock and reset spaghetti (Clock fan-out is drawn as one cable plus a count) | n/a |
-| Max/MSP and Mira | A separate performance surface: Stage on phones and as a desktop strip | Presentation modes that hide cords entirely (Stage can overlay them) | n/a |
+| Max/MSP and Mira | A separate performance surface: a Stage strip, proposed and not built | Presentation modes that hide cords entirely (Stage can overlay them) | n/a |
 | Reaktor Blocks | Anti-pattern: swapping must keep modulation, and ports must not all be audio-rate | Everything else | n/a |
 | Patchcab and BlokDust | Named templates, global play plus master, share by URL | Tiny knobs (coarse-pointer sizing is used instead) | n/a |
 | NoiseCraft, Kabelsalat, Strudel, Hydra, Cardinal | Warnings: test WebKit early, no main-thread work on audio paths during resize, active-path highlighting; single-sample feedback shows loops are musical (the Loop node) | All code (GPL/AGPL); whole-graph single-worklet compilation | n/a |
@@ -1105,13 +1093,13 @@ isolation).
 with a ring on the shared Knob, and a large v1 ships LFO, Clock, Random, Dice, Macro, File and
 Mic alongside the swap. Buses become full `SoundInstance`s through a new `bus` playback-source
 kind, so they get strips, faders and FX for free. It lost because its third PR bundled the
-migration, every removal, about 25 node types, the palette, undo and phone tabs into one
+migration, every removal, about 25 node types, the palette, undo and the phone layout into one
 unreviewable slice; because it added four signal tokens and changed the shared Knob, moving
 away from one product across modes; and because bus sounds carry a fader that global volume
 multiplies, which forces `setGlobalVolume(1)` and diverges from
 `setManagedSessionMasterVolume` (`managed-playback-internals.ts:204-215`). Its best ideas
-survive here: TanStack Store, the Loop guard, song-change and title-hash outputs, the Stage
-tab, the Dérive static bridge, Tape Warp, Sundial and the cross-tab listener.
+survive here: TanStack Store, the Loop guard, song-change and title-hash outputs, the Dérive
+static bridge, Tape Warp, Sundial and the cross-tab listener.
 
 **Canon-native ("Single and DJ with cables added").** Station nodes are the Multiple card,
 the cable is the meter, and buses wait for v2. It is the most faithful to the existing UI.

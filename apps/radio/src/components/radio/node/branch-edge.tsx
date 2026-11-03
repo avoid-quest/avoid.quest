@@ -23,7 +23,7 @@ import { keepControlKeys } from "./module-frame";
  * carries that branch's gain, pan, mute and solo. It draws as a plain wire
  * with a small tag at its middle ("2", "L", "Mid", plus what is set), and
  * the tag opens the branch's controls. The inspector lists the same
- * controls for every branch, so a phone reaches them from the Rack.
+ * controls for every branch, so a phone reaches them from its drawer.
  */
 
 export type BranchFlowEdge = FlowEdge<BranchEdgeData, "branch">;

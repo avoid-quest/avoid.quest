@@ -1397,7 +1397,7 @@ describe("session persistence and init", () => {
       (node) => node.id === "src-rg_picked"
     );
     expect(station?.data).toMatchObject({ radio: picked, volume: 0.5 });
-    // Its lane stays, so Play all and the Stage have it.
+    // Its lane stays, so Play all and the Rack have it.
     expect(nodeSession?.channels.map((channel) => channel.id)).toEqual([
       "n:src-kexp",
       "n:src-rg_picked",

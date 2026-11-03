@@ -414,7 +414,7 @@ describe("Audio input node", () => {
     expect(onEchoCancellationChange.mock.calls[0]?.[0]).toBe(true);
   });
 
-  test("the Stage row pauses a live input whose device is unplugged", async () => {
+  test("the Rack row pauses a live input whose device is unplugged", async () => {
     media.permission = "granted";
     const controls = {
       setPlaying: mock(async (_nodeId: string, _playing: boolean) => undefined),

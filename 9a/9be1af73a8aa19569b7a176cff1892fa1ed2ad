@@ -1,0 +1,23 @@
+apps/radio/src/components/radio/radio-search-bar.tsx
+  s_211cc6ee635e8f::t_fd754099779f7e 178
+apps/radio/src/components/radio/single/single-player-station-list.tsx
+  s_211cc6ee635e8f::t_fd754099779f7e 111
+apps/radio/src/components/radio/dj/external-search/search-results.tsx
+  s_211cc6ee635e8f::t_fd754099779f7e 170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9a9be1af73a8aa19569b7a176cff1892fa1ed2ad",
+  "prompts": {},
+  "sessions": {
+    "s_211cc6ee635e8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "283425e1-0fb0-4de3-985c-4aeeb57ddefd",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

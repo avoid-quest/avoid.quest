@@ -416,7 +416,7 @@ describe("split ports", () => {
       />
     );
 
-    // The Stage, Rack and inspector have no React Flow, so no ports.
+    // The Rack and inspector have no React Flow, so no ports.
     const bare = render(split(["branch-1", "branch-2"]));
     expect(bare.container.querySelector("[data-handle]")).toBeNull();
     bare.unmount();

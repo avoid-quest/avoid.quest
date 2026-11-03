@@ -42,7 +42,7 @@ import {
 import { useNodeActions } from "./node-actions";
 import { isUnplugged, useNodeDevices } from "./use-node-devices";
 
-/** What a Stage or Rack row drives on its lane. */
+/** What a Rack row drives on its lane. */
 export type NodeLaneControls = Pick<
   NodePlayback,
   "setPlaying" | "setVolume" | "toggleMute"

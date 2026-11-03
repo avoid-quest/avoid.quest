@@ -454,7 +454,7 @@ export type NodeCanvasProps = {
   /**
    * Bumped to fit the patch in view, e.g. after a template loads. A
    * request is fitted once, then handed back through `onFitHandled`, so a
-   * canvas mounted again (a phone back on Patch) keeps its pan and zoom.
+   * canvas mounted again keeps its pan and zoom.
    */
   fitRequest: number;
   onFitHandled?: () => void;
@@ -1119,7 +1119,7 @@ function Canvas({
 
   // Delete heals, B bypasses, I inserts into a cable and Cmd+D duplicates.
   // React Flow's own delete key would listen on the whole document, so a
-  // Backspace in the Stage, the Rack or a dialog deleted the selection.
+  // Backspace in the Rack, the inspector or a dialog deleted the selection.
   useCableSurgeryShortcuts({
     canvasRef: wrapperRef,
     onInsertInto: onOpenPalette,

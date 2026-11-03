@@ -564,7 +564,7 @@ export function nodePortState({
 
 /**
  * React Flow's Position, and the canvas's port, handed down by the canvas.
- * Node bodies and their controls also render in the Stage, Rack and
+ * Node bodies and their controls also render in the Rack and
  * inspector, which load without React Flow, so this module only imports
  * its types; ports render on the canvas, inside `FlowPortsProvider`.
  */

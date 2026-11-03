@@ -167,7 +167,7 @@ function ResultItem({
       {showLoading ? (
         <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
-        <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+        <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground" />
       )}
     </button>
   );

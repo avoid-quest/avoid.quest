@@ -103,7 +103,7 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
       </div>
       <svg
         aria-label="Live modulation trace"
-        className="h-10 w-full rounded bg-muted/30 text-primary"
+        className="h-10 w-full bg-muted/30 text-primary"
         role="img"
         viewBox="0 0 288 40"
       >
@@ -277,7 +277,7 @@ export function ModulationControls({
       ) : null}
       {"sync" in node.data ? (
         <details className="px-2 pb-2 text-muted-foreground text-xs">
-          <summary className="cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-ring">
+          <summary className="cursor-pointer focus-visible:outline focus-visible:outline-ring">
             Timing help
           </summary>
           <p className="pt-1">

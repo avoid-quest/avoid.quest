@@ -8,7 +8,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@avoid.quest/ui/components/tabs";
-import { FileAudioIcon, FolderOpenIcon, GlobeIcon } from "lucide-react";
+import { IconFileMusic, IconFolderOpen, IconWorld } from "@tabler/icons-react";
 import { useRef, useState } from "react";
 import { isAudioFile } from "@/lib/audio/file-metadata";
 import { isStaticAudioUrl } from "@/lib/audio/remote-url";
@@ -139,11 +139,11 @@ export function FileForm({
       <Tabs onValueChange={handleTabChange} value={activeTab}>
         <TabsList className="w-full">
           <TabsTrigger className="text-xs" value="file">
-            <FileAudioIcon />
+            <IconFileMusic />
             Local file
           </TabsTrigger>
           <TabsTrigger className="text-xs" value="url">
-            <GlobeIcon />
+            <IconWorld />
             Remote URL
           </TabsTrigger>
         </TabsList>
@@ -164,7 +164,7 @@ export function FileForm({
             size="sm"
             variant="outline"
           >
-            {isLoading ? <Spinner /> : <FileAudioIcon />}
+            {isLoading ? <Spinner /> : <IconFileMusic />}
             {isLoading ? "Loading…" : "Browse files"}
           </Button>
           {onLoadFiles ? (
@@ -194,7 +194,7 @@ export function FileForm({
                 size="sm"
                 variant="outline"
               >
-                <FolderOpenIcon /> Browse folder
+                <IconFolderOpen /> Browse folder
               </Button>
               <p className="text-center text-muted-foreground text-xs">
                 Includes subfolders. Playable files become a playlist in
@@ -224,7 +224,7 @@ export function FileForm({
             size="sm"
             variant="outline"
           >
-            {isLoading ? <Spinner /> : <GlobeIcon />}
+            {isLoading ? <Spinner /> : <IconWorld />}
             {isLoading ? "Loading…" : "Load URL"}
           </Button>
           <p className="text-center text-muted-foreground text-xs">

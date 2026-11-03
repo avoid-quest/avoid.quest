@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Knob } from "@avoid.quest/ui/components/knob";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { HeadphonesIcon } from "lucide-react";
+import { IconHeadphones } from "@tabler/icons-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { masterPeakLevelSource } from "@/lib/hooks/use-master-peak-level";
 import { formatPercent } from "../shared/format-utils";
@@ -47,7 +47,7 @@ export function MixerMaster({
                 title={`Cue volume: ${formatPercent(headphoneVolume)}`}
                 value={headphoneVolume}
               />
-              <HeadphonesIcon className="size-3 text-muted-foreground" />
+              <IconHeadphones className="size-3 text-muted-foreground" />
             </div>
           </MidiControlWrapper>
         ) : null}

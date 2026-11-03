@@ -13,7 +13,7 @@ import {
 } from "@avoid.quest/ui/components/select";
 import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
-import { CheckCircleIcon, LinkIcon } from "lucide-react";
+import { IconCircleCheck, IconLink } from "@tabler/icons-react";
 import { useState } from "react";
 import type { RadioMetadata } from "@/lib/platform-types";
 import { stationIntake } from "@/lib/stations/external-station-workflow";
@@ -69,14 +69,14 @@ function ScrapedStationEditor({
   const streamOptions = data.streamUrl ?? [];
 
   return (
-    <div className="space-y-4 rounded-md border p-4">
+    <div className="space-y-4 border p-4">
       <div className="space-y-3">
         <Field className="gap-1.5">
           <FieldLabel htmlFor="url-name">
             Name
             {(data.name?.length ?? 0) > 0 ? (
               <span className="flex items-center gap-1 text-primary text-xs">
-                <CheckCircleIcon className="size-3" />
+                <IconCircleCheck className="size-3" />
                 Found
               </span>
             ) : null}
@@ -94,7 +94,7 @@ function ScrapedStationEditor({
             Stream URL
             {streamOptions.length > 0 ? (
               <span className="flex items-center gap-1 text-primary text-xs">
-                <CheckCircleIcon className="size-3" />
+                <IconCircleCheck className="size-3" />
                 Found{" "}
                 {streamOptions.length > 1
                   ? `(${streamOptions.length} options)`
@@ -334,7 +334,7 @@ export function RadioFromUrlTab({ onSuccess }: RadioFromUrlTabProps) {
       {/* URL Input */}
       <form className="flex gap-2" onSubmit={handleSubmit}>
         <div className="relative flex-1">
-          <LinkIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <IconLink className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
             disabled={isLoading}

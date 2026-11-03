@@ -14,7 +14,7 @@ export function InlineError({
   return (
     <p
       className={cn(
-        "rounded-md border border-destructive/30 px-2.5 py-1.5 text-destructive text-xs dark:border-transparent dark:bg-destructive/10",
+        "border border-destructive/30 px-2.5 py-1.5 text-destructive text-xs dark:border-transparent dark:bg-destructive/10",
         className
       )}
       role="alert"

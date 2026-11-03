@@ -81,7 +81,7 @@ export function BranchEdge({
                 <button
                   aria-label={`${described}: branch settings`}
                   className={cn(
-                    "flex h-4 items-center gap-1 rounded-sm border border-border/50 bg-card px-1 text-muted-foreground text-xs tabular-nums leading-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "flex h-4 items-center gap-1 border border-border/50 bg-card px-1 text-muted-foreground text-xs tabular-nums leading-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     data.muted && "opacity-60",
                     data.solo && "border-primary/40 text-primary"
                   )}

@@ -8,7 +8,7 @@ import {
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MicIcon, MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { IconDots, IconMicrophone, IconTrash } from "@tabler/icons-react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { ChannelSelection } from "@/lib/audio";
 import { laneChannelId } from "@/lib/node-graph/compile";
@@ -103,7 +103,7 @@ function InputState({
         size="sm"
         variant="outline"
       >
-        {devices.isLoading ? <Spinner /> : <MicIcon />}
+        {devices.isLoading ? <Spinner /> : <IconMicrophone />}
         Allow microphone
       </Button>
     );
@@ -234,7 +234,7 @@ export function AudioInputNodeBody({
   return (
     <div
       className={cn(
-        "w-60 rounded-md border bg-card text-card-foreground",
+        "w-60 border bg-card text-card-foreground",
         isLive ? "border-foreground/40" : "border-border/50",
         selected && "border-ring",
         embedded && "w-full border-0 bg-transparent"
@@ -248,13 +248,13 @@ export function AudioInputNodeBody({
       >
         <span
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-sm",
+            "flex size-6 shrink-0 items-center justify-center",
             isLive
               ? "bg-primary/10 text-primary"
               : "bg-muted text-muted-foreground"
           )}
         >
-          <MicIcon aria-hidden="true" className="size-3.5" />
+          <IconMicrophone aria-hidden="true" className="size-3.5" />
         </span>
         <span
           className="min-w-0 flex-1 truncate font-medium text-xs"
@@ -275,13 +275,13 @@ export function AudioInputNodeBody({
                   size="icon"
                   variant="ghost"
                 >
-                  <MoreHorizontalIcon />
+                  <IconDots />
                 </Button>
               }
             />
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRemove} variant="destructive">
-                <Trash2Icon />
+                <IconTrash />
                 Remove
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -300,7 +300,7 @@ export function AudioInputNodeBody({
       {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself */}
       <div
         className={cn(
-          "flex flex-col gap-1 rounded-b-[inherit] border-border/50 border-t px-2 py-1.5",
+          "flex flex-col gap-1 border-border/50 border-t px-2 py-1.5",
           INTERACTIVE
         )}
         onKeyDown={keepControlKeys}
@@ -333,7 +333,7 @@ export function AudioInputNodeBody({
           size="sm"
           variant="ghost"
         >
-          <Trash2Icon />
+          <IconTrash />
           Remove audio input
         </Button>
       ) : null}

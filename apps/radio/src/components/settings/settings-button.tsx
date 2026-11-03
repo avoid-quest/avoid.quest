@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Settings2Icon } from "lucide-react";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { Suspense, useEffect, useId, useRef, useState } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 
@@ -89,7 +89,7 @@ export function SettingsButton({
             type="button"
             variant="ghost"
           >
-            <Settings2Icon className="size-3.5" />
+            <IconAdjustmentsHorizontal className="size-3.5" />
           </Button>
         )
       }
@@ -117,7 +117,7 @@ export function SettingsButton({
             isOpen ? (
               // The drawer chunk is what failed, so the notice stays inline.
               <div
-                className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm rounded-lg border bg-popover pb-3 text-popover-foreground shadow-lg"
+                className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm border bg-popover pb-3 text-popover-foreground shadow-lg"
                 ref={failureRef}
               >
                 {failed}

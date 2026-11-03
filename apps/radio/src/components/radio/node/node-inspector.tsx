@@ -9,8 +9,8 @@ import {
 } from "@avoid.quest/ui/components/drawer";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconX } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
-import { XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { EffectParams } from "@/components/audio/effect-params/effect-params";
@@ -373,7 +373,7 @@ function InspectorTitle({
     <>
       <span
         className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-sm",
+          "flex size-6 shrink-0 items-center justify-center",
           on ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
         )}
       >
@@ -521,7 +521,7 @@ function InspectorPanel({
           title="Back to the Rack"
           variant="ghost"
         >
-          <XIcon />
+          <IconX />
         </Button>
       </div>
       <div className="px-2.5">

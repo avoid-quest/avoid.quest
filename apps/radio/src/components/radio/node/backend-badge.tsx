@@ -18,7 +18,7 @@ export function BackendBadgeLabel({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 rounded px-1 py-0.5 font-medium text-xs leading-none",
+        "inline-flex shrink-0 px-1 py-0.5 font-medium text-xs leading-none",
         badge.kind === "bypassed"
           ? "bg-destructive/10 text-destructive"
           : "bg-muted text-muted-foreground",

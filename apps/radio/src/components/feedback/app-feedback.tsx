@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconMessageCircle } from "@tabler/icons-react";
 import type {
   FeedbackActionsSlotProps,
   FeedbackCancelActionSlotProps,
@@ -35,7 +36,6 @@ import type {
   FeedbackStatusOutputSlotProps,
   FeedbackSubmitActionSlotProps,
 } from "git-feedback/react";
-import { MessageCircleMore } from "lucide-react";
 import { Suspense, useState } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import {
@@ -255,7 +255,7 @@ export function AppFeedback() {
               type="button"
               variant="ghost"
             >
-              <MessageCircleMore className="size-3.5" />
+              <IconMessageCircle className="size-3.5" />
             </Button>
           }
         />

@@ -56,7 +56,7 @@ function PlatformTile({ radio }: { radio: Radio }) {
   );
   return (
     <div
-      className="flex size-10 shrink-0 items-center justify-center rounded-sm border border-border/70"
+      className="flex size-10 shrink-0 items-center justify-center border border-border/70"
       style={{ backgroundColor: `${platformColor}1a` }}
     >
       <PlatformIcon radio={radio} />

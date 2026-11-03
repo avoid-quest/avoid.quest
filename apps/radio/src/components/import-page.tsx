@@ -9,8 +9,8 @@ import {
 import { Separator } from "@avoid.quest/ui/components/separator";
 import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { IconHome } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
-import { HomeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
@@ -108,7 +108,7 @@ export function ImportPage() {
             This link doesn't contain stations to import.
           </p>
           <Button onClick={handleCancel} size="sm">
-            <HomeIcon className="size-3.5" />
+            <IconHome className="size-3.5" />
             Go home
           </Button>
         </div>
@@ -171,7 +171,7 @@ export function ImportPage() {
 
           <RadioGroup onValueChange={handleImportModeChange} value={importMode}>
             <div className="space-y-3">
-              <div className="flex items-start space-x-3 rounded-lg border p-3">
+              <div className="flex items-start space-x-3 border p-3">
                 <RadioGroupItem className="mt-1" id="merge" value="merge" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="merge">
@@ -183,7 +183,7 @@ export function ImportPage() {
                 </div>
               </div>
 
-              <div className="flex items-start space-x-3 rounded-lg border p-3">
+              <div className="flex items-start space-x-3 border p-3">
                 <RadioGroupItem className="mt-1" id="replace" value="replace" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="replace">

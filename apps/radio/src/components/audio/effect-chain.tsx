@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { PlusIcon } from "lucide-react";
+import { IconPlus } from "@tabler/icons-react";
 import {
   type Dispatch,
   type FocusEvent,
@@ -257,7 +257,7 @@ export function EffectChain({
           </div>
           <DragOverlay>
             {activeEffect ? (
-              <div className="scale-[1.02] rounded-lg shadow-lg ring-2 ring-primary/50">
+              <div className="scale-[1.02] shadow-lg ring-2 ring-primary/50">
                 <EffectItem
                   effect={activeEffect}
                   isExpanded={false}
@@ -279,7 +279,7 @@ export function EffectChain({
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="size-3.5" />
+            <IconPlus className="size-3.5" />
             Add effect
           </Button>
 
@@ -382,7 +382,7 @@ function SortableEffectItem({
   return (
     <div
       className={cn(
-        "rounded-lg transition-all duration-150",
+        "transition-all duration-150",
         isDragging && "opacity-40",
         isDraggingAny && !isDragging && "opacity-75"
       )}

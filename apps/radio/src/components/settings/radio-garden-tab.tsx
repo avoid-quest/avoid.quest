@@ -8,11 +8,11 @@ import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
-  ExternalLinkIcon,
-  MapPinIcon,
-  PlusIcon,
-  RadioIcon,
-} from "lucide-react";
+  IconExternalLink,
+  IconMapPin,
+  IconPlus,
+  IconRadio,
+} from "@tabler/icons-react";
 import { useState } from "react";
 import { searchRadioGarden } from "@/lib/platform-client";
 import type { RadioGardenSearchResult } from "@/lib/platform-types";
@@ -157,28 +157,28 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
             {results.map((result) => (
               <div key={result.channelId}>
                 <button
-                  className="flex w-full items-center gap-3 rounded-md p-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[selected=true]:bg-accent"
+                  className="flex w-full items-center gap-3 p-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 data-[selected=true]:bg-accent"
                   data-channel-id={result.channelId}
                   data-selected={selectedId === result.channelId}
                   onClick={handleSelect}
                   type="button"
                 >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
-                    <RadioIcon className="size-4 text-muted-foreground" />
+                  <div className="flex size-9 shrink-0 items-center justify-center bg-muted">
+                    <IconRadio className="size-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-sm">
                       {result.title}
                     </p>
                     <p className="flex items-center gap-1 truncate text-muted-foreground text-xs">
-                      <MapPinIcon className="size-3 shrink-0" />
+                      <IconMapPin className="size-3 shrink-0" />
                       {result.placeTitle}, {result.countryTitle}
                     </p>
                   </div>
                 </button>
 
                 {selectedId === result.channelId && selected ? (
-                  <div className="mx-2 mb-2 space-y-3 rounded-md border bg-muted/30 p-3">
+                  <div className="mx-2 mb-2 space-y-3 border bg-muted/30 p-3">
                     <Field className="gap-1.5">
                       <FieldLabel htmlFor="rg-station-name">Name</FieldLabel>
                       <Input
@@ -189,12 +189,12 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                     </Field>
                     {result.website ? (
                       <a
-                        className="flex items-center gap-1 rounded-sm text-primary text-xs outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        className="flex items-center gap-1 text-primary text-xs outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
                         href={result.website}
                         rel="noopener noreferrer"
                         target="_blank"
                       >
-                        <ExternalLinkIcon className="size-3" />
+                        <IconExternalLink className="size-3" />
                         {result.website}
                       </a>
                     ) : null}
@@ -207,7 +207,7 @@ export function RadioGardenTab({ onSuccess }: RadioGardenTabProps) {
                       {isAdding ? (
                         <Spinner className="size-3" />
                       ) : (
-                        <PlusIcon className="size-3" />
+                        <IconPlus className="size-3" />
                       )}
                       {isAdding ? "Adding…" : "Add station"}
                     </Button>

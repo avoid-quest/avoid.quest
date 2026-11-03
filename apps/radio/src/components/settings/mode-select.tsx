@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
+import { IconPlaylist, IconPlug, IconSwords } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { DjWorkflowLoadError } from "@/lib/dj-workflow-load-error";
 import { useSettings } from "@/lib/hooks/use-settings";
@@ -22,9 +22,9 @@ import { playerModes } from "@/lib/types";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
 const modeIcons = {
-  dj: SwordsIcon,
-  node: CableIcon,
-  single: ListMusicIcon,
+  dj: IconSwords,
+  node: IconPlug,
+  single: IconPlaylist,
 } as const;
 
 export function ModeSelect({ className }: { className?: string }) {

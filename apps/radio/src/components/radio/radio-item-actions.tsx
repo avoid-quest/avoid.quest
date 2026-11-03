@@ -9,16 +9,16 @@ import {
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { toast } from "@avoid.quest/ui/components/sonner";
 import {
-  BookmarkPlusIcon,
-  CopyIcon,
-  ExternalLinkIcon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  ToggleLeftIcon,
-  ToggleRightIcon,
-  Trash2Icon,
-  XIcon,
-} from "lucide-react";
+  IconBookmarkPlus,
+  IconCopy,
+  IconDots,
+  IconExternalLink,
+  IconPencil,
+  IconToggleLeft,
+  IconToggleRight,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { updateRadio } from "@/lib/hooks/use-radios";
@@ -136,7 +136,7 @@ export function RadioItemActions({
             size="icon"
             variant="ghost"
           >
-            <MoreHorizontalIcon />
+            <IconDots />
           </Button>
         }
       />
@@ -144,7 +144,7 @@ export function RadioItemActions({
         {isSession && onSave ? (
           <>
             <DropdownMenuItem onClick={handleSave}>
-              <BookmarkPlusIcon />
+              <IconBookmarkPlus />
               Save
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -152,13 +152,13 @@ export function RadioItemActions({
         ) : null}
 
         <DropdownMenuItem onClick={handleCopyStreamLink}>
-          <CopyIcon />
+          <IconCopy />
           Copy stream URL
         </DropdownMenuItem>
 
         {Boolean(radio.websiteUrl?.trim()) && (
           <DropdownMenuItem onClick={handleGoToWebsite}>
-            <ExternalLinkIcon />
+            <IconExternalLink />
             Website
           </DropdownMenuItem>
         )}
@@ -168,7 +168,7 @@ export function RadioItemActions({
             <DropdownMenuSeparator />
 
             <DropdownMenuItem onClick={handleEdit}>
-              <PencilIcon />
+              <IconPencil />
               Edit
             </DropdownMenuItem>
 
@@ -176,12 +176,12 @@ export function RadioItemActions({
               <DropdownMenuItem disabled={isUpdating} onClick={handleToggle}>
                 {radio.enabled ? (
                   <>
-                    <ToggleRightIcon />
+                    <IconToggleRight />
                     Hide
                   </>
                 ) : (
                   <>
-                    <ToggleLeftIcon />
+                    <IconToggleLeft />
                     Show
                   </>
                 )}
@@ -200,19 +200,19 @@ export function RadioItemActions({
             }}
             variant="destructive"
           >
-            <XIcon />
+            <IconX />
             Remove node
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={handleDelete} variant="destructive">
           {isSession ? (
             <>
-              <XIcon />
+              <IconX />
               Remove
             </>
           ) : (
             <>
-              <Trash2Icon />
+              <IconTrash />
               Delete
             </>
           )}

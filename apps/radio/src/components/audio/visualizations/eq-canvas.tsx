@@ -218,10 +218,7 @@ export const EQCanvas = memo(function EQCanvasComponent({
 
   return (
     <canvas
-      className={cn(
-        "h-24 w-full rounded bg-background/50 text-foreground",
-        className
-      )}
+      className={cn("h-24 w-full bg-background/50 text-foreground", className)}
       ref={canvasRef}
     />
   );

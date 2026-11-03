@@ -16,7 +16,11 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
-import { InfoIcon, MicIcon, MicOffIcon } from "lucide-react";
+import {
+  IconInfoCircle,
+  IconMicrophone,
+  IconMicrophoneOff,
+} from "@tabler/icons-react";
 import { useMemo } from "react";
 import { EffectChain } from "@/components/audio/effect-chain";
 import type { ChannelSelection } from "@/lib/audio";
@@ -81,8 +85,8 @@ export function DeviceInputContent({
 
   const sharedControls = (
     <>
-      <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 p-2">
-        <MicIcon className="size-4 shrink-0 text-muted-foreground" />
+      <div className="flex items-center gap-2 border border-border/50 bg-muted/30 p-2">
+        <IconMicrophone className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-semibold text-sm">
           {deviceLabel}
         </span>
@@ -109,7 +113,7 @@ export function DeviceInputContent({
           {channelCount <= 2 && (
             <Tooltip>
               <TooltipTrigger
-                render={<InfoIcon className="size-3 cursor-help" />}
+                render={<IconInfoCircle className="size-3 cursor-help" />}
               />
               <TooltipContent className="max-w-56" side="top">
                 Browsers limit audio input to 2 channels per device. To route
@@ -156,12 +160,12 @@ export function DeviceInputContent({
       >
         {isPlaying ? (
           <>
-            <MicOffIcon />
+            <IconMicrophoneOff />
             Mute
           </>
         ) : (
           <>
-            <MicIcon />
+            <IconMicrophone />
             Go live
           </>
         )}
@@ -198,7 +202,7 @@ export function DeviceInputContent({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5 sm:gap-2">
             {sharedControls}
-            <div className="rounded-md border border-border/50 bg-muted/30 px-2 py-2">
+            <div className="border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
             </div>
             {effectsPanel}

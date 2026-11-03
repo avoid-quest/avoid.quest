@@ -13,7 +13,11 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
-import { MicIcon, RefreshCwIcon, ShieldAlertIcon } from "lucide-react";
+import {
+  IconMicrophone,
+  IconRefresh,
+  IconShieldExclamation,
+} from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useAudioDevices } from "@/lib/audio";
 
@@ -54,7 +58,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-2">
       {permissionState === "denied" && (
         <Alert variant="destructive">
-          <ShieldAlertIcon />
+          <IconShieldExclamation />
           <AlertTitle>Microphone access denied</AlertTitle>
           <AlertDescription>
             Allow microphone access in your browser settings, then reload.
@@ -63,7 +67,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
       )}
       {permissionState !== "granted" && permissionState !== "denied" && (
         <Alert>
-          <MicIcon />
+          <IconMicrophone />
           <AlertDescription>
             <p>Grant microphone access to see your input devices by name.</p>
             <Button
@@ -73,7 +77,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
               size="sm"
               variant="outline"
             >
-              {isLoading ? <Spinner /> : <MicIcon />}
+              {isLoading ? <Spinner /> : <IconMicrophone />}
               {isLoading ? "Requesting…" : "Grant access"}
             </Button>
           </AlertDescription>
@@ -118,7 +122,7 @@ export function DeviceForm({ onLoad, onCancel }: DeviceFormProps) {
             size="icon"
             variant="ghost"
           >
-            <RefreshCwIcon className={isLoading ? "animate-spin" : undefined} />
+            <IconRefresh className={isLoading ? "animate-spin" : undefined} />
           </Button>
         </div>
       )}

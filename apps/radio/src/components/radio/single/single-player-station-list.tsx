@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { AudioLinesIcon } from "lucide-react";
+import { IconWaveSine } from "@tabler/icons-react";
 import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -83,7 +83,7 @@ function StationRow({
         <StationRowText
           indicator={
             isCurrent && isPlaying ? (
-              <AudioLinesIcon
+              <IconWaveSine
                 aria-label="Playing"
                 className="size-3.5 shrink-0"
                 role="img"

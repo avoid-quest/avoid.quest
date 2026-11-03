@@ -175,7 +175,7 @@ export function SearchInput({
     onYoutubeFilterChange(value as "songs" | "videos");
 
   const platformControl = locked ? (
-    <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input px-3 text-xs dark:bg-input/30">
+    <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 border border-input px-3 text-xs dark:bg-input/30">
       <PlatformDot platform={platform} />
       <span className="truncate">{PLATFORM_LABELS[platform]}</span>
     </div>

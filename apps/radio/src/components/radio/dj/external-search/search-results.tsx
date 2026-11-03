@@ -3,7 +3,7 @@
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MusicIcon, PlayIcon } from "lucide-react";
+import { IconMusic, IconPlayerPlay } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { getPlatformSourceColor } from "@/lib/dj-library-sources";
@@ -125,7 +125,7 @@ function ResultItem({
       onClick={handleClick}
       type="button"
     >
-      <div className="relative size-10 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
+      <div className="relative size-10 shrink-0 overflow-hidden border border-border/70 bg-muted">
         {result.thumbnail ? (
           <img
             alt=""
@@ -138,7 +138,7 @@ function ResultItem({
           />
         ) : (
           <div className="flex size-full items-center justify-center">
-            <MusicIcon className="size-4 text-muted-foreground" />
+            <IconMusic className="size-4 text-muted-foreground" />
           </div>
         )}
         <div
@@ -167,7 +167,7 @@ function ResultItem({
       {showLoading ? (
         <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
-        <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+        <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
       )}
     </button>
   );

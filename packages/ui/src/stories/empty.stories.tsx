@@ -7,7 +7,7 @@ import {
   EmptyTitle,
 } from "@avoid.quest/ui/components/empty";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { RadioIcon } from "lucide-react";
+import { IconRadio } from "@tabler/icons-react";
 
 const meta = {
   component: Empty,
@@ -22,7 +22,7 @@ export const Default: Story = {
     <Empty className="max-w-sm">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <RadioIcon />
+          <IconRadio />
         </EmptyMedia>
         <EmptyTitle>No stations yet</EmptyTitle>
         <EmptyDescription>

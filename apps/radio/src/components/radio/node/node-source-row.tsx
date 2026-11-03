@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { AudioLinesIcon } from "lucide-react";
+import { IconWaveSine } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { Radio } from "@/lib/audio";
@@ -249,7 +249,7 @@ function StationSourceRow({
           <StationRowText
             indicator={
               isLive ? (
-                <AudioLinesIcon
+                <IconWaveSine
                   aria-label="Playing"
                   className="size-3.5 shrink-0"
                   role="img"

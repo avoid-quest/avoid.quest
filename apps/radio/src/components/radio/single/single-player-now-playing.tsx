@@ -1,5 +1,5 @@
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
-import { Music2Icon } from "lucide-react";
+import { IconMusic } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { Radio } from "@/lib/audio";
@@ -60,7 +60,7 @@ function PlayerPanel({
 }: SharedPanelProps) {
   if (!radio) {
     return (
-      <EmptyHint className="py-24" icon={<Music2Icon />}>
+      <EmptyHint className="py-24" icon={<IconMusic />}>
         Nothing playing
       </EmptyHint>
     );

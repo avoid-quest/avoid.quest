@@ -9,17 +9,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
-import { useStore } from "@tanstack/react-store";
 import {
-  CableIcon,
-  ChevronDownIcon,
-  EllipsisIcon,
-  LayoutTemplateIcon,
-  MaximizeIcon,
-  PlusIcon,
-  Redo2Icon,
-  Undo2Icon,
-} from "lucide-react";
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconArrowsMaximize,
+  IconChevronDown,
+  IconDots,
+  IconLayoutBoard,
+  IconPlug,
+  IconPlus,
+} from "@tabler/icons-react";
+import { useStore } from "@tanstack/react-store";
 import { useEffect } from "react";
 import {
   type NodeStore,
@@ -108,7 +108,7 @@ export function NodeToolbar({
         title="Add a node (/)"
         variant="outline"
       >
-        <PlusIcon />
+        <IconPlus />
         <span className="max-sm:sr-only">Add</span>
       </Button>
       <DropdownMenu>
@@ -120,12 +120,12 @@ export function NodeToolbar({
               variant="ghost"
             >
               {isPhone ? (
-                <EllipsisIcon />
+                <IconDots />
               ) : (
                 <>
-                  <LayoutTemplateIcon className="sm:hidden" />
+                  <IconLayoutBoard className="sm:hidden" />
                   <span className="max-sm:sr-only">Templates</span>
-                  <ChevronDownIcon className="max-sm:hidden" />
+                  <IconChevronDown className="max-sm:hidden" />
                 </>
               )}
             </Button>
@@ -136,20 +136,20 @@ export function NodeToolbar({
             <>
               {onFitView ? (
                 <DropdownMenuItem onClick={onFitView}>
-                  <MaximizeIcon /> Fit view
+                  <IconArrowsMaximize /> Fit view
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
                 disabled={!canUndo}
                 onClick={() => undoNodeGraph(store)}
               >
-                <Undo2Icon /> Undo
+                <IconArrowBackUp /> Undo
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!canRedo}
                 onClick={() => redoNodeGraph(store)}
               >
-                <Redo2Icon /> Redo
+                <IconArrowForwardUp /> Redo
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
@@ -182,7 +182,7 @@ export function NodeToolbar({
           title="Rewire selected cable"
           variant="outline"
         >
-          <CableIcon />
+          <IconPlug />
         </Button>
       ) : null}
       {isPhone ? null : (
@@ -196,7 +196,7 @@ export function NodeToolbar({
           title="Undo (⌘Z)"
           variant="ghost"
         >
-          <Undo2Icon />
+          <IconArrowBackUp />
         </Button>
       )}
       {isPhone ? null : (
@@ -210,7 +210,7 @@ export function NodeToolbar({
           title="Redo (⇧⌘Z)"
           variant="ghost"
         >
-          <Redo2Icon />
+          <IconArrowForwardUp />
         </Button>
       )}
     </div>

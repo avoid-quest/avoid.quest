@@ -188,7 +188,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
         onFocusCapture={prefetchStationDialogOnIntent}
         onPointerOverCapture={prefetchStationDialogOnIntent}
       >
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
           <MobileNowPlayingPanel
             actions={currentRadioActions}
             deviceVolume={deviceVolume}

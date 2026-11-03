@@ -10,11 +10,11 @@ import {
 import { toast } from "@avoid.quest/ui/components/sonner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  CopyIcon,
-  ExternalLinkIcon,
-  MoreHorizontalIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+  IconCopy,
+  IconDots,
+  IconExternalLink,
+  IconRefresh,
+} from "@tabler/icons-react";
 import type { Radio } from "@/lib/audio";
 import { copyStreamUrl, openStationWebsite } from "../../radio-item-actions";
 
@@ -76,25 +76,25 @@ export function DeckMenu({ deckId, radio, onReset, className }: DeckMenuProps) {
             style={{ visibility: radio ? "visible" : "hidden" }}
             variant="ghost"
           >
-            <MoreHorizontalIcon />
+            <IconDots />
           </Button>
         }
       />
       {radio ? (
         <DropdownMenuContent align={deckId === "deck-b" ? "start" : "end"}>
           <DropdownMenuItem onClick={handleCopyStreamLink}>
-            <CopyIcon />
+            <IconCopy />
             Copy stream URL
           </DropdownMenuItem>
           {Boolean(radio.websiteUrl?.trim()) && (
             <DropdownMenuItem onClick={handleGoToWebsite}>
-              <ExternalLinkIcon />
+              <IconExternalLink />
               Website
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleReset}>
-            <RefreshCwIcon />
+            <IconRefresh />
             Reset effects &amp; channel
           </DropdownMenuItem>
         </DropdownMenuContent>

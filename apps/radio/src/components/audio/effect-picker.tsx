@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@avoid.quest/ui/components/dialog";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { FilterIcon, type LucideIcon } from "lucide-react";
+import { IconFilter, type TablerIcon } from "@tabler/icons-react";
 import {
   type ChangeEvent,
   type KeyboardEvent,
@@ -29,7 +29,7 @@ export type PickerItem = {
   description?: string;
   /** A small sans tag under the name, e.g. the effect family. */
   badge?: string;
-  icon: LucideIcon;
+  icon: TablerIcon;
   /** Tints the icon tile, e.g. a platform's colour. */
   iconColor?: string;
 };
@@ -56,7 +56,7 @@ function PickerOption<TItem extends PickerItem>({
   return (
     <Card
       aria-selected={active}
-      className="cursor-pointer flex-row items-start gap-3 rounded-md border-border/50 p-3 shadow-none outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[active]:border-ring data-[active]:bg-muted/40"
+      className="cursor-pointer flex-row items-start gap-3 border-border/50 p-3 shadow-none outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[active]:border-ring data-[active]:bg-muted/40"
       data-active={active || undefined}
       id={id}
       onClick={() => onSelect(item)}
@@ -64,7 +64,7 @@ function PickerOption<TItem extends PickerItem>({
       tabIndex={-1}
     >
       <div
-        className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted"
+        className="flex size-8 shrink-0 items-center justify-center bg-muted"
         style={
           item.iconColor
             ? { backgroundColor: `${item.iconColor}1a` }
@@ -81,7 +81,7 @@ function PickerOption<TItem extends PickerItem>({
           {item.name}
         </h3>
         {item.badge ? (
-          <span className="mt-1 inline-flex rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs">
+          <span className="mt-1 inline-flex bg-muted px-1.5 py-0.5 font-medium text-muted-foreground text-xs">
             {item.badge}
           </span>
         ) : null}
@@ -256,7 +256,7 @@ export function EffectPicker({
   ).map((effect) => ({
     badge: effect.family,
     description: effect.description,
-    icon: EFFECT_ICONS[effect.type] ?? FilterIcon,
+    icon: EFFECT_ICONS[effect.type] ?? IconFilter,
     id: effect.type,
     name: effect.name,
     type: effect.type,

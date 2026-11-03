@@ -1,6 +1,6 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { PlusIcon, SettingsIcon } from "lucide-react";
+import { IconPlus, IconSettings } from "@tabler/icons-react";
 import { expect, userEvent, within } from "storybook/test";
 
 const meta = {
@@ -52,13 +52,13 @@ export const Sizes: Story = {
       <Button>Default</Button>
       <Button size="lg">Large</Button>
       <Button aria-label="Compact settings" size="icon-sm" variant="outline">
-        <SettingsIcon />
+        <IconSettings />
       </Button>
       <Button aria-label="Settings" size="icon" variant="outline">
-        <SettingsIcon />
+        <IconSettings />
       </Button>
       <Button size="sm" variant="outline">
-        <PlusIcon />
+        <IconPlus />
         With icon
       </Button>
     </div>

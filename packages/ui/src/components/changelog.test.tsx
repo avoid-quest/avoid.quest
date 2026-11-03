@@ -4,6 +4,7 @@ import type { ChangelogEntry } from "@avoid.quest/ui/lib/changelog";
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
   url: "https://radio.test",
 });
 
@@ -35,6 +36,8 @@ for (const [key, value] of Object.entries({
   NodeFilter: dom.window.NodeFilter,
   navigator: dom.window.navigator,
   PointerEvent: dom.window.PointerEvent,
+  requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   ResizeObserver: ObserverStub,
   window: dom.window,
 })) {

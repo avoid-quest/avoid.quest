@@ -112,16 +112,16 @@ function getThumbShapeClass(
   size: "default" | "lg"
 ): string {
   if (!isFader) {
-    return "size-4 rounded-full";
+    return "size-3";
   }
   // A fader cap: a bar with a centre grip line across it.
   const grip = "relative after:absolute after:bg-primary/50 after:content-['']";
   if (orientation === "vertical") {
     const dims = size === "lg" ? "h-5 w-9" : "h-3.5 w-7";
-    return `${dims} rounded-sm ${grip} after:inset-x-1.5 after:top-1/2 after:h-px after:-translate-y-1/2`;
+    return `${dims} ${grip} after:inset-x-1.5 after:top-1/2 after:h-px after:-translate-y-1/2`;
   }
   const dims = size === "lg" ? "h-9 w-5" : "h-7 w-3.5";
-  return `${dims} rounded-sm ${grip} after:inset-y-1.5 after:left-1/2 after:w-px after:-translate-x-1/2`;
+  return `${dims} ${grip} after:inset-y-1.5 after:left-1/2 after:w-px after:-translate-x-1/2`;
 }
 
 /** Custom wheel/reset gestures use Base UI's neutral reason and cancellation contract. */
@@ -375,12 +375,12 @@ function Slider({
       >
         <SliderPrimitive.Track
           className={cn(
-            "relative grow overflow-hidden rounded-full bg-muted data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full",
+            "relative grow overflow-hidden bg-input/50 data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full",
             isFader && size === "lg" && "data-[orientation=horizontal]:h-3",
             isFader && size !== "lg" && "data-[orientation=horizontal]:h-2",
             isFader && "data-[orientation=vertical]:w-2",
             !isFader &&
-              "data-[orientation=horizontal]:h-1.5 data-[orientation=vertical]:w-1.5"
+              "data-[orientation=horizontal]:h-0.5 data-[orientation=vertical]:w-0.5"
           )}
           data-slot="slider-track"
         >
@@ -413,7 +413,7 @@ function Slider({
             aria-label={ariaLabel}
             aria-valuetext={ariaValueText}
             className={cn(
-              "block shrink-0 border border-primary bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 has-[:focus-visible]:outline-hidden has-[:focus-visible]:ring-4 data-disabled:pointer-events-none dark:bg-primary",
+              "block shrink-0 border-none bg-primary transition-colors hover:ring-2 hover:ring-ring/30 has-[:focus-visible]:outline-hidden has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/30 data-disabled:pointer-events-none",
               thumbShapeClass
             )}
             data-index={index}

@@ -4,7 +4,7 @@ import {
   CollapsibleTrigger,
 } from "@avoid.quest/ui/components/collapsible";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ChevronDownIcon } from "lucide-react";
+import { IconChevronDown } from "@tabler/icons-react";
 import { useState } from "react";
 
 type ParamGroupProps = {
@@ -37,9 +37,9 @@ export function ParamGroup({
         onOpenChange={setOpen}
         open={open}
       >
-        <CollapsibleTrigger className="flex w-full items-center justify-between rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <CollapsibleTrigger className="flex w-full items-center justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className={titleClassName}>{title}</span>
-          <ChevronDownIcon
+          <IconChevronDown
             className={cn(
               "size-3.5 text-muted-foreground transition-transform",
               open && "rotate-180"

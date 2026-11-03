@@ -1,14 +1,8 @@
-"use client";
-
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
-
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 
-function Accordion({
-  className,
-  ...props
-}: Omit<AccordionPrimitive.Root.Props, "className"> & { className?: string }) {
+function Accordion({ className, ...props }: AccordionPrimitive.Root.Props) {
   return (
     <AccordionPrimitive.Root
       className={cn("flex w-full flex-col", className)}
@@ -18,10 +12,7 @@ function Accordion({
   );
 }
 
-function AccordionItem({
-  className,
-  ...props
-}: Omit<AccordionPrimitive.Item.Props, "className"> & { className?: string }) {
+function AccordionItem({ className, ...props }: AccordionPrimitive.Item.Props) {
   return (
     <AccordionPrimitive.Item
       className={cn("not-last:border-b", className)}
@@ -35,9 +26,7 @@ function AccordionTrigger({
   className,
   children,
   ...props
-}: Omit<AccordionPrimitive.Trigger.Props, "className"> & {
-  className?: string;
-}) {
+}: AccordionPrimitive.Trigger.Props) {
   return (
     <AccordionPrimitive.Header className="flex">
       <AccordionPrimitive.Trigger
@@ -66,7 +55,7 @@ function AccordionContent({
   className,
   children,
   ...props
-}: Omit<AccordionPrimitive.Panel.Props, "className"> & { className?: string }) {
+}: AccordionPrimitive.Panel.Props) {
   return (
     <AccordionPrimitive.Panel
       className="h-(--accordion-panel-height) overflow-hidden text-sm transition-[height] duration-200 data-ending-style:h-0 data-starting-style:h-0"

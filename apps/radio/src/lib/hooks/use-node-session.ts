@@ -6,7 +6,7 @@ import { isDeviceInputMetadata } from "@/lib/platform-types";
 import { playbackRuntimeStore } from "@/lib/stores/playback-runtime-store";
 import { usePlaybackSessionSelector } from "./use-dj-session";
 
-/** A source lane as the Speakers, Stage and Rack views render it. */
+/** A source lane as the Speakers and Rack views render it. */
 export type NodeSourceState = {
   /** The Station, Track, File or Audio input node id. */
   id: string;

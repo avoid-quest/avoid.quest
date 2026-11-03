@@ -41,16 +41,21 @@ rows explicitly identify DOM events injected into the running app.
 | Desktop inspector | **Passed:** empty Station search, File picker/URL tabs, Output device selection and Gate parameters opened from Rack. |
 | Collapsed desktop Rack | **Passed:** separator End collapsed the panel to 0px; Gate → All settings expanded it to 240px and exposed parameters. |
 | Desktop Rewire and Undo | **Passed:** keyboard selected Output device as the Station cable destination. Apply preserved cable identity, gain and mute; one Undo restored Speakers. |
-| Phone layout and inspector | **Passed in Chromium viewport:** Stage/Rack/Patch accessible; Rack opened the Audio input drawer. Drawer showed Off and the browser's blocked-microphone message. No document-level horizontal overflow. |
+| Phone layout and inspector | **Passed in Chromium viewport:** the canvas was accessible; Inspect opened the Audio input drawer. Drawer showed Off and the browser's blocked-microphone message. No document-level horizontal overflow. |
 | Phone Rewire | **Passed in Chromium viewport:** focused cable selected with Enter; toolbar opened a 358px dialog inside the 390px viewport. Keyboard destination selection and Apply stored the correct route. |
 | Knob keyboard accumulation | **Passed:** five ArrowUp presses moved Gate threshold from −6 to −3.5; five synthetic key events before a render reached the same stored value. |
 | Knob reset | **Passed with synthetic events:** double-click and Ctrl+primary pointer-down restored Gate threshold to −6 in both UI and stored graph. |
 | Knob fine wheel | **Passed with synthetic wheel:** one upward event changed threshold from −6 to −5.99 and persisted it. |
-| Slider fine wheel and reset | **Passed with synthetic events:** phone Stage master slider moved from 0.99 to 0.98 for one downward wheel event; Ctrl+primary reset UI and stored master volume to 1. |
+| Slider fine wheel and reset | **Passed with synthetic events:** phone master slider moved from 0.99 to 0.98 for one downward wheel event; Ctrl+primary reset UI and stored master volume to 1. |
 
 The local feedback availability request returned HTTP 502. It did not prevent
 these Node interactions. No audio playback, permission grant or hardware routing
 success is inferred from this run.
+
+The phone rows above were recorded when a phone reached Node through separate
+views. A phone now opens Node on the canvas alone, with settings in the
+inspector drawer. The drawer and master controls those rows exercised are
+unchanged, but the rows were not re-run.
 
 ## Recorded modulation checks
 

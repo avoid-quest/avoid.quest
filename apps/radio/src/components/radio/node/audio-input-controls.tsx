@@ -29,9 +29,9 @@ import type { NodeDevice } from "./use-node-devices";
 /**
  * Audio Input Controls
  *
- * The pieces an Audio input shows on the canvas and in the Stage and Rack,
+ * The pieces an Audio input shows on the canvas and in the Rack,
  * in DJ's words: Go live and Pause input, Paused and Live, the device and its
- * channels. None of them import React Flow, so the Stage and Rack can load
+ * channels. None of them import React Flow, so the Rack can load
  * them without the canvas chunk.
  */
 

@@ -1,0 +1,100 @@
+apps/radio/src/components/radio/dj/mixer/mixer-master.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 42,59,66,79
+apps/radio/src/components/audio/volume-control.tsx
+  s_f4dacf88372d72::t_adfaf84ad80af2 19-20,41,66
+apps/radio/src/components/radio/single/single-player-station-list.tsx
+  s_f4dacf88372d72::t_adfaf84ad80af2 86-95
+  s_f4dacf88372d72::t_58a4e1ae6f571f 21
+apps/radio/src/components/radio/node/node-master.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 35,76
+  s_f4dacf88372d72::t_28e41841ac5f70 78
+apps/radio/src/components/radio/radio-item-actions.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 148,204,211,216
+apps/radio/src/components/radio/dj/mixer/mixer-routing.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 19,57
+apps/radio/src/components/radio/radio-now-playing.test.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 498,589
+apps/radio/src/components/radio/station-save-status.tsx
+  s_f4dacf88372d72::t_adfaf84ad80af2 1-14
+apps/radio/src/components/radio/dj/external-search/search-input.tsx
+  s_f4dacf88372d72::t_714f9ebe75d929 49,60
+apps/radio/src/lib/db/export-import.ts
+  s_f4dacf88372d72::t_d14ce4d08b6273 462
+apps/radio/src/components/radio/radio-search-bar.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 135,145
+  s_f4dacf88372d72::t_ba3ecbc195832d 97,127-128,132,178-179,181,183-185,456
+  s_f4dacf88372d72::t_c425b9a2c825cb 13,29,180,182
+apps/radio/src/components/radio/confirm-delete-dialog.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 34-36,44
+apps/radio/src/lib/midi/static-actions.ts
+  s_f4dacf88372d72::t_d14ce4d08b6273 105,113
+apps/radio/src/components/radio/node/track-content.test.tsx
+  s_f4dacf88372d72::t_714f9ebe75d929 280
+apps/radio/src/components/radio/node/output-device-content.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 205,284
+apps/radio/src/components/radio/node/track-content.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 142-146,148,209
+apps/radio/src/components/radio/dj/external-search/search-results.tsx
+  s_f4dacf88372d72::t_06cfc43b4b2e0c 121,147,155,162
+  s_f4dacf88372d72::t_ba3ecbc195832d 12,119
+  s_f4dacf88372d72::t_714f9ebe75d929 35,148-154,158-161,163-167
+apps/radio/src/components/radio/dj/mixer/mixer-channel.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 183
+apps/radio/src/components/settings/settings-form.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 95-96,98
+apps/radio/src/components/settings/mode-select.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 77
+apps/radio/src/components/settings/mode-load-recovery.test.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 126
+apps/radio/src/components/radio/node/module-frame.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 293
+apps/radio/src/components/radio/dj/dj-radio-list.tsx
+  s_f4dacf88372d72::t_ba3ecbc195832d 134-137
+  s_f4dacf88372d72::t_36e7b222a306a8 36
+apps/radio/src/components/radio/node/node-inspector.test.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 749
+apps/radio/src/components/settings/import-export.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 289
+apps/radio/src/components/import-page.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 122,124-125,166,168-169
+apps/radio/src/components/radio/dj/deck/deck-panel.test.tsx
+  s_f4dacf88372d72::t_714f9ebe75d929 324
+apps/radio/src/components/radio/node/station-content.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 83
+apps/radio/src/components/radio/node/file-content.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 77
+apps/radio/src/components/radio/node/node-stage.test.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 150-151,182,302
+apps/radio/src/components/radio/node/station-node.test.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 239
+  s_f4dacf88372d72::t_9845342b9ad275 238
+apps/radio/src/components/radio/radio-search-bar.test.tsx
+  s_f4dacf88372d72::t_3e42f9bbda8166 360-376
+  s_f4dacf88372d72::t_d14ce4d08b6273 348
+apps/radio/src/components/radio/node/audio-input-content.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 285,337
+apps/radio/src/components/radio/radio-now-playing.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 349
+  s_f4dacf88372d72::t_adfaf84ad80af2 303
+  s_f4dacf88372d72::t_81173dc81bc291 25
+apps/radio/src/components/radio/dj/dj-console-mobile.tsx
+  s_f4dacf88372d72::t_d14ce4d08b6273 132
+apps/radio/src/components/radio/node/device-nodes.test.tsx
+  s_f4dacf88372d72::t_6782b9b76bd528 587,603
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d10c3f0084e580721682d62ad836e150243df891",
+  "prompts": {},
+  "sessions": {
+    "s_f4dacf88372d72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a27c-9b5c-71a3-b8a3-5ffaab57350e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

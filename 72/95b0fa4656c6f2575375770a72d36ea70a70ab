@@ -1,0 +1,23 @@
+packages/ui/src/components/accordion.tsx
+  s_0d38a94b1c7cc1::t_c7e0af03722163 34
+packages/ui/src/components/context-menu.tsx
+  s_0d38a94b1c7cc1::t_53efccad4698ce 131,173,213
+packages/ui/src/styles/globals.css
+  s_0d38a94b1c7cc1::t_2152c8bd73558f 77-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7295b0fa4656c6f2575375770a72d36ea70a70ab",
+  "prompts": {},
+  "sessions": {
+    "s_0d38a94b1c7cc1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_0d38a94b1c7cc1",
+        "model": "unknown"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

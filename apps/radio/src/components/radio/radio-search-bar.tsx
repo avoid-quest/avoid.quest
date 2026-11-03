@@ -185,7 +185,7 @@ function SearchResultRow({
           >
             <StationRowSubtitle>{details}</StationRowSubtitle>
           </StationRowText>
-          <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
+          <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 [@media(pointer:coarse)]:text-muted-foreground/50" />
         </button>
       </td>
       {action ? <td>{action}</td> : null}

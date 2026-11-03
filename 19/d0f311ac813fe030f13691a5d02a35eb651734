@@ -1,0 +1,59 @@
+apps/radio/src/components/settings/radio-dialog.tsx
+  s_ff41e98efda6dc::t_6f21c66899a324 10,12,45
+apps/radio/src/components/radio/node/canvas-hint.tsx
+  s_ff41e98efda6dc::t_f539ef302023b0 54-57
+  s_ff41e98efda6dc::t_271b148ab57147 1
+apps/radio/src/components/radio/single/single-player-station-list.tsx
+  s_ff41e98efda6dc::t_f539ef302023b0 5,166-169,190,193
+  s_ff41e98efda6dc::t_37628f812f64d0 191-192
+apps/radio/src/components/settings/settings-form.tsx
+  s_ff41e98efda6dc::t_18344ecca28663 243,255,265
+  s_ff41e98efda6dc::t_9cc12b7fcbfbe0 166,214
+  s_ff41e98efda6dc::t_05b24cff983fac 145-147
+apps/radio/src/components/settings/radio-management.tsx
+  s_ff41e98efda6dc::t_18344ecca28663 26-27,41,143,161,163,165-166,286,288-289,291-295,375-385,391-393,397-398
+  s_ff41e98efda6dc::t_05b24cff983fac 160,162,164,167-169,251,253,257,259,285,287,290
+  s_ff41e98efda6dc::t_37628f812f64d0 311-316,370-374,386-390,394-396
+  s_ff41e98efda6dc::t_c7e1b9eb6124c2 399-402
+apps/radio/src/components/settings/add-station.test.tsx
+  s_ff41e98efda6dc::t_245732401489d5 130,137,152
+  s_ff41e98efda6dc::t_d7517c8a8cc684 30,78,80-82
+  s_ff41e98efda6dc::t_18fdd1574fbaaa 1-29,31-77,79,83-129,131-136,138-151,153-175
+apps/radio/src/components/radio/single/single-player-station-list.stories.tsx
+  s_ff41e98efda6dc::t_37628f812f64d0 74-76,78-80
+apps/radio/src/components/settings/station-editor.tsx
+  s_ff41e98efda6dc::t_37628f812f64d0 72-109,111-124,126,132-134
+  s_ff41e98efda6dc::t_6f21c66899a324 1-71,110,125,127-131,135-137
+apps/radio/src/components/radio/dj/dj-radio-list.tsx
+  s_ff41e98efda6dc::t_f539ef302023b0 11
+  s_ff41e98efda6dc::t_37628f812f64d0 166
+apps/radio/src/components/radio/single/single-player.test.tsx
+  s_ff41e98efda6dc::t_9cc12b7fcbfbe0 134-135
+apps/radio/src/components/radio/node/node-rack.test.tsx
+  s_ff41e98efda6dc::t_7ad8cadc62c229 618
+apps/radio/src/components/radio/node/node-rack.tsx
+  s_ff41e98efda6dc::t_271b148ab57147 359-361
+  s_ff41e98efda6dc::t_245732401489d5 9
+apps/radio/src/components/radio/empty-hint.tsx
+  s_ff41e98efda6dc::t_f539ef302023b0 10,15,28
+  s_ff41e98efda6dc::t_271b148ab57147 8
+apps/radio/src/components/settings/add-station-button.tsx
+  s_ff41e98efda6dc::t_18344ecca28663 1-19,24-34
+  s_ff41e98efda6dc::t_37628f812f64d0 20-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19d0f311ac813fe030f13691a5d02a35eb651734",
+  "prompts": {},
+  "sessions": {
+    "s_ff41e98efda6dc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a35a-1299-7c01-88b0-8d936d235992",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

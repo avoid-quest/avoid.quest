@@ -722,7 +722,9 @@ describe("NodeInspector", () => {
       fireEvent.click(view.getByRole("button", { name: "Close settings" }));
     };
     checkSettings("Empty Station", () =>
-      expect(view.getByPlaceholderText("Search or paste a stream")).toBeTruthy()
+      expect(
+        view.getByPlaceholderText("Search stations or paste a link")
+      ).toBeTruthy()
     );
     checkSettings("Empty Track", () =>
       expect(view.getByRole("combobox", { name: "Platform" })).toBeTruthy()

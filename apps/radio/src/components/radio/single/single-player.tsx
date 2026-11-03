@@ -11,6 +11,7 @@ import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { isMediaVolumeLocked } from "@/lib/audio/playback/media-element-volume-control";
 import { shouldUseNativeSinglePlayback } from "@/lib/collections/settings";
+import { detectPlatformFromUrl } from "@/lib/external-url/detect";
 import { useDiscoveredStationActions } from "@/lib/hooks/use-discovered-station-actions";
 import { useMediaSession } from "@/lib/hooks/use-media-session";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/hooks/use-session-radios";
 import { useAudioSettings } from "@/lib/hooks/use-settings";
 import { useSingleSession } from "@/lib/hooks/use-single-session";
+import { loadStreamStation } from "@/lib/stations/stream-station-loader";
 import {
   prefetchStationDialogOnIntent,
   RadioDialog,
@@ -91,6 +93,23 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
   // A search pick means "listen to it", so it plays even when paused.
   const { saveDiscoveredStation, selectDiscoveredStation } =
     useDiscoveredStationActions(playRadio);
+
+  const handleSubmitUrl = async (url: string, signal: AbortSignal) => {
+    const platform = detectPlatformFromUrl(url);
+    if (platform && platform !== "static-audio") {
+      return "Platform links play in Node or DJ";
+    }
+    const isCurrent = () => !signal.aborted;
+    const loaded = await loadStreamStation(url, { isCurrent });
+    if (!isCurrent()) {
+      return null;
+    }
+    if ("error" in loaded) {
+      return loaded.error;
+    }
+    await playRadio(loaded.radio);
+    return null;
+  };
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -220,6 +239,7 @@ export function SinglePlayer({ radios }: SinglePlayerProps) {
                 onSaveDiscovered={saveDiscoveredStation}
                 onSelectDiscovered={selectDiscoveredStation}
                 onSelectLocal={playRadio}
+                onSubmitUrl={handleSubmitUrl}
                 radios={radios ?? []}
               />
             }

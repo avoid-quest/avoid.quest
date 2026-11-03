@@ -164,7 +164,11 @@ export function isSessionRadio(radio: Radio): boolean {
     return false;
   }
   const id = String(radio.id);
-  return id.startsWith("rb_") || id.startsWith("rg_");
+  return (
+    id.startsWith("rb_") ||
+    id.startsWith("rg_") ||
+    sessionRadiosCollection.state.has(id)
+  );
 }
 
 function getOrderedSessionRadioRecords(): SessionRadioRecord[] {

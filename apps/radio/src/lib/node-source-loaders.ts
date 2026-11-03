@@ -37,6 +37,8 @@ import {
   stationIntake,
 } from "@/lib/stations/external-station-workflow";
 
+export { loadStreamStation } from "@/lib/stations/stream-station-loader";
+
 export type SourceLoad = { radio: Radio } | { error: string };
 
 export type NodeSourceLoaderDependencies = {
@@ -136,40 +138,6 @@ export async function loadLocalFile(
         error instanceof Error ? error.message : "Failed to load audio file",
     };
   }
-}
-
-function streamName(url: string): string {
-  try {
-    return new URL(url).hostname || url;
-  } catch {
-    return url;
-  }
-}
-
-/**
- * A radio stream URL pasted into a Station, made a session station as a
- * URL added in Settings would be, under its host's name.
- */
-export async function loadStreamStation(
-  url: string,
-  {
-    createSession = stationIntake.createSession,
-    isCurrent,
-  }: NodeSourceLoaderDependencies = {}
-): Promise<SourceLoad> {
-  const result = await createSession(
-    {
-      fields: { name: streamName(url), streamUrl: url },
-      origin: "manual",
-    },
-    { isCurrent }
-  );
-  if (!result.ok) {
-    return { error: result.error.message };
-  }
-  const { radio } = result.data;
-  // The session record is keyed by name when the radio has no id.
-  return { radio: { ...radio, id: radio.id ?? radio.name } };
 }
 
 export async function loadLocalFiles(

@@ -1,0 +1,54 @@
+apps/radio/src/components/radio/node/branch-edge.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 26
+apps/radio/src/components/radio/node/docs/acceptance.md
+  s_f4dacf88372d72::t_c5e1a94fd75986 44,49,55-58
+  s_f4dacf88372d72::t_8105b01740dc51 59
+apps/radio/src/components/radio/node/split-nodes.test.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 419
+apps/radio/src/components/radio/node/flow-elements.ts
+  s_f4dacf88372d72::t_c5e1a94fd75986 187
+apps/radio/src/components/radio/node/node-canvas.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 457,1122
+apps/radio/src/components/radio/node/docs/design-history.md
+  s_f4dacf88372d72::t_c5e1a94fd75986 67,89,638-639,653-655,659,661-664,685,768-769,897-898,964-965,1030,1096,1101-1102
+apps/radio/src/components/radio/node/module-frame.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 567
+apps/radio/src/components/radio/node/node-palette.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 125
+apps/radio/scripts/check-node-chunk.ts
+  s_f4dacf88372d72::t_c5e1a94fd75986 203-204
+apps/radio/src/components/radio/node/device-nodes.test.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 417
+apps/radio/src/lib/collections/playback-sessions.test.ts
+  s_f4dacf88372d72::t_c5e1a94fd75986 1400
+apps/radio/src/components/radio/node/node-source-row.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 45
+apps/radio/src/components/radio/node/audio-input-controls.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 32,34
+apps/radio/src/components/radio/node/flow-adapter.ts
+  s_f4dacf88372d72::t_c5e1a94fd75986 8
+apps/radio/src/components/radio/node/cable-surgery.ts
+  s_f4dacf88372d72::t_c5e1a94fd75986 11
+apps/radio/src/components/radio/NODE_MODE_PROPOSAL.md
+  s_f4dacf88372d72::t_c5e1a94fd75986 3,145-147,179
+apps/radio/src/lib/hooks/use-node-session.ts
+  s_f4dacf88372d72::t_c5e1a94fd75986 9
+apps/radio/src/components/theme/header.tsx
+  s_f4dacf88372d72::t_c5e1a94fd75986 3,76,78,84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "86fc00d65bda9b9b566f254648762aeb67b935eb",
+  "prompts": {},
+  "sessions": {
+    "s_f4dacf88372d72": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a27c-9b5c-71a3-b8a3-5ffaab57350e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

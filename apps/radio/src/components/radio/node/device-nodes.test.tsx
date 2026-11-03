@@ -584,7 +584,7 @@ test("the embedded input inspector retains an accessible Remove action", async (
   const onRemove = mock(noop);
   const view = render(<InputHarness embedded onRemove={onRemove} />);
   await flush();
-  fireEvent.click(view.getByRole("button", { name: "Remove audio input" }));
+  fireEvent.click(view.getByRole("button", { name: "Remove from patch" }));
   expect(onRemove).toHaveBeenCalledTimes(1);
 });
 
@@ -600,7 +600,7 @@ for (const supported of [true, false]) {
       />
     );
     await flush();
-    fireEvent.click(view.getByRole("button", { name: "Remove output device" }));
+    fireEvent.click(view.getByRole("button", { name: "Remove from patch" }));
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 }

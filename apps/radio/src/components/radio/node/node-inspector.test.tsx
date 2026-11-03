@@ -748,7 +748,7 @@ describe("NodeInspector", () => {
       ).toBeTruthy()
     );
     checkSettings("Speakers", () =>
-      expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy()
+      expect(view.getByRole("slider", { name: "Main volume" })).toBeTruthy()
     );
     checkSettings("Compressor", () =>
       expect(view.getByRole("slider", { name: "Threshold" })).toBeTruthy()

@@ -459,7 +459,7 @@ export const exportDatabase = async (): Promise<void> => {
 
     const link = document.createElement("a");
     link.href = url;
-    link.download = `radioproxy-config-${new Date().toISOString().split("T")[0]}.json`;
+    link.download = `avoid-quest-radio-backup-${new Date().toISOString().split("T")[0]}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

@@ -180,7 +180,7 @@ function ChannelBody({
         title={
           isCueActive
             ? `Cue ${label} in headphones (${deckId === "deck-a" ? "Q" : "W"})`
-            : "Set a cue output in audio settings"
+            : "Set a cue output in Settings › Audio"
         }
         variant={cueEnabled ? "default" : "outline"}
       >

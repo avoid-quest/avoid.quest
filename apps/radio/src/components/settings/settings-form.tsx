@@ -92,10 +92,10 @@ type SectionDefinition = {
 
 const SETTINGS_SECTIONS: SectionDefinition[] = [
   { icon: IconSettings, key: "general", label: "General" },
-  { icon: IconRadio, key: "radios", label: "Radios" },
-  { icon: IconAdjustmentsHorizontal, key: "playback", label: "Playback" },
+  { icon: IconRadio, key: "radios", label: "My stations" },
+  { icon: IconAdjustmentsHorizontal, key: "playback", label: "Audio" },
   { icon: IconPiano, key: "midi", label: "MIDI" },
-  { icon: IconDatabase, key: "data", label: "Data" },
+  { icon: IconDatabase, key: "data", label: "Backup & share" },
 ];
 
 function getInitialSection(defaultTab?: string): SettingsSection {

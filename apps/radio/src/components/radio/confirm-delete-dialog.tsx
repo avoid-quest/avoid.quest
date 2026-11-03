@@ -31,7 +31,9 @@ export function ConfirmDeleteDialog({
     <Dialog onOpenChange={handleOpenChange} open={Boolean(radio)}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Delete &ldquo;{radio?.name}&rdquo;?</DialogTitle>
+          <DialogTitle>
+            Delete &ldquo;{radio?.name}&rdquo; from My stations?
+          </DialogTitle>
           <DialogDescription>This can&apos;t be undone.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -39,7 +41,7 @@ export function ConfirmDeleteDialog({
             Cancel
           </Button>
           <Button onClick={onConfirm} size="sm" variant="destructive">
-            Delete
+            Delete station
           </Button>
         </DialogFooter>
       </DialogContent>

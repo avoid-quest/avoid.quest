@@ -286,7 +286,7 @@ export function ImportExport({
                 <ImportPatchPreview patch={importPreview.nodePatch} />
 
                 <div className="space-y-2">
-                  <Label id="import-mode-label">Mode</Label>
+                  <Label id="import-mode-label">Import as</Label>
                   <RadioGroup
                     aria-labelledby="import-mode-label"
                     onValueChange={handleImportModeChange}

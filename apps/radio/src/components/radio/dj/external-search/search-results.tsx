@@ -9,6 +9,7 @@ import type { Radio } from "@/lib/audio";
 import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
+import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import type { SourceSearchResult as UnifiedSearchResult } from "@/lib/source-search-workflow";
 import { EmptyHint } from "../../empty-hint";
 import { InlineError } from "../../inline-error";
@@ -31,7 +32,7 @@ type SearchResultsProps = {
 
 const PLATFORM_LABELS = {
   bandcamp: "BC",
-  local: "FM",
+  local: "Saved",
   mixcloud: "MC",
   "radio-browser": "RB",
   radiogarden: "RG",
@@ -115,7 +116,9 @@ function ResultItem({
       ? "external"
       : result.platform
   );
+  const isNotSaved = Boolean(result.radio && isSessionRadio(result.radio));
   const platformLabel = PLATFORM_LABELS[result.platform];
+  const stationStatusLabel = isNotSaved ? "Not saved" : platformLabel;
   const showLoading = isPending || isLoading;
 
   return (
@@ -141,16 +144,27 @@ function ResultItem({
             <IconMusic className="size-4 text-muted-foreground" />
           </div>
         )}
-        <div
-          className="absolute bottom-0 left-0 max-w-full truncate px-1 font-bold font-mono text-white text-xs"
-          style={{ backgroundColor: platformColor }}
-          title={platformLabel}
-        >
-          {platformLabel}
-        </div>
+        {result.platform === "local" ? null : (
+          <div
+            className="absolute bottom-0 left-0 max-w-full truncate px-1 font-bold font-mono text-white text-xs"
+            style={{ backgroundColor: platformColor }}
+            title={platformLabel}
+          >
+            {platformLabel}
+          </div>
+        )}
       </div>
 
-      <StationRowText title={result.title}>
+      <StationRowText
+        indicator={
+          result.platform === "local" ? (
+            <span className="inline-flex shrink-0 border border-border/70 px-1.5 py-0.5 text-muted-foreground text-xs leading-none">
+              {stationStatusLabel}
+            </span>
+          ) : null
+        }
+        title={result.title}
+      >
         <StationRowSubtitle>
           {[
             result.artist,

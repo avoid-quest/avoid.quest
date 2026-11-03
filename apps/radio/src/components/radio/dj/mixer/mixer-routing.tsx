@@ -16,7 +16,7 @@ function resolveDeviceLabel(
   return device?.label || "On";
 }
 
-/** Where the audio goes, in one line. Click to change it in audio settings. */
+/** Where the audio goes, in one line. Click to change it in Settings › Audio. */
 export function MixerRouting() {
   const audioSettings = useAudioSettings();
   const delaySettings = useDelaySettings();
@@ -54,7 +54,7 @@ export function MixerRouting() {
       trigger={
         <button
           className="flex w-full items-center gap-3 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title={`${delays}. Click to change outputs.`}
+          title={`${delays}. Click to open Settings › Audio.`}
           type="button"
         >
           <span className="flex min-w-0 flex-1 items-center gap-1">

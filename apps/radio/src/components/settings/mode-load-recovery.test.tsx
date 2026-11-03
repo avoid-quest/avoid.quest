@@ -123,7 +123,7 @@ if (scenario) {
           )
         ).toBeDefined();
         expect(
-          within(view.getByRole("group", { name: "Playback mode" }))
+          within(view.getByRole("group", { name: "Mode" }))
             .getAllByRole("button")
             .every((radio) => radio.getAttribute("aria-pressed") === "false")
         ).toBe(true);

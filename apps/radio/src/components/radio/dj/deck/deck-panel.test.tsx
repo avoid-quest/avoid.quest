@@ -321,7 +321,7 @@ describe("DeckPanel source picker", () => {
       if (surface === "change loaded source") {
         fireEvent.click(view.getByRole("button", { name: CHANGE_SOURCE }));
       }
-      await chooseSelectOption(view.container, "Station library");
+      await chooseSelectOption(view.container, "Stations");
       const input = view.getByRole("searchbox", {
         name: "Search or paste a link",
       });

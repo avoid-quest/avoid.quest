@@ -277,7 +277,7 @@ for (const provider of ["radio-browser", "radiogarden", "local"]) {
       renderBothViews();
     const label =
       {
-        local: "Station library",
+        local: "Stations",
         radiogarden: "Radio Garden",
         "radio-browser": "Radio Browser",
       }[provider] ?? provider;

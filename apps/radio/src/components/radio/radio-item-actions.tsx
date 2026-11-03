@@ -145,7 +145,7 @@ export function RadioItemActions({
           <>
             <DropdownMenuItem onClick={handleSave}>
               <IconBookmarkPlus />
-              Save
+              Save station
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
@@ -201,19 +201,19 @@ export function RadioItemActions({
             variant="destructive"
           >
             <IconX />
-            Remove node
+            Remove from patch
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={handleDelete} variant="destructive">
           {isSession ? (
             <>
               <IconX />
-              Remove
+              Remove station
             </>
           ) : (
             <>
               <IconTrash />
-              Delete
+              Delete station
             </>
           )}
         </DropdownMenuItem>

@@ -202,7 +202,7 @@ export function OutputDeviceNodeBody({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRemove} variant="destructive">
                 <IconTrash />
-                Remove
+                Remove from patch
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -281,7 +281,7 @@ export function OutputDeviceNodeBody({
           variant="ghost"
         >
           <IconTrash />
-          Remove output device
+          Remove from patch
         </Button>
       ) : null}
     </div>

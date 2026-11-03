@@ -43,6 +43,21 @@
       ],
       "passThroughEnv": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
     },
+    "cf-preview": {
+      "cache": false,
+      "dependsOn": ["^cf-preview"],
+      "env": [
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT",
+        "SENTRY_RELEASE"
+      ],
+      "passThroughEnv": [
+        "CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_API_TOKEN",
+        "WORKERS_CI_BRANCH"
+      ]
+    },
     "cf-upload": {
       "cache": false,
       "dependsOn": ["^cf-upload"],
@@ -52,7 +67,11 @@
         "SENTRY_PROJECT",
         "SENTRY_RELEASE"
       ],
-      "passThroughEnv": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"]
+      "passThroughEnv": [
+        "CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_API_TOKEN",
+        "WORKERS_CI_BRANCH"
+      ]
     },
     "cf-typegen": {
       "cache": false,

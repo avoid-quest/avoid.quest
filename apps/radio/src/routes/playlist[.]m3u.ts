@@ -11,9 +11,12 @@ const PLAYLIST_CACHE_CONTROL =
 export const Route = createFileRoute("/playlist.m3u")({
   server: {
     handlers: {
-      GET: () => {
+      GET: ({ request }) => {
         const stations = getPublicKodiStations(radios);
-        const playlist = renderKodiM3uPlaylist(stations);
+        const playlist = renderKodiM3uPlaylist(
+          stations,
+          new URL("/guide.xml", request.url).href
+        );
 
         return new Response(playlist, {
           headers: {

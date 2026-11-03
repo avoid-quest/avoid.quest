@@ -82,6 +82,7 @@ play. See the [Mixcloud](../../packages/platforms/src/mixcloud/RESEARCH.md) and
 | `/api/radio-blackout-stream` | Dedicated BlackOut audio relay |
 | `/api/stations.json` | Default station catalog |
 | `/playlist.m3u` | Default stations as an M3U playlist |
+| `/guide.xml` | Public XMLTV programme guide for the default stations |
 | `/legal` | Source and license information |
 | `/manifest` | PWA web app manifest (dynamic) |
 | `/tunnel` | Sentry envelope tunnel |
@@ -259,12 +260,82 @@ Replay, logs and metrics are disabled; error sampling is 100%.
 
 ## Cloudflare exposure
 
-Committed Wrangler config enables `workers_dev` and `preview_urls` for
-workers.dev and Workers Builds preview exposure. Custom production hostnames
-should be configured with Cloudflare account-level custom domains or routes
-outside this repository.
+Committed Wrangler config uses Worker Previews through `wrangler preview` and
+an explicit `previews` block with observability and the `proxy-rate-limit`
+binding. The Preview binding keeps namespace `1` and the existing policy, so
+rate-limit counters are shared with production. Preview secrets and variables
+are separate from production; optional feedback/admin/Sentry integrations need
+Preview credentials if they are to be tested. `workers_dev` and `preview_urls`
+stay enabled for production and Preview Workers URLs. Custom production hostnames
+remain in Cloudflare account settings.
 
-Workers Builds PR comments should include the branch preview URL after upload.
+From the repository root, `bun run --filter @avoid.quest/radio cf-preview` builds
+and publishes a Preview for the current Git branch; append `--name <preview-name>`
+to override it. `cf-upload` is a deprecated alias for `cf-preview`. The local
+`preview` command still serves a build locally. Do not publish a Preview unless
+deployment is explicitly requested.
+
+Existing Workers Builds require the
+[one-time dashboard switch](../../DEVELOPMENT.md#switch-existing-workers-builds).
+That switch is irreversible. Afterward, branch builds should post the Preview
+URL in PR comments. See the linked setup for compatibility dates and validation.
+
+### M3U and XMLTV for Kodi and other players
+
+The standard integration is the extended M3U at
+`https://radio.avoid.quest/playlist.m3u` and the XMLTV guide at
+`https://radio.avoid.quest/guide.xml`. In Kodi's **PVR IPTV Simple Client**,
+configure the remote M3U URL under its playlist settings, then enable the
+client and open Kodi's Radio section. The M3U header advertises the absolute
+guide URL with `x-tvg-url`; if guide discovery is disabled or unsupported,
+enter the same `/guide.xml` URL manually in the client's XMLTV/EPG settings.
+Use the guide's timezone information without a manual EPG time shift.
+Compatible M3U/XMLTV players can use the same two URLs. Stock Kodi does not
+read the optional JSON metadata API described below.
+
+Both exports contain configured default stations, not a listener's saved
+library. The immutable `publicId` on each default is the complete
+`avoid-radio-*` identity shared by M3U `tvg-id`, XMLTV channel IDs and JSON
+station lookup. Keep it unchanged when editing display names. It is separate
+from the app's generated local-storage `id`; this export does not migrate
+saved stations. Names, order, logos and original playback URLs are retained.
+The playlist performs no upstream schedule requests and contains no player
+directives, catch-up declarations or archive playback URLs.
+
+The guide always lists every exported channel. Programmes require a real
+title and trustworthy start **and** end times; missing/invalid entries are
+omitted. Description, artwork and categories appear only when available.
+Times are XMLTV UTC (`YYYYMMDDhhmmss +0000`); clients display them in their
+own timezone. Airtime local times use the feed's IANA timezone, HKCR uses
+Hong Kong's UTC+08:00, and Resonance's explicit BST/GMT/UTC designation is
+respected. Ambiguous/missing Airtime times during DST transitions are omitted.
+Metadata `sampledAt` and `expiresAt` are never programme boundaries.
+
+| Source | Guide coverage and limits |
+| --- | --- |
+| NTS 1 and 2 | Current and upcoming dated slots in the live API; embedded descriptions, artwork and genres. |
+| LYL | Trusted current calendar entry with cached episode/show details, plus upcoming SHOW/EPISODE entries from the queried UTC calendar day. Upcoming details are limited to the calendar's fields. |
+| HKCR | Non-cancelled dated schedule entries, including overnight slots; current show enrichment and a uniquely matched current replay slot when available. Upcoming entries use schedule fields without fetching every show's details. |
+| Cashmere, Sygma, Internet Public Radio | Airtime's explicit current/next **show blocks**. A block may be labelled “Rotation,” “Archive” or “Programming”; individual track titles and durations remain in JSON now-playing and are not promoted into shows. |
+| Resonance Extra | Current and next entry when its date, timezone and both times parse successfully; description/artwork when supplied. |
+| Radio Alhara, Radio BlackOut | Channel information only. Alhara exposes a track start/duration; BlackOut's current adapter exposes an undated weekly slot. Neither establishes a reliable dated programme window for this export. Existing JSON now-playing remains available. |
+
+The guide includes ongoing broadcasts and starts within the next 24 hours,
+at most 48 slots per channel, with broadcasts longer than 24 hours omitted.
+It preserves actual boundaries rather than truncating a show at the horizon.
+It is a partial guide, not a promise of continuous or multi-day coverage.
+Upstream failures leave channels and already parsed programmes intact.
+
+Guide retrieval allows three concurrent providers, four seconds per provider,
+and ten seconds for the whole retrieval, plus at most 500 ms per shared-cache
+operation. Each provider is limited to 12 HTTP requests including redirects,
+1 MiB per response and 4 MiB total; programme text is also bounded. The export
+reuses provider enrichment caches and public-URL/DNS/redirect protections.
+Its five-minute cache and concurrent-request coalescing include partial
+results. Cache eviction or a different Worker/data center can cause another
+bounded retrieval. The route accepts no provider/URL parameters and requires
+no session cookie, so ordinary native guide downloads work. This does not
+change the JSON API's session, rate-limit or origin rules.
 
 ### Shared radio metadata
 
@@ -285,8 +356,10 @@ Clients must match `streamUrl` to their playing catalog entry and discard
 expired snapshots. Keep the service's
 anonymous session cookie on the requesting client and honor HTTP 429 retries.
 The existing session, rate-limit, URL validation and origin policies apply.
-When renaming a default station, give it an explicit `id` retaining its previous
-exported identity, whose value follows the `avoid-radio-` prefix.
+Keep each default's `publicId` unchanged; its full value includes the
+`avoid-radio-` prefix. The JSON response envelope and existing fields remain
+unchanged. Schedules are exported separately through XMLTV, keeping this
+optional current-metadata interface small for existing consumers.
 
 The radio Worker stores expiring metadata in Cloudflare's Cache API. It no
 longer uses Workers KV. Live snapshots expire within 15 minutes; episode/show

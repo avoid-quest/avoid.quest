@@ -6,6 +6,12 @@ import {
 } from "./cache";
 import { decodeIcyText } from "./icy-parser";
 import {
+  type ProgrammePublisher,
+  programmeTimestamp,
+  publishProgrammes,
+  type RadioProgramme,
+} from "./programmes";
+import {
   cleanMetadataText,
   type ParsedRadioTitle,
   parseRadioTitle,
@@ -82,7 +88,7 @@ const SANITY_IMAGE_REF_PATTERN = /^image-([a-f\d]+)-(\d+x\d+)-([a-z\d]+)$/i;
 const TRAILING_SLASH_PATTERN = /\/$/;
 const WHITESPACE_PATTERN = /\s+/g;
 
-export type ExternalMetadataProviderInput = {
+export type ExternalMetadataProviderInput = ProgrammePublisher & {
   cache?: MetadataCache;
   now?: () => number;
   fetchImpl: FetchLike;
@@ -115,11 +121,18 @@ type AirtimeLiveInfo = {
   station?: { schedulerTime?: unknown; timezone?: unknown };
   tracks?: { current?: AirtimeTrack };
   current?: AirtimeTrack;
-  shows?: { current?: AirtimeShow | AirtimeShow[] };
+  shows?: {
+    current?: AirtimeShow | AirtimeShow[];
+    next?: AirtimeShow | AirtimeShow[];
+  };
   currentShow?: AirtimeShow | AirtimeShow[];
+  nextShow?: AirtimeShow | AirtimeShow[];
 };
 
 type AirtimeShow = {
+  starts?: unknown;
+  ends?: unknown;
+  genre?: unknown;
   name?: unknown;
   description?: unknown;
   image_path?: unknown;
@@ -224,6 +237,7 @@ type ShoutcastStatus = {
 };
 
 type HkcrScheduleEntry = {
+  replayWindow?: { start: number; end: number };
   date?: unknown;
   description?: unknown;
   endTime?: unknown;
@@ -262,7 +276,7 @@ type ResonanceExtraSchedule = {
     series_name?: unknown;
     starts_ends?: unknown;
   };
-  after?: { starts_ends?: unknown };
+  after?: ResonanceExtraSchedule["now"];
 };
 
 type RadioAlharaNowPlaying = {
@@ -479,6 +493,61 @@ function airtimeLocalTime(instant: number, timezone: string): number {
     field("minute"),
     field("second")
   );
+}
+
+/** Resolve a wall time only when its IANA zone identifies exactly one instant.
+ * Both sides of a DST transition are checked; repeated/missing hours are omitted. */
+function airtimeProgrammeTime(
+  value: unknown,
+  timezone: unknown
+): number | null {
+  const explicit = programmeTimestamp(value);
+  if (explicit !== null) {
+    return explicit;
+  }
+  const wall = airtimeWallTime(value);
+  const zone = asString(timezone);
+  if (wall === null || !zone) {
+    return null;
+  }
+  try {
+    const candidates = new Set<number>();
+    for (const delta of [-DAY_MS, 0, DAY_MS]) {
+      const reference = wall + delta;
+      const offset = airtimeLocalTime(reference, zone) - reference;
+      const instant = wall - offset;
+      if (airtimeLocalTime(instant, zone) === wall) {
+        candidates.add(instant);
+      }
+    }
+    return candidates.size === 1 ? ([...candidates][0] ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+function airtimeProgrammes(data: AirtimeLiveInfo): Partial<RadioProgramme>[] {
+  const shows = [
+    data.shows?.current ?? data.currentShow,
+    data.shows?.next ?? data.nextShow,
+  ].flatMap((value) => {
+    if (!value) {
+      return [];
+    }
+    return Array.isArray(value) ? value : [value];
+  });
+  return shows
+    .slice(0, 128)
+    .filter((show) => show && typeof show === "object")
+    .map((show) => ({
+      artworkUrl: asPublicUrl(show.image_path),
+      categories: asString(show.genre) ? [String(show.genre)] : [],
+      description: plainText(show.description),
+      end: airtimeProgrammeTime(show.ends, data.station?.timezone) ?? undefined,
+      start:
+        airtimeProgrammeTime(show.starts, data.station?.timezone) ?? undefined,
+      title: asString(show.name) ?? undefined,
+    }));
 }
 
 function airtimeTrackExpiresAt(input: {
@@ -731,7 +800,7 @@ async function enrichCashmereNowPlaying(
       }
     | undefined;
   const nodes = responseData?.data?.episodes?.nodes;
-  const complete = Array.isArray(nodes) && !responseData?.errors?.length;
+  const complete = !responseData?.errors?.length && Array.isArray(nodes);
   const matches = Array.isArray(nodes)
     ? nodes.filter(
         (node) =>
@@ -1480,6 +1549,7 @@ export async function tryAirtimeLiveInfo(
       return null;
     }
     const data = result.data as AirtimeLiveInfo;
+    publishProgrammes(input, () => airtimeProgrammes(data));
     const nowPlaying = normalizeAirtimeLiveInfo({
       data,
       expiresAt: input.expiresAt,
@@ -1668,12 +1738,40 @@ function normalizeNtsLiveApi(
   const channel = Array.isArray(results)
     ? results.find(
         (item) =>
-          (item as { channel_name?: unknown }).channel_name === channelName
+          (item as { channel_name?: unknown } | null)?.channel_name ===
+          channelName
       )
     : null;
   if (!(channel && typeof channel === "object")) {
     return null;
   }
+  publishProgrammes({ ...input, sampledAt: at }, () =>
+    Object.entries(channel)
+      .filter(
+        ([key, value]) =>
+          NTS_SLOT_KEY_PATTERN.test(key) && value && typeof value === "object"
+      )
+      .map(([, value]) => {
+        const slot = value as NtsLiveSlot;
+        const details = slot.embeds?.details;
+        return {
+          artworkUrl: resolvePublicUrl(
+            details?.media?.picture_medium,
+            "https://www.nts.live"
+          ),
+          categories: Array.isArray(details?.genres)
+            ? details.genres.flatMap((genre) => asString(genre?.value) ?? [])
+            : [],
+          description: asString(details?.description),
+          end: programmeTimestamp(slot.end_timestamp) ?? undefined,
+          start: programmeTimestamp(slot.start_timestamp) ?? undefined,
+          title:
+            asString(slot.broadcast_title) ??
+            asString(details?.name) ??
+            undefined,
+        };
+      })
+  );
   const selected = selectNtsLiveSlot(channel as Record<string, unknown>, at);
   const now = selected?.slot;
   const title =
@@ -1757,6 +1855,9 @@ function findCurrentHkcrEntry(
   }
   return (
     data.find((candidate) => {
+      if (!candidate || typeof candidate !== "object") {
+        return false;
+      }
       if (asString(candidate.status)?.startsWith("cancelled")) {
         return false;
       }
@@ -1816,6 +1917,24 @@ function normalizeHkcrSchedule(input: {
     : null;
 }
 
+function hkcrProgramme(
+  entry: HkcrScheduleEntry,
+  details?: RadioNowPlaying | null
+): Partial<RadioProgramme> {
+  const window = entry.replayWindow ?? getHkcrScheduleWindow(entry);
+  return {
+    artworkUrl:
+      details?.artworkUrl ??
+      asPublicUrl(entry.thumbnail?.url) ??
+      asPublicUrl(entry.picture?.url),
+    categories: details?.genre ? details.genre.split(", ") : [],
+    description: details?.stationDescription ?? plainText(entry.description),
+    end: window?.end,
+    start: window?.start,
+    title: details?.title ?? asString(entry.title) ?? undefined,
+  };
+}
+
 export async function tryHkcrSchedule(
   input: ExternalMetadataProviderInput
 ): Promise<RadioNowPlaying | null> {
@@ -1834,12 +1953,24 @@ export async function tryHkcrSchedule(
   if (!result) {
     return null;
   }
+  publishProgrammes(input, () =>
+    (Array.isArray(result.data) ? result.data : [])
+      .slice(0, 512)
+      .filter(
+        (candidate) =>
+          candidate &&
+          typeof candidate === "object" &&
+          !asString(candidate.status)?.startsWith("cancelled")
+      )
+      .map((candidate) => hkcrProgramme(candidate as HkcrScheduleEntry))
+  );
   const entry =
     findCurrentHkcrEntry(result.data, input.sampledAt) ??
     (await findCurrentHkcrReplay(input));
   if (!entry) {
     return null;
   }
+  publishProgrammes(input, () => [hkcrProgramme(entry)]);
   const showId = asString(entry.show);
   const show = showId ? await fetchHkcrShow(input, showId) : null;
   const slug = asString(show?.slug);
@@ -1870,7 +2001,7 @@ export async function tryHkcrSchedule(
     showUrl,
     streamUrl: input.streamUrl,
   });
-  return normalized
+  const enriched = normalized
     ? {
         ...normalized,
         genre: hkcrGenre(show?.tags, [
@@ -1881,6 +2012,8 @@ export async function tryHkcrSchedule(
         ]),
       }
     : null;
+  publishProgrammes(input, () => [hkcrProgramme(entry, enriched)]);
+  return enriched;
 }
 
 /** HKCR tags repeat show and resident names; those are not genres. */
@@ -1989,12 +2122,21 @@ async function findCurrentHkcrReplay(
   }
   const matches = slots.filter(
     (candidate) =>
+      candidate &&
+      typeof candidate === "object" &&
       input.sampledAt >= Date.parse(asString(candidate.start) ?? "") &&
       input.sampledAt < Date.parse(asString(candidate.end) ?? "")
   );
   const slot = matches.length === 1 ? matches[0] : null;
   return slot
-    ? { show: slot.show ?? slot.replay?.show, title: slot.replay?.title }
+    ? {
+        show: slot.show ?? slot.replay?.show,
+        title: slot.replay?.title,
+        replayWindow: {
+          start: programmeTimestamp(slot.start) ?? Number.NaN,
+          end: programmeTimestamp(slot.end) ?? Number.NaN,
+        },
+      }
     : null;
 }
 
@@ -2077,6 +2219,23 @@ export async function tryResonanceExtraApi(
       throw error;
     }
     return null;
+  }
+  if (result) {
+    const schedule = result.data as ResonanceExtraSchedule;
+    publishProgrammes(input, () =>
+      [schedule.now, schedule.after]
+        .filter((slot) => !!slot)
+        .map((slot) => ({
+          artworkUrl: resolvePublicUrl(
+            slot?.backgrounds?.[0]?.image,
+            "https://x.resonance.fm"
+          ),
+          description: markdownText(slot?.description),
+          end: resonanceWindow(slot?.starts_ends)?.end,
+          start: resonanceWindow(slot?.starts_ends)?.start,
+          title: asString(slot?.name) ?? undefined,
+        }))
+    );
   }
   return result
     ? normalizeResonanceExtraSchedule({

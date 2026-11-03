@@ -16,6 +16,64 @@ function createRequest(metadataUrls: string[]): Request {
 }
 
 describe("createRadioMetadataWorkflow", () => {
+  test("scheduled providers preserve the existing configured station JSON contract", async () => {
+    clearRadioMetadataCache();
+    const now = Date.parse("2026-10-23T12:30:00Z");
+    const urls: string[] = [];
+    const workflow = createRadioMetadataWorkflow({
+      now: () => now,
+      fetchImpl: (url) => {
+        urls.push(url);
+        return Promise.resolve(
+          Response.json({
+            results: [
+              {
+                channel_name: "1",
+                now: {
+                  broadcast_title: "Broadcast",
+                  start_timestamp: "2026-10-23T12:00:00Z",
+                  end_timestamp: "2026-10-23T13:00:00Z",
+                },
+              },
+            ],
+          })
+        );
+      },
+    });
+    const response = await workflow.handle({
+      origin: "https://radio.avoid.quest",
+      requestId: "contract",
+      request: new Request(
+        "https://radio.avoid.quest/api/radio-metadata?stationId=avoid-radio-nts-radio-channel-1&url=https://untrusted.example/override&kind=icy"
+      ),
+    });
+    const payload = (await response.json()) as Extract<
+      RadioMetadataResponse,
+      { ok: true }
+    >;
+    expect(payload.data).toEqual({
+      album: null,
+      artist: null,
+      artworkUrl: null,
+      bitrate: null,
+      expiresAt: now + 900_000,
+      genre: null,
+      itemUrl: null,
+      rawTitle: "Broadcast",
+      resolvedUrl: "https://www.nts.live/api/v2/live",
+      sampledAt: now,
+      source: "nts-live-api",
+      stationDescription: null,
+      stationName: "NTS Radio | Channel 1",
+      streamUrl: "https://streams.radiomast.io/nts1",
+      title: "Broadcast",
+    });
+    expect(payload.ok).toBe(true);
+    expect(payload.refreshAfterMs).toBe(900_000);
+    expect(urls).toEqual(["https://www.nts.live/api/v2/live"]);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    clearRadioMetadataCache();
+  });
   test("shares live snapshots between independent request contexts without resampling", async () => {
     const { cache, put } = createMetadataCacheFixture();
     let time = 1000;

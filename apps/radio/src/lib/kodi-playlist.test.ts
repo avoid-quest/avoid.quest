@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { radios as defaultRadios } from "./const";
 import {
   findPublicRadio,
   getPublicKodiStations,
@@ -6,6 +7,49 @@ import {
   renderKodiM3uPlaylist,
 } from "./kodi-playlist";
 import type { Radio } from "./types";
+
+test("default public identities survive display and internal ID changes", () => {
+  const ids = [
+    "sygma-radio",
+    "lyl-radio",
+    "cashmere-radio",
+    "nts-radio-channel-1",
+    "nts-radio-channel-2",
+    "resonance-extra",
+    "internet-public-radio",
+    "hkcr",
+    "radio-alhara",
+    "radio-blackout",
+  ].map((id) => `avoid-radio-${id}`);
+  expect(
+    getPublicKodiStations(defaultRadios).map((station) => station.id)
+  ).toEqual(ids);
+  const renamed = defaultRadios.map((radio) => ({
+    ...radio,
+    id: "local-id",
+    name: "New display name",
+  }));
+  expect(getPublicKodiStations(renamed).map((station) => station.id)).toEqual(
+    ids
+  );
+  expect(defaultRadios.every((radio) => radio.id === undefined)).toBe(true);
+  expect(findPublicRadio(renamed, ids[0] ?? "")?.streamUrl).toBe(
+    defaultRadios[0]?.streamUrl
+  );
+});
+
+test("guide discovery changes only the M3U header", () => {
+  const stations = getPublicKodiStations(defaultRadios);
+  const plain = renderKodiM3uPlaylist(stations);
+  expect(
+    renderKodiM3uPlaylist(stations, "https://radio.avoid.quest/guide.xml")
+  ).toBe(
+    plain.replace(
+      "#EXTM3U",
+      '#EXTM3U x-tvg-url="https://radio.avoid.quest/guide.xml"'
+    )
+  );
+});
 
 describe("getPublicKodiStations", () => {
   test("keeps enabled public HTTP stations in stable order", () => {

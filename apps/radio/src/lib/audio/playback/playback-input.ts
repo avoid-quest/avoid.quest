@@ -17,6 +17,7 @@ import type { Radio } from "./types.js";
 import { isSameOriginPlaybackPath } from "./url-validation.js";
 
 const STREAM_URL_OVERRIDES: Readonly<Record<string, string>> = {
+  "https://n03.radiojar.com/78cxy6wkxtzuv": "https://stream.radioalhara.net/ra",
   "https://radio.syg.ma/audio.ogg": "https://radio.syg.ma/audio.mp3",
   "https://stream-relay-geo.ntslive.net/stream":
     "https://streams.radiomast.io/nts1",

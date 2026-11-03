@@ -6,13 +6,9 @@ import { DeckTransport } from "./deck-transport";
 
 const LONG_TITLE =
   "ARSIDER VIDEOCHAT #2 original super long station title with no predictable length";
+const STREAM_URL = "https://example.com/stream";
 
-const radio = {
-  name: LONG_TITLE,
-  streamUrl: "https://example.com/stream",
-};
-
-const deckContext: DeckContextValue = {
+const deckContextMock: DeckContextValue = {
   addEffect: () => undefined,
   autoplay: false,
   channelFilter: 0,
@@ -32,7 +28,10 @@ const deckContext: DeckContextValue = {
   pan: 0,
   pause: () => undefined,
   play: async () => undefined,
-  radio,
+  radio: {
+    name: LONG_TITLE,
+    streamUrl: STREAM_URL,
+  },
   removeEffect: () => undefined,
   reorderEffects: () => undefined,
   repeat: false,
@@ -55,9 +54,10 @@ const deckContext: DeckContextValue = {
   volume: 1,
 };
 
-function renderTransport(nowPlaying?: RadioNowPlaying) {
+// A module mock would replace useDeckContext for other tests in this process.
+function renderTransport(nowPlaying?: RadioNowPlaying): string {
   return renderToStaticMarkup(
-    <DeckProvider value={deckContext}>
+    <DeckProvider value={deckContextMock}>
       <DeckTransport nowPlaying={nowPlaying} />
     </DeckProvider>
   );
@@ -65,10 +65,10 @@ function renderTransport(nowPlaying?: RadioNowPlaying) {
 
 describe("DeckTransport", () => {
   beforeEach(() => {
-    deckContext.metadata = undefined;
-    deckContext.deckSide = "left";
-    deckContext.isPlaying = false;
-    deckContext.isLoading = false;
+    deckContextMock.metadata = undefined;
+    deckContextMock.deckSide = "left";
+    deckContextMock.isPlaying = false;
+    deckContextMock.isLoading = false;
   });
 
   test("keeps long station titles constrained and offers full details", () => {
@@ -80,7 +80,7 @@ describe("DeckTransport", () => {
   });
 
   test("preserves the existing file transport and progress layout", () => {
-    deckContext.metadata = {
+    deckContextMock.metadata = {
       displayName: LONG_TITLE,
       duration: 100,
       fileName: "track.mp3",
@@ -103,28 +103,28 @@ describe("DeckTransport", () => {
   });
 
   test("marks active radio transports with a border, not a playback badge", () => {
-    deckContext.isPlaying = true;
+    deckContextMock.isPlaying = true;
     const playing = renderTransport();
     expect(playing.includes("border-foreground/40")).toBeTrue();
     expect(playing.includes(">Now playing<")).toBeFalse();
     expect(playing.includes(">Ready<")).toBeFalse();
 
-    deckContext.isLoading = true;
+    deckContextMock.isLoading = true;
     const connecting = renderTransport();
     expect(connecting.includes("border-foreground/40")).toBeFalse();
     expect(connecting.includes("Connecting…")).toBeTrue();
 
-    deckContext.isPlaying = false;
-    deckContext.isLoading = false;
+    deckContextMock.isPlaying = false;
+    deckContextMock.isLoading = false;
     const paused = renderTransport();
     expect(paused.includes("border-foreground/40")).toBeFalse();
     expect(paused.includes("Connecting…")).toBeFalse();
   });
 
   test("keeps both playing decks out of live announcements", () => {
-    deckContext.isPlaying = true;
+    deckContextMock.isPlaying = true;
     const decks = (["left", "right"] as const).map((side) => {
-      deckContext.deckSide = side;
+      deckContextMock.deckSide = side;
       return renderTransport();
     });
     expect(decks.join("").includes("aria-live")).toBeFalse();
@@ -132,7 +132,7 @@ describe("DeckTransport", () => {
 
   for (const side of ["left", "right"] as const) {
     test(`shows current radio metadata inside the ${side} transport`, () => {
-      deckContext.deckSide = side;
+      deckContextMock.deckSide = side;
       const nowPlaying: RadioNowPlaying = {
         album: null,
         artist: "Current Host",
@@ -146,7 +146,7 @@ describe("DeckTransport", () => {
         source: "icy",
         stationDescription: "Current description",
         stationName: LONG_TITLE,
-        streamUrl: radio.streamUrl,
+        streamUrl: STREAM_URL,
         title: "Current Show",
       };
       const html = renderTransport(nowPlaying);

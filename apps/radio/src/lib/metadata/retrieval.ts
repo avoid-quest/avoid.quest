@@ -67,7 +67,7 @@ function unsupportedMetadataResponse(): Extract<
   );
 }
 
-type ExternalRadioMetadataConfig = Extract<
+export type ExternalRadioMetadataConfig = Extract<
   RadioMetadataConfig,
   {
     kind:
@@ -83,7 +83,7 @@ type ExternalRadioMetadataConfig = Extract<
   }
 >;
 
-function retrieveExternalResult(
+export function retrieveExternalResult(
   input: ExternalMetadataProviderInput,
   config: ExternalRadioMetadataConfig
 ): Promise<Awaited<ReturnType<typeof tryAirtimeLiveInfo>>> {

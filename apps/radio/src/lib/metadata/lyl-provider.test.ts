@@ -43,6 +43,23 @@ function providerInput(
 }
 
 describe("LYL metadata provider", () => {
+  test("keeps the one-day calendar request for now-playing-only callers", async () => {
+    const requests: unknown[] = [];
+    await tryLylApi(
+      providerInput((_url, init) => {
+        requests.push(JSON.parse(String(init?.body)).variables);
+        return Promise.resolve(json({ data: { calendar: [] } }));
+      })
+    );
+
+    expect(requests).toEqual([
+      {
+        from: "2026-09-03T00:00:00.000Z",
+        to: "2026-09-04T00:00:00.000Z",
+      },
+    ]);
+  });
+
   test("expires selected metadata at the calendar boundary", async () => {
     const end = "2026-09-03T16:50:00.000Z";
     const result = await tryLylApi({

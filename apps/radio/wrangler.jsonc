@@ -5,11 +5,30 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "radio",
-	"compatibility_date": "2026-08-26",
+	"compatibility_date": "2026-10-19",
 	"main": "src/server.ts",
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": true,
 	"preview_urls": true,
+	"previews": {
+		"observability": {
+			"enabled": true,
+			"logs": {
+				"enabled": true
+			}
+		},
+		"ratelimits": [
+			{
+				"name": "proxy-rate-limit",
+				// Preserve the existing namespace and policy in Previews.
+				"namespace_id": "1",
+				"simple": {
+					"limit": 100,
+					"period": 10
+				}
+			}
+		]
+	},
 	"observability": {
 		"enabled": true,
 		"logs": {

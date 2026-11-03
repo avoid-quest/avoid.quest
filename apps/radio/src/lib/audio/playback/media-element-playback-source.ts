@@ -235,7 +235,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         this.shouldResumeAfterLoad &&
         this.audio.paused
       ) {
-        await this.audio.play();
+        await this.playForIntent(playbackIntent);
       }
       return;
     }
@@ -244,7 +244,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
       throw new Error("Source not loaded - call load() first");
     }
 
-    await this.audio.play();
+    await this.playForIntent(playbackIntent);
   }
 
   pause(): void {
@@ -436,6 +436,18 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     this.shouldResumeAfterLoad = false;
     this.audio.autoplay = false;
     this.playbackIntent += 1;
+  }
+
+  private async playForIntent(playbackIntent: number): Promise<void> {
+    try {
+      await this.audio.play();
+    } catch (error) {
+      // A later pause, stop, load or play owns the element now. The browser
+      // can reject the old play promise after that action has completed.
+      if (!this.isPlaybackIntentCanceled(playbackIntent)) {
+        throw error;
+      }
+    }
   }
 
   private canRecoverPendingPlayError(

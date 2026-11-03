@@ -1,0 +1,57 @@
+apps/radio/src/components/radio/node/split-nodes.test.tsx
+  s_a631a3b9d63d84::t_d8845e032f9fa1 419
+apps/radio/src/components/radio/node/module-frame.tsx
+  s_a631a3b9d63d84::t_cf28155a3f7817 567
+apps/radio/src/lib/hooks/use-node-session.ts
+  s_a631a3b9d63d84::t_bf87c81745be6e 9
+apps/radio/src/components/radio/node/flow-elements.ts
+  s_a631a3b9d63d84::t_bf87c81745be6e 187
+apps/radio/src/lib/collections/playback-sessions.test.ts
+  s_a631a3b9d63d84::t_bf87c81745be6e 1400
+apps/radio/src/components/radio/node/docs/acceptance.md
+  s_a631a3b9d63d84::t_3016c1c0f76fa6 59
+  s_a631a3b9d63d84::t_f224927fbd7d0f 55-58
+  s_a631a3b9d63d84::t_452b290336c1a9 49
+  s_a631a3b9d63d84::t_71fc9264accd73 44
+apps/radio/src/components/radio/node/device-nodes.test.tsx
+  s_a631a3b9d63d84::t_bf87c81745be6e 417
+apps/radio/src/components/radio/node/flow-adapter.ts
+  s_a631a3b9d63d84::t_d736b1e40a527c 8
+apps/radio/src/components/radio/node/audio-input-controls.tsx
+  s_a631a3b9d63d84::t_bf87c81745be6e 32,34
+apps/radio/src/components/radio/node/node-palette.tsx
+  s_a631a3b9d63d84::t_bf87c81745be6e 125
+apps/radio/src/components/radio/node/branch-edge.tsx
+  s_a631a3b9d63d84::t_71dedbc45e85dc 26
+apps/radio/src/components/radio/node/docs/design-history.md
+  s_a631a3b9d63d84::t_b8124eae6aea65 89
+  s_a631a3b9d63d84::t_d3ac9d0c7a806e 67,638-639,653-655,659,661-664,685,768-769,897-898,964-965,1030,1096,1101-1102
+apps/radio/src/components/radio/node/cable-surgery.ts
+  s_a631a3b9d63d84::t_bf87c81745be6e 11
+apps/radio/src/components/radio/node/node-source-row.tsx
+  s_a631a3b9d63d84::t_bf87c81745be6e 45
+apps/radio/src/components/radio/NODE_MODE_PROPOSAL.md
+  s_a631a3b9d63d84::t_411f8958d2ac37 3,145-146,179
+  s_a631a3b9d63d84::t_d3ac9d0c7a806e 147
+apps/radio/scripts/check-node-chunk.ts
+  s_a631a3b9d63d84::t_bc380be1fb112c 203-204
+apps/radio/src/components/radio/node/node-canvas.tsx
+  s_a631a3b9d63d84::t_976a4b633f166f 1122
+  s_a631a3b9d63d84::t_350ae182cf819c 457
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "700231e85bd58094dfb5f6ca3b1b7459b450dad2",
+  "prompts": {},
+  "sessions": {
+    "s_a631a3b9d63d84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec2260eb-768d-477e-ba94-ef80627c2c4a",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

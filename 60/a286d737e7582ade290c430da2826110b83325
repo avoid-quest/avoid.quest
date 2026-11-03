@@ -1,0 +1,19 @@
+apps/radio/src/components/theme/header.tsx
+  s_8eb5d3d2581234::t_12eb475cbf45b2 3,76,78,84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60a286d737e7582ade290c430da2826110b83325",
+  "prompts": {},
+  "sessions": {
+    "s_8eb5d3d2581234": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a27b-f11c-77e1-88f7-85711c3597a0",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

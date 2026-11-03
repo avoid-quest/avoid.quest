@@ -1,0 +1,36 @@
+apps/radio/src/lib/stations/stream-station-loader.ts
+  s_86862bb539c991::t_2874e6e8ecf39a 1-36
+apps/radio/src/components/radio/single/single-player.tsx
+  s_86862bb539c991::t_2874e6e8ecf39a 14,26,97-113,242
+apps/radio/src/components/radio/radio-search-bar.tsx
+  s_86862bb539c991::t_2874e6e8ecf39a 390
+apps/radio/src/lib/collections/session-radios.ts
+  s_86862bb539c991::t_2874e6e8ecf39a 167-171
+apps/radio/src/components/radio/single/single-player.test.tsx
+  s_86862bb539c991::t_f730417da4ba60 131-133
+  s_86862bb539c991::t_7147f5bd6e69bf 48
+  s_86862bb539c991::t_0403367941e32e 1-47,49-130,134-162,164-200
+  s_86862bb539c991::t_7e6a173e5d2fea 163
+apps/radio/src/components/radio/dj/external-search/search-input.tsx
+  s_86862bb539c991::t_2874e6e8ecf39a 241
+apps/radio/src/lib/node-source-loaders.ts
+  s_86862bb539c991::t_2874e6e8ecf39a 40-41
+apps/radio/src/components/radio/node/node-inspector.test.tsx
+  s_86862bb539c991::t_bb6a14ebebb96a 725-727
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "383e20226ff5862217d6cb9d8e977e68d8cf6779",
+  "prompts": {},
+  "sessions": {
+    "s_86862bb539c991": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a2bf-f391-75a2-b181-1435d41ba776",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "az3ta <24527778+az3ta@users.noreply.github.com>"
+    }
+  }
+}

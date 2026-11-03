@@ -16,6 +16,8 @@ export type VolumeControlProps = {
   onVolumeCommit?: () => void;
   /** Names what the control affects, e.g. "all" reads "Mute all". */
   target?: string;
+  /** Override the slider's accessible name, e.g. "Main volume". */
+  volumeLabel?: string;
   /** The browser ignores media volume, so the slider would do nothing. */
   deviceVolume?: boolean;
   className?: string;
@@ -36,6 +38,7 @@ export function VolumeControl({
   onVolumeChange,
   onVolumeCommit,
   target,
+  volumeLabel,
   deviceVolume = false,
   className,
 }: VolumeControlProps) {
@@ -60,7 +63,7 @@ export function VolumeControl({
         </span>
       ) : (
         <Slider
-          aria-label={`Volume${suffix}`}
+          aria-label={volumeLabel ?? `Volume${suffix}`}
           aria-valuetext={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
           className="min-w-0 flex-1"
           defaultValue={[1]}

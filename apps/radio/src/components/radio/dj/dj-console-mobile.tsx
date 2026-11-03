@@ -129,7 +129,7 @@ export function DjConsoleMobile({
           >
             <IconVolume className="size-3.5 shrink-0 text-muted-foreground" />
             <Slider
-              aria-label="Master volume"
+              aria-label="Main volume"
               className="py-2.5"
               defaultMarkerValue={100}
               defaultValue={[100]}

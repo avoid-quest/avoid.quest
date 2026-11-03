@@ -74,7 +74,7 @@ export function FileNodeBody({
     <EmptySourceFrame
       embedded={embedded}
       onRemove={onRemove}
-      removeLabel={radio ? `Remove ${radio.name}` : "Remove empty File"}
+      removeLabel="Remove from patch"
       selected={selected}
       title={radio?.name ?? "File"}
     >

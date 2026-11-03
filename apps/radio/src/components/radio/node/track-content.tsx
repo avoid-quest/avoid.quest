@@ -139,9 +139,13 @@ export function TrackCard({
                 }
               />
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onRemove} variant="destructive">
+                <DropdownMenuItem
+                  onClick={onRemove}
+                  title={`Remove ${typeName.toLowerCase()} from patch`}
+                  variant="destructive"
+                >
                   <IconTrash />
-                  Remove {typeName}
+                  Remove from patch
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -202,7 +206,7 @@ export function TrackNodeBody({
       className="w-84"
       embedded={embedded}
       onRemove={onRemove}
-      removeLabel="Remove empty Track"
+      removeLabel="Remove from patch"
       selected={selected}
       title="Track"
     >

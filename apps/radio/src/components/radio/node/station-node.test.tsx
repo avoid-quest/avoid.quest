@@ -235,8 +235,8 @@ test("a filled Station removes its own node separately from the station library 
   fireEvent.keyDown(view.getByRole("button", { name: "Options for KEXP" }), {
     key: "ArrowDown",
   });
-  expect(view.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
-  fireEvent.click(view.getByRole("menuitem", { name: "Remove node" }));
+  expect(view.getByRole("menuitem", { name: "Delete station" })).toBeTruthy();
+  fireEvent.click(view.getByRole("menuitem", { name: "Remove from patch" }));
   expect(onRemove).toHaveBeenCalledTimes(1);
   expect(onDelete).not.toHaveBeenCalled();
 });

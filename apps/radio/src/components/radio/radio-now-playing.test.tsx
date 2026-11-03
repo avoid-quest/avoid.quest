@@ -495,7 +495,7 @@ describe("RadioNowPlaying", () => {
     expect(details.getByText("Current show description.")).toBeTruthy();
     expect(details.getByText("Static station description.")).toBeTruthy();
     expect(details.getByText("Berlin, Germany")).toBeTruthy();
-    const stationLink = details.getByRole("link", { name: "Station website" });
+    const stationLink = details.getByRole("link", { name: "Website" });
     expect(stationLink.getAttribute("href")).toBe("https://radio.example/");
     expect(stationLink.getAttribute("target")).toBe("_blank");
     expect(stationLink.getAttribute("rel")).toBe("noopener noreferrer");
@@ -586,7 +586,7 @@ describe("RadioNowPlaying", () => {
     const details = within(view.getByRole("dialog"));
     expect(details.getAllByText("Static station description.")).toHaveLength(1);
     expect(details.queryByRole("heading", { name: "Description" })).toBeNull();
-    expect(details.queryByRole("link", { name: "Station website" })).toBeNull();
+    expect(details.queryByRole("link", { name: "Website" })).toBeNull();
   });
 
   test("recovers from a failed artwork URL when the show changes", () => {

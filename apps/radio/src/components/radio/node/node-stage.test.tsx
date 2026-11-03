@@ -147,8 +147,8 @@ describe("NodeStage", () => {
     const sources = await waitFor(() =>
       view.getByRole("list", { name: "Sources" })
     );
-    expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy();
-    expect(view.getByRole("button", { name: "Mute all" })).toBeTruthy();
+    expect(view.getByRole("slider", { name: "Main volume" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Mute main volume" })).toBeTruthy();
     expect(view.queryByRole("button", { name: BULK_TRANSPORT })).toBeNull();
 
     expect(within(sources).getAllByRole("listitem")).toHaveLength(2);
@@ -179,7 +179,7 @@ describe("NodeStage", () => {
     const pause = await waitFor(() =>
       view.getByRole("button", { name: "Pause NTS 1" })
     );
-    expect(view.getByTitle("Master level")).toBeTruthy();
+    expect(view.getByTitle("Main level")).toBeTruthy();
     expect(view.queryByRole("button", { name: BULK_TRANSPORT })).toBeNull();
     fireEvent.click(pause);
     expect(controls.setPlaying).toHaveBeenLastCalledWith("src-nts", false);
@@ -299,7 +299,7 @@ describe("NodeStage", () => {
     await waitFor(() =>
       expect(view.getByText("Search to add a station")).toBeTruthy()
     );
-    expect(view.getByRole("slider", { name: "Volume all" })).toBeTruthy();
+    expect(view.getByRole("slider", { name: "Main volume" })).toBeTruthy();
     expect(view.queryByRole("button", { name: BULK_TRANSPORT })).toBeNull();
   });
 

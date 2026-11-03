@@ -282,7 +282,7 @@ export function AudioInputNodeBody({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRemove} variant="destructive">
                 <IconTrash />
-                Remove
+                Remove from patch
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -334,7 +334,7 @@ export function AudioInputNodeBody({
           variant="ghost"
         >
           <IconTrash />
-          Remove audio input
+          Remove from patch
         </Button>
       ) : null}
       {error?.trim() && !denied && !unplugged ? (

@@ -32,7 +32,7 @@ function useAudioContextState(): string | null {
 function MasterMeter() {
   const level = useMasterPeakLevel();
   return (
-    <div title="Master level">
+    <div title="Main level">
       <PeakMeter
         compact
         left={level.left}
@@ -73,8 +73,9 @@ export function NodeMasterControls({ className }: { className?: string }) {
         isMuted={masterMuted}
         onToggleMute={toggleMasterMute}
         onVolumeChange={setMasterVolume}
-        target="all"
+        target="main volume"
         volume={masterVolume}
+        volumeLabel="Main volume"
       />
       {isAnyPlaying ? <MasterMeter /> : null}
       {needsResume ? (

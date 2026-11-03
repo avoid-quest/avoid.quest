@@ -290,7 +290,7 @@ export function ModuleHeader({
             {onInspect || onSwap || onReset ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onClick={onRemove} variant="destructive">
               <IconTrash />
-              Remove
+              Remove from patch
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

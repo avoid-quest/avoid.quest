@@ -18,6 +18,7 @@ import {
   stationRowButtonClassName,
   stationRowClassName,
 } from "../station-row";
+import { StationSaveStatus } from "../station-save-status";
 
 function StationRow({
   radio,
@@ -82,13 +83,16 @@ function StationRow({
         />
         <StationRowText
           indicator={
-            isCurrent && isPlaying ? (
-              <IconWaveSine
-                aria-label="Playing"
-                className="size-3.5 shrink-0"
-                role="img"
-              />
-            ) : null
+            <>
+              <StationSaveStatus radio={radio} />
+              {isCurrent && isPlaying ? (
+                <IconWaveSine
+                  aria-label="Playing"
+                  className="size-3.5 shrink-0"
+                  role="img"
+                />
+              ) : null}
+            </>
           }
           isCurrent={isCurrent}
           title={radio.name}

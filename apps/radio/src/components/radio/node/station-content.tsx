@@ -80,7 +80,7 @@ function EmptyStation({
     <EmptySourceFrame
       embedded={embedded}
       onRemove={onRemove}
-      removeLabel="Remove empty Station"
+      removeLabel="Remove from patch"
       selected={selected}
       title="Station"
     >

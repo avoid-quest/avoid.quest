@@ -119,10 +119,10 @@ export function ImportPage() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 p-4">
       <div className="space-y-2 text-center">
-        <h1 className="font-semibold text-lg">Import configuration</h1>
+        <h1 className="font-semibold text-lg">Backup & share</h1>
         <p className="text-muted-foreground">
-          Someone shared their radio configuration with you. Review the changes
-          below and choose how to import them.
+          Someone shared their stations and playback settings with you. Review
+          the changes below and choose how to import them.
         </p>
       </div>
 
@@ -163,9 +163,10 @@ export function ImportPage() {
       <Card className="p-6">
         <div className="space-y-4">
           <div>
-            <h3 className="mb-2 font-medium">Mode</h3>
+            <h3 className="mb-2 font-medium">Import as</h3>
             <p className="mb-4 text-muted-foreground text-sm">
-              Choose how you want to import this configuration:
+              Choose how you want to import these stations and playback
+              settings:
             </p>
           </div>
 

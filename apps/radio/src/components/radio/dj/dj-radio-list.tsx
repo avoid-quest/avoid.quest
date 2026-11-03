@@ -33,6 +33,7 @@ import {
   stationFallbackSubtitle,
   stationRowButtonOnlyClassName,
 } from "../station-row";
+import { StationSaveStatus } from "../station-save-status";
 import { ExternalSearch } from "./external-search";
 
 type DeckId = "deck-a" | "deck-b";
@@ -130,7 +131,10 @@ function StationRow({
         name={radio.name}
         size="md"
       />
-      <StationRowText title={radio.name}>
+      <StationRowText
+        indicator={<StationSaveStatus radio={radio} />}
+        title={radio.name}
+      >
         <RadioListItemMetadata
           fallback={
             <StationRowSubtitle>

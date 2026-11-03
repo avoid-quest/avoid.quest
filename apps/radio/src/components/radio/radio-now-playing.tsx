@@ -22,6 +22,7 @@ import type { RadioNowPlaying as RadioNowPlayingMetadata } from "@/lib/metadata/
 import { GenreBadges } from "./genre-badges";
 import { RadioLogo } from "./radio-logo";
 import { formatLocation } from "./station-row";
+import { StationSaveStatus } from "./station-save-status";
 
 type RadioNowPlayingProps = {
   radio: Radio;
@@ -299,6 +300,7 @@ export function RadioNowPlaying({
               genre={metadata?.genre}
               limit={featured ? 3 : 1}
             />
+            <StationSaveStatus radio={radio} />
             <ConnectionStatus isBuffering={isBuffering} isLoading={isLoading} />
           </div>
         </div>
@@ -344,7 +346,7 @@ function StationInformation({
             rel="noopener noreferrer"
             target="_blank"
           >
-            Station website
+            Website
             <IconArrowUpRight aria-hidden="true" className="size-3.5" />
           </a>
         ) : null}

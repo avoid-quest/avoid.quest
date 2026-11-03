@@ -8,6 +8,7 @@ import {
 } from "@avoid.quest/ui/components/tabs";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useState } from "react";
+import { AddStationButton } from "@/components/settings/add-station-button";
 import type { Radio } from "@/lib/audio";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import {
@@ -162,7 +163,7 @@ function RowList({
   isSearch?: boolean;
 }) {
   if (items.length === 0) {
-    return <EmptyHint>{emptyLabel}</EmptyHint>;
+    return <EmptyHint action={<AddStationButton />}>{emptyLabel}</EmptyHint>;
   }
 
   return (

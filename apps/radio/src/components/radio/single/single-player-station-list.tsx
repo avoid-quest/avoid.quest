@@ -2,6 +2,7 @@
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { IconWaveSine } from "@tabler/icons-react";
+import { AddStationButton } from "@/components/settings/add-station-button";
 import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -162,7 +163,10 @@ export function StationList({
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col border-border/50 lg:w-80 lg:flex-none lg:border-r xl:w-96">
-      <div className="px-3 py-2">{searchBar}</div>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <div className="min-w-0 flex-1">{searchBar}</div>
+        <AddStationButton iconOnly />
+      </div>
 
       <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         {allRadios.length > 0 ? (
@@ -183,7 +187,10 @@ export function StationList({
             ))}
           </div>
         ) : (
-          <EmptyHint className="py-10">Search to add a station</EmptyHint>
+          <EmptyHint action={<AddStationButton />} className="py-10">
+            Search or paste a link to play a station. Save it to keep it in My
+            stations.
+          </EmptyHint>
         )}
       </ScrollArea>
     </div>

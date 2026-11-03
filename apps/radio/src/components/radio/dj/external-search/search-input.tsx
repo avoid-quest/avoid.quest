@@ -238,7 +238,7 @@ export function SearchInput({
           isSearching={isPending}
           maxLength={2048}
           onChange={handleQueryChange}
-          placeholder="Search, or paste a link"
+          placeholder="Search or paste a link"
           value={query}
         />
       </div>

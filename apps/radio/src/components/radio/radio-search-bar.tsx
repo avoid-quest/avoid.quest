@@ -387,7 +387,7 @@ export function RadioSearchBar({
   onSubmitUrl,
   className,
   dropdownClassName,
-  placeholder = "Search stations…",
+  placeholder = "Search stations or paste a link",
 }: RadioSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);

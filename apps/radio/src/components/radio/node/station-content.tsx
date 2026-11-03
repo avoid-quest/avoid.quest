@@ -91,7 +91,6 @@ function EmptyStation({
         onSelectDiscovered={onSelectDiscovered}
         onSelectLocal={onSelectLocal}
         onSubmitUrl={onSubmitUrl}
-        placeholder="Search or paste a stream"
         radios={radios}
       />
     </EmptySourceFrame>

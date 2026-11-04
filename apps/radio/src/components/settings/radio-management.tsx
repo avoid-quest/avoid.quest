@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 import { Button } from "@avoid.quest/ui/components/button";
 import { Checkbox } from "@avoid.quest/ui/components/checkbox";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import type {
   Announcements,
   DragEndEvent,
@@ -22,9 +23,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVerticalIcon, PlusIcon } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import { IconArrowLeft, IconGripVertical, IconPlus } from "@tabler/icons-react";
+import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
   deleteRadio,
@@ -38,7 +38,7 @@ import { RadioLogo } from "../radio/radio-logo";
 import { SearchField } from "../radio/search-field";
 import { stationFallbackSubtitle } from "../radio/station-row";
 
-import { RadioDialog } from "./radio-dialog";
+import { StationEditor } from "./station-editor";
 
 type SortableRadioItemProps = {
   radio: Radio;
@@ -86,12 +86,12 @@ function SortableRadioItem({
     >
       <button
         aria-label={`Reorder ${radio.name}`}
-        className="flex size-8 shrink-0 cursor-grab touch-none select-none items-center justify-center rounded-sm text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing [@media(pointer:coarse)]:size-11"
+        className="flex size-8 shrink-0 cursor-grab touch-none select-none items-center justify-center text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing [@media(pointer:coarse)]:size-11"
         type="button"
         {...attributes}
         {...listeners}
       >
-        <GripVerticalIcon className="size-3.5" />
+        <IconGripVertical className="size-3.5" />
       </button>
       <RadioLogo
         decorative
@@ -140,7 +140,7 @@ function stationName(radios: Radio[] | undefined, id: UniqueIdentifier) {
   );
 }
 
-export function RadioManagement() {
+export function RadioManagement({ defaultPage }: { defaultPage?: "create" }) {
   const { data: radios } = useAllRadios();
   // Screen readers hear station names, not record ids, while reordering.
   const reorderAnnouncements: Announcements = {
@@ -157,8 +157,16 @@ export function RadioManagement() {
     onDragStart: ({ active }) => `Picked up ${stationName(radios, active.id)}.`,
   };
   const [isUpdating, setIsUpdating] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [editorOpen, setEditorOpen] = useState(defaultPage === "create");
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(editorOpen);
+  useEffect(() => {
+    if (wasEditing.current && !editorOpen) {
+      addButtonRef.current?.focus();
+    }
+    wasEditing.current = editorOpen;
+  }, [editorOpen]);
+  const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [selectedRadio, setSelectedRadio] = useState<Radio | undefined>();
   const [deleteConfirm, setDeleteConfirm] = useState<Radio | null>(null);
   const [filter, setFilter] = useState("");
@@ -240,15 +248,15 @@ export function RadioManagement() {
   };
 
   const handleAddRadio = () => {
-    setDialogMode("create");
+    setEditorMode("create");
     setSelectedRadio(undefined);
-    setDialogOpen(true);
+    setEditorOpen(true);
   };
 
   const handleEditRadio = (radio: Radio) => {
-    setDialogMode("edit");
+    setEditorMode("edit");
     setSelectedRadio(radio);
-    setDialogOpen(true);
+    setEditorOpen(true);
   };
 
   const handleDeleteRadio = (radio: Radio) => {
@@ -274,6 +282,17 @@ export function RadioManagement() {
   const handleCancelDelete = () => {
     setDeleteConfirm(null);
   };
+  const handleCloseEditor = () => setEditorOpen(false);
+
+  if (editorOpen) {
+    return (
+      <StationEditorPage
+        mode={editorMode}
+        onClose={handleCloseEditor}
+        radio={selectedRadio}
+      />
+    );
+  }
 
   if (!radios) {
     return <LoadingFallback />;
@@ -289,8 +308,13 @@ export function RadioManagement() {
           placeholder={`Filter ${radios.length} stations…`}
           value={filter}
         />
-        <Button onClick={handleAddRadio} size="sm" variant="outline">
-          <PlusIcon />
+        <Button
+          onClick={handleAddRadio}
+          ref={addButtonRef}
+          size="sm"
+          variant="outline"
+        >
+          <IconPlus />
           Add station
         </Button>
       </div>
@@ -334,18 +358,44 @@ export function RadioManagement() {
         </DndContext>
       </div>
 
-      <RadioDialog
-        mode={dialogMode}
-        onOpenChange={setDialogOpen}
-        open={dialogOpen}
-        radio={selectedRadio}
-      />
-
       <ConfirmDeleteDialog
         onCancel={handleCancelDelete}
         onConfirm={confirmDelete}
         radio={deleteConfirm}
       />
+    </div>
+  );
+}
+
+function StationEditorPage({
+  mode,
+  radio,
+  onClose,
+}: {
+  mode: "create" | "edit";
+  radio?: Radio;
+  onClose: () => void;
+}) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => headingRef.current?.focus(), []);
+  return (
+    <div className="space-y-4">
+      <Button onClick={onClose} size="sm" type="button" variant="ghost">
+        <IconArrowLeft aria-hidden="true" /> My stations
+      </Button>
+      <h2
+        className="font-medium text-sm outline-none"
+        ref={headingRef}
+        tabIndex={-1}
+      >
+        {mode === "create" ? "Add station" : "Edit station"}
+      </h2>
+      <p className="text-muted-foreground text-xs">
+        {mode === "create"
+          ? "Search Radio Garden, fetch from a URL, or enter details manually."
+          : "Update station details."}
+      </p>
+      <StationEditor mode={mode} onClose={onClose} radio={radio} />
     </div>
   );
 }

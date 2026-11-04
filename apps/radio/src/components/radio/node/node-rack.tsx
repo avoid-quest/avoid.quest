@@ -3,9 +3,10 @@
 import { Badge } from "@avoid.quest/ui/components/badge";
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconKey, IconPlaylist } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
-import { KeyRoundIcon, ListMusicIcon } from "lucide-react";
 import { useId, useState } from "react";
+import { AddStationButton } from "@/components/settings/add-station-button";
 import type { Radio } from "@/lib/audio";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
@@ -219,7 +220,7 @@ function LaneChain({
         if (!isInspectable(node)) {
           return (
             <Badge
-              className="font-normal text-[10px]"
+              className="font-normal text-xs"
               key={node.id}
               variant="outline"
             >
@@ -230,31 +231,31 @@ function LaneChain({
         const keyedBy = keyers.get(node.id);
         return (
           <Badge
-            asChild
-            className="cursor-pointer font-normal text-[10px] hover:bg-accent hover:text-accent-foreground"
+            className="cursor-pointer font-normal text-xs hover:bg-accent hover:text-accent-foreground"
             key={node.id}
+            render={
+              <button
+                aria-label={
+                  keyedBy
+                    ? `${name} settings, keyed by ${keyedBy}`
+                    : `${name} settings`
+                }
+                data-inspect-node={node.id}
+                onClick={() => actions.inspectNode(node.id)}
+                title={keyedBy ? `Keyed by ${keyedBy}` : undefined}
+                type="button"
+              >
+                {name}
+                {keyedBy ? (
+                  <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
+                    <IconKey aria-hidden className="size-2.5" />
+                    <span className="max-w-24 truncate">{keyedBy}</span>
+                  </span>
+                ) : null}
+              </button>
+            }
             variant="outline"
-          >
-            <button
-              aria-label={
-                keyedBy
-                  ? `${name} settings, keyed by ${keyedBy}`
-                  : `${name} settings`
-              }
-              data-inspect-node={node.id}
-              onClick={() => actions.inspectNode(node.id)}
-              title={keyedBy ? `Keyed by ${keyedBy}` : undefined}
-              type="button"
-            >
-              {name}
-              {keyedBy ? (
-                <span className="flex min-w-0 items-center gap-0.5 text-muted-foreground">
-                  <KeyRoundIcon aria-hidden className="size-2.5" />
-                  <span className="max-w-24 truncate">{keyedBy}</span>
-                </span>
-              ) : null}
-            </button>
-          </Badge>
+          />
         );
       })}
       <BackendBadge nodeId={lane.id} />
@@ -275,7 +276,7 @@ function TracksButton({ nodeId, name }: { nodeId: string; name: string }) {
       title="Tracks"
       variant="ghost"
     >
-      <ListMusicIcon className="size-3.5" />
+      <IconPlaylist className="size-3.5" />
     </Button>
   );
 }
@@ -288,7 +289,7 @@ function HiddenStationRow({ radio, nodeId }: { radio: Radio; nodeId: string }) {
       className={cn(
         stationRowClassName,
         "opacity-60",
-        isSessionRadio(radio) && "border-l-2 border-l-[#00d084]/40"
+        isSessionRadio(radio) && "border-l-2 border-l-success/40"
       )}
     >
       <StationRowText title={radio.name}>
@@ -355,7 +356,9 @@ export function NodeRack({
       {graph.nodes.every(
         (node) => getNodeDefinition(node.type).category === "output"
       ) ? (
-        <EmptyHint className="py-10">Search to add a station</EmptyHint>
+        <EmptyHint action={<AddStationButton />} className="py-10">
+          Search to add a station
+        </EmptyHint>
       ) : null}
       {groups.map((group) => (
         <RackSection

@@ -6,8 +6,8 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@avoid.quest/ui/components/radio-group";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { type ReactNode, useState } from "react";
-import { toast } from "sonner";
 import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
   copyShareUrlToClipboard,
@@ -254,7 +254,7 @@ export function ImportExport({
             <div className="border-t pt-3">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  <div className="h-1.5 w-1.5 bg-primary" />
                   <h4 className="font-medium text-sm">Preview</h4>
                 </div>
 
@@ -286,7 +286,7 @@ export function ImportExport({
                 <ImportPatchPreview patch={importPreview.nodePatch} />
 
                 <div className="space-y-2">
-                  <Label id="import-mode-label">Mode</Label>
+                  <Label id="import-mode-label">Import as</Label>
                   <RadioGroup
                     aria-labelledby="import-mode-label"
                     onValueChange={handleImportModeChange}

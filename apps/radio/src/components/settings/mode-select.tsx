@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers
 
 import { Skeleton } from "@avoid.quest/ui/components/skeleton";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import {
   ToggleGroup,
@@ -12,9 +13,8 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { CableIcon, ListMusicIcon, SwordsIcon } from "lucide-react";
+import { IconPlaylist, IconPlug, IconSwords } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { DjWorkflowLoadError } from "@/lib/dj-workflow-load-error";
 import { useSettings } from "@/lib/hooks/use-settings";
 import { normalizePlayerMode } from "@/lib/normalize-player-mode";
@@ -22,9 +22,9 @@ import { playerModes } from "@/lib/types";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 
 const modeIcons = {
-  dj: SwordsIcon,
-  node: CableIcon,
-  single: ListMusicIcon,
+  dj: IconSwords,
+  node: IconPlug,
+  single: IconPlaylist,
 } as const;
 
 export function ModeSelect({ className }: { className?: string }) {
@@ -47,7 +47,8 @@ export function ModeSelect({ className }: { className?: string }) {
     return () => clearTimeout(timer);
   }, [pendingMode]);
 
-  const handleModeChange = async (value: string) => {
+  const handleModeChange = async (values: string[]) => {
+    const [value] = values;
     if (!(settings && value) || requestedMode || isTransitioning) {
       return;
     }
@@ -73,42 +74,42 @@ export function ModeSelect({ className }: { className?: string }) {
 
   return (
     <ToggleGroup
-      aria-label="Playback mode"
+      aria-label="Mode"
       className={cn("w-full max-w-xs", className)}
+      multiple={false}
       onValueChange={handleModeChange}
-      type="single"
-      value={
+      value={[
         modeTransition.currentMode ??
-        // With no mode running, a mode that is starting is the selection,
-        // even though the settings still name the one that failed.
-        modeTransition.requestedMode ??
-        (modeTransition.error ? "" : normalizePlayerMode(settings?.player.mode))
-      }
+          // With no mode running, a mode that is starting is the selection,
+          // even though the settings still name the one that failed.
+          modeTransition.requestedMode ??
+          (modeTransition.error
+            ? ""
+            : normalizePlayerMode(settings?.player.mode)),
+      ]}
       variant="outline"
     >
       {playerModes.map((mode) => {
         const Icon = modeIcons[mode.value];
         return (
           <Tooltip key={mode.value}>
-            {/* Item outside the tooltip, so its on/off data-state is kept. */}
+            {/* Item outside the tooltip, so its pressed state is kept. */}
             <ToggleGroupItem
               aria-busy={pendingMode === mode.value || undefined}
               aria-label={mode.label}
-              asChild
               className="h-7 cursor-pointer gap-1.5 px-3 text-xs"
               disabled={isTransitioning || requestedMode !== null}
+              render={<TooltipTrigger />}
               value={mode.value}
             >
-              <TooltipTrigger>
-                {spinnerMode === mode.value && pendingMode === mode.value ? (
-                  <Spinner className="size-3.5" />
-                ) : (
-                  <Icon className="size-3.5" />
-                )}
-                <span className="hidden font-mono text-[10px] uppercase tracking-wider sm:block">
-                  {mode.label}
-                </span>
-              </TooltipTrigger>
+              {spinnerMode === mode.value && pendingMode === mode.value ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                <Icon className="size-3.5" />
+              )}
+              <span className="hidden font-mono text-xs uppercase tracking-wider sm:block">
+                {mode.label}
+              </span>
             </ToggleGroupItem>
             {/* Names the icon only while the label is hidden. */}
             <TooltipContent className="sm:hidden" side="bottom" sideOffset={6}>

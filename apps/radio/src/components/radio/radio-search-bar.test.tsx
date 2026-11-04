@@ -16,6 +16,7 @@ import type {
   StationDirectoryAdapter,
   StationDiscoveryCandidate,
 } from "@/lib/stations/station-discovery";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -37,6 +38,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
@@ -343,7 +345,7 @@ test("Save is a keyboard-focusable grid action outside any listbox option", asyn
   });
   type("radio");
   const button = await waitFor(() =>
-    view.getByRole("button", { name: "Save Radio Test to collection" })
+    view.getByRole("button", { name: "Save Radio Test to My stations" })
   );
   expect(search.getAttribute("aria-haspopup")).toBe("grid");
   expect(button.closest('[role="option"]')).toBeNull();
@@ -353,6 +355,23 @@ test("Save is a keyboard-focusable grid action outside any listbox option", asyn
   fireEvent.click(button);
   expect(save).toHaveBeenCalledWith(station.radio);
   expect(search.value).toBe("radio");
+});
+
+test("temporary local results show Not saved and can be saved to My stations", async () => {
+  const station: Radio = { ...kexp, id: "rb_kexp" };
+  const save = mock(noop);
+  const { type, view } = renderSearch({
+    onSaveDiscovered: save,
+    radios: [station],
+  });
+  type("KEXP");
+  const button = await waitFor(() =>
+    view.getByRole("button", { name: "Save KEXP to My stations" })
+  );
+  expect(view.getByText("Not saved")).toBeTruthy();
+  expect(view.queryByRole("img", { name: "In My stations" })).toBeNull();
+  fireEvent.click(button);
+  expect(save).toHaveBeenCalledWith(station);
 });
 
 test("closing search aborts pending directory requests", async () => {

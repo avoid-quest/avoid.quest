@@ -2,7 +2,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Volume1Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import { IconVolume, IconVolume2, IconVolumeOff } from "@tabler/icons-react";
 
 const QUIET_VOLUME = 0.5;
 
@@ -16,6 +16,8 @@ export type VolumeControlProps = {
   onVolumeCommit?: () => void;
   /** Names what the control affects, e.g. "all" reads "Mute all". */
   target?: string;
+  /** Override the slider's accessible name, e.g. "Main volume". */
+  volumeLabel?: string;
   /** The browser ignores media volume, so the slider would do nothing. */
   deviceVolume?: boolean;
   className?: string;
@@ -23,9 +25,9 @@ export type VolumeControlProps = {
 
 function getVolumeIcon(volume: number, isMuted: boolean) {
   if (isMuted || volume === 0) {
-    return VolumeXIcon;
+    return IconVolumeOff;
   }
-  return volume < QUIET_VOLUME ? Volume1Icon : Volume2Icon;
+  return volume < QUIET_VOLUME ? IconVolume2 : IconVolume;
 }
 
 /** The one mute button + volume slider pair outside the DJ mixer. */
@@ -36,6 +38,7 @@ export function VolumeControl({
   onVolumeChange,
   onVolumeCommit,
   target,
+  volumeLabel,
   deviceVolume = false,
   className,
 }: VolumeControlProps) {
@@ -60,14 +63,14 @@ export function VolumeControl({
         </span>
       ) : (
         <Slider
-          aria-label={`Volume${suffix}`}
+          aria-label={volumeLabel ?? `Volume${suffix}`}
           aria-valuetext={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
           className="min-w-0 flex-1"
           defaultValue={[1]}
           max={1}
           min={0}
           onValueChange={handleValueChange}
-          onValueCommit={onVolumeCommit}
+          onValueCommitted={onVolumeCommit}
           step={0.01}
           value={[isMuted ? 0 : volume]}
         />

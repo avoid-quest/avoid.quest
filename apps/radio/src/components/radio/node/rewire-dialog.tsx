@@ -86,7 +86,12 @@ export function RewireDialog({
           <div className="grid gap-2">
             <Label htmlFor="node-rewire-end">Cable end</Label>
             <Select
+              items={{ source: "Source", target: "Destination" }}
               onValueChange={(value) => {
+                if (value === null) {
+                  return;
+                }
+
                 if (value === "source" || value === "target") {
                   setEnd(value);
                   setTargetKey(null);
@@ -111,11 +116,24 @@ export function RewireDialog({
           <div className="grid gap-2">
             <Label htmlFor="node-rewire-port">New port</Label>
             <Select
+              items={targets.map((entry) => ({
+                value: entry.key,
+                label: (
+                  <span className="whitespace-normal">
+                    {entry.label}
+                    {entry.reason ? ` — ${entry.reason}` : ""}
+                  </span>
+                ),
+              }))}
               onValueChange={(value) => {
+                if (value === null) {
+                  return;
+                }
+
                 setTargetKey(value);
                 setRefusal(null);
               }}
-              value={target?.key ?? ""}
+              value={target?.key ?? null}
             >
               <SelectTrigger
                 aria-label="New port"

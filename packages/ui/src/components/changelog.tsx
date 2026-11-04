@@ -21,7 +21,7 @@ import {
   subscribeChangelogSeen,
 } from "@avoid.quest/ui/lib/changelog";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { CircleQuestionMarkIcon } from "lucide-react";
+import { IconHelpCircle } from "@tabler/icons-react";
 import { type ReactNode, useState, useSyncExternalStore } from "react";
 
 type ChangelogProps = {
@@ -91,27 +91,31 @@ export function Changelog({
     <Popover onOpenChange={handleOpenChange} open={isOpen}>
       {/* The hint stays out of the way of the open list. */}
       <Tooltip onOpenChange={handleHintOpenChange} open={isHintOpen && !isOpen}>
-        {/* Popover outside the tooltip, so its data-state is the one kept. */}
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <Button
-              aria-label={hasUnseen ? "What's new (unread)" : "What's new"}
-              className={cn("relative size-7", className)}
-              size="icon"
-              variant="ghost"
-            >
-              <CircleQuestionMarkIcon className="size-3.5" />
-              {hasUnseen ? (
-                <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
-              ) : null}
-            </Button>
-          </TooltipTrigger>
-        </PopoverTrigger>
+        {/* The popover and tooltip share one trigger element. */}
+        <PopoverTrigger
+          render={
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label={hasUnseen ? "What's new (unread)" : "What's new"}
+                  className={cn("relative size-7", className)}
+                  size="icon"
+                  variant="ghost"
+                >
+                  <IconHelpCircle className="size-3.5" />
+                  {hasUnseen ? (
+                    <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
+                  ) : null}
+                </Button>
+              }
+            />
+          }
+        />
         <TooltipContent side="bottom" sideOffset={6}>
           What's new
         </TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="w-80 p-0">
+      <PopoverContent align="end" aria-label="What's new" className="w-80 p-0">
         <p className="px-3 pt-2.5 pb-1 font-medium text-xs">What's new</p>
         {entries.length > 0 ? (
           <ul className="max-h-80 overflow-y-auto px-3 pb-2">
@@ -144,7 +148,7 @@ export function Changelog({
           </p>
         )}
         {footer ? (
-          <div className="border-t px-3 py-1.5 font-mono text-[10px] text-muted-foreground">
+          <div className="border-t px-3 py-1.5 font-mono text-muted-foreground text-xs">
             {footer}
           </div>
         ) : null}

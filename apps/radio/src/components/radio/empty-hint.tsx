@@ -5,12 +5,14 @@ import {
 } from "@avoid.quest/ui/components/empty";
 import { cn } from "@avoid.quest/ui/lib/utils";
 
-/** The compact empty state: an optional faint icon over one line of direction. */
+/** The compact empty state, with an optional icon and action. */
 export function EmptyHint({
+  action,
   icon,
   children,
   className,
 }: {
+  action?: React.ReactNode;
   icon?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
@@ -23,6 +25,7 @@ export function EmptyHint({
         </EmptyMedia>
       ) : null}
       <EmptyDescription className="text-xs">{children}</EmptyDescription>
+      {action}
     </Empty>
   );
 }

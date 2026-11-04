@@ -46,7 +46,7 @@ type SearchInputProps = {
 const PLATFORM_HINTS: Record<SearchPlatform, string> = {
   all: "Tracks, shows and stations",
   bandcamp: "Tracks & albums from independent artists",
-  local: "Curated and saved stations",
+  local: "Saved and unsaved stations",
   mixcloud: "DJ mixes, radio shows & podcasts",
   "radio-browser": "Worldwide radio stations",
   radiogarden: "40,000+ radio stations worldwide",
@@ -57,7 +57,7 @@ const PLATFORM_HINTS: Record<SearchPlatform, string> = {
 const PLATFORM_LABELS: Record<SearchPlatform, string> = {
   all: "All sources",
   bandcamp: "Bandcamp",
-  local: "Station library",
+  local: "Stations",
   mixcloud: "Mixcloud",
   "radio-browser": "Radio Browser",
   radiogarden: "Radio Garden",
@@ -175,12 +175,31 @@ export function SearchInput({
     onYoutubeFilterChange(value as "songs" | "videos");
 
   const platformControl = locked ? (
-    <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 rounded-md border border-input px-3 text-xs dark:bg-input/30">
+    <div className="flex h-8 w-[120px] shrink-0 items-center gap-1.5 border border-input px-3 text-xs dark:bg-input/30">
       <PlatformDot platform={platform} />
       <span className="truncate">{PLATFORM_LABELS[platform]}</span>
     </div>
   ) : (
-    <Select onValueChange={handlePlatformChange} value={platform}>
+    <Select
+      items={[
+        { value: "all", label: "All sources" },
+        ...PLATFORM_OPTIONS.map((option) => ({
+          value: option,
+          label: (
+            <span className="flex items-center gap-1.5">
+              <PlatformDot platform={option} />
+              {PLATFORM_LABELS[option]}
+            </span>
+          ),
+        })),
+      ]}
+      onValueChange={(nextValue) => {
+        if (nextValue !== null) {
+          handlePlatformChange(nextValue);
+        }
+      }}
+      value={platform}
+    >
       <SelectTrigger
         aria-label="Platform"
         className="w-full shrink-0 text-xs"
@@ -219,7 +238,7 @@ export function SearchInput({
           isSearching={isPending}
           maxLength={2048}
           onChange={handleQueryChange}
-          placeholder="Search, or paste a link"
+          placeholder="Search or paste a link"
           value={query}
         />
       </div>
@@ -234,7 +253,12 @@ export function SearchInput({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">Type</span>
           <Select
-            onValueChange={handleBandcampFilterChange}
+            items={{ t: "Tracks", a: "Albums", all: "All" }}
+            onValueChange={(nextValue) => {
+              if (nextValue !== null) {
+                handleBandcampFilterChange(nextValue);
+              }
+            }}
             value={bandcampFilter === "" ? "all" : bandcampFilter}
           >
             <SelectTrigger
@@ -257,7 +281,12 @@ export function SearchInput({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs">Type</span>
           <Select
-            onValueChange={handleYoutubeFilterChange}
+            items={{ songs: "Songs", videos: "Videos" }}
+            onValueChange={(nextValue) => {
+              if (nextValue !== null) {
+                handleYoutubeFilterChange(nextValue);
+              }
+            }}
             value={youtubeFilter}
           >
             <SelectTrigger

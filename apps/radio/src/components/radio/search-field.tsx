@@ -1,7 +1,7 @@
 import { Input } from "@avoid.quest/ui/components/input";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { SearchIcon } from "lucide-react";
+import { IconSearch } from "@tabler/icons-react";
 
 type SearchFieldProps = Omit<React.ComponentProps<typeof Input>, "type"> & {
   isSearching?: boolean;
@@ -18,7 +18,7 @@ export function SearchField({
 }: SearchFieldProps) {
   return (
     <div className={cn("relative", className)}>
-      <SearchIcon
+      <IconSearch
         aria-hidden="true"
         className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50"
       />

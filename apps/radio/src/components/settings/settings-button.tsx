@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { Settings2Icon } from "lucide-react";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { Suspense, useEffect, useId, useRef, useState } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 
@@ -27,7 +27,7 @@ type SettingsButtonProps = {
   defaultTab?: string;
   className?: string;
   /** Custom trigger instead of the gear icon. */
-  trigger?: React.ReactNode;
+  trigger?: React.ReactElement;
 };
 
 export function SettingsButton({
@@ -80,21 +80,20 @@ export function SettingsButton({
       onFocus={prefetchSettingsDrawerOnIntent}
       onPointerEnter={prefetchSettingsDrawerOnIntent}
       ref={triggerRef}
-    >
-      {trigger ? (
-        trigger
-      ) : (
-        <Button
-          aria-label="Open settings"
-          className={cn("size-7", className)}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Settings2Icon className="size-3.5" />
-        </Button>
-      )}
-    </Slot>
+      render={
+        trigger ?? (
+          <Button
+            aria-label="Open settings"
+            className={cn("size-7", className)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <IconAdjustmentsHorizontal className="size-3.5" />
+          </Button>
+        )
+      }
+    />
   );
 
   return (
@@ -103,7 +102,7 @@ export function SettingsButton({
         triggerButton
       ) : (
         <Tooltip>
-          <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
+          <TooltipTrigger render={triggerButton} />
           <TooltipContent side="bottom" sideOffset={6}>
             Settings
           </TooltipContent>
@@ -118,7 +117,7 @@ export function SettingsButton({
             isOpen ? (
               // The drawer chunk is what failed, so the notice stays inline.
               <div
-                className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm rounded-lg border bg-popover pb-3 text-popover-foreground shadow-lg"
+                className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm border bg-popover pb-3 text-popover-foreground shadow-lg"
                 ref={failureRef}
               >
                 {failed}

@@ -8,17 +8,21 @@ export function LegalPage({ sourceRevision }: { sourceRevision?: string }) {
         aria-label="Source navigation"
         className="flex items-center justify-between"
       >
-        <Button asChild variant="ghost">
-          <a href="/">Back to avoid.quest</a>
+        <Button render={<a href="/" />} variant="ghost">
+          Back to avoid.quest
         </Button>
-        <Button asChild size="icon" variant="ghost">
-          <a
-            aria-label="avoid.quest on GitHub"
-            href="https://github.com/avoid-quest/avoid.quest"
-            title="GitHub"
-          >
-            <GitHubIcon />
-          </a>
+        <Button
+          render={
+            <a
+              aria-label="avoid.quest on GitHub"
+              href="https://github.com/avoid-quest/avoid.quest"
+              title="GitHub"
+            />
+          }
+          size="icon"
+          variant="ghost"
+        >
+          <GitHubIcon />
         </Button>
       </nav>
 
@@ -36,22 +40,24 @@ export function LegalPage({ sourceRevision }: { sourceRevision?: string }) {
       <ul className="space-y-1">
         {!!sourceRevision && (
           <li className="flex flex-wrap items-baseline gap-x-3">
-            <Button asChild className="h-auto px-0 py-1" variant="link">
-              <a download href="/legal/source.tar.gz">
-                Download this version’s source
-              </a>
-            </Button>
             <Button
-              asChild
-              className="h-auto px-0 py-1 font-mono text-muted-foreground text-xs"
+              className="h-auto px-0 py-1"
+              render={<a download href="/legal/source.tar.gz" />}
               variant="link"
             >
-              <a
-                href={`https://github.com/avoid-quest/avoid.quest/tree/${sourceRevision}`}
-                title={`Source revision ${sourceRevision}`}
-              >
-                {sourceRevision.slice(0, 8)}
-              </a>
+              Download this version’s source
+            </Button>
+            <Button
+              className="h-auto px-0 py-1 font-mono text-muted-foreground text-xs"
+              render={
+                <a
+                  href={`https://github.com/avoid-quest/avoid.quest/tree/${sourceRevision}`}
+                  title={`Source revision ${sourceRevision}`}
+                />
+              }
+              variant="link"
+            >
+              {sourceRevision.slice(0, 8)}
             </Button>
           </li>
         )}
@@ -71,11 +77,11 @@ export function LegalPage({ sourceRevision }: { sourceRevision?: string }) {
         ].map(([label, href]) => (
           <li key={href}>
             <Button
-              asChild
               className="h-auto whitespace-normal px-0 py-1 text-left"
+              render={<a href={href} />}
               variant="link"
             >
-              <a href={href}>{label}</a>
+              {label}
             </Button>
           </li>
         ))}

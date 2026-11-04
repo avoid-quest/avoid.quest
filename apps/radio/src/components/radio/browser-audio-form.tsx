@@ -3,7 +3,7 @@ import { isPublicHttpUrl } from "@avoid.quest/platforms/url-policy";
 import { Button } from "@avoid.quest/ui/components/button";
 import { Input } from "@avoid.quest/ui/components/input";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
-import { ExternalLinkIcon, MonitorIcon } from "lucide-react";
+import { IconDeviceDesktop, IconExternalLink } from "@tabler/icons-react";
 import { useState } from "react";
 import {
   BROWSER_AUDIO_SOURCES,
@@ -44,27 +44,27 @@ export function BrowserAudioHelp({
         value={link}
       />
       <Button
-        asChild
         className="h-7 w-full text-xs"
+        render={
+          <a
+            aria-disabled={!valid}
+            href={valid ? link.trim() : undefined}
+            onClick={(event) => {
+              if (!valid) {
+                event.preventDefault();
+                return;
+              }
+              onUrlChange?.(link.trim());
+            }}
+            rel="noopener noreferrer"
+            target="_blank"
+          />
+        }
         size="sm"
         variant="outline"
       >
-        <a
-          aria-disabled={!valid}
-          href={valid ? link.trim() : undefined}
-          onClick={(event) => {
-            if (!valid) {
-              event.preventDefault();
-              return;
-            }
-            onUrlChange?.(link.trim());
-          }}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <ExternalLinkIcon />
-          Open source tab
-        </a>
+        <IconExternalLink />
+        Open source tab
       </Button>
       {showRadios ? (
         <details>
@@ -143,7 +143,7 @@ export function BrowserAudioForm({
         }}
         size="sm"
       >
-        {loading ? <Spinner /> : <MonitorIcon />}Share tab audio
+        {loading ? <Spinner /> : <IconDeviceDesktop />}Share tab audio
       </Button>
       {onCancel ? (
         // A share already underway would still land after a Cancel.

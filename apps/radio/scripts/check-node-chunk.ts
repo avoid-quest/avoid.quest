@@ -28,7 +28,7 @@ const LAZY_VENDORS = [
   // Node mode's resizable shell.
   { markers: ['"data-separator"'], name: "react-resizable-panels" },
   // Node mode's branch edges and the What's new popover.
-  { markers: ["PopoverTrigger"], name: "Radix Popover" },
+  { markers: ["PopoverTrigger"], name: "Base UI Popover" },
   // Audio effects load the Studio runtime on demand.
   { markers: ["WasmEngine.ensureReady must succeed"], name: "openDAW Studio" },
 ];
@@ -200,8 +200,8 @@ for (const [name, source] of flowChunks) {
 }
 
 // The canvas is Node mode's only door to React Flow: the chunk that lazily
-// loads it also draws the Stage, Rack and inspector, which a phone opens
-// first, so it must not reach React Flow through static imports.
+// loads it also draws the Rack and inspector, which load without React
+// Flow, so it must not reach React Flow through static imports.
 const canvasChunks = [...chunks.keys()].filter(
   (name) =>
     name.startsWith("node-canvas-") || name.startsWith("immutable-node-canvas-")

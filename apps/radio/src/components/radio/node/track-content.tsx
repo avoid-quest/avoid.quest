@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MoreHorizontalIcon, Trash2Icon } from "lucide-react";
+import { IconDots, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import {
@@ -110,7 +110,7 @@ export function TrackCard({
     >
       <div className="flex items-center gap-2 py-2.5 pr-1.5 pl-3">
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-sm border border-border/70"
+          className="flex size-10 shrink-0 items-center justify-center border border-border/70"
           style={{ backgroundColor: `${color}1a` }}
         >
           <Icon aria-hidden="true" className="size-5" style={{ color }} />
@@ -126,20 +126,26 @@ export function TrackCard({
             onKeyDown={keepControlKeys}
           >
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  aria-label={`Options for ${radio.name}`}
-                  className="size-7 text-muted-foreground"
-                  size="icon"
-                  variant="ghost"
-                >
-                  <MoreHorizontalIcon />
-                </Button>
-              </DropdownMenuTrigger>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    aria-label={`Options for ${radio.name}`}
+                    className="size-7 text-muted-foreground"
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <IconDots />
+                  </Button>
+                }
+              />
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onRemove} variant="destructive">
-                  <Trash2Icon />
-                  Remove {typeName}
+                <DropdownMenuItem
+                  onClick={onRemove}
+                  title={`Remove ${typeName.toLowerCase()} from patch`}
+                  variant="destructive"
+                >
+                  <IconTrash />
+                  Remove from patch
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -200,7 +206,7 @@ export function TrackNodeBody({
       className="w-84"
       embedded={embedded}
       onRemove={onRemove}
-      removeLabel="Remove empty Track"
+      removeLabel="Remove from patch"
       selected={selected}
       title="Track"
     >

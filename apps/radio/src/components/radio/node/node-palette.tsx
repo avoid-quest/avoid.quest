@@ -13,9 +13,9 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@avoid.quest/ui/components/drawer";
-import { LayoutTemplateIcon } from "lucide-react";
+import { toast } from "@avoid.quest/ui/components/sonner";
+import { IconLayoutBoard } from "@tabler/icons-react";
 import { useEffect } from "react";
-import { toast } from "sonner";
 import {
   type PickerItem,
   PickerList,
@@ -122,7 +122,7 @@ const CANVAS_KEY_IGNORED_CONTROLS =
 
 /**
  * Canvas keys (C, Delete) act from the canvas, or with nothing focused;
- * not from a field, a dialog, a control on a node, the Stage or the Rack.
+ * not from a field, a dialog, a control on a node, the Rack or the inspector.
  */
 export function isCanvasKey(
   target: EventTarget | null,
@@ -195,7 +195,7 @@ function toItem(entry: PaletteEntry): PaletteItem {
     return {
       description: entry.description,
       entry,
-      icon: LayoutTemplateIcon,
+      icon: IconLayoutBoard,
       id: entry.id,
       name: entry.name,
     };

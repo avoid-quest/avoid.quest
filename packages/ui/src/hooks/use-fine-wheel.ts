@@ -44,8 +44,9 @@ export function useFineWheel<T extends HTMLElement>({
   wheelStep?: number;
   minDistance?: number;
   disabled?: boolean;
-  onChange: (values: number[]) => void;
-  onCommit?: (values: number[]) => void;
+  // biome-ignore lint/suspicious/noConfusingVoidType: Existing controls return nothing; false explicitly cancels a change.
+  onChange: (values: number[], event?: Event) => boolean | void;
+  onCommit?: (values: number[], event?: Event) => void;
 }) {
   const elementRef = useRef<T>(null);
   const [inputValues, setInputValues] = useState(values);
@@ -68,7 +69,10 @@ export function useFineWheel<T extends HTMLElement>({
 
   useEffect(() => () => clearTimeout(pendingTimer.current), []);
 
-  function changeValues(next: number[]) {
+  function changeValues(next: number[], event?: Event) {
+    if (onChange(next, event) === false) {
+      return false;
+    }
     if (!sameValues(next, requested.current)) {
       pending.current.push(next);
     }
@@ -82,7 +86,7 @@ export function useFineWheel<T extends HTMLElement>({
         setInputValues(observed.current);
       }
     }, PENDING_TIMEOUT_MS);
-    onChange(next);
+    return true;
   }
 
   const handleWheel = useEffectEvent((event: WheelEvent) => {
@@ -118,8 +122,9 @@ export function useFineWheel<T extends HTMLElement>({
     event.stopPropagation();
     const next = [...requested.current];
     next[index] = nextValue;
-    changeValues(next);
-    onCommit?.(next);
+    if (changeValues(next, event)) {
+      onCommit?.(next, event);
+    }
   });
 
   useEffect(() => {

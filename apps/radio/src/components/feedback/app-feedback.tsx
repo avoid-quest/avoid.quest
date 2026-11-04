@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@avoid.quest/ui/components/select";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Textarea } from "@avoid.quest/ui/components/textarea";
 import {
   Tooltip,
@@ -23,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@avoid.quest/ui/components/tooltip";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconMessageCircle } from "@tabler/icons-react";
 import type {
   FeedbackActionsSlotProps,
   FeedbackCancelActionSlotProps,
@@ -34,9 +36,7 @@ import type {
   FeedbackStatusOutputSlotProps,
   FeedbackSubmitActionSlotProps,
 } from "git-feedback/react";
-import { MessageCircleMore } from "lucide-react";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import {
   type FEEDBACK_CATEGORIES,
@@ -145,7 +145,12 @@ function FeedbackCategoryField({ viewModel }: FeedbackCategoryFieldSlotProps) {
       </Label>
       <Select
         disabled={viewModel.isSubmitting}
-        onValueChange={viewModel.setCategory}
+        items={feedbackCategoryLabels}
+        onValueChange={(nextValue) => {
+          if (nextValue !== null) {
+            viewModel.setCategory(nextValue);
+          }
+        }}
         value={viewModel.category}
       >
         <SelectTrigger className="w-full" id={viewModel.categoryId}>
@@ -238,20 +243,22 @@ export function AppFeedback() {
   return (
     <>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            aria-expanded={open}
-            aria-label={feedbackCopy.triggerLabel}
-            onClick={handleOpen}
-            onFocus={preloadFeedback}
-            onPointerEnter={preloadFeedback}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <MessageCircleMore className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-expanded={open}
+              aria-label={feedbackCopy.triggerLabel}
+              onClick={handleOpen}
+              onFocus={preloadFeedback}
+              onPointerEnter={preloadFeedback}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <IconMessageCircle className="size-3.5" />
+            </Button>
+          }
+        />
         <TooltipContent side="bottom" sideOffset={6}>
           {feedbackCopy.triggerLabel}
         </TooltipContent>

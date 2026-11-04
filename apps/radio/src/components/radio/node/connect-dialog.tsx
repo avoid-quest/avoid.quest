@@ -104,7 +104,18 @@ export function ConnectDialog({
               <Label className="text-xs" htmlFor="node-connect-port">
                 Port
               </Label>
-              <Select onValueChange={handlePortChange} value={port.handle}>
+              <Select
+                items={ports.map((entry) => ({
+                  value: entry.handle,
+                  label: entry.label,
+                }))}
+                onValueChange={(nextValue) => {
+                  if (nextValue !== null) {
+                    handlePortChange(nextValue);
+                  }
+                }}
+                value={port.handle}
+              >
                 <SelectTrigger
                   aria-label={`${name} port`}
                   className="w-full"
@@ -126,7 +137,18 @@ export function ConnectDialog({
               <Label className="text-xs" htmlFor="node-connect-target">
                 Connect to
               </Label>
-              <Select onValueChange={setTargetKey} value={target?.key ?? ""}>
+              <Select
+                items={port.targets.map((entry) => ({
+                  value: entry.key,
+                  label: entry.label,
+                }))}
+                onValueChange={(nextValue) => {
+                  if (nextValue !== null) {
+                    setTargetKey(nextValue);
+                  }
+                }}
+                value={target?.key ?? null}
+              >
                 <SelectTrigger
                   aria-label="Connect to"
                   className="w-full"

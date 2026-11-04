@@ -75,7 +75,9 @@ function Knob({
       disabled,
       max,
       min,
-      onChange: ([next]) => onChange(next ?? min),
+      onChange: ([next]) => {
+        onChange(next ?? min);
+      },
       values: [value],
       wheelStep,
     });
@@ -257,11 +259,11 @@ function Knob({
         </svg>
       </div>
       {label ? (
-        <span className="w-full truncate text-center font-mono text-[9px] text-muted-foreground uppercase leading-none tracking-wider">
+        <span className="w-full truncate text-center font-mono text-muted-foreground text-xs uppercase leading-none tracking-wider">
           {label}
         </span>
       ) : null}
-      <span className="font-mono text-[10px] tabular-nums leading-none">
+      <span className="font-mono text-xs tabular-nums leading-none">
         {text}
       </span>
     </div>

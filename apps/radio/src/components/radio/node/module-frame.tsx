@@ -18,13 +18,13 @@ import {
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  type LucideIcon,
-  MoreHorizontalIcon,
-  ReplaceIcon,
-  RotateCcwIcon,
-  SlidersHorizontalIcon,
-  Trash2Icon,
-} from "lucide-react";
+  IconAdjustmentsHorizontal,
+  IconDots,
+  IconReplace,
+  IconRotate,
+  IconTrash,
+  type TablerIcon,
+} from "@tabler/icons-react";
 import {
   type ComponentType,
   type CSSProperties,
@@ -181,7 +181,7 @@ export function ModuleFrame({
   return (
     <div
       className={cn(
-        "rounded-md border bg-card text-card-foreground",
+        "border bg-card text-card-foreground",
         on ? "border-primary/20" : "border-border/50",
         selected && "border-ring"
       )}
@@ -207,7 +207,7 @@ export function ModuleHeader({
   onSwap,
   onRemove,
 }: {
-  icon: LucideIcon;
+  icon: TablerIcon;
   title: string;
   on: boolean;
   badge?: ReactNode;
@@ -226,7 +226,7 @@ export function ModuleHeader({
     <div className="flex h-8 items-center gap-1.5 pr-1 pl-2">
       <span
         className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-sm",
+          "flex size-6 shrink-0 items-center justify-center",
           on ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
         )}
       >
@@ -256,39 +256,41 @@ export function ModuleHeader({
           />
         ) : null}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`Options for ${title}`}
-              className="size-6 text-muted-foreground"
-              size="icon"
-              variant="ghost"
-            >
-              <MoreHorizontalIcon />
-            </Button>
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                aria-label={`Options for ${title}`}
+                className="size-6 text-muted-foreground"
+                size="icon"
+                variant="ghost"
+              >
+                <IconDots />
+              </Button>
+            }
+          />
           <DropdownMenuContent align="end">
             {onInspect ? (
               <DropdownMenuItem onClick={onInspect}>
-                <SlidersHorizontalIcon />
+                <IconAdjustmentsHorizontal />
                 All settings
               </DropdownMenuItem>
             ) : null}
             {onSwap ? (
               <DropdownMenuItem onClick={onSwap}>
-                <ReplaceIcon />
+                <IconReplace />
                 Swap effect…
               </DropdownMenuItem>
             ) : null}
             {onReset ? (
               <DropdownMenuItem onClick={onReset}>
-                <RotateCcwIcon />
+                <IconRotate />
                 Reset to defaults
               </DropdownMenuItem>
             ) : null}
             {onInspect || onSwap || onReset ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onClick={onRemove} variant="destructive">
-              <Trash2Icon />
-              Remove
+              <IconTrash />
+              Remove from patch
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -317,7 +319,7 @@ export function ModuleControls({
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: holds its controls' keys; each control is focusable itself
     <div
       className={cn(
-        "flex items-start gap-x-2 rounded-b-[inherit] border-border/50 border-t bg-muted/30 px-2 py-2",
+        "flex items-start gap-x-2 border-border/50 border-t bg-muted/30 px-2 py-2",
         INTERACTIVE
       )}
       onKeyDown={keepControlKeys}
@@ -339,7 +341,7 @@ function ControlColumn({
   return (
     <div className="flex w-16 shrink-0 flex-col items-center gap-1">
       <span
-        className="w-full truncate text-center text-[10px] text-muted-foreground leading-none"
+        className="w-full truncate text-center text-muted-foreground text-xs leading-none"
         title={label}
       >
         {label}
@@ -451,10 +453,18 @@ export function ModuleSelect({
   const selected = options.find((option) => option.value === value);
   return (
     <ControlColumn label={label}>
-      <Select onValueChange={onChange} value={value}>
+      <Select
+        items={options}
+        onValueChange={(nextValue) => {
+          if (nextValue !== null) {
+            onChange(nextValue);
+          }
+        }}
+        value={value}
+      >
         <SelectTrigger
           aria-label={name}
-          className="w-full gap-1 px-1.5 text-[10px] data-[size=xs]:px-1.5 data-[size=xs]:text-[10px] [&_svg:not([class*='size-'])]:size-3"
+          className="w-full gap-1 px-1.5 text-xs data-[size=xs]:px-1.5 data-[size=xs]:text-xs [&_svg:not([class*='size-'])]:size-3"
           size="xs"
           title={selected?.label}
         >
@@ -554,7 +564,7 @@ export function nodePortState({
 
 /**
  * React Flow's Position, and the canvas's port, handed down by the canvas.
- * Node bodies and their controls also render in the Stage, Rack and
+ * Node bodies and their controls also render in the Rack and
  * inspector, which load without React Flow, so this module only imports
  * its types; ports render on the canvas, inside `FlowPortsProvider`.
  */

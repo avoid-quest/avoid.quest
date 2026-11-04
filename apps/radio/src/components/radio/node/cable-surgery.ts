@@ -8,12 +8,12 @@
  *   or else a node picked from the palette;
  * - Cmd+D (Ctrl+D elsewhere) duplicates the selected nodes.
  * Keys act from the canvas or with nothing focused, never from a field, a
- * dialog, the Stage or the Rack. Lives outside the canvas chunk's React
+ * dialog, the Rack or the inspector. Lives outside the canvas chunk's React
  * Flow imports, so it is testable without them.
  */
 
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { type RefObject, useEffect } from "react";
-import { toast } from "sonner";
 import {
   duplicateNodes,
   insertNodeOnEdge,

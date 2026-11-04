@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { toast } from "@avoid.quest/ui/components/sonner";
 // biome-ignore lint/performance/noNamespaceImport: observe production reporting without replacing the error module
 import * as Sentry from "@sentry/core";
-import { toast } from "sonner";
 import {
   type PlaybackSessionId,
   playbackSessionsCollection,

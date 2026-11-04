@@ -37,8 +37,8 @@
  * other tab's change was replaced.
  */
 
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { deepEquals } from "@tanstack/react-db";
-import { toast } from "sonner";
 import type { Radio } from "@/lib/audio";
 import { fadeOut } from "@/lib/audio";
 import { createNodeDeviceSinks } from "@/lib/audio/routing/node-device-sinks";

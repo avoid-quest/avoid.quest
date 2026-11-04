@@ -1,6 +1,6 @@
 import { captureError } from "@avoid.quest/error";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { eq, useLiveQuery } from "@tanstack/react-db";
-import { toast } from "sonner";
 import {
   addDismissedRadio,
   reorderRadios as persistRadioOrder,

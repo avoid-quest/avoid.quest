@@ -1,46 +1,51 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
-import { keepOpenOnToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
+import { Button } from "@avoid.quest/ui/components/button";
+import { isToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  Close,
-  Content,
-  Description,
-  Overlay,
-  Portal,
-  Root,
-  Title,
-  Trigger,
-} from "@radix-ui/react-dialog";
-import { XIcon } from "lucide-react";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { IconX } from "@tabler/icons-react";
 import type * as React from "react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-function Dialog({ ...props }: React.ComponentProps<typeof Root>) {
-  return <Root data-slot="dialog" {...props} />;
+function Dialog({ onOpenChange, ...props }: DialogPrimitive.Root.Props) {
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      onOpenChange={(open, details) => {
+        // A toast press must not dismiss the modal underneath it.
+        if (!open && isToastInteraction(details.event)) {
+          details.cancel();
+          return;
+        }
+        onOpenChange?.(open, details);
+      }}
+      {...props}
+    />
+  );
 }
 
-function DialogTrigger({ ...props }: React.ComponentProps<typeof Trigger>) {
-  return <Trigger data-slot="dialog-trigger" {...props} />;
+function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
 }
 
-function DialogPortal({ ...props }: React.ComponentProps<typeof Portal>) {
-  return <Portal data-slot="dialog-portal" {...props} />;
+function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
 }
 
-function DialogClose({ ...props }: React.ComponentProps<typeof Close>) {
-  return <Close data-slot="dialog-close" {...props} />;
+function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
 function DialogOverlay({
   className,
   ...props
-}: React.ComponentProps<typeof Overlay>) {
+}: DialogPrimitive.Backdrop.Props) {
   return (
-    <Overlay
+    <DialogPrimitive.Backdrop
       className={cn(
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=open]:animate-in",
+        "data-open:fade-in-0 data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/20 duration-100 data-closed:animate-out data-open:animate-in supports-backdrop-filter:backdrop-blur-sm",
         className
       )}
       data-slot="dialog-overlay"
@@ -54,7 +59,7 @@ function DialogOverlay({
  * menu item has no trigger of its own, and the item is gone by then, so use
  * the button that opened the menu.
  */
-function getReturnFocusTarget(active: Element | null): HTMLElement | null {
+function getMenuReturnFocusTarget(active: Element | null): HTMLElement | null {
   if (!(active instanceof HTMLElement) || active === document.body) {
     return null;
   }
@@ -67,63 +72,103 @@ function getReturnFocusTarget(active: Element | null): HTMLElement | null {
       return menuTrigger;
     }
   }
-  return active;
+  return null;
 }
 
 function DialogContent({
   className,
   children,
   showCloseButton = true,
-  onOpenAutoFocus,
-  onCloseAutoFocus,
-  onInteractOutside,
+  initialFocus,
+  finalFocus,
+  ref,
   ...props
-}: React.ComponentProps<typeof Content> & {
+}: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
 }) {
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const handleOpenAutoFocus = (event: Event) => {
-    returnFocusRef.current = getReturnFocusTarget(document.activeElement);
-    onOpenAutoFocus?.(event);
-  };
-  const handleCloseAutoFocus = (event: Event) => {
-    onCloseAutoFocus?.(event);
-    const target = returnFocusRef.current;
-    if (event.defaultPrevented || !target?.isConnected) {
-      return;
-    }
-    event.preventDefault();
-    target.focus();
-  };
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const [menuReturnFocusTarget, setMenuReturnFocusTarget] =
+    useState<HTMLElement | null>(null);
+  // Remember the menu trigger while its focused item still exists. The menu
+  // may unmount before the dialog's initialFocus callback runs.
+  useEffect(() => {
+    const rememberFocus = (event: FocusEvent) => {
+      if (!popupRef.current && event.target instanceof Element) {
+        returnFocusRef.current = getMenuReturnFocusTarget(event.target);
+      }
+    };
+    document.addEventListener("focusin", rememberFocus);
+    return () => document.removeEventListener("focusin", rememberFocus);
+  }, []);
 
   return (
-    <DialogPortal data-slot="dialog-portal">
+    <DialogPortal>
       <DialogOverlay />
-      <Content
+      <DialogPrimitive.Popup
         className={cn(
-          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex max-h-[90vh] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=open]:animate-in sm:max-w-lg",
+          "data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 rounded-none bg-popover p-6 text-popover-foreground text-sm shadow-md outline-none ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-open:animate-in sm:max-w-md",
           className
         )}
         data-slot="dialog-content"
-        onCloseAutoFocus={handleCloseAutoFocus}
-        onInteractOutside={(event) => {
-          onInteractOutside?.(event);
-          keepOpenOnToastInteraction(event);
+        finalFocus={
+          finalFocus ??
+          (menuReturnFocusTarget
+            ? () =>
+                menuReturnFocusTarget.isConnected ? menuReturnFocusTarget : true
+            : true)
+        }
+        initialFocus={(interactionType) => {
+          const target = getMenuReturnFocusTarget(document.activeElement);
+          const rememberedTarget = target ?? returnFocusRef.current;
+          setMenuReturnFocusTarget(
+            rememberedTarget?.isConnected ? rememberedTarget : null
+          );
+          returnFocusRef.current = null;
+          if (typeof initialFocus === "function") {
+            return initialFocus(interactionType);
+          }
+          if (typeof initialFocus === "object") {
+            return initialFocus.current;
+          }
+          return initialFocus ?? true;
         }}
-        onOpenAutoFocus={handleOpenAutoFocus}
+        ref={(node) => {
+          popupRef.current = node;
+          const cleanup = typeof ref === "function" ? ref(node) : undefined;
+          if (ref && typeof ref !== "function") {
+            ref.current = node;
+          }
+          return () => {
+            popupRef.current = null;
+            if (typeof cleanup === "function") {
+              cleanup();
+            } else if (typeof ref === "function") {
+              ref(null);
+            } else if (ref) {
+              ref.current = null;
+            }
+          };
+        }}
         {...props}
       >
         {children}
         {showCloseButton.valueOf() && (
-          <Close
-            className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity after:absolute after:inset-0 hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [@media(pointer:coarse)]:after:-inset-3.5"
+          <DialogPrimitive.Close
             data-slot="dialog-close"
+            render={
+              <Button
+                className="absolute top-5 right-5 bg-secondary"
+                size="icon-sm"
+                variant="ghost"
+              />
+            }
           >
-            <XIcon />
+            <IconX />
             <span className="sr-only">Close</span>
-          </Close>
+          </DialogPrimitive.Close>
         )}
-      </Content>
+      </DialogPrimitive.Popup>
     </DialogPortal>
   );
 }
@@ -131,14 +176,21 @@ function DialogContent({
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      className={cn("flex flex-col gap-2", className)}
       data-slot="dialog-header"
       {...props}
     />
   );
 }
 
-function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+function DialogFooter({
+  className,
+  showCloseButton = false,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & {
+  showCloseButton?: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -147,17 +199,24 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
       )}
       data-slot="dialog-footer"
       {...props}
-    />
+    >
+      {children}
+      {showCloseButton.valueOf() && (
+        <DialogPrimitive.Close render={<Button variant="outline" />}>
+          Close
+        </DialogPrimitive.Close>
+      )}
+    </div>
   );
 }
 
-function DialogTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof Title>) {
+function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
-    <Title
-      className={cn("font-semibold text-lg leading-none", className)}
+    <DialogPrimitive.Title
+      className={cn(
+        "font-heading font-semibold text-lg uppercase leading-none tracking-wider",
+        className
+      )}
       data-slot="dialog-title"
       {...props}
     />
@@ -167,10 +226,13 @@ function DialogTitle({
 function DialogDescription({
   className,
   ...props
-}: React.ComponentProps<typeof Description>) {
+}: DialogPrimitive.Description.Props) {
   return (
-    <Description
-      className={cn("text-muted-foreground text-sm", className)}
+    <DialogPrimitive.Description
+      className={cn(
+        "mt-0.5 text-muted-foreground text-sm leading-relaxed *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        className
+      )}
       data-slot="dialog-description"
       {...props}
     />

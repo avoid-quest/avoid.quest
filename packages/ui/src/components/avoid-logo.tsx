@@ -4,7 +4,7 @@ import type { SVGProps } from "react";
 const AvoidLogo = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
   <svg
     className={cn(
-      "fill-black stroke-black text-white dark:fill-white dark:stroke-white dark:text-black",
+      "fill-foreground stroke-foreground text-background",
       className
     )}
     viewBox="0 0 200 200"

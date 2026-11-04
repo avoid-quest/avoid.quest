@@ -17,6 +17,7 @@ import {
   FieldTitle,
 } from "@avoid.quest/ui/components/field";
 import GitHubIcon from "@avoid.quest/ui/components/github-icon";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import {
   Tabs,
@@ -30,20 +31,19 @@ import {
 } from "@avoid.quest/ui/components/toggle-group";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import {
-  DatabaseIcon,
-  type LucideIcon,
-  MonitorIcon,
-  MoonIcon,
-  RadioIcon,
-  RotateCcwIcon,
-  Settings2Icon,
-  SettingsIcon,
-  SlidersHorizontalIcon,
-  SunIcon,
-} from "lucide-react";
+  IconAdjustmentsHorizontal,
+  IconDatabase,
+  IconDeviceDesktop,
+  IconMoon,
+  IconPiano,
+  IconRadio,
+  IconRotate,
+  IconSettings,
+  IconSun,
+  type TablerIcon,
+} from "@tabler/icons-react";
 import { useTheme } from "next-themes";
 import { Suspense, useState } from "react";
-import { toast } from "sonner";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import { type SettingsRecord, setRestoreStateOnLoad } from "@/lib/collections";
 import { useSettings } from "@/lib/hooks/use-settings";
@@ -70,10 +70,10 @@ const DATA_PANELS: { label: string; value: DataPanel }[] = [
   { label: "Reset", value: "reset" },
 ];
 
-const THEMES: { icon: LucideIcon; label: string; value: string }[] = [
-  { icon: SunIcon, label: "Light", value: "light" },
-  { icon: MoonIcon, label: "Dark", value: "dark" },
-  { icon: MonitorIcon, label: "System", value: "system" },
+const THEMES: { icon: TablerIcon; label: string; value: string }[] = [
+  { icon: IconSun, label: "Light", value: "light" },
+  { icon: IconMoon, label: "Dark", value: "dark" },
+  { icon: IconDeviceDesktop, label: "System", value: "system" },
 ];
 
 const DATA_PANEL_GUIDANCE: Record<DataPanel, string> = {
@@ -87,15 +87,15 @@ const DATA_PANEL_GUIDANCE: Record<DataPanel, string> = {
 type SectionDefinition = {
   key: SettingsSection;
   label: string;
-  icon: LucideIcon;
+  icon: TablerIcon;
 };
 
 const SETTINGS_SECTIONS: SectionDefinition[] = [
-  { icon: SettingsIcon, key: "general", label: "General" },
-  { icon: RadioIcon, key: "radios", label: "Radios" },
-  { icon: Settings2Icon, key: "playback", label: "Playback" },
-  { icon: SlidersHorizontalIcon, key: "midi", label: "MIDI" },
-  { icon: DatabaseIcon, key: "data", label: "Data" },
+  { icon: IconSettings, key: "general", label: "General" },
+  { icon: IconRadio, key: "radios", label: "My stations" },
+  { icon: IconAdjustmentsHorizontal, key: "playback", label: "Audio" },
+  { icon: IconPiano, key: "midi", label: "MIDI" },
+  { icon: IconDatabase, key: "data", label: "Backup & share" },
 ];
 
 function getInitialSection(defaultTab?: string): SettingsSection {
@@ -142,6 +142,9 @@ export function SettingsForm({
   const [dataPanel, setDataPanel] = useState<DataPanel>(() =>
     getInitialDataPanel(defaultTab)
   );
+  const [defaultStationPage, setDefaultStationPage] = useState<
+    "create" | undefined
+  >(defaultTab === "add-station" ? "create" : undefined);
   const [isResetting, setIsResetting] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
 
@@ -160,6 +163,7 @@ export function SettingsForm({
   // The section list is a column from md up: arrow keys follow its layout.
   const isMobile = useIsMobile();
   const handleSectionChange = (value: string) => {
+    setDefaultStationPage(undefined);
     setActive(value as SettingsSection);
   };
 
@@ -181,7 +185,7 @@ export function SettingsForm({
               const Icon = section.icon;
               return (
                 <TabsTrigger
-                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-[state=active]:bg-muted md:data-[state=active]:shadow-none"
+                  className="min-w-0 gap-1.5 px-1 text-xs md:justify-start md:px-3 md:py-1.5 md:data-active:bg-muted md:data-active:shadow-none"
                   key={section.key}
                   value={section.key}
                 >
@@ -197,8 +201,8 @@ export function SettingsForm({
           {SETTINGS_SECTIONS.filter((section) => section.key !== active).map(
             (section) => (
               <TabsContent
-                forceMount
                 hidden
+                keepMounted
                 key={section.key}
                 value={section.key}
               />
@@ -207,6 +211,7 @@ export function SettingsForm({
           <TabsContent className="mt-0" value={active}>
             <SectionContent
               dataPanel={dataPanel}
+              defaultStationPage={defaultStationPage}
               isResetting={isResetting}
               onDataPanelChange={setDataPanel}
               onReset={handleReset}
@@ -235,6 +240,7 @@ export function SettingsForm({
 }
 
 type SectionContentProps = {
+  defaultStationPage?: "create";
   section: SettingsSection;
   dataPanel: DataPanel;
   settings: SettingsRecord;
@@ -246,6 +252,7 @@ type SectionContentProps = {
 };
 
 function SectionContent({
+  defaultStationPage,
   section,
   dataPanel,
   onDataPanelChange,
@@ -255,7 +262,7 @@ function SectionContent({
     return <GeneralSettings settings={props.settings} />;
   }
   if (section === "radios") {
-    return <RadioManagement />;
+    return <RadioManagement defaultPage={defaultStationPage} />;
   }
   if (section === "playback") {
     return (
@@ -296,8 +303,8 @@ function SectionContent({
         {DATA_PANELS.filter((panel) => panel.value !== dataPanel).map(
           (panel) => (
             <TabsContent
-              forceMount
               hidden
+              keepMounted
               key={panel.value}
               value={panel.value}
             />
@@ -325,7 +332,8 @@ function SectionContent({
 
 function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
   const { theme, setTheme } = useTheme();
-  const handleThemeChange = (value: string) => {
+  const handleThemeChange = (values: string[]) => {
+    const [value] = values;
     // Pressing the selected item again would otherwise clear the choice.
     if (value) {
       setTheme(value);
@@ -345,9 +353,9 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         control={
           <ToggleGroup
             aria-label="Theme"
+            multiple={false}
             onValueChange={handleThemeChange}
-            type="single"
-            value={theme ?? "system"}
+            value={[theme ?? "system"]}
             variant="outline"
           >
             {THEMES.map(({ icon: Icon, label, value }) => (
@@ -384,17 +392,21 @@ function GeneralSettings({ settings }: Pick<SectionContentProps, "settings">) {
         title="Version"
       />
       <div className="flex flex-wrap items-center gap-3 py-3 text-muted-foreground text-xs">
-        <Button asChild size="icon" variant="ghost">
-          <a
-            aria-label="avoid.quest on GitHub"
-            href="https://github.com/avoid-quest/avoid.quest"
-            title="GitHub"
-          >
-            <GitHubIcon className="size-4" />
-          </a>
+        <Button
+          render={
+            <a
+              aria-label="avoid.quest on GitHub"
+              href="https://github.com/avoid-quest/avoid.quest"
+              title="GitHub"
+            />
+          }
+          size="icon"
+          variant="ghost"
+        >
+          <GitHubIcon className="size-4" />
         </Button>
         <a
-          className="rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
           href="/legal/"
         >
           Source and licenses
@@ -415,7 +427,7 @@ function SettingRow({
   /** The control's id, so the title is its accessible name. Without one the
    * control must name itself. */
   controlId?: string;
-  icon?: LucideIcon;
+  icon?: TablerIcon;
 }) {
   const content = (
     <>
@@ -456,11 +468,13 @@ function ResetSettings({
         Reset stations and playback settings to defaults
       </span>
       <Dialog onOpenChange={onResetDialogChange} open={showResetDialog}>
-        <DialogTrigger asChild>
-          <Button size="sm" variant="destructive">
-            <RotateCcwIcon /> Reset
-          </Button>
-        </DialogTrigger>
+        <DialogTrigger
+          render={
+            <Button size="sm" variant="destructive">
+              <IconRotate /> Reset
+            </Button>
+          }
+        />
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Reset stations and playback?</DialogTitle>

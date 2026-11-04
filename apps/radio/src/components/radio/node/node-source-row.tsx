@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { AudioLinesIcon } from "lucide-react";
+import { IconWaveSine } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import type { Radio } from "@/lib/audio";
@@ -42,7 +42,7 @@ import {
 import { useNodeActions } from "./node-actions";
 import { isUnplugged, useNodeDevices } from "./use-node-devices";
 
-/** What a Stage or Rack row drives on its lane. */
+/** What a Rack row drives on its lane. */
 export type NodeLaneControls = Pick<
   NodePlayback,
   "setPlaying" | "setVolume" | "toggleMute"
@@ -227,7 +227,7 @@ function StationSourceRow({
         stationRowClassName,
         "flex-col items-stretch gap-1.5",
         isLive && "bg-muted/40",
-        isSessionRadio(radio) && "border-l-2 border-l-[#00d084]/40"
+        isSessionRadio(radio) && "border-l-2 border-l-success/40"
       )}
       data-node-id={nodeId}
       ref={elementRef}
@@ -249,7 +249,7 @@ function StationSourceRow({
           <StationRowText
             indicator={
               isLive ? (
-                <AudioLinesIcon
+                <IconWaveSine
                   aria-label="Playing"
                   className="size-3.5 shrink-0"
                   role="img"

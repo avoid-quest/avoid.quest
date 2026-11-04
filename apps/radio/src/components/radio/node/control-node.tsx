@@ -82,7 +82,7 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
   }, [value, bipolar, visible]);
   return (
     <div className="w-full px-2 pb-2" ref={ref}>
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between text-muted-foreground text-xs">
         <span>
           Output{" "}
           <output
@@ -103,7 +103,7 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
       </div>
       <svg
         aria-label="Live modulation trace"
-        className="h-10 w-full rounded bg-muted/30 text-primary"
+        className="h-10 w-full bg-muted/30 text-primary"
         role="img"
         viewBox="0 0 288 40"
       >
@@ -124,7 +124,7 @@ function ModulationMonitor({ id, bipolar }: { id: string; bipolar: boolean }) {
         <p className="mt-1 break-words text-destructive text-xs">{error}</p>
       ) : null}
       {backend === "unavailable" ? (
-        <p className="mt-1 text-amber-700 text-xs dark:text-amber-400">
+        <p className="mt-1 text-warning text-xs">
           {nativeWarning ?? "This modulator is unavailable in this browser."}
         </p>
       ) : null}
@@ -160,7 +160,7 @@ function ModulationGate({ id, hold }: { id: string; hold: boolean }) {
       >
         {hold ? "Hold gate" : "Trigger / reset"}
       </Button>
-      <span className="text-[10px] text-muted-foreground">
+      <span className="text-muted-foreground text-xs">
         or connect Clock / MIDI gate
       </span>
     </div>
@@ -264,20 +264,20 @@ export function ModulationControls({
           >
             Connect MIDI
           </Button>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-muted-foreground text-xs">
             Channels are 0–15. MIDI settings must be enabled.
           </p>
         </div>
       ) : null}
       {node.type === "follower" ? (
-        <p className="px-2 pb-2 text-[10px] text-muted-foreground">
+        <p className="px-2 pb-2 text-muted-foreground text-xs">
           Connect audio to In. Detects stereo energy at the connected routing
           tap.
         </p>
       ) : null}
       {"sync" in node.data ? (
-        <details className="px-2 pb-2 text-[10px] text-muted-foreground">
-          <summary className="cursor-pointer rounded-sm focus-visible:outline focus-visible:outline-ring">
+        <details className="px-2 pb-2 text-muted-foreground text-xs">
+          <summary className="cursor-pointer focus-visible:outline focus-visible:outline-ring">
             Timing help
           </summary>
           <p className="pt-1">

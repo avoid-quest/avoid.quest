@@ -1,6 +1,6 @@
 # Node Mode v1
 
-Node Mode replaces Multiple with a React Flow patch editor, Stage and Rack over
+Node Mode replaces Multiple with a React Flow patch editor and a desktop Rack over
 radio's managed playback engine. This is the current implementation contract for
 agents changing Node Mode. The product release is **v1**; its persisted graph
 schema is **version 2**, which added source strips. Schema versions and the
@@ -142,8 +142,9 @@ release; insertion and cable surgery commit one undoable graph change. Cancellin
 or pinching a drag clears its insertion target. Removing a Merge is refused when
 healing would break a working lane's routes.
 
-Stage and Rack provide source controls outside the zoomed canvas. Rack also lists
-loose, empty or invalid modules and shows graph issues when no lane compiles.
+On desktop, the Rack provides source controls outside the zoomed canvas. It also lists
+loose, empty or invalid modules and shows graph issues when no lane compiles. A phone
+shows the canvas alone.
 Inspect opens shared source, device, native, FX or output settings; desktop Inspect
 expands a collapsed Rack panel and phones use the inspector drawer. Local files
 that cannot survive reload expose Pick again.
@@ -175,7 +176,7 @@ throttled graph or engine writes.
 | Persistence, migration and local NAM retention | [`playback-sessions.ts`](../../lib/collections/playback-sessions.ts), [`migrations/`](../../lib/collections/migrations/) |
 | Backup validation, preview and application | [`export-import.ts`](../../lib/db/export-import.ts), [`nam-backup.ts`](../../lib/db/nam-backup.ts) |
 | Canvas, palette and cable editing | [`node-canvas.tsx`](node/node-canvas.tsx), [`node-palette.tsx`](node/node-palette.tsx), [`connect-dialog.tsx`](node/connect-dialog.tsx), [`rewire-dialog.tsx`](node/rewire-dialog.tsx) |
-| Stage, Rack, inspector and shared source forms | [`node-stage.tsx`](node/node-stage.tsx), [`node-rack.tsx`](node/node-rack.tsx), [`node-inspector.tsx`](node/node-inspector.tsx); source/device `*-content.tsx` files beside them |
+| Rack, inspector and shared source forms | [`node-rack.tsx`](node/node-rack.tsx), [`node-inspector.tsx`](node/node-inspector.tsx); source/device `*-content.tsx` files beside them |
 | Shared knobs, sliders and control gestures | [`knob.tsx`](../../../../../packages/ui/src/components/knob.tsx), [`slider.tsx`](../../../../../packages/ui/src/components/slider.tsx) |
 | Node MIDI identities and actions | [`node-midi-actions.ts`](../../lib/midi/node-midi-actions.ts), [`use-node-midi.ts`](../../lib/hooks/use-node-midi.ts) |
 

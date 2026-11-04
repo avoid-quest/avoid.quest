@@ -615,6 +615,7 @@ describe("NodeRack", () => {
     );
 
     expect(view.getByText("Search to add a station")).toBeTruthy();
+    expect(view.getByRole("button", { name: "Add station" })).toBeTruthy();
   });
 
   test("a File to pick again after a reload opens its settings from the Rack", () => {

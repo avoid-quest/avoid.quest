@@ -1,30 +1,26 @@
 "use client";
 
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  CollapsibleContent as Content,
-  Root,
-  CollapsibleTrigger as Trigger,
-} from "@radix-ui/react-collapsible";
+import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 
-function Collapsible({ ...props }: React.ComponentProps<typeof Root>) {
-  return <Root data-slot="collapsible" {...props} />;
+function Collapsible({ ...props }: CollapsiblePrimitive.Root.Props) {
+  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;
 }
 
-function CollapsibleTrigger({
-  ...props
-}: React.ComponentProps<typeof Trigger>) {
-  return <Trigger data-slot="collapsible-trigger" {...props} />;
+function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props) {
+  return (
+    <CollapsiblePrimitive.Trigger data-slot="collapsible-trigger" {...props} />
+  );
 }
 
 function CollapsibleContent({
   className,
   ...props
-}: React.ComponentProps<typeof Content>) {
+}: CollapsiblePrimitive.Panel.Props) {
   return (
-    <Content
+    <CollapsiblePrimitive.Panel
       className={cn(
-        "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down",
+        "h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 data-ending-style:h-0 data-starting-style:h-0",
         className
       )}
       data-slot="collapsible-content"

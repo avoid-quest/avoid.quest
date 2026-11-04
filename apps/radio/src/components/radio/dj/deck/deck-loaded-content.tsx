@@ -63,13 +63,13 @@ export function LoadedDeckContent({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5 pr-0 sm:gap-2 sm:pr-3">
             <DeckTransport nowPlaying={metadata} />
-            <div className="rounded-md border border-border/50 bg-muted/30 px-2 py-2">
+            <div className="border border-border/50 bg-muted/30 px-2 py-2">
               <DeckChannelStrip />
             </div>
             <Accordion
               className="space-y-1"
               defaultValue={effects.length > 0 ? ["effects"] : []}
-              type="multiple"
+              multiple
             >
               {hasTracklist && tracks ? (
                 <AccordionSection
@@ -100,11 +100,11 @@ export function LoadedDeckContent({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <DeckTransport nowPlaying={metadata} />
-      <ScrollArea className="[&_[data-radix-scroll-area-viewport]>div]:block! min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-content]]:min-w-0!">
         <Accordion
           className="w-full min-w-0 space-y-1"
           defaultValue={["effects"]}
-          type="multiple"
+          multiple
         >
           {hasTracklist && tracks ? (
             <AccordionSection

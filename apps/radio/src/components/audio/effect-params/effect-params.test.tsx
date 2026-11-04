@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { useState } from "react";
 import type { EffectConfig } from "@/lib/audio";
 import { MAX_EFFECT_TREE_DEPTH } from "@/lib/audio/dsp/routing/effect-tree";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -26,6 +27,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DocumentFragment: dom.window.DocumentFragment,
@@ -189,9 +191,13 @@ describe("EffectParams selects", () => {
       const view = render(<EffectParams effect={effect} onUpdate={onUpdate} />);
 
       fireEvent.keyDown(view.getByRole("combobox", { name: label }), {
-        key: "Enter",
+        key: "ArrowDown",
       });
       await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+      fireEvent.pointerDown(view.getByRole("option", { name: option }), {
+        pointerType: "mouse",
+        button: 0,
+      });
       fireEvent.click(view.getByRole("option", { name: option }));
 
       expect(onUpdate).toHaveBeenCalledWith(expected);
@@ -341,9 +347,13 @@ describe("shared root and nested controls", () => {
     });
     expect(updated.chains[0]?.effects[1]).toEqual(gate);
     fireEvent.keyDown(view.getByRole("combobox", { name: "Sidechain input" }), {
-      key: "Enter",
+      key: "ArrowDown",
     });
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    fireEvent.pointerDown(view.getByRole("option", { name: "Deck B" }), {
+      pointerType: "mouse",
+      button: 0,
+    });
     fireEvent.click(view.getByRole("option", { name: "Deck B" }));
     expect(lastInner().chains[0]?.effects[0]).toMatchObject({
       sidechain: { channelId: "deck-b" },

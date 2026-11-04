@@ -3,7 +3,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-accent", className)}
+      className={cn("animate-pulse bg-muted", className)}
       data-slot="skeleton"
       {...props}
     />

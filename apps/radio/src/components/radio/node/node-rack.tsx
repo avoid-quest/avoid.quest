@@ -6,6 +6,7 @@ import { cn } from "@avoid.quest/ui/lib/utils";
 import { IconKey, IconPlaylist } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
 import { useId, useState } from "react";
+import { AddStationButton } from "@/components/settings/add-station-button";
 import type { Radio } from "@/lib/audio";
 import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import { getNodeDefinition } from "@/lib/node-graph/catalogue";
@@ -355,7 +356,9 @@ export function NodeRack({
       {graph.nodes.every(
         (node) => getNodeDefinition(node.type).category === "output"
       ) ? (
-        <EmptyHint className="py-10">Search to add a station</EmptyHint>
+        <EmptyHint action={<AddStationButton />} className="py-10">
+          Search to add a station
+        </EmptyHint>
       ) : null}
       {groups.map((group) => (
         <RackSection

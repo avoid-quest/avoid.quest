@@ -1,3 +1,4 @@
+import { AddStationButton } from "@/components/settings/add-station-button";
 import {
   isRadioSourceNode,
   isStripSource,
@@ -50,7 +51,10 @@ export function NodeCanvasHint({
   }
   if (!hasFilledSource(graph)) {
     return (
-      <EmptyHint className="pointer-events-none absolute inset-x-0 bottom-0 z-10 py-4 md:py-4">
+      <EmptyHint
+        action={<AddStationButton />}
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 py-4 md:py-4"
+      >
         {firstStep(graph, isPhone)}
       </EmptyHint>
     );

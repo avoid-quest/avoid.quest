@@ -131,8 +131,8 @@ if (process.env.RADIO_SINGLE_LINK_REGRESSION === "1") {
       fireEvent.click(
         view.getByRole("button", { name: "Options for stream.example" })
       );
-      expect(view.getByRole("menuitem", { name: "Save" })).toBeTruthy();
-      fireEvent.click(view.getByRole("menuitem", { name: "Remove" }));
+      expect(view.getByRole("menuitem", { name: "Save station" })).toBeTruthy();
+      fireEvent.click(view.getByRole("menuitem", { name: "Remove station" }));
       await waitFor(() => expect(getSessionRadios()).toEqual([]));
     }
   );

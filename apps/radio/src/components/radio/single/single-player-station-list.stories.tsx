@@ -71,8 +71,13 @@ export const Empty: Story = {
   args: { radios: [] },
   play: async ({ canvasElement }) => {
     await expect(
-      within(canvasElement).getByText("Search to add a station")
+      within(canvasElement).getByText(
+        "Search or paste a link to play a station. Save it to keep it in My stations."
+      )
     ).toBeVisible();
+    await expect(
+      within(canvasElement).getAllByRole("button", { name: "Add station" })
+    ).toHaveLength(2);
   },
 };
 

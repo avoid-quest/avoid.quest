@@ -142,6 +142,9 @@ export function SettingsForm({
   const [dataPanel, setDataPanel] = useState<DataPanel>(() =>
     getInitialDataPanel(defaultTab)
   );
+  const [defaultStationPage, setDefaultStationPage] = useState<
+    "create" | undefined
+  >(defaultTab === "add-station" ? "create" : undefined);
   const [isResetting, setIsResetting] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
 
@@ -160,6 +163,7 @@ export function SettingsForm({
   // The section list is a column from md up: arrow keys follow its layout.
   const isMobile = useIsMobile();
   const handleSectionChange = (value: string) => {
+    setDefaultStationPage(undefined);
     setActive(value as SettingsSection);
   };
 
@@ -207,6 +211,7 @@ export function SettingsForm({
           <TabsContent className="mt-0" value={active}>
             <SectionContent
               dataPanel={dataPanel}
+              defaultStationPage={defaultStationPage}
               isResetting={isResetting}
               onDataPanelChange={setDataPanel}
               onReset={handleReset}
@@ -235,6 +240,7 @@ export function SettingsForm({
 }
 
 type SectionContentProps = {
+  defaultStationPage?: "create";
   section: SettingsSection;
   dataPanel: DataPanel;
   settings: SettingsRecord;
@@ -246,6 +252,7 @@ type SectionContentProps = {
 };
 
 function SectionContent({
+  defaultStationPage,
   section,
   dataPanel,
   onDataPanelChange,
@@ -255,7 +262,7 @@ function SectionContent({
     return <GeneralSettings settings={props.settings} />;
   }
   if (section === "radios") {
-    return <RadioManagement />;
+    return <RadioManagement defaultPage={defaultStationPage} />;
   }
   if (section === "playback") {
     return (

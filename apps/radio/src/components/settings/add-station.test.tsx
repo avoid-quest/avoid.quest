@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { browserTestGlobals } from "@/test-utils/browser-globals";
 import { installSettingsTestDom } from "./settings-test-dom";
 
+const SAVED_STATION = /^My new station/;
+
 if (process.env.RADIO_ADD_STATION_REGRESSION === "1") {
   const dom = installSettingsTestDom();
   Object.assign(globalThis, browserTestGlobals(dom.window), {
@@ -19,6 +21,7 @@ if (process.env.RADIO_ADD_STATION_REGRESSION === "1") {
       }
     },
   });
+  Object.assign(CSS, { supports: () => false });
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: () => ({
@@ -27,36 +30,21 @@ if (process.env.RADIO_ADD_STATION_REGRESSION === "1") {
       removeEventListener: () => undefined,
     }),
   });
-  const { cleanup, fireEvent, render, waitFor } = await import(
+  const { cleanup, fireEvent, render, waitFor, within } = await import(
     "@testing-library/react"
   );
-  const { StationList } = await import(
-    "../radio/single/single-player-station-list"
-  );
+  const { Radios } = await import("../radio");
   const { NodeCanvasHint } = await import("../radio/node/canvas-hint");
   const { DjRadioList } = await import("../radio/dj/dj-radio-list");
   const { SettingsButton } = await import("./settings-button");
   const { radiosCollection } = await import("@/lib/collections/radios");
-  const { initializeSettings } = await import("@/lib/collections/settings");
+  const { initializeSettings, setPlayerMode } = await import(
+    "@/lib/collections/settings"
+  );
   const { buildNodeGraphFromTemplate } = await import(
     "@/lib/node-graph/templates"
   );
-  const noop = () => undefined;
-  const single = (
-    <StationList
-      currentRadioId={undefined}
-      isPlaying={false}
-      onDelete={noop}
-      onEdit={noop}
-      onSave={noop}
-      onSelect={noop}
-      onToggle={noop}
-      onTogglePlayPause={noop}
-      radios={[]}
-      searchBar={<input aria-label="Search stations" />}
-      sessionRadios={[]}
-    />
-  );
+  const single = <Radios />;
   const entries = [
     { name: "Single header", player: single, triggerIndex: 0 },
     { name: "Single empty state", player: single, triggerIndex: 1 },
@@ -73,6 +61,7 @@ if (process.env.RADIO_ADD_STATION_REGRESSION === "1") {
   ];
   beforeEach(async () => {
     await initializeSettings();
+    setPlayerMode("single");
     await radiosCollection.stateWhenReady();
   });
   afterEach(() => {
@@ -88,11 +77,14 @@ if (process.env.RADIO_ADD_STATION_REGRESSION === "1") {
         defaultOptions: { queries: { retry: false } },
       });
       const view = render(
-        <QueryClientProvider client={client}>{player}</QueryClientProvider>
+        <QueryClientProvider client={client}>
+          <div data-testid="player">{player}</div>
+        </QueryClientProvider>
       );
-      const trigger = view.getAllByRole("button", { name: "Add station" })[
-        triggerIndex
-      ];
+      const playerView = within(view.getByTestId("player"));
+      let trigger = (
+        await playerView.findAllByRole("button", { name: "Add station" })
+      )[triggerIndex];
       expect(trigger).toBeDefined();
       if (name.startsWith("Single")) {
         expect(
@@ -118,18 +110,31 @@ if (process.env.RADIO_ADD_STATION_REGRESSION === "1") {
         target: { value: "https://stream.example/live.mp3" },
       });
       fireEvent.click(view.getByRole("button", { name: "Add station" }));
-      await view.findByRole("searchbox", { name: "Filter stations" });
-      expect([...radiosCollection.state.values()]).toEqual([
-        expect.objectContaining({
-          enabled: true,
-          name: "My new station",
-          streamUrl: "https://stream.example/live.mp3",
-        }),
-      ]);
-      expect(view.getAllByRole("dialog")).toHaveLength(1);
-      fireEvent.click(view.getByRole("button", { name: "Close" }));
-      await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-      await waitFor(() => expect(document.activeElement).toBe(trigger));
+      await waitFor(() =>
+        expect([...radiosCollection.state.values()]).toEqual([
+          expect.objectContaining({
+            enabled: true,
+            name: "My new station",
+            streamUrl: "https://stream.example/live.mp3",
+          }),
+        ])
+      );
+      if (name === "Single empty state") {
+        // The saved station replaces the empty state and its Settings trigger.
+        await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+        trigger = playerView.getByRole("button", { name: "Add station" });
+      } else {
+        await view.findByRole("searchbox", { name: "Filter stations" });
+        expect(view.getAllByRole("dialog")).toHaveLength(1);
+        fireEvent.click(view.getByRole("button", { name: "Close" }));
+        await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+        await waitFor(() => expect(document.activeElement).toBe(trigger));
+      }
+      if (name.startsWith("Single")) {
+        expect(
+          await playerView.findByRole("button", { name: SAVED_STATION })
+        ).toBeTruthy();
+      }
       // The shortcut starts a fresh Add page even after saving and closing.
       fireEvent.click(trigger, { detail: 0 });
       await view.findByRole("heading", { name: "Add station" });

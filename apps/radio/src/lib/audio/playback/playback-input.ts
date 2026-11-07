@@ -25,13 +25,44 @@ const STREAM_URL_OVERRIDES: Readonly<Record<string, string>> = {
     "https://streams.radiomast.io/nts2",
 };
 
+/** Host + path identity only; query/hash and trailing slash must not bypass. */
+function streamOverrideIdentity(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const path =
+      parsed.pathname.length > 1 && parsed.pathname.endsWith("/")
+        ? parsed.pathname.slice(0, -1)
+        : parsed.pathname;
+    return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+const STREAM_URL_OVERRIDE_BY_IDENTITY = new Map<string, string>(
+  Object.entries(STREAM_URL_OVERRIDES).flatMap(([from, to]) => {
+    const identity = streamOverrideIdentity(from);
+    return identity ? [[identity, to] as const] : [];
+  })
+);
+
+function resolveStreamUrlOverride(streamUrl: string): string | undefined {
+  return (
+    STREAM_URL_OVERRIDES[streamUrl] ??
+    STREAM_URL_OVERRIDE_BY_IDENTITY.get(streamOverrideIdentity(streamUrl) ?? "")
+  );
+}
+
 export function toPlaybackInput(
   radio: Radio,
   sourceKind?: RadioSourceKind
 ): PlaybackInput {
   const src = isRadioBlackoutStreamUrl(radio.streamUrl)
     ? RADIO_BLACKOUT_STREAM_URL
-    : (STREAM_URL_OVERRIDES[radio.streamUrl] ?? radio.streamUrl);
+    : (resolveStreamUrlOverride(radio.streamUrl) ?? radio.streamUrl);
   const format =
     radio.streamFormat ??
     (radio.platformMetadata?.platform === "radio-browser" &&

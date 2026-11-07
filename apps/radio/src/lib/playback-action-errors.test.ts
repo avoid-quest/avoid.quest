@@ -43,6 +43,13 @@ test("support limits preserve guidance; ordinary media failures still reach Sent
       mode: "single",
     });
     expect(unsupportedAction.userMessage).toBe(
+      "This audio format is not supported. Check the station stream or try another source."
+    );
+    const unreachableAction = createPlaybackActionError({
+      cause: new Error("Audio stream failed to load"),
+      mode: "single",
+    });
+    expect(unreachableAction.userMessage).toBe(
       "The stream could not be reached. Check the station URL and try again."
     );
     capturePlaybackActionError(unsupportedAction);

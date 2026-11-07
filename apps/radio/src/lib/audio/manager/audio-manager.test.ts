@@ -139,6 +139,34 @@ afterEach(() => {
 });
 
 describe("AudioManager", () => {
+  // RADIO-22: single-mode playSound must go through toPlaybackInput so a
+  // persisted RadioJar mount (including query variants) never reaches media.
+  test("single-mode playSound remounts a persisted Radio Alhara RadioJar URL", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(
+        {
+          name: "Radio Alhara",
+          streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv?source=radio",
+        },
+        "single:alhara",
+        "native",
+        "station"
+      );
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      expect(browser.audio().loadSources).toEqual([
+        "https://stream.radioalhara.net/ra",
+      ]);
+      browser.audio().emit("canplay");
+      await starting;
+    } finally {
+      harness.restore();
+    }
+  });
+
   test.each([
     [Number.POSITIVE_INFINITY, 1],
     [120, 1],

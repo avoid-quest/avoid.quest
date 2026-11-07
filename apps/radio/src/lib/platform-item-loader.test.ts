@@ -1,6 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { SpotifyMetadata } from "@avoid.quest/platforms/spotify";
-import type { YouTubeClient } from "@avoid.quest/platforms/youtube";
+import {
+  type YouTubeClient,
+  YouTubeProviderAggregateError,
+  YouTubeProviderError,
+} from "@avoid.quest/platforms/youtube";
 import { resolveSpotifyItem as matchSpotifyItem } from "./platform-client";
 import { createPlatformItemLoader } from "./platform-item-loader";
 
@@ -80,6 +84,56 @@ describe("browser platform item loader", () => {
       error: "No public YouTube provider is available",
       success: false,
     });
+  });
+
+  // RADIO-25: DJ pick keeps aggregate provider diagnostics for reporting/UI.
+  test("keeps YouTube provider aggregate diagnostics on resolution failure", async () => {
+    const aggregate = new YouTubeProviderAggregateError([
+      new YouTubeProviderError("YouTube provider returned HTTP 500", {
+        code: "http",
+        kind: "piped",
+        providerId: "piped-wireway",
+        status: 500,
+      }),
+      new YouTubeProviderError(
+        "YouTube provider is unavailable or blocked by CORS",
+        {
+          cause: new TypeError("Failed to fetch"),
+          code: "network-or-cors",
+          kind: "invidious",
+          providerId: "invidious-omada",
+        }
+      ),
+    ]);
+    const load = createPlatformItemLoader({
+      getYouTubeClient: () =>
+        youtubeClient(mock(() => Promise.reject(aggregate))),
+      resolvePlatformItem: mock(() => {
+        throw new Error("Platform server must remain unused");
+      }),
+      resolveSpotifyItem: unusedSpotify,
+      resolveStaticAudio: mock(() =>
+        Promise.reject(new Error("static audio must remain unused"))
+      ),
+    });
+
+    const result = await load("https://youtube.com/watch?v=abcdefghijk");
+    expect(result).toMatchObject({
+      cause: aggregate,
+      code: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
+      error: "Every configured YouTube provider failed",
+      success: false,
+    });
+    expect(result.success).toBe(false);
+    if (result.success) {
+      throw new Error("Expected YouTube resolution to fail");
+    }
+    expect(result.cause).toBe(aggregate);
+    expect(
+      (result.cause as YouTubeProviderAggregateError).errors.map(
+        (entry) => entry.providerId
+      )
+    ).toEqual(["piped-wireway", "invidious-omada"]);
   });
 
   test.each([

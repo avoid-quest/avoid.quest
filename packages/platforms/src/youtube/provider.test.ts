@@ -815,6 +815,145 @@ describe("ordered YouTube provider failover", () => {
     }
   });
 
+  // RADIO-25: curated pool exhausted by HTTP 500 and fetch/CORS failures.
+  test("fails over HTTP 500 and network failures, then aggregates diagnostics", async () => {
+    const http500 = mock(() =>
+      Promise.reject(
+        new YouTubeProviderError("YouTube provider returned HTTP 500", {
+          code: "http",
+          kind: "piped",
+          providerId: "piped-a",
+          status: 500,
+        })
+      )
+    );
+    const corsBlocked = mock(() =>
+      Promise.reject(
+        new YouTubeProviderError(
+          "YouTube provider is unavailable or blocked by CORS",
+          {
+            cause: new TypeError("Failed to fetch"),
+            code: "network-or-cors",
+            kind: "invidious",
+            providerId: "invidious-b",
+          }
+        )
+      )
+    );
+    const http500Again = mock(() =>
+      Promise.reject(
+        new YouTubeProviderError("YouTube provider returned HTTP 500", {
+          code: "http",
+          kind: "invidious",
+          providerId: "invidious-c",
+          status: 500,
+        })
+      )
+    );
+    const client = createYouTubeClient([
+      {
+        ...fakeAdapter("piped-a", () => Promise.reject(new Error("unused"))),
+        resolveItem: http500,
+      },
+      {
+        ...fakeAdapter("invidious-b", () =>
+          Promise.reject(new Error("unused"))
+        ),
+        resolveItem: corsBlocked,
+      },
+      {
+        ...fakeAdapter("invidious-c", () =>
+          Promise.reject(new Error("unused"))
+        ),
+        resolveItem: http500Again,
+      },
+    ]);
+
+    try {
+      await client.resolveItem(`https://youtube.com/watch?v=${VIDEO_ID}`);
+      throw new Error("Expected every provider to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(YouTubeProviderAggregateError);
+      const aggregate = error as YouTubeProviderAggregateError;
+      expect(aggregate.message).toBe(
+        "Every configured YouTube provider failed"
+      );
+      expect(aggregate.errors.map((entry) => entry.providerId)).toEqual([
+        "piped-a",
+        "invidious-b",
+        "invidious-c",
+      ]);
+      expect(aggregate.errors.map((entry) => entry.code)).toEqual([
+        "http",
+        "network-or-cors",
+        "http",
+      ]);
+      expect(aggregate.errors.every((entry) => entry.retryable)).toBe(true);
+      expect(aggregate.cause).toBe(aggregate.errors.at(-1));
+    }
+    expect(http500).toHaveBeenCalledTimes(1);
+    expect(corsBlocked).toHaveBeenCalledTimes(1);
+    expect(http500Again).toHaveBeenCalledTimes(1);
+  });
+
+  test("recovers when a later provider succeeds after HTTP 500 and fetch failure", async () => {
+    const recovered = {
+      metadata: {
+        artist: "Artist",
+        itemType: "video" as const,
+        name: "Track",
+        platform: "youtube" as const,
+        url: `https://youtube.com/watch?v=${VIDEO_ID}`,
+        videoId: VIDEO_ID,
+      },
+      streamUrl: "https://media.example/audio.webm",
+      success: true as const,
+    };
+    const client = createYouTubeClient([
+      {
+        ...fakeAdapter("piped-a", () => Promise.reject(new Error("unused"))),
+        resolveItem: mock(() =>
+          Promise.reject(
+            new YouTubeProviderError("YouTube provider returned HTTP 500", {
+              code: "http",
+              kind: "piped",
+              providerId: "piped-a",
+              status: 500,
+            })
+          )
+        ),
+      },
+      {
+        ...fakeAdapter("invidious-b", () =>
+          Promise.reject(new Error("unused"))
+        ),
+        resolveItem: mock(() =>
+          Promise.reject(
+            new YouTubeProviderError(
+              "YouTube provider is unavailable or blocked by CORS",
+              {
+                cause: new TypeError("Failed to fetch"),
+                code: "network-or-cors",
+                kind: "invidious",
+                providerId: "invidious-b",
+              }
+            )
+          )
+        ),
+      },
+      {
+        ...fakeAdapter("invidious-c", () =>
+          Promise.reject(new Error("unused"))
+        ),
+        resolveItem: mock(() => Promise.resolve(recovered)),
+      },
+    ]);
+
+    await expect(
+      client.resolveItem(`https://youtube.com/watch?v=${VIDEO_ID}`)
+    ).resolves.toEqual(recovered);
+  });
+
   test("classifies timeouts", async () => {
     const adapter = createBrowserInvidiousAdapter({
       baseUrl: "https://slow.test",

@@ -205,6 +205,28 @@ describe("refreshPlatformStream", () => {
     await refreshPlatformStream(youtube, "sound-1", 42, refresh);
     expect(refresh.onFailed).toHaveBeenCalledWith(expect.anything(), error);
   });
+
+  // RADIO-25-related: YouTube resolveStream throws; refresh keeps diagnostics.
+  test("reports YouTube provider pool exhaustion through onFailed", async () => {
+    const aggregate = new Error("Every configured YouTube provider failed");
+    aggregate.name = "YouTubeProviderAggregateError";
+    const refresh = options({
+      resolveStream: mock(() => Promise.reject(aggregate)),
+    });
+    await refreshPlatformStream(youtube, "sound-1", 12, refresh);
+    expect(refresh.onUnresolved).not.toHaveBeenCalled();
+    expect(refresh.onFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failureCode: "DJ_YOUTUBE_REFRESH_FAILED",
+        failureMessage: "Failed to refresh YouTube stream - please reload",
+        resolution: expect.objectContaining({
+          platform: "youtube",
+          videoId: "abc",
+        }),
+      }),
+      aggregate
+    );
+  });
 });
 
 describe("radioOnTrack", () => {

@@ -140,6 +140,50 @@ describe("curated YouTube client", () => {
     ).toThrow("YouTube provider pool timeout is invalid");
   });
 
+  // RADIO-25: synthetic browser pool outage (HTTP 500 + Failed to fetch).
+  test("aggregates curated resolveItem failures across HTTP 500 and fetch errors", async () => {
+    const hosts = [
+      "provider-1.example",
+      "provider-2.example",
+      "provider-3.example",
+      "provider-4.example",
+    ] as const;
+    const fetchImpl = mock((input: RequestInfo | URL) => {
+      const { host } = new URL(String(input));
+      if (host === hosts[0] || host === hosts[2]) {
+        return Promise.resolve(
+          new Response("upstream unavailable", { status: 500 })
+        );
+      }
+      return Promise.reject(new TypeError("Failed to fetch"));
+    });
+    const client = createCuratedYouTubeClient(
+      hosts.map((host, index) => ({
+        baseUrl: `https://${host}`,
+        id: `provider-${index + 1}`,
+        kind: index === 0 ? ("piped" as const) : ("invidious" as const),
+      })),
+      {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        verifyMedia: false,
+      }
+    );
+
+    await expect(
+      client.resolveItem("https://youtube.com/watch?v=abcdefghijk")
+    ).rejects.toMatchObject({
+      errors: [
+        { code: "http", providerId: "provider-1", status: 500 },
+        { code: "network-or-cors", providerId: "provider-2" },
+        { code: "http", providerId: "provider-3", status: 500 },
+        { code: "network-or-cors", providerId: "provider-4" },
+      ],
+      message: "Every configured YouTube provider failed",
+      name: "YouTubeProviderAggregateError",
+    });
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(4);
+  });
+
   test("searches and resolves through a curated browser provider", async () => {
     const fetchImpl = mock((input: RequestInfo | URL) => {
       const url = String(input);

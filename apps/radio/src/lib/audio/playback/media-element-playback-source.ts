@@ -11,6 +11,10 @@ import type {
 } from "./playback-source.js";
 import type { StreamStatus } from "./types.js";
 
+function isAttachmentAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 export class MediaElementPlaybackSource implements PlaybackSource {
   private readonly callbacks: PlaybackSourceCallbacks;
   private readonly sourceId: string;
@@ -22,6 +26,7 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private _status: StreamStatus = "idle";
   private _isBuffering = false;
   private generation = 0;
+  private attachmentEpoch = 0;
   private playbackIntent = 0;
   private playbackRate = 1;
   private shouldResumeAfterLoad: boolean;
@@ -226,6 +231,12 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         throw error;
       }
 
+      // Recovery may cancel the initial attachment to start a same-generation
+      // reload. Leave resume to that reload instead of racing play() here.
+      if (this.recovery.isReloading) {
+        return;
+      }
+
       const playResult = await playResultPromise;
       if (!playResult.ok) {
         const canRecoverPlayError = this.canRecoverPendingPlayError(
@@ -396,13 +407,32 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     input: PlaybackInput,
     generation: number
   ): Promise<void> {
-    await this.attachment.load(
-      input,
-      () => generation === this.generation,
-      (event) => this.handleFatalHlsEvent(event)
-    );
+    this.attachmentEpoch += 1;
+    const epoch = this.attachmentEpoch;
+    try {
+      await this.attachment.load(
+        input,
+        () => generation === this.generation && epoch === this.attachmentEpoch,
+        (event) => this.handleFatalHlsEvent(event)
+      );
+    } catch (error) {
+      // Recovery reload calls loadAttachedSource again without bumping
+      // generation, which cancelLoad()-aborts this waiter. That AbortError is
+      // expected; the newer epoch owns readiness and error reporting.
+      if (
+        isAttachmentAbortError(error) &&
+        generation === this.generation &&
+        epoch !== this.attachmentEpoch
+      ) {
+        return;
+      }
+      throw error;
+    }
     if (generation !== this.generation) {
       throw new DOMException("Load aborted", "AbortError");
+    }
+    if (epoch !== this.attachmentEpoch) {
+      return;
     }
     this._status = this.audio.paused ? "buffering" : "streaming";
     this.setBuffering(false);

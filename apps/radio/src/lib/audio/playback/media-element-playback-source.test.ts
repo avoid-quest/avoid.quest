@@ -726,6 +726,98 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   );
 
+  test("recovery reload canceling a pending load does not report AbortError", async () => {
+    jest.useFakeTimers();
+    const browser = installBrowser();
+    const onError = mock(
+      (_error: Error, _recoveryPending?: boolean) => undefined
+    );
+    const onReady = mock(() => undefined);
+
+    try {
+      const source = new MediaElementPlaybackSource(null, "native", {
+        onError,
+        onReady,
+      });
+      const audio = browser.audio();
+      const url = "https://radio.example/icecast-live.mp3";
+      const loading = source.load({
+        format: "progressive",
+        live: true,
+        src: url,
+      });
+      const loadResult = loading.catch((error: unknown) => error);
+      const playing = source.play();
+      const playResult = playing.catch((error: unknown) => error);
+      await flushMicrotasks();
+
+      audio.emit("waiting");
+      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(0);
+      await flushMicrotasks();
+
+      expect(audio.loadSources).toEqual([url, url]);
+      // Recovery cancelLoad()-aborts the pending waitUntilReady. That must not
+      // surface as an unexpected PLAY_ERROR / onError AbortError.
+      expect(onError).not.toHaveBeenCalled();
+
+      audio.emit("canplay");
+      await flushMicrotasks();
+      expect(await loadResult).toBeUndefined();
+      expect(await playResult).toBeUndefined();
+      expect(onError).not.toHaveBeenCalled();
+      expect(onReady).toHaveBeenCalled();
+      expect(source.status).not.toBe("error");
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("a real media error during a pending load still reports onError", async () => {
+    const browser = installBrowser();
+    const onError = mock(
+      (_error: Error, _recoveryPending?: boolean) => undefined
+    );
+
+    try {
+      const source = new MediaElementPlaybackSource(null, "native", {
+        onError,
+      });
+      const audio = browser.audio();
+      const loading = source.load({
+        format: "progressive",
+        live: true,
+        src: "https://radio.example/icecast-live.mp3",
+      });
+      const loadResult = loading.catch((error: unknown) => error);
+      const playing = source.play();
+      const playResult = playing.catch((error: unknown) => error);
+      await flushMicrotasks();
+
+      audio.error = { code: MediaError.MEDIA_ERR_NETWORK } as MediaError;
+      audio.emit("error");
+
+      expect(await loadResult).toHaveProperty(
+        "message",
+        "Audio stream failed to load"
+      );
+      expect(await playResult).toHaveProperty(
+        "message",
+        "Audio stream failed to load"
+      );
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError.mock.calls[0]?.[0]).toHaveProperty(
+        "message",
+        "Audio stream failed to load"
+      );
+      expect(source.status).toBe("error");
+      source.cleanup();
+    } finally {
+      browser.restore();
+    }
+  });
+
   test("reloads after connectivity returns without media progress", async () => {
     jest.useFakeTimers();
     const browser = installBrowser();

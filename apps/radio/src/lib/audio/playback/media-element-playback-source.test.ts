@@ -127,6 +127,8 @@ afterEach(() => {
 });
 
 describe("MediaElementPlaybackSource native playback", () => {
+  // RADIO-23: a browser abort for the previous resource must not reject the
+  // current load as AbortError "Load aborted" (reported upstream as PLAY_ERROR).
   test("a queued abort from the previous resource does not fail its replacement", async () => {
     const browser = installBrowser();
     const onError = mock(() => undefined);

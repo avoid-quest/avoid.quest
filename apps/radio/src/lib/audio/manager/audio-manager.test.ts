@@ -727,6 +727,51 @@ describe("AudioManager", () => {
     }
   );
 
+  // RADIO-23: single-mode external stream replacement. load() queues an abort
+  // for the previous resource; treating that media event as failure reported
+  // AbortError "Load aborted" as PLAY_ERROR while the replacement was current.
+  test("a playing single-mode stream replacement ignores a queued media abort", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, browser } = harness;
+      const soundId = manager.createSound(station, "single:station", "native");
+      const states: AudioState[] = [];
+      manager.subscribe(soundId, (state) => states.push(state));
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      const audio = browser.audio();
+      audio.emit("canplay");
+      await starting;
+      audio.emit("playing");
+      expect(audio.paused).toBe(false);
+
+      const emptyReadyState = HTMLMediaElement.HAVE_NOTHING;
+      audio.load = () => {
+        audio.readyState = emptyReadyState;
+      };
+      const nextUrl = "https://radio.example/replacement.mp3";
+      const refreshing = manager
+        .refreshStreamUrl(soundId, nextUrl)
+        .catch((error: unknown) => error);
+      await flushMicrotasks();
+      const stateCount = states.length;
+      audio.emit("abort");
+      audio.emit("canplay");
+      expect(await refreshing).toBeUndefined();
+
+      expect(audio.src).toBe(nextUrl);
+      expect(audio.paused).toBe(false);
+      expect(states.slice(stateCount).some((state) => state.error)).toBe(false);
+      expect(states.at(-1)).toMatchObject({
+        error: null,
+        isLoading: false,
+        isPlaying: true,
+      });
+    } finally {
+      harness.restore();
+    }
+  });
+
   test.each(["audio-graph", "native"] as const)(
     "a recreated %s source seeks before its first playback",
     async (mode) => {

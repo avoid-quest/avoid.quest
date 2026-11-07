@@ -155,6 +155,45 @@ describe("reporting policy", () => {
     ]);
   });
 
+  // RADIO-26: non-Error rejections were wrapped as AppError and reported as the
+  // generic safe message only, so Sentry never showed the original cause.
+  test("reports a non-Error rejection as a reportable Error that keeps the cause", () => {
+    const rejection = "synthetic-mode-lifecycle-chunk-rejection";
+    expect(
+      captureError(rejection, {
+        operation: "loadModeLifecycle",
+        surface: "ui",
+        tags: { mode: "node" },
+      })
+    ).toBe(EVENT_ID);
+    expect(captureException).toHaveBeenCalledTimes(1);
+    const [reported, hint] = captureException.mock.calls[0] ?? [];
+    expect(reported).toBeInstanceOf(Error);
+    expect(reported).not.toBeInstanceOf(AppError);
+    expect((reported as Error).message).toBe(rejection);
+    expect((reported as Error).cause).toBe(rejection);
+    expect(hint).toEqual({ data: { appError: expect.any(AppError) } });
+    expect(capturedScope?.tags).toMatchObject({
+      error_code: "UNEXPECTED_ERROR",
+      mode: "node",
+      operation: "loadModeLifecycle",
+    });
+    expect(PRIVATE_DATA.test((reported as Error).message)).toBe(false);
+  });
+
+  test("does not put object rejection bodies into the reportable Error message", () => {
+    const rejection = {
+      message: "session=private-token",
+      url: "https://example.test/stream?secret=1",
+    };
+    captureError(rejection, { operation: "loadModeLifecycle", surface: "ui" });
+    const [reported] = captureException.mock.calls[0] ?? [];
+    expect(reported).toBeInstanceOf(Error);
+    expect((reported as Error).message).toBe("Object");
+    expect((reported as Error).cause).toBe(rejection);
+    expect(PRIVATE_DATA.test((reported as Error).message)).toBe(false);
+  });
+
   test.each(["validation", "auth", "rate_limit", "dependency"] as const)(
     "does not emit expected %s errors",
     (category) => {

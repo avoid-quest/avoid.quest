@@ -25,7 +25,7 @@ const STREAM_URL_OVERRIDES: Readonly<Record<string, string>> = {
     "https://streams.radiomast.io/nts2",
 };
 
-/** Host + path identity only; query/hash and trailing slash must not bypass. */
+/** Preserve the origin; query/hash and trailing slash must not bypass. */
 function streamOverrideIdentity(url: string): string | null {
   try {
     const parsed = new URL(url);
@@ -36,7 +36,7 @@ function streamOverrideIdentity(url: string): string | null {
       parsed.pathname.length > 1 && parsed.pathname.endsWith("/")
         ? parsed.pathname.slice(0, -1)
         : parsed.pathname;
-    return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${path}`;
+    return `${parsed.origin}${path}`;
   } catch {
     return null;
   }

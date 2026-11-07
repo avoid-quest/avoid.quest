@@ -55,6 +55,7 @@ describe("toPlaybackInput", () => {
       "https://n03.radiojar.com/78cxy6wkxtzuv",
       "https://n03.radiojar.com/78cxy6wkxtzuv?source=radio",
       "https://N03.RadioJar.com/78cxy6wkxtzuv#legacy",
+      "https://n03.radiojar.com:443/78cxy6wkxtzuv/",
     ]) {
       expect(
         toPlaybackInput({
@@ -89,6 +90,17 @@ describe("toPlaybackInput", () => {
       })
     ).toMatchObject({
       src: "https://n03.radiojar.com/78cxy6wkxtzuv/extra",
+    });
+  });
+
+  test.each([
+    "https://n03.radiojar.com:8443/78cxy6wkxtzuv",
+    "http://n03.radiojar.com:8080/78cxy6wkxtzuv?source=radio",
+    "https://radio.syg.ma:8443/audio.ogg",
+    "https://stream-relay-geo.ntslive.net:8443/stream",
+  ])("preserves a distinct stream origin (%s)", (streamUrl) => {
+    expect(toPlaybackInput({ name: "Other origin", streamUrl })).toMatchObject({
+      src: streamUrl,
     });
   });
 

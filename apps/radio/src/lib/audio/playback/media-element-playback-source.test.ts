@@ -240,6 +240,40 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   });
 
+  test("a recovery reload does not reject an in-flight play for the same resume intent", async () => {
+    jest.useFakeTimers();
+    const browser = installBrowser();
+    const source = new MediaElementPlaybackSource(null, "native");
+    try {
+      const audio = browser.audio();
+      await startNativeStream(source, audio, "https://radio.example/live.mp3");
+      source.pause();
+      const pending = Promise.withResolvers<void>();
+      audio.play = () => {
+        audio.paused = false;
+        return pending.promise;
+      };
+      const result = source.play().catch((error: unknown) => error);
+      audio.emit("waiting");
+      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(0);
+      await flushMicrotasks();
+      // Recovery reattaches through loadAttachedSource without going through
+      // load(), so the browser rejects the earlier play() with this AbortError.
+      pending.reject(
+        new DOMException(
+          "The play() request was interrupted by a new load request.",
+          "AbortError"
+        )
+      );
+      expect(await result).toBeUndefined();
+      expect(source.status).not.toBe("error");
+    } finally {
+      source.cleanup();
+      browser.restore();
+    }
+  });
+
   test.each(["AbortError", "NotAllowedError", "NotSupportedError"])(
     "an active play still reports %s",
     async (name) => {

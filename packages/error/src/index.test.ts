@@ -341,6 +341,30 @@ describe("handled playback and transport policy", () => {
     expect(capturedScope?.tags.error_code).toBe(errorCode);
   });
 
+  // RADIO-25: exhausted YouTube provider pools stay unexpected so ops can see
+  // curated relay outages; callers keep the aggregate error as the cause.
+  test("reports YouTube provider pool exhaustion with diagnostics preserved", () => {
+    const aggregate = new Error("Every configured YouTube provider failed");
+    aggregate.name = "YouTubeProviderAggregateError";
+    expect(
+      capturePlaybackError(aggregate, {
+        errorCode: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
+        errorMessage: aggregate.message,
+        mode: "dj",
+        streamUrl: "https://youtube.com/watch?v=abcdefghijk",
+      })
+    ).toBe(EVENT_ID);
+    expect(captureException).toHaveBeenCalledWith(aggregate, {
+      data: { appError: expect.any(AppError) },
+    });
+    expect(capturedScope?.tags).toMatchObject({
+      error_code: "YOUTUBE_CLIENT_RESOLUTION_FAILED",
+      error_expected: "false",
+      mode: "dj",
+      stream_host: "youtube.com",
+    });
+  });
+
   test("reports distinct failures on one host without sending stream paths or station data", () => {
     const payload = {
       errorCode: "STREAM_FETCH_FAILED",

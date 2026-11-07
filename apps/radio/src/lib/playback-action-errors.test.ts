@@ -21,6 +21,9 @@ test("support limits preserve guidance; ordinary media failures still reach Sent
     "The operation is not supported.",
     "NotSupportedError"
   );
+  // RADIO-22 symptom: MEDIA_ERR_SRC_NOT_SUPPORTED mapped by mediaElementError.
+  // Keep reporting unexpected stream failures; do not silence the diagnostic.
+  const unsupportedStream = new Error("Audio stream format is not supported");
   try {
     expect(toRuntimeAudioError(support).message).toBe(support.safeMessage);
     capturePlaybackActionError(
@@ -35,6 +38,23 @@ test("support limits preserve guidance; ordinary media failures still reach Sent
     );
     expect(capture).toHaveBeenCalledTimes(1);
     expect(capture.mock.calls[0]?.[0]).toBe(failure);
+    const unsupportedAction = createPlaybackActionError({
+      cause: unsupportedStream,
+      mode: "single",
+    });
+    expect(unsupportedAction.userMessage).toBe(
+      "This audio format is not supported. Check the station stream or try another source."
+    );
+    const unreachableAction = createPlaybackActionError({
+      cause: new Error("Audio stream failed to load"),
+      mode: "single",
+    });
+    expect(unreachableAction.userMessage).toBe(
+      "The stream could not be reached. Check the station URL and try again."
+    );
+    capturePlaybackActionError(unsupportedAction);
+    expect(capture).toHaveBeenCalledTimes(2);
+    expect(capture.mock.calls[1]?.[0]).toBe(unsupportedStream);
   } finally {
     capture.mockRestore();
     enabled.mockRestore();

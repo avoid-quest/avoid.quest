@@ -50,22 +50,58 @@ describe("toPlaybackInput", () => {
   });
 
   test("upgrades persisted Radio Alhara URLs to its first-party stream", () => {
-    expect(
-      toPlaybackInput({
-        name: "Radio Alhara",
-        streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
-      })
-    ).toMatchObject({
-      format: "progressive",
-      live: true,
-      src: "https://stream.radioalhara.net/ra",
-    });
+    const currentMount = "https://stream.radioalhara.net/ra";
+    for (const streamUrl of [
+      "https://n03.radiojar.com/78cxy6wkxtzuv",
+      "https://n03.radiojar.com/78cxy6wkxtzuv?source=radio",
+      "https://N03.RadioJar.com/78cxy6wkxtzuv#legacy",
+      "https://n03.radiojar.com:443/78cxy6wkxtzuv/",
+    ]) {
+      expect(
+        toPlaybackInput({
+          name: "Radio Alhara",
+          streamUrl,
+        })
+      ).toMatchObject({
+        format: "progressive",
+        live: true,
+        src: currentMount,
+      });
+    }
     expect(
       toPlaybackInput({
         name: "Lookalike",
         streamUrl: "https://example.com/78cxy6wkxtzuv",
       })
     ).toMatchObject({ src: "https://example.com/78cxy6wkxtzuv" });
+    expect(
+      toPlaybackInput({
+        name: "Embedded path",
+        streamUrl:
+          "https://evil.example/https://n03.radiojar.com/78cxy6wkxtzuv",
+      })
+    ).toMatchObject({
+      src: "https://evil.example/https://n03.radiojar.com/78cxy6wkxtzuv",
+    });
+    expect(
+      toPlaybackInput({
+        name: "Path sibling",
+        streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv/extra",
+      })
+    ).toMatchObject({
+      src: "https://n03.radiojar.com/78cxy6wkxtzuv/extra",
+    });
+  });
+
+  test.each([
+    "https://n03.radiojar.com:8443/78cxy6wkxtzuv",
+    "http://n03.radiojar.com:8080/78cxy6wkxtzuv?source=radio",
+    "https://radio.syg.ma:8443/audio.ogg",
+    "https://stream-relay-geo.ntslive.net:8443/stream",
+  ])("preserves a distinct stream origin (%s)", (streamUrl) => {
+    expect(toPlaybackInput({ name: "Other origin", streamUrl })).toMatchObject({
+      src: streamUrl,
+    });
   });
 
   test("upgrades persisted NTS relay URLs to Web Audio compatible sources", () => {

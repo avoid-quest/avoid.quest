@@ -94,7 +94,22 @@ function getFriendlyPlaybackErrorMessage(
   ) {
     return "Playback source is no longer available. Reload the station and try again.";
   }
-  if (messageIncludesAny(rawMessage, ["network", "fetch", "stream"])) {
+  // mediaElementError phrases: format/decode before reachability. Do not match
+  // bare "stream" — that mislabels format failures as URL problems.
+  if (messageIncludesAny(rawMessage, ["format is not supported"])) {
+    return "This audio format is not supported. Check the station stream or try another source.";
+  }
+  if (messageIncludesAny(rawMessage, ["could not be decoded"])) {
+    return "The stream could not be decoded. Try another station or format.";
+  }
+  if (
+    messageIncludesAny(rawMessage, [
+      "network",
+      "fetch",
+      "failed to load",
+      "timed out",
+    ])
+  ) {
     return "The stream could not be reached. Check the station URL and try again.";
   }
 

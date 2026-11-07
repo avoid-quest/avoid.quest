@@ -393,6 +393,35 @@ describe("AudioManager", () => {
     }
   });
 
+  // RADIO-1Z: Node mode loads through AudioManager.playSound → toPlaybackInput.
+  // Persisted RadioJar Alhara URLs must remount before readiness, or Chrome
+  // reports MEDIA_ERR_SRC_NOT_SUPPORTED and the lane maps it to PLAY_ERROR.
+  test("Node playSound remounts a persisted Radio Alhara RadioJar URL", async () => {
+    const harness = createMediaPlaybackHarness();
+    try {
+      const { manager, browser, effects } = harness;
+      effects.connectGraph = mock(async () => true);
+      const soundId = manager.createSound(
+        {
+          name: "Radio Alhara",
+          streamUrl: "https://n03.radiojar.com/78cxy6wkxtzuv",
+        },
+        "node:n:alhara",
+        "native",
+        "station"
+      );
+      const starting = manager.playSound(soundId);
+      await flushMicrotasks();
+      expect(browser.audio().loadSources).toEqual([
+        "https://stream.radioalhara.net/ra",
+      ]);
+      browser.audio().emit("canplay");
+      await starting;
+    } finally {
+      harness.restore();
+    }
+  });
+
   test("unsupported Safari live radio leaves the Node sound stopped", async () => {
     const harness = createMediaPlaybackHarness();
     try {

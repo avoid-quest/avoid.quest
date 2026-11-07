@@ -1574,6 +1574,37 @@ describe("Node Playback starts", () => {
     );
   });
 
+  // RADIO-1Z: a real unsupported-stream failure must stay visible on the lane
+  // and still report as PLAY_ERROR. Remapping dead hosts is separate; do not
+  // swallow format failures in Node lifecycle ownership.
+  test("reports an unsupported stream format as a Node PLAY_ERROR", async () => {
+    insertNodeSession(patch([station("alhara")]));
+    const harness = createHarness();
+    harness.context.audio.playSound = mock(() =>
+      Promise.reject(new Error("Audio stream format is not supported"))
+    );
+    await harness.playback.activate();
+
+    await harness.playback.setPlaying("alhara", true);
+    await harness.playback.whenSettled();
+
+    expect(getPlaybackChannelRuntime(channelOf("alhara")).error).toMatchObject({
+      code: "PLAY_ERROR",
+      message:
+        "The stream could not be reached. Check the station URL and try again.",
+    });
+    expect(harness.context.reportError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cause: expect.objectContaining({
+          message: "Audio stream format is not supported",
+        }),
+        channelId: channelOf("alhara"),
+        code: "PLAY_ERROR",
+        mode: "node",
+      })
+    );
+  });
+
   test("reconciles main output settings when playback starts a lane", async () => {
     insertNodeSession(patch([station("a")]));
     const patches: unknown[] = [];

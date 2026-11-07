@@ -70,11 +70,18 @@ export class MediaElementPlaybackSource implements PlaybackSource {
         this.setBuffering(false);
         this.callbacks.onError?.(error, recoveryPending);
       },
-      reload: (input, generation) => this.loadAttachedSource(input, generation),
+      reload: (input, generation) => {
+        // Recovery reattaches without load(), so it must still retire any
+        // in-flight play() whose browser promise the reattach will abort.
+        // Keep shouldResumeAfterLoad so resume can continue afterward.
+        this.supersedeInFlightPlay();
+        return this.loadAttachedSource(input, generation);
+      },
       resume: async () => {
         this.audio.autoplay = true;
+        this.shouldResumeAfterLoad = true;
         if (this.audio.paused) {
-          await this.audio.play();
+          await this.playForIntent(this.playbackIntent);
         }
       },
       setState: (status, isBuffering) => {
@@ -435,6 +442,10 @@ export class MediaElementPlaybackSource implements PlaybackSource {
   private cancelPendingPlaybackIntent(): void {
     this.shouldResumeAfterLoad = false;
     this.audio.autoplay = false;
+    this.supersedeInFlightPlay();
+  }
+
+  private supersedeInFlightPlay(): void {
     this.playbackIntent += 1;
   }
 
@@ -442,8 +453,8 @@ export class MediaElementPlaybackSource implements PlaybackSource {
     try {
       await this.audio.play();
     } catch (error) {
-      // A later pause, stop, load or play owns the element now. The browser
-      // can reject the old play promise after that action has completed.
+      // A later pause, stop, load, play or recovery reload owns the element
+      // now. The browser can reject the old play promise after that action.
       if (!this.isPlaybackIntentCanceled(playbackIntent)) {
         throw error;
       }

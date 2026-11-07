@@ -342,6 +342,60 @@ describe("MediaElementPlaybackSource native playback", () => {
     }
   );
 
+  // RADIO-22: Chrome maps the retired RadioJar 404 to MEDIA_ERR_SRC_NOT_SUPPORTED.
+  // Single-mode loads through toPlaybackInput; the override must keep that mount
+  // off the media element so readiness never rejects with PLAY_ERROR.
+  test.each([
+    "https://n03.radiojar.com/78cxy6wkxtzuv",
+    "https://n03.radiojar.com/78cxy6wkxtzuv?source=radio",
+  ])(
+    "single-mode Radio Alhara loads never attach the retired RadioJar mount (%s)",
+    async (retiredMount) => {
+      const browser = installBrowser();
+      const onError = mock(() => undefined);
+      const source = new MediaElementPlaybackSource(null, "native", {
+        onError,
+      });
+      const currentMount = "https://stream.radioalhara.net/ra";
+      try {
+        const audio = browser.audio();
+        audio.load = () => {
+          if (audio.src.includes("n03.radiojar.com/78cxy6wkxtzuv")) {
+            queueMicrotask(() => {
+              audio.error = {
+                code: MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED,
+              } as MediaError;
+              audio.emit("error");
+            });
+            return;
+          }
+          if (audio.src !== "") {
+            queueMicrotask(() => {
+              audio.error = null;
+              audio.emit("canplay");
+            });
+          }
+        };
+        const input = toPlaybackInput({
+          name: "Radio Alhara",
+          streamUrl: retiredMount,
+        });
+        await source.load(input);
+        expect(input).toMatchObject({
+          format: "progressive",
+          src: currentMount,
+        });
+        expect(audio.loadSources).toEqual([currentMount]);
+        expect(audio.src).toBe(currentMount);
+        expect(onError).not.toHaveBeenCalled();
+        expect(source.status).not.toBe("error");
+      } finally {
+        source.cleanup();
+        browser.restore();
+      }
+    }
+  );
+
   test("a failed start stays stopped when late media events arrive", async () => {
     const browser = installBrowser();
     const onPlaying = mock(() => undefined);

@@ -306,6 +306,62 @@ function asStringTagValue(value: string | number | boolean): string {
   return String(value);
 }
 
+const MAX_UNKNOWN_REJECTION_MESSAGE = 200;
+
+/** Sentry-facing summary only. Never JSON-serialize arbitrary objects. */
+function describeUnknownRejection(value: unknown): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "Empty string rejection";
+    }
+    return trimmed.length > MAX_UNKNOWN_REJECTION_MESSAGE
+      ? `${trimmed.slice(0, MAX_UNKNOWN_REJECTION_MESSAGE)}…`
+      : trimmed;
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  if (typeof value === "symbol") {
+    return value.description ? `Symbol(${value.description})` : "Symbol()";
+  }
+  if (typeof value === "function") {
+    return `Function(${value.name || "anonymous"})`;
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "object") {
+    const name = value.constructor?.name;
+    return name && name !== "Object" ? `Object(${name})` : "Object";
+  }
+  return "unknown";
+}
+
+function toReportableException(appError: AppError): {
+  exception: Error;
+  withAppErrorHint: boolean;
+} {
+  if (appError.cause instanceof Error) {
+    return { exception: appError.cause, withAppErrorHint: true };
+  }
+  if (appError.cause !== undefined && appError.cause !== null) {
+    // Non-Error rejections used to report only the generic AppError safe
+    // message (RADIO-26). Promote a typed Error so the event value is useful
+    // while keeping the original value on `cause` for local debugging.
+    const promoted = new Error(describeUnknownRejection(appError.cause), {
+      cause: appError.cause,
+    });
+    promoted.name = "NonErrorRejection";
+    return { exception: promoted, withAppErrorHint: true };
+  }
+  return { exception: appError, withAppErrorHint: false };
+}
+
 function resolveCaptureError(error: unknown): AppError {
   return toAppError(error, {
     category: "unknown",
@@ -383,10 +439,12 @@ export function captureError(
 
     // Keep native same-cause dedupe and LinkedErrors' original exception.
     // The hint carries the authoritative wrapper policy only to beforeSend.
-    eventId =
-      appError.cause instanceof Error
-        ? Sentry.captureException(appError.cause, { data: { appError } })
-        : Sentry.captureException(appError);
+    const reportable = toReportableException(appError);
+    eventId = reportable.withAppErrorHint
+      ? Sentry.captureException(reportable.exception, {
+          data: { appError },
+        })
+      : Sentry.captureException(reportable.exception);
   });
 
   return eventId;

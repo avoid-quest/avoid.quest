@@ -1562,7 +1562,7 @@ describe("Node Playback starts", () => {
     expect(getPlaybackChannelRuntime(channelOf("bad")).error).toMatchObject({
       code: "PLAY_ERROR",
       message:
-        "The stream could not be reached. Check the station URL and try again.",
+        "Playback could not start. Check the station stream and try again.",
     });
     expect(harness.context.reportError).toHaveBeenCalledTimes(1);
     expect(harness.context.reportError).toHaveBeenCalledWith(

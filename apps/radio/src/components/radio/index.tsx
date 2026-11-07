@@ -1,9 +1,9 @@
-import { captureError } from "@avoid.quest/error";
 import { Suspense, useEffect } from "react";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";
 import { useEnabledRadios } from "@/lib/hooks/use-radios";
 import { usePlayerModeState } from "@/lib/hooks/use-settings";
+import { runModeLifecycleSynchronization } from "@/lib/mode-lifecycle-boot";
 import type { PlayerMode } from "@/lib/normalize-player-mode";
 import { useModeTransitionSnapshot } from "@/lib/use-mode-transition-snapshot";
 import { RadioLoadingSkeleton } from "./radio-loading-skeleton";
@@ -46,24 +46,17 @@ export function Radios() {
     if (!hasSettings) {
       return;
     }
-    import("@/lib/mode-lifecycle-requests")
-      .then(
-        ({ modeLifecycleRequests }) =>
-          // A legacy mode ("multiple", or one another tab wrote) runs as its
-          // replacement. Committing that could fail on the same stale record
-          // the settings step could not rewrite and roll the mode back.
-          modeLifecycleRequests.synchronizeMode(mode),
-        (error) => {
-          captureError(error, {
-            operation: "loadModeLifecycle",
-            surface: "ui",
-          });
-          throw error;
-        }
-      )
-      .catch((error) => {
-        console.error("[radio] Failed to synchronize playback mode:", error);
-      });
+    // A legacy mode ("multiple", or one another tab wrote) runs as its
+    // replacement. Committing that could fail on the same stale record
+    // the settings step could not rewrite and roll the mode back.
+    runModeLifecycleSynchronization(mode, async () => {
+      const { modeLifecycleRequests } = await import(
+        "@/lib/mode-lifecycle-requests"
+      );
+      return modeLifecycleRequests;
+    }).catch((error: unknown) => {
+      console.error("[radio] Failed to synchronize playback mode:", error);
+    });
   }, [mode, hasSettings]);
 
   if (!(radiosQuery.isReady && isReady)) {

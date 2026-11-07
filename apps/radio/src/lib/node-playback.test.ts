@@ -1591,7 +1591,7 @@ describe("Node Playback starts", () => {
     expect(getPlaybackChannelRuntime(channelOf("alhara")).error).toMatchObject({
       code: "PLAY_ERROR",
       message:
-        "The stream could not be reached. Check the station URL and try again.",
+        "This audio format is not supported. Check the station stream or try another source.",
     });
     expect(harness.context.reportError).toHaveBeenCalledWith(
       expect.objectContaining({

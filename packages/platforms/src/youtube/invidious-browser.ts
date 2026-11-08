@@ -172,8 +172,11 @@ async function resolveVideoStream(
       "No YouTube audio stream found"
     );
   }
-  const streamUrl = await resolveProviderUrl(context, stream.url, signal);
-  await verifyProviderMedia(context, streamUrl, signal);
+  const streamUrl = await verifyProviderMedia(
+    context,
+    await resolveProviderUrl(context, stream.url, signal),
+    signal
+  );
   return { streamUrl, video };
 }
 

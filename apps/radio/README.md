@@ -110,9 +110,15 @@ playlists are resolved directly in the browser. Bandcamp's fresh, validated
 `seep.eu.org`,
 `proxy.cors.sh`, then `cors.zme.ink`; the browser range-probes the pool under one
 deadline before selecting the highest-priority working relay. YouTube tries the
-curated, release-tested providers `pipedapi.wireway.ch`, `yt.omada.cafe`,
-`invidious.nikkosphere.com`, then `y.com.sb`, with per-provider and whole-pool
-deadlines. See `BANDCAMP_RELAY_RESEARCH.md` and
+curated providers `pipedapi.wireway.ch`, `yt.omada.cafe`,
+`invidious.nikkosphere.com`, `yt.chocolatemoo53.com`, then `y.com.sb`, with a
+five-second deadline per provider and a thirty-second deadline for the pool.
+Chocolatemoo opts in to browser media redirects: the starting and final URLs
+must pass public-URL/DNS validation and match its curated origins. Browser Fetch
+controls the intermediate hops, which JavaScript cannot inspect through manual
+redirects; this policy trusts the operator's routing. Successful verification
+returns the final companion URL to the player. Other providers and all API
+requests keep rejecting redirects. See `BANDCAMP_RELAY_RESEARCH.md` and
 `YOUTUBE_PROVIDER_RESEARCH.md` for the release probes and caveats.
 
 ## Analytics

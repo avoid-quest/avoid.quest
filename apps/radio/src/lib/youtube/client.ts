@@ -13,6 +13,7 @@ export type CuratedYouTubeProvider = {
   baseUrl: string;
   id: string;
   kind: YouTubeProviderKind;
+  mediaRedirectOrigins?: readonly string[];
 };
 
 // See YOUTUBE_PROVIDER_RESEARCH.md.
@@ -31,6 +32,20 @@ export const CURATED_YOUTUBE_PROVIDERS: readonly CuratedYouTubeProvider[] = [
     baseUrl: "https://invidious.nikkosphere.com",
     id: "invidious-nikkosphere",
     kind: "invidious",
+  },
+  {
+    baseUrl: "https://yt.chocolatemoo53.com",
+    id: "invidious-chocolatemoo",
+    kind: "invidious",
+    mediaRedirectOrigins: [
+      "https://yt.chocolatemoo53.com",
+      "https://yt-comp1.chocolatemoo53.com",
+      "https://yt-comp2.chocolatemoo53.com",
+      "https://yt-comp3.chocolatemoo53.com",
+      "https://yt-comp4.chocolatemoo53.com",
+      "https://yt-comp5.chocolatemoo53.com",
+      "https://yt-comp6.chocolatemoo53.com",
+    ],
   },
   {
     baseUrl: "https://y.com.sb",
@@ -54,7 +69,8 @@ type YouTubeClientOptions = Pick<
 };
 
 const DEFAULT_PROVIDER_TIMEOUT_MS = 5000;
-const DEFAULT_OPERATION_TIMEOUT_MS = 25_000;
+// Five providers get a full five-second attempt, plus time for pool overhead.
+const DEFAULT_OPERATION_TIMEOUT_MS = 30_000;
 
 type DeadlineSignal = {
   cleanup: () => void;
@@ -197,6 +213,7 @@ export function createCuratedYouTubeClient(
       ...providerOptions,
       baseUrl: provider.baseUrl,
       id: provider.id,
+      mediaRedirectOrigins: provider.mediaRedirectOrigins,
       timeoutMs,
     };
     const adapter =

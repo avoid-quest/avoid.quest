@@ -101,6 +101,12 @@ export type YouTubeProviderAdapterOptions = {
   fetchImpl?: typeof fetch;
   id?: string;
   maxResponseBytes?: number;
+  /**
+   * Opt in to browser media redirects between these starting/final origins.
+   * Intermediate hops are controlled by the trusted provider, not inspectable
+   * through browser manual redirects. JSON/text requests still reject redirects.
+   */
+  mediaRedirectOrigins?: readonly string[];
   resolveHostname?: PublicHostnameResolver | false;
   timeoutMs?: number;
   verifyMedia?: boolean;
@@ -111,6 +117,7 @@ export type YouTubeProviderRequestContext = {
   fetchImpl: typeof fetch;
   kind: YouTubeProviderKind;
   maxResponseBytes: number;
+  mediaRedirectOrigins: readonly string[];
   providerId: string;
   resolveHostname: PublicHostnameResolver | false;
   timeoutMs: number;
@@ -165,6 +172,21 @@ function normalizeBaseUrl(value: string, kind: YouTubeProviderKind): string {
   return url.toString().replace(TRAILING_SLASH_PATTERN, "");
 }
 
+function normalizeMediaRedirectOrigin(
+  value: string,
+  kind: YouTubeProviderKind
+): string {
+  const normalized = normalizeBaseUrl(value, kind);
+  const url = new URL(normalized);
+  if (url.protocol !== "https:" || normalized !== url.origin) {
+    throw configurationError(
+      kind,
+      "YouTube media redirect origins must be HTTPS origins without a path"
+    );
+  }
+  return url.origin;
+}
+
 export function createYouTubeProviderRequestContext(
   kind: YouTubeProviderKind,
   options: YouTubeProviderAdapterOptions
@@ -189,6 +211,9 @@ export function createYouTubeProviderRequestContext(
     fetchImpl,
     kind,
     maxResponseBytes,
+    mediaRedirectOrigins: (options.mediaRedirectOrigins ?? []).map((origin) =>
+      normalizeMediaRedirectOrigin(origin, kind)
+    ),
     providerId: options.id?.trim() || `${kind}:${new URL(baseUrl).host}`,
     resolveHostname:
       options.resolveHostname ??
@@ -263,6 +288,32 @@ export async function resolveProviderUrl(
     );
   }
   return url.toString();
+}
+
+async function validateMediaRedirectUrl(
+  context: YouTubeProviderRequestContext,
+  value: string,
+  signal: AbortSignal
+): Promise<void> {
+  // Fetch always supplies an absolute response URL. An empty/opaque result
+  // cannot establish the destination and must not pass media verification.
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    throw invalidProviderSchema(
+      context,
+      "YouTube media response URL is missing",
+      error
+    );
+  }
+  if (!context.mediaRedirectOrigins.includes(url.origin)) {
+    throw invalidProviderSchema(
+      context,
+      "YouTube media URL is outside the configured redirect origins"
+    );
+  }
+  await resolveProviderUrl(context, value, signal);
 }
 
 function responseTooLarge(
@@ -401,15 +452,36 @@ async function withProviderResponse<T>(
 ): Promise<T> {
   const requestSignal = createRequestSignal(signal, context.timeoutMs);
   try {
+    const followMediaRedirects =
+      media && context.mediaRedirectOrigins.length > 0;
+    if (followMediaRedirects) {
+      await validateMediaRedirectUrl(
+        context,
+        String(url),
+        requestSignal.signal
+      );
+    }
     const { fetchImpl } = context;
     const response = await fetchImpl(url, {
       cache: "no-store",
       credentials: "omit",
       referrerPolicy: "no-referrer",
       ...init,
-      redirect: "error",
+      redirect: followMediaRedirects ? "follow" : "error",
       signal: requestSignal.signal,
     });
+    if (followMediaRedirects) {
+      try {
+        await validateMediaRedirectUrl(
+          context,
+          response.url,
+          requestSignal.signal
+        );
+      } catch (error) {
+        await response.body?.cancel().catch(() => undefined);
+        throw error;
+      }
+    }
     return await read(response);
   } catch (error) {
     if (error instanceof YouTubeProviderError) {
@@ -543,12 +615,12 @@ export async function verifyProviderMedia(
   context: YouTubeProviderRequestContext,
   url: string,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<string> {
   if (!context.verifyMedia) {
-    return;
+    return url;
   }
 
-  await withProviderResponse(
+  const responseUrl = await withProviderResponse(
     context,
     url,
     signal,
@@ -616,6 +688,7 @@ export async function verifyProviderMedia(
             "YouTube media proxy returned an empty response"
           );
         }
+        return response.url;
       } finally {
         if (reader) {
           await reader.cancel().catch(() => undefined);
@@ -626,4 +699,5 @@ export async function verifyProviderMedia(
       }
     }
   );
+  return context.mediaRedirectOrigins.length > 0 ? responseUrl : url;
 }

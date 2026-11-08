@@ -37,6 +37,20 @@ describe("curated YouTube client", () => {
         kind: "invidious",
       },
       {
+        baseUrl: "https://yt.chocolatemoo53.com",
+        id: "invidious-chocolatemoo",
+        kind: "invidious",
+        mediaRedirectOrigins: [
+          "https://yt.chocolatemoo53.com",
+          "https://yt-comp1.chocolatemoo53.com",
+          "https://yt-comp2.chocolatemoo53.com",
+          "https://yt-comp3.chocolatemoo53.com",
+          "https://yt-comp4.chocolatemoo53.com",
+          "https://yt-comp5.chocolatemoo53.com",
+          "https://yt-comp6.chocolatemoo53.com",
+        ],
+      },
+      {
         baseUrl: "https://y.com.sb",
         id: "invidious-y-com-sb",
         kind: "invidious",
@@ -51,6 +65,7 @@ describe("curated YouTube client", () => {
       { id: "piped-wireway", kind: "piped" },
       { id: "invidious-omada", kind: "invidious" },
       { id: "invidious-nikkosphere", kind: "invidious" },
+      { id: "invidious-chocolatemoo", kind: "invidious" },
       { id: "invidious-y-com-sb", kind: "invidious" },
     ]);
   });
@@ -59,6 +74,67 @@ describe("curated YouTube client", () => {
     expect(() => createCuratedYouTubeClient([])).toThrow(
       YouTubeProviderUnavailableError
     );
+  });
+
+  test("falls back to Chocolatemoo and returns its verified companion URL", async () => {
+    const hosts: string[] = [];
+    const companionUrl = "https://yt-comp4.chocolatemoo53.com/videoplayback";
+    const fetchImpl = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      hosts.push(url.host);
+      if (url.host !== "yt.chocolatemoo53.com") {
+        return Promise.resolve(new Response("unavailable", { status: 503 }));
+      }
+      if (new Headers(init?.headers).has("Range")) {
+        if (init?.redirect !== "follow") {
+          return Promise.reject(new TypeError("Unexpected redirect"));
+        }
+        const response = new Response(new Uint8Array([1]), {
+          headers: {
+            "Content-Length": "65536",
+            "Content-Type": "audio/webm",
+          },
+          status: 206,
+        });
+        Object.defineProperty(response, "url", { value: companionUrl });
+        return Promise.resolve(response);
+      }
+      expect(init?.redirect).toBe("error");
+      return Promise.resolve(
+        Response.json({
+          adaptiveFormats: [
+            {
+              bitrate: "128000",
+              type: "audio/webm",
+              url: "/videoplayback",
+            },
+          ],
+          author: "Artist",
+          lengthSeconds: 180,
+          liveNow: false,
+          title: "Track",
+          videoId: "abcdefghijk",
+          videoThumbnails: [],
+        })
+      );
+    });
+    const client = createCuratedYouTubeClient(CURATED_YOUTUBE_PROVIDERS, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    await expect(
+      client.resolveItem("https://youtube.com/watch?v=abcdefghijk")
+    ).resolves.toMatchObject({
+      metadata: { streamUrl: companionUrl },
+      streamUrl: companionUrl,
+    });
+    expect(hosts).toEqual([
+      "pipedapi.wireway.ch",
+      "yt.omada.cafe",
+      "invidious.nikkosphere.com",
+      "yt.chocolatemoo53.com",
+      "yt.chocolatemoo53.com",
+    ]);
   });
 
   test("bounds the complete failover operation", async () => {
@@ -86,7 +162,7 @@ describe("curated YouTube client", () => {
 
   test("gives every provider a turn during two-stage resolution", async () => {
     const requests: string[] = [];
-    const providers = [1, 2, 3, 4].map((index) => ({
+    const providers = [1, 2, 3, 4, 5].map((index) => ({
       baseUrl: `https://provider-${index}.example`,
       id: `provider-${index}`,
       kind: "piped" as const,
@@ -128,8 +204,8 @@ describe("curated YouTube client", () => {
     await expect(client.resolveStream("abcdefghijk")).rejects.toThrow(
       "Every configured YouTube provider failed"
     );
-    expect(requests.filter((url) => url.includes("/streams/"))).toHaveLength(4);
-    expect(requests.filter((url) => url.includes("media-"))).toHaveLength(4);
+    expect(requests.filter((url) => url.includes("/streams/"))).toHaveLength(5);
+    expect(requests.filter((url) => url.includes("media-"))).toHaveLength(5);
   });
 
   test("rejects an invalid pool timeout", () => {

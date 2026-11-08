@@ -172,6 +172,7 @@ function normalizeBaseUrl(value: string, kind: YouTubeProviderKind): string {
   return url.toString().replace(TRAILING_SLASH_PATTERN, "");
 }
 
+/** Accept only canonical HTTPS origins for a provider's media redirect policy. */
 function normalizeMediaRedirectOrigin(
   value: string,
   kind: YouTubeProviderKind
@@ -187,6 +188,7 @@ function normalizeMediaRedirectOrigin(
   return url.origin;
 }
 
+/** Normalize provider configuration; redirects require an explicit media opt-in. */
 export function createYouTubeProviderRequestContext(
   kind: YouTubeProviderKind,
   options: YouTubeProviderAdapterOptions
@@ -290,6 +292,7 @@ export async function resolveProviderUrl(
   return url.toString();
 }
 
+/** Check a starting or final media origin and its public URL/DNS resolution. */
 async function validateMediaRedirectUrl(
   context: YouTubeProviderRequestContext,
   value: string,
@@ -442,6 +445,7 @@ function requestError(
   );
 }
 
+/** Keep validation, fetching, and body reads within one classified request deadline. */
 async function withProviderResponse<T>(
   context: YouTubeProviderRequestContext,
   url: URL | string,
@@ -484,7 +488,12 @@ async function withProviderResponse<T>(
     }
     return await read(response);
   } catch (error) {
-    if (error instanceof YouTubeProviderError) {
+    // DNS validation can wrap an interrupted resolver as an invalid schema.
+    // Cancellation/timeout still owns the request's recovery classification.
+    if (
+      error instanceof YouTubeProviderError &&
+      !requestSignal.signal.aborted
+    ) {
       throw error;
     }
     throw requestError(context, requestSignal, signal, error, media);
@@ -611,6 +620,7 @@ export function providerOperationError(
   });
 }
 
+/** Probe a ranged audio body and return its verified URL for browser playback. */
 export async function verifyProviderMedia(
   context: YouTubeProviderRequestContext,
   url: string,

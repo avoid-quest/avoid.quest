@@ -190,33 +190,101 @@ describe("opt-in YouTube media redirects", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  test.each(["parent cancellation", "request timeout"] as const)(
+    "preserves %s during final companion DNS validation",
+    async (interruption) => {
+      const controller = new AbortController();
+      const resolvingCompanion = Promise.withResolvers<void>();
+      const cancel = mock(() => undefined);
+      const adapter = createBrowserInvidiousAdapter({
+        baseUrl: "https://provider.test",
+        fetchImpl: mockFetch((_input: RequestInfo | URL, init?: RequestInit) =>
+          Promise.resolve(
+            new Headers(init?.headers).has("Range")
+              ? responseAt(
+                  media(new ReadableStream({ cancel })),
+                  "https://companion.test/audio"
+                )
+              : json(invidiousVideo())
+          )
+        ),
+        mediaRedirectOrigins: origins,
+        resolveHostname: async (hostname, { signal } = {}) => {
+          if (hostname !== "companion.test") {
+            return [PUBLIC_ADDRESS];
+          }
+          resolvingCompanion.resolve();
+          return await new Promise<readonly string[]>((_resolve, reject) => {
+            const onAbort = () => reject(signal?.reason);
+            if (signal?.aborted) {
+              onAbort();
+            } else {
+              signal?.addEventListener("abort", onAbort, { once: true });
+            }
+          });
+        },
+        timeoutMs: interruption === "parent cancellation" ? 1000 : 50,
+      });
+
+      const resolution = adapter
+        .resolveStream(VIDEO_ID, controller.signal)
+        .catch((error: unknown) => error);
+      await resolvingCompanion.promise;
+      if (interruption === "parent cancellation") {
+        controller.abort();
+      }
+      expect(await resolution).toMatchObject(
+        interruption === "parent cancellation"
+          ? { code: "aborted", retryable: false }
+          : { code: "timeout", retryable: true }
+      );
+      expect(cancel).toHaveBeenCalledTimes(1);
+    }
+  );
+
   test.each([
-    ["non-audio content", () => media("HTML", { "Content-Type": "text/html" })],
+    [
+      "non-audio content",
+      () => media("HTML", { "Content-Type": "text/html" }),
+      { code: "unexpected-content-type" },
+    ],
     [
       "an invalid range",
       () => media("audio", { "Content-Range": "bytes 1-2/3" }),
+      { code: "invalid-schema" },
     ],
-    ["an empty body", () => media(null)],
-    ["an ignored range", () => new Response("audio", { status: 200 })],
-    ["a media outage", () => new Response("unavailable", { status: 503 })],
-  ] as const)("still rejects %s after a handoff", async (_name, response) => {
-    const adapter = createBrowserInvidiousAdapter({
-      baseUrl: "https://provider.test",
-      fetchImpl: mockFetch((_input: RequestInfo | URL, init?: RequestInit) =>
-        Promise.resolve(
-          new Headers(init?.headers).has("Range")
-            ? responseAt(response(), "https://companion.test/audio")
-            : json(invidiousVideo())
-        )
-      ),
-      mediaRedirectOrigins: origins,
-      resolveHostname: async () => [PUBLIC_ADDRESS],
-    });
+    ["an empty body", () => media(null), { code: "invalid-schema" }],
+    [
+      "an ignored range",
+      () => new Response("audio", { status: 200 }),
+      { code: "invalid-schema" },
+    ],
+    [
+      "a media outage",
+      () => new Response("unavailable", { status: 503 }),
+      { code: "http", status: 503 },
+    ],
+  ] as const)(
+    "still rejects %s after a handoff",
+    async (_name, response, error) => {
+      const adapter = createBrowserInvidiousAdapter({
+        baseUrl: "https://provider.test",
+        fetchImpl: mockFetch((_input: RequestInfo | URL, init?: RequestInit) =>
+          Promise.resolve(
+            new Headers(init?.headers).has("Range")
+              ? responseAt(response(), "https://companion.test/audio")
+              : json(invidiousVideo())
+          )
+        ),
+        mediaRedirectOrigins: origins,
+        resolveHostname: async () => [PUBLIC_ADDRESS],
+      });
 
-    await expect(adapter.resolveStream(VIDEO_ID)).rejects.toBeInstanceOf(
-      YouTubeProviderError
-    );
-  });
+      const resolution = adapter.resolveStream(VIDEO_ID);
+      await expect(resolution).rejects.toBeInstanceOf(YouTubeProviderError);
+      await expect(resolution).rejects.toMatchObject(error);
+    }
+  );
 
   test.each([
     "http://companion.test",

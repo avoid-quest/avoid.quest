@@ -102,7 +102,7 @@ export function createStaticMidiActions({
     {
       dispatch: setMasterVolume,
       group: "mixer",
-      label: "Master Volume",
+      label: "Main volume",
       range: { max: 1, min: 0, step: 0.01 },
       targetId: "mixer:master-volume",
       type: "continuous",
@@ -110,7 +110,7 @@ export function createStaticMidiActions({
     {
       dispatch: setHeadphoneVolume,
       group: "mixer",
-      label: "Headphone Volume",
+      label: "Cue volume",
       range: { max: 1, min: 0, step: 0.01 },
       targetId: "mixer:headphone-volume",
       type: "continuous",

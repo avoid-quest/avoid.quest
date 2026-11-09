@@ -1,33 +1,19 @@
 /*
  * Node mode: React Flow's structural styles in the base layer, so Tailwind
- * utilities still win, plus the five signal tokens. Signal kind reads from
- * the dash pattern first and colour second: idle audio is the achromatic
- * Wire, and emerald appears only on live cables.
+ * utilities still win. Signal colours use the shared semantic theme directly.
+ * Signal kind reads from the dash pattern first and colour second: idle audio
+ * is muted, and success marks live cables.
  */
 @import "@xyflow/react/dist/base.css" layer(base);
-
-:root {
-  --node-wire: var(--muted-foreground);
-  --node-mod: #2563eb;
-  --node-key: #b45309;
-  --node-live: #047857;
-  --node-clip: var(--destructive);
-}
-
-.dark {
-  --node-mod: #3b82f6;
-  --node-key: #fbbf24;
-  --node-live: #34d399;
-}
 
 .react-flow {
   --xy-background-color: transparent;
   --xy-node-border-default: 1px solid var(--border);
   --xy-node-border-selected-default: 1px solid var(--ring);
-  --xy-edge-stroke-default: var(--node-wire);
+  --xy-edge-stroke-default: var(--muted-foreground);
   --xy-edge-stroke-width-default: 2;
   --xy-edge-stroke-selected-default: var(--foreground);
-  --xy-connectionline-stroke-default: var(--node-wire);
+  --xy-connectionline-stroke-default: var(--muted-foreground);
   --xy-connectionline-stroke-width-default: 2;
   --xy-handle-background-color-default: var(--background);
   --xy-selection-background-color-default: color-mix(
@@ -49,7 +35,7 @@
     width: 10px;
     height: 10px;
     pointer-events: all;
-    border: 2px solid var(--node-wire);
+    border: 2px solid var(--muted-foreground);
     border-radius: 9999px;
   }
 
@@ -68,16 +54,16 @@
 
   /* A sidechain (key) input: the Key amber ring. */
   .react-flow__handle.node-port[data-kind="sidechain"] {
-    border-color: var(--node-key);
+    border-color: var(--warning);
   }
 
   .react-flow__handle.node-port[data-kind="control"] {
-    border-color: var(--node-mod);
+    border-color: var(--info);
   }
 
   .react-flow__handle.node-port.node-port-live {
-    background-color: var(--node-live);
-    border-color: var(--node-live);
+    background-color: var(--success);
+    border-color: var(--success);
   }
 
   .react-flow__handle.node-port.valid,
@@ -97,7 +83,7 @@
   }
 
   .react-flow__handle.node-port.node-port-accept[data-kind="sidechain"] {
-    border-color: var(--node-key);
+    border-color: var(--warning);
   }
 
   .react-flow__handle.node-port.node-port-locked:not(.connectingfrom) {
@@ -121,14 +107,14 @@
 
   /* A cable carrying a playing Station. */
   .react-flow__edge.node-edge-live .react-flow__edge-path {
-    stroke: var(--node-live);
+    stroke: var(--success);
     stroke-width: 2.5;
   }
 
   /* A key (sidechain) cable: the Key amber in long dashes. A playing
      station thickens it, and one that keys nothing fades. */
   .react-flow__edge.node-edge-key .react-flow__edge-path {
-    stroke: var(--node-key);
+    stroke: var(--warning);
     stroke-dasharray: 6 4;
   }
 

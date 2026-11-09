@@ -5,11 +5,11 @@ import { Switch } from "@avoid.quest/ui/components/switch";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  HeadphonesIcon,
-  MapPinIcon,
-  Repeat1Icon,
-  SkipBackIcon,
-} from "lucide-react";
+  IconHeadphones,
+  IconMapPin,
+  IconPlayerSkipBack,
+  IconRepeatOnce,
+} from "@tabler/icons-react";
 import { useId, useRef } from "react";
 import type { ChannelSelection } from "@/lib/audio";
 import { usePeakLevel } from "@/lib/hooks/use-peak-level";
@@ -144,7 +144,7 @@ export function StripMeter({
 }
 
 const STRIP_TOGGLE =
-  "h-6 min-w-6 px-0 font-medium text-[11px] text-muted-foreground data-[state=on]:text-foreground";
+  "h-6 min-w-6 px-0 font-medium text-xs text-muted-foreground data-pressed:text-foreground";
 
 /** M and S: the source's mute, and its solo on the lane. */
 export function StripMuteSolo({
@@ -171,7 +171,7 @@ export function StripMuteSolo({
       {showMute ? (
         <Toggle
           aria-label={`Mute channel ${target}`}
-          className={cn(STRIP_TOGGLE, "data-[state=on]:bg-destructive/15")}
+          className={cn(STRIP_TOGGLE, "data-pressed:bg-destructive/15")}
           onPressedChange={onToggleMute}
           pressed={muted}
           size="sm"
@@ -184,8 +184,8 @@ export function StripMuteSolo({
         aria-label={`Solo ${target}`}
         className={cn(
           STRIP_TOGGLE,
-          "data-[state=on]:bg-amber-500/20",
-          soloedOut && "ring-1 ring-amber-500/40 ring-inset"
+          "data-pressed:bg-warning/20",
+          soloedOut && "ring-1 ring-warning/40 ring-inset"
         )}
         data-soloed-out={soloedOut || undefined}
         onPressedChange={onToggleSolo}
@@ -398,7 +398,7 @@ function MediaTransport({
           title="Loop: repeat the whole track at its end"
           variant="outline"
         >
-          <Repeat1Icon className="size-3.5" />
+          <IconRepeatOnce className="size-3.5" />
           Loop
         </Toggle>
         <Button
@@ -409,7 +409,7 @@ function MediaTransport({
           title="Set the cue point here"
           variant="outline"
         >
-          <MapPinIcon className="size-3.5" />
+          <IconMapPin className="size-3.5" />
           Set cue
         </Button>
         <Button
@@ -423,7 +423,7 @@ function MediaTransport({
           title={strip.cue === null ? "Set a cue first" : "Jump to the cue"}
           variant="outline"
         >
-          <SkipBackIcon className="size-3.5" />
+          <IconPlayerSkipBack className="size-3.5" />
           Cue
           {strip.cue === null ? null : (
             <span className="text-muted-foreground tabular-nums">
@@ -441,7 +441,7 @@ function MediaTransport({
             title="Hear it pre-fader on the cue output"
             variant="outline"
           >
-            <HeadphonesIcon className="size-3.5" />
+            <IconHeadphones className="size-3.5" />
             Cue listen
           </Toggle>
         ) : null}
@@ -613,7 +613,7 @@ export function SourceStrip({
             />
             <Toggle
               aria-label={`Key lock ${target}`}
-              className="h-6 px-1.5 text-[10px]"
+              className="h-6 px-1.5 text-xs"
               onPressedChange={(keyLock) => onStripChange({ keyLock })}
               pressed={speed.keyLock}
               size="sm"

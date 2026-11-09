@@ -3,12 +3,13 @@
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { MusicIcon, PlayIcon } from "lucide-react";
+import { IconMusic, IconPlayerPlay } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { getPlatformSourceColor } from "@/lib/dj-library-sources";
 import { formatPlatformDuration } from "@/lib/external-url/utils";
 import { useDjTrackLoad } from "@/lib/hooks/use-dj-track-load";
+import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import type { SourceSearchResult as UnifiedSearchResult } from "@/lib/source-search-workflow";
 import { EmptyHint } from "../../empty-hint";
 import { InlineError } from "../../inline-error";
@@ -31,7 +32,7 @@ type SearchResultsProps = {
 
 const PLATFORM_LABELS = {
   bandcamp: "BC",
-  local: "FM",
+  local: "Saved",
   mixcloud: "MC",
   "radio-browser": "RB",
   radiogarden: "RG",
@@ -115,7 +116,9 @@ function ResultItem({
       ? "external"
       : result.platform
   );
+  const isNotSaved = Boolean(result.radio && isSessionRadio(result.radio));
   const platformLabel = PLATFORM_LABELS[result.platform];
+  const stationStatusLabel = isNotSaved ? "Not saved" : platformLabel;
   const showLoading = isPending || isLoading;
 
   return (
@@ -125,7 +128,7 @@ function ResultItem({
       onClick={handleClick}
       type="button"
     >
-      <div className="relative size-10 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
+      <div className="relative size-10 shrink-0 overflow-hidden border border-border/70 bg-muted">
         {result.thumbnail ? (
           <img
             alt=""
@@ -138,18 +141,30 @@ function ResultItem({
           />
         ) : (
           <div className="flex size-full items-center justify-center">
-            <MusicIcon className="size-4 text-muted-foreground" />
+            <IconMusic className="size-4 text-muted-foreground" />
           </div>
         )}
-        <div
-          className="absolute bottom-0 left-0 px-1 font-bold font-mono text-[9px] text-white"
-          style={{ backgroundColor: platformColor }}
-        >
-          {platformLabel}
-        </div>
+        {result.platform === "local" ? null : (
+          <div
+            className="absolute bottom-0 left-0 max-w-full truncate px-1 font-bold font-mono text-white text-xs"
+            style={{ backgroundColor: platformColor }}
+            title={platformLabel}
+          >
+            {platformLabel}
+          </div>
+        )}
       </div>
 
-      <StationRowText title={result.title}>
+      <StationRowText
+        indicator={
+          result.platform === "local" ? (
+            <span className="inline-flex shrink-0 border border-border/70 px-1.5 py-0.5 text-muted-foreground text-xs leading-none">
+              {stationStatusLabel}
+            </span>
+          ) : null
+        }
+        title={result.title}
+      >
         <StationRowSubtitle>
           {[
             result.artist,
@@ -166,7 +181,7 @@ function ResultItem({
       {showLoading ? (
         <Spinner className="size-3.5 shrink-0 text-muted-foreground" />
       ) : (
-        <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+        <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground" />
       )}
     </button>
   );

@@ -21,18 +21,18 @@ import {
   SelectValue,
 } from "@avoid.quest/ui/components/select";
 import { Slider } from "@avoid.quest/ui/components/slider";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import {
-  ChevronDownIcon,
-  ClockIcon,
-  CopyIcon,
-  HeadphonesIcon,
-  InfoIcon,
-  type LucideIcon,
-  RefreshCwIcon,
-  Volume2Icon,
-} from "lucide-react";
+  IconChevronDown,
+  IconClock,
+  IconCopy,
+  IconHeadphones,
+  IconInfoCircle,
+  IconRefresh,
+  IconVolume,
+  type TablerIcon,
+} from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
-import { toast } from "sonner";
 import { captureMobileAudioDiagnostic, useAudioDevices } from "@/lib/audio";
 import { getAudioSettings, getDelaySettings } from "@/lib/collections";
 import {
@@ -166,12 +166,26 @@ export function AudioSettings() {
     diagnosticLabel = "Copy audio diagnostic";
   }
 
+  const mainOutputItems = [
+    { value: "default", label: "System default" },
+    ...outputDevices
+      .filter((device) => device.deviceId && device.deviceId !== "default")
+      .map((device) => ({ value: device.deviceId, label: device.label })),
+  ];
+  const cueOutputItems = [
+    { value: "none", label: "Off" },
+    ...outputDevices
+      .filter((device) => device.deviceId && device.deviceId !== mainOutputId)
+      .map((device) => ({ value: device.deviceId, label: device.label })),
+  ];
+  const selectedCueOutputId = cueOutputId ?? "none";
+
   return (
     <div className="space-y-4">
       {/* Permission request */}
       {sinkIdSupported && permissionState !== "granted" && (
         <Alert className="py-2.5">
-          <InfoIcon />
+          <IconInfoCircle />
           <AlertDescription className="text-xs">
             Grant microphone permission to see device names and select audio
             devices.
@@ -191,14 +205,23 @@ export function AudioSettings() {
       <div className="divide-y">
         <AudioSettingRow
           controlId={sinkIdSupported ? "main-output" : undefined}
-          icon={Volume2Icon}
+          icon={IconVolume}
           title="Main output"
         >
           {sinkIdSupported ? (
             <div className="flex min-w-0 gap-2">
               <Select
-                onValueChange={handleMainOutputChange}
-                value={mainOutputId}
+                items={mainOutputItems}
+                onValueChange={(nextValue) => {
+                  if (nextValue !== null) {
+                    handleMainOutputChange(nextValue);
+                  }
+                }}
+                value={
+                  mainOutputItems.some((item) => item.value === mainOutputId)
+                    ? mainOutputId
+                    : null
+                }
               >
                 <SelectTrigger className="min-w-0 flex-1" id="main-output">
                   <SelectValue placeholder="Select output device" />
@@ -227,7 +250,7 @@ export function AudioSettings() {
                   title="Refresh audio devices"
                   variant="outline"
                 >
-                  <RefreshCwIcon
+                  <IconRefresh
                     className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}
                   />
                 </Button>
@@ -238,7 +261,7 @@ export function AudioSettings() {
           )}
         </AudioSettingRow>
 
-        <AudioSettingRow icon={ClockIcon} title="Main delay">
+        <AudioSettingRow icon={IconClock} title="Main delay">
           <div className="flex min-w-0 items-center gap-3">
             <Slider
               aria-label="Main delay"
@@ -251,7 +274,7 @@ export function AudioSettings() {
               step={1}
               value={[mainDelayMs]}
             />
-            <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+            <span className="w-10 text-right font-mono text-muted-foreground text-xs tabular-nums">
               {mainDelayMs} ms
             </span>
             <Button
@@ -267,13 +290,24 @@ export function AudioSettings() {
 
         <AudioSettingRow
           controlId={sinkIdSupported ? "cue-output" : undefined}
-          icon={HeadphonesIcon}
+          icon={IconHeadphones}
           title="CUE output"
         >
           {sinkIdSupported ? (
             <Select
-              onValueChange={handleCueOutputChange}
-              value={cueOutputId ?? "none"}
+              items={cueOutputItems}
+              onValueChange={(nextValue) => {
+                if (nextValue !== null) {
+                  handleCueOutputChange(nextValue);
+                }
+              }}
+              value={
+                cueOutputItems.some(
+                  (item) => item.value === selectedCueOutputId
+                )
+                  ? selectedCueOutputId
+                  : null
+              }
             >
               <SelectTrigger className="min-w-0 flex-1" id="cue-output">
                 <SelectValue placeholder="Select CUE output" />
@@ -300,7 +334,7 @@ export function AudioSettings() {
         </AudioSettingRow>
 
         {Boolean(cueOutputId) && (
-          <AudioSettingRow icon={ClockIcon} title="CUE delay">
+          <AudioSettingRow icon={IconClock} title="CUE delay">
             <div className="flex min-w-0 items-center gap-3">
               <Slider
                 aria-label="CUE delay"
@@ -313,7 +347,7 @@ export function AudioSettings() {
                 step={1}
                 value={[cueDelayMs]}
               />
-              <span className="w-10 text-right font-mono text-[10px] text-muted-foreground tabular-nums">
+              <span className="w-10 text-right font-mono text-muted-foreground text-xs tabular-nums">
                 {cueDelayMs} ms
               </span>
             </div>
@@ -322,8 +356,8 @@ export function AudioSettings() {
       </div>
 
       <Collapsible>
-        <CollapsibleTrigger className="group flex items-center gap-1.5 rounded text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <ChevronDownIcon className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+        <CollapsibleTrigger className="group flex items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <IconChevronDown className="size-3.5 transition-transform group-aria-expanded:rotate-180" />
           Troubleshooting
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-3">
@@ -333,7 +367,7 @@ export function AudioSettings() {
             size="sm"
             variant="outline"
           >
-            <CopyIcon className="size-3.5" />
+            <IconCopy className="size-3.5" />
             {diagnosticLabel}
           </Button>
         </CollapsibleContent>
@@ -349,7 +383,7 @@ function AudioSettingRow({
   children,
 }: {
   title: string;
-  icon: LucideIcon;
+  icon: TablerIcon;
   /** The labelled control's id, so the title is its accessible name. */
   controlId?: string;
   children: ReactNode;

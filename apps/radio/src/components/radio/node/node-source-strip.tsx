@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Button } from "@avoid.quest/ui/components/button";
 import { cn } from "@avoid.quest/ui/lib/utils";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useStore } from "@tanstack/react-store";
-import { SlidersHorizontalIcon } from "lucide-react";
 import { useState } from "react";
 import type { Radio } from "@/lib/audio";
 import { isSinkIdSupported } from "@/lib/audio/utils";
@@ -145,7 +145,7 @@ export function NodeCompactStrip({
           title="Channel strip: trim, speed, seek and more"
           variant="ghost"
         >
-          <SlidersHorizontalIcon className="size-3.5" />
+          <IconAdjustmentsHorizontal className="size-3.5" />
         </Button>
       ) : null}
     </div>

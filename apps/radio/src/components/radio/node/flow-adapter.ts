@@ -5,7 +5,7 @@
  * through these names, so a React Flow 13 migration (colorMode, `useStore`,
  * CSS layers) changes this file and not the canvas. It is reachable only
  * from the lazy client canvas chunk, never from the Worker bundle: modules
- * the Stage, Rack or inspector also load import only its types, and node
+ * the Rack or inspector also load import only its types, and node
  * ports get their Handle from the canvas through `FlowPortsProvider`.
  */
 

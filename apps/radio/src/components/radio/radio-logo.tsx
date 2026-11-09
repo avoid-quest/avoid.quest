@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { RadioIcon } from "lucide-react";
+import { IconRadio } from "@tabler/icons-react";
 import { useState } from "react";
 
 type RadioLogoProps = {
@@ -81,13 +81,13 @@ export function RadioLogo({
     return (
       <div
         className={cn(
-          "flex items-center justify-center rounded-sm border border-border/70 bg-muted",
+          "flex items-center justify-center border border-border/70 bg-muted",
           sizeMap[size],
           className
         )}
       >
         {fallbackIcon || (
-          <RadioIcon
+          <IconRadio
             className={cn(iconSizeMap[size], "text-muted-foreground")}
           />
         )}
@@ -98,7 +98,7 @@ export function RadioLogo({
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center overflow-hidden rounded-sm border border-border/70 bg-muted",
+        "relative flex items-center justify-center overflow-hidden border border-border/70 bg-muted",
         sizeMap[size],
         className
       )}
@@ -107,7 +107,7 @@ export function RadioLogo({
       <img
         alt={decorative ? "" : `${name} logo`}
         className={cn(
-          "size-full rounded-sm object-contain transition-opacity",
+          "size-full object-contain transition-opacity",
           imagePaddingMap[size],
           imageLoaded ? "opacity-100" : "opacity-0"
         )}
@@ -121,8 +121,8 @@ export function RadioLogo({
       />
       {/* Loading state */}
       {!(imageLoaded || imageError) && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-sm bg-muted">
-          <RadioIcon
+        <div className="absolute inset-0 flex items-center justify-center bg-muted">
+          <IconRadio
             className={cn(
               iconSizeMap[size],
               "animate-pulse text-muted-foreground"

@@ -95,7 +95,15 @@ export function ModulationCableControls({
         <div className="space-y-1 text-xs">
           <p>Target parameter</p>
           <Select
-            onValueChange={(parameter) => commit({ parameter }, true)}
+            items={parameters.map((parameter) => ({
+              value: parameter.key,
+              label: parameter.label,
+            }))}
+            onValueChange={(parameter) => {
+              if (parameter !== null) {
+                commit({ parameter }, true);
+              }
+            }}
             value={selected}
           >
             <SelectTrigger
@@ -149,7 +157,7 @@ export function ModulationCableControls({
           onChange={(enabled) => commit({ muted: !enabled }, true)}
         />
       </div>
-      <p className="max-w-56 text-[10px] text-muted-foreground">
+      <p className="max-w-56 text-muted-foreground text-xs">
         Depth adds a fraction of the parameter range to its saved value.
         Negative depth reverses it; multiple cables add together.
       </p>
@@ -197,7 +205,7 @@ export function ModulationAssignments({
     <div className="mt-4 space-y-3 border-t pt-3">
       <p className="font-medium text-xs">Modulation cables</p>
       {edges.map((edge) => (
-        <div className="space-y-2 rounded border p-2" key={edge.id}>
+        <div className="space-y-2 border p-2" key={edge.id}>
           <AssignmentName edge={edge} store={store} />
           <ModulationCableControls edgeId={edge.id} store={store} />
         </div>

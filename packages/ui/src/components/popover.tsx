@@ -1,54 +1,122 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 "use client";
 
-import { keepOpenOnToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
+import { isToastInteraction } from "@avoid.quest/ui/lib/toast-layer";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import {
-  Anchor,
-  Content,
-  Portal,
-  Root,
-  Trigger,
-} from "@radix-ui/react-popover";
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type * as React from "react";
 
-function Popover({ ...props }: React.ComponentProps<typeof Root>) {
-  return <Root data-slot="popover" {...props} />;
+function Popover({ onOpenChange, ...props }: PopoverPrimitive.Root.Props) {
+  return (
+    <PopoverPrimitive.Root
+      data-slot="popover"
+      onOpenChange={(open, details) => {
+        // A toast press must not dismiss the popover underneath it.
+        if (!open && isToastInteraction(details.event)) {
+          details.cancel();
+          return;
+        }
+        onOpenChange?.(open, details);
+      }}
+      {...props}
+    />
+  );
 }
 
-function PopoverTrigger({ ...props }: React.ComponentProps<typeof Trigger>) {
-  return <Trigger data-slot="popover-trigger" {...props} />;
+function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
 function PopoverContent({
   className,
   align = "center",
+  alignOffset = 0,
+  side = "bottom",
   sideOffset = 4,
-  onInteractOutside,
+  anchor,
+  collisionBoundary,
+  collisionPadding,
+  sticky,
   ...props
-}: React.ComponentProps<typeof Content>) {
+}: PopoverPrimitive.Popup.Props &
+  Pick<
+    PopoverPrimitive.Positioner.Props,
+    | "align"
+    | "alignOffset"
+    | "side"
+    | "sideOffset"
+    | "anchor"
+    | "collisionBoundary"
+    | "collisionPadding"
+    | "sticky"
+  >) {
   return (
-    <Portal>
-      <Content
+    <PopoverPrimitive.Portal>
+      <PopoverPrimitive.Positioner
         align={align}
-        className={cn(
-          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden data-[state=closed]:animate-out data-[state=open]:animate-in",
-          className
-        )}
-        data-slot="popover-content"
-        onInteractOutside={(event) => {
-          onInteractOutside?.(event);
-          keepOpenOnToastInteraction(event);
-        }}
+        alignOffset={alignOffset}
+        anchor={anchor}
+        className="isolate z-50"
+        collisionBoundary={collisionBoundary}
+        collisionPadding={collisionPadding}
+        side={side}
         sideOffset={sideOffset}
-        {...props}
-      />
-    </Portal>
+        sticky={sticky}
+      >
+        <PopoverPrimitive.Popup
+          className={cn(
+            "data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:fade-in-0 data-open:zoom-in-95 data-closed:fade-out-0 data-closed:zoom-out-95 z-50 flex w-72 origin-(--transform-origin) flex-col gap-4 rounded-none bg-popover p-4 text-popover-foreground text-sm shadow-md outline-hidden ring-1 ring-foreground/10 duration-100 data-closed:animate-out data-open:animate-in",
+            className
+          )}
+          data-slot="popover-content"
+          {...props}
+        />
+      </PopoverPrimitive.Positioner>
+    </PopoverPrimitive.Portal>
   );
 }
 
-function PopoverAnchor({ ...props }: React.ComponentProps<typeof Anchor>) {
-  return <Anchor data-slot="popover-anchor" {...props} />;
+function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("flex flex-col gap-1 text-sm", className)}
+      data-slot="popover-header"
+      {...props}
+    />
+  );
 }
 
-export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger };
+function PopoverTitle({ className, ...props }: PopoverPrimitive.Title.Props) {
+  return (
+    <PopoverPrimitive.Title
+      className={cn("font-semibold text-xs uppercase", className)}
+      data-slot="popover-title"
+      {...props}
+    />
+  );
+}
+
+function PopoverDescription({
+  className,
+  ...props
+}: PopoverPrimitive.Description.Props) {
+  return (
+    <PopoverPrimitive.Description
+      className={cn(
+        "mt-0.5 text-muted-foreground text-sm leading-relaxed",
+        className
+      )}
+      data-slot="popover-description"
+      {...props}
+    />
+  );
+}
+
+export {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+};

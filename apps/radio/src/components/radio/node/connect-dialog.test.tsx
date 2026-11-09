@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
 import type { Radio } from "@/lib/audio";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const OCCUPIED_SOURCE = /NTS 1 audio/;
 
@@ -26,6 +27,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   DocumentFragment: dom.window.DocumentFragment,
   document: dom.window.document,
@@ -66,7 +68,7 @@ const { act, cleanup, fireEvent, render, within } = await import(
 
 afterEach(cleanup);
 
-// Radix Select measures and scrolls, which JSDOM does not do.
+// Select measures and scrolls, which JSDOM does not do.
 for (const [key, value] of Object.entries({
   hasPointerCapture: (): boolean => false,
   releasePointerCapture: (): void => undefined,
@@ -184,6 +186,7 @@ describe("selected cable rewiring", () => {
       pointerId: 1,
       pointerType: "touch",
     });
+    fireEvent.mouseDown(trigger, { button: 0 });
     fireEvent.click(trigger);
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     const invalid = view
@@ -273,9 +276,9 @@ function seededStore() {
   });
 }
 
-/** Opens a Radix Select, then lets its positioning frames settle. */
+/** Opens a Select by keyboard, then lets its positioning frames settle. */
 async function openSelect(trigger: HTMLElement) {
-  fireEvent.keyDown(trigger, { key: "Enter" });
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 }
 
@@ -291,7 +294,9 @@ describe("ConnectDialog", () => {
 
     expect(view.getByRole("dialog", { name: "Connect Speakers" })).toBeTruthy();
     expect(
-      view.getByRole("combobox", { name: "Speakers port" }).textContent
+      view
+        .getByRole("combobox", { name: "Speakers port" })
+        .querySelector('[data-slot="select-value"]')?.textContent
     ).toBe("Input");
     const target = view.getByRole("combobox", { name: "Connect to" });
     await openSelect(target);
@@ -315,10 +320,16 @@ describe("ConnectDialog", () => {
       />
     );
 
-    expect(view.getByRole("combobox", { name: "BBC 4 port" }).textContent).toBe(
-      "Audio out"
-    );
+    expect(
+      view
+        .getByRole("combobox", { name: "BBC 4 port" })
+        .querySelector('[data-slot="select-value"]')?.textContent
+    ).toBe("Audio out");
     await openSelect(view.getByRole("combobox", { name: "Connect to" }));
+    fireEvent.pointerDown(
+      view.getByRole("option", { name: "Speakers input" }),
+      { pointerType: "mouse", button: 0 }
+    );
     fireEvent.click(view.getByRole("option", { name: "Speakers input" }));
     fireEvent.click(view.getByRole("button", { name: "Connect" }));
 

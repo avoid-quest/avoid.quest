@@ -1,7 +1,8 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { AudioLinesIcon } from "lucide-react";
+import { IconWaveSine } from "@tabler/icons-react";
+import { AddStationButton } from "@/components/settings/add-station-button";
 import type { Radio } from "@/lib/audio";
 import { useHasEnteredViewport } from "@/lib/hooks/use-has-entered-viewport";
 import { useRadioMetadata } from "@/lib/hooks/use-radio-metadata";
@@ -18,6 +19,7 @@ import {
   stationRowButtonClassName,
   stationRowClassName,
 } from "../station-row";
+import { StationSaveStatus } from "../station-save-status";
 
 function StationRow({
   radio,
@@ -63,7 +65,7 @@ function StationRow({
         stationRowClassName,
         "[contain-intrinsic-size:auto_40px] [content-visibility:auto] focus-within:[content-visibility:visible]",
         isCurrent && "bg-muted/40",
-        isSession && "border-l-2 border-l-[#00d084]/40"
+        isSession && "border-l-2 border-l-success/40"
       )}
       ref={elementRef}
     >
@@ -82,13 +84,16 @@ function StationRow({
         />
         <StationRowText
           indicator={
-            isCurrent && isPlaying ? (
-              <AudioLinesIcon
-                aria-label="Playing"
-                className="size-3.5 shrink-0"
-                role="img"
-              />
-            ) : null
+            <>
+              <StationSaveStatus radio={radio} />
+              {isCurrent && isPlaying ? (
+                <IconWaveSine
+                  aria-label="Playing"
+                  className="size-3.5 shrink-0"
+                  role="img"
+                />
+              ) : null}
+            </>
           }
           isCurrent={isCurrent}
           title={radio.name}
@@ -108,7 +113,7 @@ function StationRow({
         className={cn(
           "flex shrink-0 items-center gap-0.5",
           !isSession &&
-            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 [@media(pointer:coarse)]:opacity-60"
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(pointer:coarse)]:opacity-100"
         )}
       >
         <RadioNowPlayingDetailsButton metadata={metadata} radio={radio} />
@@ -158,7 +163,10 @@ export function StationList({
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col border-border/50 lg:w-80 lg:flex-none lg:border-r xl:w-96">
-      <div className="px-3 py-2">{searchBar}</div>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <div className="min-w-0 flex-1">{searchBar}</div>
+        <AddStationButton iconOnly />
+      </div>
 
       <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         {allRadios.length > 0 ? (
@@ -179,7 +187,10 @@ export function StationList({
             ))}
           </div>
         ) : (
-          <EmptyHint className="py-10">Search to add a station</EmptyHint>
+          <EmptyHint action={<AddStationButton />} className="py-10">
+            Search or paste a link to play a station. Save it to keep it in My
+            stations.
+          </EmptyHint>
         )}
       </ScrollArea>
     </div>

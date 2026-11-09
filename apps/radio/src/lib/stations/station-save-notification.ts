@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 
 type StationSaveNotifier = {
   success: (message: string) => unknown;

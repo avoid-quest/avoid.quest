@@ -2,7 +2,7 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { XIcon } from "lucide-react";
+import { IconX } from "@tabler/icons-react";
 import { VolumeControl } from "@/components/audio/volume-control";
 import { laneChannelId } from "@/lib/node-graph/compile";
 import { snapshotNodeGraph } from "@/lib/node-graph/node-store";
@@ -21,8 +21,7 @@ import { INTERACTIVE, keepControlKeys } from "./module-frame";
  * pasted into a Track) keeps the patch's shape.
  */
 
-export const SOURCE_NODE_FRAME =
-  "w-60 rounded-md border bg-card text-card-foreground";
+export const SOURCE_NODE_FRAME = "w-60 border bg-card text-card-foreground";
 
 /** An empty slot: a dashed frame titled by its type, holding its body. */
 export function EmptySourceFrame({
@@ -68,7 +67,7 @@ export function EmptySourceFrame({
             size="icon"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <IconX className="size-3.5" />
           </Button>
         ) : null}
       </div>

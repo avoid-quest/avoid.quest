@@ -10,6 +10,7 @@ Source reports in this folder:
 | `2026-10-19-inventory-radix-surface-and-style-drift.md` | GPT-6-Sol, `rg` inventory | Counts: Radix API surface, import blast radius, style histograms, theme and font plumbing, export probe |
 | `2026-10-19-live-audit.md` and `-measurements.md` | GPT-6.1-Sol driving both dev apps in a browser | Per-route findings at 1440×900 and 390×844, light and dark, with 83 screenshots (14 kept in `images/`) |
 | `2026-10-19-research-base-ui-tokens-storybook-extraction.md` | GPT-6-Astra, web research against primary sources | Base UI via shadcn, API mapping tables, token tooling, Storybook 10 setup, repo-extraction options |
+| `2026-11-01-radio-structure-proposal.md` | Claude Opus 5.5, code inventory via subagents | Radio app screen inventory, task map per mode, and proposed naming, grouping, navigation and implementation slices (NWS-2788). Its line refs were checked by the writer and a separate review agent, not by the cross-check described below |
 
 Everything below was cross-checked against the repository by the orchestrating agent (Claude Fable 5.1); claims that could not be verified are marked as such.
 
@@ -109,6 +110,11 @@ Do not start with the Base UI swap. The swap is the riskiest step and currently 
 ## 5. Mechanical recipes
 
 ### 5.1 Tokens (Tailwind v4 as the token source)
+
+Superseded by [NWS-2784](https://linear.app/nws2/issue/NWS-2784): standard Tailwind
+sizes and semantic state colours replace the three-tier proposal below. The selected
+theme and font source is shadcn preset `beXRToEi`; see the current
+[UI theme documentation](../../packages/ui/README.md#theme).
 
 Three tiers, all CSS variables, all in `packages/ui/src/styles/`. Split `globals.css` into `theme.css` (tokens) and `globals.css` (imports + base layer) so consumers can import tokens without Preflight if needed.
 
@@ -245,3 +251,23 @@ Steps once sections 1 to 4 are done:
 - No Base UI code was generated or compiled in this repo; the mapping tables come from Base UI 1.9 docs, the shadcn migration skill and registry JSON.
 - Live audit used a desktop browser at 390px width, not a touch device or screen reader. Audio playback, MIDI, permissions and feedback submission were not exercised.
 - Base UI + React Compiler + TanStack Start + Astro islands in combination is undocumented; treat it as a risk to test in step 4 of section 4.
+
+## 8. Rebase onto `dev-ui` (2026-10-21)
+
+Twelve performance and bug-fix PRs (#430 to #441) landed on `dev-ui` after this review. Steps 1 and 2 were rebased on top of them. What they change for the plan:
+
+| Area | What `dev-ui` did | Effect on the plan |
+|---|---|---|
+| Tailwind sources | `globals.css` now imports Tailwind with `source(none)` and declares no `@source`. Each consumer lists sources in its own entry: radio globs `packages/ui/src`, web lists the four components it renders to keep its CSS small. | Supersedes §4 step 1 and §5.4 item 4. The published package must not self-register sources. Ship a documented `@source` snippet per consumer instead. Storybook gets its own entry (`.storybook/storybook.css`) that adds `@source "../src"`. |
+| Dark focus ring | `dark:focus-visible:ring-ring` added to 13 components; dark `--ring` lightened to `oklch(0.705 0.015 286.067)`. | Lyra regeneration must carry this. Better: §5.1 declares one `--aq-sys-focus-ring` colour that differs per theme, so the per-component `dark:` override disappears. |
+| Tooltip | Provider context so nested `Tooltip` reuses the outer provider; defaults `delayDuration` and `skipDelayDuration` 300ms. | Map to Base UI `Tooltip.Provider delay` / `closeDelay`; keep the single-provider behaviour and the programmatic-focus guard. |
+| Drawer | Enter 200ms, exit 140ms via `animation-duration` overrides; reduced motion stays near-instant. | Base UI Drawer swap must keep these timings. |
+| Slider | Coarse-pointer `min-h-11` / `min-w-11` on the root. | First use of the 44px touch minimum; becomes `--aq-sys-touch-min` in §5.1. |
+| Knob | Shift toggles fine drag without a jump (drag origin re-anchors). | Behaviour to keep; `knob.test.tsx` now lives in the package and passes. |
+| PlayPauseButton | New `allowCancelWhileLoading` prop; loading label becomes "Cancel". | Add a story for the cancelable state in `feedback.stories.tsx`. |
+| Slot | New `components/slot.tsx` re-exports Radix `Slot`; used by radio `settings-button.tsx`. | One more `asChild`-style site for §3. Base UI has no Slot; replace with `render` / `useRender`. |
+| Web theme | Storage access is guarded; explicit toggles store `theme-preference`, system theme is followed otherwise. | Defect 7 is mostly fixed. `color-scheme` is still never set on web. |
+| Radio fonts | Still none on `dev-ui`. | Step 1 keeps the Geist entry in `apps/radio/src/styles/app.css`. |
+| Lazy loading | `lazyWithRetry` and `LazyBoundary` wrap the sync dialog and other chunks. | No UI-package impact. |
+
+Validation after the rebase: `bun run check`, `bun run typecheck` (6/6), ui tests 38 pass, radio tests 3455 pass, web and radio builds, Storybook static build, 29 story tests in Chromium.

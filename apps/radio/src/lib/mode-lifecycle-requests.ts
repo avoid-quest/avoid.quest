@@ -1,5 +1,5 @@
 import { captureError } from "@avoid.quest/error";
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import {
   PLAYBACK_SESSION_IDS,
   type PlaybackSessionId,

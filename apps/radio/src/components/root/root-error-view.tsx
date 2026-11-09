@@ -1,8 +1,8 @@
 import { AppError, captureError } from "@avoid.quest/error";
 import { Button } from "@avoid.quest/ui/components/button";
+import { IconHome } from "@tabler/icons-react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { HomeIcon } from "lucide-react";
 import { useEffect } from "react";
 
 export function RootErrorView({ error, reset }: ErrorComponentProps) {
@@ -28,12 +28,10 @@ export function RootErrorView({ error, reset }: ErrorComponentProps) {
           <Button onClick={reset} size="sm">
             Try again
           </Button>
-          <Link to="/">
-            <Button size="sm" variant="outline">
-              <HomeIcon className="size-3.5" />
-              Go home
-            </Button>
-          </Link>
+          <Button render={<Link to="/" />} size="sm" variant="outline">
+            <IconHome className="size-3.5" />
+            Go home
+          </Button>
         </div>
       </div>
     </div>
@@ -48,12 +46,10 @@ export function NotFoundView() {
         <p className="mb-6 text-muted-foreground text-sm">
           This page doesn't exist or has moved.
         </p>
-        <Link to="/">
-          <Button size="sm">
-            <HomeIcon className="size-3.5" />
-            Go home
-          </Button>
-        </Link>
+        <Button render={<Link to="/" />} size="sm">
+          <IconHome className="size-3.5" />
+          Go home
+        </Button>
       </div>
     </div>
   );

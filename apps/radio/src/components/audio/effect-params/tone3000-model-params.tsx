@@ -114,7 +114,7 @@ export function Tone3000ModelParams({
   }
 
   return (
-    <div className="space-y-2 rounded-md border p-3">
+    <div className="space-y-2 border p-3">
       <Label htmlFor={`${effect.id}-nam-model`}>Local NAM model</Label>
       <Input
         accept=".nam,application/json"

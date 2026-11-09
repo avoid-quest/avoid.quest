@@ -1,13 +1,15 @@
 import { afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  pretendToBeVisual: true,
   url: "https://radio.test",
 });
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   document: dom.window.document,
   Element: dom.window.Element,
   getComputedStyle: dom.window.getComputedStyle,
@@ -29,6 +31,8 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   value: true,
   writable: true,
 });
+
+const { cleanup, render } = await import("@testing-library/react");
 
 let storedMode = "node";
 
@@ -66,15 +70,15 @@ afterEach(() => {
 test("offers Single, Node and DJ, in that order", () => {
   const view = render(<ModeSelect />);
 
-  const modes = view.getAllByRole("radio");
+  const modes = view.getAllByRole("button");
   expect(modes.map((mode) => mode.getAttribute("aria-label"))).toEqual([
     "Single",
     "Node",
     "DJ",
   ]);
-  expect(view.queryByRole("radio", { name: "Multiple" })).toBeNull();
+  expect(view.queryByRole("button", { name: "Multiple" })).toBeNull();
   expect(
-    view.getByRole("radio", { name: "Node" }).getAttribute("aria-checked")
+    view.getByRole("button", { name: "Node" }).getAttribute("aria-pressed")
   ).toBe("true");
 });
 
@@ -83,6 +87,6 @@ test("shows a legacy multiple mode as Node", () => {
   const view = render(<ModeSelect />);
 
   expect(
-    view.getByRole("radio", { name: "Node" }).getAttribute("aria-checked")
+    view.getByRole("button", { name: "Node" }).getAttribute("aria-pressed")
   ).toBe("true");
 });

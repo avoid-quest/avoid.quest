@@ -6,9 +6,9 @@ import {
   type ResizablePanelHandle,
 } from "@avoid.quest/ui/components/resizable";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { useIsMobile } from "@avoid.quest/ui/hooks/use-mobile";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { ClientOnly } from "@/components/client-only";
 import { LazyBoundary, lazyWithRetry } from "@/components/lazy-recovery";
 import type { Radio } from "@/lib/audio";

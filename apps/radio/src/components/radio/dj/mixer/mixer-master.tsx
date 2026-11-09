@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/performance/noJsxPropsBind: React Compiler stabilizes component handlers */
 import { Knob } from "@avoid.quest/ui/components/knob";
 import { Slider } from "@avoid.quest/ui/components/slider";
-import { HeadphonesIcon } from "lucide-react";
+import { IconHeadphones } from "@tabler/icons-react";
 import { MidiControlWrapper } from "@/components/audio/midi-control-wrapper";
 import { masterPeakLevelSource } from "@/lib/hooks/use-master-peak-level";
 import { formatPercent } from "../shared/format-utils";
@@ -39,7 +39,7 @@ export function MixerMaster({
               <Knob
                 defaultValue={1}
                 format={formatPercent}
-                label="cue"
+                label="Cue"
                 max={1}
                 min={0}
                 onChange={onHeadphoneVolumeChange}
@@ -47,7 +47,7 @@ export function MixerMaster({
                 title={`Cue volume: ${formatPercent(headphoneVolume)}`}
                 value={headphoneVolume}
               />
-              <HeadphonesIcon className="size-3 text-muted-foreground" />
+              <IconHeadphones className="size-3 text-muted-foreground" />
             </div>
           </MidiControlWrapper>
         ) : null}
@@ -56,14 +56,14 @@ export function MixerMaster({
         <div
           className="flex h-full min-h-0 items-stretch gap-2"
           style={{ touchAction: "none" }}
-          title="Master volume. Double-click the handle for 100%."
+          title="Main volume. Double-click the handle for 100%."
         >
           <div className="flex h-full min-h-0 flex-col items-center gap-1">
-            <span className="w-8 shrink-0 text-center font-mono text-[10px] tabular-nums">
+            <span className="w-8 shrink-0 text-center font-mono text-xs tabular-nums">
               {formatPercent(masterVolume)}
             </span>
             <Slider
-              aria-label="Master volume"
+              aria-label="Main volume"
               className="min-h-0 flex-1"
               defaultMarkerValue={100}
               defaultValue={[100]}
@@ -75,8 +75,8 @@ export function MixerMaster({
               value={[masterVolume * 100]}
               variant="fader"
             />
-            <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
-              out
+            <span className="font-mono text-muted-foreground text-xs uppercase tracking-wider">
+              Main
             </span>
           </div>
           <div className="flex w-4 py-5">

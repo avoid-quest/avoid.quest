@@ -1,11 +1,11 @@
 import {
-  FileAudioIcon,
-  GlobeIcon,
-  type LucideIcon,
-  MicIcon,
-  RadioTowerIcon,
-  SearchIcon,
-} from "lucide-react";
+  IconAntenna,
+  IconFileMusic,
+  IconMicrophone,
+  IconSearch,
+  IconWorld,
+  type TablerIcon,
+} from "@tabler/icons-react";
 import type {
   PLATFORM_SOURCE_DEFINITIONS,
   SPOTIFY_SOURCE_STYLE,
@@ -20,17 +20,17 @@ export type PlatformSourceIcon =
  * File, tinted with its colour by the caller. Streaming platforms share the
  * globe.
  */
-export function platformSourceIcon(icon: PlatformSourceIcon): LucideIcon {
+export function platformSourceIcon(icon: PlatformSourceIcon): TablerIcon {
   switch (icon) {
     case "audio-input":
-      return MicIcon;
+      return IconMicrophone;
     case "static-audio":
-      return FileAudioIcon;
+      return IconFileMusic;
     case "radio-garden":
-      return RadioTowerIcon;
+      return IconAntenna;
     case "search":
-      return SearchIcon;
+      return IconSearch;
     default:
-      return GlobeIcon;
+      return IconWorld;
   }
 }

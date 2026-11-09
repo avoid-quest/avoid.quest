@@ -3,7 +3,7 @@ import { PlayPauseButton } from "@avoid.quest/ui/components/play-pause-button";
 import { Slider } from "@avoid.quest/ui/components/slider";
 import { Toggle } from "@avoid.quest/ui/components/toggle";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { ListMusicIcon, Music2Icon, Repeat1Icon } from "lucide-react";
+import { IconMusic, IconPlaylist, IconRepeatOnce } from "@tabler/icons-react";
 import { useState } from "react";
 import { RadioNowPlaying } from "@/components/radio/radio-now-playing";
 import { useTrackProgress } from "@/lib/hooks/use-track-progress";
@@ -24,7 +24,7 @@ function TransportArtwork({
   isPlaying: boolean;
 }) {
   return (
-    <div className="relative size-11 shrink-0 overflow-hidden rounded-sm border border-border/70 bg-muted">
+    <div className="relative size-11 shrink-0 overflow-hidden border border-border/70 bg-muted">
       {artworkUrl ? (
         <img
           alt={title}
@@ -35,7 +35,7 @@ function TransportArtwork({
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <Music2Icon className="size-4 text-muted-foreground/40" />
+          <IconMusic className="size-4 text-muted-foreground/40" />
         </div>
       )}
       {isBuffering && isPlaying ? (
@@ -59,9 +59,9 @@ function TransportPlayButton({
   onPlayPause: () => void;
 }) {
   return (
-    <span className="relative shrink-0 rounded-full">
+    <span className="relative shrink-0">
       <PlayPauseButton
-        className="size-9 rounded-full"
+        className="size-9"
         iconClassName="size-3.5"
         inline
         isLoading={isLoading}
@@ -72,7 +72,7 @@ function TransportPlayButton({
         variant={isPlaying && !isLoading ? "outline" : "default"}
       />
       {isBuffering && isPlaying ? (
-        <span className="pointer-events-none absolute inset-0 animate-pulse rounded-full ring-2 ring-muted-foreground/40" />
+        <span className="pointer-events-none absolute inset-0 animate-pulse ring-2 ring-muted-foreground/40" />
       ) : null}
     </span>
   );
@@ -111,7 +111,7 @@ function TransportToggles({
           size="sm"
           title="Repeat"
         >
-          <Repeat1Icon className="size-3.5" />
+          <IconRepeatOnce className="size-3.5" />
         </Toggle>
       ) : null}
       {hasTracklist ? (
@@ -123,7 +123,7 @@ function TransportToggles({
           size="sm"
           title="Autoplay next track"
         >
-          <ListMusicIcon className="size-3.5" />
+          <IconPlaylist className="size-3.5" />
         </Toggle>
       ) : null}
     </div>
@@ -191,7 +191,7 @@ export function DeckTransport({
     <div className={cn("flex w-full min-w-0 flex-col gap-1.5", className)}>
       <div
         className={cn(
-          "flex w-full min-w-0 items-center gap-2.5 rounded-md border border-border/50 bg-muted/30 p-2 transition-colors",
+          "flex w-full min-w-0 items-center gap-2.5 border border-border/50 bg-muted/30 p-2 transition-colors",
           isRadioSource && isPlaying && !isLoading && "border-foreground/40"
         )}
       >
@@ -213,7 +213,7 @@ export function DeckTransport({
 
         <div className="flex shrink-0 flex-col-reverse items-center gap-1 lg:flex-row lg:gap-2.5">
           {liveTime === null ? null : (
-            <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+            <span className="font-mono text-muted-foreground text-xs tabular-nums">
               {formatTime(liveTime)}
             </span>
           )}
@@ -279,7 +279,7 @@ function TransportProgress({
 
   if (isLiveStream) {
     return (
-      <div className="font-mono text-[10px] text-muted-foreground tabular-nums">
+      <div className="font-mono text-muted-foreground text-xs tabular-nums">
         {formatTime(trackProgress.position)}
       </div>
     );
@@ -324,12 +324,12 @@ export function SeekableProgress({
         max={duration}
         min={0}
         onValueChange={handleDrag}
-        onValueCommit={handleCommit}
+        onValueCommitted={handleCommit}
         resetValue={[0]}
         step={1}
         value={[shownPosition]}
       />
-      <div className="flex justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
+      <div className="flex justify-between font-mono text-muted-foreground text-xs tabular-nums">
         <span>{formatTime(shownPosition)}</span>
         <span>{formatTime(duration)}</span>
       </div>

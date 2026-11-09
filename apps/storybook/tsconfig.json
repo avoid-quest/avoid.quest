@@ -1,0 +1,14 @@
+{
+  "extends": "@avoid.quest/config/react-library.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [".storybook", "vitest.config.ts", "vitest.shims.d.ts"],
+  "exclude": ["node_modules", "storybook-static"]
+}

@@ -20,6 +20,8 @@ import {
   forgetLocalFileUrls,
   keepLocalFileUrl,
 } from "@/lib/node-graph/sources";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
+import { chooseSelectOption } from "@/test-utils/select-option";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -41,6 +43,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame,
   DocumentFragment: dom.window.DocumentFragment,
@@ -209,7 +212,7 @@ function pasteLink(
 }
 
 describe("TrackNodeBody", () => {
-  test("an empty Track uses the shared source selector and search", () => {
+  test("an empty Track uses the shared source selector and search", async () => {
     const onSearchPlatformChange = mock(() => undefined);
     const view = render(
       withClient(
@@ -232,14 +235,7 @@ describe("TrackNodeBody", () => {
     expect(
       view.getByRole("searchbox", { name: "Search or paste a link" })
     ).toBeTruthy();
-    const select = view.container.querySelector("select");
-    if (!select) {
-      throw new Error("Missing source selector");
-    }
-    expect(Array.from(select.options).map((option) => option.text)).toContain(
-      "Radio Browser"
-    );
-    fireEvent.change(select, { target: { value: "soundcloud" } });
+    await chooseSelectOption(view.container, "SoundCloud");
     expect(onSearchPlatformChange).toHaveBeenCalledWith("soundcloud");
   });
 

@@ -275,15 +275,12 @@ export function WerkstattParams({ effect, onUpdate }: WerkstattParamsProps) {
           })
         : null}
 
-      <div
-        className="rounded-md border p-3 text-xs"
-        data-state={runtimeStatus.state}
-      >
+      <div className="border p-3 text-xs" data-state={runtimeStatus.state}>
         <p className="font-medium capitalize">Runtime: {runtimeStatus.state}</p>
         <p className="text-muted-foreground">{runtimeStatus.message}</p>
       </div>
 
-      <div className="rounded-md border border-dashed p-3 text-xs">
+      <div className="border border-dashed p-3 text-xs">
         <p className="font-medium">Sample declarations unavailable</p>
         <p className="text-muted-foreground">
           The current official Werkstatt audio-effect bridge parses @sample but

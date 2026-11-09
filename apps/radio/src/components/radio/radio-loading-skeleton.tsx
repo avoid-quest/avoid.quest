@@ -35,7 +35,7 @@ function LoadingFrame({
 function StationRowSkeleton() {
   return (
     <div className="flex items-center gap-3 px-2.5 py-2">
-      <Skeleton className="size-10 shrink-0 rounded-sm" />
+      <Skeleton className="size-10 shrink-0" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-3 w-3/4" />
         <Skeleton className="h-2 w-1/2" />
@@ -47,11 +47,11 @@ function StationRowSkeleton() {
 function SingleRadioLoadingSkeleton() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl px-3 py-3">
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-border/50 bg-card/50 lg:flex-row sm:[@media(max-height:600px)]:flex-row">
         <section className="relative shrink-0 border-border/50 border-b px-4 py-4 sm:px-5 sm:py-5 lg:hidden [@media(max-height:600px)]:py-3 sm:[@media(max-height:600px)]:w-1/2 sm:[@media(max-height:600px)]:overflow-y-auto sm:[@media(max-height:600px)]:border-r sm:[@media(max-height:600px)]:border-b-0">
           <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-5">
             <div className="flex items-center gap-3 sm:gap-4">
-              <Skeleton className="size-20 shrink-0 rounded-xl sm:size-28" />
+              <Skeleton className="size-20 shrink-0 sm:size-28" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="h-6 w-3/4" />
@@ -59,7 +59,7 @@ function SingleRadioLoadingSkeleton() {
               </div>
             </div>
             <div className="flex items-center gap-3 border-border/50 border-t pt-3 sm:gap-4 sm:pt-4">
-              <Skeleton className="size-12 shrink-0 rounded-full" />
+              <Skeleton className="size-12 shrink-0" />
               <Skeleton className="size-7 shrink-0" />
               <Skeleton className="h-1.5 flex-1" />
             </div>
@@ -77,13 +77,13 @@ function SingleRadioLoadingSkeleton() {
         </section>
         <section className="hidden min-h-0 flex-1 items-center justify-center p-6 lg:flex">
           <div className="flex w-full max-w-lg flex-col items-center gap-5">
-            <Skeleton className="size-[clamp(15rem,36vh,22rem)] rounded-2xl" />
+            <Skeleton className="size-[clamp(15rem,36vh,22rem)]" />
             <div className="flex w-full flex-col items-center gap-2">
               <Skeleton className="h-3 w-24" />
               <Skeleton className="h-7 w-56" />
             </div>
             <div className="flex w-full items-center gap-4 border-border/50 border-t pt-4">
-              <Skeleton className="size-12 shrink-0 rounded-full" />
+              <Skeleton className="size-12 shrink-0" />
               <Skeleton className="size-7 shrink-0" />
               <Skeleton className="h-1.5 flex-1" />
             </div>
@@ -100,28 +100,25 @@ export function NodeCanvasSkeleton() {
     <div className="flex h-full min-h-0 w-full items-center justify-center gap-16 overflow-hidden p-6">
       <div className="flex flex-col gap-4">
         {STATION_NODES.map((node) => (
-          <section
-            className="w-60 rounded-md border border-border/50 bg-card"
-            key={node}
-          >
+          <section className="w-60 border border-border/50 bg-card" key={node}>
             <div className="flex items-center gap-3 p-2.5">
-              <Skeleton className="size-12 shrink-0 rounded-md" />
+              <Skeleton className="size-12 shrink-0" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-2 w-1/3" />
                 <Skeleton className="h-3 w-3/4" />
               </div>
             </div>
             <div className="flex items-center gap-2 border-border/50 border-t px-3 py-1.5">
-              <Skeleton className="size-7 shrink-0 rounded-full" />
+              <Skeleton className="size-7 shrink-0" />
               <Skeleton className="size-7 shrink-0" />
               <Skeleton className="h-1.5 flex-1" />
             </div>
           </section>
         ))}
       </div>
-      <section className="hidden w-50 rounded-md border border-border/50 bg-card sm:block">
+      <section className="hidden w-50 border border-border/50 bg-card sm:block">
         <div className="flex h-8 items-center gap-2 px-2">
-          <Skeleton className="size-6 rounded-sm" />
+          <Skeleton className="size-6" />
           <Skeleton className="h-3 w-16" />
         </div>
         <div className="flex flex-col gap-2 border-border/50 border-t p-2">
@@ -151,7 +148,7 @@ function DeckSkeleton({ className }: { className?: string }) {
   return (
     <section className={className}>
       <div className="flex flex-col gap-2 p-2">
-        <Skeleton className="h-9 w-full rounded-lg" />
+        <Skeleton className="h-9 w-full" />
         <Skeleton className="h-8 w-full" />
         <div className="flex flex-col gap-1">
           {ROWS.map((row) => (
@@ -166,18 +163,18 @@ function DeckSkeleton({ className }: { className?: string }) {
 function DjRadioLoadingSkeleton() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-2 p-2">
-      <div className="h-24 shrink-0 rounded-lg border border-border/50 bg-card/50 p-2 lg:hidden">
+      <div className="h-24 shrink-0 border border-border/50 bg-card/50 p-2 lg:hidden">
         <Skeleton className="h-full w-full" />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-lg border border-border/50 bg-card/50 lg:grid-cols-[1fr_21rem_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden border border-border/50 bg-card/50 lg:grid-cols-[1fr_21rem_1fr]">
         <DeckSkeleton />
         <section className="hidden flex-col gap-3 border-border/50 border-x p-3 lg:flex">
           <Skeleton className="h-6 w-full" />
           <div className="grid flex-1 grid-cols-3 gap-3 border-border/50 border-t pt-3">
             {["a", "master", "b"].map((column) => (
               <div className="flex flex-col items-center gap-2" key={column}>
-                <Skeleton className="size-9 rounded-full" />
-                <Skeleton className="size-9 rounded-full" />
+                <Skeleton className="size-9" />
+                <Skeleton className="size-9" />
                 <Skeleton className="w-2 flex-1" />
                 <Skeleton className="h-8 w-full" />
               </div>

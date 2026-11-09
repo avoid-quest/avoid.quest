@@ -3,22 +3,23 @@ import { Button } from "@avoid.quest/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
-import { useStore } from "@tanstack/react-store";
 import {
-  CableIcon,
-  ChevronDownIcon,
-  EllipsisIcon,
-  LayoutTemplateIcon,
-  MaximizeIcon,
-  PlusIcon,
-  Redo2Icon,
-  Undo2Icon,
-} from "lucide-react";
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconArrowsMaximize,
+  IconChevronDown,
+  IconDots,
+  IconLayoutBoard,
+  IconPlug,
+  IconPlus,
+} from "@tabler/icons-react";
+import { useStore } from "@tanstack/react-store";
 import { useEffect } from "react";
 import {
   type NodeStore,
@@ -107,66 +108,70 @@ export function NodeToolbar({
         title="Add a node (/)"
         variant="outline"
       >
-        <PlusIcon />
+        <IconPlus />
         <span className="max-sm:sr-only">Add</span>
       </Button>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={isPhone ? "Patch actions" : undefined}
-            size="sm"
-            variant="ghost"
-          >
-            {isPhone ? (
-              <EllipsisIcon />
-            ) : (
-              <>
-                <LayoutTemplateIcon className="sm:hidden" />
-                <span className="max-sm:sr-only">Templates</span>
-                <ChevronDownIcon className="max-sm:hidden" />
-              </>
-            )}
-          </Button>
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              aria-label={isPhone ? "Patch actions" : undefined}
+              size="sm"
+              variant="ghost"
+            >
+              {isPhone ? (
+                <IconDots />
+              ) : (
+                <>
+                  <IconLayoutBoard className="sm:hidden" />
+                  <span className="max-sm:sr-only">Templates</span>
+                  <IconChevronDown className="max-sm:hidden" />
+                </>
+              )}
+            </Button>
+          }
+        />
         <DropdownMenuContent align={isPhone ? "end" : "start"} className="w-64">
           {isPhone ? (
             <>
               {onFitView ? (
-                <DropdownMenuItem onSelect={onFitView}>
-                  <MaximizeIcon /> Fit view
+                <DropdownMenuItem onClick={onFitView}>
+                  <IconArrowsMaximize /> Fit view
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
                 disabled={!canUndo}
-                onSelect={() => undoNodeGraph(store)}
+                onClick={() => undoNodeGraph(store)}
               >
-                <Undo2Icon /> Undo
+                <IconArrowBackUp /> Undo
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!canRedo}
-                onSelect={() => redoNodeGraph(store)}
+                onClick={() => redoNodeGraph(store)}
               >
-                <Redo2Icon /> Redo
+                <IconArrowForwardUp /> Redo
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Templates</DropdownMenuLabel>
             </>
           ) : null}
-          <p className="px-2 py-1.5 text-muted-foreground text-xs">
-            Replaces this patch. Undo restores it.
-          </p>
-          {PALETTE_TEMPLATES.map((template) => (
-            <DropdownMenuItem
-              className="flex-col items-start gap-0.5"
-              key={template.id}
-              onSelect={() => onLoadTemplate(template.template)}
-            >
-              <span className="text-sm">{template.name}</span>
-              <span className="text-muted-foreground text-xs">
-                {template.description}
-              </span>
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuGroup>
+            {isPhone ? <DropdownMenuLabel>Templates</DropdownMenuLabel> : null}
+            <p className="px-2 py-1.5 text-muted-foreground text-xs">
+              Replaces this patch. Undo restores it.
+            </p>
+            {PALETTE_TEMPLATES.map((template) => (
+              <DropdownMenuItem
+                className="flex-col items-start gap-0.5"
+                key={template.id}
+                onClick={() => onLoadTemplate(template.template)}
+              >
+                <span className="text-sm">{template.name}</span>
+                <span className="text-muted-foreground text-xs">
+                  {template.description}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       {edgeId && onRewire ? (
@@ -177,7 +182,7 @@ export function NodeToolbar({
           title="Rewire selected cable"
           variant="outline"
         >
-          <CableIcon />
+          <IconPlug />
         </Button>
       ) : null}
       {isPhone ? null : (
@@ -191,7 +196,7 @@ export function NodeToolbar({
           title="Undo (⌘Z)"
           variant="ghost"
         >
-          <Undo2Icon />
+          <IconArrowBackUp />
         </Button>
       )}
       {isPhone ? null : (
@@ -205,7 +210,7 @@ export function NodeToolbar({
           title="Redo (⇧⌘Z)"
           variant="ghost"
         >
-          <Redo2Icon />
+          <IconArrowForwardUp />
         </Button>
       )}
     </div>

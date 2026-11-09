@@ -2,9 +2,15 @@
 import { Button } from "@avoid.quest/ui/components/button";
 import { ScrollArea } from "@avoid.quest/ui/components/scroll-area";
 import { cn } from "@avoid.quest/ui/lib/utils";
-import { BookmarkPlusIcon, CheckIcon, LinkIcon, PlayIcon } from "lucide-react";
+import {
+  IconBookmarkPlus,
+  IconCheck,
+  IconLink,
+  IconPlayerPlay,
+} from "@tabler/icons-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Radio } from "@/lib/audio";
+import { isSessionRadio } from "@/lib/hooks/use-session-radios";
 import {
   type UnifiedRadioSearchResult,
   useUnifiedRadioSearch,
@@ -20,6 +26,7 @@ import {
   stationRowButtonClassName,
   stationRowClassName,
 } from "./station-row";
+import { StationSaveStatus } from "./station-save-status";
 
 type RadioSearchBarProps = {
   radios: Radio[];
@@ -67,8 +74,8 @@ function LinkRow({
           onClick={onSelect}
           type="button"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
-            <LinkIcon className="size-3.5" />
+          <span className="flex size-8 shrink-0 items-center justify-center bg-muted text-muted-foreground">
+            <IconLink className="size-3.5" />
           </span>
           <StationRowText
             title={isLoading ? "Loading link…" : "Play this link"}
@@ -87,7 +94,7 @@ function resultDetails(result: UnifiedRadioSearchResult): string | undefined {
 
 function sourceLabel(result: UnifiedRadioSearchResult): string {
   if (result.action.type === "local") {
-    return "Your collection";
+    return isSessionRadio(result.action.radio) ? "Not saved" : "My stations";
   }
   if (result.sources.length > 1) {
     return `${result.sources.length} station directories`;
@@ -117,30 +124,31 @@ function SearchResultRow({
   canSave: boolean;
 }) {
   const details = resultDetails(result);
-  const isLocal = result.action.type === "local";
+  const isSaved =
+    result.action.type === "local" && !isSessionRadio(result.action.radio);
   const handleSelect = () => onSelect(result);
   const handleSave = () => onSave(result);
   let action: React.ReactNode = null;
-  if (isLocal) {
+  if (isSaved) {
     action = (
       <span
-        aria-label="In your collection"
+        aria-label="In My stations"
         className="flex size-7 shrink-0 items-center justify-center text-muted-foreground"
         role="img"
       >
-        <CheckIcon className="size-3.5" />
+        <IconCheck className="size-3.5" />
       </span>
     );
   } else if (canSave) {
     action = (
       <Button
-        aria-label={`Save ${result.name} to collection`}
+        aria-label={`Save ${result.name} to My stations`}
         className="size-7 shrink-0"
         onClick={handleSave}
         size="icon"
         variant="ghost"
       >
-        <BookmarkPlusIcon className="size-3.5" />
+        <IconBookmarkPlus className="size-3.5" />
       </Button>
     );
   }
@@ -167,10 +175,17 @@ function SearchResultRow({
             name={result.name}
             size="md"
           />
-          <StationRowText title={result.name}>
+          <StationRowText
+            indicator={
+              result.action.type === "local" ? (
+                <StationSaveStatus radio={result.action.radio} />
+              ) : null
+            }
+            title={result.name}
+          >
             <StationRowSubtitle>{details}</StationRowSubtitle>
           </StationRowText>
-          <PlayIcon className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50" />
+          <IconPlayerPlay className="size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 [@media(pointer:coarse)]:text-muted-foreground/50" />
         </button>
       </td>
       {action ? <td>{action}</td> : null}
@@ -382,7 +397,7 @@ export function RadioSearchBar({
   onSubmitUrl,
   className,
   dropdownClassName,
-  placeholder = "Search stations…",
+  placeholder = "Search stations or paste a link",
 }: RadioSearchBarProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -438,7 +453,7 @@ export function RadioSearchBar({
   };
 
   const saveResult = (result: UnifiedRadioSearchResult) => {
-    if (result.action.type !== "local") {
+    if (result.action.type !== "local" || isSessionRadio(result.action.radio)) {
       onSaveDiscovered?.(result.action.radio);
     }
   };
@@ -565,7 +580,7 @@ export function RadioSearchBar({
       {showDropdown ? (
         <div
           className={cn(
-            "absolute right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border/50 bg-popover shadow-lg",
+            "absolute right-0 left-0 z-50 mt-1 overflow-hidden border border-border/50 bg-popover shadow-lg",
             dropdownClassName
           )}
         >

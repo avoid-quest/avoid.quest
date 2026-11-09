@@ -184,7 +184,7 @@ export function feedsOutput(
 }
 
 /**
- * An Audio input's feedback guard for a Stage or Rack row: set while its
+ * An Audio input's feedback guard for a Rack row: set while its
  * audio reaches an output, null otherwise or for any other node.
  */
 export function inputFeedback(

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import type { Radio } from "@/lib/audio";
 import {
   addSessionRadio,

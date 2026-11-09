@@ -1,15 +1,16 @@
 import { afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
+
 import { Profiler } from "react";
 import { installAnimationTestEnvironment } from "@/components/radio/dj/shared/animation-test-utils";
 import { createDefaultEffectConfig } from "@/lib/audio";
 import { getMidiControl } from "@/lib/midi";
+
+// React DOM detects input-event support when it loads, after the DOM exists.
+const initialEnvironment = installAnimationTestEnvironment();
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
+initialEnvironment.restore();
 
 let MidiControlWrapper: typeof import("./midi-control-wrapper")["MidiControlWrapper"];
 beforeAll(async () => {
@@ -71,7 +72,8 @@ test("keyboard menu selection opens a labelled transform dialog and restores con
     name: "Edit MIDI transform",
   });
   const invert = view.getByRole("switch", { name: "Invert" });
-  await waitFor(() => expect(document.activeElement).toBe(invert));
+  act(() => clock.advance(16));
+  await waitFor(() => expect(document.activeElement === invert).toBe(true));
   fireEvent.keyDown(invert, { key: " " });
   // Space on a native button dispatches click; jsdom does not run browser default actions.
   fireEvent.click(invert);
@@ -102,9 +104,11 @@ test("keyboard menu selection opens a labelled transform dialog and restores con
       control.getTargetSnapshot("deck-a:volume").mapping?.transform?.curve
     ).toBe("log")
   );
+  act(() => clock.advance(16));
   fireEvent.keyDown(view.getByRole("button", { name: "Reset transform" }), {
     key: "Escape",
   });
-  await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-  await waitFor(() => expect(document.activeElement).toBe(origin));
+  act(() => clock.advance(16));
+  await waitFor(() => expect(view.queryByRole("dialog") === null).toBe(true));
+  await waitFor(() => expect(document.activeElement === origin).toBe(true));
 });

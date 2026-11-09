@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { toast } from "sonner";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { radiosCollection } from "@/lib/collections/radios";
 import { reorderRadios } from "./use-radios";
 

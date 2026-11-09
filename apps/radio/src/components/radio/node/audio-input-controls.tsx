@@ -12,11 +12,11 @@ import { Spinner } from "@avoid.quest/ui/components/spinner";
 import { Switch } from "@avoid.quest/ui/components/switch";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  HeadphonesIcon,
-  MicIcon,
-  PauseIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+  IconHeadphones,
+  IconMicrophone,
+  IconPlayerPause,
+  IconRefresh,
+} from "@tabler/icons-react";
 import { type ReactNode, useEffect, useId } from "react";
 import {
   buildChannelOptions,
@@ -29,9 +29,9 @@ import type { NodeDevice } from "./use-node-devices";
 /**
  * Audio Input Controls
  *
- * The pieces an Audio input shows on the canvas and in the Stage and Rack,
+ * The pieces an Audio input shows on the canvas and in the Rack,
  * in DJ's words: Go live and Pause input, Paused and Live, the device and its
- * channels. None of them import React Flow, so the Stage and Rack can load
+ * channels. None of them import React Flow, so the Rack can load
  * them without the canvas chunk.
  */
 
@@ -51,9 +51,9 @@ export function DeviceNote({
   return (
     <p
       className={cn(
-        "rounded-md px-2.5 py-1.5 text-xs",
+        "px-2.5 py-1.5 text-xs",
         tone === "warning"
-          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+          ? "bg-warning/10 text-warning"
           : "bg-muted/50 text-muted-foreground",
         className
       )}
@@ -76,7 +76,7 @@ export function InputLiveBadge({
   const label = isLoading ? "Starting" : settled;
   return (
     <Badge
-      className="shrink-0 px-1.5 py-0 text-[10px]"
+      className="shrink-0 px-1.5 py-0 text-xs"
       variant={isLive ? "default" : "secondary"}
     >
       {label}
@@ -103,7 +103,7 @@ export function InputLiveButton({
   onToggle: () => void;
 }) {
   const label = isPlaying ? "Pause input" : "Go live";
-  const Icon = isPlaying ? PauseIcon : MicIcon;
+  const Icon = isPlaying ? IconPlayerPause : IconMicrophone;
   // Pausing changes playback state; volume mute leaves playback running.
   const name = isPlaying ? `Pause input ${target}` : `Go live ${target}`;
   return (
@@ -146,13 +146,21 @@ export function DeviceSelect({
     <div className="flex min-w-0 items-center gap-1.5">
       <Select
         disabled={isLoading || devices.length === 0}
+        items={devices.map((device) => ({
+          value: device.deviceId,
+          label: device.label,
+        }))}
         onValueChange={(deviceId) => {
+          if (deviceId === null) {
+            return;
+          }
+
           const device = devices.find((entry) => entry.deviceId === deviceId);
           if (device) {
             onChange(device);
           }
         }}
-        value={known && value ? value : ""}
+        value={known && value ? value : null}
       >
         <SelectTrigger aria-label={label} className="min-w-0 flex-1" size="xs">
           <SelectValue placeholder={placeholder} />
@@ -174,7 +182,7 @@ export function DeviceSelect({
         title="Refresh devices"
         variant="ghost"
       >
-        <RefreshCwIcon className={isLoading ? "animate-spin" : undefined} />
+        <IconRefresh className={isLoading ? "animate-spin" : undefined} />
       </Button>
     </div>
   );
@@ -200,7 +208,15 @@ export function InputChannelSelect({
         Channel
       </label>
       <Select
-        onValueChange={(key) => onChange(deserializeSelection(key))}
+        items={options.map((option) => ({
+          value: option.key,
+          label: option.label,
+        }))}
+        onValueChange={(key) => {
+          if (key !== null) {
+            onChange(deserializeSelection(key));
+          }
+        }}
         value={serializeSelection(value)}
       >
         <SelectTrigger
@@ -236,9 +252,9 @@ export function FeedbackGuard({
 }) {
   const id = useId();
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-amber-700 text-xs dark:text-amber-400">
+    <div className="flex flex-col gap-1.5 bg-warning/10 px-2.5 py-1.5 text-warning text-xs">
       <p className="flex items-center gap-1.5" role="status">
-        <HeadphonesIcon aria-hidden="true" className="size-3.5 shrink-0" />
+        <IconHeadphones aria-hidden="true" className="size-3.5 shrink-0" />
         Use headphones: a mic into speakers can howl
       </p>
       {onEchoCancellationChange ? (

@@ -8,6 +8,7 @@ import {
 } from "@avoid.quest/ui/components/tabs";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import { useState } from "react";
+import { AddStationButton } from "@/components/settings/add-station-button";
 import type { Radio } from "@/lib/audio";
 import { getDjDeckModule } from "@/lib/dj-deck";
 import {
@@ -33,6 +34,7 @@ import {
   stationFallbackSubtitle,
   stationRowButtonOnlyClassName,
 } from "../station-row";
+import { StationSaveStatus } from "../station-save-status";
 import { ExternalSearch } from "./external-search";
 
 type DeckId = "deck-a" | "deck-b";
@@ -56,7 +58,7 @@ function PlatformTile({ radio }: { radio: Radio }) {
   );
   return (
     <div
-      className="flex size-10 shrink-0 items-center justify-center rounded-sm border border-border/70"
+      className="flex size-10 shrink-0 items-center justify-center border border-border/70"
       style={{ backgroundColor: `${platformColor}1a` }}
     >
       <PlatformIcon radio={radio} />
@@ -118,7 +120,7 @@ function StationRow({
         isActive && "bg-muted/40",
         showSessionMarker &&
           isSessionRadio(radio) &&
-          "border-l-2 border-l-[#00d084]/40"
+          "border-l-2 border-l-success/40"
       )}
       onClick={handleLoad}
       ref={elementRef}
@@ -130,7 +132,10 @@ function StationRow({
         name={radio.name}
         size="md"
       />
-      <StationRowText title={radio.name}>
+      <StationRowText
+        indicator={<StationSaveStatus radio={radio} />}
+        title={radio.name}
+      >
         <RadioListItemMetadata
           fallback={
             <StationRowSubtitle>
@@ -158,7 +163,7 @@ function RowList({
   isSearch?: boolean;
 }) {
   if (items.length === 0) {
-    return <EmptyHint>{emptyLabel}</EmptyHint>;
+    return <EmptyHint action={<AddStationButton />}>{emptyLabel}</EmptyHint>;
   }
 
   return (

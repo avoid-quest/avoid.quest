@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // @ts-expect-error jsdom types are not installed in this workspace.
 import { JSDOM } from "jsdom";
+import { browserTestGlobals } from "@/test-utils/browser-globals";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
@@ -23,6 +24,7 @@ class ObserverStub {
 }
 
 for (const [key, value] of Object.entries({
+  ...browserTestGlobals(dom.window),
   CustomEvent: dom.window.CustomEvent,
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   DocumentFragment: dom.window.DocumentFragment,
@@ -83,16 +85,18 @@ const kexp = {
   streamUrl: "https://radio.example/kexp.mp3",
 };
 
-function openTemplates(view: ReturnType<typeof render>) {
-  act(() => {
+async function openTemplates(view: ReturnType<typeof render>) {
+  await act(async () => {
     fireEvent.keyDown(view.getByRole("button", { name: "Templates" }), {
-      key: "Enter",
+      key: "ArrowDown",
     });
+    await Promise.resolve();
   });
+  await view.findByRole("menu");
 }
 
 describe("NodeToolbar templates", () => {
-  test("phone actions fit the canvas and keep templates and undo/redo reachable", () => {
+  test("phone actions fit the canvas and keep templates and undo/redo reachable", async () => {
     const { commitNodeGraph, createNodeStore } = nodeStoreModule;
     const before = templates.buildNodeGraphFromTemplate("duck", {
       saved: [kexp],
@@ -115,20 +119,22 @@ describe("NodeToolbar templates", () => {
         store={store}
       />
     );
-    const openActions = () => {
-      act(() => {
+    const openActions = async () => {
+      await act(async () => {
         fireEvent.keyDown(view.getByRole("button", { name: "Patch actions" }), {
-          key: "Enter",
+          key: "ArrowDown",
         });
+        await Promise.resolve();
       });
+      await view.findByRole("menu");
     };
 
     fireEvent.click(view.getByRole("button", { name: "Add" }));
     expect(onAdd).toHaveBeenCalledTimes(1);
-    openActions();
+    await openActions();
     fireEvent.click(view.getByRole("menuitem", { name: "Fit view" }));
     expect(onFitView).toHaveBeenCalledTimes(1);
-    openActions();
+    await openActions();
     expect(
       view.getByRole("menuitem", { name: "Undo" }).hasAttribute("data-disabled")
     ).toBe(true);
@@ -141,16 +147,16 @@ describe("NodeToolbar templates", () => {
       templates.buildNodeGraphFromTemplate("blank").nodes
     );
 
-    openActions();
+    await openActions();
     fireEvent.click(view.getByRole("menuitem", { name: "Undo" }));
     expect(store.state.graph).toEqual(before);
 
-    openActions();
+    await openActions();
     fireEvent.click(view.getByRole("menuitem", { name: "Redo" }));
     expect(store.state.graph).toEqual(blank);
   });
 
-  test("lists Starter, All my stations, Duck and Blank; each replaces the patch as one undo step", () => {
+  test("lists Starter, All my stations, Duck and Blank; each replaces the patch as one undo step", async () => {
     const { commitNodeGraph, createNodeStore, undoNodeGraph } = nodeStoreModule;
     const before = templates.buildNodeGraphFromTemplate("duck", {
       saved: [kexp],
@@ -173,7 +179,7 @@ describe("NodeToolbar templates", () => {
       />
     );
 
-    openTemplates(view);
+    await openTemplates(view);
     const names = view
       .getAllByRole("menuitem")
       .map((item) => item.querySelector("span")?.textContent);
@@ -183,7 +189,8 @@ describe("NodeToolbar templates", () => {
       ["starter", "start-from-multiple", "duck", "blank"] as const
     ).entries()) {
       if (index > 0) {
-        openTemplates(view);
+        // biome-ignore lint/performance/noAwaitInLoops: Each menu selection changes the same patch and must finish before the next opens.
+        await openTemplates(view);
       }
       act(() => {
         fireEvent.click(view.getAllByRole("menuitem")[index] as HTMLElement);

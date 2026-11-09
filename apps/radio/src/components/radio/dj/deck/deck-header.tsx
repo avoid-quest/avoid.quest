@@ -7,14 +7,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@avoid.quest/ui/components/dropdown-menu";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { cn } from "@avoid.quest/ui/lib/utils";
 import {
-  CopyIcon,
-  ExternalLinkIcon,
-  MoreHorizontalIcon,
-  RefreshCwIcon,
-} from "lucide-react";
-import { toast } from "sonner";
+  IconCopy,
+  IconDots,
+  IconExternalLink,
+  IconRefresh,
+} from "@tabler/icons-react";
 import type { Radio } from "@/lib/audio";
 import { copyStreamUrl, openStationWebsite } from "../../radio-item-actions";
 
@@ -62,37 +62,39 @@ export function DeckMenu({ deckId, radio, onReset, className }: DeckMenuProps) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          aria-label={`Deck ${label} options`}
-          className={cn(
-            "size-7 shrink-0 [@media(pointer:coarse)]:size-9",
-            className
-          )}
-          disabled={!radio}
-          onClick={handleStopPropagation}
-          size="icon"
-          style={{ visibility: radio ? "visible" : "hidden" }}
-          variant="ghost"
-        >
-          <MoreHorizontalIcon />
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={`Deck ${label} options`}
+            className={cn(
+              "size-7 shrink-0 [@media(pointer:coarse)]:size-9",
+              className
+            )}
+            disabled={!radio}
+            onClick={handleStopPropagation}
+            size="icon"
+            style={{ visibility: radio ? "visible" : "hidden" }}
+            variant="ghost"
+          >
+            <IconDots />
+          </Button>
+        }
+      />
       {radio ? (
         <DropdownMenuContent align={deckId === "deck-b" ? "start" : "end"}>
           <DropdownMenuItem onClick={handleCopyStreamLink}>
-            <CopyIcon />
+            <IconCopy />
             Copy stream URL
           </DropdownMenuItem>
           {Boolean(radio.websiteUrl?.trim()) && (
             <DropdownMenuItem onClick={handleGoToWebsite}>
-              <ExternalLinkIcon />
+              <IconExternalLink />
               Website
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleReset}>
-            <RefreshCwIcon />
+            <IconRefresh />
             Reset effects &amp; channel
           </DropdownMenuItem>
         </DropdownMenuContent>

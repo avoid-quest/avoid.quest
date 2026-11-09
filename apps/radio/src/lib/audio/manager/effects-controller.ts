@@ -1261,7 +1261,7 @@ class EffectsController {
       return;
     }
     this.officialRuntimeWarningReported = true;
-    import("sonner")
+    import("@avoid.quest/ui/components/sonner")
       .then(({ toast }) =>
         toast.warning("Some effects run in basic mode in this browser")
       )

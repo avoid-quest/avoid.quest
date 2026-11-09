@@ -18,8 +18,7 @@
     "noUncheckedSideEffectImports": true,
     "paths": {
       "*": ["./*"],
-      "@/*": ["./src/*"],
-      "@avoid.quest/ui/*": ["../../packages/ui/src/*"]
+      "@/*": ["./src/*"]
     }
   }
 }

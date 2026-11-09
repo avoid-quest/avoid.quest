@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { PlusIcon } from "lucide-react";
+import { IconPlus } from "@tabler/icons-react";
 import {
   type Dispatch,
   type FocusEvent,
@@ -94,7 +94,7 @@ function EffectTempoControl({
   return (
     <div className="flex items-center justify-end gap-2">
       <Label
-        className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider"
+        className="font-mono text-muted-foreground text-xs uppercase tracking-wider"
         htmlFor={`${deckId}-effects-tempo`}
       >
         Sync tempo
@@ -110,7 +110,7 @@ function EffectTempoControl({
         step={0.1}
         type="number"
       />
-      <span className="font-mono text-[9px] text-muted-foreground uppercase tracking-wider">
+      <span className="font-mono text-muted-foreground text-xs uppercase tracking-wider">
         bpm
       </span>
     </div>
@@ -257,7 +257,7 @@ export function EffectChain({
           </div>
           <DragOverlay>
             {activeEffect ? (
-              <div className="scale-[1.02] rounded-lg shadow-lg ring-2 ring-primary/50">
+              <div className="scale-[1.02] shadow-lg ring-2 ring-primary/50">
                 <EffectItem
                   effect={activeEffect}
                   isExpanded={false}
@@ -279,7 +279,7 @@ export function EffectChain({
             size="sm"
             variant="outline"
           >
-            <PlusIcon className="size-3.5" />
+            <IconPlus className="size-3.5" />
             Add effect
           </Button>
 
@@ -382,7 +382,7 @@ function SortableEffectItem({
   return (
     <div
       className={cn(
-        "rounded-lg transition-all duration-150",
+        "transition-all duration-150",
         isDragging && "opacity-40",
         isDraggingAny && !isDragging && "opacity-75"
       )}

@@ -8,7 +8,7 @@ type SidechainParamsProps = {
   onUpdate: (config: Partial<EffectConfig>) => void;
 };
 
-/** Radix Select items cannot use an empty value, so the internal input gets a name. */
+/** A named internal input distinguishes it from an unselected source. */
 const INTERNAL_INPUT = "internal";
 
 export function SidechainParams({

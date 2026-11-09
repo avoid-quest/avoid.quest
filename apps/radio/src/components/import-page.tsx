@@ -7,11 +7,11 @@ import {
   RadioGroupItem,
 } from "@avoid.quest/ui/components/radio-group";
 import { Separator } from "@avoid.quest/ui/components/separator";
+import { toast } from "@avoid.quest/ui/components/sonner";
 import { Spinner } from "@avoid.quest/ui/components/spinner";
+import { IconHome } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
-import { HomeIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { ImportPatchPreview } from "@/components/import-patch-preview";
 import {
   autoImportFromUrl,
@@ -108,7 +108,7 @@ export function ImportPage() {
             This link doesn't contain stations to import.
           </p>
           <Button onClick={handleCancel} size="sm">
-            <HomeIcon className="size-3.5" />
+            <IconHome className="size-3.5" />
             Go home
           </Button>
         </div>
@@ -119,10 +119,10 @@ export function ImportPage() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 p-4">
       <div className="space-y-2 text-center">
-        <h1 className="font-semibold text-lg">Import configuration</h1>
+        <h1 className="font-semibold text-lg">Backup & share</h1>
         <p className="text-muted-foreground">
-          Someone shared their radio configuration with you. Review the changes
-          below and choose how to import them.
+          Someone shared their stations and playback settings with you. Review
+          the changes below and choose how to import them.
         </p>
       </div>
 
@@ -163,15 +163,16 @@ export function ImportPage() {
       <Card className="p-6">
         <div className="space-y-4">
           <div>
-            <h3 className="mb-2 font-medium">Mode</h3>
+            <h3 className="mb-2 font-medium">Import as</h3>
             <p className="mb-4 text-muted-foreground text-sm">
-              Choose how you want to import this configuration:
+              Choose how you want to import these stations and playback
+              settings:
             </p>
           </div>
 
           <RadioGroup onValueChange={handleImportModeChange} value={importMode}>
             <div className="space-y-3">
-              <div className="flex items-start space-x-3 rounded-lg border p-3">
+              <div className="flex items-start space-x-3 border p-3">
                 <RadioGroupItem className="mt-1" id="merge" value="merge" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="merge">
@@ -183,7 +184,7 @@ export function ImportPage() {
                 </div>
               </div>
 
-              <div className="flex items-start space-x-3 rounded-lg border p-3">
+              <div className="flex items-start space-x-3 border p-3">
                 <RadioGroupItem className="mt-1" id="replace" value="replace" />
                 <div className="space-y-1">
                   <Label className="font-medium" htmlFor="replace">

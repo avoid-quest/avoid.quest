@@ -312,6 +312,38 @@ function asPublicUrl(value: unknown): string | null {
   }
 }
 
+// NTS publishes each picture at several sizes; TVs show it large.
+function ntsPicture(
+  media:
+    | {
+        picture_large?: unknown;
+        picture_medium?: unknown;
+        picture_medium_large?: unknown;
+      }
+    | undefined
+): unknown {
+  return (
+    asString(media?.picture_large) ??
+    asString(media?.picture_medium_large) ??
+    media?.picture_medium
+  );
+}
+
+// HKCR's thumbnails are 150 px and its show "medium" 300 px; the picture is the
+// full image. Its default background stands in only when nothing else exists.
+function hkcrArtwork(
+  ...images: ({ url?: unknown } | undefined)[]
+): string | null {
+  const urls = images
+    .map((image) => asPublicUrl(image?.url))
+    .filter((url): url is string => Boolean(url));
+  return (
+    urls.find((url) => !url.includes("/default-show-background")) ??
+    urls[0] ??
+    null
+  );
+}
+
 function resolvePublicUrl(value: unknown, base: string): string | null {
   const text = asString(value);
   try {
@@ -1578,7 +1610,11 @@ type NtsLiveSlot = {
       name?: unknown;
       description?: unknown;
       genres?: { value?: unknown }[];
-      media?: { picture_medium?: unknown };
+      media?: {
+        picture_large?: unknown;
+        picture_medium?: unknown;
+        picture_medium_large?: unknown;
+      };
       links?: Link[];
     };
   };
@@ -1756,7 +1792,7 @@ function normalizeNtsLiveApi(
         const details = slot.embeds?.details;
         return {
           artworkUrl: resolvePublicUrl(
-            details?.media?.picture_medium,
+            ntsPicture(details?.media),
             "https://www.nts.live"
           ),
           categories: Array.isArray(details?.genres)
@@ -1791,7 +1827,7 @@ function normalizeNtsLiveApi(
 
   return buildNowPlaying({
     artworkUrl: resolvePublicUrl(
-      now?.embeds?.details?.media?.picture_medium,
+      ntsPicture(now?.embeds?.details?.media),
       "https://www.nts.live"
     ),
     expiresAt: Math.min(input.expiresAt, selected?.endsAt ?? input.expiresAt),
@@ -1884,8 +1920,7 @@ function normalizeHkcrSchedule(input: {
   const artist = asString(entry.resident?.name);
   const residentSlug = asString(entry.resident?.slug);
   const result = buildNowPlaying({
-    artworkUrl:
-      asPublicUrl(entry.thumbnail?.url) ?? asPublicUrl(entry.picture?.url),
+    artworkUrl: hkcrArtwork(entry.picture, entry.thumbnail),
     expiresAt: Math.min(
       input.expiresAt,
       getHkcrScheduleWindow(entry)?.end ?? input.expiresAt
@@ -1924,9 +1959,7 @@ function hkcrProgramme(
   const window = entry.replayWindow ?? getHkcrScheduleWindow(entry);
   return {
     artworkUrl:
-      details?.artworkUrl ??
-      asPublicUrl(entry.thumbnail?.url) ??
-      asPublicUrl(entry.picture?.url),
+      details?.artworkUrl ?? hkcrArtwork(entry.picture, entry.thumbnail),
     categories: details?.genre ? details.genre.split(", ") : [],
     description: details?.stationDescription ?? plainText(entry.description),
     end: window?.end,
@@ -1985,13 +2018,14 @@ export async function tryHkcrSchedule(
       ...entry,
       description: asString(show?.content) ?? asString(entry.description),
       resident: entry.resident ?? show?.resident,
-      thumbnail: {
-        url:
-          asPublicUrl(entry.thumbnail?.url) ??
-          asPublicUrl(entry.picture?.url) ??
-          asPublicUrl(show?.medium?.url) ??
-          asPublicUrl(show?.thumbnail?.url) ??
-          asPublicUrl(show?.picture?.url),
+      picture: {
+        url: hkcrArtwork(
+          entry.picture,
+          show?.picture,
+          show?.medium,
+          entry.thumbnail,
+          show?.thumbnail
+        ),
       },
       title: asString(entry.title) ?? asString(show?.title),
     },

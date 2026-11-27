@@ -81,6 +81,7 @@ test("NTS selects a scheduled next slot when the cached now slot has ended", asy
                       details: {
                         description: "Second show's description",
                         media: {
+                          picture_large: "https://nts.live/second-1600.jpg",
                           picture_medium: "https://nts.live/second.jpg",
                         },
                       },
@@ -111,7 +112,7 @@ test("NTS selects a scheduled next slot when the cached now slot has ended", asy
   });
   time = start + 61_000;
   expect(await read()).toMatchObject({
-    artworkUrl: "https://nts.live/second.jpg",
+    artworkUrl: "https://nts.live/second-1600.jpg",
     expiresAt: start + 120_000,
     sampledAt: start + 1000,
     stationDescription: "Second show's description",

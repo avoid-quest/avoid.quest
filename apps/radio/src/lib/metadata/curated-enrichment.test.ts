@@ -536,6 +536,53 @@ test("fills HKCR schedule image placeholders and replaces its excerpt with verif
   });
 });
 
+test("prefers HKCR's full pictures over its thumbnails and default background", async () => {
+  const schedule = (picture: string) => [
+    {
+      date: "2026-09-04",
+      endTime: "22:00",
+      picture: { url: picture },
+      show: "show-id",
+      startTime: "21:00",
+      thumbnail: {
+        url: "https://cdn.hkcr.live/images/shows/thumbnails/a-thumb.jpg",
+      },
+      title: "Current Show",
+    },
+  ];
+  const read = (picture: string) =>
+    tryHkcrSchedule({
+      ...input,
+      fetchImpl: (url) =>
+        url.includes("/schedule/")
+          ? json(schedule(picture))
+          : json({
+              _id: "show-id",
+              medium: {
+                url: "https://cdn.hkcr.live/images/shows/medium/show-300x300.jpg",
+              },
+              picture: {
+                url: "https://cdn.hkcr.live/images/shows/originals/show.jpg",
+              },
+              slug: "current-show",
+              title: "Current Show",
+            }),
+      streamUrl: hkcrStream,
+    });
+  expect(
+    await read("https://cdn.hkcr.live/images/shows/originals/episode.jpg")
+  ).toMatchObject({
+    artworkUrl: "https://cdn.hkcr.live/images/shows/originals/episode.jpg",
+  });
+  expect(
+    await read(
+      "https://cdn.hkcr.live/images/shows/default-show-background-picture.jpg"
+    )
+  ).toMatchObject({
+    artworkUrl: "https://cdn.hkcr.live/images/shows/originals/show.jpg",
+  });
+});
+
 test("uses the verified HKCR show title when the replay slot only supplies its ID", async () => {
   const result = await tryHkcrSchedule({
     ...input,

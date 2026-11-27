@@ -494,7 +494,14 @@ describe("LYL metadata provider", () => {
             data: {
               episodeBySlug: {
                 description: "Low-end soundsystem music.",
-                image: { url: "https://static.lyl.live/uploads/snake.jpeg" },
+                image: {
+                  formats: {
+                    large: {
+                      url: "https://static.lyl.live/uploads/large_snake.jpeg",
+                    },
+                  },
+                  url: "https://static.lyl.live/uploads/snake.jpeg",
+                },
                 links: [],
                 show: {
                   slug: "tread-on-a-snake",
@@ -519,7 +526,7 @@ describe("LYL metadata provider", () => {
     });
     expect(result).toMatchObject({
       artist: "Hermeneia",
-      artworkUrl: "https://static.lyl.live/uploads/snake.jpeg",
+      artworkUrl: "https://static.lyl.live/uploads/large_snake.jpeg",
       genre: "Reggae, Dub",
       itemUrl: "https://lyl.live/episode/tread-on-a-snake-2",
       source: "lyl-api",

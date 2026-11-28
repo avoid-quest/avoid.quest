@@ -30,7 +30,7 @@ const EPISODE_QUERY = `
       title
       slug
       description
-      image { url }
+      image { url formats }
       show { title slug }
       styles { name }
     }
@@ -43,7 +43,7 @@ const SHOW_QUERY = `
       slug
       description
       artists
-      image { url }
+      image { url formats }
       styles { name }
     }
   }
@@ -69,7 +69,7 @@ type LylEpisodeResponse = {
   data?: {
     episodeBySlug?: {
       description?: unknown;
-      image?: { url?: unknown };
+      image?: { formats?: unknown; url?: unknown };
       show?: { slug?: unknown; title?: unknown };
       slug?: unknown;
       styles?: { name?: unknown }[];
@@ -83,7 +83,7 @@ type LylShowResponse = {
     showBySlug?: {
       artists?: unknown;
       description?: unknown;
-      image?: { url?: unknown };
+      image?: { formats?: unknown; url?: unknown };
       slug?: unknown;
       styles?: { name?: unknown }[];
       title?: unknown;
@@ -232,7 +232,7 @@ async function getEpisode(
     return asString(episode?.slug) === slug && episode
       ? {
           description: asString(episode.description),
-          image: { url: asPublicUrl(episode.image?.url) },
+          image: { url: lylImage(episode.image) },
           show: {
             slug: asString(episode.show?.slug),
             title: asString(episode.show?.title),
@@ -252,6 +252,22 @@ async function getEpisode(
   }
 }
 
+// LYL uploads originals of several megabytes; Strapi's "large" format is about
+// 1000 px, enough for a TV.
+function lylImage(
+  image: { formats?: unknown; url?: unknown } | undefined
+): string | null {
+  const formats =
+    image?.formats && typeof image.formats === "object"
+      ? (image.formats as Record<string, { url?: unknown } | undefined>)
+      : undefined;
+  return (
+    asPublicUrl(formats?.large?.url) ??
+    asPublicUrl(formats?.medium?.url) ??
+    asPublicUrl(image?.url)
+  );
+}
+
 async function getShow(
   fetchImpl: FetchLike,
   slug: string
@@ -264,7 +280,7 @@ async function getShow(
       ? {
           artists: asString(show.artists),
           description: asString(show.description),
-          image: { url: asPublicUrl(show.image?.url) },
+          image: { url: lylImage(show.image) },
           slug,
           styles: show.styles?.map((style) => ({ name: asString(style.name) })),
           title: asString(show.title),
